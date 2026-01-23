@@ -3034,6 +3034,66 @@ def handle_generate_image(data):
 # REMOVED - Duplicate handler was here (lines 2725-2940)
 # The actual working implementation is in the second handle_generate_unified_assets function at line 4157
 
+@app.route('/api/tts', methods=['POST'])
+def generate_tts():
+    """Generate text-to-speech audio using OpenAI TTS API"""
+    try:
+        data = request.get_json()
+        text = data.get('text', '')
+        voice = data.get('voice', None)  # Get voice from request, or use default
+        model = data.get('model', None)  # Get model from request (tts-1 or tts-1-hd)
+        
+        if not text:
+            return jsonify({'error': 'No text provided'}), 400
+        
+        # Limit text length to avoid excessive API costs
+        if len(text) > 4096:
+            text = text[:4096]
+        
+        import config
+        from model_config import TTS_MODEL, TTS_VOICE, TTS_SPEED
+        
+        # Use provided voice or fall back to config default
+        # Valid voices: alloy, echo, fable, onyx, nova, shimmer
+        valid_voices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer']
+        if voice and voice in valid_voices:
+            selected_voice = voice
+        else:
+            selected_voice = TTS_VOICE
+        
+        # Use provided model or fall back to config default
+        valid_models = ['tts-1', 'tts-1-hd']
+        if model and model in valid_models:
+            selected_model = model
+        else:
+            selected_model = TTS_MODEL
+        
+        # Initialize OpenAI client
+        client = OpenAI(api_key=config.OPENAI_API_KEY)
+        
+        # Generate speech
+        response = client.audio.speech.create(
+            model=selected_model,
+            voice=selected_voice,
+            input=text,
+            speed=TTS_SPEED
+        )
+        
+        # Return audio as streaming response
+        return Response(
+            response.iter_bytes(),
+            mimetype='audio/mpeg',
+            headers={
+                'Content-Type': 'audio/mpeg',
+                'Cache-Control': 'no-cache'
+            }
+        )
+        
+    except Exception as e:
+        error_msg = f"TTS generation failed: {str(e)}"
+        print(f"ERROR: {error_msg}")
+        return jsonify({'error': error_msg}), 500
+
 """ BEGIN COMMENTED OUT DUPLICATE CODE
                                 bestiary_data = safe_read_json(bestiary_path) or {}
                                 
