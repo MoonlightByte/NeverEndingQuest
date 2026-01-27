@@ -1,6 +1,6 @@
 # NeverEndingQuest
 
-**Version 0.3.0 (Alpha)**
+**Version 0.3.5 (Alpha)**
 
 An AI-powered Dungeon Master for running SRD 5.2.1 compatible tabletop RPG campaigns with infinite adventure potential. Experience the world's most popular roleplaying game with an intelligent AI that remembers every decision, adapts to your playstyle, and creates endless adventures tailored to your party.
 
@@ -106,6 +106,10 @@ The installer automatically:
 - **Combat Visualizer** - Turn-by-turn combat display with health tracking
 - **Module Browser** - View and select available adventures
 - **Settings Panel** - Customize game options and preferences
+- **DM Voice (Text-to-Speech)** - Listen to DM narration with multiple voice engines:
+  - Browser voices (free, offline) - Uses Web Speech API with system voices
+  - OpenAI TTS (paid) - High-quality AI voices (Standard and HD models)
+  - Voice preview, auto-play option, and response caching to reduce API costs
 
 ### Included Adventure Modules
 - **The Thornwood Watch** (Level 1-2) - Defend a ranger outpost from bandits and corruption
@@ -1124,6 +1128,24 @@ The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 Internation
 This is unofficial Fan Content and is not affiliated with, endorsed, sponsored, or approved by Wizards of the Coast LLC. NeverEndingQuest is an independent implementation compatible with 5th edition rules.
 
 ## Recent Updates
+
+### Version 0.3.5 - DM Voice Text-to-Speech
+
+#### DM Voice Feature
+New text-to-speech system for immersive DM narration:
+- **Dual Engine Support**: Choose between free browser voices or premium OpenAI TTS
+- **Browser Engine (Free)**: Uses Web Speech API with system-installed voices (English/Spanish)
+- **OpenAI Engine (Paid)**: High-quality AI voices with Standard and HD model options
+- **Voice Selection**: Pick from multiple voices per engine with live preview
+- **Auto-play Mode**: Automatically plays DM narration as messages arrive
+- **Smart Caching**: OpenAI responses cached client-side to reduce API costs on replay
+- **Settings Integration**: Consolidated settings dropdown with smooth animations
+
+#### UI/UX Improvements
+- **Settings Dropdown**: Consolidated AI Images, DM Voice, and Model toggles into single dropdown
+- **Accordion Animation**: Smooth expand/collapse for DM Voice settings section
+- **Consistent Styling**: Unified button heights and spacing across chat interface
+- **Custom Tooltips**: Styled tooltips matching existing UI patterns
 
 ### Version 0.3.0 - Token Compression System (First Iteration)
 

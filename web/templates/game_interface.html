@@ -20,6 +20,7 @@
             height: 100vh;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
         }
         
         .header {
@@ -1480,10 +1481,16 @@
         .message-badge {
             background: #4a90e2;
             color: white;
-            padding: 2px 6px;
+            padding: 0 6px;
             border-radius: 4px;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: bold;
+            margin-right: 6px;
+            height: 22px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
         }
         
         .message-text {
@@ -1611,18 +1618,20 @@
         
         /* Image Generation Button Styles */
         .image-generation-button {
-            margin: 0;
             background-color: #4CAF50;
             color: white;
             border: none;
-            padding: 2px 6px;
+            padding: 0 8px;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: bold;
-            margin-left: 10px;
             transition: background-color 0.3s;
             box-sizing: border-box;
+            height: 22px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
         
         .image-generation-button:hover {
@@ -1636,6 +1645,55 @@
         
         .image-generation-button.loading-image {
             background-color: #FFA500;
+        }
+        
+        /* TTS Button Styles */
+        .tts-button {
+            background-color: #4a4a4a;
+            color: #ddd;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-right: 6px;
+            transition: background-color 0.3s;
+            box-sizing: border-box;
+            width: 22px;
+            height: 22px;
+            min-width: 22px;
+            min-height: 22px;
+            max-width: 22px;
+            max-height: 22px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            line-height: 1;
+        }
+        
+        .tts-button:hover {
+            background-color: #666;
+        }
+        
+        .tts-button:disabled {
+            background-color: #666;
+            cursor: not-allowed;
+        }
+        
+        .tts-button.loading-tts {
+            background-color: #FFA500;
+        }
+        
+        .tts-button.playing-tts {
+            background-color: #E74C3C;
+        }
+        
+        .tts-button.autoplay-active {
+            background-color: #27ae60;
+        }
+        
+        .tts-button.autoplay-active.playing-tts {
+            background-color: #E74C3C;
         }
         
         /* Generated Image Styles */
@@ -3630,6 +3688,42 @@
             border-top: 1px solid #3a3a3a;
         }
         
+        /* Auto-play Tooltip */
+        .autoplay-tooltip {
+            position: fixed;
+            z-index: 1000;
+            background-color: #2c2c2c;
+            border: 2px solid #7B68EE;
+            border-radius: 8px;
+            padding: 12px;
+            max-width: 280px;
+            color: #d4d4d4;
+            font-size: 13px;
+            line-height: 1.5;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+            pointer-events: none;
+        }
+        
+        .autoplay-tooltip.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .autoplay-tooltip-header {
+            color: #7B68EE;
+            font-weight: bold;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #3a3a3a;
+            padding-bottom: 5px;
+        }
+        
+        .autoplay-tooltip-content {
+            color: #d4d4d4;
+        }
+        
         /* Spell Tooltip Styles */
         .spell-tooltip {
             position: fixed; /* Takes the tooltip out of the document flow, FIXING THE SHUDDER */
@@ -3941,39 +4035,216 @@
         
         /* --- NEW STYLES for Header Control Refactor --- */
         
-        /* New container to stack the toggles vertically */
-        .toggle-stack {
+        /* Settings Dropdown Button */
+        .settings-dropdown {
+            position: relative;
+            display: inline-block;
+            margin-left: 10px;
+        }
+        
+        .settings-button {
+            background-color: #444;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
             display: flex;
-            flex-direction: column;
-            gap: 4px; /* Creates a small space between the two toggles */
-            justify-content: center;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            font-weight: bold;
+            transition: background-color 0.3s;
         }
         
-        /* Remove the default left margin from toggles now that they are stacked */
-        .toggle-stack .image-generation-toggle {
-            margin-left: 0;
+        .settings-button:hover {
+            background-color: #555;
         }
         
-        /* Shrink the toggle slider */
-        .toggle-stack .toggle-slider {
-            width: 34px;
+        .settings-button svg {
+            width: 18px;
             height: 18px;
         }
         
-        /* Shrink the sliding circle inside the toggle */
-        .toggle-stack .toggle-slider::after {
-            width: 14px;
-            height: 14px;
+        .settings-dropdown-content {
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background-color: #2a2a2a;
+            width: 280px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            z-index: 1000;
+            padding: 10px 0;
+            margin-top: 5px;
+            border: 1px solid #444;
+            pointer-events: none;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px) scale(0.98);
+            transform-origin: top right;
+            transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
         }
         
-        /* Adjust the sliding distance for the smaller toggle */
-        .toggle-stack input:checked + .toggle-slider::after {
+        .settings-dropdown-content.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+        
+        /* Accordion animation for collapsible sections */
+        .settings-section-collapsible {
+            overflow: hidden;
+            max-height: 0;
+            opacity: 0;
+            transition: max-height 0.3s ease-out, opacity 0.2s ease-out, padding 0.3s ease-out;
+            padding: 0 15px;
+            border-bottom: none;
+        }
+        
+        .settings-section-collapsible.expanded {
+            max-height: 200px;
+            opacity: 1;
+            padding: 8px 15px;
+            border-bottom: 1px solid #444;
+        }
+        
+        .settings-section {
+            padding: 8px 15px;
+            border-bottom: 1px solid #444;
+        }
+        
+        .settings-section:last-child {
+            border-bottom: none;
+        }
+        
+        .settings-section-title {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        
+        .settings-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 0;
+        }
+        
+        .settings-item label {
+            color: #ddd;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        
+        .settings-toggle {
+            position: relative;
+            width: 36px;
+            height: 20px;
+            display: inline-block;
+            cursor: pointer;
+        }
+        
+        .settings-toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+            position: absolute;
+        }
+        
+        .settings-toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #555;
+            transition: 0.3s;
+            border-radius: 20px;
+        }
+        
+        .settings-toggle-slider::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+        
+        .settings-toggle input:checked + .settings-toggle-slider {
+            background-color: #4CAF50;
+        }
+        
+        .settings-toggle input:checked + .settings-toggle-slider::after {
             transform: translateX(16px);
         }
         
-        /* Shrink the text next to the toggle */
-        .toggle-stack .toggle-text {
+        .settings-select {
+            background-color: #333;
+            color: #ddd;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 5px 8px;
             font-size: 12px;
+            cursor: pointer;
+            width: 140px;
+            box-sizing: border-box;
+        }
+        
+        .settings-select:hover {
+            border-color: #777;
+        }
+        
+        .settings-select:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        
+        .voice-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            width: 140px;
+        }
+        
+        .voice-controls .settings-select {
+            width: 112px;
+            flex-shrink: 0;
+        }
+        
+        .preview-voice-btn {
+            background-color: #4a4a4a;
+            color: #ddd;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 0;
+            font-size: 11px;
+            cursor: pointer;
+            width: 22px;
+            height: 22px;
+            min-width: 22px;
+            min-height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .preview-voice-btn:hover {
+            background-color: #555;
+            border-color: #777;
+        }
+        
+        .preview-voice-btn.playing {
+            background-color: #c0392b;
+            border-color: #e74c3c;
         }
         
         /* Remove duplicate style - now handled in main .toolkit-button definition above */
@@ -4082,20 +4353,68 @@
                 <button class="load-button" id="load-button" onclick="openLoadDialog()" disabled title="Load Game">Load</button>
                 <button class="reset-button" id="reset-button" onclick="openResetDialog()" disabled title="Reset Campaign">Reset</button>
             </div>
-            <div class="toggle-stack">
-                <div class="image-generation-toggle">
-                    <label class="toggle-label">
-                        <input type="checkbox" id="image-generation-toggle" checked>
-                        <span class="toggle-slider"></span>
-                        <span class="toggle-text">AI Images</span>
-                    </label>
-                </div>
-                <div class="image-generation-toggle">
-                    <label class="toggle-label" id="model-toggle-label">
-                        <input type="checkbox" id="model-toggle" unchecked>
-                        <span class="toggle-slider"></span>
-                        <span class="toggle-text" id="model-toggle-text">GPT-4.1</span>
-                    </label>
+            <div class="settings-dropdown">
+                <button class="settings-button" onclick="toggleSettingsDropdown()" title="Settings">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/>
+                    </svg>
+                    Settings
+                </button>
+                <div class="settings-dropdown-content" id="settings-dropdown">
+                    <div class="settings-section">
+                        <div class="settings-section-title">Features</div>
+                        <div class="settings-item">
+                            <span>AI Images</span>
+                            <label class="settings-toggle">
+                                <input type="checkbox" id="image-generation-toggle" checked>
+                                <span class="settings-toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="settings-item">
+                            <span>DM Voice</span>
+                            <label class="settings-toggle">
+                                <input type="checkbox" id="tts-toggle">
+                                <span class="settings-toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="settings-section settings-section-collapsible" id="dm-voice-settings-section">
+                        <div class="settings-section-title">DM Voice</div>
+                        <div class="settings-item">
+                            <label for="tts-engine-select">Engine</label>
+                            <select class="settings-select" id="tts-engine-select">
+                                <option value="browser">Browser (Free)</option>
+                                <option value="openai">OpenAI Standard</option>
+                                <option value="openai-hd">OpenAI HD</option>
+                            </select>
+                        </div>
+                        <div class="settings-item">
+                            <label for="tts-voice-select">Voice</label>
+                            <div class="voice-controls">
+                                <select class="settings-select" id="tts-voice-select">
+                                    <!-- Voices populated dynamically based on engine -->
+                                </select>
+                                <button class="preview-voice-btn" id="preview-voice-btn" onclick="previewVoice()" title="Preview voice">▶</button>
+                            </div>
+                        </div>
+                        <div class="settings-item" id="autoplay-toggle-item">
+                            <label>Auto-play</label>
+                            <label class="settings-toggle">
+                                <input type="checkbox" id="tts-autoplay-toggle">
+                                <span class="settings-toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="settings-section-title">Model</div>
+                        <div class="settings-item" id="model-toggle-label">
+                            <span id="model-toggle-text">GPT-4.1</span>
+                            <label class="settings-toggle">
+                                <input type="checkbox" id="model-toggle">
+                                <span class="settings-toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -4739,8 +5058,28 @@
                 const text = document.createElement('div');
                 text.className = 'message-text';
                 text.textContent = message.content;
+                
+                // Create TTS button
+                const ttsButton = document.createElement('button');
+                ttsButton.className = 'tts-button';
+                ttsButton.textContent = '▶';
+                ttsButton.title = 'Play DM Voice';
+                
+                // Check if autoplay is enabled and add indicator
+                const isAutoplayOn = document.getElementById('tts-autoplay-toggle').checked;
+                if (isAutoplayOn) {
+                    ttsButton.classList.add('autoplay-active');
+                    ttsButton.title = 'Auto-play enabled';
+                }
+                
+                ttsButton.onclick = function() {
+                    playTTS(message.content, ttsButton);
+                };
+                
+                // Order: Dungeon Master [DM] [▶] [Generate Image]
                 header.appendChild(author);
                 header.appendChild(badge);
+                header.appendChild(ttsButton);
                 
                 // Add image generation button (only if enabled)
                 const isImageGenEnabled = document.getElementById('image-generation-toggle').checked;
@@ -4757,6 +5096,16 @@
                 contentDiv.appendChild(text);
                 messageDiv.appendChild(avatar);
                 messageDiv.appendChild(contentDiv);
+                
+                // Auto-play TTS if enabled
+                const isTTSEnabled = document.getElementById('tts-toggle').checked;
+                const isAutoplayEnabled = document.getElementById('tts-autoplay-toggle').checked;
+                if (isTTSEnabled && isAutoplayEnabled) {
+                    // Small delay to let the message render first
+                    setTimeout(() => {
+                        playTTS(message.content, ttsButton);
+                    }, 100);
+                }
                 
             } else if (message.type === 'user-input') {
                 const avatar = document.createElement('div');
@@ -4827,6 +5176,194 @@
             socket.emit('generate_image', { prompt: prompt });
         }
         
+        // TTS playback function with caching
+        let currentTTSAudio = null;
+        let currentTTSButton = null;
+        let currentBrowserUtterance = null; // For Web Speech API
+        const ttsCache = new Map(); // Cache for OpenAI TTS audio: key = engine:voice:text, value = audioUrl
+        
+        async function playTTS(text, button) {
+            // Check if TTS is enabled
+            const isTTSEnabled = document.getElementById('tts-toggle').checked;
+            if (!isTTSEnabled) {
+                addMessage('game-output', { type: 'system', content: 'Enable "DM Voice" toggle in Settings to use text-to-speech.' });
+                return;
+            }
+            
+            const selectedEngine = getSelectedTTSEngine();
+            const selectedVoice = getSelectedTTSVoice();
+            
+            // If already playing, stop it
+            if (currentTTSButton === button) {
+                stopCurrentTTS();
+                return;
+            }
+            
+            // Stop any other playing audio
+            stopCurrentTTS();
+            
+            if (selectedEngine === 'browser') {
+                // Use Web Speech API (free, instant)
+                playBrowserTTS(text, selectedVoice, button);
+            } else {
+                // Use OpenAI TTS (paid)
+                await playOpenAITTS(text, selectedVoice, selectedEngine, button);
+            }
+        }
+        
+        // Stop current TTS playback (both browser and OpenAI)
+        function stopCurrentTTS() {
+            if (currentBrowserUtterance) {
+                speechSynthesis.cancel();
+                currentBrowserUtterance = null;
+            }
+            if (currentTTSAudio) {
+                currentTTSAudio.pause();
+                currentTTSAudio.currentTime = 0;
+                currentTTSAudio = null;
+            }
+            if (currentTTSButton) {
+                currentTTSButton.classList.remove('playing-tts');
+                currentTTSButton.textContent = '►';
+                currentTTSButton.title = 'Play DM Voice';
+                currentTTSButton = null;
+            }
+        }
+        
+        // Play using Web Speech API (browser built-in, free)
+        function playBrowserTTS(text, voiceName, button) {
+            if (!('speechSynthesis' in window)) {
+                addMessage('game-output', { type: 'error', content: 'Your browser does not support text-to-speech.' });
+                return;
+            }
+            
+            const utterance = new SpeechSynthesisUtterance(text);
+            
+            // Find the selected voice
+            const voices = speechSynthesis.getVoices();
+            const selectedVoice = voices.find(v => v.name === voiceName);
+            if (selectedVoice) {
+                utterance.voice = selectedVoice;
+            }
+            
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+            
+            currentBrowserUtterance = utterance;
+            currentTTSButton = button;
+            
+            utterance.onend = () => {
+                button.classList.remove('playing-tts');
+                button.textContent = '►';
+                button.title = 'Play DM Voice';
+                currentBrowserUtterance = null;
+                currentTTSButton = null;
+            };
+            
+            utterance.onerror = (event) => {
+                console.error('Browser TTS Error:', event);
+                button.classList.remove('playing-tts');
+                button.textContent = '►';
+                button.title = 'Play DM Voice';
+                currentBrowserUtterance = null;
+                currentTTSButton = null;
+            };
+            
+            // Update button to playing state
+            button.classList.add('playing-tts');
+            button.textContent = '■';
+            button.title = 'Stop playback';
+            
+            speechSynthesis.speak(utterance);
+        }
+        
+        // Play using OpenAI TTS API (paid, with caching)
+        async function playOpenAITTS(text, selectedVoice, engine, button) {
+            const model = engine === 'openai-hd' ? 'tts-1-hd' : 'tts-1';
+            const cacheKey = `${engine}:${selectedVoice}:${text}`;
+            
+            // Check if we have this audio cached
+            if (ttsCache.has(cacheKey)) {
+                const cachedUrl = ttsCache.get(cacheKey);
+                playAudioFromUrl(cachedUrl, button);
+                return;
+            }
+            
+            // Set loading state
+            button.disabled = true;
+            button.classList.add('loading-tts');
+            button.textContent = '...';
+            button.title = 'Generating voice...';
+            
+            try {
+                const response = await fetch('/api/tts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text: text, voice: selectedVoice, model: model })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'TTS generation failed');
+                }
+                
+                const audioBlob = await response.blob();
+                const audioUrl = URL.createObjectURL(audioBlob);
+                
+                // Cache the audio URL for future playback
+                ttsCache.set(cacheKey, audioUrl);
+                
+                // Reset button state before playing
+                button.disabled = false;
+                button.classList.remove('loading-tts');
+                
+                playAudioFromUrl(audioUrl, button);
+                
+            } catch (error) {
+                console.error('OpenAI TTS Error:', error);
+                button.disabled = false;
+                button.classList.remove('loading-tts');
+                button.textContent = '▶';
+                button.title = 'Play DM Voice';
+                addMessage('game-output', { type: 'error', content: `Voice generation failed: ${error.message}` });
+            }
+        }
+        
+        // Helper function to play audio from URL (for OpenAI TTS)
+        function playAudioFromUrl(audioUrl, button) {
+            currentTTSAudio = new Audio(audioUrl);
+            currentTTSButton = button;
+            
+            currentTTSAudio.onended = () => {
+                button.classList.remove('playing-tts');
+                button.textContent = '▶';
+                button.title = 'Play DM Voice';
+                currentTTSAudio = null;
+                currentTTSButton = null;
+            };
+            
+            currentTTSAudio.onerror = () => {
+                button.classList.remove('playing-tts');
+                button.textContent = '▶';
+                button.title = 'Play DM Voice';
+                currentTTSAudio = null;
+                currentTTSButton = null;
+            };
+            
+            // Update button to playing state
+            button.classList.add('playing-tts');
+            button.textContent = '■';
+            button.title = 'Stop DM Voice';
+            
+            currentTTSAudio.play();
+        }
+        
+        // Function to stop TTS playback (called when toggle is disabled)
+        function stopTTSPlayback() {
+            stopCurrentTTS();
+        }
 
         // --- START: Custom Scroller Logic ---
         function setupScrollers() {
@@ -6254,6 +6791,89 @@
                 updateImageButtonVisibility();
             });
             
+            // Initialize TTS toggle from localStorage
+            const ttsToggle = document.getElementById('tts-toggle');
+            const savedTTSState = localStorage.getItem('ttsEnabled');
+            if (savedTTSState !== null) {
+                ttsToggle.checked = savedTTSState === 'true';
+            }
+
+            // Handle TTS toggle changes
+            ttsToggle.addEventListener('change', function() {
+                localStorage.setItem('ttsEnabled', this.checked);
+                // Stop any playing audio if TTS is disabled
+                if (!this.checked) {
+                    stopTTSPlayback();
+                }
+                // Show/hide DM Voice settings section
+                updateDMVoiceSectionVisibility();
+            });
+            
+            // Function to show/hide DM Voice section with accordion animation
+            function updateDMVoiceSectionVisibility() {
+                const dmVoiceSection = document.getElementById('dm-voice-settings-section');
+                const ttsEnabled = document.getElementById('tts-toggle').checked;
+                if (dmVoiceSection) {
+                    if (ttsEnabled) {
+                        dmVoiceSection.classList.add('expanded');
+                    } else {
+                        dmVoiceSection.classList.remove('expanded');
+                    }
+                }
+            }
+            
+            // Initialize DM Voice section visibility
+            updateDMVoiceSectionVisibility();
+            
+            // Initialize TTS auto-play toggle from localStorage
+            const ttsAutoplayToggle = document.getElementById('tts-autoplay-toggle');
+            const savedAutoplayState = localStorage.getItem('ttsAutoplayEnabled');
+            if (savedAutoplayState !== null) {
+                ttsAutoplayToggle.checked = savedAutoplayState === 'true';
+            }
+            
+            // Handle TTS auto-play toggle changes
+            ttsAutoplayToggle.addEventListener('change', function() {
+                localStorage.setItem('ttsAutoplayEnabled', this.checked);
+            });
+            
+            // Initialize TTS engine and voice selection
+            const engineSelect = document.getElementById('tts-engine-select');
+            const voiceSelect = document.getElementById('tts-voice-select');
+            
+            // Load saved engine preference
+            const savedEngine = localStorage.getItem('ttsEngine') || 'browser';
+            engineSelect.value = savedEngine;
+            
+            // Populate voices based on engine
+            populateTTSVoices(savedEngine);
+            
+            // Handle engine selection changes
+            engineSelect.addEventListener('change', function() {
+                localStorage.setItem('ttsEngine', this.value);
+                populateTTSVoices(this.value);
+                // Clear TTS cache when engine changes
+                ttsCache.clear();
+                // Stop any preview playing
+                stopPreview();
+            });
+            
+            // Handle voice selection changes
+            voiceSelect.addEventListener('change', function() {
+                localStorage.setItem('ttsVoice_' + engineSelect.value, this.value);
+                // Stop any preview playing when voice changes
+                stopPreview();
+            });
+            
+            // Load browser voices when available (they load asynchronously)
+            if ('speechSynthesis' in window) {
+                speechSynthesis.onvoiceschanged = () => {
+                    if (engineSelect.value === 'browser') {
+                        populateTTSVoices('browser');
+                    }
+                };
+            }
+            
             // Initialize model toggle
             const modelToggle = document.getElementById('model-toggle');
             const modelToggleText = document.getElementById('model-toggle-text');
@@ -6287,6 +6907,30 @@
             
             modelToggleLabel.addEventListener('mouseleave', function() {
                 modelTooltip.classList.remove('visible');
+            });
+            
+            // Create auto-play tooltip
+            const autoplayTooltip = document.createElement('div');
+            autoplayTooltip.className = 'autoplay-tooltip';
+            autoplayTooltip.innerHTML = `
+                <div class="autoplay-tooltip-header">Auto-play Voice</div>
+                <div class="autoplay-tooltip-content">
+                    Automatically plays DM voice when new messages arrive from the Dungeon Master.
+                </div>
+            `;
+            document.body.appendChild(autoplayTooltip);
+            
+            // Show tooltip on hover
+            const autoplayToggleItem = document.getElementById('autoplay-toggle-item');
+            autoplayToggleItem.addEventListener('mouseenter', function(e) {
+                const rect = this.getBoundingClientRect();
+                autoplayTooltip.style.left = rect.left + 'px';
+                autoplayTooltip.style.top = (rect.bottom + 5) + 'px';
+                autoplayTooltip.classList.add('visible');
+            });
+            
+            autoplayToggleItem.addEventListener('mouseleave', function() {
+                autoplayTooltip.classList.remove('visible');
             });
             
             // Handle model toggle changes
@@ -6364,6 +7008,212 @@
             imageButtons.forEach(button => {
                 button.style.display = isEnabled ? 'inline-block' : 'none';
             });
+        }
+        
+        // Settings dropdown functions
+        function toggleSettingsDropdown() {
+            const dropdown = document.getElementById('settings-dropdown');
+            dropdown.classList.toggle('show');
+        }
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const dropdown = document.getElementById('settings-dropdown');
+            const button = event.target.closest('.settings-button');
+            const dropdownContent = event.target.closest('.settings-dropdown-content');
+            
+            if (!button && !dropdownContent && dropdown.classList.contains('show')) {
+                dropdown.classList.remove('show');
+            }
+        });
+        
+        // Get selected TTS engine
+        function getSelectedTTSEngine() {
+            const engineSelect = document.getElementById('tts-engine-select');
+            return engineSelect ? engineSelect.value : 'browser';
+        }
+        
+        // Get selected TTS voice
+        function getSelectedTTSVoice() {
+            const voiceSelect = document.getElementById('tts-voice-select');
+            return voiceSelect ? voiceSelect.value : 'fable';
+        }
+        
+        // Preview voice with sample text
+        let previewAudio = null;
+        let previewUtterance = null;
+        
+        async function previewVoice() {
+            const btn = document.getElementById('preview-voice-btn');
+            const engine = getSelectedTTSEngine();
+            const voice = getSelectedTTSVoice();
+            
+            // If already playing, stop it
+            if (btn.classList.contains('playing')) {
+                stopPreview();
+                return;
+            }
+            
+            // Detect voice language and pick appropriate sample text
+            const voiceSelect = document.getElementById('tts-voice-select');
+            const selectedOption = voiceSelect.options[voiceSelect.selectedIndex];
+            const voiceLabel = selectedOption ? selectedOption.textContent : '';
+            
+            // Check if Spanish voice
+            const isSpanish = voiceLabel.includes('es-') || voiceLabel.includes('español') || voiceLabel.includes('Spanish');
+            
+            const sampleText = isSpanish 
+                ? "Bienvenidos, aventureros. Vuestra travesía comienza en una taberna misteriosa."
+                : "Welcome, adventurers. Your journey begins in a mysterious tavern.";
+            
+            btn.classList.add('playing');
+            btn.textContent = '■';
+            btn.title = 'Stop preview';
+            
+            if (engine === 'browser') {
+                // Use Web Speech API
+                if (!('speechSynthesis' in window)) {
+                    resetPreviewBtn(btn);
+                    return;
+                }
+                
+                previewUtterance = new SpeechSynthesisUtterance(sampleText);
+                const voices = speechSynthesis.getVoices();
+                const selectedVoice = voices.find(v => v.name === voice);
+                if (selectedVoice) {
+                    previewUtterance.voice = selectedVoice;
+                }
+                
+                previewUtterance.onend = () => {
+                    resetPreviewBtn(btn);
+                    previewUtterance = null;
+                };
+                
+                previewUtterance.onerror = () => {
+                    resetPreviewBtn(btn);
+                    previewUtterance = null;
+                };
+                
+                speechSynthesis.speak(previewUtterance);
+            } else {
+                // Use OpenAI TTS
+                try {
+                    const model = engine === 'openai-hd' ? 'tts-1-hd' : 'tts-1';
+                    const response = await fetch('/api/tts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: sampleText, voice: voice, model: model })
+                    });
+                    
+                    if (!response.ok) throw new Error('TTS failed');
+                    
+                    const audioBlob = await response.blob();
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    previewAudio = new Audio(audioUrl);
+                    
+                    previewAudio.onended = () => {
+                        resetPreviewBtn(btn);
+                        URL.revokeObjectURL(audioUrl);
+                        previewAudio = null;
+                    };
+                    
+                    previewAudio.onerror = () => {
+                        resetPreviewBtn(btn);
+                        previewAudio = null;
+                    };
+                    
+                    previewAudio.play();
+                } catch (e) {
+                    console.error('Preview error:', e);
+                    resetPreviewBtn(btn);
+                }
+            }
+        }
+        
+        function resetPreviewBtn(btn) {
+            btn.classList.remove('playing');
+            btn.textContent = '▶';
+            btn.title = 'Preview voice';
+        }
+        
+        function stopPreview() {
+            const btn = document.getElementById('preview-voice-btn');
+            if (previewUtterance) {
+                speechSynthesis.cancel();
+                previewUtterance = null;
+            }
+            if (previewAudio) {
+                previewAudio.pause();
+                previewAudio = null;
+            }
+            resetPreviewBtn(btn);
+        }
+        
+        // Populate TTS voices based on selected engine
+        function populateTTSVoices(engine) {
+            const voiceSelect = document.getElementById('tts-voice-select');
+            if (!voiceSelect) return;
+            
+            voiceSelect.innerHTML = '';
+            
+            if (engine === 'browser') {
+                // Get browser voices
+                if ('speechSynthesis' in window) {
+                    const voices = speechSynthesis.getVoices();
+                    // Filter for English and Spanish voices, prioritize good quality ones
+                    const filteredVoices = voices.filter(v => 
+                        v.lang.startsWith('en') || v.lang.startsWith('es')
+                    ).sort((a, b) => {
+                        // Prioritize local voices over remote
+                        if (a.localService !== b.localService) return a.localService ? -1 : 1;
+                        return a.name.localeCompare(b.name);
+                    });
+                    
+                    if (filteredVoices.length === 0) {
+                        // Fallback if no filtered voices
+                        voices.slice(0, 10).forEach(voice => {
+                            const option = document.createElement('option');
+                            option.value = voice.name;
+                            option.textContent = `${voice.name} (${voice.lang})`;
+                            voiceSelect.appendChild(option);
+                        });
+                    } else {
+                        filteredVoices.forEach(voice => {
+                            const option = document.createElement('option');
+                            option.value = voice.name;
+                            option.textContent = `${voice.name} (${voice.lang})`;
+                            voiceSelect.appendChild(option);
+                        });
+                    }
+                } else {
+                    const option = document.createElement('option');
+                    option.value = 'default';
+                    option.textContent = 'Default Voice';
+                    voiceSelect.appendChild(option);
+                }
+            } else {
+                // OpenAI voices
+                const openaiVoices = [
+                    { value: 'fable', label: 'Fable (Storyteller)' },
+                    { value: 'onyx', label: 'Onyx (Deep)' },
+                    { value: 'nova', label: 'Nova (Warm)' },
+                    { value: 'alloy', label: 'Alloy (Neutral)' },
+                    { value: 'echo', label: 'Echo (Soft)' },
+                    { value: 'shimmer', label: 'Shimmer (Clear)' }
+                ];
+                openaiVoices.forEach(voice => {
+                    const option = document.createElement('option');
+                    option.value = voice.value;
+                    option.textContent = voice.label;
+                    voiceSelect.appendChild(option);
+                });
+            }
+            
+            // Restore saved voice for this engine
+            const savedVoice = localStorage.getItem('ttsVoice_' + engine);
+            if (savedVoice && voiceSelect.querySelector(`option[value="${savedVoice}"]`)) {
+                voiceSelect.value = savedVoice;
+            }
         }
         
         function showNPCDetailList(npcName, modalTitle, itemsData) {
@@ -7405,4 +8255,4 @@
     </div>
     
 </body>
-</html>
+</html>
