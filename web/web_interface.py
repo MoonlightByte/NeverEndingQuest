@@ -4205,6 +4205,59 @@ def open_browser():
     webbrowser.open(f'http://localhost:{port}')
 
 
+
+# ============================================================================
+# TEXT-TO-SPEECH API ENDPOINTS
+# ============================================================================
+
+@app.route('/api/tts', methods=['POST'])
+def generate_tts():
+    """Generate text-to-speech audio using OpenAI TTS API"""
+    try:
+        data = request.get_json()
+        text = data.get('text', '')
+        voice = data.get('voice', None)
+        model = data.get('model', None)
+        
+        if not text:
+            return jsonify({'error': 'No text provided'}), 400
+        
+        if len(text) > 4096:
+            text = text[:4096]
+        
+        import config
+        from model_config import TTS_MODEL, TTS_VOICE, TTS_SPEED
+        
+        valid_voices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer']
+        selected_voice = voice if voice in valid_voices else TTS_VOICE
+        
+        valid_models = ['tts-1', 'tts-1-hd']
+        selected_model = model if model in valid_models else TTS_MODEL
+        
+        client = OpenAI(api_key=config.OPENAI_API_KEY)
+        
+        response = client.audio.speech.create(
+            model=selected_model,
+            voice=selected_voice,
+            input=text,
+            speed=TTS_SPEED
+        )
+        
+        return Response(
+            response.iter_bytes(),
+            mimetype='audio/mpeg',
+            headers={
+                'Content-Type': 'audio/mpeg',
+                'Cache-Control': 'no-cache'
+            }
+        )
+        
+    except Exception as e:
+        error_msg = f"TTS generation failed: {str(e)}"
+        print(f"ERROR: {error_msg}")
+        return jsonify({'error': error_msg}), 500
+
+
 # ============================================================================
 # NPC MANAGEMENT API ENDPOINTS
 # ============================================================================

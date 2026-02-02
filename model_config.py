@@ -59,3 +59,8 @@ COMPRESS_LOCATION_SUMMARIES = True                      # Compress location summ
 NARRATIVE_COMPRESSION_MODEL = "gpt-4.1-mini-2025-04-14"  # For general narrative compression
 LOCATION_COMPRESSION_MODEL = "gpt-4.1-2025-04-14"        # For location encounter compression
 COMPRESSION_MAX_WORKERS = 4                              # Number of parallel workers for compression
+
+# --- Text-to-Speech Configuration ---
+TTS_MODEL = "tts-1"                                       # OpenAI TTS model (tts-1 or tts-1-hd for higher quality)
+TTS_VOICE = "fable"                                       # Voice: alloy, echo, fable, onyx, nova, shimmer (fable is good for narration)
+TTS_SPEED = 1.0                                           # Speed: 0.25 to 4.0 (1.0 is normal)

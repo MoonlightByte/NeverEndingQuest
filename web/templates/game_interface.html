@@ -1633,6 +1633,163 @@
             background-color: #FFA500;
         }
         
+
+        /* TTS Button Styles */
+        .tts-button {
+            background-color: #4a4a4a;
+            color: #ddd;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-right: 6px;
+            transition: background-color 0.3s;
+            box-sizing: border-box;
+            width: 22px;
+            height: 22px;
+            min-width: 22px;
+            min-height: 22px;
+            max-width: 22px;
+            max-height: 22px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            line-height: 1;
+        }
+        
+        .tts-button:hover {
+            background-color: #666;
+        }
+        
+        .tts-button:disabled {
+            background-color: #666;
+            cursor: not-allowed;
+        }
+        
+        .tts-button.loading-tts {
+            background-color: #FFA500;
+        }
+        
+        .tts-button.playing-tts {
+            background-color: #E74C3C;
+        }
+        
+        .tts-button.autoplay-active {
+            background-color: #27ae60;
+        }
+        
+        .tts-button.autoplay-active.playing-tts {
+            background-color: #E74C3C;
+        }
+        
+        /* DM Voice Panel Styles */
+        .dm-voice-panel {
+            position: fixed;
+            top: 60px;
+            right: 20px;
+            width: 280px;
+            background-color: #2c2c2c;
+            border: 1px solid #444;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+        
+        .dm-voice-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background-color: #3a3a3a;
+            border-bottom: 1px solid #444;
+            border-radius: 8px 8px 0 0;
+        }
+        
+        .dm-voice-panel-title {
+            font-weight: 600;
+            color: #e0e0e0;
+            font-size: 14px;
+        }
+        
+        .dm-voice-close {
+            background: none;
+            border: none;
+            color: #999;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .dm-voice-close:hover {
+            color: #fff;
+        }
+        
+        .dm-voice-panel-content {
+            padding: 16px;
+        }
+        
+        .dm-voice-item {
+            margin-bottom: 16px;
+        }
+        
+        .dm-voice-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .dm-voice-item label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 13px;
+            color: #ccc;
+        }
+        
+        .dm-voice-select {
+            width: 100%;
+            padding: 8px;
+            background-color: #3a3a3a;
+            border: 1px solid #555;
+            border-radius: 4px;
+            color: #e0e0e0;
+            font-size: 13px;
+        }
+        
+        .dm-voice-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .dm-voice-controls .dm-voice-select {
+            flex: 1;
+        }
+        
+        .dm-voice-preview-btn {
+            width: 32px;
+            height: 32px;
+            background-color: #4a4a4a;
+            border: none;
+            border-radius: 4px;
+            color: #ddd;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .dm-voice-preview-btn:hover {
+            background-color: #666;
+        }
+        
+        .dm-voice-preview-btn.playing {
+            background-color: #E74C3C;
+        }
         /* Generated Image Styles */
         .generated-image {
             max-width: 100%;
@@ -4150,6 +4307,13 @@
                         <span class="toggle-text" id="model-toggle-text">GPT-4.1</span>
                     </label>
                 </div>
+                <div class="image-generation-toggle">
+                    <label class="toggle-label" id="tts-toggle-label" title="Enable DM Voice text-to-speech">
+                        <input type="checkbox" id="tts-toggle">
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">DM Voice</span>
+                    </label>
+                </div>
             </div>
             
             <!-- The relocated and modified Toolkit Button with anvil icon -->
@@ -4161,6 +4325,41 @@
             </button>
             
             <button class="exit-button" id="exit-button" onclick="exitGame()" title="Exit Game">× Exit</button>
+        </div>
+    </div>
+    
+    <!-- DM Voice Settings Panel -->
+    <div id="dm-voice-settings-panel" class="dm-voice-panel" style="display: none;">
+        <div class="dm-voice-panel-header">
+            <span class="dm-voice-panel-title">DM Voice Settings</span>
+            <button class="dm-voice-close" onclick="toggleDMVoicePanel()">×</button>
+        </div>
+        <div class="dm-voice-panel-content">
+            <div class="dm-voice-item">
+                <label for="tts-engine-select">Engine</label>
+                <select class="dm-voice-select" id="tts-engine-select">
+                    <option value="browser">Browser (Free)</option>
+                    <option value="openai">OpenAI Standard</option>
+                    <option value="openai-hd">OpenAI HD</option>
+                </select>
+            </div>
+            <div class="dm-voice-item">
+                <label for="tts-voice-select">Voice</label>
+                <div class="dm-voice-controls">
+                    <select class="dm-voice-select" id="tts-voice-select">
+                        <!-- Voices populated dynamically -->
+                    </select>
+                    <button class="dm-voice-preview-btn" id="preview-voice-btn" onclick="previewVoice()" title="Preview voice">▶</button>
+                </div>
+            </div>
+            <div class="dm-voice-item">
+                <label for="tts-autoplay-toggle">Auto-play</label>
+                <label class="toggle-label">
+                    <input type="checkbox" id="tts-autoplay-toggle">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-text">Auto</span>
+                </label>
+            </div>
         </div>
     </div>
     
@@ -4840,6 +5039,26 @@
                 header.appendChild(author);
                 header.appendChild(badge);
                 
+                // Create TTS button
+                const ttsButton = document.createElement('button');
+                ttsButton.className = 'tts-button';
+                ttsButton.textContent = '▶';
+                ttsButton.title = 'Play DM Voice';
+                
+                // Check if autoplay is enabled and add indicator
+                const isAutoplayOn = document.getElementById('tts-autoplay-toggle').checked;
+                if (isAutoplayOn) {
+                    ttsButton.classList.add('autoplay-active');
+                    ttsButton.title = 'Auto-play enabled';
+                }
+                
+                ttsButton.onclick = function() {
+                    playTTS(message.content, ttsButton);
+                };
+                
+                // Order: Dungeon Master [DM] [▶] [Generate Image]
+                header.appendChild(ttsButton);
+                
                 // Add image generation button (only if enabled)
                 const isImageGenEnabled = document.getElementById('image-generation-toggle').checked;
                 if (isImageGenEnabled) {
@@ -4855,6 +5074,15 @@
                 contentDiv.appendChild(text);
                 messageDiv.appendChild(avatar);
                 messageDiv.appendChild(contentDiv);
+                
+                // Auto-play TTS if enabled
+                const isTTSEnabled = document.getElementById('tts-toggle').checked;
+                const isAutoplayEnabled = document.getElementById('tts-autoplay-toggle').checked;
+                if (isTTSEnabled && isAutoplayEnabled) {
+                    setTimeout(() => {
+                        playTTS(message.content, ttsButton);
+                    }, 100);
+                }
                 
             } else if (message.type === 'user-input') {
                 const avatar = document.createElement('div');
@@ -4875,6 +5103,15 @@
                 contentDiv.appendChild(text);
                 messageDiv.appendChild(avatar);
                 messageDiv.appendChild(contentDiv);
+                
+                // Auto-play TTS if enabled
+                const isTTSEnabled = document.getElementById('tts-toggle').checked;
+                const isAutoplayEnabled = document.getElementById('tts-autoplay-toggle').checked;
+                if (isTTSEnabled && isAutoplayEnabled) {
+                    setTimeout(() => {
+                        playTTS(message.content, ttsButton);
+                    }, 100);
+                }
                 
             } else if (message.type === 'system' || message.type === 'error') {
                 const contentDiv = document.createElement('div');
@@ -6447,6 +6684,69 @@
                 updateImageButtonVisibility();
             });
             
+            // Initialize TTS toggle from localStorage
+            const ttsToggle = document.getElementById('tts-toggle');
+            const savedTTSState = localStorage.getItem('ttsEnabled');
+            if (savedTTSState !== null) {
+                ttsToggle.checked = savedTTSState === 'true';
+            }
+
+            ttsToggle.addEventListener('change', function() {
+                localStorage.setItem('ttsEnabled', this.checked);
+                if (!this.checked) {
+                    stopTTSPlayback();
+                }
+                // Show/hide DM Voice panel
+                const panel = document.getElementById('dm-voice-settings-panel');
+                if (panel) {
+                    panel.style.display = this.checked ? 'block' : 'none';
+                }
+            });
+            
+            // Initialize panel visibility
+            const panel = document.getElementById('dm-voice-settings-panel');
+            if (panel) {
+                panel.style.display = ttsToggle.checked ? 'block' : 'none';
+            }
+            
+            const ttsAutoplayToggle = document.getElementById('tts-autoplay-toggle');
+            const savedAutoplayState = localStorage.getItem('ttsAutoplayEnabled');
+            if (savedAutoplayState !== null) {
+                ttsAutoplayToggle.checked = savedAutoplayState === 'true';
+            }
+            
+            ttsAutoplayToggle.addEventListener('change', function() {
+                localStorage.setItem('ttsAutoplayEnabled', this.checked);
+            });
+            
+            const engineSelect = document.getElementById('tts-engine-select');
+            const voiceSelect = document.getElementById('tts-voice-select');
+            
+            const savedEngine = localStorage.getItem('ttsEngine') || 'browser';
+            engineSelect.value = savedEngine;
+            
+            populateTTSVoices(savedEngine);
+            
+            engineSelect.addEventListener('change', function() {
+                localStorage.setItem('ttsEngine', this.value);
+                populateTTSVoices(this.value);
+                ttsCache.clear();
+                stopPreview();
+            });
+            
+            voiceSelect.addEventListener('change', function() {
+                localStorage.setItem('ttsVoice_' + engineSelect.value, this.value);
+                stopPreview();
+            });
+            
+            if ('speechSynthesis' in window) {
+                speechSynthesis.onvoiceschanged = () => {
+                    if (engineSelect.value === 'browser') {
+                        populateTTSVoices('browser');
+                    }
+                };
+            }
+            
             // Initialize model toggle
             const modelToggle = document.getElementById('model-toggle');
             const modelToggleText = document.getElementById('model-toggle-text');
@@ -6713,6 +7013,14 @@
         // Open Module Toolkit in new window
         function openToolkit() {
             window.open('/toolkit', 'ModuleToolkit', 'width=1400,height=900');
+        }
+        
+        // Toggle DM Voice Settings Panel
+        function toggleDMVoicePanel() {
+            const panel = document.getElementById('dm-voice-settings-panel');
+            if (panel) {
+                panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+            }
         }
         
         let diceRolls = { d20: [], damage: [] };
@@ -7713,6 +8021,355 @@
                 }
             });
         });
+
+        // TTS Functions
+        async function playTTS(text, button) {
+            const isTTSEnabled = document.getElementById('tts-toggle').checked;
+            if (!isTTSEnabled) {
+                addMessage('game-output', { type: 'system', content: 'Enable "DM Voice" toggle in Settings to use text-to-speech.' });
+                return;
+            }
+            
+            const selectedEngine = getSelectedTTSEngine();
+            const selectedVoice = getSelectedTTSVoice();
+            
+            if (currentTTSButton === button) {
+                stopCurrentTTS();
+                return;
+            }
+            
+            stopCurrentTTS();
+            
+            if (selectedEngine === 'browser') {
+                playBrowserTTS(text, selectedVoice, button);
+            } else {
+                await playOpenAITTS(text, selectedVoice, selectedEngine, button);
+            }
+        }
+        
+        function stopCurrentTTS() {
+            if (currentBrowserUtterance) {
+                speechSynthesis.cancel();
+                currentBrowserUtterance = null;
+            }
+            if (currentTTSAudio) {
+                currentTTSAudio.pause();
+                currentTTSAudio.currentTime = 0;
+                currentTTSAudio = null;
+            }
+            if (currentTTSButton) {
+                currentTTSButton.classList.remove('playing-tts');
+                currentTTSButton.textContent = '▶';
+                currentTTSButton.title = 'Play DM Voice';
+                currentTTSButton = null;
+            }
+        }
+        
+        function playBrowserTTS(text, voiceName, button) {
+            if (!('speechSynthesis' in window)) {
+                addMessage('game-output', { type: 'error', content: 'Your browser does not support text-to-speech.' });
+                return;
+            }
+            
+            const utterance = new SpeechSynthesisUtterance(text);
+            const voices = speechSynthesis.getVoices();
+            const selectedVoice = voices.find(v => v.name === voiceName);
+            if (selectedVoice) {
+                utterance.voice = selectedVoice;
+            }
+            
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+            
+            currentBrowserUtterance = utterance;
+            currentTTSButton = button;
+            
+            utterance.onend = () => {
+                button.classList.remove('playing-tts');
+                button.textContent = '▶';
+                button.title = 'Play DM Voice';
+                currentBrowserUtterance = null;
+                currentTTSButton = null;
+            };
+            
+            utterance.onerror = (event) => {
+                console.error('Browser TTS Error:', event);
+                button.classList.remove('playing-tts');
+                button.textContent = '▶';
+                button.title = 'Play DM Voice';
+                currentBrowserUtterance = null;
+                currentTTSButton = null;
+            };
+            
+            button.classList.add('playing-tts');
+            button.textContent = '■';
+            button.title = 'Stop playback';
+            
+            speechSynthesis.speak(utterance);
+        }
+        
+        async function playOpenAITTS(text, selectedVoice, engine, button) {
+            const model = engine === 'openai-hd' ? 'tts-1-hd' : 'tts-1';
+            const cacheKey = `${engine}:${selectedVoice}:${text}`;
+            
+            if (ttsCache.has(cacheKey)) {
+                const cachedUrl = ttsCache.get(cacheKey);
+                playAudioFromUrl(cachedUrl, button);
+                return;
+            }
+            
+            button.disabled = true;
+            button.classList.add('loading-tts');
+            button.textContent = '...';
+            button.title = 'Generating voice...';
+            
+            try {
+                const response = await fetch('/api/tts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text: text, voice: selectedVoice, model: model })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'TTS generation failed');
+                }
+                
+                const audioBlob = await response.blob();
+                const audioUrl = URL.createObjectURL(audioBlob);
+                
+                ttsCache.set(cacheKey, audioUrl);
+                
+                button.disabled = false;
+                button.classList.remove('loading-tts');
+                
+                playAudioFromUrl(audioUrl, button);
+                
+            } catch (error) {
+                console.error('OpenAI TTS Error:', error);
+                button.disabled = false;
+                button.classList.remove('loading-tts');
+                button.textContent = '▶';
+                button.title = 'Play DM Voice';
+                addMessage('game-output', { type: 'error', content: `Voice generation failed: ${error.message}` });
+            }
+        }
+        
+        function playAudioFromUrl(audioUrl, button) {
+            currentTTSAudio = new Audio(audioUrl);
+            currentTTSButton = button;
+            
+            currentTTSAudio.onended = () => {
+                button.classList.remove('playing-tts');
+                button.textContent = '▶';
+                button.title = 'Play DM Voice';
+                currentTTSAudio = null;
+                currentTTSButton = null;
+            };
+            
+            currentTTSAudio.onerror = () => {
+                button.classList.remove('playing-tts');
+                button.textContent = '▶';
+                button.title = 'Play DM Voice';
+                currentTTSAudio = null;
+                currentTTSButton = null;
+            };
+            
+            button.classList.add('playing-tts');
+            button.textContent = '■';
+            button.title = 'Stop DM Voice';
+            
+            currentTTSAudio.play();
+        }
+        
+        function stopTTSPlayback() {
+            stopCurrentTTS();
+        }
+        
+        function getSelectedTTSEngine() {
+            const engineSelect = document.getElementById('tts-engine-select');
+            return engineSelect ? engineSelect.value : 'browser';
+        }
+        
+        function getSelectedTTSVoice() {
+            const voiceSelect = document.getElementById('tts-voice-select');
+            return voiceSelect ? voiceSelect.value : 'fable';
+        }
+        
+        async function previewVoice() {
+            const btn = document.getElementById('preview-voice-btn');
+            const engine = getSelectedTTSEngine();
+            const voice = getSelectedTTSVoice();
+            
+            if (btn.classList.contains('playing')) {
+                stopPreview();
+                return;
+            }
+            
+            const voiceSelect = document.getElementById('tts-voice-select');
+            const selectedOption = voiceSelect.options[voiceSelect.selectedIndex];
+            const voiceLabel = selectedOption ? selectedOption.textContent : '';
+            
+            const isSpanish = voiceLabel.includes('es-') || voiceLabel.includes('español') || voiceLabel.includes('Spanish');
+            
+            const sampleText = isSpanish 
+                ? "Bienvenidos, aventureros. Vuestra travesía comienza en una taberna misteriosa."
+                : "Welcome, adventurers. Your journey begins in a mysterious tavern.";
+            
+            btn.classList.add('playing');
+            btn.textContent = '■';
+            btn.title = 'Stop preview';
+            
+            if (engine === 'browser') {
+                if (!('speechSynthesis' in window)) {
+                    resetPreviewBtn(btn);
+                    return;
+                }
+                
+                previewUtterance = new SpeechSynthesisUtterance(sampleText);
+                const voices = speechSynthesis.getVoices();
+                const selectedVoice = voices.find(v => v.name === voice);
+                if (selectedVoice) {
+                    previewUtterance.voice = selectedVoice;
+                }
+                
+                previewUtterance.onend = () => {
+                    resetPreviewBtn(btn);
+                    previewUtterance = null;
+                };
+                
+                previewUtterance.onerror = () => {
+                    resetPreviewBtn(btn);
+                    previewUtterance = null;
+                };
+                
+                speechSynthesis.speak(previewUtterance);
+            } else {
+                try {
+                    const model = engine === 'openai-hd' ? 'tts-1-hd' : 'tts-1';
+                    const response = await fetch('/api/tts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: sampleText, voice: voice, model: model })
+                    });
+                    
+                    if (!response.ok) throw new Error('TTS failed');
+                    
+                    const audioBlob = await response.blob();
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    previewAudio = new Audio(audioUrl);
+                    
+                    previewAudio.onended = () => {
+                        resetPreviewBtn(btn);
+                        URL.revokeObjectURL(audioUrl);
+                        previewAudio = null;
+                    };
+                    
+                    previewAudio.onerror = () => {
+                        resetPreviewBtn(btn);
+                        previewAudio = null;
+                    };
+                    
+                    previewAudio.play();
+                } catch (e) {
+                    console.error('Preview error:', e);
+                    resetPreviewBtn(btn);
+                }
+            }
+        }
+        
+        function resetPreviewBtn(btn) {
+            btn.classList.remove('playing');
+            btn.textContent = '▶';
+            btn.title = 'Preview voice';
+        }
+        
+        function stopPreview() {
+            const btn = document.getElementById('preview-voice-btn');
+            if (previewUtterance) {
+                speechSynthesis.cancel();
+                previewUtterance = null;
+            }
+            if (previewAudio) {
+                previewAudio.pause();
+                previewAudio = null;
+            }
+            resetPreviewBtn(btn);
+        }
+        
+        function populateTTSVoices(engine) {
+            const voiceSelect = document.getElementById('tts-voice-select');
+            if (!voiceSelect) return;
+            
+            voiceSelect.innerHTML = '';
+            
+            if (engine === 'browser') {
+                if ('speechSynthesis' in window) {
+                    const voices = speechSynthesis.getVoices();
+                    const filteredVoices = voices.filter(v => 
+                        v.lang.startsWith('en') || v.lang.startsWith('es')
+                    ).sort((a, b) => {
+                        if (a.localService !== b.localService) return a.localService ? -1 : 1;
+                        return a.name.localeCompare(b.name);
+                    });
+                    
+                    if (filteredVoices.length === 0) {
+                        voices.slice(0, 10).forEach(voice => {
+                            const option = document.createElement('option');
+                            option.value = voice.name;
+                            option.textContent = `${voice.name} (${voice.lang})`;
+                            voiceSelect.appendChild(option);
+                        });
+                    } else {
+                        filteredVoices.forEach(voice => {
+                            const option = document.createElement('option');
+                            option.value = voice.name;
+                            option.textContent = `${voice.name} (${voice.lang})`;
+                            voiceSelect.appendChild(option);
+                        });
+                    }
+                } else {
+                    const option = document.createElement('option');
+                    option.value = 'default';
+                    option.textContent = 'Default Voice';
+                    voiceSelect.appendChild(option);
+                }
+            } else {
+                const openaiVoices = [
+                    { value: 'fable', label: 'Fable (Storyteller)' },
+                    { value: 'onyx', label: 'Onyx (Deep)' },
+                    { value: 'nova', label: 'Nova (Warm)' },
+                    { value: 'alloy', label: 'Alloy (Neutral)' },
+                    { value: 'echo', label: 'Echo (Soft)' },
+                    { value: 'shimmer', label: 'Shimmer (Clear)' }
+                ];
+                openaiVoices.forEach(voice => {
+                    const option = document.createElement('option');
+                    option.value = voice.value;
+                    option.textContent = voice.label;
+                    voiceSelect.appendChild(option);
+                });
+            }
+            
+            const savedVoice = localStorage.getItem('ttsVoice_' + engine);
+            if (savedVoice && voiceSelect.querySelector(`option[value="${savedVoice}"]`)) {
+                voiceSelect.value = savedVoice;
+            }
+        }
+        
+        function updateDMVoiceSectionVisibility() {
+            const dmVoiceSection = document.getElementById('dm-voice-settings-section');
+            const ttsEnabled = document.getElementById('tts-toggle').checked;
+            if (dmVoiceSection) {
+                if (ttsEnabled) {
+                    dmVoiceSection.classList.add('expanded');
+                } else {
+                    dmVoiceSection.classList.remove('expanded');
+                }
+            }
+        }
     </script>
 </body>
 </html>
