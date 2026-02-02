@@ -6,6 +6,9 @@
     <title>NeverEndingQuest</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    {% if multiplayer_mode or party_members|length > 1 %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tabletop_mode.css') }}">
+    {% endif %}
     <style>
         * {
             box-sizing: border-box;
@@ -69,14 +72,6 @@
             0% { background-position: 0% 50%; }
             50% { background-position: 100% 50%; }
             100% { background-position: 0% 50%; }
-        }
-        
-        .header h1 span {
-            background: inherit;
-            background-size: inherit;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
         }
         
         .location-info {
@@ -2444,6 +2439,29 @@
             margin: 0 0 6px 0;
             padding-bottom: 6px;
             border-bottom: 1px solid #666;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .pdf-button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            font-family: 'Segoe UI', sans-serif;
+            text-transform: none;
+            letter-spacing: normal;
+            font-weight: bold;
+            transition: background-color 0.3s;
+            margin-left: 0px;
+        }
+
+        .pdf-button:hover {
+            background-color: #45a049;
         }
         
         /* Ability Scores */
@@ -3827,6 +3845,7 @@
             width: 100%;
             height: 100%;
             background-color: rgba(0, 0, 0, 0.7);
+            -webkit-backdrop-filter: blur(3px);
             backdrop-filter: blur(3px); /* Adds a cool blur effect to the background */
         }
 
@@ -4050,6 +4069,40 @@
             0%, 100% { box-shadow: 0 0 10px rgba(76, 175, 80, 0.5); }
             50% { box-shadow: 0 0 20px rgba(76, 175, 80, 0.8); }
         }
+
+        /* Resizer styles */
+        .resizer {
+            width: 8px;
+            background-color: #1a1a1a;
+            cursor: col-resize;
+            flex: 0 0 auto;
+            align-self: stretch;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s, border 0.2s;
+            z-index: 100;
+            border-left: 1px solid #333;
+            border-right: 1px solid #333;
+        }
+
+        .resizer:hover, .resizer.dragging {
+            background-color: #4CAF50;
+            border-color: #4CAF50;
+        }
+
+        .resizer::after {
+            content: "||";
+            color: #444;
+            font-size: 10px;
+            font-weight: bold;
+            letter-spacing: -1px;
+        }
+
+        .resizer:hover::after, .resizer.dragging::after {
+            color: #1a1a1a;
+        }
+
     </style>
 </head>
 <body>
@@ -4167,6 +4220,11 @@
             <div class="dice-results" id="dice-results" style="display: none;"></div>
             
             <div class="panel-content" id="game-output"></div>
+            
+            {% if multiplayer_mode or party_members|length > 1 %}
+                {% include 'partials/character_tabs.html' %}
+            {% endif %}
+
             <div class="input-container">
                 <input 
                     type="text" 
@@ -4179,6 +4237,8 @@
                 <button class="send-button" id="send-button" onclick="sendInput()" disabled>Send</button>
             </div>
         </div>
+        
+        <div class="resizer" id="main-resizer"></div>
         
         <div class="panel debug-panel">
             <div class="tabs">
@@ -4244,6 +4304,9 @@
     </div>
     
     <script>
+        // Debug flag for status synchronization - can be set via config or console
+                window.DEBUG_STATUS_SYNC = {{ 'true' if DEBUG_STATUS_SYNC else 'false' }};
+
         const socket = io();
         let connected = false;
         let gameStarted = false;
@@ -4252,6 +4315,38 @@
         let hoverTimer = null;    // For managing hover delay on video preview
         let isHoveringInitiative = false; // Track if we're hovering over an initiative item
         
+        // Cache for tracking images that are confirmed to be missing (avoid repetitive 404s)
+        const missingImageCache = new Set();
+        const existingImageCache = new Set();
+
+        /**
+         * Attempts to load an image, checking the cache first.
+         * @param {string} url - The URL of the image to load.
+         * @param {function} onSuccess - Callback when image exists.
+         * @param {function} onError - Callback when image is missing.
+         */
+        function tryLoadImage(url, onSuccess, onError) {
+            if (missingImageCache.has(url)) {
+                if (onError) onError();
+                return;
+            }
+            if (existingImageCache.has(url)) {
+                if (onSuccess) onSuccess();
+                return;
+            }
+
+            const img = new Image();
+            img.onload = () => {
+                existingImageCache.add(url);
+                if (onSuccess) onSuccess();
+            };
+            img.onerror = () => {
+                missingImageCache.add(url);
+                if (onError) onError();
+            };
+            img.src = url;
+        }
+
         // Capitalize first letter of each word function
         function capitalizeWords(str) {
             if (!str) return str;
@@ -4717,6 +4812,9 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${message.type}`;
             
+            // Extract author if provided (for multi-PC display)
+            const authorName = message.author || 'You';
+            
             // Handle different message types
             if (message.type === 'narration') {
                 const avatar = document.createElement('div');
@@ -4768,7 +4866,7 @@
                 header.className = 'message-header';
                 const author = document.createElement('span');
                 author.className = 'message-author';
-                author.textContent = 'You';
+                author.textContent = authorName;
                 const text = document.createElement('div');
                 text.className = 'message-text';
                 text.textContent = message.content;
@@ -4882,6 +4980,8 @@
             loadCharacterStats();
             requestPlotData(); // <--- ADD THIS
             requestPartyData(); // Load party display on connect
+            // Request current status on connect to ensure input state is synced
+            socket.emit('request_status');
         });
         
         socket.on('disconnect', () => {
@@ -5050,19 +5150,67 @@
         });
         
         socket.on('status_update', (data) => {
+            if (window.DEBUG_STATUS_SYNC) console.log('[DEBUG_STATUS] Received status_update:', data);
             const input = document.getElementById('user-input');
             const sendButton = document.getElementById('send-button');
             if (data.is_processing) {
+                if (window.DEBUG_STATUS_SYNC) console.log('[DEBUG_STATUS] Disabling input (processing)');
                 input.placeholder = data.message;
                 input.disabled = true;
                 sendButton.disabled = true;
             } else {
+                if (window.DEBUG_STATUS_SYNC) console.log('[DEBUG_STATUS] Enabling input (ready)');
                 input.placeholder = "Enter your command...";
                 input.disabled = false;
                 sendButton.disabled = false;
-                input.focus();
+                // Use a small delay to ensure focus works and isn't overridden
+                setTimeout(() => {
+                    input.focus();
+                    if (window.DEBUG_STATUS_SYNC) console.log('[DEBUG_STATUS] Input focused, disabled state:', input.disabled);
+                }, 50);
             }
             // This single call now handles all highlighting logic.
+            highlightCurrentTurn();
+        });
+
+        // Handle direct status response
+        socket.on('status_response', (data) => {
+            if (window.DEBUG_STATUS_SYNC) console.log('[DEBUG_STATUS] Received status_response:', data);
+            
+            // Sync gameStarted flag if provided
+            if (data.game_started !== undefined) {
+                gameStarted = data.game_started;
+                
+                // Update Start Game button UI
+                const startButton = document.getElementById('start-button');
+                if (gameStarted && startButton) {
+                    startButton.textContent = 'Game Running';
+                    startButton.disabled = true;
+                    document.getElementById('save-button').disabled = false;
+                    document.getElementById('load-button').disabled = false;
+                    document.getElementById('reset-button').disabled = false;
+                }
+            }
+
+            // Reuse the status_update handler logic
+            const status_event = {
+                message: data.message || "Ready",
+                is_processing: data.is_processing
+            };
+            // Call the same logic
+            const input = document.getElementById('user-input');
+            const sendButton = document.getElementById('send-button');
+            if (status_event.is_processing) {
+                if (window.DEBUG_STATUS_SYNC) console.log('[DEBUG_STATUS] Response: Disabling input');
+                input.placeholder = status_event.message;
+                input.disabled = true;
+                sendButton.disabled = true;
+            } else {
+                if (window.DEBUG_STATUS_SYNC) console.log('[DEBUG_STATUS] Response: Enabling input');
+                input.placeholder = "Enter your command...";
+                input.disabled = false;
+                sendButton.disabled = false;
+            }
             highlightCurrentTurn();
         });
         
@@ -5077,7 +5225,12 @@
             const input = document.getElementById('user-input');
             const value = input.value.trim();
             if (value && connected && gameStarted) {
-                socket.emit('user_input', { input: value });
+                // In multi-PC mode, include the active character's name to tag the input
+                const characterName = window.active_character || null;
+                socket.emit('user_input', { 
+                    input: value,
+                    character: characterName
+                });
                 input.value = '';
                 input.focus();
             }
@@ -5268,15 +5421,52 @@
             }
         }
 
-        // Display character stats
+        // Function to download character sheet using official filled PDF
+        async function downloadCharacterSheetPDF(event, characterName) {
+            const button = event.target;
+            const originalText = button.textContent;
+            
+            try {
+                // Show loading state
+                button.textContent = 'Generating...';
+                button.disabled = true;
+
+                const response = await fetch(`/api/character_sheet/pdf?character=${encodeURIComponent(characterName)}`);
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to generate PDF');
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `${characterName.replace(/\s+/g, '_')}_CharacterSheet.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            } catch (error) {
+                console.error('PDF Download Error:', error);
+                alert('Failed to download character sheet PDF: ' + error.message);
+            } finally {
+                // Always restore button state, even if there was an error
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+
         function displayCharacterStats(data) {
             // Save scroll position before updating
             const scrollableContainer = document.getElementById('stats-tab');
             const scrollPosition = scrollableContainer ? scrollableContainer.scrollTop : 0;
             
-            // Preserve portrait to prevent flickering
+            // Preserve portrait to prevent flickering, but only if it's the SAME character
             const existingPortrait = document.querySelector('.character-portrait');
-            let shouldPreservePortrait = !!existingPortrait;
+            const normalizedName = data.name.toLowerCase().replace(/\s+/g, '_');
+            let shouldPreservePortrait = existingPortrait && existingPortrait.dataset.character === normalizedName;
             
             const container = document.getElementById('stats-content');
             if (!data) {
@@ -5318,15 +5508,15 @@
             const hpPercent = (data.hitPoints / data.maxHitPoints) * 100;
             let hpClass = '';
             if (hpPercent <= 25) hpClass = 'low'; else if (hpPercent <= 50) hpClass = 'medium';
-            const normalizedName = data.name.toLowerCase().replace(/\s+/g, '_');
+            // normalizedName already defined above
             let html = '<div class="character-sheet">';
             
             // --- NEW TWO-COLUMN TOP SECTION ---
             html += `<div class="character-sheet-top">
                         
                         <!-- COLUMN 1: PORTRAIT -->
-                        <div class="character-portrait">
-                            <img id="char-portrait-img" src="/static/portraits/${normalizedName}.png" onerror="this.onerror=null;this.src='/static/icons/default_portrait.png';">
+                        <div class="character-portrait" data-character="${normalizedName}">
+                            <img id="char-portrait-img" src="/static/icons/default_portrait.png">
                             <div class="upload-overlay" onclick="uploadPortrait('${normalizedName}')">
                                 <span>Upload Portrait</span>
                             </div>
@@ -5335,7 +5525,9 @@
                         
                         <!-- COLUMN 2: HEADER INFO BOX -->
                         <div class="character-header-info">
-                            <div class="character-name">${data.name}</div>
+                            <div class="character-name">
+                                <span>${data.name}</span>
+                            </div>
                             <div class="character-details">
                                 <div><span class="orange">Level ${data.level}</span> ${data.race} ${data.class}</div>
                                 <div><span class="orange">XP:</span> ${data.experience_points} / ${data.exp_required_for_next_level}</div>
@@ -5486,9 +5678,26 @@
                 html += '</div></div>';
             }
             html += '</div>';
+            
+            // Download PDF button at the bottom of the character sheet
+            html += `<div style="margin-top: 10px; text-align: left; white-space: normal;">
+                        <button class="pdf-button" onclick="downloadCharacterSheetPDF(event, '${normalizedName}')" style="padding: 8px; font-size: 12px;">
+                            Download PDF
+                        </button>
+                     </div>`;
 
             html += '</div>'; // close character-sheet
             container.innerHTML = html;
+
+            // Load portrait with caching
+            const portraitUrl = `/static/portraits/${normalizedName}.png`;
+            const portraitImg = document.getElementById('char-portrait-img');
+            if (portraitImg) {
+                tryLoadImage(portraitUrl, 
+                    () => { portraitImg.src = portraitUrl; },
+                    () => { portraitImg.src = '/static/icons/default_portrait.png'; }
+                );
+            }
             
             // If we had a portrait, restore it to prevent flickering
             if (shouldPreservePortrait && existingPortrait) {
@@ -5860,50 +6069,36 @@
                     const monsterThumbUrl = `/media/monsters/${monsterType}_thumb.jpg`;
                     const monsterVideoUrl = `/media/monsters/${monsterType}_video.mp4`;
                     
-                    // Set thumbnail - try JPG first, then PNG
+                    // Set thumbnail - try variations with caching to avoid repetitive 404s
                     item.style.backgroundSize = 'cover';
-                    const thumbImg = new Image();
-                    thumbImg.onload = () => {
-                        item.style.backgroundImage = `url('${monsterThumbUrl}')`;
-                    };
-                    thumbImg.onerror = () => {
-                        // Try PNG instead
-                        const pngUrl = `/media/monsters/${monsterType}_thumb.png`;
-                        const pngImg = new Image();
-                        pngImg.onload = () => {
-                            item.style.backgroundImage = `url('${pngUrl}')`;
-                        };
-                        pngImg.onerror = () => {
-                            // Try with/without 's' at the end
-                            const altName = monsterType.endsWith('s') ? 
-                                monsterType.slice(0, -1) : monsterType + 's';
-                            const altUrl = `/media/monsters/${altName}_thumb.jpg`;
-                            const altImg = new Image();
-                            altImg.onload = () => {
-                                item.style.backgroundImage = `url('${altUrl}')`;
-                            };
-                            altImg.onerror = () => {
-                                // Try alt name with PNG
-                                const altPngUrl = `/media/monsters/${altName}_thumb.png`;
-                                const altPngImg = new Image();
-                                altPngImg.onload = () => {
-                                    item.style.backgroundImage = `url('${altPngUrl}')`;
-                                };
-                                altPngImg.onerror = () => {
-                                    // No thumbnail available
-                                    item.style.cursor = 'default';
-                                };
-                                altPngImg.src = altPngUrl;
-                            };
-                            altImg.src = altUrl;
-                        };
-                        pngImg.src = pngUrl;
-                    };
-                    thumbImg.src = monsterThumbUrl;
                     item.style.backgroundPosition = 'center';
                     item.style.color = 'white';
                     item.style.textShadow = '1px 1px 2px black, -1px -1px 2px black';
                     item.style.cursor = 'pointer';
+
+                    tryLoadImage(monsterThumbUrl, 
+                        () => { item.style.backgroundImage = `url('${monsterThumbUrl}')`; },
+                        () => {
+                            const pngUrl = `/media/monsters/${monsterType}_thumb.png`;
+                            tryLoadImage(pngUrl,
+                                () => { item.style.backgroundImage = `url('${pngUrl}')`; },
+                                () => {
+                                    const altName = monsterType.endsWith('s') ? monsterType.slice(0, -1) : monsterType + 's';
+                                    const altUrl = `/media/monsters/${altName}_thumb.jpg`;
+                                    tryLoadImage(altUrl,
+                                        () => { item.style.backgroundImage = `url('${altUrl}')`; },
+                                        () => {
+                                            const altPngUrl = `/media/monsters/${altName}_thumb.png`;
+                                            tryLoadImage(altPngUrl,
+                                                () => { item.style.backgroundImage = `url('${altPngUrl}')`; },
+                                                () => { item.style.cursor = 'default'; }
+                                            );
+                                        }
+                                    );
+                                }
+                            );
+                        }
+                    );
                     
                     // NEW: Show stats on hover, media on click (using smart attachment)
                     attachTooltipListeners(item);
@@ -5956,23 +6151,18 @@
                     const cleanName = combatant.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
                     const portraitUrl = `/static/portraits/${cleanName}.png`;
 
-                    // Set the portrait directly (same as skeleton approach)
-                    item.style.backgroundImage = `url('${portraitUrl}')`;
                     item.style.backgroundSize = 'cover';
                     item.style.backgroundPosition = 'center';
                     item.style.color = 'white';
                     item.style.textShadow = '1px 1px 2px black, -1px -1px 2px black';
 
+                    tryLoadImage(portraitUrl, 
+                        () => { item.style.backgroundImage = `url('${portraitUrl}')`; },
+                        () => { item.style.backgroundImage = ''; }
+                    );
+
                     // Add stats tooltip on hover
                     attachTooltipListeners(item);
-
-                    // Add error handler for missing images
-                    const img = new Image();
-                    img.onerror = () => {
-                        // If portrait doesn't exist, remove the background image
-                        item.style.backgroundImage = '';
-                    };
-                    img.src = portraitUrl;
                 }
                 
                 // Add special handling for NPCs
@@ -6013,8 +6203,6 @@
                         fallbackPortrait = '/static/media/class_portraits/wizard.png';
                     }
                     
-                    // Set portrait immediately (try NPC thumb first)
-                    item.style.backgroundImage = `url('${portraitUrl}')`;
                     item.style.backgroundSize = 'cover';
                     item.style.backgroundPosition = 'center';
                     item.style.color = 'white';
@@ -6026,6 +6214,11 @@
                     
                     // NEW: Always add stats tooltip on hover (using smart attachment)
                     attachTooltipListeners(item);
+
+                    tryLoadImage(portraitUrl, 
+                        () => { item.style.backgroundImage = `url('${portraitUrl}')`; },
+                        () => { item.style.backgroundImage = `url('${fallbackPortrait}')`; }
+                    );
                     
                     // Check if video exists by trying to load it
                     const videoTest = document.createElement('video');
@@ -6055,14 +6248,6 @@
                             fullImg.src = npcFullUrl;
                         });
                     };
-                    
-                    // Silent image validation for fallback
-                    const img = new Image();
-                    img.onerror = () => {
-                        // NPC thumb doesn't exist, use class-based fallback
-                        item.style.backgroundImage = `url('${fallbackPortrait}')`;
-                    };
-                    img.src = portraitUrl;
                 }
                 
                 // Create text element with dynamic sizing
@@ -6154,12 +6339,16 @@
                     const thumbUrl = member.type === 'player' ? `${basePath}.png` : `${basePath}_thumb.jpg`;
                     const videoUrl = `${basePath}_video.mp4`;
 
-                    item.style.backgroundImage = `url('${thumbUrl}')`;
                     item.style.backgroundSize = 'cover';
                     item.style.backgroundPosition = 'center';
                     item.style.color = 'white';
                     item.style.textShadow = '1px 1px 2px black, -1px -1px 2px black';
                     item.style.cursor = 'pointer';
+
+                    tryLoadImage(thumbUrl, 
+                        () => { item.style.backgroundImage = `url('${thumbUrl}')`; },
+                        () => { item.style.backgroundImage = ''; }
+                    );
 
                     const textSpan = document.createElement('span');
                     textSpan.classList.add('initiative-item-text');
@@ -6203,10 +6392,6 @@
                     });
 
                     partyContainer.appendChild(item);
-
-                    const img = new Image();
-                    img.onerror = () => item.style.backgroundImage = '';
-                    img.src = thumbUrl;
                 };
 
                 if (response.members) response.members.forEach(member => renderMember(member, false));
@@ -6236,6 +6421,14 @@
             loadLocationData();
             requestInitiativeData(); // Load initiative tracker on page load
             requestPartyData(); // Load party display on page load
+            
+            // Initialize active character from the DOM (rendered server-side)
+            const activeTab = document.querySelector('.character-tab.active');
+            if (activeTab) {
+                window.active_character = activeTab.getAttribute('data-character');
+                console.log('Initialized active character from DOM:', window.active_character);
+            }
+
             if (connected) {
                 loadCharacterStats();
             }
@@ -7404,5 +7597,122 @@
         </div>
     </div>
     
+    {% if multiplayer_mode or party_members|length > 1 %}
+    <script src="{{ url_for('static', filename='js/tabletop_mode.js') }}"></script>
+    {% endif %}
+
+    <script>
+        // Ensure character stats are refreshed when tab switches
+        function setActiveCharacter(characterName) {
+            console.log(`Setting active character to: ${characterName}`);
+            
+            fetch('/api/party/set_active', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ character: characterName }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update active_character in the template context (effectively)
+                    window.active_character = characterName;
+                    
+                    // Update tab UI
+                    document.querySelectorAll('.character-tab').forEach(tab => {
+                        if (tab.getAttribute('data-character') === characterName) {
+                            tab.classList.add('active');
+                        } else {
+                            tab.classList.remove('active');
+                        }
+                    });
+                    
+                    // Update sidebar active state
+                    document.querySelectorAll('.party-member-card').forEach(card => {
+                        if (card.getAttribute('data-character') === characterName) {
+                            card.classList.add('active');
+                        } else {
+                            card.classList.remove('active');
+                        }
+                    });
+
+                    // Refresh stats and other data for the new active character
+                    loadCharacterStats();
+                    loadInventory();
+                    // Spells & Magic is shared with inventory in current implementation
+                } else {
+                    console.error('Failed to set active character:', data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error setting active character:', error);
+            });
+        }
+
+        function openManagePartyModal() {
+            const modal = document.getElementById('manage-party-modal');
+            if (modal) {
+                modal.style.display = 'block';
+                if (typeof loadExistingCharacters === 'function') {
+                    loadExistingCharacters();
+                }
+            } else {
+                console.error('Manage Party Modal not found in DOM');
+            }
+        }
+
+        function closeManagePartyModal() {
+            const modal = document.getElementById('manage-party-modal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        // Resizer Logic
+        document.addEventListener('DOMContentLoaded', () => {
+            const resizer = document.getElementById('main-resizer');
+            const leftPanel = document.querySelector('.game-panel');
+            const rightPanel = document.querySelector('.debug-panel');
+            const container = document.querySelector('.main-container');
+
+            if (!resizer || !leftPanel || !rightPanel || !container) return;
+
+            let isResizing = false;
+
+            resizer.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                resizer.classList.add('dragging');
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                
+                // Ensure left panel has an initial flex-basis in pixels to start from
+                const currentLeftWidth = leftPanel.getBoundingClientRect().width;
+                leftPanel.style.flex = `0 0 ${currentLeftWidth}px`;
+                rightPanel.style.maxWidth = 'none'; // Remove max-width constraint
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+
+                const containerRect = container.getBoundingClientRect();
+                const newLeftWidth = e.clientX - containerRect.left;
+
+                // Constraints
+                if (newLeftWidth > 300 && newLeftWidth < containerRect.width - 200) {
+                    leftPanel.style.flex = `0 0 ${newLeftWidth}px`;
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isResizing) {
+                    isResizing = false;
+                    resizer.classList.remove('dragging');
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                }
+            });
+        });
+    </script>
 </body>
 </html>

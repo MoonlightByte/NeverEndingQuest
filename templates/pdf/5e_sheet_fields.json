@@ -1,0 +1,2682 @@
+{
+  "pdf": "Docs/5E_CharacterSheet_Fillable.pdf",
+  "fieldCount": 334,
+  "countsByFT": {
+    "/Tx": 210,
+    "/Btn": 124
+  },
+  "fields": {
+    "ClassLevel": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Background": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "PlayerName": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "CharacterName": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Race ": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Alignment": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "XP": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Inspiration": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "STR": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "ProfBonus": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "AC": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Initiative": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Speed": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "PersonalityTraits ": {
+      "FT": "/Tx",
+      "Ff": 8392704,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "STRmod": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "HPMax": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "ST Strength": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "DEX": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "HPCurrent": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Ideals": {
+      "FT": "/Tx",
+      "Ff": 8392704,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "DEXmod ": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "HPTemp": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Bonds": {
+      "FT": "/Tx",
+      "Ff": 8392704,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "CON": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "HDTotal": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Check Box 12": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 13": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 14": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "CONmod": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Check Box 15": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 16": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 17": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "HD": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Flaws": {
+      "FT": "/Tx",
+      "Ff": 8392704,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "INT": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "ST Dexterity": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "ST Constitution": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "ST Intelligence": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "ST Wisdom": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "ST Charisma": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Acrobatics": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Animal": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Athletics": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Deception ": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "History ": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Insight": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Intimidation": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Check Box 11": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 18": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 19": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 20": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 21": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 22": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Wpn Name": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Wpn1 AtkBonus": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Wpn1 Damage": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "INTmod": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Wpn Name 2": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Wpn2 AtkBonus ": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Wpn2 Damage ": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Investigation ": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "WIS": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Wpn Name 3": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Wpn3 AtkBonus  ": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Arcana": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Wpn3 Damage ": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Perception ": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "WISmod": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "CHA": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Nature": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Performance": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Medicine": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Religion": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Stealth ": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Check Box 23": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 24": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 25": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 26": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 27": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 28": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 29": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 30": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 31": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 32": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 33": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 34": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 35": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 36": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 37": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 38": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 39": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 40": {
+      "FT": "/Btn",
+      "Ff": null,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Persuasion": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "SleightofHand": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "CHamod": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Survival": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "AttacksSpellcasting": {
+      "FT": "/Tx",
+      "Ff": 8392704,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Passive": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "CP": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "ProficienciesLang": {
+      "FT": "/Tx",
+      "Ff": 8392704,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "SP": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "EP": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "GP": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "PP": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Equipment": {
+      "FT": "/Tx",
+      "Ff": 8392704,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "Features and Traits": {
+      "FT": "/Tx",
+      "Ff": 8392704,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "CharacterName 2": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Age": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Height": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Weight": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Eyes": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Skin": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Hair": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Faction Symbol Image": {
+      "FT": "/Btn",
+      "Ff": 65536,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Allies": {
+      "FT": "/Tx",
+      "Ff": 8392704,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "FactionName": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Backstory": {
+      "FT": "/Tx",
+      "Ff": 8392704,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Feat+Traits": {
+      "FT": "/Tx",
+      "Ff": 8392704,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Treasure": {
+      "FT": "/Tx",
+      "Ff": 8392704,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "CHARACTER IMAGE": {
+      "FT": "/Btn",
+      "Ff": 65536,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Spellcasting Class 2": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SpellcastingAbility 2": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SpellSaveDC  2": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SpellAtkBonus 2": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SlotsTotal 19": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SlotsRemaining 19": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1014": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1015": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1016": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1017": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1018": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1019": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1020": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1021": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1022": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Check Box 314": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3031": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3032": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3033": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3034": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3035": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3036": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3037": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3038": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3039": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3040": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 321": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 320": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 3060": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 3061": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 3062": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 3063": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 3064": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 3065": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 3066": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 315": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 3041": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Spells 1023": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Check Box 251": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 309": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 3010": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 3011": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3012": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3013": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3014": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3015": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3016": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3017": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3018": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3019": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Spells 1024": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1025": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1026": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1027": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1028": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1029": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1030": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1031": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1032": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1033": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SlotsTotal 20": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SlotsRemaining 20": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1034": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1035": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1036": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1037": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1038": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1039": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1040": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1041": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1042": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1043": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1044": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1045": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1046": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SlotsTotal 21": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SlotsRemaining 21": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1047": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1048": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1049": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1050": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1051": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1052": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1053": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1054": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1055": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1056": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1057": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1058": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1059": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SlotsTotal 22": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SlotsRemaining 22": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1060": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1061": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1062": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1063": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1064": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Check Box 323": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 322": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3067": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3068": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3069": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 3070": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 3071": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3072": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 3073": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Spells 1065": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1066": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1067": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1068": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1069": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1070": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1071": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Check Box 317": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Spells 1072": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SlotsTotal 23": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SlotsRemaining 23": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1073": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1074": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1075": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1076": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1077": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1078": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1079": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1080": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1081": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SlotsTotal 24": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": ""
+    },
+    "SlotsRemaining 24": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1082": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1083": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1084": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1085": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1086": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1087": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1088": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1089": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1090": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SlotsTotal 25": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SlotsRemaining 25": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1091": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1092": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1093": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1094": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1095": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1096": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1097": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1098": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 1099": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SlotsTotal 26": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SlotsRemaining 26": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 10100": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 10101": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 10102": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 10103": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Check Box 316": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3042": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3043": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3044": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3045": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3046": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3047": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3048": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3049": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3050": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3051": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3052": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Spells 10104": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Check Box 325": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 324": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3074": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3075": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3076": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3077": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Spells 10105": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 10106": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Check Box 3078": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "SlotsTotal 27": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "SlotsRemaining 27": {
+      "FT": "/Tx",
+      "Ff": 12582912,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Check Box 313": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 310": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3020": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3021": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3022": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3023": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3024": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3025": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3026": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3027": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3028": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3029": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3030": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Spells 10107": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 10108": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 10109": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 101010": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 101011": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Spells 101012": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Check Box 319": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 318": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3053": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3054": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3055": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3056": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3057": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3058": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3059": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 327": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 326": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": null,
+      "DV": null
+    },
+    "Check Box 3079": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3080": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3081": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Check Box 3082": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    },
+    "Spells 101013": {
+      "FT": "/Tx",
+      "Ff": 8388608,
+      "TU": null,
+      "TM": null,
+      "V": "",
+      "DV": ""
+    },
+    "Check Box 3083": {
+      "FT": "/Btn",
+      "Ff": 0,
+      "TU": null,
+      "TM": null,
+      "V": "/Off",
+      "DV": null
+    }
+  }
+}

@@ -55,5 +55,6 @@ DEFAULT_MODULE = "The_Thornwood_Watch"
 
 # --- Web Interface Configuration ---
 WEB_PORT = 8357                                         # Port for the web interface (changed from 5000 for security)
+DEBUG_STATUS_SYNC = False                               # Enable/disable noisy status synchronization debug logs
 
 # --- END OF FILE config_template.py ---

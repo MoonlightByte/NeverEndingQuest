@@ -808,7 +808,7 @@ BG FEAT: {bg_feature_name}
 FEATS: {', '.join([f"{feat['name']}" for feat in member_data.get('feats', [])])}
 TEMP FX: {', '.join([f"{effect['name']}" for effect in member_data.get('temporaryEffects', [])])}
 EQUIP: {equipment_str}
-AMMO: {', '.join([f"{ammo['name']} x{ammo['quantity']}" for ammo in member_data['ammunition']])}
+AMMO: {', '.join([f"{ammo.get('name', 'Unknown')} x{ammo.get('quantity', 0)}" for ammo in member_data.get('ammunition', [])])}
 ATK: {', '.join([f"{atk['name']} ({atk['type']}, {atk['damageDice']} {atk['damageType']})" for atk in member_data['attacksAndSpellcasting']])}
 SPELLCASTING: {member_data.get('spellcasting', {}).get('ability', 'N/A')} | DC: {member_data.get('spellcasting', {}).get('spellSaveDC', 'N/A')} | ATK: +{member_data.get('spellcasting', {}).get('spellAttackBonus', 'N/A')}
 SPELLS: {', '.join([f"{level}: {', '.join(spells)}" for level, spells in member_data.get('spellcasting', {}).get('spells', {}).items() if spells])}
@@ -914,7 +914,7 @@ BG FEAT: {bg_feature_name}
 FEATS: {', '.join([f"{feat['name']}" for feat in npc_data.get('feats', [])])}
 TEMP FX: {', '.join([f"{effect['name']}" for effect in npc_data.get('temporaryEffects', [])])}
 EQUIP: {equipment_str}
-AMMO: {', '.join([f"{ammo['name']} x{ammo['quantity']}" for ammo in npc_data['ammunition']])}
+AMMO: {', '.join([f"{ammo.get('name', 'Unknown')} x{ammo.get('quantity', 0)}" for ammo in npc_data.get('ammunition', [])])}
 ATK: {', '.join([f"{atk['name']} ({atk['type']}, {atk['damageDice']} {atk['damageType']})" for atk in npc_data['attacksAndSpellcasting']])}
 SPELLCASTING: {npc_data.get('spellcasting', {}).get('ability', 'N/A')} | DC: {npc_data.get('spellcasting', {}).get('spellSaveDC', 'N/A')} | ATK: +{npc_data.get('spellcasting', {}).get('spellAttackBonus', 'N/A')}
 SPELLS: {', '.join([f"{level}: {', '.join(spells)}" for level, spells in npc_data.get('spellcasting', {}).get('spells', {}).items() if spells])}

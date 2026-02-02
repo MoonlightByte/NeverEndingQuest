@@ -113,10 +113,15 @@ Combat Logging System:
 
 import json
 import os
+import sys
 import time
 import re
 import random
 import subprocess
+
+# Add project root to sys.path for direct execution
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 from model_config import USE_COMPRESSED_COMBAT
 from datetime import datetime
 from utils.xp import main as calculate_xp
@@ -155,6 +160,26 @@ from utils.enhanced_logger import debug, info, warning, error, game_event, set_s
 from core.ai.combat_compressor import CombatUserMessageCompressor
 # Import inventory context matcher for enhancing player combat actions
 from core.ai.inventory_context_integration import enhance_player_input_with_inventory
+
+# Import multi-PC combat manager (plugin-style)
+try:
+    from core.managers.multi_pc_combat import (
+        create_combat_manager,
+        get_combat_manager,
+        is_multi_pc_combat_enabled,
+        modify_combat_prompt_for_multi_pc,
+        get_multi_pc_initiative_narrative,
+        emit_combat_event,
+        CombatantType,
+        PCStatus
+    )
+    MULTI_PC_COMBAT_AVAILABLE = True
+except ImportError:
+    MULTI_PC_COMBAT_AVAILABLE = False
+    def get_combat_manager(): return None
+    def is_multi_pc_combat_enabled(): return False
+    def modify_combat_prompt_for_multi_pc(base_prompt, pc_name, manager): return base_prompt
+    def get_multi_pc_initiative_narrative(manager): return ""
 
 # Set script name for logging
 set_script_name(__name__)
@@ -350,9 +375,13 @@ def read_prompt_from_file(filename):
     project_root = os.path.join(script_dir, '..', '..')
     
     # Check if this is a combat prompt and use compressed version if toggle is on
-    if filename == 'combat/combat_sim_prompt.txt' and USE_COMPRESSED_COMBAT:
-        filename = 'combat/combat_sim_prompt_compressed.txt'
-        debug("Using compressed combat prompt", category="combat_events")
+    if USE_COMPRESSED_COMBAT:
+        if filename == 'combat/combat_sim_prompt.txt':
+            filename = 'combat/combat_sim_prompt_compressed.txt'
+            debug("Using compressed combat prompt", category="combat_events")
+        elif filename == 'combat/combat_sim_prompt_multipc.txt':
+            filename = 'combat/combat_sim_prompt_multipc_compressed.txt'
+            debug("Using compressed multi-pc combat prompt", category="combat_events")
     
     file_path = os.path.join(project_root, 'prompts', filename)
     try:
@@ -664,12 +693,47 @@ def sanitize_unicode_for_logging(text):
     
     return text
 
-def validate_combat_response(response, encounter_data, user_input, conversation_history=None):
+def validate_combat_response(response, encounter_data, user_input, conversation_history=None, multi_pc_manager=None):
     """
     Validate a combat response for accuracy in HP tracking, combat flow, etc.
     Returns True if valid, or a string with the reason for failure if invalid.
     """
     print(f"[COMBAT_MANAGER] Starting validation for combat response")
+    
+    # --- MULTI-PC VALIDATION GUARDRAIL ---
+    # Strictly enforce round integrity: Round cannot advance if PCs are still pending.
+    if multi_pc_manager:
+        try:
+            response_json = parse_json_safely(response)
+            if response_json:
+                ai_round = response_json.get("combat_round")
+                # Determine current round from encounter data
+                current_round = encounter_data.get('combat_round', encounter_data.get('current_round', 1))
+                
+                # Check if AI is attempting to advance the round
+                if isinstance(ai_round, int) and ai_round > current_round:
+                    # Check if all PCs have acted
+                    pending_pcs = multi_pc_manager.get_available_pcs()
+                    
+                    if pending_pcs:
+                        debug(f"VALIDATION_FAIL: Round advance blocked. Pending PCs: {pending_pcs}", category="combat_validation")
+                        
+                        # Construct a strict rejection message
+                        failure_msg = (
+                            f"VALIDATION FAILURE: You attempted to advance to Round {ai_round}, but the following Player Characters have NOT acted in Round {current_round}: {', '.join(pending_pcs)}.\n\n"
+                            "THE GOLDEN RULE OF MULTI-PC COMBAT:\n"
+                            "1. You CANNOT end the round until ALL PCs have taken their turns.\n"
+                            "2. STOP your narration immediately.\n"
+                            f"3. Prompt {pending_pcs[0]} for their action.\n"
+                            f"4. Keep 'combat_round' as {current_round}."
+                        )
+                        return failure_msg
+                        
+        except Exception as e:
+            debug(f"VALIDATION_ERROR: Error in Multi-PC guardrail: {e}", category="combat_validation")
+            # Continue to standard validation if this check crashes (fail open vs closed? decided fail open to avoid deadlock, but log it)
+    # --- END MULTI-PC VALIDATION GUARDRAIL ---
+
     debug("VALIDATION: Validating combat response...", category="combat_validation")
     
     # Log key validation context
@@ -684,12 +748,20 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
     
     # Load validation prompt from file (using toggle for compressed vs original)
     from model_config import USE_COMPRESSED_COMBAT
-    if USE_COMPRESSED_COMBAT:
-        validation_prompt = read_prompt_from_file('combat/combat_validation_prompt_compressed.txt')
-        debug("Using compressed validation prompt", category="combat_validation")
+    if multi_pc_manager:
+        if USE_COMPRESSED_COMBAT:
+            validation_prompt = read_prompt_from_file('combat/combat_validation_prompt_multipc_compressed.txt')
+            debug("Using compressed multi-pc validation prompt", category="combat_validation")
+        else:
+            validation_prompt = read_prompt_from_file('combat/combat_validation_prompt_multipc.txt')
+            debug("Using original multi-pc validation prompt", category="combat_validation")
     else:
-        validation_prompt = read_prompt_from_file('combat/combat_validation_prompt.txt')
-        debug("Using original validation prompt", category="combat_validation")
+        if USE_COMPRESSED_COMBAT:
+            validation_prompt = read_prompt_from_file('combat/combat_validation_prompt_compressed.txt')
+            debug("Using compressed validation prompt", category="combat_validation")
+        else:
+            validation_prompt = read_prompt_from_file('combat/combat_validation_prompt.txt')
+            debug("Using original validation prompt", category="combat_validation")
     
     # Start with validation prompt
     validation_conversation = [
@@ -1768,6 +1840,64 @@ def compress_old_combat_rounds(conversation_history, current_round, keep_recent_
         error(f"COMPRESSION: Error compressing combat rounds", exception=e, category="combat_events")
         return conversation_history
 
+def validate_combatant_integrity(response_json_str, encounter_data):
+    """
+    Validates that the AI has not hallucinated new combatants or acted for non-existent ones.
+    Returns True if valid, or an error message string if invalid.
+    """
+    try:
+        response = json.loads(response_json_str)
+        actions = response.get("actions", [])
+        
+        # 1. Build authoritative list of known combatants (case-insensitive)
+        known_combatants = set()
+        for c in encounter_data.get("creatures", []):
+            known_combatants.add(c.get("name", "").lower().strip())
+        
+        # 2. Extract actors from actions
+        # We look for 'characterName' in updateCharacterInfo/updateNPCInfo
+        
+        unknown_actors = set()
+        
+        for action in actions:
+            act_type = action.get("action", "").lower()
+            params = action.get("parameters", {})
+            
+            # Direct actor check
+            if act_type in ["updatecharacterinfo", "updatenpcinfo"]:
+                char_name = params.get("characterName", "") or params.get("npcName", "")
+                if char_name:
+                    # Normalize name (remove markers like ' (NPC)')
+                    clean_name = char_name.split('(')[0].strip().lower()
+                    
+                    # Fuzzy check: is this name "close enough" to a known combatant?
+                    found = False
+                    for known in known_combatants:
+                        if clean_name in known or known in clean_name:
+                            found = True
+                            break
+                    
+                    if not found:
+                        unknown_actors.add(char_name)
+        
+        if unknown_actors:
+            # Construct a strict rejection message
+            known_list_str = ", ".join([c.get("name", "Unknown") for c in encounter_data.get("creatures", [])])
+            return (
+                f"INTEGRITY ERROR: You are attempting to update the following characters who are NOT in the current encounter: {', '.join(unknown_actors)}.\n"
+                f"The valid list of combatants is: {known_list_str}.\n"
+                "You strictly forbidden from hallucinating new actors. Please correct your response to only reference valid combatants."
+            )
+            
+        return True
+        
+    except json.JSONDecodeError:
+        return True # JSON format errors are handled elsewhere
+    except Exception as e:
+        # Fail open if validation crashes, but log it
+        error(f"INTEGRITY_CHECK_ERROR: {e}", category="combat_validation")
+        return True
+
 def generate_combat_round_summary(round_num, round_messages):
     """Generate a structured summary of a combat round using AI"""
     try:
@@ -1845,29 +1975,7 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
    except:
        path_manager = ModulePathManager()
 
-   # Check if combat history file exists and has content to determine if we are resuming.
-   if os.path.exists(conversation_history_file) and os.path.getsize(conversation_history_file) > 100:
-       conversation_history = load_json_file(conversation_history_file)
-       is_resuming = True
-       print("[COMBAT_MANAGER] Resuming existing combat session.")
-   else:
-       is_resuming = False
-       conversation_history = [
-           {"role": "system", "content": read_prompt_from_file('combat/combat_sim_prompt.txt')},
-           {"role": "system", "content": f"Current Combat Encounter: {encounter_id}"},
-           {"role": "system", "content": ""}, # Player data placeholder
-           {"role": "system", "content": ""}, # Monster templates placeholder
-           {"role": "system", "content": ""}, # Location info placeholder
-       ]
-       print("[COMBAT_MANAGER] Starting new combat session.")
-   
-   # Initialize and reset secondary model histories
-   second_model_history = []
-   third_model_history = []
-   save_json_file(second_model_history_file, second_model_history)
-   save_json_file(third_model_history_file, third_model_history)
-   
-   # Load encounter data
+   # Load encounter data FIRST so it's available for prompt setup
    json_file_path = f"modules/encounters/encounter_{encounter_id}.json"
    print(f"[COMBAT_MANAGER] Loading encounter file: {json_file_path}")
    try:
@@ -1881,6 +1989,85 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
        print(f"[COMBAT_MANAGER] Exception loading encounter: {str(e)}")
        error(f"FAILURE: Failed to load encounter file {json_file_path}", exception=e, category="file_operations")
        return None, None
+
+   # MULTI-PC COMBAT: Retrieve or initialize combat manager
+   multi_pc_manager = None
+   if MULTI_PC_COMBAT_AVAILABLE and is_multi_pc_combat_enabled():
+       multi_pc_manager = get_combat_manager()
+       if not multi_pc_manager:
+           # Re-initialize manager if it doesn't exist (e.g., after script restart)
+           debug("[COMBAT_MANAGER] Re-initializing MultiPCCombatManager", category="combat_events")
+           multi_pc_manager = create_combat_manager(party_tracker_data)
+       
+       # INITIALIZE TURN QUEUE
+       if multi_pc_manager:
+           multi_pc_manager.initialize_turn_queue(encounter_data)
+           debug("[COMBAT_MANAGER] Initialized Turn Queue", category="combat_events")
+
+   # Check if combat history file exists and has content to determine if we are resuming.
+   if os.path.exists(conversation_history_file) and os.path.getsize(conversation_history_file) > 100:
+       conversation_history = load_json_file(conversation_history_file)
+       
+       # CRITICAL FIX: Ensure we are resuming the SAME encounter, not an old one
+       history_encounter_id = None
+       # Check the system message that stores the encounter ID (usually index 1)
+       for msg in conversation_history[:3]:
+           if msg.get("role") == "system" and "Current Combat Encounter:" in msg.get("content", ""):
+               history_encounter_id = msg["content"].replace("Current Combat Encounter:", "").strip()
+               break
+       
+       if history_encounter_id == encounter_id:
+           is_resuming = True
+           print(f"[COMBAT_MANAGER] Resuming existing combat session for encounter {encounter_id}.")
+       else:
+           is_resuming = False
+           print(f"[COMBAT_MANAGER] Found stale history for encounter '{history_encounter_id}', starting fresh for '{encounter_id}'.")
+           # Clear the stale conversation history
+           conversation_history = []
+   else:
+       is_resuming = False
+       
+   if not is_resuming:
+        # MULTI-PC COMBAT: Select correct system prompt
+        prompt_file = 'combat/combat_sim_prompt.txt'
+        is_multipc = MULTI_PC_COMBAT_AVAILABLE and is_multi_pc_combat_enabled()
+        
+        if is_multipc:
+            # Switch to the new rebuilt prompt for multi-PC
+            prompt_file = 'combat/combat_sim_prompt_multipc.txt'
+            debug(f"[COMBAT_MANAGER] Loading Multi-PC system prompt: {prompt_file}", category="combat_events")
+
+        system_prompt = read_prompt_from_file(prompt_file)
+        
+        # MULTI-PC COMBAT: Replace placeholders in system prompt
+        if is_multipc:
+            # Get all PC names
+            pc_names = []
+            for creature in encounter_data.get("creatures", []):
+                if creature.get("type") == "player":
+                    pc_names.append(creature.get("name", "Unknown PC"))
+            
+            pc_list_str = ", ".join(pc_names)
+            active_pc = party_tracker_data.get("active_character") or (pc_names[0] if pc_names else "Unknown PC")
+            
+            system_prompt = system_prompt.replace("[PC_LIST]", pc_list_str)
+            system_prompt = system_prompt.replace("[PC_NAME]", active_pc)
+            debug(f"[COMBAT_MANAGER] Replaced Multi-PC placeholders: PC_LIST={pc_list_str}, active={active_pc}", category="combat_events")
+
+        conversation_history = [
+            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": f"Current Combat Encounter: {encounter_id}"},
+            {"role": "system", "content": ""}, # Player data placeholder (Head Context)
+            {"role": "system", "content": ""}, # Monster templates placeholder
+            {"role": "system", "content": ""}, # Location info placeholder
+       ]
+        print(f"[COMBAT_MANAGER] Starting new combat session (Mode: {'Multi-PC' if 'multipc' in prompt_file else 'Single-PC'}).")
+
+   # Initialize and reset secondary model histories
+   second_model_history = []
+   third_model_history = []
+   save_json_file(second_model_history_file, second_model_history)
+   save_json_file(third_model_history_file, third_model_history)
    
    # Initialize data containers
    player_info = None
@@ -1969,9 +2156,14 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
                except Exception as e:
                    print(f"[COMBAT_MANAGER] Warning: Could not clear cache {cache_file}: {e}")
        
-       # Format player character using the same function as NPCs
-       formatted_player = format_character_for_combat(player_info, char_type="player")
-       conversation_history[2]["content"] = f"Here's the player character data:\n\n{formatted_player}\n"
+       # MULTI-PC COMBAT: Authoritative Head Context (JSON for Multi-PC, Text for Single-PC)
+       if multi_pc_manager:
+           conversation_history[2]["content"] = multi_pc_manager.format_multi_pc_head_context()
+       else:
+           # Format player character using the same function as NPCs
+           formatted_player = format_character_for_combat(player_info, char_type="player")
+           conversation_history[2]["content"] = f"Here's the player character data:\n\n{formatted_player}\n"
+           
        conversation_history[3]["content"] = f"Monster Templates:\n{json.dumps({k: filter_dynamic_fields(v) for k, v in monster_templates.items()}, indent=2)}"
        if not monster_templates and any(c["type"] == "enemy" for c in encounter_data["creatures"]):
            error("FAILURE: No monster templates were loaded!", category="file_operations")
@@ -2005,15 +2197,21 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
        # Resuming combat - update player character and NPC templates to new format if needed
        print("[COMBAT_MANAGER] Updating player and NPC templates to new format during resume...")
        
-       # First, update the player character format
+       # First, update the player character or Multi-PC head context format
        for i in range(len(conversation_history)):
            msg = conversation_history[i]
-           # Check for either old format (with json) or new format (with "Here's the player character data")
-           if msg.get("role") == "system" and ("Player Character:" in msg.get("content", "") or "Here's the player character data:" in msg.get("content", "")):
-               # Found player format - update it to ensure it's current
-               print(f"[COMBAT_MANAGER] Updating player character format at index {i}")
-               formatted_player = format_character_for_combat(player_info, char_type="player")
-               conversation_history[i]["content"] = f"Here's the player character data:\n\n{formatted_player}\n"
+           # Check for either old format (with json), new format (with "Here's the player character data"), or Multi-PC JSON format
+           is_player_data = "Player Character:" in msg.get("content", "") or "Here's the player character data:" in msg.get("content", "")
+           is_multipc_data = "=== AUTHORITATIVE MULTI-PC STATE (JSON) ===" in msg.get("content", "")
+           
+           if msg.get("role") == "system" and (is_player_data or is_multipc_data):
+               # Found data slot - update it to ensure it's current using the correct format for the mode
+               print(f"[COMBAT_MANAGER] Updating head context at index {i}")
+               if multi_pc_manager:
+                   conversation_history[i]["content"] = multi_pc_manager.format_multi_pc_head_context()
+               else:
+                   formatted_player = format_character_for_combat(player_info, char_type="player")
+                   conversation_history[i]["content"] = f"Here's the player character data:\n\n{formatted_player}\n"
                break
        
        # Find and remove old NPC Templates message if it exists
@@ -2066,6 +2264,9 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
    
    # Prepare initial dynamic state info for all creatures
    dynamic_state_parts = []
+   user_controlled_parts = []
+   dm_controlled_parts = []
+   enemy_parts = []
    
    # Player info - ALWAYS reload from character file for current HP (source of truth)
    player_name_display = player_info["name"]
@@ -2120,7 +2321,7 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
        if slot_parts:
            state_line += f", Spell Slots: {' '.join(slot_parts)}"
    
-   dynamic_state_parts.append(state_line)
+   user_controlled_parts.append(state_line)
    
    # Creature info
    for creature in encounter_data["creatures"]:
@@ -2147,9 +2348,35 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
            creature_line = f"{creature_name}: HP {creature_hp}/{creature_max_hp}, {creature_status}"
            if creature_condition != "none":
                creature_line += f", {creature_condition}"
-           dynamic_state_parts.append(creature_line)
+           
+           # Group by control type
+           if creature["type"] == "npc":
+               dm_controlled_parts.append(creature_line)
+           elif creature["type"] == "enemy":
+               enemy_parts.append(creature_line)
+           else:
+               # Fallback for any other types
+               dm_controlled_parts.append(creature_line)
+   
+   # Build the labeled sections
+   if user_controlled_parts:
+       dynamic_state_parts.append("Active Player Characters (User Controlled):")
+       dynamic_state_parts.extend([f"  {p}" for p in user_controlled_parts])
+   
+   if dm_controlled_parts:
+       dynamic_state_parts.append("Accompanied by Party NPCs (DM Controlled):")
+       dynamic_state_parts.extend([f"  {p}" for p in dm_controlled_parts])
+       
+   if enemy_parts:
+       dynamic_state_parts.append("Enemies (DM Controlled):")
+       dynamic_state_parts.extend([f"  {p}" for p in enemy_parts])
    
    all_dynamic_state = "\n".join(dynamic_state_parts)
+
+   # Append Immutable Roster to prevent hallucinations
+   roster_list = [f"- {c.get('name', 'Unknown')} ({c.get('type', 'unknown')})" for c in encounter_data.get("creatures", [])]
+   roster_str = "\n".join(roster_list)
+   all_dynamic_state += f"\n\n++ VALID TARGETS & ACTORS (IMMUTABLE) ++\n{roster_str}\nRULES: This is the definitive list of all beings in the scene. Do NOT narrate actions for anyone not on this list."
    
    # Initialize round tracking and generate prerolls
    # Use combat_round as primary, fall back to current_round
@@ -2275,7 +2502,25 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
        debug("AI_CALL: Getting initial scene description...", category="combat_events")
        initiative_order = get_initiative_order(encounter_data)
        
+       # MULTI-PC COMBAT: Check for group initiative handover
+       initiative_narrative = ""
+       if multi_pc_manager:
+           combat_initiative = party_tracker_data.get("worldConditions", {}).get("combatInitiative")
+           if combat_initiative:
+               # Use stored initiative from action_handler
+               debug(f"[COMBAT_MANAGER] Using group initiative from party tracker: {combat_initiative}", category="combat_events")
+               multi_pc_manager.party_initiative = combat_initiative.get("partyRoll", 0)
+               multi_pc_manager.enemy_initiative = combat_initiative.get("enemyRoll", 0)
+               multi_pc_manager.party_goes_first = combat_initiative.get("partyGoesFirst", True)
+               initiative_narrative = get_multi_pc_initiative_narrative(multi_pc_manager)
+           else:
+               # Roll now if missing (fallback)
+               multi_pc_manager.roll_group_initiative()
+               initiative_narrative = get_multi_pc_initiative_narrative(multi_pc_manager)
+       
        initial_prompt_text = f"""The setup scene for the combat has already been given and described to the party. Now, describe the combat situation and the enemies the party faces."""
+       if initiative_narrative:
+           initial_prompt_text = f"{initiative_narrative}\n\n{initial_prompt_text}"
 
        initial_prompt = f"""Dungeon Master Note: Respond with valid JSON containing a 'narration' field, 'combat_round' field, and an 'actions' array. This is the start of combat, so please describe the scene and set initiative order, but don't take any actions yet. Start off by hooking the player and engaging them for the start of combat the way any world class dungeon master would.
 
@@ -2297,6 +2542,11 @@ Initiative Order: {initiative_order}
 {preroll_text}
 
 Player: {initial_prompt_text}"""
+
+       # MULTI-PC COMBAT: Inject multi-PC context into initial prompt
+       if multi_pc_manager:
+           active_pc = party_tracker_data.get("active_character") or multi_pc_manager.current_pc_name
+           initial_prompt = modify_combat_prompt_for_multi_pc(initial_prompt, active_pc, multi_pc_manager)
 
        conversation_history.append({"role": "user", "content": initial_prompt})
        save_json_file(conversation_history_file, conversation_history)
@@ -2341,7 +2591,8 @@ Player: {initial_prompt_text}"""
                    else: break
 
                # FIX: Use the correct variable for the user input parameter
-               validation_result = validate_combat_response(initial_response, encounter_data, initial_prompt_text, conversation_history)
+               # PASS MULTI-PC MANAGER FOR INITIAL VALIDATION
+               validation_result = validate_combat_response(initial_response, encounter_data, initial_prompt_text, conversation_history, multi_pc_manager=multi_pc_manager)
                
                if validation_result is True:
                    break
@@ -2391,6 +2642,14 @@ Player: {initial_prompt_text}"""
        debug("[COMBAT_MANAGER] Syncing character data to encounter", category="combat_events")
        print("DEBUG: [COMBAT_LOOP] Top of while loop - syncing character data")
        
+       # MULTI-PC COMBAT: Reload party tracker to get latest active character
+       if multi_pc_manager:
+           party_tracker_data = safe_json_load("party_tracker.json") or party_tracker_data
+           active_pc = party_tracker_data.get("active_character")
+           if active_pc:
+               multi_pc_manager.set_current_pc(active_pc)
+               debug(f"[COMBAT_MANAGER] Multi-PC Active Character: {active_pc}", category="combat_events")
+
        # Clear processing status when ready for player input
        try:
            from core.managers.status_manager import status_manager
@@ -2399,24 +2658,42 @@ Player: {initial_prompt_text}"""
            debug(f"Could not clear status: {e}", category="status")
        sync_active_encounter()
        
+       # MULTI-PC COMBAT: Sync HP from reloaded encounter data to multi_pc_manager
+       if multi_pc_manager:
+           # Reload encounter data to get fresh HP values synced by sync_active_encounter
+           temp_encounter_data = safe_json_load(json_file_path)
+           if temp_encounter_data:
+               for creature in temp_encounter_data.get("creatures", []):
+                   if creature.get("type") == "player":
+                       name = creature.get("name")
+                       hp = creature.get("currentHitPoints", 0)
+                       multi_pc_manager.update_pc_hp(name, hp)
+               debug("[COMBAT_MANAGER] Multi-PC Manager HP synced from encounter", category="combat_events")
+
        # REFRESH CONVERSATION HISTORY WITH LATEST DATA
        debug("STATE_CHANGE: Refreshing conversation history with latest character data...", category="combat_events")
        
-       # Reload player info FOR CONVERSATION HISTORY ONLY - use same pattern as NPCs
-       # This prevents XP reset bug by not overwriting the in-memory player_info object
-       player_name = normalize_character_name(player_info["name"])
-       player_file = path_manager.get_character_path(player_name)
-       try:
-           # Load fresh data for conversation history without overwriting player_info
-           fresh_player_data = safe_json_load(player_file)
-           if not fresh_player_data:
-               error(f"FAILURE: Failed to load player file: {player_file}", category="file_operations")
-           else:
-               # Update conversation history with fresh data using compressed format
-               formatted_player = format_character_for_combat(fresh_player_data, char_type="player")
-               conversation_history[2]["content"] = f"Here's the player character data:\n\n{formatted_player}\n"
-       except Exception as e:
-           error(f"FAILURE: Failed to reload player file {player_file}", exception=e, category="file_operations")
+       # MULTI-PC COMBAT: Authoritative Head Context Refresh
+       if multi_pc_manager:
+           # Refresh with authoritative Multi-PC JSON
+           conversation_history[2]["content"] = multi_pc_manager.format_multi_pc_head_context()
+           debug("[COMBAT_MANAGER] Refreshed Multi-PC Head Context", category="combat_events")
+       else:
+           # Reload player info FOR CONVERSATION HISTORY ONLY - use same pattern as NPCs
+           # This prevents XP reset bug by not overwriting the in-memory player_info object
+           player_name = normalize_character_name(player_info["name"])
+           player_file = path_manager.get_character_path(player_name)
+           try:
+               # Load fresh data for conversation history without overwriting player_info
+               fresh_player_data = safe_json_load(player_file)
+               if not fresh_player_data:
+                   error(f"FAILURE: Failed to load player file: {player_file}", category="file_operations")
+               else:
+                   # Update conversation history with fresh data using compressed format
+                   formatted_player = format_character_for_combat(fresh_player_data, char_type="player")
+                   conversation_history[2]["content"] = f"Here's the player character data:\n\n{formatted_player}\n"
+           except Exception as e:
+               error(f"FAILURE: Failed to reload player file {player_file}", exception=e, category="file_operations")
        
        # Reload encounter data
        json_file_path = f"modules/encounters/encounter_{encounter_id}.json"
@@ -2476,6 +2753,349 @@ Player: {initial_prompt_text}"""
        if not user_input_text or not user_input_text.strip():
            continue
        
+       # Handle local combat commands
+       # Clean input of potential multi-PC tags (e.g., "[Character]: /command")
+       raw_input = user_input_text.strip()
+       clean_input = raw_input
+       input_actor_name = None
+       
+       if raw_input.startswith("[") and "]:" in raw_input:
+           parts = raw_input.split("]:", 1)
+           if len(parts) == 2:
+               input_actor_name = parts[0][1:].strip() # Extract name from [Name]
+               clean_input = parts[1].strip()
+       
+       # MULTI-PC COMBAT: Force context switch if input tag doesn't match current active PC
+       # This fixes the bug where tab clicks might be missed, ensuring the correct PC acts.
+       if multi_pc_manager and input_actor_name:
+           current_active = multi_pc_manager.current_pc_name
+           # Case-insensitive comparison
+           if current_active and input_actor_name.lower() != current_active.lower():
+               debug(f"SWITCH: Detected actor mismatch (Input: {input_actor_name} != Active: {current_active})", category="combat_events")
+               # Force switch to the actor specified in the input tag
+               # Try to find exact case match in pc_states
+               target_pc = None
+               for pc_name in multi_pc_manager.pc_states.keys():
+                   if pc_name.lower() == input_actor_name.lower():
+                       target_pc = pc_name
+                       break
+               
+               if target_pc:
+                   multi_pc_manager.set_current_pc(target_pc)
+                   party_tracker_data["active_character"] = target_pc
+                   safe_write_json("party_tracker.json", party_tracker_data)
+                   debug(f"SWITCH: Force-switched active PC to {target_pc}", category="combat_events")
+                   
+                   # We don't need to 'continue' loop here because we just fixed the state in-memory
+                   # for the immediate command processing below.
+       
+       cmd = clean_input.lower()
+       
+       # ----------------------------------------------------------------------
+       # MULTI-PC COMBAT: Fast Lane Command Processing
+       # ----------------------------------------------------------------------
+       # Handle PC Focus Switch (from UI Tab Click)
+       if cmd == "/switch_pc_focus":
+           debug("SWITCH: Detected PC switch command, refreshing loop", category="combat_events")
+           # Immediately continue to next loop iteration
+           # This reloads party_tracker.json (updated by UI), gets the new active PC,
+           # and generates a fresh prompt for the new character WITHOUT calling AI.
+           continue
+       
+       # Handle explicit END command to FORCE enemy phase (User Request: Manual Control)
+       if multi_pc_manager and cmd in ["/end", "/pass", "end turn", "end"]:
+           debug("TURN_END: Detected explicit force enemy phase command", category="combat_events")
+           print(f"DEBUG: Forcing Enemy Phase per user request (Active: {multi_pc_manager.current_pc_name})")
+           
+           # 1. Ensure we have the correct PC selected (handle case sensitivity/whitespace)
+           target_pc = input_actor_name or multi_pc_manager.current_pc_name or party_tracker_data.get("active_character")
+           if target_pc:
+               multi_pc_manager.set_current_pc(target_pc)
+
+           # 2. Mark ALL PCs as acted to ensure the prompt context reflects that the PC phase is over.
+           # This prevents the AI from seeing "PCs who can still act" and refusing to proceed.
+           multi_pc_manager.force_end_pc_phase()
+           
+           # 3. Force the transition immediately
+           debug("TURN_END: Forcing enemy phase injection", category="combat_events")
+           print("DEBUG: Triggering Enemy Phase Transition...")
+           
+           # Get explicit list of pending enemies to guide the AI
+           pending_enemies = multi_pc_manager.get_remaining_enemies_for_round()
+           pending_list_str = ", ".join(pending_enemies) if pending_enemies else "all remaining enemies/NPCs"
+           
+           # Inject system message to force AI to process enemies with explicit targets
+           system_msg = (
+               f"System: Player has manually ended the PC Phase. PROCEED TO ENEMY PHASE.\n"
+               f"Turn Order: {pending_list_str}.\n"
+               "INSTRUCTIONS: Generate actions for exactly these combatants in order. Once they have acted, STOP.\n"
+               "If this ends the round, increment 'combat_round' in your JSON, but DO NOT narrate the start of the next round."
+           )
+           conversation_history.append({"role": "user", "content": system_msg})
+           save_json_file(conversation_history_file, conversation_history)
+           
+           # Override user input to ensure AI understands the transition
+           user_input_text = "Enemies turn."
+           
+           # Fall through to allow the AI to generate the enemy turn narration
+           # We DO NOT continue/loop here; we proceed to AI generation.
+
+       # MOVED UP: Processing this BEFORE generating prompt state to ensure
+       # the LLM sees the *result* of the command (e.g. updated HP)
+       
+       fast_lane_action_occurred = False # Track if a Fast Lane command implies an action
+       
+       if multi_pc_manager:
+           # Pass the actor name (either forced from tag or current active) to the handler
+           actor_for_log = input_actor_name if input_actor_name else (multi_pc_manager.current_pc_name or "Player")
+           feedback, log_msg = multi_pc_manager.handle_combat_command(clean_input, encounter_data, actor_name=actor_for_log)
+           
+           if feedback:
+               # Show feedback to user (e.g., "(DM): Hit! Roll damage.")
+               print(feedback)
+               import sys
+               sys.stdout.flush()
+               
+           if log_msg:
+               # Inject log message silently for the LLM
+               conversation_history.append({"role": "user", "content": log_msg})
+               save_json_file(conversation_history_file, conversation_history)
+               debug(f"[COMBAT_MANAGER] Injected system log: {log_msg}", category="combat_events")
+               
+               # NOTE: We do NOT set fast_lane_action_occurred = True here anymore.
+               # Auto-advancing breaks Multiattack. The user must manually end turn or rely on LLM logic.
+               # fast_lane_action_occurred = True 
+               
+           # Control Flow:
+           # 1. Feedback ONLY (e.g. /att hit) -> Skip LLM, wait for next input
+           # 2. Log ONLY (e.g. /dmg or /att miss) -> Proceed to LLM (it needs to narrate)
+           # 3. Both -> Proceed to LLM
+           # 4. Neither -> Continue to standard handling
+           
+           if feedback and not log_msg:
+               # User needs to provide more input (e.g., damage roll)
+               continue
+               
+           # If log_msg exists, we fall through to the LLM call below
+           # The LLM will see the log_msg in the history and narrate accordingly.
+       
+       # ----------------------------------------------------------------------
+
+       if cmd in ["/help", "\\help"]:
+           help_msg = (
+               "Dungeon Master: [SYSTEM] Available Combat Commands:\n"
+               "  /stats      - View full character stats\n"
+               "  /hp [val]   - Combat Heal (positive) or damage (negative)\n"
+               "  /att [target] [roll] [weapon] - Attack a target\n"
+               "  /dmg [val]  - Apply damage\n"
+               "  /end        - End PC combat turn\n"
+               "  /end_combat - Force end the current combat encounter\n"
+               "  /save       - Save current game state\n"
+               "  /quit       - Exit the game\n"
+               "  /help       - Show this help message"
+           )
+           print(help_msg)
+           # Force flush to ensure it reaches the web interface immediately
+           import sys
+           sys.stdout.flush()
+           continue
+
+       # --- Character Info Commands ---
+       
+       if cmd.startswith("/stats"):
+           try:
+               # Get active character
+               pt_data = safe_json_load("party_tracker.json")
+               char_name = pt_data.get("active_character") or pt_data.get("partyMembers", [])[0]
+               char_path = path_manager.get_character_path(normalize_character_name(char_name))
+               char_data = safe_json_load(char_path)
+               
+               if char_data:
+                   stats_msg = f"Dungeon Master: [SYSTEM] Stats for {char_name}:\n"
+                   stats_msg += f"  Level: {char_data.get('level', 1)} | XP: {char_data.get('experience_points', 0)}\n"
+                   stats_msg += f"  HP: {char_data.get('hitPoints', 0)}/{char_data.get('maxHitPoints', 0)} | AC: {char_data.get('armorClass', 10)}\n"
+                   stats_msg += f"  Speed: {char_data.get('speed', 30)} | Init: {char_data.get('initiative', 0)}\n"
+                   
+                   abilities = char_data.get('abilities', {})
+                   stats_msg += f"  STR: {abilities.get('strength', 10)} | DEX: {abilities.get('dexterity', 10)} | CON: {abilities.get('constitution', 10)}\n"
+                   stats_msg += f"  INT: {abilities.get('intelligence', 10)} | WIS: {abilities.get('wisdom', 10)} | CHA: {abilities.get('charisma', 10)}\n"
+                   
+                   print(stats_msg)
+                   import sys
+                   sys.stdout.flush()
+               else:
+                   print(f"Dungeon Master: [SYSTEM] Error: Could not load data for {char_name}")
+                   import sys
+                   sys.stdout.flush()
+           except Exception as e:
+               print(f"Dungeon Master: [SYSTEM] Error showing stats: {e}")
+               import sys
+               sys.stdout.flush()
+           continue
+
+       if cmd.startswith("/hp"):
+           try:
+               parts = cmd.split()
+               if len(parts) < 2:
+                   print("Dungeon Master: [SYSTEM] Usage: /hp [amount]")
+                   import sys; sys.stdout.flush()
+                   continue
+               
+               amount = int(parts[1])
+               
+               # Get active character
+               pt_data = safe_json_load("party_tracker.json")
+               char_name = pt_data.get("active_character") or pt_data.get("partyMembers", [])[0]
+               char_path = path_manager.get_character_path(normalize_character_name(char_name))
+               char_data = safe_json_load(char_path)
+               
+               if char_data:
+                   current_hp = char_data.get('hitPoints', 0)
+                   max_hp = char_data.get('maxHitPoints', 0)
+                   new_hp = max(0, min(max_hp, current_hp + amount))
+                   char_data['hitPoints'] = new_hp
+                   
+                   safe_write_json(char_path, char_data)
+                   
+                   action_str = "healed" if amount >= 0 else "damaged"
+                   msg = f"Dungeon Master: [SYSTEM] {char_name} {action_str} by {abs(amount)}. HP: {current_hp} -> {new_hp}/{max_hp}"
+                   print(msg)
+                   import sys; sys.stdout.flush()
+                   
+                   # Force sync to update combat state immediately
+                   sync_active_encounter()
+                   
+               else:
+                   print(f"Dungeon Master: [SYSTEM] Error: Could not load data for {char_name}")
+                   import sys; sys.stdout.flush()
+           except ValueError:
+               print("Dungeon Master: [SYSTEM] Usage: /hp [amount] (must be a number)")
+               import sys; sys.stdout.flush()
+           except Exception as e:
+               print(f"Dungeon Master: [SYSTEM] Error updating HP: {e}")
+               import sys; sys.stdout.flush()
+           continue
+
+       if cmd.startswith("/xp"):
+           try:
+               parts = cmd.split()
+               if len(parts) < 2:
+                   print("Dungeon Master: [SYSTEM] Usage: /xp [amount]")
+                   import sys; sys.stdout.flush()
+                   continue
+               
+               amount = int(parts[1])
+               
+               # Get active character
+               pt_data = safe_json_load("party_tracker.json")
+               char_name = pt_data.get("active_character") or pt_data.get("partyMembers", [])[0]
+               char_path = path_manager.get_character_path(normalize_character_name(char_name))
+               char_data = safe_json_load(char_path)
+               
+               if char_data:
+                   current_xp = char_data.get('experience_points', 0)
+                   new_xp = max(0, current_xp + amount)
+                   char_data['experience_points'] = new_xp
+                   
+                   safe_write_json(char_path, char_data)
+                   
+                   msg = f"Dungeon Master: [SYSTEM] {char_name} gained {amount} XP. Total: {current_xp} -> {new_xp}"
+                   print(msg)
+                   import sys; sys.stdout.flush()
+               else:
+                   print(f"Dungeon Master: [SYSTEM] Error: Could not load data for {char_name}")
+                   import sys; sys.stdout.flush()
+           except ValueError:
+               print("Dungeon Master: [SYSTEM] Usage: /xp [amount] (must be a number)")
+               import sys; sys.stdout.flush()
+           except Exception as e:
+               print(f"Dungeon Master: [SYSTEM] Error updating XP: {e}")
+               import sys; sys.stdout.flush()
+           continue
+
+       if cmd.startswith("/level"):
+           try:
+               parts = cmd.split()
+               if len(parts) < 2:
+                   print("Dungeon Master: [SYSTEM] Usage: /level [number]")
+                   import sys; sys.stdout.flush()
+                   continue
+               
+               level = int(parts[1])
+               
+               # Get active character
+               pt_data = safe_json_load("party_tracker.json")
+               char_name = pt_data.get("active_character") or pt_data.get("partyMembers", [])[0]
+               char_path = path_manager.get_character_path(normalize_character_name(char_name))
+               char_data = safe_json_load(char_path)
+               
+               if char_data:
+                   current_level = char_data.get('level', 1)
+                   char_data['level'] = level
+                   
+                   safe_write_json(char_path, char_data)
+                   
+                   msg = f"Dungeon Master: [SYSTEM] {char_name} level set to {level} (was {current_level})"
+                   print(msg)
+                   import sys; sys.stdout.flush()
+               else:
+                   print(f"Dungeon Master: [SYSTEM] Error: Could not load data for {char_name}")
+                   import sys; sys.stdout.flush()
+           except ValueError:
+               print("Dungeon Master: [SYSTEM] Usage: /level [number] (must be a number)")
+               import sys; sys.stdout.flush()
+           except Exception as e:
+               print(f"Dungeon Master: [SYSTEM] Error updating level: {e}")
+               import sys; sys.stdout.flush()
+           continue
+           
+       if cmd in ["/save", "\\save"]:
+           try:
+               from updates.save_game_manager import SaveGameManager
+               manager = SaveGameManager()
+               success, message = manager.create_save_game(f"Combat Save - Round {current_round}", "essential")
+               print(f"[SYSTEM] {message}")
+           except Exception as e:
+               print(f"[ERROR] Save failed: {e}")
+           continue
+
+       if cmd in ["/quit", "\\quit", "/exit", "\\exit"]:
+           print("[SYSTEM] Exiting game...")
+           sys.exit(0)
+
+       # Check for force end combat command
+       if cmd in ["\\end_combat", "/end_combat", "exit combat"]:
+           print("[COMBAT_MANAGER] FORCE END: User requested immediate combat termination.")
+           debug("STATE_CHANGE: User triggered force end combat", category="combat_events")
+           
+           # Add marker to conversation history
+           conversation_history.append({"role": "user", "content": "Dungeon Master Note: Combat has been forcefully ended by the user."})
+           
+           # Store the encounter ID before clearing it
+           last_encounter_id = party_tracker_data.get("worldConditions", {}).get("activeCombatEncounter", "")
+           
+           # Generate summary
+           info("AI_CALL: Generating final combat summary (Force End)...", category="ai_operations")
+           dialogue_summary_result = summarize_dialogue(conversation_history, location_info, party_tracker_data)
+           
+           # Clear active encounter
+           if 'worldConditions' in party_tracker_data and 'activeCombatEncounter' in party_tracker_data['worldConditions']:
+               if last_encounter_id:
+                   party_tracker_data["worldConditions"]["lastCompletedEncounter"] = last_encounter_id
+               party_tracker_data['worldConditions']['activeCombatEncounter'] = ""
+               debug(f"STATE_CHANGE: Cleared active combat encounter. Last completed is now {last_encounter_id}", category="combat_events")
+               safe_write_json("party_tracker.json", party_tracker_data)
+           
+           # Save logs
+           info("FILE_OP: Saving final combat chat history log...", category="combat_logs")
+           generate_chat_history(conversation_history, encounter_id)
+           
+           # Reload player info
+           player_info = safe_json_load(player_file)
+
+           info("SUCCESS: Combat complete. Exiting simulation.", category="combat_events")
+           return dialogue_summary_result, player_info
+       
        # Enhance player input with inventory context for combat
        try:
            # Load fresh player data for inventory
@@ -2497,6 +3117,9 @@ Player: {initial_prompt_text}"""
        
        # Prepare dynamic state info for all creatures - compact format
        dynamic_state_parts = []
+       user_controlled_parts = []
+       dm_controlled_parts = []
+       enemy_parts = []
        
        # Player info - ALWAYS reload from character file for current HP (source of truth)
        player_file = path_manager.get_character_path(normalize_character_name(player_name_display))
@@ -2554,7 +3177,7 @@ Player: {initial_prompt_text}"""
            if slot_parts:
                state_line += f", Spell Slots: {' '.join(slot_parts)}"
        
-       dynamic_state_parts.append(state_line)
+       user_controlled_parts.append(state_line)
        
        # Creature info
        for creature in encounter_data["creatures"]:
@@ -2609,9 +3232,34 @@ Player: {initial_prompt_text}"""
                        if npc_slot_parts:
                            creature_line += f", Spell Slots: {' '.join(npc_slot_parts)}"
                
-               dynamic_state_parts.append(creature_line)
+               # Group by control type
+               if creature["type"] == "npc":
+                   dm_controlled_parts.append(creature_line)
+               elif creature["type"] == "enemy":
+                   enemy_parts.append(creature_line)
+               else:
+                   # Fallback for any other types
+                   dm_controlled_parts.append(creature_line)
+       
+       # Build the labeled sections
+       if user_controlled_parts:
+           dynamic_state_parts.append("Active Player Characters (User Controlled):")
+           dynamic_state_parts.extend([f"  {p}" for p in user_controlled_parts])
+       
+       if dm_controlled_parts:
+           dynamic_state_parts.append("Accompanied by Party NPCs (DM Controlled):")
+           dynamic_state_parts.extend([f"  {p}" for p in dm_controlled_parts])
+           
+       if enemy_parts:
+           dynamic_state_parts.append("Enemies (DM Controlled):")
+           dynamic_state_parts.extend([f"  {p}" for p in enemy_parts])
        
        all_dynamic_state = "\n".join(dynamic_state_parts)
+
+       # Append Immutable Roster to prevent hallucinations
+       roster_list = [f"- {c.get('name', 'Unknown')} ({c.get('type', 'unknown')})" for c in encounter_data.get("creatures", [])]
+       roster_str = "\n".join(roster_list)
+       all_dynamic_state += f"\n\n++ VALID TARGETS & ACTORS (IMMUTABLE) ++\n{roster_str}\nRULES: This is the definitive list of all beings in the scene. Do NOT narrate actions for anyone not on this list."
        
        # Check if we need new prerolls based on round progression
        # Use combat_round as primary, fall back to current_round
@@ -2646,42 +3294,66 @@ Player: {initial_prompt_text}"""
                # Save the encounter data with preroll cache to disk
                save_json_file(json_file_path, encounter_data)
                debug(f"STATE_CHANGE: Generated fallback prerolls for round {current_round}", category="combat_events")
-       
+        
        # Generate initiative order for validation context
-       # Try to use AI-powered live initiative tracker
+       # MULTI-PC MODE: Use deterministic multi_pc_manager tracker instead of AI tracker
        live_tracker = None
-       try:
-           from .initiative_tracker_ai import generate_live_initiative_tracker
-           # Get recent conversation for analysis (last 6 messages - enough for current round context)
-           recent_conversation = conversation_history[-6:] if len(conversation_history) > 6 else conversation_history
-           live_tracker = generate_live_initiative_tracker(encounter_data, recent_conversation, current_round)
-           if live_tracker:
-               debug("AI_TRACKER: Successfully generated live initiative tracker", category="combat_events")
-       except Exception as e:
-           debug(f"AI_TRACKER: Failed to generate live tracker: {e}", category="combat_events")
-       
-       # Parse the tracker output for both markdown and JSON
        turn_window_json = None
-       if live_tracker:
-           # Extract markdown tracker (everything before ```json)
-           json_start = live_tracker.find("```json")
-           if json_start != -1:
-               initiative_display = live_tracker[:json_start].strip()
-               # Extract JSON metadata
-               json_end = live_tracker.find("```", json_start + 7)
-               if json_end != -1:
-                   json_str = live_tracker[json_start + 7:json_end].strip()
-                   try:
-                       turn_window_json = json.loads(json_str)
-                       debug(f"AI_TRACKER: Extracted turn window: {turn_window_json.get('turn_window', [])}", category="combat_events")
-                   except json.JSONDecodeError as e:
-                       debug(f"AI_TRACKER: Failed to parse JSON metadata: {e}", category="combat_events")
-           else:
-               # No JSON found, use whole output as markdown
-               initiative_display = live_tracker
-       else:
-           # Tracker is required for proper combat flow
-           error("AI_TRACKER: Failed to generate initiative tracker - combat cannot proceed properly", category="combat_events")
+       initiative_display = None
+
+       if multi_pc_manager:
+           # Use deterministic multi-PC tracker (bypasses AI tracker which has single-PC limitation)
+           debug("MULTI_PC_TRACKER: Using deterministic multi-PC initiative tracker", category="combat_events")
+           try:
+               live_tracker = multi_pc_manager.format_initiative_tracker(encounter_data)
+               if live_tracker:
+                   debug("MULTI_PC_TRACKER: Successfully generated initiative tracker", category="combat_events")
+                   # Parse the tracker output for JSON metadata
+                   json_start = live_tracker.find("```json")
+                   if json_start != -1:
+                       initiative_display = live_tracker[:json_start].strip()
+                       json_end = live_tracker.find("```", json_start + 7)
+                       if json_end != -1:
+                           json_str = live_tracker[json_start + 7:json_end].strip()
+                           try:
+                               turn_window_json = json.loads(json_str)
+                               debug(f"MULTI_PC_TRACKER: Extracted turn window: {turn_window_json.get('turn_window', [])}", category="combat_events")
+                           except json.JSONDecodeError as e:
+                               debug(f"MULTI_PC_TRACKER: Failed to parse JSON metadata: {e}", category="combat_events")
+                   else:
+                       initiative_display = live_tracker
+           except Exception as e:
+               debug(f"MULTI_PC_TRACKER: Failed to generate tracker: {e}", category="combat_events")
+       
+       # FALLBACK: Use AI tracker only if multi-PC tracker not available or failed
+       if not live_tracker:
+           try:
+               from .initiative_tracker_ai import generate_live_initiative_tracker
+               # Get recent conversation for analysis (last 6 messages - enough for current round context)
+               recent_conversation = conversation_history[-6:] if len(conversation_history) > 6 else conversation_history
+               live_tracker = generate_live_initiative_tracker(encounter_data, recent_conversation, current_round)
+               if live_tracker:
+                   debug("AI_TRACKER: Successfully generated live initiative tracker", category="combat_events")
+                   # Parse the tracker output for both markdown and JSON
+                   json_start = live_tracker.find("```json")
+                   if json_start != -1:
+                       initiative_display = live_tracker[:json_start].strip()
+                       json_end = live_tracker.find("```", json_start + 7)
+                       if json_end != -1:
+                           json_str = live_tracker[json_start + 7:json_end].strip()
+                           try:
+                               turn_window_json = json.loads(json_str)
+                               debug(f"AI_TRACKER: Extracted turn window: {turn_window_json.get('turn_window', [])}", category="combat_events")
+                           except json.JSONDecodeError as e:
+                               debug(f"AI_TRACKER: Failed to parse JSON metadata: {e}", category="combat_events")
+                   else:
+                       initiative_display = live_tracker
+           except Exception as e:
+               debug(f"AI_TRACKER: Failed to generate live tracker: {e}", category="combat_events")
+       
+       # Validate that we have a tracker
+       if not live_tracker:
+           error("INITIATIVE_TRACKER: Failed to generate initiative tracker - combat cannot proceed properly", category="combat_events")
            return None, None  # Exit early if tracker fails
        
        # Get the player's name from encounter data or turn_window JSON
@@ -2789,6 +3461,15 @@ turn_window: {json.dumps(turn_window_json.get('turn_window', []))}
 All monsters have been defeated. Pass the exit action to end combat:
 1. Return structured JSON with plan, narration, combat_round, and actions
 2. Include exit action with encounterId and reason: 'All enemies defeated'"""
+       elif multi_pc_manager:
+           # Get current actor from the authoritative turn queue
+           current_actor = multi_pc_manager.get_current_actor()
+           
+           # Use the dedicated MultiPC Prompt Generator (Plugin Architecture)
+           # This encapsulates the Strict Turn Isolation logic outside this file
+           required_response = multi_pc_manager.get_required_response_prompt()
+           debug(f"PROMPT_LOGIC: Generated Multi-PC response requirement for {current_actor.name if current_actor else 'Unknown'}", category="combat_events")
+
        else:
            required_response = """--- REQUIRED RESPONSE ---
 1. Narrate and resolve actions for all NPCs/monsters in initiative order until:
@@ -2797,13 +3478,39 @@ All monsters have been defeated. Pass the exit action to end combat:
 2. Stop narration at that point
 3. Return structured JSON with plan, narration, combat_round, and actions"""
        
+       # MULTI-PC COMBAT: Inject multi-PC turn summary and active PC context
+       multi_pc_context = ""
+       if multi_pc_manager:
+           active_pc = multi_pc_manager.current_pc_name
+           
+           # Get explicit phase state
+           current_phase = multi_pc_manager.combat_phase
+           pending_enemies = multi_pc_manager.get_remaining_enemies_for_round()
+           pending_str = ", ".join(pending_enemies) if pending_enemies else "None"
+           
+           multi_pc_context = f"""
+=== COMBAT PHASE STATE ===
+CURRENT_PHASE: {current_phase}
+PC_PHASE_COMPLETE: {multi_pc_manager.pc_phase_complete}
+PENDING_ENEMIES: [{pending_str}]
+DETERMINISM: In {current_phase}, ONLY the specified actors have authority to act.
+
+--- MULTI-PC COMBAT STATUS ---
+{multi_pc_manager.format_party_turn_summary()}
+
+{multi_pc_manager.format_pc_context_for_prompt(active_pc)}
+"""
+
        # The tracker now always provides properly formatted output with ROUND INFO
        # Don't duplicate sections - use the tracker output as-is
        user_input_with_note = f"""{marked_initiative_display}
+
 --- CREATURE STATES ---
 {all_dynamic_state}
 
-{ac_block}--- DICE POOLS ---
+{ac_block}
+{multi_pc_context}
+--- DICE POOLS ---
 Rules:
 - Player characters always roll their own dice
 - NPCs/monsters use pre-rolled dice pools exactly
@@ -2989,7 +3696,38 @@ Rules:
                except Exception as e:
                    debug(f"Could not update status: {e}", category="status")
                
-               validation_result = validate_combat_response(ai_response, encounter_data, user_input_text, conversation_history)
+               # ---------------------------------------------------------
+               # NEW VALIDATION STEP: Combatant Integrity Check
+               # ---------------------------------------------------------
+               # This catches hallucinations where the AI invents new creatures or acts for
+               # creatures that are not in the encounter.
+               integrity_check = validate_combatant_integrity(ai_response, encounter_data)
+               if integrity_check is not True:
+                   # Integrity check failed
+                   debug(f"VALIDATION: Combatant Integrity Failed (Attempt {attempt + 1}/{max_retries})", category="combat_validation")
+                   debug(f"INTEGRITY_FAIL: {integrity_check}", category="combat_validation")
+                   
+                   if attempt < max_retries - 1:
+                       # Add error feedback
+                       conversation_history.append({
+                           "role": "user",
+                           "content": integrity_check
+                       })
+                       validation_attempts.append({
+                           "attempt": attempt + 1,
+                           "assistant_response": ai_response,
+                           "validation_error": integrity_check,
+                           "error_type": "integrity_check",
+                           "temperature_used": temperature_used
+                       })
+                       continue
+                   else:
+                       warning("VALIDATION: Max retries exceeded for Integrity Check. Skipping.", category="combat_validation")
+                       break
+               # ---------------------------------------------------------
+
+               # PASS MULTI-PC MANAGER FOR VALIDATION GUARDRAIL
+               validation_result = validate_combat_response(ai_response, encounter_data, user_input_text, conversation_history, multi_pc_manager=multi_pc_manager)
                
                if validation_result is True:
                    valid_response = True
@@ -3123,6 +3861,15 @@ Rules:
                    encounter_data['combat_round'] = new_round
                    # Also update current_round for backwards compatibility
                    encounter_data['current_round'] = new_round
+                   
+                   # MULTI-PC COMBAT: Sync round state to manager
+                   # This resets pc_phase_complete to False so the next round starts in PC Phase
+                   if multi_pc_manager:
+                       debug(f"STATE_CHANGE: Syncing MultiPCManager to Round {new_round}", category="combat_events")
+                       multi_pc_manager.start_new_round()
+                       # Ensure manager round matches (start_new_round increments, but let's be safe)
+                       multi_pc_manager.current_round = new_round
+
                    # Save the updated encounter data
                    save_json_file(f"modules/encounters/encounter_{encounter_id}.json", encounter_data)
                    
@@ -3232,6 +3979,55 @@ Rules:
 
                            if xp_awarded > 0:
                                final_character_updates[character_name].append(f"awarded {xp_awarded} experience points")
+
+       # MULTI-PC COMBAT: Turn Queue Advancement
+       if multi_pc_manager and not is_combat_ending:
+           # 1. Check for NPC Turn Auto-Advance
+           # If the prompt generated an action for an NPC, we must advance past them.
+           current_actor = multi_pc_manager.get_current_actor()
+           # Advance NPC turns automatically if they were the active actor
+           if current_actor and (current_actor.type == CombatantType.NPC):
+               # If we successfully generated actions (meaning the AI processed the NPC's turn), advance.
+               if actions: 
+                   debug(f"[COMBAT_MANAGER] Auto-advancing turn for NPC {current_actor.name}", category="combat_events")
+                   next_actor = multi_pc_manager.advance_turn()
+                   
+                   # If next is PC, update tracker/UI
+                   if next_actor.type == CombatantType.PC:
+                       party_tracker_data["active_character"] = next_actor.name
+                       safe_write_json("party_tracker.json", party_tracker_data)
+                       if MULTI_PC_COMBAT_AVAILABLE:
+                           emit_combat_event("active_character_update", {"character": next_actor.name})
+                       debug(f"[COMBAT_MANAGER] Advanced active character to {next_actor.name}", category="combat_events")
+                   else:
+                        debug(f"[COMBAT_MANAGER] Advanced turn to next enemy/NPC: {next_actor.name}", category="combat_events")
+
+           # 2. Check for manual PC turn completion (via UI)
+           # We DO NOT auto-advance here based on actions, to support Multiattack/Action Surge.
+           # Turn advancement happens when:
+           # A. User clicks "End Turn" (sets status to ACTED)
+           # B. Loop detects ACTED status and advances queue
+           active_pc_name = multi_pc_manager.current_pc_name
+           if active_pc_name:
+               active_state = multi_pc_manager.pc_states.get(active_pc_name)
+               
+               # If the UI has marked this PC as ACTED, we advance the queue
+               if active_state and active_state.status == PCStatus.ACTED:
+                   debug(f"[COMBAT_MANAGER] Detected ACTED status for {active_pc_name}, advancing turn queue", category="combat_events")
+                   next_actor = multi_pc_manager.advance_turn()
+                   
+                   # If the next actor is a PC, update the party tracker so the UI tab switches
+                   if next_actor.type == CombatantType.PC:
+                       party_tracker_data["active_character"] = next_actor.name
+                       safe_write_json("party_tracker.json", party_tracker_data)
+                       
+                       # Notify UI to switch tabs
+                       if MULTI_PC_COMBAT_AVAILABLE:
+                           emit_combat_event("active_character_update", {"character": next_actor.name})
+                           
+                       debug(f"[COMBAT_MANAGER] Advanced active character to {next_actor.name}", category="combat_events")
+                   else:
+                       debug(f"[COMBAT_MANAGER] Advanced turn to enemy/NPC: {next_actor.name}", category="combat_events")
 
        # STEP 2: EXECUTE the consolidated updates. This is the only place character files are saved.
        if final_character_updates:

@@ -343,7 +343,9 @@ def generate_encounter(encounter_data):
             "conditions": [],
             "actions": {"actionType": "", "target": ""},
             "currentHitPoints": monster_data["hitPoints"],
-            "maxHitPoints": monster_data["hitPoints"]
+            "maxHitPoints": monster_data["hitPoints"],
+            # TABLETOP MODE: Added armorClass for deterministic /att hit/miss resolution
+            "armorClass": monster_data.get("armorClass", 10)
         }
         encounter["creatures"].append(monster)
 

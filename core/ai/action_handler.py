@@ -86,6 +86,19 @@ except ImportError:
     SOCKETIO_AVAILABLE = False
     socketio = None
 
+# Import multi-PC combat manager (plugin-style - only used if MULTIPLAYER_MODE enabled)
+try:
+    from core.managers.multi_pc_combat import (
+        create_combat_manager,
+        get_combat_manager,
+        is_multi_pc_combat_enabled,
+        modify_combat_prompt_for_multi_pc
+    )
+    MULTI_PC_COMBAT_AVAILABLE = True
+except ImportError:
+    MULTI_PC_COMBAT_AVAILABLE = False
+    def is_multi_pc_combat_enabled(): return False
+
 # Set script name for logging
 set_script_name("action_handler")
 
@@ -189,7 +202,7 @@ def pre_validate_transition(parameters, party_tracker_data, conversation_history
         party_level = 1
         if party_tracker_data.get("partyMembers"):
             try:
-                first_member = party_tracker_data["partyMembers"][0]
+                first_member = party_tracker_data.get("active_character") or party_tracker_data["partyMembers"][0]
                 from updates.update_character_info import normalize_character_name
                 char_name = normalize_character_name(first_member)
                 char_file = path_manager.get_character_path(char_name)
@@ -346,7 +359,7 @@ def update_party_npcs(party_tracker_data, operation, npc):
                 if not npc.get('level'):
                     # Get the first party member's level as default
                     if party_tracker_data.get("partyMembers"):
-                        player_name = party_tracker_data["partyMembers"][0]
+                        player_name = party_tracker_data.get("active_character") or party_tracker_data["partyMembers"][0]
                         # Normalize name for file access
                         from updates.update_character_info import normalize_character_name
                         player_name_normalized = normalize_character_name(player_name)
@@ -684,6 +697,39 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
         print(f"[DEBUG ACTION_HANDLER] Action received: {action}")
         debug("INITIALIZATION: Creating combat encounter", category="combat_processing")
         
+        # TABLETOP MODE: Filter party members from NPCs list
+        # Party members should be treated as players, not NPCs
+        try:
+            party_members = party_tracker_data.get("partyMembers", [])
+            npcs_list = parameters.get("npcs", [])
+            
+            if party_members and npcs_list:
+                # Filter out any party members from the npcs list
+                filtered_npcs = []
+                removed_party_members = []
+                
+                for npc_name in npcs_list:
+                    # Check if this NPC is actually a party member
+                    is_party_member = any(
+                        pm.lower() == npc_name.lower() or 
+                        pm.lower().replace(" ", "_") == npc_name.lower().replace(" ", "_")
+                        for pm in party_members
+                    )
+                    
+                    if is_party_member:
+                        removed_party_members.append(npc_name)
+                        debug(f"TABLETOP MODE: Removed party member '{npc_name}' from NPCs list (treating as player)", category="combat_processing")
+                    else:
+                        filtered_npcs.append(npc_name)
+                
+                if removed_party_members:
+                    parameters["npcs"] = filtered_npcs
+                    action["parameters"] = parameters
+                    info(f"TABLETOP MODE: Filtered {len(removed_party_members)} party members from encounter NPCs: {removed_party_members}", category="combat_processing")
+                    print(f"[DEBUG ACTION_HANDLER] TABLETOP MODE: Filtered party members from NPCs: {removed_party_members}")
+        except Exception as e:
+            debug(f"TABLETOP MODE: Error filtering party members from NPCs: {e}", category="combat_processing")
+        
         # Update status to lock input during encounter building
         try:
             from core.managers.status_manager import status_manager
@@ -725,6 +771,31 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                 safe_json_dump(party_tracker_data, "party_tracker.json")
                 debug(f"STATE_CHANGE: Updated party tracker with combat encounter ID: {encounter_id}", category="combat_processing")
 
+                # MULTI-PC COMBAT: Initialize combat manager if multiplayer mode enabled
+                multi_pc_manager = None
+                if MULTI_PC_COMBAT_AVAILABLE and is_multi_pc_combat_enabled():
+                    try:
+                        multi_pc_manager = create_combat_manager(party_tracker_data)
+                        if multi_pc_manager:
+                            debug(f"STATE_CHANGE: Multi-PC combat manager initialized with {len(multi_pc_manager.pc_states)} PCs", category="combat_processing")
+                            
+                            # Roll group initiative BEFORE combat starts
+                            party_roll, enemy_roll, party_goes_first = multi_pc_manager.roll_group_initiative()
+                            initiative_result = "PARTY ACTS FIRST" if party_goes_first else "ENEMIES ACT FIRST"
+                            print(f"[DEBUG ACTION_HANDLER] GROUP INITIATIVE: Party {party_roll} vs Enemies {enemy_roll} - {initiative_result}")
+                            debug(f"COMBAT: Group initiative - Party: {party_roll}, Enemies: {enemy_roll} - {initiative_result}", category="combat_processing")
+                            
+                            # Store initiative result in party tracker for combat system
+                            party_tracker_data["worldConditions"]["combatInitiative"] = {
+                                "partyRoll": party_roll,
+                                "enemyRoll": enemy_roll,
+                                "partyGoesFirst": party_goes_first
+                            }
+                            safe_json_dump(party_tracker_data, "party_tracker.json")
+                    except Exception as e:
+                        error(f"FAILURE: Multi-PC combat initialization failed: {e}", exception=e, category="combat_processing")
+                        multi_pc_manager = None  # Fall back to single-PC mode
+
                 # Reload location data here
                 current_location_id = party_tracker_data["worldConditions"]["currentLocationId"]
                 current_area_id = party_tracker_data["worldConditions"]["currentAreaId"]
@@ -738,6 +809,8 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
 
                 print(f"[DEBUG ACTION_HANDLER] About to call run_combat_simulation with encounter: {encounter_id}")
                 print("[DEBUG ACTION_HANDLER] This should start INTERACTIVE turn-based combat...")
+                if multi_pc_manager:
+                    print(f"[DEBUG ACTION_HANDLER] MULTI-PC MODE ACTIVE: {len(multi_pc_manager.pc_states)} PCs participating")
                 
                 # Update status to show combat is starting
                 try:
@@ -752,19 +825,80 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                 print(f"[DEBUG ACTION_HANDLER] Combat simulation returned. Type of result: {type(dialogue_summary)}")
                 print(f"[DEBUG ACTION_HANDLER] Dialogue summary preview: {str(dialogue_summary)[:200]}...")
 
-                player_name = next((member for member in party_tracker_data["partyMembers"]), None)
-                if player_name and updated_player_info is not None:
-                    # Get the correct module from party tracker
-                    module_name = party_tracker_data.get("module", "").replace(" ", "_")
-                    path_manager = ModulePathManager(module_name)
-                    # Normalize name for file access
-                    from updates.update_character_info import normalize_character_name
-                    player_name_normalized = normalize_character_name(player_name)
-                    player_file = path_manager.get_character_path(player_name_normalized)
-                    safe_json_dump(updated_player_info, player_file)
-                    debug(f"FILE_OP: Updated player file for {player_name}", category="character_updates")
+                # MULTI-PC COMBAT: Save ALL PC files if multi-PC mode was active
+                module_name = party_tracker_data.get("module", "").replace(" ", "_")
+                path_manager = ModulePathManager(module_name)
+                from updates.update_character_info import normalize_character_name
+                
+                if multi_pc_manager and MULTI_PC_COMBAT_AVAILABLE:
+                    # Multi-PC mode: Save all participating PCs
+                    print(f"[DEBUG ACTION_HANDLER] MULTI-PC MODE: Saving {len(multi_pc_manager.pc_states)} PC files")
+                    debug(f"STATE_CHANGE: Multi-PC combat ended - saving all PC files", category="combat_processing")
+                    
+                    for pc_name, pc_state in multi_pc_manager.pc_states.items():
+                        try:
+                            pc_name_normalized = normalize_character_name(pc_name)
+                            pc_file = path_manager.get_character_path(pc_name_normalized)
+                            
+                            if os.path.exists(pc_file):
+                                pc_data = safe_json_load(pc_file)
+                                if pc_data:
+                                    # Update HP from combat state
+                                    pc_data["currentHitPoints"] = pc_state.current_hp
+                                    
+                                    # Add death/unconscious conditions if applicable
+                                    from core.managers.multi_pc_combat import PCStatus
+                                    if pc_state.status == PCStatus.DEAD:
+                                        if "conditions" not in pc_data:
+                                            pc_data["conditions"] = []
+                                        if "dead" not in pc_data["conditions"]:
+                                            pc_data["conditions"].append("dead")
+                                    elif pc_state.status == PCStatus.INCAPACITATED:
+                                        if "conditions" not in pc_data:
+                                            pc_data["conditions"] = []
+                                        if "unconscious" not in pc_data["conditions"]:
+                                            pc_data["conditions"].append("unconscious")
+                                    elif pc_state.status == PCStatus.STABLE:
+                                        if "conditions" not in pc_data:
+                                            pc_data["conditions"] = []
+                                        if "stable" not in pc_data["conditions"]:
+                                            pc_data["conditions"].append("stable")
+                                    
+                                    safe_json_dump(pc_data, pc_file)
+                                    debug(f"FILE_OP: Updated PC file for {pc_name} (HP: {pc_state.current_hp}, Status: {pc_state.status.value})", category="character_updates")
+                            else:
+                                warning(f"FILE_OP: PC file not found for {pc_name}: {pc_file}", category="character_updates")
+                        except Exception as e:
+                            error(f"FAILURE: Could not save PC file for {pc_name}: {e}", category="character_updates")
+                    
+                    # Clean up multi-PC combat manager state
+                    try:
+                        from core.managers.multi_pc_combat import cleanup_combat_manager
+                        cleanup_combat_manager()
+                        debug("STATE_CHANGE: Multi-PC combat manager cleaned up", category="combat_processing")
+                    except ImportError:
+                        pass  # cleanup_combat_manager not available
+                    
+                    # Also save the primary player info if provided by combat simulation
+                    if updated_player_info is not None:
+                        player_name = party_tracker_data.get("active_character") or next((member for member in party_tracker_data.get("partyMembers", [])), None)
+                        if player_name:
+                            player_name_normalized = normalize_character_name(player_name)
+                            player_file = path_manager.get_character_path(player_name_normalized)
+                            safe_json_dump(updated_player_info, player_file)
+                            debug(f"FILE_OP: Updated primary player file for {player_name}", category="character_updates")
+                    
+                    info(f"SUCCESS: Saved {len(multi_pc_manager.pc_states)} PC files after multi-PC combat", category="combat_processing")
                 else:
-                    print("WARNING: Combat simulation did not return valid player info. Player file not updated.")
+                    # Single-PC mode (original behavior)
+                    player_name = party_tracker_data.get("active_character") or next((member for member in party_tracker_data.get("partyMembers", [])), None)
+                    if player_name and updated_player_info is not None:
+                        player_name_normalized = normalize_character_name(player_name)
+                        player_file = path_manager.get_character_path(player_name_normalized)
+                        safe_json_dump(updated_player_info, player_file)
+                        debug(f"FILE_OP: Updated player file for {player_name}", category="character_updates")
+                    else:
+                        print("WARNING: Combat simulation did not return valid player info. Player file not updated.")
 
                 # Copy combat summary to main conversation history
                 print("[DEBUG ACTION_HANDLER] Loading combat conversation history...")
@@ -1143,8 +1277,12 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             # Try npcName first (for NPC updates)
             character_name = parameters.get("npcName")
             if not character_name:
-                # Fall back to player name from party tracker
-                character_name = next((member.lower() for member in party_tracker_data["partyMembers"]), None)
+                # Fall back to active player name from party tracker
+                active_char = party_tracker_data.get("active_character")
+                if active_char:
+                    character_name = active_char.lower()
+                else:
+                    character_name = next((member.lower() for member in party_tracker_data.get("partyMembers", [])), None)
         
         if character_name:
             debug(f"STATE_CHANGE: Updating character info for {character_name}", category="character_updates")
@@ -1379,7 +1517,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             
             # Fallback to party member if no character specified
             if not character_name:
-                character_name = next((member for member in party_tracker_data["partyMembers"]), None)
+                character_name = party_tracker_data.get("active_character") or next((member for member in party_tracker_data.get("partyMembers", [])), None)
                 
             if not character_name:
                 print(f"ERROR: No character name provided for storage interaction")

@@ -1,0 +1,502 @@
+/* Tabletop Mode Styles */
+
+.character-tabs-container {
+    display: flex;
+    background-color: #333;
+    padding: 5px 10px 0 10px;
+    gap: 5px;
+    border-top: 1px solid #444;
+}
+
+.character-tab {
+    padding: 8px 15px;
+    background-color: #222;
+    color: #888;
+    border: 1px solid #444;
+    border-bottom: none;
+    border-radius: 5px 5px 0 0;
+    cursor: pointer;
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.character-tab:hover {
+    background-color: #333;
+    color: #ccc;
+}
+
+.character-tab.active {
+    background-color: #2c2c2c;
+    color: #FFA500;
+    border-color: #FFA500;
+    font-weight: bold;
+    box-shadow: 0 -2px 5px rgba(255, 165, 0, 0.2);
+}
+
+.character-tab-wrapper:hover .retire-character-btn {
+    display: block !important;
+}
+
+.add-character-tab {
+    padding: 8px 12px;
+    background-color: #1a2a1a;
+    color: #4CAF50;
+    border: 1px solid #2e7d32;
+    border-bottom: none;
+    border-radius: 5px 5px 0 0;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.add-character-tab:hover {
+    background-color: #2d4a2d;
+}
+
+
+/* =====================================================
+   MULTI-PC COMBAT MODE STYLES
+   Plugin-style combat UI for multiple player characters
+   ===================================================== */
+
+/* Combat Turn Indicator - Main overlay panel */
+.combat-turn-indicator {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    width: 280px;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border: 2px solid #e94560;
+    border-radius: 10px;
+    padding: 15px;
+    z-index: 1000;
+    box-shadow: 0 4px 20px rgba(233, 69, 96, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    font-family: 'Cinzel', serif;
+    animation: combatPanelSlideIn 0.3s ease-out;
+}
+
+@keyframes combatPanelSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(100px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Combat panel header */
+.combat-turn-indicator .combat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(233, 69, 96, 0.3);
+}
+
+.combat-round-badge {
+    background: linear-gradient(135deg, #e94560 0%, #c73659 100%);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 15px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    box-shadow: 0 2px 8px rgba(233, 69, 96, 0.4);
+}
+
+.combat-status {
+    color: #ffd700;
+    font-size: 11px;
+    font-style: italic;
+    animation: combatPulse 2s infinite;
+}
+
+@keyframes combatPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Current turn display */
+.current-turn-display {
+    text-align: center;
+    margin-bottom: 15px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+}
+
+.turn-label {
+    color: #888;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 5px;
+}
+
+.turn-name {
+    color: #4ecca3;
+    font-size: 18px;
+    font-weight: bold;
+    text-shadow: 0 0 10px rgba(78, 204, 163, 0.5);
+}
+
+/* PC Turn Queue */
+.pc-turn-queue {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 15px;
+}
+
+.pc-queue-btn {
+    flex: 1 1 calc(50% - 4px);
+    padding: 8px 10px;
+    background: linear-gradient(135deg, #2d3436 0%, #1e272e 100%);
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: #ccc;
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.pc-queue-btn:hover:not(:disabled) {
+    background: linear-gradient(135deg, #3d4446 0%, #2e373e 100%);
+    border-color: #666;
+    transform: translateY(-1px);
+}
+
+.pc-queue-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* PC Status indicators */
+.pc-queue-btn.status-ready {
+    border-color: #4ecca3;
+    box-shadow: 0 0 8px rgba(78, 204, 163, 0.3);
+}
+
+.pc-queue-btn.status-ready::before {
+    content: '⚔';
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    font-size: 10px;
+}
+
+.pc-queue-btn.status-acted {
+    border-color: #636e72;
+    background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
+    color: #666;
+}
+
+.pc-queue-btn.status-acted::before {
+    content: '✓';
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    font-size: 10px;
+    color: #4ecca3;
+}
+
+.pc-queue-btn.status-incapacitated {
+    border-color: #e17055;
+    background: linear-gradient(135deg, #2d1f1f 0%, #1e1515 100%);
+    color: #e17055;
+}
+
+.pc-queue-btn.status-incapacitated::before {
+    content: '💀';
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    font-size: 10px;
+}
+
+.pc-queue-btn.status-dead {
+    border-color: #2d2d2d;
+    background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+    color: #444;
+    text-decoration: line-through;
+}
+
+.pc-queue-btn.status-dead::before {
+    content: '☠';
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    font-size: 10px;
+    color: #666;
+}
+
+.pc-queue-btn.status-stable {
+    border-color: #74b9ff;
+    background: linear-gradient(135deg, #1f2d3d 0%, #152238 100%);
+    color: #74b9ff;
+}
+
+.pc-queue-btn.status-stable::before {
+    content: '💤';
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    font-size: 10px;
+}
+
+/* Combat action buttons */
+.combat-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.combat-btn {
+    flex: 1;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 6px;
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.end-turn-btn {
+    background: linear-gradient(135deg, #4ecca3 0%, #3eb489 100%);
+    color: #1a1a2e;
+}
+
+.end-turn-btn:hover {
+    background: linear-gradient(135deg, #5ed4ab 0%, #4ec491 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(78, 204, 163, 0.4);
+}
+
+.skip-btn {
+    background: linear-gradient(135deg, #636e72 0%, #4a5568 100%);
+    color: #fff;
+}
+
+.skip-btn:hover {
+    background: linear-gradient(135deg, #737e82 0%, #5a6578 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(99, 110, 114, 0.4);
+}
+
+/* Active turn highlight on character tabs */
+.character-tab.combat-active-turn {
+    animation: activeTurnPulse 1.5s infinite;
+    border-color: #e94560 !important;
+    box-shadow: 0 0 15px rgba(233, 69, 96, 0.5),
+                0 -2px 5px rgba(233, 69, 96, 0.3) !important;
+}
+
+@keyframes activeTurnPulse {
+    0%, 100% {
+        box-shadow: 0 0 15px rgba(233, 69, 96, 0.5),
+                    0 -2px 5px rgba(233, 69, 96, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 25px rgba(233, 69, 96, 0.8),
+                    0 -2px 10px rgba(233, 69, 96, 0.5);
+    }
+}
+
+/* Combat Toast Notifications */
+.combat-toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+    z-index: 1001;
+    animation: toastSlideUp 0.3s ease-out;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes toastSlideUp {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+.combat-toast-success {
+    background: linear-gradient(135deg, #4ecca3 0%, #3eb489 100%);
+    color: #1a1a2e;
+    border: 1px solid #5ed4ab;
+}
+
+.combat-toast-warning {
+    background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%);
+    color: #2d3436;
+    border: 1px solid #f9ca24;
+}
+
+.combat-toast-error {
+    background: linear-gradient(135deg, #e94560 0%, #c73659 100%);
+    color: white;
+    border: 1px solid #ff6b81;
+}
+
+.combat-toast-info {
+    background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+    color: white;
+    border: 1px solid #81c8ff;
+}
+
+/* Death Save Modal/Prompt styling */
+.death-save-prompt {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, #2d1f1f 0%, #1a1212 100%);
+    border: 3px solid #e94560;
+    border-radius: 15px;
+    padding: 25px;
+    z-index: 1002;
+    text-align: center;
+    min-width: 300px;
+    box-shadow: 0 0 50px rgba(233, 69, 96, 0.5);
+    animation: deathSaveAppear 0.4s ease-out;
+}
+
+@keyframes deathSaveAppear {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+.death-save-prompt h3 {
+    color: #e94560;
+    font-family: 'Cinzel', serif;
+    margin-bottom: 15px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.death-save-prompt .character-name {
+    color: #ffd700;
+    font-size: 24px;
+    margin-bottom: 10px;
+}
+
+.death-save-prompt .save-status {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin: 15px 0;
+}
+
+.death-save-prompt .successes,
+.death-save-prompt .failures {
+    display: flex;
+    gap: 5px;
+}
+
+.death-save-prompt .save-pip {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    border: 2px solid #666;
+    background: transparent;
+}
+
+.death-save-prompt .save-pip.success {
+    border-color: #4ecca3;
+    background: #4ecca3;
+    box-shadow: 0 0 8px rgba(78, 204, 163, 0.5);
+}
+
+.death-save-prompt .save-pip.failure {
+    border-color: #e94560;
+    background: #e94560;
+    box-shadow: 0 0 8px rgba(233, 69, 96, 0.5);
+}
+
+.death-save-prompt .roll-btn {
+    background: linear-gradient(135deg, #e94560 0%, #c73659 100%);
+    color: white;
+    padding: 12px 30px;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Cinzel', serif;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-top: 15px;
+    transition: all 0.2s ease;
+}
+
+.death-save-prompt .roll-btn:hover {
+    background: linear-gradient(135deg, #ff6b81 0%, #d74669 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(233, 69, 96, 0.5);
+}
+
+/* Combat mode body class - dims background slightly */
+body.combat-mode-active {
+    background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
+}
+
+body.combat-mode-active::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 999;
+    border: 4px solid rgba(233, 69, 96, 0.3);
+    animation: combatBorderPulse 3s infinite;
+}
+
+@keyframes combatBorderPulse {
+    0%, 100% { border-color: rgba(233, 69, 96, 0.3); }
+    50% { border-color: rgba(233, 69, 96, 0.1); }
+}
+
+/* Party member cards in combat mode */
+.party-member-card.in-combat {
+    border-left: 3px solid #e94560;
+}
+
+.party-member-card.current-turn {
+    border-color: #ffd700;
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.4);
+    animation: currentTurnGlow 1.5s infinite;
+}
+
+@keyframes currentTurnGlow {
+    0%, 100% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.4); }
+    50% { box-shadow: 0 0 25px rgba(255, 215, 0, 0.6); }
+}

@@ -43,7 +43,7 @@ with separate panels for game output and debug information.
 import logging
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, send_file
 from flask_socketio import SocketIO, emit
 import os
 import sys
@@ -77,6 +77,7 @@ install_debug_interceptor()
 # Import the main game module and reset logic
 import main as dm_main
 import utils.reset_campaign as reset_campaign
+import utils.pc_manager as pc_manager
 from core.managers.status_manager import set_status_callback, set_compression_callback
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from model_config import DM_MINI_MODEL
@@ -199,6 +200,14 @@ def add_to_message_cache(message):
 # Status callback function
 def emit_status_update(status_message, is_processing):
     """Emit status updates to the frontend"""
+    try:
+        from config import DEBUG_STATUS_SYNC
+    except ImportError:
+        DEBUG_STATUS_SYNC = False
+        
+    if DEBUG_STATUS_SYNC:
+        print(f"[DEBUG_STATUS] Emitting status_update: message='{status_message}', is_processing={is_processing}")
+        
     socketio.emit('status_update', {
         'message': status_message,
         'is_processing': is_processing
@@ -288,7 +297,7 @@ class WebOutputCapture:
                             # If buffer append fails, reset DM section
                             self.in_dm_section = False
                             self.dm_buffer = []
-                    elif any(marker in clean_line for marker in ['DEBUG:', 'ERROR:', 'WARNING:']) or \
+                    elif any(marker in clean_line for marker in ['DEBUG:', 'ERROR:', 'WARNING:', '[COMBAT_MANAGER]']) or \
                          clean_line.startswith('[') and ('HP:' in clean_line or 'XP:' in clean_line) or \
                          clean_line.startswith('>'):
                         # This ends the DM section - send accumulated DM content as single message
@@ -459,10 +468,25 @@ class WebInput:
     def readline(self):
         # Signal that we're ready for input (with error handling)
         try:
+            from config import DEBUG_STATUS_SYNC
+        except ImportError:
+            DEBUG_STATUS_SYNC = False
+            
+        if DEBUG_STATUS_SYNC:
+            print("[DEBUG_STATUS] WebInput.readline() called, signaling status_ready()")
+            
+        try:
             from core.managers.status_manager import status_ready
             status_ready()
-        except Exception:
+            # Double-tap emit for initial robustness
+            socketio.emit('status_update', {
+                'message': 'Ready for input',
+                'is_processing': False
+            })
+        except Exception as e:
             # If status_ready fails, continue without it
+            if DEBUG_STATUS_SYNC:
+                print(f"[DEBUG_STATUS] status_ready() call failed: {e}")
             pass
         
         # Wait for input from the web interface
@@ -501,7 +525,33 @@ def index():
     except:
         version = "0.3.2"
 
-    return render_template('game_interface.html', version=version)
+    # Get multiplayer config
+    try:
+        from config import MULTIPLAYER_MODE
+    except ImportError:
+        MULTIPLAYER_MODE = False
+
+    # Get party info from pc_manager
+    try:
+        party_data = pc_manager.get_party_tracker()
+        party_members = party_data.get('partyMembers', [])
+        active_character = party_data.get('active_character')
+    except:
+        party_members = []
+        active_character = None
+
+    # Get status sync debug flag
+    try:
+        from config import DEBUG_STATUS_SYNC
+    except ImportError:
+        DEBUG_STATUS_SYNC = False
+
+    return render_template('game_interface.html', 
+                         version=version, 
+                         party_members=party_members, 
+                         active_character=active_character,
+                         multiplayer_mode=MULTIPLAYER_MODE,
+                         DEBUG_STATUS_SYNC=DEBUG_STATUS_SYNC)
 
 @app.route('/static/media/videos/<path:filename>')
 def serve_video(filename):
@@ -711,6 +761,263 @@ def get_spell_data():
         return jsonify(spell_data)
     except FileNotFoundError:
         return jsonify({})
+
+@app.route('/api/character_sheet/pdf')
+def export_character_pdf():
+    """Fill the official 5E Character Sheet PDF with active character data"""
+    try:
+        from pypdf import PdfReader, PdfWriter
+        from pypdf.generic import BooleanObject, NameObject
+        from utils.file_operations import safe_read_json
+        from utils.module_path_manager import ModulePathManager
+        from updates.update_character_info import normalize_character_name
+
+        # 1. Determine character
+        character_name = request.args.get('character')
+        party_tracker = safe_read_json("party_tracker.json") or {}
+        
+        if not character_name:
+            character_name = party_tracker.get('active_character')
+        
+        if not character_name and party_tracker.get('partyMembers') and len(party_tracker['partyMembers']) > 0:
+            character_name = party_tracker['partyMembers'][0]
+            
+        if not character_name:
+            return jsonify({'error': 'No character specified or active'}), 400
+
+        normalized_name = normalize_character_name(character_name)
+        
+        # 2. Load character data
+        path_manager = ModulePathManager()
+        player_file = path_manager.get_character_path(normalized_name)
+        
+        if not os.path.exists(player_file):
+            return jsonify({'error': f'Character file not found: {normalized_name}'}), 404
+            
+        char_data = safe_read_json(player_file)
+        if not char_data:
+            return jsonify({'error': 'Failed to read character data'}), 500
+
+        # 3. Load template PDF
+        template_path = "templates/pdf/5E_CharacterSheet_Fillable.pdf"
+        if not os.path.exists(template_path):
+            return jsonify({'error': 'Template PDF not found'}), 404
+            
+        reader = PdfReader(template_path)
+        writer = PdfWriter()
+        writer.append(reader)
+
+        # 4. Map NEQ data to PDF field names (MVP: Text fields only)
+        def get_mod(score):
+            mod = (score - 10) // 2
+            return f"+{mod}" if mod >= 0 else str(mod)
+
+        fields = {
+            "CharacterName": char_data.get("name", ""),
+            "ClassLevel": f"{char_data.get('class', '')} {char_data.get('level', 1)}",
+            "Background": char_data.get("background", "Adventurer"),
+            "PlayerName": "",
+            "Race ": char_data.get("race", ""),
+            "Alignment": char_data.get("alignment", "Neutral").capitalize(),
+            "XP": str(char_data.get("experience_points", 0)),
+            
+            # Ability Scores
+            "STR": str(char_data.get("abilities", {}).get("strength", 10)),
+            "DEX": str(char_data.get("abilities", {}).get("dexterity", 10)),
+            "CON": str(char_data.get("abilities", {}).get("constitution", 10)),
+            "INT": str(char_data.get("abilities", {}).get("intelligence", 10)),
+            "WIS": str(char_data.get("abilities", {}).get("wisdom", 10)),
+            "CHA": str(char_data.get("abilities", {}).get("charisma", 10)),
+            
+            # Ability Modifiers
+            "STRmod": get_mod(char_data.get("abilities", {}).get("strength", 10)),
+            "DEXmod ": get_mod(char_data.get("abilities", {}).get("dexterity", 10)),
+            "CONmod": get_mod(char_data.get("abilities", {}).get("constitution", 10)),
+            "INTmod": get_mod(char_data.get("abilities", {}).get("intelligence", 10)),
+            "WISmod": get_mod(char_data.get("abilities", {}).get("wisdom", 10)),
+            "CHamod": get_mod(char_data.get("abilities", {}).get("charisma", 10)),
+            
+            # Combat Stats
+            "AC": str(char_data.get("armorClass", 10)),
+            "Initiative": f"+{char_data.get('initiative', 0)}" if char_data.get('initiative', 0) >= 0 else str(char_data.get('initiative', 0)),
+            "Speed": str(char_data.get("speed", 30)),
+            "ProfBonus": f"+{char_data.get('proficiencyBonus', 2)}",
+            "HPMax": str(char_data.get("maxHitPoints", 10)),
+            "HPCurrent": str(char_data.get("hitPoints", 10)),
+            "HDTotal": f"{char_data.get('level', 1)}d10",
+            
+            # Currency
+            "CP": str(char_data.get("currency", {}).get("copper", 0)),
+            "SP": str(char_data.get("currency", {}).get("silver", 0)),
+            "GP": str(char_data.get("currency", {}).get("gold", 0)),
+            
+            # Text Area Fields
+            "PersonalityTraits ": char_data.get("personality_traits", ""),
+            "Ideals": char_data.get("ideals", ""),
+            "Bonds": char_data.get("bonds", ""),
+            "Flaws": char_data.get("flaws", ""),
+            "Features and Traits": "\n".join([f"{f['name']}: {f['description']}" for f in char_data.get("classFeatures", [])]),
+            "ProficienciesLang": f"LANGUAGES:\n{', '.join(char_data.get('languages', ['Common']))}\n\nARMOR:\n{', '.join(char_data.get('proficiencies', {}).get('armor', []))}\n\nWEAPONS:\n{', '.join(char_data.get('proficiencies', {}).get('weapons', []))}",
+            "Equipment": "\n".join([f"{i['item_name']} (x{i.get('quantity', 1)})" for i in char_data.get("equipment", [])]),
+        }
+
+        # Skills
+        prof_bonus = char_data.get("proficiencyBonus", 2)
+        proficient_skills = char_data.get("skills", [])
+        if not isinstance(proficient_skills, list):
+            proficient_skills = []
+        
+        skill_map = {
+            "Acrobatics": "dexterity", "Animal": "wisdom", "Arcana": "intelligence",
+            "Athletics": "strength", "Deception ": "charisma", "History ": "intelligence",
+            "Insight": "wisdom", "Intimidation": "charisma", "Investigation ": "intelligence",
+            "Medicine": "wisdom", "Nature": "intelligence", "Perception ": "wisdom",
+            "Performance": "charisma", "Persuasion": "charisma", "Religion": "intelligence",
+            "SleightofHand": "dexterity", "Stealth ": "dexterity", "Survival": "wisdom"
+        }
+        
+        for pdf_field, ability in skill_map.items():
+            base_score = char_data.get("abilities", {}).get(ability, 10)
+            bonus = (base_score - 10) // 2
+            clean_pdf_name = pdf_field.strip()
+            neq_name = clean_pdf_name
+            if clean_pdf_name == "Animal": neq_name = "Animal Handling"
+            if clean_pdf_name == "SleightofHand": neq_name = "Sleight of Hand"
+            if neq_name in proficient_skills:
+                bonus += prof_bonus
+            fields[pdf_field] = f"+{bonus}" if bonus >= 0 else str(bonus)
+
+        pp_bonus = (char_data.get("abilities", {}).get("wisdom", 10) - 10) // 2
+        if "Perception" in proficient_skills:
+            pp_bonus += prof_bonus
+        fields["Passive"] = str(10 + pp_bonus)
+
+        # 5. Fill the form
+        # Set NeedAppearances if AcroForm exists (should exist after clone)
+        try:
+            if "/AcroForm" in writer.root_object:
+                acroform = writer.root_object["/AcroForm"]
+                if hasattr(acroform, "get_object"):
+                    acroform = acroform.get_object()
+                acroform.update({
+                    NameObject("/NeedAppearances"): BooleanObject(True)
+                })
+        except Exception as na_err:
+            warning(f"PDF_EXPORT: Could not set NeedAppearances: {na_err}")
+
+        writer.update_page_form_field_values(writer.pages[0], fields)
+        
+        # Page 2: Character Description & Features
+        if len(writer.pages) > 1:
+            page2_fields = {
+                "CharacterName 2": char_data.get("name", "")
+            }
+            
+            # Feat+Traits: Combine racial traits, class features, and feats
+            features_list = []
+            
+            # Add racial traits
+            for trait in char_data.get("racialTraits", []):
+                if isinstance(trait, dict):
+                    trait_text = f"{trait.get('name', '')}: {trait.get('description', '')}"
+                    features_list.append(trait_text)
+            
+            # Add class features
+            for feature in char_data.get("classFeatures", []):
+                if isinstance(feature, dict):
+                    feature_text = f"{feature.get('name', '')}: {feature.get('description', '')}"
+                    features_list.append(feature_text)
+            
+            # Add feats
+            for feat in char_data.get("feats", []):
+                if isinstance(feat, dict):
+                    feat_text = f"{feat.get('name', '')}: {feat.get('description', '')}"
+                    features_list.append(feat_text)
+            
+            if features_list:
+                page2_fields["Feat+Traits"] = "\n\n".join(features_list)
+            
+            # Backstory from background feature
+            background_feature = char_data.get("backgroundFeature", {})
+            if isinstance(background_feature, dict):
+                backstory = f"{background_feature.get('name', '')}\n{background_feature.get('description', '')}"
+                page2_fields["Backstory"] = backstory
+            
+            writer.update_page_form_field_values(writer.pages[1], page2_fields)
+        
+        # Page 3: Spellcasting
+        if len(writer.pages) > 2:
+            page3_fields = {}
+            spellcasting = char_data.get("spellcasting", {})
+            
+            if spellcasting:
+                # Basic spellcasting info
+                page3_fields["Spellcasting Class 2"] = char_data.get("class", "")
+                page3_fields["SpellcastingAbility 2"] = spellcasting.get("ability", "").capitalize()
+                page3_fields["SpellSaveDC  2"] = str(spellcasting.get("spellSaveDC", ""))  # Note: 2 spaces in field name
+                page3_fields["SpellAtkBonus 2"] = f"+{spellcasting.get('spellAttackBonus', 0)}" if spellcasting.get('spellAttackBonus', 0) >= 0 else str(spellcasting.get('spellAttackBonus', 0))
+                
+                # Spell slots (levels 1-9 map to fields 19-27)
+                spell_slots = spellcasting.get("spellSlots", {})
+                for level in range(1, 10):
+                    slot_key = f"level{level}"
+                    if slot_key in spell_slots:
+                        slot_data = spell_slots[slot_key]
+                        field_num = 18 + level  # level1=19, level2=20, ..., level9=27
+                        page3_fields[f"SlotsTotal {field_num}"] = str(slot_data.get("max", 0))
+                        page3_fields[f"SlotsRemaining {field_num}"] = str(slot_data.get("current", 0))
+                
+                # Spell names (fields Spells 1014-101013)
+                spells_data = spellcasting.get("spells", {})
+                prepared_spells = spellcasting.get("preparedSpells", [])
+                
+                field_counter = 1014
+                checkbox_counter = 251
+                
+                # Process cantrips first
+                if "cantrips" in spells_data:
+                    for spell_name in spells_data["cantrips"]:
+                        if field_counter <= 101013:
+                            page3_fields[f"Spells {field_counter}"] = spell_name
+                            # Cantrips don't need preparation checkboxes
+                            field_counter += 1
+                            checkbox_counter += 1
+                
+                # Process leveled spells (level1-level9)
+                for level in range(1, 10):
+                    level_key = f"level{level}"
+                    if level_key in spells_data:
+                        for spell_name in spells_data[level_key]:
+                            if field_counter <= 101013:
+                                page3_fields[f"Spells {field_counter}"] = spell_name
+                                
+                                # Mark prepared spells with checkbox
+                                if spell_name in prepared_spells and checkbox_counter <= 3083:
+                                    page3_fields[f"Check Box {checkbox_counter}"] = "Yes"
+                                
+                                field_counter += 1
+                                checkbox_counter += 1
+            
+            writer.update_page_form_field_values(writer.pages[2], page3_fields)
+
+        # 6. Stream back the PDF
+        output_stream = io.BytesIO()
+        writer.write(output_stream)
+        output_stream.seek(0)
+
+        filename = f"{normalized_name}_CharacterSheet.pdf"
+        return send_file(
+            output_stream,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as e:
+        error(f"PDF_EXPORT: Failed to generate character sheet PDF: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 # ============================================================================
 # MODULE TOOLKIT API ENDPOINTS
@@ -1977,16 +2284,59 @@ def handle_connect():
         progress_data = module_progress_queue.get()
         emit('module_creation_progress', progress_data)
 
+@socketio.on('request_status')
+def handle_request_status():
+    """Handle frontend request for current system status."""
+    global game_thread
+    try:
+        from config import DEBUG_STATUS_SYNC
+    except ImportError:
+        DEBUG_STATUS_SYNC = False
+        
+    try:
+        from core.managers.status_manager import status_manager
+        message, is_processing = status_manager.get_status()
+        
+        # Check if game is actually running
+        is_running = game_thread is not None and game_thread.is_alive()
+        
+        # Explicitly tag as a direct response to a request
+        emit('status_response', {
+            'message': message,
+            'is_processing': is_processing,
+            'game_started': is_running
+        })
+        
+        # Also send a standard status_update for redundancy
+        emit('status_update', {
+            'message': message,
+            'is_processing': is_processing
+        })
+        
+        if DEBUG_STATUS_SYNC:
+            print(f"[DEBUG_STATUS] Responded to request_status: '{message}', is_processing={is_processing}, game_started={is_running}")
+    except Exception as e:
+        if DEBUG_STATUS_SYNC:
+            print(f"[DEBUG_STATUS] Error in request_status handler: {e}")
+
 @socketio.on('user_input')
 def handle_user_input(data):
     """Handle input from the user"""
     user_input = data.get('input', '')
-    user_input_queue.put(user_input)
+    character_name = data.get('character')
     
-    # Echo the input back to the game output
+    # In multi-PC mode, tag the input so the LLM knows who is acting
+    if character_name:
+        tagged_input = f"[{character_name}]: {user_input}"
+        user_input_queue.put(tagged_input)
+    else:
+        user_input_queue.put(user_input)
+    
+    # Echo the input back to the game output with author attribution
     message = {
         'type': 'user-input',
-        'content': user_input
+        'content': user_input,
+        'author': character_name or 'You'
     }
     emit('game_output', message)
     add_to_message_cache(message)
@@ -2096,19 +2446,22 @@ def handle_player_data_request(data):
         response_data = None
         
         # Load party tracker to get player name and NPCs
-        party_tracker_path = 'party_tracker.json'
-        if os.path.exists(party_tracker_path):
-            with open(party_tracker_path, 'r', encoding='utf-8') as f:
-                party_tracker = json.load(f)
-        else:
+        party_tracker = pc_manager.get_party_tracker()
+        if not party_tracker:
             emit('player_data_response', {'dataType': dataType, 'data': None, 'error': 'Party tracker not found'})
             return
         
         if dataType == 'stats' or dataType == 'inventory' or dataType == 'spells':
-            # Get player name from party tracker
-            if party_tracker.get('partyMembers') and len(party_tracker['partyMembers']) > 0:
+            # Get active character from party tracker (multiplayer aware)
+            player_name = party_tracker.get('active_character')
+            
+            # Fallback to first party member if active_character not set
+            if not player_name and party_tracker.get('partyMembers'):
+                player_name = party_tracker['partyMembers'][0]
+                
+            if player_name:
                 from updates.update_character_info import normalize_character_name
-                player_name = normalize_character_name(party_tracker['partyMembers'][0])
+                player_name = normalize_character_name(player_name)
                 
                 # Try module-specific path first
                 from utils.module_path_manager import ModulePathManager
@@ -2357,9 +2710,13 @@ def handle_party_data_request():
         
         party_members = []
         
-        # Add player first
-        if party_tracker.get('partyMembers') and len(party_tracker['partyMembers']) > 0:
-            player_name = normalize_character_name(party_tracker['partyMembers'][0])
+        # Add player first (Tabletop aware)
+        active_name = party_tracker.get('active_character')
+        if not active_name and party_tracker.get('partyMembers'):
+            active_name = party_tracker['partyMembers'][0]
+            
+        if active_name:
+            player_name = normalize_character_name(active_name)
             
             # Try to load player data for HP info
             try:
@@ -2579,6 +2936,382 @@ def handle_party_data_request():
     except Exception as e:
         error(f"Failed to get party data: {str(e)}", exception=e, category="web_interface")
         emit('party_data_response', {'members': [], 'location_npcs': []})
+
+# ============================================================================
+# TABLETOP MODE API ENDPOINTS
+# ============================================================================
+
+@app.route('/api/party')
+def get_party():
+    """Get current party members and active character (tabletop mode)"""
+    try:
+        from utils.file_operations import safe_read_json
+        
+        party_tracker = safe_read_json("party_tracker.json")
+        if not party_tracker:
+            return jsonify({'error': 'Party tracker not found'}), 404
+            
+        return jsonify({
+            'partyMembers': party_tracker.get('partyMembers', []),
+            'active_character': party_tracker.get('active_character'),
+            'partyNPCs': party_tracker.get('partyNPCs', [])
+        })
+    except Exception as e:
+        error(f"TABLETOP: Failed to get party info: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/party/set_active', methods=['POST'])
+def set_active_character():
+    """Switch active character (tabletop mode)"""
+    try:
+        from utils.file_operations import safe_read_json, safe_write_json
+        
+        data = request.json
+        character_name = data.get('character')
+        
+        if not character_name:
+            return jsonify({'error': 'Character name required'}), 400
+            
+        party_tracker = safe_read_json("party_tracker.json")
+        if not party_tracker:
+            return jsonify({'error': 'Party tracker not found'}), 404
+            
+        # Validate character is in party
+        if character_name not in party_tracker.get('partyMembers', []):
+            return jsonify({'error': 'Character not in party'}), 400
+            
+        party_tracker['active_character'] = character_name
+        safe_write_json("party_tracker.json", party_tracker)
+        
+        info(f"TABLETOP: Active character set to {character_name}")
+        return jsonify({'success': True, 'active_character': character_name})
+        
+    except Exception as e:
+        error(f"TABLETOP: Failed to set active character: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/party/characters')
+def get_party_characters_list():
+    """List available player characters (exclude NPCs) from global and module paths."""
+    try:
+        from utils.module_path_manager import ModulePathManager
+        from utils.file_operations import safe_read_json
+
+        party_tracker = safe_read_json("party_tracker.json") or {}
+        current_module = (party_tracker.get("module") or "").replace(" ", "_") or None
+
+        available_characters = []
+
+        def is_player(char_data: dict) -> bool:
+            if not char_data:
+                return False
+            # Prefer explicit markers
+            ctype = (char_data.get("type") or char_data.get("character_type") or "").lower()
+            if ctype == "npc":
+                return False
+            # If explicitly player, accept; otherwise default to player when unspecified
+            return ctype in ("player", "pc", "")
+
+        def scan_dir(directory: str, module_specific: bool = False):
+            if os.path.exists(directory):
+                for fname in os.listdir(directory):
+                    if not fname.endswith('.json'):
+                        continue
+                    # Filter out backup files
+                    if '.backup' in fname or '.bak' in fname:
+                        continue
+                    try:
+                        char_path = os.path.join(directory, fname)
+                        char_data = safe_read_json(char_path)
+                        if is_player(char_data):
+                            available_characters.append({
+                                'filename': fname,
+                                'name': char_data.get('name', fname.replace('.json', '')),
+                                'level': char_data.get('level', 1),
+                                'class': char_data.get('class', 'Unknown'),
+                                'module_specific': module_specific
+                            })
+                    except Exception:
+                        continue
+
+        scan_dir('characters', module_specific=False)
+        if current_module:
+            try:
+                path_manager = ModulePathManager(current_module)
+                module_char_dir = path_manager.get_characters_dir()
+                scan_dir(module_char_dir, module_specific=True)
+            except Exception:
+                pass
+
+        return jsonify({'characters': available_characters})
+    except Exception as e:
+        error(f"TABLETOP: Failed to list characters: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/party/create_player', methods=['POST'])
+def create_party_player():
+    """Trigger LLM-driven character creation flow for a new player."""
+    try:
+        from utils.file_operations import safe_write_json
+        
+        data = request.json
+        name = data.get('name')
+        
+        # Validate input
+        if not name:
+            return jsonify({'error': 'Character name is required'}), 400
+            
+        # 1. Create a skeleton character file (scaffold) immediately.
+        # This is critical so that 'updateCharacterInfo' actions from the LLM have a file to update.
+        new_char = {
+            "character_role": "player",
+            "character_type": "player",
+            "name": name,
+            "type": "player",
+            "size": "Medium",
+            "level": 1,
+            "race": "Placeholder",
+            "class": "Placeholder",
+            "alignment": "neutral",
+            "background": "Adventurer",
+            "status": "alive",
+            "condition": "none",
+            "condition_affected": [],
+            "hitPoints": 10,
+            "maxHitPoints": 10,
+            "armorClass": 10,
+            "initiative": 0,
+            "speed": 30,
+            "abilities": {
+                "strength": 10, "dexterity": 10, "constitution": 10,
+                "intelligence": 10, "wisdom": 10, "charisma": 10
+            },
+            "savingThrows": [],
+            "skills": [],
+            "proficiencyBonus": 2,
+            "senses": {"darkvision": 0, "passivePerception": 10},
+            "languages": ["Common"],
+            "proficiencies": {"armor": [], "weapons": [], "tools": []},
+            "damageVulnerabilities": [], "damageResistances": [], "damageImmunities": [], "conditionImmunities": [],
+            "classFeatures": [], "racialTraits": [],
+            "backgroundFeature": {"name": "Feature", "description": "Standard background feature"},
+            "temporaryEffects": [], "injuries": [], "equipment_effects": [], "feats": [],
+            "equipment": [], "attacksAndSpellcasting": [],
+            "spellcasting": {
+                "ability": "none", "spellSaveDC": 8, "spellAttackBonus": 0,
+                "spells": {}, "spellSlots": {}
+            },
+            "currency": {"gold": 0, "silver": 0, "copper": 0},
+            "experience_points": 0,
+            "exp_required_for_next_level": 300,
+            "personality_traits": "", "ideals": "", "bonds": "", "flaws": ""
+        }
+        
+        # Save character file
+        char_filename = name.lower().replace(' ', '_') + ".json"
+        char_path = os.path.join('characters', char_filename)
+        
+        if os.path.exists(char_path):
+            return jsonify({'error': f'Character file {char_filename} already exists!'}), 400
+            
+        success = safe_write_json(char_path, new_char)
+        if not success:
+            return jsonify({'error': 'Failed to save character file'}), 500
+            
+        # 2. Add the character to the party roster immediately
+        pc_manager.add_pc(name)
+        
+        # 3. Inject a system command that the LLM will interpret as a request to start creation.
+        # Explicitly instruct the DM to guide the player and use 'updateCharacterInfo'.
+        
+        prompt = (
+            f"[SYSTEM] A new player is joining the table! "
+            f"The character sheet for '{name}' has been created with default placeholder values. "
+            f"Please guide the user through a quick 5e character creation interview for '{name}'. "
+            f"Ask them for their Race, Class, Background, and how they want to assign their ability scores.\n\n"
+            f"CRITICAL INSTRUCTIONS FOR CHARACTER UPDATES:\n"
+            f"1. Use the 'updateCharacterInfo' action for '{name}' IMMEDIATELY as choices are made.\n"
+            f"2. When Race is chosen: Update 'race', 'size', 'speed', and 'racialTraits'.\n"
+            f"3. When Class is chosen: Update 'class', 'hitPoints', 'maxHitPoints', 'armorClass', 'proficiencyBonus', and 'classFeatures'.\n"
+            f"4. When Weapons/Gear are chosen: Update 'equipment' AND 'attacksAndSpellcasting'.\n"
+            f"   - 'attacksAndSpellcasting' MUST contain objects with 'name', 'attackBonus', 'damageDice', and 'damageBonus'.\n"
+            f"   - Example: {{\"name\": \"Longsword\", \"attackBonus\": 5, \"damageDice\": \"1d8\", \"damageBonus\": 3}}\n"
+            f"5. Ensure ALL placeholder values (like 'Placeholder') are replaced by the end of the interview.\n"
+            f"6. Do not wait until the end to update the sheet. Update incrementally.\n\n"
+            f"Provide an engaging, in-character welcome to the adventure!"
+        )
+        
+        user_input_queue.put(prompt)
+        
+        info(f"TABLETOP: Started DM-assisted character creation for {name}")
+        return jsonify({
+            'success': True, 
+            'message': f'Character creation started for {name}. Check the game chat!'
+        })
+        
+    except Exception as e:
+        error(f"TABLETOP: Failed to start player creation: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/party/add_character', methods=['POST'])
+def add_party_character():
+    """Add existing character to party (tabletop mode). Does not create new files."""
+    try:
+        # Use locally defined user_input_queue
+        # from web.shared_state import user_input_queue
+        data = request.json
+        character_name = data.get('character')
+        
+        if not character_name:
+            return jsonify({'error': 'Character name required'}), 400
+            
+        success = pc_manager.add_pc(character_name)
+        
+        if success:
+            party_tracker = pc_manager.get_party_tracker()
+            
+            # Inject introduction prompt to LLM
+            try:
+                from utils.file_operations import safe_read_json
+                char_data = safe_read_json(os.path.join('characters', f"{character_name}.json"))
+                if not char_data:
+                    char_data = {}
+            except:
+                char_data = {}
+
+            # Use global user_input_queue
+            intro_prompt = pc_manager.get_entrance_prompt(character_name, char_data, party_tracker)
+            user_input_queue.put(intro_prompt)
+            
+            return jsonify({'success': True, 'partyMembers': party_tracker.get('partyMembers', [])})
+        else:
+            return jsonify({'error': f"Failed to add '{character_name}' to party. Ensure the character file exists."}), 400
+        
+    except Exception as e:
+        error(f"TABLETOP: Failed to add character: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/party/remove_character', methods=['POST'])
+def remove_party_character():
+    """Remove character from party (tabletop mode)"""
+    try:
+        data = request.json
+        character_name = data.get('character')
+        
+        if not character_name:
+            return jsonify({'error': 'Character name required'}), 400
+            
+        success = pc_manager.remove_pc(character_name)
+        
+        if success:
+            party_tracker = pc_manager.get_party_tracker()
+            return jsonify({'success': True, 'partyMembers': party_tracker.get('partyMembers', [])})
+        else:
+            return jsonify({'error': f"Failed to remove '{character_name}' from party."}), 400
+        
+    except Exception as e:
+        error(f"TABLETOP: Failed to remove character: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/party/create_manual', methods=['POST'])
+def create_manual_character():
+    """Manually create a character from DM form data and add to party."""
+    try:
+        from utils.file_operations import safe_write_json
+        
+        data = request.json
+        name = data.get('name')
+        if not name:
+            return jsonify({'error': 'Character name is required'}), 400
+            
+        # Create a standard character object based on schema
+        # Defaulting most values but taking the core ones from the form
+        new_char = {
+            "character_role": "player",
+            "character_type": "player",
+            "name": name,
+            "type": "player",
+            "size": "Medium",
+            "level": int(data.get('level', 1)),
+            "race": data.get('race', 'Human'),
+            "class": data.get('class', 'Fighter'),
+            "alignment": data.get('alignment', 'neutral'),
+            "background": data.get('background', 'Adventurer'),
+            "status": "alive",
+            "condition": "none",
+            "condition_affected": [],
+            "hitPoints": int(data.get('hp', 10)),
+            "maxHitPoints": int(data.get('hp', 10)),
+            "armorClass": int(data.get('ac', 10)),
+            "initiative": int(data.get('initiative', 0)),
+            "speed": int(data.get('speed', 30)),
+            "abilities": {
+                "strength": int(data.get('str', 10)),
+                "dexterity": int(data.get('dex', 10)),
+                "constitution": int(data.get('con', 10)),
+                "intelligence": int(data.get('int', 10)),
+                "wisdom": int(data.get('wis', 10)),
+                "charisma": int(data.get('cha', 10))
+            },
+            "savingThrows": [],
+            "skills": [],
+            "proficiencyBonus": 2,
+            "senses": {"darkvision": 0, "passivePerception": 10},
+            "languages": ["Common"],
+            "proficiencies": {"armor": [], "weapons": [], "tools": []},
+            "damageVulnerabilities": [],
+            "damageResistances": [],
+            "damageImmunities": [],
+            "conditionImmunities": [],
+            "classFeatures": [],
+            "racialTraits": [],
+            "backgroundFeature": {"name": "Feature", "description": "Standard background feature"},
+            "temporaryEffects": [],
+            "injuries": [],
+            "equipment_effects": [],
+            "feats": [],
+            "equipment": [],
+            "attacksAndSpellcasting": [],
+            "spellcasting": {
+                "ability": "none",
+                "spellSaveDC": 8,
+                "spellAttackBonus": 0,
+                "spells": {},
+                "spellSlots": {}
+            },
+            "currency": {"gold": 0, "silver": 0, "copper": 0},
+            "experience_points": 0,
+            "exp_required_for_next_level": 300,
+            "personality_traits": "",
+            "ideals": "",
+            "bonds": "",
+            "flaws": ""
+        }
+        
+        # Save character file
+        char_filename = name.lower().replace(' ', '_') + ".json"
+        char_path = os.path.join('characters', char_filename)
+        
+        if os.path.exists(char_path):
+            return jsonify({'error': f'Character file {char_filename} already exists!'}), 400
+            
+        success = safe_write_json(char_path, new_char)
+        if not success:
+            return jsonify({'error': 'Failed to save character file'}), 500
+            
+        # Add to party
+        pc_manager.add_pc(name)
+        
+        # Inject introduction prompt to LLM
+        intro_prompt = pc_manager.get_entrance_prompt(name, new_char, pc_manager.get_party_tracker())
+        user_input_queue.put(intro_prompt)
+        
+        info(f"TABLETOP: Manually created character {name}")
+        return jsonify({'success': True, 'name': name})
+        
+    except Exception as e:
+        error(f"TABLETOP: Failed to create manual character: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @socketio.on('request_initiative_data')
 def handle_initiative_data_request():

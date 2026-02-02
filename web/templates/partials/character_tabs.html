@@ -1,0 +1,113 @@
+<div class="character-tabs-container" id="character-tabs-container" 
+     style="display: {{ 'flex' if multiplayer_mode or party_members|length > 1 else 'none' }};">
+    <div class="character-tabs-scroll" id="character-tabs-list" style="display: flex; gap: 5px;">
+        {% for member in party_members %}
+            <div class="character-tab-wrapper" style="position: relative; display: inline-block;">
+                <button class="character-tab {{ 'active' if member == active_character else '' }}" 
+                        data-character="{{ member }}"
+                        onclick="setActiveCharacter('{{ member }}')">
+                    {{ member }}
+                </button>
+                <span class="retire-character-btn" 
+                      onclick="retireCharacter('{{ member }}')" 
+                      title="Retire from Party"
+                      style="position: absolute; top: -5px; right: -5px; background: #f44336; color: white; border-radius: 50%; width: 15px; height: 15px; font-size: 10px; line-height: 15px; text-align: center; cursor: pointer; display: none; z-index: 10;">&times;</span>
+            </div>
+        {% endfor %}
+    </div>
+    <button class="add-character-tab" onclick="openManagePartyModal()" title="Add/Manage Party">
+        <span class="manage-icon">+</span>
+    </button>
+</div>
+
+<!-- Manage Party Modal -->
+<div id="manage-party-modal" class="npc-details-modal">
+    <div class="npc-details-modal-content" style="max-width: 600px;">
+        <div class="npc-details-header">
+            <div class="npc-details-title">Manage Party</div>
+            <span class="npc-details-close" onclick="closeManagePartyModal()">&times;</span>
+        </div>
+        
+        <div class="npc-details-body">
+            <!-- Navigation -->
+            <div class="tabs" style="margin-bottom: 15px;">
+                <button class="tab-button active" onclick="switchManageTab('add-existing')">Add Existing</button>
+                <button class="tab-button" onclick="switchManageTab('dm-interview')">Create with DM</button>
+                <button class="tab-button" onclick="switchManageTab('quick-create')">DM Quick-Create</button>
+            </div>
+
+            <!-- Tab: Add Existing -->
+            <div id="tab-add-existing" class="manage-tab-content">
+                <p style="margin-bottom: 10px; color: #aaa;">Select a character from your /characters folder:</p>
+                <div id="existing-character-list" class="save-list" style="max-height: 300px;">
+                    <div class="loading">Loading characters...</div>
+                </div>
+            </div>
+
+            <!-- Tab: DM Interview -->
+            <div id="tab-dm-interview" class="manage-tab-content" style="display: none;">
+                <p style="margin-bottom: 15px; color: #aaa;">The Dungeon Master will guide you through character creation in the game chat. All choices (Race, Class, Stats) will be updated on the character sheet automatically.</p>
+                <form id="dm-interview-form" class="save-form">
+                    <div style="margin-bottom: 15px;">
+                        <label>Character Name</label>
+                        <input type="text" id="interview-char-name" required placeholder="e.g. Valerius">
+                    </div>
+                    <button type="button" class="dialog-button primary" style="width: 100%;" onclick="submitDMInterviewCreate()">
+                        Start DM Interview
+                    </button>
+                </form>
+            </div>
+
+            <!-- Tab: Quick Create -->
+            <div id="tab-quick-create" class="manage-tab-content" style="display: none;">
+                <form id="quick-create-form" class="save-form">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label>Name</label>
+                            <input type="text" name="name" required placeholder="e.g. Valerius">
+                        </div>
+                        <div>
+                            <label>Race</label>
+                            <input type="text" name="race" required placeholder="e.g. Elf">
+                        </div>
+                        <div>
+                            <label>Class</label>
+                            <input type="text" name="class" required placeholder="e.g. Wizard">
+                        </div>
+                        <div>
+                            <label>Level</label>
+                            <input type="number" name="level" value="1" min="1">
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 15px;">
+                        <label>Ability Scores (Manual/Rolled)</label>
+                        <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px;">
+                            <div><label style="font-size: 10px;">STR</label><input type="number" name="str" value="10"></div>
+                            <div><label style="font-size: 10px;">DEX</label><input type="number" name="dex" value="10"></div>
+                            <div><label style="font-size: 10px;">CON</label><input type="number" name="con" value="10"></div>
+                            <div><label style="font-size: 10px;">INT</label><input type="number" name="int" value="10"></div>
+                            <div><label style="font-size: 10px;">WIS</label><input type="number" name="wis" value="10"></div>
+                            <div><label style="font-size: 10px;">CHA</label><input type="number" name="cha" value="10"></div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                        <div>
+                            <label>AC</label>
+                            <input type="number" name="ac" value="10">
+                        </div>
+                        <div>
+                            <label>HP</label>
+                            <input type="number" name="hp" value="10">
+                        </div>
+                    </div>
+
+                    <button type="button" class="dialog-button primary" style="width: 100%; margin-top: 15px;" onclick="submitQuickCreate()">
+                        Create & Add to Party
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

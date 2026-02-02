@@ -2803,6 +2803,286 @@ def main_game_loop():
     max_empty_inputs = 5
     
     print("[DEBUG] ENTERING MAIN GAME LOOP - while True")
+
+    def handle_local_command(input_text):
+        """Handle local slash commands that shouldn't go to the LLM"""
+        # Clean input of potential multi-PC tags (e.g., "[Character]: /command")
+        raw_input = input_text.strip()
+        clean_input = raw_input
+        if raw_input.startswith("[") and "]:" in raw_input:
+            parts = raw_input.split("]:", 1)
+            if len(parts) == 2:
+                clean_input = parts[1].strip()
+        
+        cmd = clean_input.lower()
+        
+        if cmd == "/save":
+            try:
+                from updates.save_game_manager import SaveGameManager
+                manager = SaveGameManager()
+                success, message = manager.create_save_game("Manual save", "essential")
+                print(colored(f"[SYSTEM] {message}", "green"))
+            except Exception as e:
+                print(colored(f"[ERROR] Save failed: {e}", "red"))
+            return True
+            
+        elif cmd in ["/quit", "/exit"]:
+            print(colored("[SYSTEM] Exiting game...", "yellow"))
+            import sys
+            sys.exit(0)
+            return True
+            
+        elif cmd == "/help":
+            help_msg = (
+                "Dungeon Master: [SYSTEM] Available Commands:\n"
+                "  /save - Save current game state\n"
+                "  /quit - Exit the game\n"
+                "  /stats - View full character stats\n"
+                "  /hp [amount] - Heal (positive) or damage (negative)\n"
+                "  /xp [amount] - Add experience points\n"
+                "  /level [number] - Set character level\n"
+                "  /inventory [add/remove] [item] - Manage inventory\n"
+                "  /gold [amount] - Add/remove gold\n"
+                "  /check [skill] - Perform skill check\n"
+                "  /travel [location] - Travel to location\n"
+                "  /rest [short/long] - Rest\n"
+                "  /storage - Access storage\n"
+                "  /levelup - Trigger level up if XP requirement met"
+            )
+            print(colored(help_msg, "cyan"))
+            # Force flush to ensure it reaches the web interface immediately
+            import sys
+            sys.stdout.flush()
+            return True
+
+        # --- Character Info Commands ---
+
+        elif cmd == "/levelup":
+            try:
+                # Get active character
+                pt_data = safe_read_json("party_tracker.json")
+                char_name = pt_data.get("active_character") or pt_data.get("partyMembers", [])[0]
+                char_path = path_manager.get_character_path(normalize_character_name(char_name))
+                char_data = safe_read_json(char_path)
+                
+                if not char_data:
+                    print(colored(f"Dungeon Master: [SYSTEM] Error: Could not load data for {char_name}", "red"))
+                    import sys; sys.stdout.flush()
+                    return True
+                
+                current_xp = char_data.get('experience_points', 0)
+                next_level_xp = char_data.get('exp_required_for_next_level', 999999)
+                current_level = char_data.get('level', 1)
+                
+                if current_xp < next_level_xp:
+                    msg = f"Dungeon Master: [SYSTEM] {char_name} is not ready to level up. XP: {current_xp}/{next_level_xp}"
+                    print(colored(msg, "yellow"))
+                    import sys; sys.stdout.flush()
+                    return True
+                
+                # Ready to level up!
+                new_level = current_level + 1
+                msg = f"Dungeon Master: [SYSTEM] {char_name} is ready to reach level {new_level}! Starting level up session..."
+                print(colored(msg, "green"))
+                import sys; sys.stdout.flush()
+                
+                # Initialize session
+                from core.managers.level_up_manager import LevelUpSession
+                level_up_session = LevelUpSession(char_name, current_level, new_level)
+                
+                # Start session
+                dm_response = level_up_session.start()
+                print(colored("Dungeon Master:", "blue"), colored(dm_response, "blue"))
+                conversation_history.append({"role": "assistant", "content": dm_response})
+                save_conversation_history(conversation_history)
+                
+                # Interactive loop
+                final_narration = ""
+                while not level_up_session.is_complete:
+                    try:
+                        player_name_display = f"{SOLID_GREEN}{char_name}{RESET_COLOR}"
+                        level_up_input = input(f"{player_name_display} (Leveling Up): ")
+                        
+                        if not level_up_input or not level_up_input.strip():
+                            continue
+                            
+                        # Handle input
+                        dm_response = level_up_session.handle_input(level_up_input)
+                        
+                        # Check response type
+                        try:
+                            parsed_data = json.loads(dm_response)
+                            final_narration = parsed_data.get("narration", "Level up complete!")
+                            print(colored("Dungeon Master:", "blue"), colored(final_narration, "blue"))
+                        except (json.JSONDecodeError, TypeError):
+                            print(colored("Dungeon Master:", "blue"), colored(dm_response, "blue"))
+                            
+                    except EOFError:
+                        break
+                
+                # Finalize
+                if level_up_session.success:
+                    conversation_history.append({"role": "assistant", "content": json.dumps({"narration": final_narration, "actions": []})})
+                    save_conversation_history(conversation_history)
+                    print(colored(f"Dungeon Master: [SYSTEM] {char_name} is now level {new_level}!", "green"))
+                else:
+                    print(colored("Dungeon Master: [SYSTEM] Level up cancelled or failed.", "red"))
+                    conversation_history.append({"role": "system", "content": level_up_session.summary})
+                    save_conversation_history(conversation_history)
+                
+                import sys; sys.stdout.flush()
+                
+            except Exception as e:
+                print(colored(f"Dungeon Master: [SYSTEM] Error during level up: {e}", "red"))
+                import sys; sys.stdout.flush()
+                import traceback
+                traceback.print_exc()
+            return True
+        
+        elif cmd.startswith("/stats"):
+            try:
+                # Get active character
+                pt_data = safe_read_json("party_tracker.json")
+                char_name = pt_data.get("active_character") or pt_data.get("partyMembers", [])[0]
+                char_path = path_manager.get_character_path(normalize_character_name(char_name))
+                char_data = safe_read_json(char_path)
+                
+                if char_data:
+                    stats_msg = f"Dungeon Master: [SYSTEM] Stats for {char_name}:\n"
+                    stats_msg += f"  Level: {char_data.get('level', 1)} | XP: {char_data.get('experience_points', 0)}\n"
+                    stats_msg += f"  HP: {char_data.get('hitPoints', 0)}/{char_data.get('maxHitPoints', 0)} | AC: {char_data.get('armorClass', 10)}\n"
+                    stats_msg += f"  Speed: {char_data.get('speed', 30)} | Init: {char_data.get('initiative', 0)}\n"
+                    
+                    abilities = char_data.get('abilities', {})
+                    stats_msg += f"  STR: {abilities.get('strength', 10)} | DEX: {abilities.get('dexterity', 10)} | CON: {abilities.get('constitution', 10)}\n"
+                    stats_msg += f"  INT: {abilities.get('intelligence', 10)} | WIS: {abilities.get('wisdom', 10)} | CHA: {abilities.get('charisma', 10)}\n"
+                    
+                    print(colored(stats_msg, "green"))
+                    import sys
+                    sys.stdout.flush()
+                else:
+                    print(colored(f"Dungeon Master: [SYSTEM] Error: Could not load data for {char_name}", "red"))
+                    import sys
+                    sys.stdout.flush()
+            except Exception as e:
+                print(colored(f"Dungeon Master: [SYSTEM] Error showing stats: {e}", "red"))
+                import sys
+                sys.stdout.flush()
+            return True
+
+        elif cmd.startswith("/hp"):
+            try:
+                parts = cmd.split()
+                if len(parts) < 2:
+                    print(colored("Dungeon Master: [SYSTEM] Usage: /hp [amount]", "red"))
+                    import sys; sys.stdout.flush()
+                    return True
+                
+                amount = int(parts[1])
+                
+                # Get active character
+                pt_data = safe_read_json("party_tracker.json")
+                char_name = pt_data.get("active_character") or pt_data.get("partyMembers", [])[0]
+                char_path = path_manager.get_character_path(normalize_character_name(char_name))
+                char_data = safe_read_json(char_path)
+                
+                if char_data:
+                    current_hp = char_data.get('hitPoints', 0)
+                    max_hp = char_data.get('maxHitPoints', 0)
+                    new_hp = max(0, min(max_hp, current_hp + amount))
+                    char_data['hitPoints'] = new_hp
+                    
+                    safe_write_json(char_path, char_data)
+                    
+                    action_str = "healed" if amount >= 0 else "damaged"
+                    msg = f"Dungeon Master: [SYSTEM] {char_name} {action_str} by {abs(amount)}. HP: {current_hp} -> {new_hp}/{max_hp}"
+                    print(colored(msg, "green"))
+                    import sys; sys.stdout.flush()
+                else:
+                    print(colored(f"Dungeon Master: [SYSTEM] Error: Could not load data for {char_name}", "red"))
+                    import sys; sys.stdout.flush()
+            except ValueError:
+                print(colored("Dungeon Master: [SYSTEM] Usage: /hp [amount] (must be a number)", "red"))
+                import sys; sys.stdout.flush()
+            except Exception as e:
+                print(colored(f"Dungeon Master: [SYSTEM] Error updating HP: {e}", "red"))
+                import sys; sys.stdout.flush()
+            return True
+
+        elif cmd.startswith("/xp"):
+            try:
+                parts = cmd.split()
+                if len(parts) < 2:
+                    print(colored("Dungeon Master: [SYSTEM] Usage: /xp [amount]", "red"))
+                    import sys; sys.stdout.flush()
+                    return True
+                
+                amount = int(parts[1])
+                
+                # Get active character
+                pt_data = safe_read_json("party_tracker.json")
+                char_name = pt_data.get("active_character") or pt_data.get("partyMembers", [])[0]
+                char_path = path_manager.get_character_path(normalize_character_name(char_name))
+                char_data = safe_read_json(char_path)
+                
+                if char_data:
+                    current_xp = char_data.get('experience_points', 0)
+                    new_xp = max(0, current_xp + amount)
+                    char_data['experience_points'] = new_xp
+                    
+                    safe_write_json(char_path, char_data)
+                    
+                    msg = f"Dungeon Master: [SYSTEM] {char_name} gained {amount} XP. Total: {current_xp} -> {new_xp}"
+                    print(colored(msg, "green"))
+                    import sys; sys.stdout.flush()
+                else:
+                    print(colored(f"Dungeon Master: [SYSTEM] Error: Could not load data for {char_name}", "red"))
+                    import sys; sys.stdout.flush()
+            except ValueError:
+                print(colored("Dungeon Master: [SYSTEM] Usage: /xp [amount] (must be a number)", "red"))
+                import sys; sys.stdout.flush()
+            except Exception as e:
+                print(colored(f"Dungeon Master: [SYSTEM] Error updating XP: {e}", "red"))
+                import sys; sys.stdout.flush()
+            return True
+
+        elif cmd.startswith("/level"):
+            try:
+                parts = cmd.split()
+                if len(parts) < 2:
+                    print(colored("Dungeon Master: [SYSTEM] Usage: /level [number]", "red"))
+                    import sys; sys.stdout.flush()
+                    return True
+                
+                level = int(parts[1])
+                
+                # Get active character
+                pt_data = safe_read_json("party_tracker.json")
+                char_name = pt_data.get("active_character") or pt_data.get("partyMembers", [])[0]
+                char_path = path_manager.get_character_path(normalize_character_name(char_name))
+                char_data = safe_read_json(char_path)
+                
+                if char_data:
+                    current_level = char_data.get('level', 1)
+                    char_data['level'] = level
+                    
+                    safe_write_json(char_path, char_data)
+                    
+                    msg = f"Dungeon Master: [SYSTEM] {char_name} level set to {level} (was {current_level})"
+                    print(colored(msg, "green"))
+                    import sys; sys.stdout.flush()
+                else:
+                    print(colored(f"Dungeon Master: [SYSTEM] Error: Could not load data for {char_name}", "red"))
+                    import sys; sys.stdout.flush()
+            except ValueError:
+                print(colored("Dungeon Master: [SYSTEM] Usage: /level [number] (must be a number)", "red"))
+                import sys; sys.stdout.flush()
+            except Exception as e:
+                print(colored(f"Dungeon Master: [SYSTEM] Error updating level: {e}", "red"))
+                import sys; sys.stdout.flush()
+            return True
+            
+        return False
     if combat_was_resumed:
         print("[DEBUG] SUCCESS: Main loop reached after combat resumption!")
         debug("SUCCESS: Main game loop reached after combat resumption", category="session_management")
@@ -2882,7 +3162,7 @@ def main_game_loop():
     
         # Now, get the player's name and load their character file for the UI.
         # This data will now be fresh if a refresh was just triggered.
-        player_name_actual = party_tracker_data["partyMembers"][0]
+        player_name_actual = party_tracker_data.get("active_character") or party_tracker_data["partyMembers"][0]
         from updates.update_character_info import normalize_character_name
         player_name_normalized = normalize_character_name(player_name_actual)
         player_data_file = path_manager.get_character_path(player_name_normalized)
@@ -2914,6 +3194,10 @@ def main_game_loop():
         else:
             # Reset counter on valid input
             empty_input_count = 0
+
+            # Check for local commands
+            if handle_local_command(user_input_text):
+                continue
     
         party_tracker_data = load_json_file("party_tracker.json") 
     
@@ -3291,8 +3575,8 @@ def main_game_loop():
                 dm_note = (f"Dungeon Master Note: Current date and time: {date_time_str}, {current_season} season. "
                     f"Current module: {current_module_name}. "
                     f"Current location: {current_location_name_note} ({current_location_id_note}) in the {current_area_name} area. "
-                    f"Party members: {party_members_str}. "
-                    f"Party NPCs: {party_npcs_str}. "
+                    f"Active Player Characters (User Controlled): {party_members_str}. "
+                    f"Accompanied by Party NPCs (DM Controlled): {party_npcs_str}. "
                     f"Party stats: {party_stats_str}. "
                     f"Adjacent locations in this area: {connected_locations_display_str}{connected_areas_display_str}{available_modules_str}{established_hubs_str}.\n")
             else:
@@ -3300,8 +3584,8 @@ def main_game_loop():
                 dm_note = (f"Dungeon Master Note: Current date and time: {date_time_str}, {current_season} season. "
                     f"Current module: {current_module_name}. "
                     f"Current location: {current_location_name_note} ({current_location_id_note}) in the {current_area_name} area. "
-                    f"Party members: {party_members_str}. "
-                    f"Party NPCs: {party_npcs_str}. "
+                    f"Active Player Characters (User Controlled): {party_members_str}. "
+                    f"Accompanied by Party NPCs (DM Controlled): {party_npcs_str}. "
                     f"Party stats: {party_stats_str}. "
                     # --- MODIFIED LINE TO INCLUDE CONNECTIVITY ---
                     f"Adjacent locations in this area: {connected_locations_display_str}{connected_areas_display_str}{available_modules_str}{established_hubs_str}.\n"
@@ -3712,6 +3996,14 @@ def main():
     # Always initialize game files from BU templates if needed
     from utils.startup_wizard import initialize_game_files_from_bu
     initialize_game_files_from_bu()
+    
+    # Run character repair utility to ensure all sheets are synchronized and valid
+    try:
+        print("[SYSTEM] Running character repair service...")
+        from scripts.repair_all_characters import repair_all
+        repair_all()
+    except Exception as e:
+        print(f"[WARNING] Character repair service encountered an issue: {e}")
     
     # Run calendar migration check
     from utils.calendar_migration import run_calendar_migration

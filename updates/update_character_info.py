@@ -134,6 +134,49 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 TEMPERATURE = 0.7
 VALIDATION_TEMPERATURE = 0.1  # Lower temperature for validation
 
+# Standard 5e Weapon Database for auto-synchronization
+WEAPON_DATABASE = {
+    "club": {"dice": "1d4", "type": "bludgeoning", "category": "simple", "properties": ["light"]},
+    "dagger": {"dice": "1d4", "type": "piercing", "category": "simple", "properties": ["finesse", "light", "thrown"]},
+    "greatclub": {"dice": "1d8", "type": "bludgeoning", "category": "simple", "properties": ["two-handed"]},
+    "handaxe": {"dice": "1d6", "type": "slashing", "category": "simple", "properties": ["light", "thrown"]},
+    "javelin": {"dice": "1d6", "type": "piercing", "category": "simple", "properties": ["thrown"]},
+    "light hammer": {"dice": "1d4", "type": "bludgeoning", "category": "simple", "properties": ["light", "thrown"]},
+    "mace": {"dice": "1d6", "type": "bludgeoning", "category": "simple", "properties": []},
+    "quarterstaff": {"dice": "1d6", "type": "bludgeoning", "category": "simple", "properties": ["versatile"]},
+    "sickle": {"dice": "1d4", "type": "slashing", "category": "simple", "properties": ["light"]},
+    "spear": {"dice": "1d6", "type": "piercing", "category": "simple", "properties": ["thrown", "versatile"]},
+    "crossbow, light": {"dice": "1d8", "type": "piercing", "category": "simple", "properties": ["ammunition", "loading", "two-handed"]},
+    "dart": {"dice": "1d4", "type": "piercing", "category": "simple", "properties": ["finesse", "thrown"]},
+    "shortbow": {"dice": "1d6", "type": "piercing", "category": "simple", "properties": ["ammunition", "two-handed"]},
+    "sling": {"dice": "1d4", "type": "bludgeoning", "category": "simple", "properties": ["ammunition"]},
+    "battleaxe": {"dice": "1d8", "type": "slashing", "category": "martial", "properties": ["versatile"]},
+    "flail": {"dice": "1d8", "type": "bludgeoning", "category": "martial", "properties": []},
+    "glaive": {"dice": "1d10", "type": "slashing", "category": "martial", "properties": ["heavy", "reach", "two-handed"]},
+    "greataxe": {"dice": "1d12", "type": "slashing", "category": "martial", "properties": ["heavy", "two-handed"]},
+    "great axe": {"dice": "1d12", "type": "slashing", "category": "martial", "properties": ["heavy", "two-handed"]},
+    "greatsword": {"dice": "2d6", "type": "slashing", "category": "martial", "properties": ["heavy", "two-handed"]},
+    "halberd": {"dice": "1d10", "type": "slashing", "category": "martial", "properties": ["heavy", "reach", "two-handed"]},
+    "lance": {"dice": "1d12", "type": "piercing", "category": "martial", "properties": ["reach", "special"]},
+    "longsword": {"dice": "1d8", "type": "slashing", "category": "martial", "properties": ["versatile"]},
+    "maul": {"dice": "2d6", "type": "bludgeoning", "category": "martial", "properties": ["heavy", "two-handed"]},
+    "morningstar": {"dice": "1d8", "type": "piercing", "category": "martial", "properties": []},
+    "pike": {"dice": "1d10", "type": "piercing", "category": "martial", "properties": ["heavy", "reach", "two-handed"]},
+    "rapier": {"dice": "1d8", "type": "piercing", "category": "martial", "properties": ["finesse"]},
+    "scimitar": {"dice": "1d6", "type": "slashing", "category": "martial", "properties": ["finesse", "light"]},
+    "shortsword": {"dice": "1d6", "type": "piercing", "category": "martial", "properties": ["finesse", "light"]},
+    "short sword": {"dice": "1d6", "type": "piercing", "category": "martial", "properties": ["finesse", "light"]},
+    "trident": {"dice": "1d6", "type": "piercing", "category": "martial", "properties": ["thrown", "versatile"]},
+    "war pick": {"dice": "1d8", "type": "piercing", "category": "martial", "properties": []},
+    "warhammer": {"dice": "1d8", "type": "bludgeoning", "category": "martial", "properties": ["versatile"]},
+    "whip": {"dice": "1d4", "type": "slashing", "category": "martial", "properties": ["finesse", "reach"]},
+    "blowgun": {"dice": "1", "type": "piercing", "category": "martial", "properties": ["ammunition", "loading"]},
+    "crossbow, hand": {"dice": "1d6", "type": "piercing", "category": "martial", "properties": ["ammunition", "light", "loading"]},
+    "crossbow, heavy": {"dice": "1d10", "type": "piercing", "category": "martial", "properties": ["ammunition", "heavy", "loading", "two-handed"]},
+    "longbow": {"dice": "1d8", "type": "piercing", "category": "martial", "properties": ["ammunition", "heavy", "two-handed"]},
+    "net": {"dice": "-", "type": "bludgeoning", "category": "martial", "properties": ["special", "thrown"]}
+}
+
 # ANSI escape codes - REMOVED per CLAUDE.md guidelines
 # All color codes have been removed to prevent Windows console encoding errors
 
@@ -524,7 +567,13 @@ def deep_merge_dict(base_dict, update_dict):
         'equipment': 'item_name',
         'equipment_effects': 'name',
         'feats': 'name',
-        'racialTraits': 'name'
+        'racialTraits': 'name',
+        'savingThrows': None, # special case
+        'languages': None,
+        'damageVulnerabilities': None,
+        'damageResistances': None,
+        'damageImmunities': None,
+        'conditionImmunities': None
     }
     
     # Arrays that should be completely replaced, not merged
@@ -538,15 +587,16 @@ def deep_merge_dict(base_dict, update_dict):
             # Recursively merge nested dictionaries
             result[key] = deep_merge_dict(result[key], value)
         elif key in named_arrays and isinstance(result.get(key), list) and isinstance(value, list):
-            # Special handling for arrays with named items
+            # Special handling for arrays
             name_field = named_arrays[key]
-            # print(f"[DEBUG deep_merge_dict] Processing named array: {key}")
-            if key == 'equipment':
+            
+            if name_field is None:
+                # Simple list of strings - unique merge
+                result[key] = list(set(result[key] + value))
+            elif key == 'equipment':
                 result[key] = merge_equipment_arrays(result[key], value)
             elif key == 'ammunition':
-                # print(f"[DEBUG deep_merge_dict] Calling merge_ammunition_arrays")
                 result[key] = merge_ammunition_arrays(result[key], value)
-                # print(f"[DEBUG deep_merge_dict] merge_ammunition_arrays returned successfully")
             else:
                 # For other named arrays, use generic merge
                 result[key] = merge_named_arrays(result[key], value, name_field)
@@ -646,12 +696,25 @@ def merge_named_arrays(base_array, update_array, name_field):
     # Create lookup map from base array
     lookup = {}
     for item in base_array:
+        # Robust check for dict type
+        if not isinstance(item, dict):
+            continue
+            
         key = item.get(name_field, '').lower().strip()
         if key:
             lookup[key] = copy.deepcopy(item)
     
     # Process updates
     for update_item in update_array:
+        # Handle cases where AI returns a string instead of an object in an array
+        if isinstance(update_item, str):
+            # Try to treat the string as the name
+            update_name = update_item.strip()
+            update_item = {name_field: update_name, "description": update_name}
+        
+        if not isinstance(update_item, dict):
+            continue
+            
         update_name = update_item.get(name_field, '').strip()
         update_name_lower = update_name.lower()
         
@@ -995,6 +1058,114 @@ def restore_character_from_backup(character_name, backup_type="latest", characte
         error(f"FAILURE: Error restoring from backup", exception=e, category="character_updates")
         return False
 
+def calculate_ability_modifier(score):
+    """Calculate 5e ability modifier from score"""
+    try:
+        return (int(score) - 10) // 2
+    except:
+        return 0
+
+def synchronize_weapons(character_data):
+    """
+    Ensure all equipped weapons in equipment have a corresponding entry in attacksAndSpellcasting.
+    Uses WEAPON_DATABASE to fill in missing details.
+    """
+    if 'equipment' not in character_data or not isinstance(character_data['equipment'], list):
+        return character_data
+    
+    if 'attacksAndSpellcasting' not in character_data:
+        character_data['attacksAndSpellcasting'] = []
+    
+    # Get ability modifiers for bonus calculation
+    abilities = character_data.get('abilities', {})
+    str_mod = calculate_ability_modifier(abilities.get('strength', 10))
+    dex_mod = calculate_ability_modifier(abilities.get('dexterity', 10))
+    prof_bonus = character_data.get('proficiencyBonus', 2)
+    
+    equipped_weapons = [item for item in character_data['equipment'] 
+                       if item.get('item_type') == 'weapon' and item.get('equipped', False)]
+    
+    existing_attacks = {attack.get('name', '').lower(): attack for attack in character_data['attacksAndSpellcasting']}
+    
+    for weapon in equipped_weapons:
+        weapon_name = weapon.get('item_name', '')
+        if not weapon_name:
+            continue
+            
+        name_lower = weapon_name.lower()
+        
+        # Check if attack exists but is incomplete (missing required schema fields)
+        attack_to_repair = None
+        if name_lower in existing_attacks:
+            attack_to_repair = existing_attacks[name_lower]
+            required_fields = ["name", "attackBonus", "damageDice", "damageBonus", "damageType", "type", "description"]
+            is_complete = all(field in attack_to_repair for field in required_fields)
+            if is_complete:
+                continue
+            else:
+                debug(f"SYNC: Repairing incomplete attack entry for: {weapon_name}", category="character_updates")
+            
+        # Try to find weapon stats in database
+        # Fuzzy match: check if weapon_name contains any key in WEAPON_DATABASE
+        db_stats = None
+        for db_name, stats in WEAPON_DATABASE.items():
+            if db_name in name_lower:
+                db_stats = stats
+                break
+        
+        # Default stats if not found
+        if not db_stats:
+            db_stats = {"dice": "1d4", "type": "bludgeoning", "category": "simple", "properties": []}
+            
+        # Determine attack type and modifiers
+        is_ranged = "ranged" in weapon.get('weapon_type', '').lower() or "ammunition" in db_stats.get('properties', [])
+        is_finesse = "finesse" in db_stats.get('properties', [])
+        is_thrown = "thrown" in db_stats.get('properties', [])
+        
+        # Logic for bonuses
+        if is_ranged and not is_thrown:
+            # Pure ranged weapons use DEX
+            mod = dex_mod
+            atk_type = "ranged"
+        elif is_finesse:
+            # Finesse uses higher of STR or DEX
+            mod = max(str_mod, dex_mod)
+            atk_type = "melee" # Usually melee
+        else:
+            # Default to melee STR
+            mod = str_mod
+            atk_type = "melee"
+            
+        # Construct attack entry
+        attack_entry = {
+            "name": weapon_name,
+            "attackBonus": mod + prof_bonus + weapon.get('attack_bonus', 0),
+            "damageDice": weapon.get('damage', db_stats['dice']),
+            "damageBonus": mod + weapon.get('attack_bonus', 0), # Simplified, usually damage bonus matches attack bonus without prof
+            "damageType": db_stats['type'],
+            "type": atk_type,
+            "description": weapon.get('description', f"A standard {weapon_name}.")
+        }
+        
+        # Final schema check: ensure all required fields present
+        required_fields = ["name", "attackBonus", "damageDice", "damageBonus", "damageType", "type", "description"]
+        for field in required_fields:
+            if field not in attack_entry:
+                # This shouldn't happen with the logic above but good as a safety
+                if field == "damageBonus": attack_entry[field] = 0
+                elif field == "attackBonus": attack_entry[field] = 0
+                else: attack_entry[field] = "None"
+        
+        if attack_to_repair:
+            # Update existing attack in place
+            attack_to_repair.update(attack_entry)
+        else:
+            # Add new entry
+            character_data['attacksAndSpellcasting'].append(attack_entry)
+            debug(f"SYNC: Added missing attack entry for equipped weapon: {weapon_name}", category="character_updates")
+        
+    return character_data
+
 def repair_character_data(character_data):
     """
     Repair common schema issues in character data before processing
@@ -1005,6 +1176,16 @@ def repair_character_data(character_data):
     Returns:
         dict: Repaired character data
     """
+    # Ensure background is a string (AI sometimes sends object or list)
+    if 'background' in character_data:
+        if isinstance(character_data['background'], list):
+            character_data['background'] = ", ".join([str(x) for x in character_data['background']])
+        elif isinstance(character_data['background'], dict):
+            character_data['background'] = character_data['background'].get('name', str(character_data['background']))
+
+    # Synchronize weapons with attacks
+    character_data = synchronize_weapons(character_data)
+    
     # Ensure ammunition has descriptions
     if 'ammunition' in character_data and isinstance(character_data['ammunition'], list):
         for ammo in character_data['ammunition']:
@@ -1764,6 +1945,27 @@ Please provide the CORRECT currency values:
                 # print(f"[DEBUG] Character data saved successfully!")
                 info(f"SUCCESS: Successfully updated {character_name} ({character_role})!", category="character_updates")
                 
+                # CRITICAL FIX: Ensure players are added to partyMembers
+                if character_role == 'player':
+                    try:
+                        party_tracker = safe_read_json("party_tracker.json")
+                        if party_tracker:
+                            party_members = party_tracker.get("partyMembers", [])
+                            # Check normalized name or original name
+                            if character_name not in party_members and updated_data.get('name') not in party_members:
+                                print(f"DEBUG: [Auto-Register] Adding {character_name} to partyMembers list")
+                                party_members.append(character_name)
+                                party_tracker["partyMembers"] = party_members
+                                
+                                # Set as active if none active
+                                if not party_tracker.get("active_character"):
+                                    party_tracker["active_character"] = character_name
+                                    
+                                safe_write_json("party_tracker.json", party_tracker)
+                                info(f"SUCCESS: Auto-registered {character_name} as party member", category="character_updates")
+                    except Exception as e:
+                        print(f"ERROR: Failed to auto-register player: {e}")
+
                 # Debug HP after save
                 if 'hitPoints' in updates:
                     saved_data = safe_read_json(character_path)
