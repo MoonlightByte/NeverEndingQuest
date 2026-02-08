@@ -47,6 +47,8 @@ GPT5_USE_HIGH_REASONING_ON_RETRY = True                # Use high reasoning effo
 
 # --- Combat System Settings ---
 USE_COMPRESSED_COMBAT = True                            # Toggle for compressed combat AND validation prompts (False = original prompts)
+COMBAT_API_TIMEOUT_SECONDS = 120                        # Per-call timeout for combat LLM calls (prevents indefinite hangs)
+COMBAT_CONNECT_TIMEOUT_SECONDS = 10                     # TCP connection timeout for combat LLM calls
 
 # --- Conversation Compression Settings ---
 # Enable/disable compression types before API calls
@@ -64,3 +66,147 @@ COMPRESSION_MAX_WORKERS = 4                              # Number of parallel wo
 TTS_MODEL = "tts-1"                                       # OpenAI TTS model (tts-1 or tts-1-hd for higher quality)
 TTS_VOICE = "fable"                                       # Voice: alloy, echo, fable, onyx, nova, shimmer (fable is good for narration)
 TTS_SPEED = 1.0                                           # Speed: 0.25 to 4.0 (1.0 is normal)
+
+# ============================================================================
+# OPENROUTER CONFIGURATION - Multi-Provider AI Support
+# ============================================================================
+
+# --- Provider Selection ---
+# Set to "openrouter" to use OpenRouter, "openai" for direct OpenAI API
+LLM_PROVIDER = "openai"  # Options: "openai", "openrouter"
+
+# --- OpenRouter Settings ---
+# Get your API key at: https://openrouter.ai/keys
+OPENROUTER_API_KEY = ""  # Set in config.py (not model_config.py)
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_HTTP_REFERER = "https://github.com/zeug/NeverEndingQuest"  # For OpenRouter rankings
+OPENROUTER_APP_TITLE = "NeverEndingQuest AI DM"
+
+# --- Pre-configured Models ---
+# Recommended: Kimi K2.5 for DM (excellent reasoning, 1M context)
+OPENROUTER_CHAT_MODEL = "moonshotai/kimi-k2.5"
+
+# Alternative models (uncomment to use):
+# OPENROUTER_CHAT_MODEL = "anthropic/claude-3.5-sonnet"  # If you prefer Claude
+# OPENROUTER_CHAT_MODEL = "google/gemini-2.0-flash-exp"  # Fastest option
+# OPENROUTER_CHAT_MODEL = "openai/gpt-4.1-2025-04-14"    # Use OpenAI via OpenRouter
+
+# --- Future Provider Slots (Phase 2+ Prep) ---
+IMAGE_PROVIDER = "openai"  # Options: "openai", "openrouter", "stability"
+TTS_PROVIDER = "openai"    # Options: "openai", "openrouter", "elevenlabs"
+VIDEO_PROVIDER = "none"    # Options: "none", "openrouter" (Phase 3)
+
+# --- Fallback Configuration ---
+ENABLE_PROVIDER_FALLBACK = True  # Auto-fallback to OpenAI if OpenRouter fails
+FALLBACK_NOTIFICATION = True     # Show system message in GUI when fallback occurs
+MAX_FALLBACK_ATTEMPTS = 3        # Retry OpenRouter before falling back
+
+# ============================================================================
+# PHASE 1B: FULL OPENROUTER ENABLEMENT - 3-TIER MODEL SYSTEM
+# ============================================================================
+#
+# TIER 1: Kimi K2.5 with Thinking Toggle (PRIMARY - Recommended)
+#   - Uses one model with adjustable reasoning depth
+#   - thinking: enabled = Complex tasks (matches upstream gpt-4.1-full)
+#   - thinking: disabled = Simple tasks (matches upstream gpt-4.1-mini)
+#   - Best balance of cost, quality, and simplicity
+#
+# TIER 2: Dual Model Strategy (SECONDARY - Fallback)
+#   - Uses separate models for complex vs simple tasks
+#   - Kimi K2.5 for full tasks, Gemini Flash for mini tasks
+#   - Use if Kimi thinking toggle has issues
+#
+# TIER 3: OpenAI Upstream (TERTIARY - Compatibility)
+#   - Uses original OpenAI model constants
+#   - Automatic fallback when OpenRouter fails
+#   - 100% upstream compatibility maintained
+#
+# To switch strategies, just change OPENROUTER_STRATEGY below
+# ============================================================================
+
+# --- Strategy Selection ---
+# "kimi_thinking" = One model with thinking toggle (recommended, default)
+# "dual_model" = Separate models for full/mini tasks (fallback option)
+# "single_model" = One model for everything (not recommended)
+OPENROUTER_STRATEGY = "kimi_thinking"
+
+# --- Base Models ---
+OPENROUTER_FULL_MODEL = "moonshotai/kimi-k2.5"  # For complex reasoning tasks
+OPENROUTER_MINI_MODEL = "google/gemini-2.0-flash-exp"  # For simple tasks (dual_model only)
+
+# Alternative mini models (uncomment to use):
+# OPENROUTER_MINI_MODEL = "qwen/qwen-2.5-7b-instruct"  # Cheapest option
+# OPENROUTER_MINI_MODEL = "meta-llama/llama-3.3-70b-instruct"  # Balanced quality/cost
+
+# --- Task Mapping (Based on Upstream Model Assignments) ---
+# Tasks using GPT-4.1-full upstream → thinking: enabled
+# Tasks using GPT-4.1-mini upstream → thinking: disabled
+# 
+# This mapping preserves upstream's tested model assignments
+
+THINKING_ENABLED_TASKS = [
+    # Complex reasoning tasks (upstream used gpt-4.1-full)
+    "dm_main",              # Main DM responses
+    "dm_validation",        # Response validation
+    "combat_main",          # Combat simulation
+    "action_prediction",    # Action prediction
+    "character_validator",  # Character validation
+    "npc_builder",          # NPC generation
+    "monster_builder",      # Monster generation
+    "level_up",             # Level up processing
+    "dm_full",              # Complex actions with JSON
+    "location_compression", # Location data compression
+]
+
+# All other tasks default to thinking: disabled (upstream used gpt-4.1-mini)
+# Including: summaries, updates, compression, transitions, builders (mini tasks)
+
+# --- Task-Specific Overrides (Optional) ---
+# Force specific configuration for individual tasks
+# Format: "task_id": {"thinking": "enabled|disabled", "model": "model_id"}
+# Uncomment lines below to override defaults:
+TASK_OVERRIDES = {
+    # Example overrides:
+    # "combat_main": {"thinking": "disabled"},  # Try faster combat
+    # "summaries": {"thinking": "enabled"},     # Try better summaries
+    # "validation": {"model": "anthropic/claude-3.5-sonnet"},  # Use Claude for validation
+}
+
+# --- Future Model Registry (For Easy Testing) ---
+# Add new models here as they become available, then reference in overrides
+AVAILABLE_MODELS = {
+    "kimi_k2.5": "moonshotai/kimi-k2.5",
+    "gemini_flash": "google/gemini-2.0-flash-exp",
+    "gemini_pro": "google/gemini-2.0-pro-exp",
+    "claude_sonnet": "anthropic/claude-3.5-sonnet",
+    "claude_haiku": "anthropic/claude-3.5-haiku",
+    "llama_70b": "meta-llama/llama-3.3-70b-instruct",
+    "qwen_7b": "qwen/qwen-2.5-7b-instruct",
+    "qwen_32b": "qwen/qwen-2.5-32b-instruct",
+    # Add future Chinese models here as they come online!
+}
+
+# --- Temperature Settings by Task Type ---
+# These match upstream temperature preferences
+TASK_TEMPERATURES = {
+    "dm_main": 0.7,
+    "dm_validation": 0.1,  # Low temp for validation
+    "combat_main": 0.7,
+    "action_prediction": 0.7,
+    "validation": 0.3,     # Low temp for analytical tasks
+    "summaries": 0.8,
+    "updates": 0.7,
+    "compression": 0.3,
+    "builders": 0.7,
+    "default": 0.7,
+}
+
+# --- Migration Path Notes ---
+# Current: Kimi K2.5 with thinking toggle (smart cost/quality balance)
+# Future Phase 2: When cheap models mature, move tasks to dual_model
+# Future Phase 3: When one model is "good enough", use single_model
+# 
+# To migrate: Just change OPENROUTER_STRATEGY and restart server
+# No code changes needed - all routing happens in ai_client_factory.py
+
+# ============================================================================

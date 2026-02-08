@@ -122,7 +122,7 @@ import subprocess
 # Add project root to sys.path for direct execution
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from model_config import USE_COMPRESSED_COMBAT
+from model_config import USE_COMPRESSED_COMBAT, COMBAT_API_TIMEOUT_SECONDS
 from datetime import datetime
 from utils.xp import main as calculate_xp
 from openai import OpenAI
@@ -747,7 +747,7 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
         debug("VALIDATION_CONTEXT: Unable to parse response JSON for context", category="combat_validation")
     
     # Load validation prompt from file (using toggle for compressed vs original)
-    from model_config import USE_COMPRESSED_COMBAT
+    from model_config import USE_COMPRESSED_COMBAT, COMBAT_API_TIMEOUT_SECONDS
     if multi_pc_manager:
         if USE_COMPRESSED_COMBAT:
             validation_prompt = read_prompt_from_file('combat/combat_validation_prompt_multipc_compressed.txt')
@@ -848,7 +848,8 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
             validation_result = client.chat.completions.create(
                 model=DM_VALIDATION_MODEL,
                 temperature=0.3,  # Lower temperature for more consistent validation
-                messages=validation_conversation
+                messages=validation_conversation,
+                timeout=COMBAT_API_TIMEOUT_SECONDS  # TABLETOP MODE: Prevent indefinite hang
             )
 
             # Log API call to master log
@@ -2571,7 +2572,8 @@ Player: {initial_prompt_text}"""
                response = client.chat.completions.create(
                    model=COMBAT_MAIN_MODEL, 
                    temperature=temperature_used, 
-                   messages=messages_to_send
+                        messages=messages_to_send,
+                        timeout=COMBAT_API_TIMEOUT_SECONDS  # TABLETOP MODE: Prevent indefinite hang
                )
                
                # Track usage
@@ -3613,7 +3615,8 @@ Rules:
                    response = client.chat.completions.create(
                        model=COMBAT_MAIN_MODEL,
                        temperature=temperature_used,
-                       messages=messages_to_send
+                       messages=messages_to_send,
+                        timeout=COMBAT_API_TIMEOUT_SECONDS  # TABLETOP MODE: Prevent indefinite hang
                    )
                
                # Track usage

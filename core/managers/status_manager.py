@@ -139,6 +139,72 @@ class StatusManager:
         with self._lock:
             return self._is_processing
 
+
+class StatusTimer:
+    """
+    Escalating status messages during blocking operations.
+
+    Runs a daemon thread that updates status_manager at scheduled intervals.
+    Auto-cancels when the `with` block exits (success or exception).
+
+    Usage:
+        with StatusTimer("Validating combat actions..."):
+            result = client.chat.completions.create(...)
+    """
+
+    DEFAULT_SCHEDULE = [
+        # (seconds_elapsed, message_template)
+        # None = keep the initial message passed to constructor
+        (10, "Still processing, please wait..."),
+        (30, "Response taking longer than usual..."),
+        (60, "Waiting for AI provider ({elapsed}s)..."),
+    ]
+
+    def __init__(self, initial_message, schedule=None):
+        self._initial_message = initial_message
+        self._schedule = schedule or self.DEFAULT_SCHEDULE
+        self._stop_event = threading.Event()
+        self._thread = None
+
+    def __enter__(self):
+        self._thread = threading.Thread(
+            target=self._run, daemon=True, name="StatusTimer"
+        )
+        self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join(timeout=1.0)
+        return False  # Don't suppress exceptions
+
+    def _run(self):
+        start = time.monotonic()
+        schedule_index = 0
+
+        while not self._stop_event.is_set():
+            self._stop_event.wait(timeout=1.0)  # Check every 1s
+            if self._stop_event.is_set():
+                break
+
+            elapsed = int(time.monotonic() - start)
+
+            # Check if we've reached the next escalation threshold
+            while (schedule_index < len(self._schedule) and
+                   elapsed >= self._schedule[schedule_index][0]):
+                msg_template = self._schedule[schedule_index][1]
+                msg = msg_template.format(elapsed=elapsed)
+                status_manager.update_status(msg, is_processing=True)
+                schedule_index += 1
+
+            # For the last schedule entry with {elapsed}, keep updating
+            if (schedule_index == len(self._schedule) and
+                self._schedule and "{elapsed}" in self._schedule[-1][1]):
+                msg = self._schedule[-1][1].format(elapsed=elapsed)
+                status_manager.update_status(msg, is_processing=True)
+
+
 # Global status manager instance
 status_manager = StatusManager()
 
