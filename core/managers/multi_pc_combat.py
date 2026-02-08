@@ -27,10 +27,10 @@
 
 import random
 import json
-from typing import Dict, List, Optional, Any, Tuple, Union
+from typing import Dict, List, Optional, Any, Tuple, Generator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-import re
 import os
 
 # Import config to check MULTIPLAYER_MODE
@@ -39,13 +39,25 @@ try:
 except ImportError:
     MULTIPLAYER_MODE = False
 
-# TABLETOP MODE: Imports for armorClass backfill from monster templates
-try:
-    from utils.module_path_manager import ModulePathManager
-    from utils.encoding_utils import safe_json_load
-except ImportError:
-    ModulePathManager = None
-    safe_json_load = None
+# TABLETOP MODE: Internal imports - fail fast if missing
+from utils.encoding_utils import safe_json_load
+from utils.module_path_manager import ModulePathManager
+from utils.enhanced_logger import debug, info, error
+
+# TABLETOP MODE: Debug utilities
+# Defer import to method level to handle missing module gracefully during development
+_tabletop_debug_available = None
+
+def _get_tabletop_debug():
+    """Lazy import of tabletop debug utilities"""
+    global _tabletop_debug_available
+    if _tabletop_debug_available is None:
+        try:
+            from utils import tabletop_debug
+            _tabletop_debug_available = tabletop_debug
+        except ImportError:
+            _tabletop_debug_available = None
+    return _tabletop_debug_available
 
 
 class PCStatus(Enum):
@@ -83,6 +95,7 @@ class PCCombatState:
     death_save_failures: int = 0
     current_hp: int = 0
     max_hp: int = 0
+    ac: int = 10  # Armor Class for hit/miss determination
     # Metadata for arbitrary upstream data (position, markers, etc.)
     metadata: Dict[str, Any] = field(default_factory=dict)
     
@@ -140,21 +153,20 @@ class PCCombatState:
         return self.status != PCStatus.DEAD, message
 
 
-@dataclass 
-class MultiPCCombatManager:
+@dataclass
+class CombatStateManager:
     """
-    Manages combat state for multiple player characters.
+    Manages PC combat states, HP tracking, and combat metadata.
     
-    This is the core class for multi-PC combat support. It tracks:
-    - All PCs in the party and their combat states
-    - Which PCs have acted in the current round
-    - Group initiative for PC party vs enemies
-    - Death saving throws for incapacitated PCs
-    - Turn Queue and Command Resolution
+    This class handles all state-related operations for multi-PC combat,
+    keeping state management separate from turn queue logic.
     """
     
     # PC states indexed by character name
     pc_states: Dict[str, PCCombatState] = field(default_factory=dict)
+    
+    # Current active PC (selected via UI)
+    current_pc_name: Optional[str] = None
     
     # Combat tracking
     current_round: int = 1
@@ -162,29 +174,405 @@ class MultiPCCombatManager:
     enemy_initiative: int = 0
     party_goes_first: bool = True
     
+    # Encounter data reference
+    encounter_data: Optional[Dict[str, Any]] = None
+    
+    # Party size limit
+    MAX_PARTY_SIZE: int = 6
+    
+    def initialize_from_party(self, party_data: Dict[str, Any]) -> None:
+        """
+        Initialize PC states from party tracker data.
+        
+        Args:
+            party_data: The party_tracker.json data
+        """
+        self.pc_states.clear()
+        
+        party_members = party_data.get("partyMembers", [])
+        
+        # Enforce party size limit
+        if len(party_members) > self.MAX_PARTY_SIZE:
+            party_members = party_members[:self.MAX_PARTY_SIZE]
+        
+        for member_name in party_members:
+            # TABLETOP MODE: Load character data directly from character JSON file
+            # party_tracker.json does not store nested character objects
+            # Build path manually to avoid circular dependencies and import issues
+            try:
+                normalized_name = member_name.lower().replace(' ', '_')
+                char_file_path = f"characters/{normalized_name}.json"
+                
+                # Use safe_json_load if available, otherwise fall back to standard json
+                if safe_json_load:
+                    char_data = safe_json_load(char_file_path) or {}
+                else:
+                    # Use standard json module (already imported)
+                    with open(char_file_path, 'r', encoding='utf-8') as f:
+                        char_data = json.load(f)
+                
+                if not char_data:
+                    debug(f"TABLETOP MODE: Character file not found or empty: {char_file_path}", 
+                          category="combat_events")
+            except Exception as e:
+                debug(f"TABLETOP MODE: Failed to load character {member_name}: {e}", 
+                      category="combat_events")
+                char_data = {}
+            
+            # Read HP from character schema (hitPoints is top-level, not nested under hp)
+            current_hp = char_data.get("hitPoints", 10)
+            max_hp = char_data.get("maxHitPoints", current_hp)
+            
+            # Determine initial status based on HP
+            if current_hp <= 0:
+                status = PCStatus.INCAPACITATED
+            else:
+                status = PCStatus.READY
+                
+            # Capture any metadata (like position) from char_data
+            metadata = char_data.get("metadata", {}) or {}
+                
+            self.pc_states[member_name] = PCCombatState(
+                character_name=member_name,
+                initiative_modifier=char_data.get("initiative", 0),
+                status=status,
+                current_hp=current_hp,
+                max_hp=max_hp,
+                ac=char_data.get("armorClass", 10),
+                metadata=metadata
+            )
+        
+        # Set first PC as current if none selected
+        if not self.current_pc_name and self.pc_states:
+            self.current_pc_name = list(self.pc_states.keys())[0]
+    
+    def get_available_pcs(self) -> List[str]:
+        """Get list of PCs who can still act this round."""
+        return [
+            name for name, state in self.pc_states.items()
+            if state.status == PCStatus.READY
+        ]
+    
+    def get_incapacitated_pcs(self) -> List[str]:
+        """Get list of PCs who need death saves."""
+        return [
+            name for name, state in self.pc_states.items()
+            if state.status == PCStatus.INCAPACITATED
+        ]
+    
+    def get_all_active_pcs(self) -> List[str]:
+        """Get all PCs who are still in combat (not dead)."""
+        return [
+            name for name, state in self.pc_states.items()
+            if state.status != PCStatus.DEAD
+        ]
+    
+    def set_current_pc(self, character_name: str) -> bool:
+        """
+        Set the current active PC (via tab click).
+        
+        Args:
+            character_name: Name of the PC to activate
+            
+        Returns:
+            True if successful, False if PC can't act
+        """
+        if character_name not in self.pc_states:
+            return False
+            
+        state = self.pc_states[character_name]
+        
+        # Can select if ready OR incapacitated (for death saves)
+        if state.status in (PCStatus.READY, PCStatus.INCAPACITATED):
+            self.current_pc_name = character_name
+            return True
+            
+        return False
+    
+    def update_pc_hp(self, character_name: str, new_hp: int) -> None:
+        """
+        Update a PC's HP and status.
+        
+        Args:
+            character_name: Name of the PC
+            new_hp: New HP value
+        """
+        if character_name not in self.pc_states:
+            return
+            
+        state = self.pc_states[character_name]
+        state.current_hp = new_hp
+        
+        if new_hp <= 0 and state.status not in (PCStatus.DEAD, PCStatus.STABLE):
+            state.status = PCStatus.INCAPACITATED
+            state.death_save_successes = 0
+            state.death_save_failures = 0
+        elif new_hp > 0 and state.status in (PCStatus.INCAPACITATED, PCStatus.STABLE):
+            state.status = PCStatus.READY
+            state.death_save_successes = 0
+            state.death_save_failures = 0
+
+
+@dataclass
+class TurnQueueManager:
+    """
+    Manages initiative order, turn advancement, and round tracking.
+    
+    This class handles the turn queue lifecycle independent of PC state management,
+    allowing for cleaner separation between state and turn flow.
+    """
+    
     # Turn Queue Management
     turn_queue: List[Combatant] = field(default_factory=list)
     current_turn_index: int = 0
     
-    # Current active PC (selected via UI or Turn Queue)
-    current_pc_name: Optional[str] = None
-    
-    # Combat phase tracking
+    # Phase tracking
     pc_phase_complete: bool = False
     enemy_phase_complete: bool = False
     
+    # Combat flow
+    first_round: bool = True
+    
+    # Reference to state manager for PC lookups
+    state_manager: Optional[CombatStateManager] = None
+    
+    def initialize_turn_queue(self, encounter_data: Dict[str, Any]) -> None:
+        """
+        Build the turn queue from PC states and encounter data.
+        Call this at the start of combat or when initiative changes.
+        """
+        self.turn_queue.clear()
+        
+        # Add PCs from state manager
+        if self.state_manager:
+            for name, state in self.state_manager.pc_states.items():
+                # Calculate initiative (d20 + mod)
+                init_roll = random.randint(1, 20) + state.initiative_modifier
+                self.turn_queue.append(Combatant(
+                    name=name,
+                    type=CombatantType.PC,
+                    initiative=init_roll,
+                    hp=state.current_hp,
+                    max_hp=state.max_hp,
+                    ac=state.ac,  # Use AC from character data
+                    status=state.status.value
+                ))
+        
+        # Add enemies and NPCs from encounter
+        for creature in encounter_data.get("creatures", []):
+            if creature.get("type") == "enemy":
+                # TABLETOP MODE: Backfill armorClass from monster template if missing
+                ac = creature.get("armorClass")
+                if ac is None and ModulePathManager and safe_json_load:
+                    monster_type = creature.get("monsterType", "").lower()
+                    if monster_type:
+                        try:
+                            # Get current module from encounter data or party tracker
+                            module_name = encounter_data.get("module", "").replace(" ", "_")
+                            if not module_name:
+                                party_tracker = safe_json_load("party_tracker.json") or {}
+                                module_name = party_tracker.get("module", "").replace(" ", "_")
+                            
+                            path_manager = ModulePathManager(module_name if module_name else None)
+                            monster_file = path_manager.get_monster_path(monster_type)
+                            
+                            if monster_file and os.path.exists(monster_file):
+                                monster_data = safe_json_load(monster_file)
+                                if monster_data:
+                                    ac = monster_data.get("armorClass", 10)
+                        except Exception as e:
+                            # Log lookup failure for debugging, but continue with default AC
+                            creature_name = creature.get("name", "Unknown")
+                            debug(f"TABLETOP MODE: Monster AC lookup failed for {creature_name} (type: {monster_type}): {e}",
+                                  category="combat_events")
+                
+                # Default to 10 if still not found
+                if ac is None:
+                    ac = 10
+                
+                self.turn_queue.append(Combatant(
+                    name=creature.get("name", "Unknown"),
+                    type=CombatantType.ENEMY,
+                    initiative=creature.get("initiative", random.randint(1, 20)),
+                    hp=creature.get("currentHitPoints", 10),
+                    max_hp=creature.get("maxHitPoints", 10),
+                    ac=ac,
+                    status=creature.get("status", "alive")
+                ))
+            elif creature.get("type") == "npc":
+                 self.turn_queue.append(Combatant(
+                    name=creature.get("name", "Unknown"),
+                    type=CombatantType.NPC,
+                     initiative=creature.get("initiative", random.randint(1, 20)),
+                    hp=creature.get("currentHitPoints", 10),
+                    max_hp=creature.get("maxHitPoints", 10),
+                    ac=creature.get("armorClass", 10),
+                    status=creature.get("status", "alive")
+                ))
+
+        # Sort by Initiative (Descending)
+        self.turn_queue.sort(key=lambda x: x.initiative, reverse=True)
+        self.current_turn_index = 0
+        
+        # Update current PC if the first actor is a PC
+        current_actor = self.get_current_actor()
+        if current_actor and current_actor.type == CombatantType.PC and self.state_manager:
+            self.state_manager.set_current_pc(current_actor.name)
+    
+    def get_current_actor(self) -> Optional[Combatant]:
+        """Get the combatant whose turn it is."""
+        if not self.turn_queue:
+            return None
+        return self.turn_queue[self.current_turn_index]
+    
+    def advance_turn(self) -> Tuple[Combatant, bool]:
+        """
+        Move to the next turn in the queue.
+        Skips dead combatants.
+
+        Returns:
+            Tuple of (next_actor, round_rolled_over)
+            round_rolled_over is True if the index wrapped past the end of the queue
+        """
+        start_index = self.current_turn_index
+        rolled_over = False
+
+        while True:
+            self.current_turn_index = (self.current_turn_index + 1) % len(self.turn_queue)
+
+            # Detect round rollover (index wrapped to start)
+            if self.current_turn_index == 0:
+                rolled_over = True
+
+            actor = self.turn_queue[self.current_turn_index]
+
+            # Skip dead combatants
+            if actor.status.lower() != "dead":
+                return actor, rolled_over
+
+            # Infinite loop safety (if everyone is dead)
+            if self.current_turn_index == start_index:
+                return actor, rolled_over
+    
+    def find_target(self, partial_name: str, encounter_data: Dict[str, Any]) -> Optional[Combatant]:
+        """
+        Fuzzy find a target in the encounter.
+        Matches partial names (case-insensitive).
+        Prioritizes enemies, then living targets.
+        """
+        partial_name = partial_name.lower().strip()
+        candidates = []
+        
+        # Search in turn queue
+        for combatant in self.turn_queue:
+            if partial_name in combatant.name.lower():
+                candidates.append(combatant)
+        
+        if not candidates:
+            return None
+            
+        # Prioritize enemies
+        enemies = [c for c in candidates if c.type == CombatantType.ENEMY]
+        if enemies:
+            return enemies[0]
+            
+        # Then prioritize living targets
+        living = [c for c in candidates if c.status.lower() != "dead"]
+        if living:
+            return living[0]
+            
+        return candidates[0]
+    
+    def complete_pc_turn(self, character_name: Optional[str] = None) -> bool:
+        """
+        Mark a PC's turn as complete.
+        
+        Args:
+            character_name: Name of PC (uses current if None)
+            
+        Returns:
+            True if successful
+        """
+        if not self.state_manager:
+            return False
+            
+        if character_name is None:
+            character_name = self.state_manager.current_pc_name
+            
+        if not character_name or character_name not in self.state_manager.pc_states:
+            return False
+            
+        state = self.state_manager.pc_states[character_name]
+        
+        # Only mark if currently ready
+        if state.status == PCStatus.READY:
+            state.mark_acted()
+            return True
+            
+        return False
+    
+    def force_end_pc_phase(self) -> None:
+        """Force the PC phase to end, even if not all PCs have acted."""
+        self.pc_phase_complete = True
+        # Mark all remaining ready PCs as acted
+        if self.state_manager:
+            for name, state in self.state_manager.pc_states.items():
+                if state.status == PCStatus.READY:
+                    state.mark_acted()
+    
+    def get_remaining_enemies_for_round(self) -> List[str]:
+        """Get list of enemies who haven't acted this round."""
+        remaining = []
+        current_idx = self.current_turn_index
+        
+        # Look ahead in queue
+        for i in range(len(self.turn_queue)):
+            idx = (current_idx + i) % len(self.turn_queue)
+            combatant = self.turn_queue[idx]
+            
+            # Stop when we loop back
+            if i > 0 and idx == 0:
+                break
+                
+            if combatant.type == CombatantType.ENEMY and combatant.status.lower() != "dead":
+                remaining.append(combatant.name)
+                
+        return remaining
+
+
+@dataclass 
+class MultiPCCombatManager:
+    """
+    Manages combat state for multiple player characters.
+    
+    This is the core class for multi-PC combat support. It coordinates between
+    CombatStateManager (PC states) and TurnQueueManager (initiative/turns).
+    
+    ARCHITECTURE: Facade pattern - thin coordinator over focused sub-managers
+    """
+    
+    # Sub-managers (initialized in __post_init__)
+    _state: CombatStateManager = field(init=False)
+    _turns: TurnQueueManager = field(init=False)
+    
     # Narrative Context (stored between commands)
     last_attack_weapon: Optional[str] = None
+    last_target: Optional[Combatant] = None
     
-    # Maximum party size (hard limit)
-    MAX_PARTY_SIZE: int = 6
+    # Combat constants
+    DEFAULT_AC: int = 10  # Default Armor Class when not specified
+    INITIATIVE_DIE: int = 20  # d20 for initiative rolls
+    MAX_PARTY_SIZE: int = 6  # Maximum party size (hard limit)
+    
+    # UPSTREAM ALIGNMENT: Consolidated character updates (deferred persistence)
+    # Tracks pending HP/status changes to be written at combat end
+    # Format: {character_name: ["change string 1", "change string 2", ...]}
+    pending_character_updates: Dict[str, List[str]] = field(default_factory=dict)
     
     def __post_init__(self):
-        """Initialize with empty state if not provided."""
-        if self.pc_states is None:
-            self.pc_states = {}
-        if self.turn_queue is None:
-            self.turn_queue = []
+        """Initialize sub-managers with default state."""
+        self._state = CombatStateManager()
+        self._turns = TurnQueueManager(state_manager=self._state)
     
     @classmethod
     def is_enabled(cls) -> bool:
@@ -207,11 +595,81 @@ class MultiPCCombatManager:
             "PC_PHASE" - PCs are still taking their turns
             "ENEMY_PHASE" - All PCs have acted, enemies can now resolve
         """
-        if self.pc_phase_complete:
+        if self._turns.pc_phase_complete:
             return "ENEMY_PHASE"
         return "PC_PHASE"
     
-    def get_forbidden_actors_list(self) -> List[str]:
+    @property
+    def pc_states(self) -> Dict[str, PCCombatState]:
+        """
+        Backward compatibility property for accessing PC states.
+        
+        Returns:
+            Dictionary mapping character names to PCCombatState objects
+        """
+        return self._state.pc_states
+    
+    @property
+    def current_pc_name(self) -> Optional[str]:
+        """
+        Backward compatibility property for current active PC.
+        
+        Returns:
+            Name of the currently active PC, or None
+        """
+        return self._state.current_pc_name
+    
+    @property
+    def party_initiative(self) -> int:
+        """Backward compatibility property for party initiative."""
+        return self._state.party_initiative
+    
+    @party_initiative.setter
+    def party_initiative(self, value: int) -> None:
+        """Backward compatibility setter for party initiative."""
+        self._state.party_initiative = value
+    
+    @property
+    def enemy_initiative(self) -> int:
+        """Backward compatibility property for enemy initiative."""
+        return self._state.enemy_initiative
+    
+    @enemy_initiative.setter
+    def enemy_initiative(self, value: int) -> None:
+        """Backward compatibility setter for enemy initiative."""
+        self._state.enemy_initiative = value
+    
+    @property
+    def party_goes_first(self) -> bool:
+        """Backward compatibility property for party initiative order."""
+        return self._state.party_goes_first
+    
+    @party_goes_first.setter
+    def party_goes_first(self, value: bool) -> None:
+        """Backward compatibility setter for party initiative order."""
+        self._state.party_goes_first = value
+    
+    @property
+    def pc_phase_complete(self) -> bool:
+        """Backward compatibility property for PC phase completion status."""
+        return self._turns.pc_phase_complete
+    
+    @pc_phase_complete.setter
+    def pc_phase_complete(self, value: bool) -> None:
+        """Backward compatibility setter for PC phase completion status."""
+        self._turns.pc_phase_complete = value
+    
+    @property
+    def current_round(self) -> int:
+        """Backward compatibility property for current combat round."""
+        return self._state.current_round
+    
+    @current_round.setter
+    def current_round(self, value: int) -> None:
+        """Backward compatibility setter for current combat round."""
+        self._state.current_round = value
+    
+    def get_forbidden_actors(self) -> List[str]:
         """
         Get list of combatants that MUST NOT act during the current phase.
         
@@ -223,10 +681,10 @@ class MultiPCCombatManager:
         Returns:
             List of combatant names that are forbidden from acting
         """
-        if not self.pc_phase_complete:
+        if not self._turns.pc_phase_complete:
             # During PC phase, all enemies and NPCs are forbidden
             return [
-                c.name for c in self.turn_queue 
+                c.name for c in self._turns.turn_queue 
                 if c.type in (CombatantType.ENEMY, CombatantType.NPC) 
                 and c.status != "dead"
             ]
@@ -247,7 +705,7 @@ class MultiPCCombatManager:
             return None
         # Return first available PC that isn't the current one
         for pc in available:
-            if pc != self.current_pc_name:
+            if pc != self._state.current_pc_name:
                 return pc
         # If current PC is the only one left, return them
         return available[0] if available else None
@@ -256,198 +714,118 @@ class MultiPCCombatManager:
         """
         Initialize PC states from party tracker data.
         
+        Delegates to CombatStateManager - see CombatStateManager.initialize_from_party() for details.
+        
         Args:
             party_data: The party_tracker.json data
         """
-        self.pc_states.clear()
+        # TABLETOP MODE: Debug party loading
+        tt_debug = _get_tabletop_debug()
+        if tt_debug:
+            party_members = party_data.get("partyMembers", [])
+            tt_debug.log_tabletop_event("party_load_start", {
+                "member_count": len(party_members),
+                "members": party_members
+            }, verbose=tt_debug.is_tabletop_verbose())
         
-        party_members = party_data.get("partyMembers", [])
+        self._state.initialize_from_party(party_data)
         
-        # Enforce party size limit
-        if len(party_members) > self.MAX_PARTY_SIZE:
-            party_members = party_members[:self.MAX_PARTY_SIZE]
-        
-        for member_name in party_members:
-            # Get character data if available
-            char_data = party_data.get("characters", {}).get(member_name, {})
-            
-            hp_data = char_data.get("hp", {})
-            current_hp = hp_data.get("current", hp_data.get("max", 10))
-            max_hp = hp_data.get("max", 10)
-            
-            # Determine initial status based on HP
-            if current_hp <= 0:
-                status = PCStatus.INCAPACITATED
-            else:
-                status = PCStatus.READY
-                
-            # Capture any metadata (like position) from char_data
-            metadata = char_data.get("metadata", {})
-            if "position" in char_data:
-                metadata["position"] = char_data["position"]
-                
-            self.pc_states[member_name] = PCCombatState(
-                character_name=member_name,
-                initiative_modifier=char_data.get("initiative_mod", 0),
-                status=status,
-                current_hp=current_hp,
-                max_hp=max_hp,
-                metadata=metadata
-            )
-        
-        # Set first PC as current if none selected
-        if not self.current_pc_name and self.pc_states:
-            self.current_pc_name = list(self.pc_states.keys())[0]
+        # TABLETOP MODE: Debug party loaded
+        if tt_debug:
+            tt_debug.log_tabletop_event("party_load_complete", {
+                "pc_count": len(self._state.pc_states),
+                "loaded_pcs": list(self._state.pc_states.keys())
+            }, verbose=tt_debug.is_tabletop_verbose())
             
     def initialize_turn_queue(self, encounter_data: Dict[str, Any]) -> None:
         """
         Build the turn queue from PC states and encounter data.
         Call this at the start of combat or when initiative changes.
+        
+        Delegates to TurnQueueManager - see TurnQueueManager.initialize_turn_queue() for details.
         """
-        self.turn_queue.clear()
+        # TABLETOP MODE: Debug queue initialization
+        tt_debug = _get_tabletop_debug()
+        if tt_debug:
+            tt_debug.log_tabletop_event("turn_queue_init_start", {
+                "encounter_id": encounter_data.get("id", "unknown"),
+                "creature_count": len(encounter_data.get("creatures", []))
+            }, verbose=tt_debug.is_tabletop_verbose())
         
-        # Add PCs
-        for name, state in self.pc_states.items():
-            # Calculate initiative (d20 + mod)
-            init_roll = random.randint(1, 20) + state.initiative_modifier
-            self.turn_queue.append(Combatant(
-                name=name,
-                type=CombatantType.PC,
-                initiative=init_roll,
-                hp=state.current_hp,
-                max_hp=state.max_hp,
-                ac=10, # TODO: fetch from character sheet if available
-                status=state.status.value
-            ))
-            
-        # Add Enemies/NPCs
-        for creature in encounter_data.get("creatures", []):
-            if creature.get("type") == "enemy":
-                # TABLETOP MODE: Backfill armorClass from monster template if missing
-                ac = creature.get("armorClass")
-                if ac is None and ModulePathManager and safe_json_load:
-                    monster_type = creature.get("monsterType", "").lower()
-                    if monster_type:
-                        try:
-                            # Get current module from encounter data or party tracker
-                            module_name = encounter_data.get("module", "").replace(" ", "_")
-                            if not module_name:
-                                party_tracker = safe_json_load("party_tracker.json") or {}
-                                module_name = party_tracker.get("module", "").replace(" ", "_")
-                            
-                            path_manager = ModulePathManager(module_name if module_name else None)
-                            monster_file = path_manager.get_monster_path(monster_type)
-                            
-                            if monster_file and os.path.exists(monster_file):
-                                monster_data = safe_json_load(monster_file)
-                                if monster_data:
-                                    ac = monster_data.get("armorClass", 10)
-                        except Exception:
-                            # Silently fall back to default if lookup fails
-                            pass
-                
-                # Default to 10 if still not found
-                if ac is None:
-                    ac = 10
-                
-                self.turn_queue.append(Combatant(
-                    name=creature.get("name", "Unknown"),
-                    type=CombatantType.ENEMY,
-                    initiative=creature.get("initiative", random.randint(1, 20)),
-                    hp=creature.get("currentHitPoints", 10),
-                    max_hp=creature.get("maxHitPoints", 10),
-                    ac=ac,
-                    status=creature.get("status", "alive")
-                ))
-            elif creature.get("type") == "npc":
-                 self.turn_queue.append(Combatant(
-                    name=creature.get("name", "Unknown"),
-                    type=CombatantType.NPC,
-                    initiative=creature.get("initiative", random.randint(1, 20)),
-                    hp=creature.get("currentHitPoints", 10),
-                    max_hp=creature.get("maxHitPoints", 10),
-                    ac=creature.get("armorClass", 10),
-                    status=creature.get("status", "alive")
-                ))
-
-        # Sort by Initiative (Descending)
-        self.turn_queue.sort(key=lambda x: x.initiative, reverse=True)
-        self.current_turn_index = 0
+        self._turns.initialize_turn_queue(encounter_data)
         
-        # Update current PC if the first actor is a PC
-        current_actor = self.get_current_actor()
-        if current_actor and current_actor.type == CombatantType.PC:
-            self.set_current_pc(current_actor.name)
+        # TABLETOP MODE: Debug queue initialized
+        if tt_debug:
+            current_actor = self._turns.get_current_actor()
+            tt_debug.log_tabletop_event("turn_queue_init_complete", {
+                "queue_size": len(self._turns.turn_queue),
+                "current_actor": current_actor.name if current_actor else None
+            }, verbose=tt_debug.is_tabletop_verbose())
 
     def get_current_actor(self) -> Optional[Combatant]:
-        """Get the combatant whose turn it is."""
-        if not self.turn_queue:
-            return None
-        return self.turn_queue[self.current_turn_index]
+        """Get the combatant whose turn it is.
+        
+        Delegates to TurnQueueManager - see TurnQueueManager.get_current_actor() for details.
+        """
+        return self._turns.get_current_actor()
 
     def advance_turn(self) -> Combatant:
         """
         Move to the next turn in the queue.
-        Skips dead combatants.
+        Skips dead combatants. Handles round rollover coordination.
+
+        Delegates to TurnQueueManager.advance_turn() and performs
+        cross-manager coordination if the round rolls over.
+
+        Returns:
+            The next active Combatant
         """
-        start_index = self.current_turn_index
-        
-        while True:
-            self.current_turn_index = (self.current_turn_index + 1) % len(self.turn_queue)
-            
-            # Check for round rollover
-            if self.current_turn_index == 0:
-                self.start_new_round()
-            
-            actor = self.turn_queue[self.current_turn_index]
-            
-            # Skip dead combatants
-            if actor.status.lower() != "dead":
-                if actor.type == CombatantType.PC:
-                    self.set_current_pc(actor.name)
-                return actor
-                
-            # Infinite loop safety (if everyone is dead)
-            if self.current_turn_index == start_index:
-                return actor
+        # TABLETOP MODE: Debug turn advancement
+        tt_debug = _get_tabletop_debug()
+        old_actor = self.get_current_actor()
+        old_name = old_actor.name if old_actor else None
+
+        result, rolled_over = self._turns.advance_turn()
+
+        # Coordination: handle round rollover
+        if rolled_over:
+            self._state.current_round += 1
+            for state in self._state.pc_states.values():
+                state.reset_for_new_round()
+            self._turns.pc_phase_complete = False
+            self._turns.enemy_phase_complete = False
+
+        # Coordination: update active PC if next actor is a PC
+        if result.type == CombatantType.PC:
+            self._state.set_current_pc(result.name)
+
+        # TABLETOP MODE: Debug turn advanced
+        if tt_debug:
+            new_name = result.name if result else None
+
+            if old_name != new_name:
+                tt_debug.log_tabletop_event("turn_advanced", {
+                    "from_actor": old_name,
+                    "to_actor": new_name,
+                    "round": self._state.current_round,
+                    "queue_index": self._turns.current_turn_index,
+                    "round_rolled_over": rolled_over
+                }, verbose=tt_debug.is_tabletop_verbose())
+
+                if result and result.type == CombatantType.PC and new_name:
+                    tt_debug.log_state_transition(new_name, "waiting", "acting", reason="turn_advanced")
+
+        return result
 
     def find_target(self, partial_name: str, encounter_data: Dict[str, Any]) -> Optional[Combatant]:
         """
         Fuzzy find a target in the encounter.
         Matches partial names (case-insensitive).
         Prioritizes enemies, then living targets.
+        
+        Delegates to TurnQueueManager - see TurnQueueManager.find_target() for details.
         """
-        partial_name = partial_name.lower().strip()
-        candidates = []
-        
-        # Build list of all potential targets from encounter data to be safe
-        # (TurnQueue might be stale if we don't update it constantly)
-        # But TurnQueue is the source of truth for our logic, so use it.
-        
-        for c in self.turn_queue:
-            if partial_name in c.name.lower():
-                candidates.append(c)
-        
-        if not candidates:
-            return None
-            
-        # Priority 1: Exact Match
-        for c in candidates:
-            if c.name.lower() == partial_name:
-                return c
-                
-        # Priority 2: Living Enemies
-        living_enemies = [c for c in candidates if c.type == CombatantType.ENEMY and c.status != "dead"]
-        if living_enemies:
-            return living_enemies[0]
-            
-        # Priority 3: Living Anything
-        living = [c for c in candidates if c.status != "dead"]
-        if living:
-            return living[0]
-            
-        # Fallback: First candidate
-        return candidates[0]
+        return self._turns.find_target(partial_name, encounter_data)
 
     def handle_combat_command(self, cmd: str, encounter_data: Dict[str, Any], actor_name: str = "Player") -> Tuple[Optional[str], Optional[str]]:
         """
@@ -463,6 +841,15 @@ class MultiPCCombatManager:
             - UserFeedback: String to show user immediately (or None)
             - SystemLogInjection: String to inject into LLM history (or None)
         """
+        # TABLETOP MODE: Debug entry
+        tt_debug = _get_tabletop_debug()
+        if tt_debug:
+            tt_debug.log_tabletop_event("combat_command_entry", {
+                "cmd": cmd[:50] if len(cmd) > 50 else cmd,
+                "actor": actor_name,
+                "encounter_id": encounter_data.get("id", "unknown")
+            }, verbose=tt_debug.is_tabletop_verbose())
+        
         parts = cmd.strip().split()
         if not parts:
             return None, None
@@ -521,27 +908,48 @@ class MultiPCCombatManager:
             if ac is None or ac == 0:
                  # Try to find in encounter data
                  for c in encounter_data.get("creatures", []):
-                     if c.get("name") == target.name:
-                         ac = c.get("armorClass", 10)
-                         break
+                      if c.get("name") == target.name:
+                          ac = c.get("armorClass", MultiPCCombatManager.DEFAULT_AC)
+                          break
             
             if roll >= ac:
-                return f"Dungeon Master: Hit! (Rolled {roll} vs AC {ac}). Roll damage.", None
+                # TABLETOP MODE: Debug hit
+                if tt_debug:
+                    tt_debug.log_tabletop_event("combat_command_hit", {
+                        "target": target.name,
+                        "roll": roll,
+                        "ac": ac,
+                        "result": "waiting_for_damage"
+                    }, verbose=tt_debug.is_tabletop_verbose())
+                
+                return f"[skipTTS] Dungeon Master: Hit! (Rolled {roll} vs AC {ac}). Roll damage.", None
             else:
                 # Miss logic - pass to LLM for narration
                 weapon_context = f" with {weapon_name}" if weapon_name else ""
                 log_msg = f"[System: {actor_name} attacked {target.name}{weapon_context} with roll {roll} vs AC {ac} and MISSED.]"
-                return f"Dungeon Master: Miss. (Rolled {roll} vs AC {ac}).\nProcessing outcome...", log_msg
+                
+                # TABLETOP MODE: Debug miss
+                if tt_debug:
+                    tt_debug.log_tabletop_event("combat_command_miss", {
+                        "target": target.name,
+                        "roll": roll,
+                        "ac": ac,
+                        "has_feedback": True,
+                        "has_log_msg": True,
+                        "result": "continue_to_llm"
+                    }, verbose=tt_debug.is_tabletop_verbose())
+                
+                return f"[skipTTS] Dungeon Master: Miss. (Rolled {roll} vs AC {ac}).\nProcessing outcome...", log_msg
                 
         elif command == "/dmg":
             # Syntax: /dmg [amount] [flavor text...]
             if len(args) < 1:
-                return "Dungeon Master: [SYSTEM] Usage: /dmg [amount] [optional flavor]", None
+                return "[skipTTS] Dungeon Master: [SYSTEM] Usage: /dmg [amount] [optional flavor]", None
                 
             try:
                 amount = int(args[0])
             except ValueError:
-                return "Dungeon Master: [SYSTEM] Invalid amount. Usage: /dmg [amount] [flavor]", None
+                return "[skipTTS] Dungeon Master: [SYSTEM] Invalid amount. Usage: /dmg [amount] [flavor]", None
             
             # Determine flavor text
             if len(args) > 1:
@@ -557,25 +965,48 @@ class MultiPCCombatManager:
             target = getattr(self, 'last_target', None)
             
             if not target:
-                return "Dungeon Master: [SYSTEM] No target selected. Use /att first or specify target.", None
+                return "[skipTTS] Dungeon Master: [SYSTEM] No target selected. Use /att first or specify target.", None
             
             # Apply Damage
+            previous_hp = target.hp
             target.hp -= amount
             status_update = ""
+            status_text = ""
             if target.hp <= 0:
                 target.status = "dead" # or defeated/unconscious
                 target.hp = 0
                 status_update = " [Target Defeated]"
+                status_text = "defeated"
             elif target.hp < target.max_hp / 2:
                 status_update = " [Bloodied]"
+                status_text = "bloodied"
+            
+            # UPSTREAM ALIGNMENT: Queue character update for deferred persistence
+            if target.type == CombatantType.PC:
+                damage_taken = previous_hp - target.hp
+                change_desc = f"took {damage_taken} damage from {actor_name}"
+                if status_text:
+                    change_desc += f", now {status_text}"
+                change_desc += f" (HP: {target.hp}/{target.max_hp})"
+                self._queue_character_update(target.name, change_desc)
+            
+            # Sync enemy HP changes back to encounter_data for persistence
+            # TABLETOP MODE: This ensures encounter file has updated HP when saved
+            if target.type == CombatantType.ENEMY:
+                for creature in encounter_data.get("creatures", []):
+                    if creature.get("name") == target.name:
+                        creature["currentHitPoints"] = target.hp
+                        if target.status == "dead":
+                            creature["status"] = "dead"
+                        break
             
             log_msg = f"[System: {actor_name} dealt {amount} damage ({flavor_text}) to {target.name}. HP: {target.hp}/{target.max_hp}.{status_update}]"
             
-            return f"Dungeon Master: Damage applied ({amount}). Target HP: {target.hp}/{target.max_hp}{status_update}.\nProcessing outcome...", log_msg
+            return f"[skipTTS] Dungeon Master: Damage applied ({amount}). Target HP: {target.hp}/{target.max_hp}{status_update}.\nProcessing outcome...", log_msg
             
         return None, None
 
-    # ... [Keep existing methods below] ...
+
     
     def roll_group_initiative(self) -> Tuple[int, int, bool]:
         """
@@ -585,42 +1016,42 @@ class MultiPCCombatManager:
             Tuple of (party_roll, enemy_roll, party_goes_first)
         """
         # Roll d20 for each side
-        party_roll = random.randint(1, 20)
-        enemy_roll = random.randint(1, 20)
+        party_roll = random.randint(1, self.INITIATIVE_DIE)
+        enemy_roll = random.randint(1, self.INITIATIVE_DIE)
         
         # Add highest PC initiative modifier to party roll
         max_pc_mod = max(
-            (pc.initiative_modifier for pc in self.pc_states.values()),
+            (pc.initiative_modifier for pc in self._state.pc_states.values()),
             default=0
         )
-        self.party_initiative = party_roll + max_pc_mod
-        self.enemy_initiative = enemy_roll
+        self._state.party_initiative = party_roll + max_pc_mod
+        self._state.enemy_initiative = enemy_roll
         
         # Determine who goes first (party wins ties)
-        self.party_goes_first = self.party_initiative >= self.enemy_initiative
+        self._state.party_goes_first = self._state.party_initiative >= self._state.enemy_initiative
         
-        return party_roll, enemy_roll, self.party_goes_first
+        return party_roll, enemy_roll, self._state.party_goes_first
     
     def get_available_pcs(self) -> List[str]:
-        """Get list of PCs who can still act this round."""
-        return [
-            name for name, state in self.pc_states.items()
-            if state.status == PCStatus.READY
-        ]
+        """Get list of PCs who can still act this round.
+        
+        Delegates to CombatStateManager - see CombatStateManager.get_available_pcs() for details.
+        """
+        return self._state.get_available_pcs()
     
     def get_incapacitated_pcs(self) -> List[str]:
-        """Get list of PCs who need death saves."""
-        return [
-            name for name, state in self.pc_states.items()
-            if state.status == PCStatus.INCAPACITATED
-        ]
+        """Get list of PCs who need death saves.
+        
+        Delegates to CombatStateManager.get_incapacitated_pcs().
+        """
+        return self._state.get_incapacitated_pcs()
     
     def get_all_active_pcs(self) -> List[str]:
-        """Get all PCs who are still in combat (not dead)."""
-        return [
-            name for name, state in self.pc_states.items()
-            if state.status != PCStatus.DEAD
-        ]
+        """Get all PCs who are still in combat (not dead).
+        
+        Delegates to CombatStateManager.get_all_active_pcs().
+        """
+        return self._state.get_all_active_pcs()
     
     def set_current_pc(self, character_name: str) -> bool:
         """
@@ -631,22 +1062,14 @@ class MultiPCCombatManager:
             
         Returns:
             True if successful, False if PC can't act
+            
+        Delegates to CombatStateManager.set_current_pc().
         """
-        if character_name not in self.pc_states:
-            return False
-            
-        state = self.pc_states[character_name]
-        
-        # Can select if ready OR incapacitated (for death saves)
-        if state.status in (PCStatus.READY, PCStatus.INCAPACITATED):
-            self.current_pc_name = character_name
-            return True
-            
-        return False
+        return self._state.set_current_pc(character_name)
     
     def complete_pc_turn(self, character_name: Optional[str] = None) -> bool:
         """
-        Mark a PC's turn as complete.
+        Mark a PC's turn as complete and check if PC phase is done.
         
         Args:
             character_name: PC who completed turn (uses current if None)
@@ -654,32 +1077,32 @@ class MultiPCCombatManager:
         Returns:
             True if all PCs have acted (PC phase complete)
         """
-        name = character_name or self.current_pc_name
-        if not name or name not in self.pc_states:
-            return False
-            
-        self.pc_states[name].mark_acted()
+        name = character_name or self._state.current_pc_name
         
-        # Check if all PCs have acted
+        # Delegate marking to TurnQueueManager (includes READY guard)
+        marked = self._turns.complete_pc_turn(name)
+        
+        if not marked:
+            # PC wasn't ready or doesn't exist — still check phase status
+            # (another path may have already marked them)
+            pass
+        
+        # Coordination: check if all PCs have acted
         available = self.get_available_pcs()
         incapacitated = self.get_incapacitated_pcs()
+        self._turns.pc_phase_complete = len(available) == 0 and len(incapacitated) == 0
         
-        # PC phase complete when no one left to act
-        self.pc_phase_complete = len(available) == 0 and len(incapacitated) == 0
-        
-        return self.pc_phase_complete
+        return self._turns.pc_phase_complete
     
     def force_end_pc_phase(self) -> None:
         """
         Forcefully mark all PCs as having acted this round.
         Used when the DM manually triggers the enemy phase via /end.
         This ensures the prompt context reflects that the PC phase is over.
-        """
-        for state in self.pc_states.values():
-            if state.status == PCStatus.READY:
-                state.status = PCStatus.ACTED
         
-        self.pc_phase_complete = True
+        Delegates to TurnQueueManager.force_end_pc_phase().
+        """
+        self._turns.force_end_pc_phase()
 
     def get_remaining_enemies_for_round(self) -> List[str]:
         """
@@ -689,28 +1112,12 @@ class MultiPCCombatManager:
         DETERMINISM RULE: This function MUST ignore current_turn_index.
         It returns ALL living non-PCs. The LLM then processes them in initiative order.
         
+        Delegates to TurnQueueManager - see TurnQueueManager.get_remaining_enemies_for_round() for details.
+        
         Returns:
             List of combatant names (Enemies and NPCs) in initiative order
         """
-        pending = []
-        if not self.turn_queue:
-            return pending
-        
-        # Get all living enemies and NPCs from the turn_queue
-        # We ignore current_turn_index because manual PC tab selection desyncs it.
-        # In ENEMY_PHASE, we want a full batch of all enemies.
-        enemies_and_npcs = [
-            c for c in self.turn_queue 
-            if c.type in (CombatantType.ENEMY, CombatantType.NPC) and c.status.lower() != "dead"
-        ]
-        
-        # Sort by initiative descending (highest first)
-        enemies_and_npcs.sort(key=lambda x: x.initiative, reverse=True)
-        
-        # Return names in order
-        pending = [c.name for c in enemies_and_npcs]
-        
-        return pending
+        return self._turns.get_remaining_enemies_for_round()
 
     def start_new_round(self) -> int:
         """
@@ -719,12 +1126,12 @@ class MultiPCCombatManager:
         Returns:
             The new round number
         """
-        self.current_round += 1
-        self.pc_phase_complete = False
-        self.enemy_phase_complete = False
+        self._state.current_round += 1
+        self._turns.pc_phase_complete = False
+        self._turns.enemy_phase_complete = False
         
         # Reset Turn Queue Pointer to the top of initiative
-        self.current_turn_index = 0
+        self._turns.current_turn_index = 0
         
         # Update active PC if the new first actor is a PC
         current_actor = self.get_current_actor()
@@ -732,33 +1139,102 @@ class MultiPCCombatManager:
             self.set_current_pc(current_actor.name)
         
         # Reset all PC states for new round
-        for state in self.pc_states.values():
+        for state in self._state.pc_states.values():
             state.reset_for_new_round()
             
-        return self.current_round
+        return self._state.current_round
     
     def update_pc_hp(self, character_name: str, new_hp: int) -> None:
         """
         Update a PC's HP and status.
         
+        Delegates HP/status update to CombatStateManager.update_pc_hp().
+        
+        Note: Turn queue Combatant objects have their own hp field set at
+        initialization. If turn queue HP sync becomes needed, add it here
+        as coordination logic after the delegation call.
+        
         Args:
             character_name: Name of the PC
             new_hp: New HP value
         """
-        if character_name not in self.pc_states:
-            return
-            
-        state = self.pc_states[character_name]
-        state.current_hp = new_hp
+        self._state.update_pc_hp(character_name, new_hp)
+    
+    def _queue_character_update(self, character_name: str, change_description: str) -> None:
+        """
+        Queue a character update for deferred persistence.
         
-        if new_hp <= 0 and state.status not in (PCStatus.DEAD, PCStatus.STABLE):
-            state.status = PCStatus.INCAPACITATED
-            state.death_save_successes = 0
-            state.death_save_failures = 0
-        elif new_hp > 0 and state.status in (PCStatus.INCAPACITATED, PCStatus.STABLE):
-            state.status = PCStatus.READY
-            state.death_save_successes = 0
-            state.death_save_failures = 0
+        UPSTREAM ALIGNMENT: Implements consolidated update pattern matching
+        combat_manager.py. Changes are batched and applied at combat end.
+        
+        Args:
+            character_name: Name of the character
+            change_description: Description of the change (e.g., "took 15 damage")
+        """
+        if character_name not in self.pending_character_updates:
+            self.pending_character_updates[character_name] = []
+        self.pending_character_updates[character_name].append(change_description)
+    
+    def persist_combat_changes(self) -> Dict[str, bool]:
+        """
+        Persist all queued combat changes to character files.
+        
+        UPSTREAM ALIGNMENT: Implements deferred persistence pattern matching
+        combat_manager.py behavior. Called when combat ends to save all HP
+        and status changes accumulated during combat.
+        
+        Returns:
+            Dictionary mapping character names to success status
+        """
+        results = {}
+        
+        if not self.pending_character_updates:
+            # No pending updates - still save current HP state
+            for pc_name, pc_state in self._state.pc_states.items():
+                try:
+                    # Import here to avoid circular dependencies
+                    from updates.update_character_info import update_character_info
+                    
+                    change_str = f"HP updated to {pc_state.current_hp} after combat"
+                    if pc_state.status == PCStatus.DEAD:
+                        change_str += ", status: dead"
+                    elif pc_state.status == PCStatus.INCAPACITATED:
+                        change_str += ", status: unconscious"
+                    elif pc_state.status == PCStatus.STABLE:
+                        change_str += ", status: stable"
+                    
+                    success = update_character_info(pc_name, change_str)
+                    results[pc_name] = success
+                except Exception as e:
+                    error(f"Failed to persist combat changes for {pc_name}: {e}", category="combat_persistence")
+                    results[pc_name] = False
+            return results
+        
+        # Process consolidated updates
+        for character_name, changes_list in self.pending_character_updates.items():
+            try:
+                # Import here to avoid circular dependencies
+                from updates.update_character_info import update_character_info
+                
+                # Build consolidated change string (upstream pattern)
+                final_change_string = "Combat results: " + "; ".join(changes_list) + "."
+                
+                success = update_character_info(character_name, final_change_string)
+                results[character_name] = success
+                
+                if success:
+                    info(f"Saved combat changes for {character_name}", category="combat_persistence")
+                else:
+                    error(f"Failed to save changes for {character_name}", category="combat_persistence")
+                    
+            except Exception as e:
+                error(f"Exception persisting combat changes for {character_name}: {e}", exception=e, category="combat_persistence")
+                results[character_name] = False
+        
+        # Clear pending updates after processing
+        self.pending_character_updates.clear()
+        
+        return results
     
     def get_combat_state_summary(self) -> Dict[str, Any]:
         """
@@ -768,13 +1244,13 @@ class MultiPCCombatManager:
             Dictionary with combat state info
         """
         return {
-            "current_round": self.current_round,
-            "party_initiative": self.party_initiative,
-            "enemy_initiative": self.enemy_initiative,
-            "party_goes_first": self.party_goes_first,
-            "current_pc": self.current_pc_name,
-            "pc_phase_complete": self.pc_phase_complete,
-            "enemy_phase_complete": self.enemy_phase_complete,
+            "current_round": self._state.current_round,
+            "party_initiative": self._state.party_initiative,
+            "enemy_initiative": self._state.enemy_initiative,
+            "party_goes_first": self._state.party_goes_first,
+            "current_pc": self._state.current_pc_name,
+            "pc_phase_complete": self._turns.pc_phase_complete,
+            "enemy_phase_complete": self._turns.enemy_phase_complete,
             "pcs": {
                 name: {
                     "status": state.status.value,
@@ -786,7 +1262,7 @@ class MultiPCCombatManager:
                     },
                     "metadata": state.metadata
                 }
-                for name, state in self.pc_states.items()
+                for name, state in self._state.pc_states.items()
             },
             "available_pcs": self.get_available_pcs(),
             "incapacitated_pcs": self.get_incapacitated_pcs()
@@ -802,10 +1278,10 @@ class MultiPCCombatManager:
         Returns:
             Formatted context string for prompt insertion
         """
-        if pc_name not in self.pc_states:
+        if pc_name not in self._state.pc_states:
             return ""
             
-        state = self.pc_states[pc_name]
+        state = self._state.pc_states[pc_name]
         
         lines = [
             f"!!! CRITICAL OVERRIDE: THE CURRENT ACTIVE PLAYER CHARACTER IS: [{pc_name}] !!!",
@@ -827,16 +1303,16 @@ class MultiPCCombatManager:
         Returns:
             Formatted summary string
         """
-        lines = [f"=== PC PARTY TURN STATUS (Round {self.current_round}) ==="]
+        lines = [f"=== PC PARTY TURN STATUS (Round {self._state.current_round}) ==="]
         
-        for name, state in self.pc_states.items():
-            marker = "[>]" if name == self.current_pc_name else "   "
+        for name, state in self._state.pc_states.items():
+            marker = "[>]" if name == self._state.current_pc_name else "   "
             status_icon = {
-                PCStatus.READY: "⏳ Ready",
-                PCStatus.ACTED: "✓ Acted", 
-                PCStatus.INCAPACITATED: "💀 Down",
-                PCStatus.DEAD: "☠️ Dead",
-                PCStatus.STABLE: "😴 Stable"
+                PCStatus.READY: "[WAIT] Ready",
+                PCStatus.ACTED: "[DONE] Acted",
+                PCStatus.INCAPACITATED: "[DOWN] Down",
+                PCStatus.DEAD: "[DEAD] Dead",
+                PCStatus.STABLE: "[STBL] Stable"
             }.get(state.status, "?")
             
             lines.append(f"{marker} {name}: {status_icon} (HP: {state.current_hp}/{state.max_hp})")
@@ -859,16 +1335,16 @@ class MultiPCCombatManager:
         """
         context = {
             "type": "multi_pc_combat_state",
-            "combat_round": self.current_round,
-            "active_pc": self.current_pc_name,
-            "party_initiative": self.party_initiative,
-            "enemy_initiative": self.enemy_initiative,
-            "party_goes_first": self.party_goes_first,
-            "pc_phase_complete": self.pc_phase_complete,
+            "combat_round": self._state.current_round,
+            "active_pc": self._state.current_pc_name,
+            "party_initiative": self._state.party_initiative,
+            "enemy_initiative": self._state.enemy_initiative,
+            "party_goes_first": self._state.party_goes_first,
+            "pc_phase_complete": self._turns.pc_phase_complete,
             "player_characters": []
         }
         
-        for name, state in self.pc_states.items():
+        for name, state in self._state.pc_states.items():
             pc_data = {
                 "name": name,
                 "hp": f"{state.current_hp}/{state.max_hp}",
@@ -901,18 +1377,18 @@ class MultiPCCombatManager:
             The instruction string to inject into the user prompt.
         """
         # Get forbidden actors for PC phase enforcement
-        forbidden = self.get_forbidden_actors_list()
+        forbidden = self.get_forbidden_actors()
         forbidden_str = ", ".join(forbidden) if forbidden else "None"
         
         # ====================================================================
         # ENEMY_PHASE: BATCH MODE (after /end command)
         # ====================================================================
-        if self.pc_phase_complete:
+        if self._turns.pc_phase_complete:
             pending = self.get_remaining_enemies_for_round()
             actors_str = ", ".join(pending) if pending else "remaining enemies"
             
             # Explicitly identify Player Characters to forbid them from acting
-            pc_names = list(self.pc_states.keys())
+            pc_names = list(self._state.pc_states.keys())
             pc_forbidden_str = ", ".join(pc_names) if pc_names else "None"
             
             return f"""
@@ -922,7 +1398,7 @@ class MultiPCCombatManager:
 ║  MODE: ENEMY & NPC BATCH RESOLUTION                                          ║
 ║  RESOLVE IN ORDER: {actors_str[:60]}
 ╠══════════════════════════════════════════════════════════════════════════════╣
-║  ⛔ FORBIDDEN ACTORS (DO NOT NARRATE):                                       ║
+║  [BLOCKED] FORBIDDEN ACTORS (DO NOT NARRATE):                                ║
 ║  {pc_forbidden_str[:70]:<70} ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
 ║  REQUIRED RESPONSE:                                                          ║
@@ -935,9 +1411,7 @@ class MultiPCCombatManager:
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
-        # ====================================================================
         # PC_PHASE: STRICT TURN ISOLATION MODE
-        # ====================================================================
         current_actor = self.get_current_actor()
         actor_name = current_actor.name if current_actor else "Current Actor"
         
@@ -956,7 +1430,7 @@ class MultiPCCombatManager:
 ║  PCs REMAINING THIS ROUND: {pcs_remaining}                                              ║
 ║  AWAITING /end COMMAND: YES (enemies cannot act yet)                         ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
-║  ⛔ FORBIDDEN ACTORS (DO NOT NARRATE):                                       ║
+║  [BLOCKED] FORBIDDEN ACTORS (DO NOT NARRATE):                                ║
 ║  {forbidden_str[:70]:<70} ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
 ║  REQUIRED RESPONSE:                                                          ║
@@ -967,11 +1441,117 @@ class MultiPCCombatManager:
 ║  4. {next_pc_prompt:<68} ║
 ║  5. Return structured JSON with plan, narration, combat_round, actions.      ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
-║  ⚠️  VIOLATION = CRITICAL FAILURE: Narrating for forbidden actors will      ║
+║  [WARNING] VIOLATION = CRITICAL FAILURE: Narrating for forbidden actors will ║
 ║      cause combat desync. Only [{actor_name}] has authority to act now.
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
+    def _get_combatant_marker(self, combatant: Combatant) -> Tuple[str, str]:
+        """
+        Determine state marker and status for a combatant in initiative tracker.
+        
+        Args:
+            combatant: The combatant to get marker for
+            
+        Returns:
+            Tuple of (marker, state_description)
+        """
+        status = combatant.status.lower()
+        name = combatant.name
+        
+        if status == "dead":
+            return "[D]", "Dead"
+        
+        if combatant.type == CombatantType.PC:
+            pc_state = self._state.pc_states.get(name)
+            if pc_state:
+                if pc_state.status == PCStatus.ACTED:
+                    return "[X]", "Acted"
+                elif name == self._state.current_pc_name:
+                    return "[>]", "CURRENT TURN"
+            return "[ ]", "Waiting"
+        
+        # NPCs/Enemies default to Waiting
+        return "[ ]", "Waiting"
+    
+    def _build_initiative_lines(self, sorted_queue: List[Combatant]) -> Tuple[List[str], List[str]]:
+        """
+        Build initiative and tracker lines from sorted queue.
+        
+        Args:
+            sorted_queue: List of combatants sorted by initiative
+            
+        Returns:
+            Tuple of (initiative_lines, tracker_lines)
+        """
+        initiative_lines = []
+        tracker_lines = []
+        
+        for combatant in sorted_queue:
+            name = combatant.name
+            init = combatant.initiative
+            status = combatant.status.lower()
+            marker, state = self._get_combatant_marker(combatant)
+            
+            initiative_lines.append(f"- {name} ({init}) - {status}")
+            tracker_lines.append(f"- {marker} {name} ({init}) - {state}")
+        
+        return initiative_lines, tracker_lines
+    
+    def _determine_instruction_block(self, sorted_queue: List[Combatant]) -> Tuple[str, List[str]]:
+        """
+        Determine instruction block and turn window based on combat phase.
+        
+        Args:
+            sorted_queue: List of combatants sorted by initiative
+            
+        Returns:
+            Tuple of (instruction_block, turn_window)
+        """
+        current_round = self._state.current_round
+        
+        if self._turns.pc_phase_complete:
+            # ENEMY_PHASE
+            pending_enemies = self.get_remaining_enemies_for_round()
+            if pending_enemies:
+                enemy_list = "\n".join([f"- {name}" for name in pending_enemies])
+                instruction = f""">>> PROCESS TO END ROUND:
+{enemy_list}
+>>> THEN: End Round {current_round}, Start Round {current_round + 1}"""
+                return instruction, pending_enemies
+            else:
+                instruction = ">>> ROUND COMPLETE\nAll creatures have acted. Increment combat_round."
+                return instruction, []
+        
+        # PC_PHASE
+        active_pc = self._state.current_pc_name
+        active_pc_index = -1
+        
+        for i, combatant in enumerate(sorted_queue):
+            if combatant.name == active_pc:
+                active_pc_index = i
+                break
+        
+        if active_pc_index < 0:
+            return f">>> CURRENT: {active_pc} - PLAYER TURN (await input)", [active_pc]
+        
+        # Find NPCs acting before active PC
+        npcs_before = [
+            combatant.name for i, combatant in enumerate(sorted_queue[:active_pc_index])
+            if combatant.type in (CombatantType.ENEMY, CombatantType.NPC)
+        ]
+        
+        if npcs_before:
+            npc_list = "\n".join([f"- {name}" for name in npcs_before])
+            instruction = f""">>> PROCESS ALL OF THESE IN ONE RESPONSE (Initiative Order):
+{npc_list}
+>>> THEN STOP AT: {active_pc} (Player)"""
+            return instruction, npcs_before + [active_pc]
+        else:
+            active_init = sorted_queue[active_pc_index].initiative
+            instruction = f">>> CURRENT: {active_pc} ({active_init}) - PLAYER TURN (await input)"
+            return instruction, [active_pc]
+    
     def format_initiative_tracker(self, encounter_data: Dict[str, Any]) -> str:
         """
         Generate Live Initiative Tracker markdown matching AI tracker format.
@@ -984,105 +1564,21 @@ class MultiPCCombatManager:
         Returns:
             Formatted initiative tracker string matching AI tracker output format
         """
-        import json
-        
-        # Get current round
-        current_round = self.current_round
-        
-        # Build initiative order from turn_queue
-        initiative_lines = []
-        tracker_lines = []
+        current_round = self._state.current_round
         
         # Sort turn queue by initiative (highest first)
-        sorted_queue = sorted(self.turn_queue, key=lambda x: x.initiative, reverse=True)
+        sorted_queue = sorted(self._turns.turn_queue, key=lambda x: x.initiative, reverse=True)
         
-        for combatant in sorted_queue:
-            name = combatant.name
-            init = combatant.initiative
-            status = combatant.status.lower()
-            
-            # Determine state marker for tracker
-            if status == "dead":
-                marker = "[D]"
-                state = "Dead"
-            elif combatant.type == CombatantType.PC:
-                # Check PC state
-                pc_state = self.pc_states.get(name)
-                if pc_state:
-                    if pc_state.status == PCStatus.ACTED:
-                        marker = "[X]"
-                        state = "Acted"
-                    elif name == self.current_pc_name:
-                        marker = "[>]"
-                        state = "CURRENT TURN"
-                    else:
-                        marker = "[ ]"
-                        state = "Waiting"
-                else:
-                    marker = "[ ]"
-                    state = "Waiting"
-            else:
-                # For NPCs/Enemies, mark as acted if they've been processed
-                # We'll assume all non-PCs are "Waiting" unless explicitly marked
-                marker = "[ ]"
-                state = "Waiting"
-            
-            initiative_lines.append(f"- {name} ({init}) - {status}")
-            tracker_lines.append(f"- {marker} {name} ({init}) - {state}")
+        # Build initiative lines
+        initiative_lines, tracker_lines = self._build_initiative_lines(sorted_queue)
         
-        # Determine instruction block based on phase
-        instruction_block = ""
-        turn_window = []
-        
-        if self.pc_phase_complete:
-            # ENEMY_PHASE: Process all remaining enemies
-            pending_enemies = self.get_remaining_enemies_for_round()
-            if pending_enemies:
-                enemy_list = "\n".join([f"- {name}" for name in pending_enemies])
-                instruction_block = f""">>> PROCESS TO END ROUND:
-{enemy_list}
->>> THEN: End Round {current_round}, Start Round {current_round + 1}"""
-                turn_window = pending_enemies
-            else:
-                # All enemies acted, round complete
-                instruction_block = ">>> ROUND COMPLETE\nAll creatures have acted. Increment combat_round."
-                turn_window = []
-        else:
-            # PC_PHASE: Find next PC and determine what to process before them
-            active_pc = self.current_pc_name
-            
-            # Find where active PC is in initiative order
-            active_pc_index = -1
-            for i, combatant in enumerate(sorted_queue):
-                if combatant.name == active_pc:
-                    active_pc_index = i
-                    break
-            
-            if active_pc_index >= 0:
-                # Check if any non-PCs act before the active PC
-                npcs_before = []
-                for i in range(active_pc_index):
-                    combatant = sorted_queue[i]
-                    if combatant.type in (CombatantType.ENEMY, CombatantType.NPC):
-                        # Check if they haven't acted yet (we'd need to track this better)
-                        # For now, assume all non-PCs before active PC need to act
-                        npcs_before.append(combatant.name)
-                
-                if npcs_before:
-                    npc_list = "\n".join([f"- {name}" for name in npcs_before])
-                    instruction_block = f""">>> PROCESS ALL OF THESE IN ONE RESPONSE (Initiative Order):
-{npc_list}
->>> THEN STOP AT: {active_pc} (Player)"""
-                    turn_window = npcs_before + [active_pc]
-                else:
-                    # No NPCs before this PC - it's their turn
-                    instruction_block = f">>> CURRENT: {active_pc} ({sorted_queue[active_pc_index].initiative}) - PLAYER TURN (await input)"
-                    turn_window = [active_pc]
+        # Determine instructions
+        instruction_block, turn_window = self._determine_instruction_block(sorted_queue)
         
         # Build tracker output
         tracker_output = f"""--- ROUND INFO ---
 combat_round: {current_round}
-player_name: {self.current_pc_name}
+player_name: {self._state.current_pc_name}
 initiative_order:
 {chr(10).join(initiative_lines)}
 
@@ -1095,9 +1591,9 @@ initiative_order:
 ```json
 {{
   "combat_round": {current_round},
-  "player_name": "{self.current_pc_name}",
+  "player_name": "{self._state.current_pc_name}",
   "turn_window": {json.dumps(turn_window)},
-  "pc_phase_complete": {str(self.pc_phase_complete).lower()}
+  "pc_phase_complete": {str(self._turns.pc_phase_complete).lower()}
 }}
 ```"""
         
@@ -1107,6 +1603,58 @@ initiative_order:
 # Global instance for combat session
 _active_combat_manager: Optional[MultiPCCombatManager] = None
 _combat_callback: Optional[Any] = None  # Callback for combat events (e.g., to web UI)
+
+
+@contextmanager
+def temporary_combat_manager(manager: MultiPCCombatManager) -> Generator[MultiPCCombatManager, None, None]:
+    """
+    Temporarily replace global combat manager for testing.
+
+    Usage:
+        with temporary_combat_manager(mock_manager):
+            # All code here sees mock_manager as the active combat manager
+            result = get_combat_manager()
+            assert result == mock_manager
+        # Original manager restored automatically
+    """
+    global _active_combat_manager
+    previous = _active_combat_manager
+    _active_combat_manager = manager
+    try:
+        yield manager
+    finally:
+        _active_combat_manager = previous
+
+
+@contextmanager
+def temporary_combat_callback(callback: Any) -> Generator[Any, None, None]:
+    """
+    Temporarily replace global callback for testing.
+
+    Usage:
+        captured_events = []
+        with temporary_combat_callback(lambda event, data: captured_events.append((event, data))):
+            emit_combat_event("test_event", {"data": "value"})
+            assert len(captured_events) == 1
+    """
+    global _combat_callback
+    previous = _combat_callback
+    _combat_callback = callback
+    try:
+        yield callback
+    finally:
+        _combat_callback = previous
+
+
+def reset_combat_state() -> None:
+    """
+    Reset global combat state - USE ONLY IN TESTS.
+    Clears both active manager and callback.
+    """
+    global _active_combat_manager, _combat_callback
+    _active_combat_manager = None
+    _combat_callback = None
+    info("Combat state reset", category="combat_lifecycle")
 
 
 def set_combat_callback(callback: Any) -> None:
@@ -1133,7 +1681,7 @@ def emit_combat_event(event_type: str, data: Dict[str, Any]) -> None:
         try:
             _combat_callback(event_type, data)
         except Exception as e:
-            print(f"Error in combat callback: {e}")
+            error(f"Error in combat callback: {e}", exception=e, category="combat_events")
 
 
 def get_combat_manager() -> Optional[MultiPCCombatManager]:
@@ -1168,6 +1716,13 @@ def end_combat_session() -> None:
     """End the current combat session and clean up."""
     global _active_combat_manager
     if _active_combat_manager:
+        # UPSTREAM ALIGNMENT: Persist all combat changes before ending
+        info("Ending combat session - persisting damage to character files...", category="combat_lifecycle")
+        results = _active_combat_manager.persist_combat_changes()
+        success_count = sum(1 for success in results.values() if success)
+        total_count = len(results)
+        info(f"Persisted changes for {success_count}/{total_count} characters", category="combat_lifecycle")
+        
         emit_combat_event("combat_ended", {})
     _active_combat_manager = None
 
@@ -1252,10 +1807,10 @@ def get_multi_pc_initiative_narrative(manager: MultiPCCombatManager) -> str:
     """
     party_roll, enemy_roll, party_first = (
         manager.party_initiative,
-        manager.enemy_initiative, 
+        manager.enemy_initiative,
         manager.party_goes_first
     )
-    
+
     pc_names = list(manager.pc_states.keys())
     pc_list = ", ".join(pc_names[:-1]) + f" and {pc_names[-1]}" if len(pc_names) > 1 else pc_names[0]
     
