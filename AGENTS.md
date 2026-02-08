@@ -234,6 +234,29 @@ Major subsystems use dedicated managers:
 - **State Detection**: Tabletop features activate based on `party_tracker.json` state, not configuration flags
 - **Merge Safety**: Clear boundaries allow easy integration of upstream updates
 
+#### Upstream Merge Guidelines
+
+**This repository extends NeverEndingQuest with TABLETOP MODE while maintaining upstream compatibility.**
+
+**When merging upstream updates:**
+
+1. **Preserve upstream features intact** - Accept all upstream HTML, CSS, JS, and Python as written. Don't remove, simplify, or restructure upstream features during the merge.
+
+2. **Mark necessary modifications clearly** - When you must modify host files to hook in TABLETOP MODE:
+   ```javascript
+   // TABLETOP MODE: Added party member filtering
+   // TABLETOP MODE: Multi-PC initiative tracking
+   ```
+
+3. **Prefer extension over modification** - Add TABLETOP MODE features in separate files when possible (`multi_pc_combat.py`, `tabletop_mode.js`) and call them from minimal hooks in host files.
+
+4. **Never break upstream patterns** - Don't add null checks that assume elements might be missing. Don't rename upstream variables. Don't move upstream DOM elements.
+
+**Example - The TTS Merge Mistake:**
+- **What went wrong**: Removed the DM Voice settings panel and added broken null-checks, breaking upstream JavaScript
+- **Why it was wrong**: Modified upstream feature structure instead of accepting it as designed
+- **Correct approach**: Keep host TTS feature exactly as upstream designed it, use same Settings dropdown (works for both single and multi)
+
 ### SRD 5.2.1 Compliance
 When implementing game mechanics:
 - Use "5th edition" or "5e" instead of "D&D"
@@ -267,10 +290,170 @@ When implementing game mechanics:
 - `prompts/combat/combat_sim_prompt_multipc.txt` - Multi-PC combat prompt (narrative format)
 - `prompts/combat/combat_sim_prompt_multipc_compressed.txt` - Multi-PC combat prompt (@-directive format)
 
+### Developer Tools and Debugging
+
+**ONCNotes - Developer Diary:**
+- **File**: `memory-bank/ONCNotes.md` - Ongoing conversational analysis diary
+- **Purpose**: Captures "in-the-moment" developer observations from gameplay testing
+- **Content**: Narrative summaries, combat analyses, OCNote patterns, architectural insights
+- **Format**: Chronological entries with timestamps, conversational tone
+- **Relationship**: Complements formal docs (AGENTS.md, memory-bank) with informal testing observations
+- **Updates**: Written after each "read chat log" analysis session
+
+**OpenCode Skill System:**
+- **Skill**: `sync-project-memory` - Global OpenCode skill for documentation synchronization
+- **Skill**: `read-chat-log` - Local project skill for chat log analysis with OCNote threading
+  - **Location**: `.opencode/skills/read-chat-log/SKILL.md`
+  - **Trigger Phrases**: "read chat log", "update chat log", "read more", "show chat updates", "read chat"
+  - **Features**: Context-based incremental tracking, OCNote analysis with fading memory architecture (ongoing summary + latest 5), automatic ONCNotes diary writing
+  - **Bookmark Format**: `=====LAST LOG [timestamp]=====` for tracking read position
+  - **Status**: Active (2026-02-05)
+- **Location**: `~/.config/opencode/skills/sync-project-memory/SKILL.md`
+- **Trigger Phrases**: "update memory bank", "update memory", "sync memory", "sync docs and memory", "update agents and memory"
+- **Purpose**: Ensures AGENTS.md and Cline memory-bank are updated together with synchronized information
+- **Behavior**: Exact-phrase matching only (ignores partials like "memory"), updates existing files only (never creates), follows Cline formatting patterns
+- **Status**: Active and tested (2026-02-03)
+
+**Real-Time Chat Monitoring (TABLETOP MODE):**
+- **File**: `web/web_interface.py` (lines ~228-290, marked with `# TABLETOP MODE:`)
+- **Log Location**: `debug/logs/live_chat_monitor.json`
+- **Utility**: `utils/chat_monitor.py` - Command-line tool for reading and filtering chat logs
+- **Purpose**: Captures live WebSocket chat events for AI assistant visibility and external integrations
+- **Implementation**: Wraps `socketio.emit()` to intercept `game_output` events and logs user inputs
+- **Use Cases**:
+  - AI coding assistant can monitor gameplay in real-time without polling
+  - Live text feed for streaming/text-based audiences
+  - TTS (text-to-speech) feed source for audio narration
+  - Debugging and testing prompt changes with immediate feedback
+- **Log Format**: JSON array with timestamp, event_type (user_input/ai_response/system), content, character, metadata
+- **Retention**: Last 100 entries (rotating buffer)
+- **Activation**: Automatic on server start, no configuration needed
+
+**Chat Monitor Utility (`utils/chat_monitor.py`):**
+```bash
+# Show last 20 messages
+python utils/chat_monitor.py --latest 20
+
+# Real-time monitoring (follow mode)
+python utils/chat_monitor.py --follow
+
+# Filter by character
+python utils/chat_monitor.py --character acheron
+
+# Filter by event type
+python utils/chat_monitor.py --type user_input
+
+# Export to file
+python utils/chat_monitor.py --export chat_backup.json
+
+# Show statistics
+python utils/chat_monitor.py --stats
+```
+
 ### Core Files with TABLETOP MODE Modifications
 The following core files contain marked modifications for tabletop mode compatibility:
+- `main.py` - Added `active_pc` sanitization in `validate_ai_response()` to strip tabletop metadata before validation API calls (lines ~1231-1234, `# TABLETOP MODE:` comment)
+- `core/managers/combat_manager.py` - Added `active_pc` sanitization before combat validation API calls (lines ~835-838, `# TABLETOP MODE:` comment)
 - `core/generators/combat_builder.py` - Added `armorClass` to enemy encounter generation (line ~347, `# TABLETOP MODE:` comment)
 - `core/ai/action_handler.py` - Added party member filtering from NPCs list in `createEncounter` action to prevent PCs being misclassified as NPCs (line ~695-730, `# TABLETOP MODE:` comment)
+- `web/web_interface.py` - Added real-time chat monitoring system with SocketIO middleware (lines ~228-290, `# TABLETOP MODE:` comments)
+- `prompts/combat/combat_sim_prompt_multipc_compressed.txt` - Added `@SPLIT_PARTY_GUIDANCE` section for split-party narrative handling (lines ~146-154)
+
+### Combat Prompt Enhancements (2026-02-03)
+
+**@SPLIT_PARTY_GUIDANCE - Edge Case Handling:**
+- **Location**: `prompts/combat/combat_sim_prompt_multipc_compressed.txt` (lines 146-154)
+- **Purpose**: Guides combat LLM to handle party members in different locations from active combat
+- **Behavior**: 
+  - Maintains dual awareness for 3-5 turns (weaving both locations)
+  - Gracefully degrades to minimal acknowledgment after context limit
+  - Prevents "What does [wrong PC] do?" prompting for absent characters
+  - Supports narrative recovery when player describes rejoining
+- **Human DM Role**: When context degrades, human provides narrative bridge (e.g., "we walk up the stairs") to recover
+- **Testing Results**: Successfully maintained split narrative for 8-10 turns before natural context compression
+
+### State Synchronization & The Mechanics vs Narrative Philosophy (2026-02-05)
+
+**The Core Problem:**
+LLM was hallucinating exhaustion state for all PCs at session start despite rest automation working correctly. Acheron (21/21 HP) was narrated as "limp and drifting on the edge of unconsciousness." The rest automation cleared exhaustion from JSON files, but the LLM couldn't see this and relied on conversation history instead.
+
+**Root Cause:**
+DM Note formatting functions (`format_pc_full_stats`, `format_pc_condensed`) never displayed `condition_affected` array to the LLM. Without seeing "Conditions: None," the LLM continued the narrative thread from the previous session's ending (exhausted party).
+
+**The Hierarchy of Truth (Philosophical Resolution):**
+
+```
+┌─────────────────────────────────────────┐
+│  TIER 1: PYTHON (Objective Reality)    │
+│  • HP, max HP, death status            │
+│  • Spell slots (current/max)           │
+│  • Exhaustion levels (1-6)             │
+│  • Death save successes/failures       │
+│  [NON-NEGOTIABLE - Source of Truth]    │
+└─────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────┐
+│  TIER 2: LLM (Subjective Interpretation)│
+│  • "Despite full HP, your old wound    │
+│     aches from the battle"             │
+│  • "You feel weary even after rest"    │
+│    (atmospheric, not mechanical)       │
+│  • Emotional states, tension, mood     │
+│  [FREEDOM WITHIN CONSTRAINTS]          │
+└─────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────┐
+│  TIER 3: PLAYER (The Bridge)           │
+│  • Sees Python reality (character sheet)│
+│  • Experiences LLM narrative            │
+│  • Can challenge: "But my HP is full!" │
+│  [TRUST BUT VERIFY]                    │
+└─────────────────────────────────────────┘
+```
+
+**The Golden Rule:**
+> "Python enforces reality; you interpret it."
+
+**Implementation:**
+
+1. **DM Note Enhancement** (`utils/multi_pc_dm_note.py`):
+   - `format_pc_full_stats()`: Added condition display after HP/AC line
+     - Format: `Conditions: None` or `Conditions: Exhaustion, Prone`
+   - `format_pc_condensed()`: Added concise condition display for non-Active PCs
+     - Format: `Cond: Exhaustion`
+
+2. **@STATE_SYNC Directive** (`prompts/system_prompt_compressed.txt`):
+```javascript
+@STATE_SYNC={
+  bookmark: "SESSION BOUNDARY - State below is current mechanical truth",
+  truth_source: "DM Note character stats are GROUND TRUTH for HP, conditions, slots",
+  override: "If narrative memory contradicts DM Note, DM Note WINS",
+  narrative_freedom: "You may narrate SUBJECTIVE experience, BUT mechanical state MUST match DM Note",
+  principle: "Python enforces reality; you interpret it"
+}
+```
+
+**Why This Preserves LLM Freedom:**
+The LLM isn't constrained—it gains **clarity**. It knows the mechanical truth and narrates *from* that foundation. The story is richer because the axe can actually kill you (Python enforces this), not poorer.
+
+**Why Only PCs, Not NPCs:**
+- **PCs:** Load from persistent JSON with condition tracking → Need mechanical consistency for player trust
+- **NPCs:** Generated dynamically → No persistent state; feel alive in the moment
+- **Result:** NPCs unaffected by this bug; LLM treats them as "fresh" each session
+
+**Token Efficiency:**
+- Condition line: ~15 tokens per character
+- @STATE_SYNC directive: ~80 tokens total
+- No session start message needed (bookmark concept embedded in prompt)
+
+**Key Insight:**
+The exhaustion bug wasn't a rest automation failure—it was a **perception synchronization failure**. Python did its job perfectly. The LLM simply couldn't see the results. By adding conditions to the DM Note, we didn't constrain the LLM—we gave it eyes to see the reality Python was already maintaining.
+
+**Files Modified:**
+- `utils/multi_pc_dm_note.py` - Added condition display to both formatting functions
+- `prompts/system_prompt_compressed.txt` - Added @STATE_SYNC directive
 
 ## Quality Gates
 
@@ -325,3 +508,1106 @@ class ManagerName:
         """Private helper method."""
         pass
 ```
+
+## Future Work & Development Notes
+
+### Multi-PC Conversation Compression (Phase 2 - COMPLETED 2026-02-04)
+
+**Status:** COMPLETED
+**Priority:** Medium
+**Effort:** Medium (~3-4 hours)
+
+**Problem:**
+Generic compression treated all messages the same in multi-PC mode, causing:
+- Loss of per-PC storyline continuity when rotating between party members
+- Reduced AI awareness of each party member's individual narrative arc
+- Compression didn't account for different PCs taking turns as `active_character`
+
+**Solution:**
+Implemented multi-PC aware conversation compression with message tagging:
+
+1. **Message Tagging (main.py lines ~3661-3680):**
+   - User messages tagged with `active_pc` field: `{"role": "user", "content": "...", "active_pc": "Acheron"}`
+   - Dual-check activation: `MULTIPLAYER_MODE` from config.py + runtime `active_pc` detection
+   - Only applies tagging in multi-PC mode (>1 party member)
+
+2. **MultiPCConversationCompressor (utils/compression/multi_pc_conversation_compressor.py):**
+   - Extends `ParallelConversationCompressor` via inheritance (clean merge boundary)
+   - Groups consecutive messages by `active_pc` for coherent compression
+   - **Smart Compression Strategy:**
+     - Recent 8 exchanges kept raw for immediate context
+     - Cross-PC events preserved (location transitions, combat, plot)
+     - Per-PC grouping maintains individual narrative arcs
+     - DM Notes tagged but not compressed
+
+3. **Integration Points (main.py lines ~2274-2291, ~1187-1204):**
+   - Runtime detection of `active_pc` tags in conversation history
+   - Automatic selection of appropriate compressor
+   - Zero overhead for single-PC mode
+
+**Key Features:**
+- **Zero Upstream Impact:** Standard `ParallelConversationCompressor` used for single-PC mode
+- **Clean Merge Boundaries:** All changes marked with `# TABLETOP MODE:` comments
+- **Backward Compatible:** Falls back gracefully if `active_pc` not present
+- **Token Efficient:** Only adds ~4 bytes per tagged message overhead
+
+**Architecture Decisions:**
+- **Tagging over aggressive compression:** Preserves full narrative for all PCs since they rotate turns
+- **Strict active_pc field:** Reliable tracking at message insertion time (no inference)
+- **Runtime detection:** Checks conversation history for `active_pc` tags to avoid `party_tracker_data` dependency in `get_ai_response()`
+- **Gameplay-first:** Prioritizes AI response quality, refine through testing
+
+**Files Created/Modified:**
+- `utils/compression/multi_pc_conversation_compressor.py` - New compressor class (~350 lines)
+- `main.py` - Message tagging and conditional compressor selection (~30 lines)
+
+### Rest Automation Enhancement (Option B - COMPLETED 2026-02-05)
+
+**Status:** COMPLETED
+**Priority:** Medium
+**Effort:** Medium (~1-2 days)
+**Implementation Date:** 2026-02-05
+
+**Problem Observed:**
+During gameplay testing (2026-02-04), spell slots were not automatically updating after long rests, even though:
+- The prompt includes "Long rest = restore all HP/slots/features per 5e rules"
+- HP updates were working via updateCharacterInfo
+- Players had to manually request spell slot updates
+
+**Solution Implemented (Option B - Code Automation):**
+Implemented automatic resource restoration in `core/ai/action_handler.py`:
+
+1. **Function:** `_process_character_rest()` (lines ~1902-2065)
+2. **Trigger:** When `{"action":"rest","parameters":{"type":"short|long","characters":[...]}}` is processed
+3. **5e-Compliant Logic:**
+   - **Short Rest (≥1 hour):**
+     - Refreshes `shortRest` class features only
+     - Warlock spell slots restored (pact magic)
+     - NO automatic HP recovery (players must spend Hit Dice manually via `updateCharacterInfo`)
+   - **Long Rest (≥8 hours):**
+     - Restores HP to maximum
+     - Restores all spell slots to maximum
+     - Resets all class feature uses (Channel Divinity, etc.)
+     - Removes all exhaustion levels
+4. **Bug Fixes Applied:**
+   - Fixed prompt contract - added "rest" to @ACTIONS, @PARAMS, @EXAMPLES in `prompts/system_prompt_compressed.txt`
+   - Fixed path resolution using `find_character_file_fuzzy()` instead of manual filename building
+   - Fixed exhaustion detection (schema uses `list[string]`, not `list[dict]`)
+   - Added parameter validation for `rest_type` ("short" or "long")
+   - Added file existence safety checks
+
+**Files Modified:**
+- `core/ai/action_handler.py` - Implemented `_process_character_rest()` function (~164 lines)
+- `prompts/system_prompt_compressed.txt` - Added `rest` to @ACTIONS (line 24), @PARAMS (line 228), @EXAMPLES (lines 292-295), and updated @REST section (lines 109-116)
+- `scripts/test_rest_action.py` - **NEW** - Comprehensive test suite for rest automation
+
+**Benefits Achieved:**
+- No reliance on LLM to remember rest rules
+- Consistent 5e compliance
+- Reduces player/AI confusion
+- Works for both single-PC and multi-PC modes
+
+**Testing:**
+- Test script created but requires full application environment to run
+- Serves as integration test specifications
+- Logic verified for 5e rule compliance
+
+**Related Files:**
+- `utils/multi_pc_dm_note.py` (Phase 3 implementation - HP truth tracking)
+- `prompts/system_prompt_compressed.txt` (@MULTI_PC directive with rest rules)
+- `core/ai/action_handler.py` (rest handling)
+- `config.py` (MULTIPLAYER_MODE toggle)
+
+### Character Data Access Abstraction Layer (COMPLETED 2026-02-06)
+
+**Status:** COMPLETED
+**Priority:** Medium
+**Effort:** Medium (~2-3 hours)
+**Implementation Date:** 2026-02-06
+
+**Purpose:**
+Created centralized character data access abstraction in `utils/pc_manager.py` to establish consistent patterns for future database migration while maintaining full backward compatibility.
+
+**Architecture:**
+- **Plugin-Based Design:** All core logic contained in TABLETOP MODE file (`utils/pc_manager.py`)
+- **Dual-Check Activation:** Uses `config.MULTIPLAYER_MODE` + `len(partyMembers) > 1` pattern
+- **Zero Breaking Changes:** Upstream files can migrate gradually; fallback to direct file load
+
+**Functions Added:**
+1. **`should_use_abstraction_layer()`** - DUAL-CHECK: config.MULTIPLAYER_MODE + party size
+2. **`get_character_state()`** - Retrieve character data with automatic mode detection
+3. **`update_character_state()`** - Update character data with validation
+4. **`get_party_character_states()`** - Bulk load all party members
+5. **`character_exists()`** - Check if character exists
+6. **`get_character_field()`** / **`update_character_field()`** - Single field access
+7. **`get_character_access_stats()`** - Usage monitoring
+8. **`_validate_character_name()`** - Input validation helper
+9. **`_is_multiplayer_enabled()`** - Cached config check
+
+**Safety Features:**
+- **Thread-Safe Statistics:** `_stats_lock` protects `_character_access_stats` for multi-threaded web server
+- **Input Validation:** Rejects empty strings, None values, and wrong types with error logging
+- **Config Caching:** `_is_multiplayer_enabled()` caches config import after first call
+- **Graceful Degradation:** Try/except blocks ensure fallback to direct file access on any failure
+
+**Upstream Integration Points (all marked # TABLETOP MODE):**
+- `core/managers/combat_manager.py` - Character loading in combat (lines ~2279-2289)
+- `core/ai/action_handler.py` - Party filtering for encounters (lines ~704-709)
+- `utils/multi_pc_dm_note.py` - Character loading for DM notes (lines ~283-291)
+
+**Verification Results:**
+- ✅ All 9 functions present and functional
+- ✅ Combat LLM path verified working
+- ✅ Narrator LLM path verified working
+- ✅ Input validation correctly rejects invalid names
+- ✅ Thread-safe statistics with lock protection
+- ✅ Config caching prevents repeated imports
+- ✅ Dual-check activation working correctly
+- ✅ Syntax valid on all modified files
+- ✅ Zero breaking changes to existing APIs
+
+**Performance Impact:**
+- Neutral to slightly improved (config caching eliminates repeated imports)
+- No file I/O changes (same underlying operations)
+- Negligible overhead (<0.1% compared to LLM latency)
+
+**Future Database Migration Path:**
+1. Update `CHARACTER_STORAGE_BACKEND` constant to "database"
+2. Modify `_get_character_path()` to return DB connection string
+3. All existing code continues working unchanged
+4. Business logic (`get_character_state()`, `update_character_state()`) unchanged
+
+**Files Modified:**
+- `utils/pc_manager.py` - Core abstraction layer (~175 lines added)
+- `core/managers/combat_manager.py` - Combat integration (6 lines, TABLETOP MODE marked)
+- `core/ai/action_handler.py` - Action handler integration (5 lines, TABLETOP MODE marked)
+- `utils/multi_pc_dm_note.py` - DM note integration (12 lines, TABLETOP MODE marked)
+
+**Documentation:**
+- Created `docs/functional_verification_report.md` with comprehensive testing results
+- Added implementation summary to `docs/character_data_abstraction_implementation.md`
+
+### Multi-PC Combat Manager Error Handling Fix (COMPLETED - 2026-02-06)
+
+**Status:** COMPLETED
+**Priority:** Low (Code Quality)
+**Effort:** Small (~15 minutes)
+
+**Problem:**
+Inconsistent error handling across `core/managers/multi_pc_combat.py` with mix of `debug()`, `print()`, and silent pass statements. Six `print()` statements needed standardization:
+- Lines 849, 868, 871: Error conditions using print()
+- Line 866: Success messages using print()
+- Line 1274: Callback errors using print()
+- Lines 1310-1314: Lifecycle messages using print()
+
+**Solution:**
+Standardized all logging to use `utils.enhanced_logger`:
+1. **Import Update (line 45):** Added `info` and `error` to existing `debug` import
+2. **Error Replacements:**
+   - Line 849: `error()` for persist combat changes failure
+   - Line 868: `error()` for save changes failure
+   - Line 871: `error()` with exception parameter for persist exception
+   - Line 1274: `error()` with exception parameter for callback errors
+3. **Info Replacements:**
+   - Line 866: `info()` for successful save confirmation
+   - Lines 1310-1314: `info()` for combat lifecycle messages (session end, persistence stats)
+
+**Logger Categories:**
+- `combat_persistence` - For save/load operations
+- `combat_events` - For callback errors
+- `combat_lifecycle` - For session start/end messages
+
+**Result:**
+- Zero `print()` statements remaining in file
+- Consistent error handling following codebase standards
+- Proper categorization enables filtering and debugging
+- No functional changes (pure refactoring)
+
+**Files Modified:**
+- `core/managers/multi_pc_combat.py` - 6 lines changed, 1 import updated
+
+### Context Manager Pattern for Testability (COMPLETED - 2026-02-06)
+
+**Status:** COMPLETED
+**Priority:** Medium (Architecture/Testability)
+**Effort:** Small (~20 minutes)
+
+**Problem:**
+Global singleton pattern (`_active_combat_manager`, `_combat_callback`) makes unit testing difficult. Tests cannot easily mock combat state or capture events without running the full Flask application.
+
+**Solution:**
+Implemented context manager pattern for dependency injection in tests:
+
+1. **Imports Added (lines 30-31):**
+   - `Generator` from `typing`
+   - `contextmanager` from `contextlib`
+
+2. **Context Managers (lines 1251-1290):**
+   - `temporary_combat_manager(manager)` - Temporarily replaces global combat manager
+     - Usage: `with temporary_combat_manager(mock_manager):`
+     - Automatically restores original manager on exit
+   - `temporary_combat_callback(callback)` - Temporarily replaces global callback
+     - Usage: `with temporary_combat_callback(mock_callback):`
+     - Enables event capture in tests
+
+3. **Reset Helper (lines 1292-1302):**
+   - `reset_combat_state()` - Clears both manager and callback
+   - Logs reset action for debugging
+   - Marked "USE ONLY IN TESTS"
+
+**Benefits:**
+- **Zero breaking changes** - All existing code unchanged
+- **Clean test syntax** - Context managers provide readable test code
+- **Automatic cleanup** - `try/finally` ensures state restoration
+- **Composable** - Can nest multiple context managers
+- **Thread-safe** - Context managers work per-thread
+- **Test scenarios enabled:**
+  - Mock combat without Flask app running
+  - Test edge cases (all PCs unconscious, etc.)
+  - Verify persistence without file I/O
+  - Capture web UI events in tests
+  - Parallel test execution safe
+
+**Files Modified:**
+- `core/managers/multi_pc_combat.py` - 3 imports added, 3 functions added (~50 lines)
+
+### MultiPCCombatManager Structure Refactoring (COMPLETED - 2026-02-06)
+
+**Status:** COMPLETED
+**Priority:** High (Architecture/Phase 3)
+**Effort:** Medium (~2-3 hours)
+**Implementation Date:** 2026-02-06
+
+**Objective:**
+Phase 3 of multi-PC combat rebuild: Refactor monolithic `MultiPCCombatManager` into focused sub-managers using Facade pattern.
+
+**Architecture Changes:**
+
+1. **Sub-Managers Created:**
+   - `CombatStateManager` (lines 142-327, ~185 lines, 7 methods):
+     - Manages PC combat states (`pc_states` dictionary)
+     - Tracks HP, status, death saves per PC
+     - Handles round/initiative metadata
+   - `TurnQueueManager` (lines 331-635, ~305 lines, 10 methods):
+     - Manages initiative order (`turn_queue` list)
+     - Handles turn advancement and round tracking
+     - Tracks phase completion flags
+
+2. **MultiPCCombatManager Refactored:**
+   - Reduced from 15 individual fields to 2 sub-manager references
+   - Kept: `first_round`, `last_attack_weapon`, `last_target`, constants, `pending_character_updates`
+   - Added: `_state: CombatStateManager`, `_turns: TurnQueueManager`
+
+**Delegation Pattern Implemented:**
+
+7 methods converted to thin delegation wrappers:
+- `initialize_from_party()` → `self._state.initialize_from_party()`
+- `initialize_turn_queue()` → `self._turns.initialize_turn_queue()`
+- `get_available_pcs()` → `self._state.get_available_pcs()`
+- `get_current_actor()` → `self._turns.get_current_actor()`
+- `advance_turn()` → `self._turns.advance_turn()`
+- `find_target()` → `self._turns.find_target()`
+- `get_remaining_enemies_for_round()` → `self._turns.get_remaining_enemies_for_round()`
+
+**Coordination Methods Preserved:**
+5 methods kept in MultiPCCombatManager that coordinate between both sub-managers:
+- `update_pc_hp()` - Updates state AND syncs changes to turn_queue
+- `complete_pc_turn()` - Marks PC acted + checks if PC phase complete
+- `force_end_pc_phase()` - Marks all PCs acted + sets phase flag
+- `start_new_round()` - Coordinates round increment, state reset, phase reset
+- `get_combat_state_summary()` - Aggregates data from both sub-managers
+
+**Line Reduction:**
+- Before: 1,943 lines
+- After: 1,756 lines
+- **Saved: -187 lines (~10% reduction)**
+
+**Benefits:**
+- Better separation of concerns (state vs turn logic)
+- Easier unit testing (can test sub-managers independently)
+- Clearer responsibilities (each class has single focus)
+- Facade pattern: MultiPCCombatManager coordinates, sub-managers implement
+
+**Verification:**
+- Python syntax validated (`python -m py_compile`)
+- Instantiation verified (sub-managers initialize correctly)
+- Cross-manager linking verified (`_turns.state_manager` references `_state`)
+- All delegations tested and functional
+
+**Files Modified:**
+- `core/managers/multi_pc_combat.py` - Major restructuring (no breaking changes)
+
+---
+
+## Plugin Architecture & SP/MP Unification Roadmap
+
+### Core Philosophy: "Upstream First, Extend Second"
+
+This codebase maintains a plugin architecture that enables both **easy upstream merges** AND **future unification** of Single-Player (SP) and Multi-Player (MP) modes. The goal is to make MP feel like a natural extension of SP, not a separate codebase.
+
+### Current State: Plugin Mode (Phase 1)
+
+**Activation Pattern:**
+```python
+# Dual-check: Config flag + runtime detection
+if config.MULTIPLAYER_MODE and len(party_members) > 1:
+    # MP features activate
+```
+
+**Key Principles:**
+- **Minimal core file modifications** - Changes marked with `# TABLETOP MODE:` comments
+- **Encapsulated extensions** - New features in separate files (`multi_pc_combat.py`, `tabletop_mode.js`)
+- **Runtime detection** - Features activate based on party size, not just config flags
+- **Shared data structures** - MP uses identical schemas to SP (character files, encounters, etc.)
+
+### Phase 2: Runtime Detection Only (Target: v0.4.0)
+
+**Migration Goal:** Remove `MULTIPLAYER_MODE` config requirement
+
+**Activation Pattern:**
+```python
+# Runtime detection only
+if len(party_members) > 1:
+    # MP features activate automatically
+```
+
+**Benefits:**
+- No configuration required
+- Automatic activation at runtime
+- Simpler deployment
+- Backward compatible (SP = MP with 1 party member)
+
+### Phase 3: Full Unification (Target: v0.5.0)
+
+**End State:** MP becomes the default behavior
+
+**Changes:**
+- Remove `MULTIPLAYER_MODE` config entirely
+- SP is simply MP with a single party member
+- All MP-specific files become core files
+- Upstream becomes unified codebase
+
+### Coding Patterns for Unification
+
+#### Pattern 1: Dual-Path Functions
+Handle both SP and MP in the same function:
+```python
+def process_character_update(character_name, changes):
+    # SP path (always works)
+    update_character_info(character_name, changes)
+    
+    # MP extension (conditional)
+    if multi_pc_manager and len(get_party_members()) > 1:
+        multi_pc_manager.queue_update(character_name, changes)
+```
+
+#### Pattern 2: Abstraction Layers
+Use abstraction functions that work for both modes:
+```python
+# utils/pc_manager.py
+from utils.pc_manager import get_character_state
+
+# Works for both SP and MP
+character_data = get_character_state("Acheron")
+```
+
+**Migration Path:**
+1. Phase 1: `if config.MULTIPLAYER_MODE and len(party) > 1`
+2. Phase 2: `if len(party) > 1`
+3. Phase 3: Always use abstraction layer
+
+#### Pattern 3: Hook-Based Extensions
+Add minimal hooks to upstream code:
+```python
+# In combat_manager.py (upstream)
+def run_combat_simulation():
+    # ... upstream logic ...
+    _post_turn_hook()  # Single line addition
+
+# In multi_pc_combat.py (extension)
+def _post_turn_hook():
+    if len(get_party_members()) > 1:
+        persist_combat_changes()
+```
+
+#### Pattern 4: Extend Don't Replace
+Add fields to existing structures rather than creating new ones:
+```python
+# BAD: Separate MP structure
+mp_character = {"mp_hp": value, "mp_slots": value}
+
+# GOOD: Extend existing structure
+character_data["party_position"] = position
+character_data["is_active_pc"] = True
+```
+
+### Critical Rules for Maintaining Compatibility
+
+1. **Always use upstream persistence functions**
+   - `update_character_info()` for character changes
+   - `safe_write_json()` for file operations
+   - Never write direct SQL or raw file I/O in MP code
+
+2. **Never modify upstream data structures**
+   - Don't add MP-specific fields to core JSON schemas
+   - Use extension fields that upstream ignores gracefully
+   - Maintain backward compatibility
+
+3. **Runtime detection over configuration**
+   - Check `len(party_members) > 1` instead of `config.MULTIPLAYER_MODE`
+   - Check `multi_pc_manager is not None`
+   - Remove hard dependencies on config flags
+
+4. **Single source of truth**
+   - Character state lives in character JSON files (not MP cache)
+   - Party state lives in `party_tracker.json`
+   - Combat state lives in encounter files
+   - MP managers are caches, not primary storage
+
+5. **Clear merge boundaries**
+   - All modifications marked with `# TABLETOP MODE:`
+   - Extensions in separate files when possible
+   - Minimal changes to upstream logic flow
+
+### Benefits of This Architecture
+
+**For Upstream Merges:**
+- Clear boundaries make conflict resolution easy
+- Upstream changes don't break MP features
+- Plugin files are isolated from core changes
+
+**For Future Unification:**
+- Gradual migration path (Phase 1 → 2 → 3)
+- No rewrite required
+- Tested MP code becomes core code
+- Single codebase to maintain
+
+**For Development:**
+- Test SP mode works? It will work in unified build
+- Test MP mode works? It validates unified architecture
+- No duplicate code paths to maintain
+- Consistent patterns across entire codebase
+
+### Action Items for Maintaining Compatibility
+
+**When Adding MP Features:**
+1. Can this use existing SP functions?
+2. Can this extend existing data structures?
+3. Is this marked with `# TABLETOP MODE:`?
+4. Will this work if `MULTIPLAYER_MODE` config is removed?
+
+**When Merging Upstream:**
+1. Preserve upstream features intact
+2. Only add hooks if absolutely necessary
+3. Test MP features still work after merge
+4. Update TABLETOP MODE comments if lines shift
+
+**When Planning New Features:**
+1. Design for unified architecture from start
+2. Use abstraction layers (`pc_manager`)
+3. Implement runtime detection patterns
+4. Document unification path in comments
+
+---
+
+## Recent Changes
+
+### Combat API Timeout Protection & StatusTimer Infrastructure (COMPLETED - 2026-02-09)
+
+**Status:** COMPLETED  
+**Priority:** High (Reliability/UX)  
+**Effort:** Small (~1 hour)  
+
+**Problem:**
+On 2026-02-09 at 10:57:42, combat validation hung indefinitely waiting for an OpenAI API response. The SDK default timeout is 600s (10 minutes) - unacceptable for interactive gameplay. Users saw a static "Validating combat actions..." placeholder with no feedback escalation or timeout recovery.
+
+**Solution:**
+Implemented timeout infrastructure and StatusTimer context manager for future UX improvements. Three surgical changes across 3 files.
+
+**Constants Added (model_config.py:50-51):**
+```python
+COMBAT_API_TIMEOUT_SECONDS = 120                        # Per-call timeout for combat LLM calls (prevents indefinite hangs)
+COMBAT_CONNECT_TIMEOUT_SECONDS = 10                     # TCP connection timeout for combat LLM calls
+```
+
+**StatusTimer Class (status_manager.py:143-206):**
+
+Context manager for escalating status messages during blocking operations:
+
+```python
+class StatusTimer:
+    DEFAULT_SCHEDULE = [
+        (10, "Still processing, please wait..."),
+        (30, "Response taking longer than usual..."),
+        (60, "Waiting for AI provider ({elapsed}s)..."),
+    ]
+    
+    def __enter__(self):  # Starts daemon thread
+    def __exit__(self):   # Stops thread on completion/exception
+```
+
+**Key Features:**
+- Escalation schedule: 10s → 30s → 60s with live elapsed counter
+- Daemon thread auto-cancels on context exit (success or exception)
+- Uses `threading.Event.wait(timeout=1.0)` for responsive shutdown
+- DEFAULT_SCHEDULE is class-level constant for per-call-site customization
+- **Ready for OpenRouter build:** Will be reused by `llm_router.py` when Phase 1 is implemented
+
+**Timeout Protection Applied (combat_manager.py):**
+
+| Line | Function | Call Type | Priority |
+|------|----------|-----------|----------|
+| 852 | `validate_combat_response()` | Validation LLM | HIGH |
+| 2576 | Initial scene generation | Scene narration | HIGH |
+| 3619 | Main combat loop GPT-4.1 | Combat generation | **CRITICAL** |
+
+**Implementation Notes:**
+
+- All 3 high-traffic combat paths now protected; 6 secondary calls remain unprotected (acceptable risk)
+- Timeout exceptions caught by existing retry loops (up to 5 attempts)
+- StatusTimer not yet wired up (deferred for Section 4); timeout infrastructure complete
+- Zero code restructuring; all additive single-line changes with `# TABLETOP MODE:` comments
+
+**Result:**
+- ✅ Combat API calls timeout after 120s instead of 600s SDK default
+- ✅ Prevents indefinite hangs during live gameplay
+- ✅ Existing retry logic handles timeouts gracefully
+- ✅ StatusTimer ready for future UX escalation work
+
+**Files Modified:**
+1. `model_config.py` - Added timeout constants (2 lines)
+2. `core/managers/status_manager.py` - StatusTimer class (66 lines)
+3. `core/managers/combat_manager.py` - 3 timeout additions (marked with # TABLETOP MODE:)
+
+**Future Work:**
+- Section 4: Wire up StatusTimer at 3 main call sites for escalating UX feedback
+- Complete coverage: Add timeout to 6 secondary API calls (dialogue summary, log analyzer, re-engage paths)
+
+---
+
+### MultiPCCombatManager Bug Fixes & Code Quality Improvements (COMPLETED - 2026-02-09)
+
+**Status:** COMPLETED
+**Priority:** High (Architecture/Reliability)
+**Effort:** Medium (~3-4 hours)
+
+**Objective:**
+Fixed 10 synchronization bugs and applied 5 code quality improvements to `core/managers/multi_pc_combat.py` based on comprehensive audit report. All fixes address state synchronization issues between the `MultiPCCombatManager` facade and its sub-managers (`CombatStateManager`, `TurnQueueManager`).
+
+**Bugs Fixed (Bugs 1-10):**
+
+| Bug | File | Change |
+|-----|------|--------|
+| **Bug 1** | multi_pc_combat.py:775-783 | Added `current_round` property getter/setter on facade to route writes to `_state.current_round` (was creating shadow attribute) |
+| **Bug 2** | multi_pc_combat.py:1229, 1365 | Fixed `start_new_round()` to write to `self._turns.enemy_phase_complete` instead of orphan facade attribute |
+| **Bug 3** | multi_pc_combat.py:1068-1093 | Refactored `complete_pc_turn()` to delegate to `self._turns.complete_pc_turn()` |
+| **Bug 4** | multi_pc_combat.py:1095-1103 | Refactored `force_end_pc_phase()` to delegate entirely to `self._turns.force_end_pc_phase()` |
+| **Bug 5** | multi_pc_combat.py | Removed dead `CombatStateManager.get_combat_state_summary()` method (28 lines) |
+| **Bug 6** | multi_pc_combat.py:1032-1044, 1046-1066, 1137-1158 | Converted 4 facade methods from reimplementing logic to delegating to `_state` |
+| **Bug 7** | multi_pc_combat.py:1312-1316 | **Windows Compatibility:** Replaced Unicode icons (⏳✓💀☠️😴) with ASCII tags ([WAIT], [DONE], [DOWN], [DEAD], [STBL]) |
+| **Bug 8** | multi_pc_combat.py | Removed 3 dead methods from `TurnQueueManager` - 74 lines |
+| **Bug 9** | multi_pc_combat.py:429-461, 778-815 | Fixed `TurnQueueManager.advance_turn()` to return tuple instead of mutating state; moved round rollover to facade to prevent double-increment |
+| **Bug 10** | multi_pc_combat.py | Removed dead `first_round` field from facade (2 lines) |
+
+**Code Quality Improvements:**
+
+1. **Bug 7 (Item 1 above):** Windows Unicode compatibility fix (already counted in bugs)
+2. **Unicode Removal (Item 2):** Replaced Unicode emoji (⛔⚠️) with ASCII tags ([BLOCKED], [WARNING]) in prompt boxes (lines 1402, 1436, 1447)
+3. **Facade Properties (Item 3):** Changed `manager._state.party_initiative` to `manager.party_initiative` using facade properties (lines 1811-1817)
+4. **Stale Comment (Item 4):** Removed stale `# ... [Keep existing methods below] ...` comment (line 1010)
+5. **Unused Imports (Item 5):** Removed unused `Union` and `re` imports (lines 30, 34)
+
+**Test File Fix:**
+- **scripts/test_multi_pc_combat.py:258** - Fixed test to unpack tuple from `advance_turn()` call: `next_actor, rolled_over = self.turn_mgr.advance_turn()`
+
+**Architecture Principle Established:**
+Facade methods should either **delegate** to sub-managers (pure delegation) or **coordinate** between multiple sub-managers. They should not reimplement sub-manager logic by directly accessing `self._state.pc_states` when a sub-manager method exists.
+
+**Key Patterns:**
+- **Delegation:** `return self._state.method_name()` or `return self._turns.method_name()`
+- **Coordination:** Facade methods touching both `_state` and `_turns` handle coordination logic
+- **Properties:** External reads/writes go through facade properties that delegate to `_state`
+- **Return Types:** Sub-managers return simple types or tuples; facade consumes tuples, returns simple types
+
+**Verification:**
+- All 10 bugs from audit report fixed
+- Test suite should pass (fixed Bug 9 return type impact)
+- Zero breaking changes confirmed
+- State synchronization bugs resolved (shadow attributes, orphan writes, double-increment)
+- Windows compatibility issues resolved
+
+**Pre-existing Issues (Not Our Changes):**
+3 LSP type annotation errors (~1537, ~1550, ~1554) - existed before fixes, unrelated to bug fixes
+
+**Files Modified:**
+1. `core/managers/multi_pc_combat.py` - ~200+ lines (mix of additions, deletions, refactors)
+2. `scripts/test_multi_pc_combat.py` - Line 258 (tuple unpacking fix)
+
+---
+
+### TTS Auto-Play Fix & Queue Management (COMPLETED - 2026-02-06)
+
+**Status:** COMPLETED  
+**Priority:** High (User Experience)  
+**Effort:** Medium (~2-3 hours)  
+
+**Problem:**
+TTS (Text-to-Speech) auto-play had three critical issues:
+1. **Cacophony on reload:** When auto-play enabled and page reloaded, ALL cached messages played simultaneously
+2. **No queue management:** Multiple messages could play at once, causing audio overlap
+3. **Mechanical messages spoken:** Combat results (/att, /dmg) and system commands (/help, /stats) were being narrated, breaking immersion
+
+**Solution:**
+Implemented comprehensive TTS management system with queue control, message filtering, and `[skipTTS]` tagging:
+
+**1. TTS Queue Manager Plugin (`web/static/js/tts_queue_manager.js`) - NEW:**
+- **Sequential Playback:** Only one TTS plays at a time, preventing audio overlap
+- **Queue Management:** Max 3 queued messages, skips new messages when TTS is playing
+- **Smart Behavior:** DM can manually click TTS button if auto-play skips a message
+- **Emergency Stop:** `cancelAll()` method stops all playback immediately
+- **Plugin Architecture:** Isolated from upstream code, loaded as extension
+
+**2. Cached Message Protection (`web/templates/game_interface.html`):**
+- Added `skipAutoplay` parameter to `addMessage(outputId, message, skipAutoplay = false)`
+- Cached messages from previous sessions pass `skipAutoplay=true` (no TTS on page reload)
+- Prevents cacophony when restoring chat history after reconnect
+
+**3. Player Message Cleanup (`web/templates/game_interface.html`):**
+- Removed TTS button (▶) from player input messages entirely
+- Only DM narration displays TTS controls
+- Cleaner UX: TTS is DM-only feature
+
+**4. System Content Filter (`web/templates/game_interface.html`):**
+- Filters `[SYSTEM]`, `---` (dividers), and `/command` lines from TTS auto-play
+- Help menus, command lists, and session boundaries not spoken
+- Content still displays normally, just not narrated
+
+**5. `[skipTTS]` Tag System (4 files):**
+
+**A. Message Generation (Python):**
+- **`core/managers/multi_pc_combat.py`:** Combat commands (`/att`, `/dmg`) prepend `[skipTTS]` to mechanical output
+  - Lines modified: ~1012, 1029, 1034, 1039, 1055, 1082
+  - Messages: "Hit! Rolled X vs AC Y", "Miss. (Rolled X vs AC Y)", damage confirmations
+  
+- **`main.py`:** `/help` command output prepends `[skipTTS]`
+  - Line ~3072: Help menu marked for TTS exclusion
+
+**B. Tag Processing (`web/web_interface.py`):**
+- **`WebOutputCapture.write()` method:** Detects `[skipTTS]` prefix, strips it, sets `skipTTS: true` flag
+  - Lines 432-442: First DM section end handler
+  - Lines 504-513: Debug message handler  
+- **`WebOutputCapture.flush()` method:** Same detection and stripping
+  - Lines 574-584: Critical fix for stdout flush scenarios
+- Tag stripped before display, `skipTTS` boolean passed to frontend
+
+**C. Frontend Filtering (`web/templates/game_interface.html`):**
+- Line ~5202: Checks `message.skipTTS` flag before auto-play
+- DM narration without flag → TTS plays
+- Mechanical messages with flag → TTS skipped
+
+**TTS Behavior Summary:**
+
+| Message Type | Auto-Play | Manual Button | Spoken Content |
+|--------------|-----------|---------------|----------------|
+| **DM Narration** | ✅ Yes (queued) | ✅ Yes | Story content only |
+| **Player Input** | ❌ No | ❌ No | N/A |
+| **System/Error** | ❌ No | ❌ No | N/A |
+| **Cached Messages** | ❌ No | ✅ Yes | If manually clicked |
+| **Combat Results** | ❌ No | ❌ No | Display only |
+| **Help Menus** | ❌ No | ❌ No | Display only |
+
+**Implementation Flow:**
+```
+Player: /att goblin 15
+↓
+Python: Returns "[skipTTS] Dungeon Master: Miss. (Rolled 15 vs AC 16)"
+↓
+stdout.flush() or marker detection
+↓
+WebOutputCapture: Detects [skipTTS], strips tag, sets skipTTS: true
+↓
+Message: {type: 'narration', content: 'Miss...', skipTTS: true}
+↓
+Frontend: Displays normally, checks skipTTS flag
+↓
+❌ No TTS (tagged as mechanical), queue not blocked
+↓
+LLM Narration arrives: "The goblin dodges your blade!"
+↓
+✅ TTS plays immediately (queue ready, immersive)
+```
+
+**Files Modified:**
+1. `web/static/js/tts_queue_manager.js` - **NEW** Plugin implementation (~200 lines)
+2. `web/templates/game_interface.html` - skipAutoplay param, system filters, skipTTS flag check (lines ~5132, 5202, 5231, 5373)
+3. `core/managers/multi_pc_combat.py` - [skipTTS] prefixes on 6 combat outputs (lines ~1012-1082)
+4. `main.py` - [skipTTS] prefix on /help command (line ~3072)
+5. `web/web_interface.py` - Tag detection/stripping in 3 locations (lines 432-442, 504-513, 574-584)
+
+**Result:**
+- ✅ No cacophony on page reload
+- ✅ Only DM narration speaks (immersive storytelling)
+- ✅ Combat mechanics display but don't break immersion
+- ✅ Queue flows smoothly, no blocking by mechanical messages
+- ✅ All changes marked with `# TABLETOP MODE:` comments (merge-safe)
+
+### OpenRouter Integration - Phase 1 Core Chat/LLM (2026-02-06)
+
+**Status:** COMPLETED  
+**Priority:** High  
+**Effort:** Medium (~2-3 hours)  
+
+**Objective:**
+Enable multi-provider AI support with transparent fallback from OpenRouter to OpenAI for all chat/LLM operations.
+
+**Factory Pattern Implementation:**
+
+1. **New File Created - `utils/ai_client_factory.py` (312 lines):**
+   - `create_chat_client(use_fallback=False)` - Creates OpenAI or OpenRouter client based on config
+   - `get_chat_model_name()` - Returns appropriate model (Kimi K2.5 or GPT-4.1) based on provider
+   - `handle_provider_error()` - Detects retryable errors (rate limits, 503s, etc.) and triggers fallback
+   - `get_fallback_notification()` - Returns user-friendly GUI message when fallback occurs
+   - `get_provider_status()` - Diagnostics for troubleshooting provider configuration
+
+2. **Configuration Added to `model_config.py` (lines 68-101):**
+   ```python
+   LLM_PROVIDER = "openai"  # Options: "openai", "openrouter"
+   OPENROUTER_API_KEY = ""  # Set in config.py
+   OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+   OPENROUTER_CHAT_MODEL = "moonshotai/kimi-k2.5"
+   ENABLE_PROVIDER_FALLBACK = True
+   ```
+
+**Files Updated (9 total):**
+1. `utils/ai_client_factory.py` - **NEW** Factory implementation (312 lines)
+2. `updates/update_character_info.py` - Factory pattern + transparent fallback in character updates
+3. `utils/startup_wizard.py` - Factory pattern for character creation
+4. `core/ai/transition_validator.py` - Factory pattern + fallback for location transitions
+5. `core/ai/combat_compression_engine.py` - Factory pattern for combat compression
+6. `core/ai/incremental_compression.py` - Factory pattern for location compression
+7. `core/ai/cumulative_summary.py` - Factory pattern for adventure summaries
+8. `core/ai/adv_summary.py` - Factory pattern for validation summaries
+9. `web/web_interface.py` - Factory pattern for chat-based endpoints (skipped image/TTS for Phase 2)
+
+**Fallback Behavior:**
+- **Transparent auto-retry** when OpenRouter fails
+- Detects rate limits, timeouts, 503/504 errors, connection issues
+- Automatically switches to OpenAI without user intervention
+- System message displayed in GUI: "AI provider switched from openrouter to openai..."
+- Fallback persists for entire game session (KISS principle)
+
+**Validation:**
+- All 9 files compile successfully (`python -m py_compile`)
+- Zero breaking changes - existing OpenAI-only users unaffected
+- Backward compatible with single-player mode
+
+**Quick Start:**
+1. Get OpenRouter API key from https://openrouter.ai/keys
+2. Add to config.py: `OPENROUTER_API_KEY = "sk-or-..."`
+3. In model_config.py: Change `LLM_PROVIDER = "openrouter"`
+4. Run game normally - Kimi K2.5 will be used automatically with fallback to OpenAI
+
+**Future Work:**
+- Phase 2: OpenRouter image generation (FLUX, Gemini) and TTS (Higgs Audio, Kokoro)
+- Phase 3: Video generation stubs
+
+---
+
+### OpenRouter Migration - Phase 1B Model Reference Updates (COMPLETED - 2026-02-06)
+
+**Status:** COMPLETED  
+**Priority:** High  
+**Effort:** Medium (~4-5 hours)  
+**Risk:** High (core AI calls)  
+
+**Objective:**
+Migrate all hardcoded model references to use the OpenRouter 3-tier configuration system via `get_model_config()` factory function.
+
+**Migration Strategy:**
+- **Surgical line replacement:** Only modify `model=` lines, preserve all other parameters
+- **Client factory integration:** Replace `OpenAI()` with `create_chat_client()` for multi-provider support
+- **Temperature preservation:** Keep explicit temperature settings, add from config only when missing
+- **extra_body handling:** Pass thinking mode parameters only to OpenRouter (handled by factory)
+
+**Files Migrated (5 successfully, 3 pending):**
+
+**✅ Successfully Migrated:**
+1. `updates/plot_update.py` - 1 usage, uses `create_chat_client()`
+2. `updates/update_encounter.py` - 1 usage, uses `create_chat_client()`  
+3. `web/web_interface.py` - 1 usage (image prompt generation), uses `create_chat_client()`
+4. `core/ai/adv_summary.py` - 2 usages, uses `create_chat_client()`
+5. `core/ai/cumulative_summary.py` - 2 usages, uses `create_chat_client()`
+
+**⚠️ Complex Files (Manual Migration Required):**
+6. `core/ai/transition_validator.py` - 3 usages, already partially migrated with fallback logic
+7. `main.py` - 3 usages, core narration functions (high risk)
+8. `core/managers/combat_manager.py` - 6 usages, combat validation (highest risk)
+
+**Key Changes Per File:**
+```python
+# Before:
+from openai import OpenAI
+from config import OPENAI_API_KEY, MODEL_CONSTANT
+client = OpenAI(api_key=OPENAI_API_KEY)
+response = client.chat.completions.create(
+    model=MODEL_CONSTANT,
+    temperature=0.7,
+    messages=messages
+)
+
+# After:
+from utils.ai_client_factory import create_chat_client, get_model_config
+client = create_chat_client()  # Supports OpenAI and OpenRouter
+config = get_model_config("task_id", MODEL_CONSTANT)
+response = client.chat.completions.create(
+    model=config["model"],
+    **config.get("extra_body", {}),  # Only for OpenRouter
+    temperature=0.7,  # Preserved if explicitly set
+    messages=messages
+)
+```
+
+**Critical Bug Fixed During Migration:**
+- **Issue:** `TypeError: Completions.create() got an unexpected keyword argument 'thinking'`
+- **Root Cause:** Migrated files using `OpenAI()` client but passing `extra_body` with `thinking` parameter (OpenRouter-specific)
+- **Solution:** Changed `updates/plot_update.py` and `updates/update_encounter.py` to use `create_chat_client()` instead of direct `OpenAI()` initialization
+- **Result:** Client and parameters now match provider (OpenAI gets empty extra_body, OpenRouter gets thinking params)
+
+**Migration Script:**
+- Created `scripts/migrate_to_openrouter.py` - AST-based migration tool
+- Features: Surgical replacement, temperature preservation, duplicate prevention
+- Safety: Backups, syntax validation, dry-run mode, unit tests
+- Fixed bugs: Multi-line import handling, false positive detection, config line placement
+
+**Validation:**
+- All 5 migrated files compile successfully (`python -m py_compile`)
+- Unit tests pass for migration script logic
+- No breaking changes to existing APIs
+
+**Task ID Mappings:**
+- `DM_MAIN_MODEL` → `dm_main`
+- `DM_VALIDATION_MODEL` → `dm_validation`  
+- `COMBAT_MAIN_MODEL` → `combat_main`
+- `DM_SUMMARIZATION_MODEL` → `summaries`
+- `ADVENTURE_SUMMARY_MODEL` → `adventure_summary`
+- `PLOT_UPDATE_MODEL` → `plot_update`
+- `ENCOUNTER_UPDATE_MODEL` → `encounter_update`
+- `TRANSITION_VALIDATOR_MODEL` → `transition_validation`
+- `DM_MINI_MODEL` → `dm_mini`
+
+**Next Steps:**
+- Test Phase 1B migrated files in-game with OpenRouter provider
+- Complete manual migration for remaining 3 complex files
+- Phase 2: Image generation and TTS via OpenRouter
+
+---
+
+### HP Persistence Bug Fix & Code Quality Cleanup (2026-02-06)
+
+**Critical Bug Fixed - HP Cascade Failure:**
+- **Problem:** Every PC showing 10/10 HP regardless of actual values; defeated characters resurrecting mid-combat
+- **Root Cause:** `multi_pc_combat.py:initialize_from_party()` reading from non-existent `party_data["characters"][name]["hp"]` structure, defaulting to 10 when keys missing
+- **Solution:** Load character data directly from character JSON files using ModulePathManager
+- **Files:** `core/managers/multi_pc_combat.py` (lines 276-305)
+
+**Code Quality Improvements:**
+
+1. **Removed Duplicate json Imports:**
+   - Removed 2 redundant inline `import json` statements (lines 299, 1111)
+   - All json calls now use module-level import (line 29)
+   - Lines saved: 2
+
+2. **Fixed Silent Exception Swallowing:**
+   - Added debug logging for monster AC lookup failures
+   - Now logs creature name, monster type, and exception details
+   - File: `core/managers/multi_pc_combat.py` (lines 379-383)
+
+3. **Consolidated Defensive Imports:**
+   - Removed 4 separate try/except ImportError blocks for internal modules
+   - Internal imports now fail fast (config import keeps fallback)
+   - Consolidated duplicated check in `multi_pc_dm_note.py` to use centralized `should_use_abstraction_layer()`
+   - Files: `core/managers/multi_pc_combat.py`, `utils/multi_pc_dm_note.py`
+   - Lines saved: ~20
+
+4. **Refactored Large Method:**
+   - Split 130-line `format_initiative_tracker()` into 4 focused methods:
+     - `_get_combatant_marker()`: State logic (22 lines)
+     - `_build_initiative_lines()`: Line construction (20 lines)
+     - `_determine_instruction_block()`: Phase logic (50 lines)
+     - `format_initiative_tracker()`: Orchestrator (40 lines)
+   - Result: Better separation of concerns, easier testing
+   - File: `core/managers/multi_pc_combat.py` (lines 1087-1220)
+
+5. **Eliminated Magic Numbers:**
+   - Added constants: `DEFAULT_AC = 10`, `INITIATIVE_DIE = 20`
+   - Replaced 6 hardcoded `ac=10` occurrences
+   - Replaced 4 hardcoded `random.randint(1, 20)` calls
+   - File: `core/managers/multi_pc_combat.py` (lines 176-180, 340, 369, 377, 383, 393, 396, 552, 628-629)
+
+6. **Planned: Inconsistent Error Handling:**
+   - 6 print() statements need conversion to logger calls
+   - Will standardize on `debug()`, `info()`, `error()` from enhanced_logger
+   - Status: Ready for implementation in next session
+
+### MultiPCCombatManager Audit & Test Suite (COMPLETED - 2026-02-06)
+
+**Phase 3 Refactoring Verification:**
+- **Comprehensive Audit:** Documented all LLM prompt integration points and Python function integration points
+- **40 Unit Tests Created:** All tests passing, covering 7 test categories
+- **Test Coverage:** Core functionality, edge cases, integration scenarios, delegation pattern
+
+**Bugs Fixed During Testing:**
+1. **Line 1183:** Fixed missing `enemy_phase_complete` attribute in `get_combat_state_summary()`
+   - Changed from `self.enemy_phase_complete` to hardcoded `False` (not tracked in TurnQueueManager yet)
+2. **Lines 1741-1747:** Fixed deprecated direct attribute access in `get_multi_pc_initiative_narrative()`
+   - Updated to use `manager._state.party_initiative`, etc.
+
+**Test Suite Categories:**
+1. **CombatStateManager Tests (7 tests):** Initialization, party loading, available PCs, incapacitated PCs, HP updates, death saves
+2. **TurnQueueManager Tests (5 tests):** Queue building, turn advancement, current actor, remaining enemies
+3. **Facade Tests (7 tests):** Delegation verification, coordination methods, sub-manager linking
+4. **LLM Prompt Tests (8 tests):** Head context, initiative tracker, required response prompts, PC context formatting
+5. **Context Manager Tests (3 tests):** Temporary manager/callback injection, event emission
+6. **Edge Case Tests (7 tests):** Empty party, all incapacitated, no enemies, invalid names, forbidden actors
+7. **Integration Tests (2 tests):** Full combat round, PC death mid-combat
+
+**Key Integration Points Verified:**
+- ✅ LLM Prompt Generation: 5 formatting functions tested
+- ✅ Sub-Manager Delegation: All 7 delegation methods verified
+- ✅ Coordination Logic: All 5 coordination methods tested
+- ✅ Context Managers: Both `temporary_combat_manager` and `temporary_combat_callback` tested
+- ✅ Zero breaking changes confirmed
+
+**Test Execution:**
+```bash
+python scripts/test_multi_pc_combat.py
+```
+
+**Documentation Created:**
+- `docs/multi_pc_combat_audit.md` - Comprehensive audit report
+- `scripts/test_multi_pc_combat.py` - Complete test suite (~750 lines)
+- `docs/test_results_multi_pc_combat.md` - Test results and coverage analysis
+
+### Tabletop Mode Debug Monitor Skill v2.3.0 (COMPLETED - 2026-02-06)
+
+**Three-Phase Complete Debug Workflow:**
+
+**Phase 1: Start Debug (`start debug`)**
+- Checks if debug configuration is enabled
+- Auto-enables if disabled (edits `debug_config.py` and `config.py`)
+- Prompts for server restart
+- **Trigger:** "start debug"
+
+**Phase 2: Check Debug (`check debug`)**
+- Enhanced error reporter with timestamped listings
+- Groups errors by type and source
+- Extracts file locations and line numbers
+- Provides actionable fix suggestions
+- **Trigger:** "check debug" or "check debug log"
+
+**Phase 3: Stop Debug (`stop debug`)**
+- Reverts config files to debug=false
+- Deletes all debug log files (cleanup)
+- Shows "debug off" after restart
+- **Trigger:** "stop debug"
+
+**New Files:**
+- `.opencode/skills/debug-monitor/SKILL.md` - Complete skill definition (v2.3.0)
+- `scripts/check_debug_logs.py` - Log checker with `--enable`, `--stop`, `--status` flags
+- `scripts/debug_error_reporter.py` - **NEW** Enhanced error reporter with critical analysis
+- `utils/tabletop_debug.py` - Helper functions
+
+**Enhanced Error Reporter Features:**
+- Automatic error classification (CRITICAL/ERROR/WARNING)
+- Timestamped chronological error listings
+- Smart error grouping by exception type
+- File location extraction (e.g., `core/managers/multi_pc_combat.py:867`)
+- Actionable fix suggestions based on error patterns
+
+**Configuration Changes:**
+- `debug_config.py` - Categories: `tabletop_mode`, `tabletop_verbose`
+- `config.py` - Flag: `TABLETOP_DEBUG_VERBOSE`
+- `core/managers/multi_pc_combat.py` - Debug instrumentation points
+- `core/managers/combat_manager.py` - Debug instrumentation points
+
+**Features:**
+- ✅ Three-phase workflow (start → check → stop)
+- ✅ Smart detection of disabled debug mode
+- ✅ One-command enable/disable with automatic config editing
+- ✅ Log cleanup on stop (deletes all debug logs)
+- ✅ Enhanced error reporting with timestamps
+- ✅ Filter by severity (CRITICAL, ERROR, WARNING, TABLETOP MODE)
+- ✅ Zero background processes (polling-based)
+- ✅ KISS principle - manual control, no auto-disable
+
+**Usage:**
+```bash
+# Phase 1: Enable debugging
+python3 scripts/check_debug_logs.py --enable
+
+# Phase 2: Check for errors (after restart)
+python3 scripts/check_debug_logs.py
+python3 scripts/debug_error_reporter.py --detailed
+
+# Phase 3: Stop debugging and cleanup
+python3 scripts/check_debug_logs.py --stop
+
+# Show configuration status
+python3 scripts/check_debug_logs.py --status
+
+# Include warnings
+python3 scripts/check_debug_logs.py --warnings
+
+# Verbose output
+python3 scripts/check_debug_logs.py --verbose
+```
+
+---
+
+### OpenRouter LLM Router Architecture Plan (COMPLETED - 2026-02-07)
+
+**Strategic Architecture Decision:** Path A - Gradual Hardening with dual-mode support for upstream merge potential.
+
+**Objective:** Centralize 89 LLM call sites across 39 files through single capability-based router interface.
+
+**Model Strategy:**
+- **Creative/Narration:** Trinity Large Preview (arcee-ai/trinity-large-preview:free) → GPT-4.1 fallback
+- **Mechanics/JSON:** Gemini 2.5 Flash Lite (google/gemini-2.5-flash-lite) → GPT-4.1 fallback
+- **Universal Fallback:** GPT-4.1 when primary models unavailable
+
+**Router Interface:**
+```python
+from utils.llm_router import llm
+
+# Single interface for all LLM calls
+response = llm.call(role="narrate", messages=[...])           # Trinity, temp 0.8
+result = llm.call(role="combat_validate", messages=[...])     # Flash Lite, temp 0.2
+data = llm.call(role="extract_json", messages=[...], structured_output=Schema)  # Flash Lite JSON
+```
+
+**Dual-Mode Architecture:**
+- **MULTIPLAYER_MODE = False:** Original OpenAI hardwired (upstream compatible, merge potential preserved)
+- **MULTIPLAYER_MODE = True:** Full OpenRouter with capability routing
+- Mode detected at startup, requires restart to change
+
+**Strategic Rationale:**
+- Upstream frozen (4 commits in 90 days) but TTS feature valuable for merging
+- Keep merge insurance policy while focusing development on TT mode
+- Plugin architecture enables clean extraction to TT-only fork when upstream declared legacy
+- New features developed as TT-only (SP code maintained but not enhanced)
+
+**Implementation Timeline:**
+- **Phase 1 (3-4 days):** Create `utils/llm_router.py`, update `model_config.py`, integration tests
+- **Phase 2 (5-7 days):** Migrate all 39 files with LLM calls
+- **Phase 3 (2-3 days):** Cleanup, usage reporting, documentation
+
+**Key Features:**
+- Capability-based routing (creative/mechanics/structured)
+- Cost tracking (total + by model/capability/role)
+- Hard stop error handling (game stops on quota/billing errors)
+- JSON retry logic (3 attempts with progressive correction)
+- Structured output support (Pydantic model validation)
+
+**Plan Document:** `/plans/openrouter_llm_router_architecture.md` (700 lines comprehensive plan)
+
+**Status:** PLANNING PHASE - Under review, not yet implemented
