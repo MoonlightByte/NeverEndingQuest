@@ -60,6 +60,10 @@
     "maxHitPoints": {
       "type": "integer"
     },
+    "hitDiceRemaining": {
+      "type": "integer",
+      "description": "Current number of hit dice available for short rests. Reset to level on long rest (half rounded up). For future GUI automation."
+    },
     "armorClass": {
       "type": "integer"
     },

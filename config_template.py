@@ -47,6 +47,10 @@ from model_config import *
 # WARNING: Replace with your actual OpenAI API key and move to environment variables in production
 OPENAI_API_KEY = "your_openai_api_key_here"
 
+# OpenRouter API Key (optional - enables Kimi K2.5 and other models via OpenRouter)
+# Get your key at: https://openrouter.ai/keys
+OPENROUTER_API_KEY = ""
+
 # --- Module folder structure ---
 MODULES_DIR = "modules"
 DEFAULT_MODULE = "The_Thornwood_Watch"

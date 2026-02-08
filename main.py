@@ -105,9 +105,21 @@ from updates.plot_update import update_plot
 from utils.player_stats import get_player_stat
 from updates.update_world_time import update_world_time
 from core.ai.conversation_utils import update_conversation_history, update_character_data
-from updates.update_character_info import update_character_info
+from updates.update_character_info import update_character_info, normalize_character_name
 from core.managers.level_up_manager import LevelUpSession # Add this line
 from core.ai.incremental_compression import IncrementalLocationCompressor
+
+# TABLETOP MODE: Import character creator for narrative-aware PC creation
+from utils.character_creator import (
+    is_creation_mode_active,
+    get_party_level,
+    calculate_starting_wealth,
+    generate_ambiguous_transition,
+    sanitize_character_data,
+    restore_conversation_history,
+    CHARACTER_CREATION_MARKER,
+)
+from utils import pc_manager
 
 # Import new manager modules
 from core.managers import location_manager
@@ -147,7 +159,10 @@ from config import (
     DM_VALIDATION_MODEL
 )
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Initialize AI client using factory (supports OpenAI and OpenRouter)
+from utils.ai_client_factory import create_chat_client, reset_fallback_status
+reset_fallback_status()  # Reset fallback tracking at module load
+client = create_chat_client()
 
 # LocationGraph will be initialized inside main() after modules are integrated
 location_graph = None
@@ -1181,20 +1196,40 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
     from model_config import COMPRESSION_ENABLED
     if COMPRESSION_ENABLED:
         try:
-            # Use the ParallelConversationCompressor to compress validation messages
-            # This will automatically detect and compress location summaries, module contexts, etc.
-            # The cache will prevent double-compression of already compressed content
-            from utils.compression.conversation_compressor_parallel import ParallelConversationCompressor
             from pathlib import Path
-            
+
             # Save validation conversation to temp file
             temp_file = Path("/tmp/temp_validation_for_api.json")
             with open(temp_file, 'w', encoding='utf-8') as f:
                 json.dump(validation_conversation, f, indent=2, ensure_ascii=False)
-            
-            # Compress using the parallel compressor with caching
-            # Module creation flag is not available in validation context
-            compressor = ParallelConversationCompressor(inject_module_creation=False)
+
+            # TABLETOP MODE: Use multi-PC aware compressor when in multi-PC mode
+            # Detect multi-PC mode by checking for active_pc tags in conversation history
+            use_multi_pc_compressor = False
+            try:
+                from config import MULTIPLAYER_MODE
+                if MULTIPLAYER_MODE:
+                    # Check if any messages have active_pc tags (indicates multi-PC mode)
+                    has_active_pc_tags = any(
+                        msg.get("active_pc") for msg in validation_conversation
+                        if isinstance(msg, dict)
+                    )
+                    if has_active_pc_tags:
+                        use_multi_pc_compressor = True
+            except ImportError:
+                use_multi_pc_compressor = False
+
+            if use_multi_pc_compressor:
+                # Use multi-PC aware compressor for tabletop mode
+                from utils.compression.multi_pc_conversation_compressor import MultiPCConversationCompressor
+                compressor = MultiPCConversationCompressor(inject_module_creation=False)
+                debug("VALIDATION: Using multi-PC conversation compressor", category="ai_validation")
+            else:
+                # Use standard parallel compressor for single-PC mode
+                from utils.compression.conversation_compressor_parallel import ParallelConversationCompressor
+                compressor = ParallelConversationCompressor(inject_module_creation=False)
+
+            # Compress using selected compressor
             validation_messages_to_send = compressor.process_conversation_history(str(temp_file))
             
             # Clean up temp file
@@ -1208,6 +1243,12 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
             validation_messages_to_send = validation_conversation
     else:
         validation_messages_to_send = validation_conversation
+    
+    # TABLETOP MODE: Strip active_pc from validation messages before API call
+    # Some providers reject unknown fields in message objects
+    for msg in validation_messages_to_send:
+        if isinstance(msg, dict) and "active_pc" in msg:
+            del msg["active_pc"]
     
     # Export validation messages for debugging
     os.makedirs("debug/api_captures", exist_ok=True)
@@ -1816,8 +1857,111 @@ def extract_json_from_codeblock(text):
         return match.group(1)
     return text
 
+def handle_character_creation_response(response, party_tracker_data, conversation_history):
+    """
+    Handle character creation mode responses.
+    Detects when LLM outputs complete character JSON and finalizes creation.
+    
+    Args:
+        response: The LLM's response text
+        party_tracker_data: Current party tracker state
+        conversation_history: Current conversation history
+        
+    Returns:
+        True if character creation was finalized, False otherwise
+    """
+    try:
+        # Check if response looks like complete character JSON
+        response_text = response.strip()
+        
+        # Look for JSON object in response
+        if not (response_text.startswith('{') and response_text.endswith('}')):
+            return False
+        
+        # Try to parse as character data
+        cleaned_response = re.sub(r'^```json\s*|\s*```$', '', response_text, flags=re.MULTILINE)
+        character_data = json.loads(cleaned_response)
+        
+        # Validate it has required character fields
+        required_fields = ["name", "race", "class", "level", "abilities"]
+        if not all(field in character_data for field in required_fields):
+            return False
+        
+        # This looks like a character JSON! Process it.
+        info(f"CHARACTER_CREATION: Detected character JSON for {character_data.get('name')}", category="character_creation")
+        
+        # Sanitize character data
+        character_data = sanitize_character_data(character_data)
+        character_name = character_data.get('name', 'Unknown')
+        
+        # Save character file
+        char_filename = normalize_character_name(character_name) + ".json"
+        char_path = os.path.join('characters', char_filename)
+        
+        if os.path.exists(char_path):
+            warning(f"CHARACTER_CREATION: Character file {char_filename} already exists!", category="character_creation")
+            return False
+        
+        safe_json_dump(character_data, char_path)
+        info(f"CHARACTER_CREATION: Saved character file for {character_name}", category="character_creation")
+        
+        # Get creation context
+        creation_context = safe_json_load(CHARACTER_CREATION_MARKER) or {}
+        active_pc = creation_context.get('active_pc', '')
+        current_location = creation_context.get('current_location', 'current location')
+        
+        # Add to party tracker
+        pc_manager.add_pc(character_name)
+        
+        # Restore conversation history
+        restore_success = restore_conversation_history()
+        if restore_success:
+            info("CHARACTER_CREATION: Restored conversation history", category="character_creation")
+            # Reload conversation history
+            conversation_history = safe_json_load("modules/conversation_history/conversation_history.json") or []
+        
+        # Generate and inject transition
+        transition = generate_ambiguous_transition(
+            character_data=character_data,
+            active_pc_name=active_pc or character_name,
+            location_context={"location": current_location},
+        )
+        
+        # Add transition to conversation
+        conversation_history.append({"role": "assistant", "content": transition})
+        save_conversation_history(conversation_history)
+        
+        # Set new character as active
+        pc_manager.set_active_pc(character_name)
+        
+        # Clean up creation marker
+        if os.path.exists(CHARACTER_CREATION_MARKER):
+            os.remove(CHARACTER_CREATION_MARKER)
+        
+        info(f"CHARACTER_CREATION: Character {character_name} creation complete. Narrative resumed.", category="character_creation")
+        
+        print(colored("\n[SYSTEM]", "yellow"), colored(f"Character '{character_name}' created successfully!", "green"))
+        print(colored("[SYSTEM]", "yellow"), colored("Narrative thread resumed.\n", "green"))
+        
+        return True
+        
+    except json.JSONDecodeError:
+        # Not valid JSON, not a character creation completion
+        return False
+    except Exception as e:
+        error(f"CHARACTER_CREATION: Error processing character creation response: {e}", exception=e, category="character_creation")
+        return False
+
+
 def process_ai_response(response, party_tracker_data, location_data, conversation_history):
     global needs_conversation_history_update
+    
+    # TABLETOP MODE: Check if we're in character creation mode and this is the final JSON
+    if is_creation_mode_active():
+        creation_finalized = handle_character_creation_response(response, party_tracker_data, conversation_history)
+        if creation_finalized:
+            # Character creation complete, return to normal flow
+            return {"role": "assistant", "content": response}
     
     try:
         json_content = extract_json_from_codeblock(response)
@@ -2198,6 +2342,14 @@ def get_ai_response(conversation_history, validation_retry_count=0):
     from config import ENABLE_INTELLIGENT_ROUTING, DM_MINI_MODEL, DM_FULL_MODEL, MAX_VALIDATION_RETRIES
     from config import USE_GPT5_MODELS, GPT5_MINI_MODEL, GPT5_FULL_MODEL
     
+    # Import provider factory for multi-provider support
+    from utils.ai_client_factory import (
+        get_chat_model_name, 
+        handle_provider_error, 
+        get_fallback_notification,
+        create_chat_client
+    )
+    
     # Get the last user message for action prediction
     user_input = ""
     for msg in reversed(conversation_history):
@@ -2263,20 +2415,48 @@ def get_ai_response(conversation_history, validation_retry_count=0):
     try:
         from model_config import COMPRESSION_ENABLED
         if COMPRESSION_ENABLED:
-            # Use our parallel compressor with caching
-            from utils.compression.conversation_compressor_parallel import ParallelConversationCompressor
             import json
             from pathlib import Path
-            
+
             # Save conversation to temp file
             temp_file = Path("/tmp/temp_conversation_for_api.json")
             with open(temp_file, 'w', encoding='utf-8') as f:
                 json.dump(conversation_history, f, indent=2, ensure_ascii=False)
-            
-            # Compress using our working compressor with settings from config
-            # Pass the module creation flag to the compressor (now a global variable)
-            compressor = ParallelConversationCompressor(inject_module_creation=should_inject_creation_prompt)
+
+            # TABLETOP MODE: Use multi-PC aware compressor when in multi-PC mode
+            # Detect multi-PC mode by checking for active_pc tags in conversation history
+            use_multi_pc_compressor = False
+            try:
+                from config import MULTIPLAYER_MODE
+                if MULTIPLAYER_MODE:
+                    # Check if any messages have active_pc tags (indicates multi-PC mode)
+                    has_active_pc_tags = any(
+                        msg.get("active_pc") for msg in conversation_history 
+                        if isinstance(msg, dict)
+                    )
+                    if has_active_pc_tags:
+                        use_multi_pc_compressor = True
+            except ImportError:
+                use_multi_pc_compressor = False
+
+            if use_multi_pc_compressor:
+                # Use multi-PC aware compressor for tabletop mode
+                from utils.compression.multi_pc_conversation_compressor import MultiPCConversationCompressor
+                compressor = MultiPCConversationCompressor(inject_module_creation=should_inject_creation_prompt)
+                debug("Using multi-PC conversation compressor", category="compression")
+            else:
+                # Use standard parallel compressor for single-PC mode
+                from utils.compression.conversation_compressor_parallel import ParallelConversationCompressor
+                compressor = ParallelConversationCompressor(inject_module_creation=should_inject_creation_prompt)
+
+            # Compress using selected compressor
             messages_to_send = compressor.process_conversation_history(str(temp_file))
+            
+            # TABLETOP MODE: Strip active_pc from messages before API call to avoid provider compatibility issues
+            # The active_pc field is used for multi-PC compression but should not be sent to the API
+            for msg in messages_to_send:
+                if isinstance(msg, dict) and "active_pc" in msg:
+                    del msg["active_pc"]
             
             # Clean up temp file
             if temp_file.exists():
@@ -2290,12 +2470,22 @@ def get_ai_response(conversation_history, validation_retry_count=0):
         print(f"WARNING: Compression failed: {e}")
         messages_to_send = conversation_history
     
+    # TABLETOP MODE: Ensure active_pc is stripped from all messages before API call
+    # This covers both the non-compression path and the exception fallback path
+    for msg in messages_to_send:
+        if isinstance(msg, dict) and "active_pc" in msg:
+            del msg["active_pc"]
+    
     # Export main conversation messages for debugging
     with open("main_conversation_messages_to_api.json", "w", encoding="utf-8") as f:
         json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
     print(f"DEBUG: [MAIN CONVERSATION] Exported conversation messages to main_conversation_messages_to_api.json")
     
     # Generate response with selected model
+    # Get provider-aware model name (supports OpenRouter and OpenAI)
+    provider_model = get_chat_model_name()
+    debug(f"Using AI model: {provider_model} (selected_model: {selected_model})", category="ai_provider")
+    
     if USE_GPT5_MODELS:
         # GPT-5: Always use mini, no temperature/max_tokens
         selected_model = GPT5_MINI_MODEL
@@ -2306,10 +2496,32 @@ def get_ai_response(conversation_history, validation_retry_count=0):
             print(f"DEBUG: GPT-5 - Switching to full model after {validation_retry_count} retries")
         
         print(f"DEBUG: [MAIN.PY] Using GPT-5 model: {selected_model}")
-        response = client.chat.completions.create(
-            model=selected_model,
-            messages=messages_to_send  # Use potentially compressed messages
-        )
+        
+        try:
+            response = client.chat.completions.create(
+                model=selected_model,
+                messages=messages_to_send  # Use potentially compressed messages
+            )
+        except Exception as api_error:
+            # Check if we should fallback to OpenAI
+            error_result = handle_provider_error(api_error, context="DM response generation (GPT-5)")
+            
+            if error_result['should_fallback']:
+                warning(f"Falling back to OpenAI due to error: {api_error}", category="ai_provider")
+                fallback_client = create_chat_client(use_fallback=True)
+                
+                # Retry with fallback client using OpenAI model
+                response = fallback_client.chat.completions.create(
+                    model=GPT5_MINI_MODEL,
+                    messages=messages_to_send
+                )
+                
+                # Check for fallback notification
+                fallback_msg = get_fallback_notification()
+                if fallback_msg:
+                    messages_to_send.append({"role": "system", "content": fallback_msg})
+            else:
+                raise
 
         # Log API call to master log
         try:
@@ -2326,13 +2538,38 @@ def get_ai_response(conversation_history, validation_retry_count=0):
             except:
                 pass
     else:
-        # GPT-4.1: Use existing logic with temperature
-        print(f"DEBUG: [MAIN.PY] Using GPT-4.1 model: {selected_model}")
-        response = client.chat.completions.create(
-            model=selected_model,
-            temperature=TEMPERATURE,
-            messages=messages_to_send  # Use potentially compressed messages
-        )
+        # GPT-4.1 or OpenRouter: Use existing logic with temperature
+        # Use provider-aware model if different from selected_model
+        actual_model = provider_model if provider_model != selected_model else selected_model
+        print(f"DEBUG: [MAIN.PY] Using model: {actual_model}")
+        
+        try:
+            response = client.chat.completions.create(
+                model=actual_model,
+                temperature=TEMPERATURE,
+                messages=messages_to_send  # Use potentially compressed messages
+            )
+        except Exception as api_error:
+            # Check if we should fallback to OpenAI
+            error_result = handle_provider_error(api_error, context="DM response generation (GPT-4.1/OpenRouter)")
+            
+            if error_result['should_fallback']:
+                warning(f"Falling back to OpenAI due to error: {api_error}", category="ai_provider")
+                fallback_client = create_chat_client(use_fallback=True)
+                
+                # Retry with fallback client using OpenAI model
+                response = fallback_client.chat.completions.create(
+                    model=selected_model,  # Use original selected_model for fallback
+                    temperature=TEMPERATURE,
+                    messages=messages_to_send
+                )
+                
+                # Check for fallback notification
+                fallback_msg = get_fallback_notification()
+                if fallback_msg:
+                    messages_to_send.append({"role": "system", "content": fallback_msg})
+            else:
+                raise
 
         # Log API call to master log
         try:
@@ -2347,7 +2584,7 @@ def get_ai_response(conversation_history, validation_retry_count=0):
             try:
                 from utils.openai_usage_tracker import get_global_tracker
                 tracker = get_global_tracker()
-                tracker.track(response, context={'endpoint': 'main_dm', 'purpose': 'primary_game_response', 'model': selected_model})
+                tracker.track(response, context={'endpoint': 'main_dm', 'purpose': 'primary_game_response', 'model': actual_model})
             except:
                 pass
     content = response.choices[0].message.content.strip()
@@ -2834,7 +3071,7 @@ def main_game_loop():
             
         elif cmd == "/help":
             help_msg = (
-                "Dungeon Master: [SYSTEM] Available Commands:\n"
+                "[skipTTS] Dungeon Master: [SYSTEM] Available Commands:\n"
                 "  /save - Save current game state\n"
                 "  /quit - Exit the game\n"
                 "  /stats - View full character stats\n"
@@ -3168,6 +3405,17 @@ def main_game_loop():
         player_data_file = path_manager.get_character_path(player_name_normalized)
         player_data_current = load_json_file(player_data_file)
     
+        # TABLETOP MODE: Check if we're in character creation mode
+        if is_creation_mode_active():
+            creation_context = safe_json_load(CHARACTER_CREATION_MARKER) or {}
+            creating_char = creation_context.get('character_name', 'Unknown')
+            target_level = creation_context.get('target_level', 1)
+            print(colored("\n" + "="*60, "cyan"))
+            print(colored("CHARACTER CREATION MODE", "cyan", attrs=["bold"]))
+            print(colored(f"Creating: {creating_char} (Level {target_level})", "cyan"))
+            print(colored("Narrative thread paused - Interview in progress", "cyan"))
+            print(colored("="*60 + "\n", "cyan"))
+    
         # Display the prompt with the (now correct) stats.
         if player_data_current:
             current_hp = player_data_current.get("hitPoints", "N/A")
@@ -3293,7 +3541,7 @@ def main_game_loop():
                 
                     party_stats_formatted.append(f"{display_name}: Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}, {ability_str}{spell_slots_str}")
 
-            party_stats_str = "; ".join(party_stats_formatted)
+            party_stats_str = "; ".join(party_stats_formatted) if party_stats_formatted else "None"
             current_location_name_note = world_conditions["currentLocation"]
             current_location_id_note = world_conditions["currentLocationId"]
         
@@ -3542,16 +3790,6 @@ def main_game_loop():
             current_season = world_conditions.get('season', 'Unknown')
             current_area_name = world_conditions.get('currentArea', 'Unknown')
         
-            # Format party members and NPCs for DM note
-            party_members_list = party_tracker_data.get('partyMembers', [])
-            party_members_str = ", ".join(party_members_list) if party_members_list else "None"
-        
-            party_npcs_list = party_tracker_data.get('partyNPCs', [])
-            party_npcs_formatted = []
-            for npc in party_npcs_list:
-                party_npcs_formatted.append(f"{npc['name']} ({npc['role']})") 
-            party_npcs_str = ", ".join(party_npcs_formatted) if party_npcs_formatted else "None"
-        
             # Get established hubs information
             established_hubs_str = ""
             try:
@@ -3569,32 +3807,69 @@ def main_game_loop():
             except Exception as e:
                 debug(f"Could not load hub information: {e}", category="dm_note")
 
-            # Build DM note - exclude plot/quest info when module creation is active
-            if should_inject_creation_prompt:
-                # Simplified DM note for module creation - no confusing plot/quest info
-                dm_note = (f"Dungeon Master Note: Current date and time: {date_time_str}, {current_season} season. "
-                    f"Current module: {current_module_name}. "
-                    f"Current location: {current_location_name_note} ({current_location_id_note}) in the {current_area_name} area. "
-                    f"Active Player Characters (User Controlled): {party_members_str}. "
-                    f"Accompanied by Party NPCs (DM Controlled): {party_npcs_str}. "
-                    f"Party stats: {party_stats_str}. "
-                    f"Adjacent locations in this area: {connected_locations_display_str}{connected_areas_display_str}{available_modules_str}{established_hubs_str}.\n")
+            # TABLETOP MODE: Multi-PC DM Note enhancement
+            # Check if we should use enhanced multi-PC format
+            party_members_list = party_tracker_data.get('partyMembers', [])
+            use_multi_pc_note = len(party_members_list) > 1
+            
+            if use_multi_pc_note:
+                # Use enhanced multi-PC DM Note with [>] marker and sections
+                from utils.multi_pc_dm_note import build_multi_pc_dm_note
+                connected_locations_str = f"{connected_locations_display_str}{connected_areas_display_str}{available_modules_str}{established_hubs_str}"
+                
+                dm_note = build_multi_pc_dm_note(
+                    party_tracker_data=party_tracker_data,
+                    location_data=location_data,
+                    world_conditions=world_conditions,
+                    date_time_str=date_time_str,
+                    current_season=current_season,
+                    current_module_name=current_module_name,
+                    current_location_name=current_location_name_note,
+                    current_location_id=current_location_id_note,
+                    current_area_name=current_area_name,
+                    plot_points_str=plot_points_str,
+                    side_quests_str=side_quests_str,
+                    monsters_str=monsters_str,
+                    traps_str=traps_str,
+                    connected_locations_str=connected_locations_str,
+                    module_creation_prompt=module_creation_prompt,
+                    should_inject_creation_prompt=should_inject_creation_prompt
+                )
+                debug(f"STATE_CHANGE: Using multi-PC DM Note format for {len(party_members_list)} party members", category="multi_pc_dm_note")
             else:
-                # Normal DM note with all plot/quest/monster info
-                dm_note = (f"Dungeon Master Note: Current date and time: {date_time_str}, {current_season} season. "
-                    f"Current module: {current_module_name}. "
-                    f"Current location: {current_location_name_note} ({current_location_id_note}) in the {current_area_name} area. "
-                    f"Active Player Characters (User Controlled): {party_members_str}. "
-                    f"Accompanied by Party NPCs (DM Controlled): {party_npcs_str}. "
-                    f"Party stats: {party_stats_str}. "
-                    # --- MODIFIED LINE TO INCLUDE CONNECTIVITY ---
-                    f"Adjacent locations in this area: {connected_locations_display_str}{connected_areas_display_str}{available_modules_str}{established_hubs_str}.\n"
-                    # --- END OF MODIFIED LINE ---
-                    f"Active plot points for this location:\n{plot_points_str}\n"
-                    f"Active side quests for this location:\n{side_quests_str}\n"
-                    f"Monsters in this location:\n{monsters_str}\n"
-                    f"Traps in this location:\n{traps_str}\n"
-                    "Monsters should be active threats per engagement rules. ")
+                # Format party members and NPCs for standard single-PC DM note
+                party_members_str = ", ".join(party_members_list) if party_members_list else "None"
+                
+                party_npcs_list = party_tracker_data.get('partyNPCs', [])
+                party_npcs_formatted = []
+                for npc in party_npcs_list:
+                    party_npcs_formatted.append(f"{npc['name']} ({npc['role']})")
+                party_npcs_str = ", ".join(party_npcs_formatted) if party_npcs_formatted else "None"
+                
+                # Build DM note - exclude plot/quest info when module creation is active
+                if should_inject_creation_prompt:
+                    # Simplified DM note for module creation - no confusing plot/quest info
+                    dm_note = (f"Dungeon Master Note: Current date and time: {date_time_str}, {current_season} season. "
+                        f"Current module: {current_module_name}. "
+                        f"Current location: {current_location_name_note} ({current_location_id_note}) in the {current_area_name} area. "
+                        f"Active Player Characters (User Controlled): {party_members_str}. "
+                        f"Accompanied by Party NPCs (DM Controlled): {party_npcs_str}. "
+                        f"Party stats: {party_stats_str}. "
+                        f"Adjacent locations in this area: {connected_locations_display_str}{connected_areas_display_str}{available_modules_str}{established_hubs_str}.\n")
+                else:
+                    # Normal DM note with all plot/quest/monster info
+                    dm_note = (f"Dungeon Master Note: Current date and time: {date_time_str}, {current_season} season. "
+                        f"Current module: {current_module_name}. "
+                        f"Current location: {current_location_name_note} ({current_location_id_note}) in the {current_area_name} area. "
+                        f"Active Player Characters (User Controlled): {party_members_str}. "
+                        f"Accompanied by Party NPCs (DM Controlled): {party_npcs_str}. "
+                        f"Party stats: {party_stats_str}. "
+                        f"Adjacent locations in this area: {connected_locations_display_str}{connected_areas_display_str}{available_modules_str}{established_hubs_str}.\n"
+                        f"Active plot points for this location:\n{plot_points_str}\n"
+                        f"Active side quests for this location:\n{side_quests_str}\n"
+                        f"Monsters in this location:\n{monsters_str}\n"
+                        f"Traps in this location:\n{traps_str}\n"
+                        "Monsters should be active threats per engagement rules. ")
         
             # Add common instructions
             dm_note += (
@@ -3630,8 +3905,27 @@ def main_game_loop():
             None,  # characters_data not available at this scope
             in_combat=False  # Always use general context for main conversation
         )
-        
-        conversation_history.append({"role": "user", "content": user_input_with_note})
+
+        # TABLETOP MODE: Tag messages with active PC in multi-PC mode
+        should_tag_messages = False
+        try:
+            from config import MULTIPLAYER_MODE
+            should_tag_messages = MULTIPLAYER_MODE
+        except ImportError:
+            should_tag_messages = False
+
+        if should_tag_messages:
+            party_members = party_tracker_data.get('partyMembers', [])
+            if len(party_members) > 1:
+                active_pc = party_tracker_data.get('active_character')
+                if active_pc:
+                    conversation_history.append({"role": "user", "content": user_input_with_note, "active_pc": active_pc})
+                else:
+                    conversation_history.append({"role": "user", "content": user_input_with_note})
+            else:
+                conversation_history.append({"role": "user", "content": user_input_with_note})
+        else:
+            conversation_history.append({"role": "user", "content": user_input_with_note})
         save_conversation_history(conversation_history)
 
         retry_count = 0

@@ -10,73 +10,56 @@ Controls what debug messages are shown and logged
 
 # Debug categories - set to True to enable, False to disable
 DEBUG_CATEGORIES = {
-    # Critical errors only
-    "errors": True,
-    
-    # Module/path management
-    "module_loading": False,  # "ModulePathManager loaded module..."
-    
-    # File operations
-    "file_operations": True,    # File read/write errors
-    "file_success": False,      # Successful file operations
-    
-    # Conversation/summary management
-    "conversation_cleanup": False,  # "System messages removed...", "Lightweight chat..."
-    "summary_building": True,       # Summary generation progress
-    "summary_details": False,       # Detailed summary operations
-    
-    # Game mechanics
-    "location_transitions": True,   # Location change events
-    "plot_updates": True,          # Plot progression
-    "validation": False,           # "Validation passed successfully"
-    "time_updates": False,         # Time passage logs
-    
-    # Character/inventory
-    "character_updates": True,     # Player/NPC changes
-    "inventory_changes": True,     # Item additions/removals
-    
-    # Combat
-    "combat_events": True,         # Combat initialization and results
-    
-    # Verbose/detailed logs
-    "hex_strings": False,          # Location hex representations
-    "schema_processing": False,    # Schema validation details
-    "attempt_counts": False,       # "Successfully on attempt X"
-    
-    # Script-specific debug categories (used in enhanced_logger migration)
-    "session_management": True,     # Session startup/shutdown, return message injection
-    "narrative_generation": True,   # AI narrative generation for transitions
-    "npc_management": True,         # NPC loading, validation, updates
-    "ai_validation": True,          # AI response validation, retry logic
-    "module_management": True,      # Module loading, transitions, completion checks
-    "conversation_management": True, # Conversation history updates, compression
-    "level_up": True,              # Level up sessions and processing
-    "startup": True,               # Game startup, wizard, initialization
-    "xp_tracking": True,           # Experience point awards and tracking
-    "encounter_setup": True,       # Encounter initialization, creature setup
-    "encounter_management": True,  # Encounter updates during combat
-    "character_validation": True,  # Character data validation, corrections
-    "ai_processing": True,         # AI API calls, response processing
-    "testing": True,               # Test function debug output
-    "save_game": True,             # Save/restore operations
-    "module_transitions": True,    # Cross-module movement and summaries
-    "storage_operations": True,    # Player storage system operations
-    "combat_validation": True,     # Combat response validation, rule checking
-    "combat_logs": True,           # Combat logging and summary generation
-    "subprocess_output": True,     # Output from subprocess calls
-    "combat_processing": True,     # Combat encounter creation and updates
-    "party_management": True,      # Party tracker updates
-    
-    # Legacy categories (kept for backward compatibility)
-    "main_debug": False,
-    "action_handler_debug": False,
-    "character_updater_debug": False,
-    "combat_manager_debug": False,
-    "save_manager_debug": False,
-    "path_manager_debug": False,
-    "campaign_manager_debug": False,
-    "location_manager_debug": False,
-    "storage_manager_debug": False
+    "errors": True,  # 
+    "module_loading": False,  # 
+    "file_operations": True,  # 
+    "file_success": False,  # 
+    "conversation_cleanup": False,  # 
+    "summary_building": True,  # 
+    "summary_details": False,  # 
+    "location_transitions": True,  # 
+    "plot_updates": True,  # 
+    "validation": False,  # 
+    "time_updates": False,  # 
+    "character_updates": True,  # 
+    "inventory_changes": True,  # 
+    "combat_events": True,  # Combat initialization and results
+    "hex_strings": False,  # 
+    "schema_processing": False,  # 
+    "attempt_counts": False,  # 
+    "session_management": True,  # 
+    "narrative_generation": True,  # 
+    "npc_management": True,  # 
+    "ai_validation": True,  # 
+    "module_management": True,  # 
+    "conversation_management": True,  # 
+    "level_up": True,  # 
+    "startup": True,  # 
+    "xp_tracking": True,  # 
+    "encounter_setup": True,  # 
+    "encounter_management": True,  # 
+    "character_validation": True,  # 
+    "ai_processing": True,  # 
+    "testing": True,  # 
+    "save_game": True,  # 
+    "module_transitions": True,  # 
+    "storage_operations": True,  # 
+    "combat_validation": True,  # Combat response validation
+    "combat_logs": True,  # Combat logging and summaries
+    "subprocess_output": True,  # 
+    "combat_processing": True,  # Combat encounter creation
+    "party_management": True,  # 
+    "main_debug": False,  # 
+    "action_handler_debug": False,  # 
+    "character_updater_debug": False,  # 
+    "combat_manager_debug": False,  # 
+    "save_manager_debug": False,  # 
+    "path_manager_debug": False,  # 
+    "campaign_manager_debug": False,  # 
+    "location_manager_debug": False,  # 
+    "storage_manager_debug": False,  # 
+    "tabletop_mode": True,  # TT-specific combat and UI debugging
+    "tabletop_verbose": True,  # Full method call tracing
 }
 
 # Log file settings
