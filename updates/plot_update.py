@@ -5,7 +5,6 @@
 
 import json
 from jsonschema import validate, ValidationError
-from openai import OpenAI
 import time
 
 # Import OpenAI usage tracking (safe - won't break if fails)
@@ -17,15 +16,17 @@ except:
     def track_response(r): pass
 
 # Import model configuration from config.py
-from config import OPENAI_API_KEY, PLOT_UPDATE_MODEL
+from config import PLOT_UPDATE_MODEL
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_write_json, safe_read_json
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.ai_client_factory import create_chat_client, get_model_config  # OPENROUTER: Multi-provider support
 
 # Set script name for logging
 set_script_name("plot_update")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Initialize AI client using factory (supports OpenAI and OpenRouter)
+client = create_chat_client()
 
 # Constants
 TEMPERATURE = 0.7
@@ -146,8 +147,9 @@ Examples:
             {"role": "user", "content": f"Current plot info: {json.dumps(plot_info_data)}\n\nPlot point to update: {plot_point_id_param}\nNew status: {new_status_param}\nPlot impact: {plot_impact_param}"}
         ]
 
+        config = get_model_config("plot_update", PLOT_UPDATE_MODEL)  # OPENROUTER: 3-tier model selection
         response = client.chat.completions.create(
-            model=PLOT_UPDATE_MODEL, # Use imported model name
+            model=config["model"], **config.get("extra_body", {}), # Use imported model name
             temperature=TEMPERATURE,
             messages=prompt_messages
         )

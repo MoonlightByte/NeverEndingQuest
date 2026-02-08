@@ -11,13 +11,13 @@ No validation needed since output is for AI context only, not actions.
 import json
 import hashlib
 import re
-from openai import OpenAI
 from typing import Dict, Optional
 from pathlib import Path
 import sys
 import os
 
 from model_config import NARRATIVE_COMPRESSION_MODEL
+from utils.ai_client_factory import create_chat_client, get_chat_model_name
 
 # Import usage tracking
 try:
@@ -103,22 +103,8 @@ class CombatCompressor:
     
     def __init__(self, api_key: str = None, enable_caching: bool = True):
         """Initialize compressor."""
-        # Get API key from environment or config
-        if api_key is None:
-            api_key = os.environ.get('OPENAI_API_KEY')
-        
-        if api_key is None:
-            try:
-                sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                import config
-                api_key = getattr(config, 'OPENAI_API_KEY', None)
-            except:
-                pass
-        
-        if not api_key:
-            raise ValueError("OpenAI API key required")
-        
-        self.client = OpenAI(api_key=api_key)
+        # Use factory to create client (supports OpenAI and OpenRouter)
+        self.client = create_chat_client()
         self.model = NARRATIVE_COMPRESSION_MODEL
         self.enable_caching = enable_caching
         self.cache_file = Path("modules/conversation_history/combat_compression_cache.json")

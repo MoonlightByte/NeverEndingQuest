@@ -121,6 +121,7 @@ ACTION_SAVE_GAME = "saveGame"
 ACTION_RESTORE_GAME = "restoreGame"
 ACTION_LIST_SAVES = "listSaves"
 ACTION_DELETE_SAVE = "deleteSave"
+ACTION_REST = "rest"
 
 # Module conversation segmentation has been moved to conversation_utils.py
 # to work with the regular conversation update cycle
@@ -529,7 +530,13 @@ def get_module_starting_location(module_name: str) -> tuple:
 def _ai_analyze_starting_location(module_data: dict) -> tuple:
     """Use AI to analyze module data and determine the best starting location"""
     try:
-        client = OpenAI(api_key=config.OPENAI_API_KEY)
+        # Use factory for multi-provider support
+        from utils.ai_client_factory import create_chat_client, get_chat_model_name, handle_provider_error
+        client = create_chat_client()
+        
+        # Get provider-aware model
+        model_name = get_chat_model_name()
+        debug(f"Using AI model for starting location: {model_name}", category="ai_provider")
         
         system_prompt = """You are an expert 5th edition adventure module analyst. Analyze the provided module data to determine the most logical starting location for player characters entering this adventure module.
 
@@ -559,14 +566,31 @@ MODULE DATA:
 
 Determine the most logical starting location based on adventure flow, area types, NPCs, and narrative logic."""
 
-        response = client.chat.completions.create(
-            model=config.DM_MINI_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.1
-        )
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1
+            )
+        except Exception as api_error:
+            # Check if we should fallback to OpenAI
+            error_result = handle_provider_error(api_error, context="Starting location analysis")
+            if error_result['should_fallback']:
+                warning(f"Falling back to OpenAI: {api_error}", category="ai_provider")
+                fallback_client = create_chat_client(use_fallback=True)
+                response = fallback_client.chat.completions.create(
+                    model=config.DM_MINI_MODEL,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.1
+                )
+            else:
+                raise
         
         # Track token usage
         if USAGE_TRACKING_AVAILABLE:
@@ -700,7 +724,12 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
         # TABLETOP MODE: Filter party members from NPCs list
         # Party members should be treated as players, not NPCs
         try:
-            party_members = party_tracker_data.get("partyMembers", [])
+            # TABLETOP MODE: Use centralized party data access when available
+            import utils.pc_manager as pc_manager
+            if pc_manager.should_use_abstraction_layer(party_tracker_data):
+                party_members = pc_manager.get_party_tracker().get('partyMembers', [])
+            else:
+                party_members = party_tracker_data.get("partyMembers", [])
             npcs_list = parameters.get("npcs", [])
             
             if party_members and npcs_list:
@@ -825,72 +854,23 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                 print(f"[DEBUG ACTION_HANDLER] Combat simulation returned. Type of result: {type(dialogue_summary)}")
                 print(f"[DEBUG ACTION_HANDLER] Dialogue summary preview: {str(dialogue_summary)[:200]}...")
 
-                # MULTI-PC COMBAT: Save ALL PC files if multi-PC mode was active
-                module_name = party_tracker_data.get("module", "").replace(" ", "_")
-                path_manager = ModulePathManager(module_name)
-                from updates.update_character_info import normalize_character_name
-                
+                # MULTI-PC COMBAT: Clean up combat manager state
+                # TABLETOP MODE: File persistence is now handled by combat_manager.py per-turn
+                # via final_character_updates (SP) and persist_combat_changes (MP)
                 if multi_pc_manager and MULTI_PC_COMBAT_AVAILABLE:
-                    # Multi-PC mode: Save all participating PCs
-                    print(f"[DEBUG ACTION_HANDLER] MULTI-PC MODE: Saving {len(multi_pc_manager.pc_states)} PC files")
-                    debug(f"STATE_CHANGE: Multi-PC combat ended - saving all PC files", category="combat_processing")
-                    
-                    for pc_name, pc_state in multi_pc_manager.pc_states.items():
-                        try:
-                            pc_name_normalized = normalize_character_name(pc_name)
-                            pc_file = path_manager.get_character_path(pc_name_normalized)
-                            
-                            if os.path.exists(pc_file):
-                                pc_data = safe_json_load(pc_file)
-                                if pc_data:
-                                    # Update HP from combat state
-                                    pc_data["currentHitPoints"] = pc_state.current_hp
-                                    
-                                    # Add death/unconscious conditions if applicable
-                                    from core.managers.multi_pc_combat import PCStatus
-                                    if pc_state.status == PCStatus.DEAD:
-                                        if "conditions" not in pc_data:
-                                            pc_data["conditions"] = []
-                                        if "dead" not in pc_data["conditions"]:
-                                            pc_data["conditions"].append("dead")
-                                    elif pc_state.status == PCStatus.INCAPACITATED:
-                                        if "conditions" not in pc_data:
-                                            pc_data["conditions"] = []
-                                        if "unconscious" not in pc_data["conditions"]:
-                                            pc_data["conditions"].append("unconscious")
-                                    elif pc_state.status == PCStatus.STABLE:
-                                        if "conditions" not in pc_data:
-                                            pc_data["conditions"] = []
-                                        if "stable" not in pc_data["conditions"]:
-                                            pc_data["conditions"].append("stable")
-                                    
-                                    safe_json_dump(pc_data, pc_file)
-                                    debug(f"FILE_OP: Updated PC file for {pc_name} (HP: {pc_state.current_hp}, Status: {pc_state.status.value})", category="character_updates")
-                            else:
-                                warning(f"FILE_OP: PC file not found for {pc_name}: {pc_file}", category="character_updates")
-                        except Exception as e:
-                            error(f"FAILURE: Could not save PC file for {pc_name}: {e}", category="character_updates")
-                    
-                    # Clean up multi-PC combat manager state
                     try:
                         from core.managers.multi_pc_combat import cleanup_combat_manager
                         cleanup_combat_manager()
                         debug("STATE_CHANGE: Multi-PC combat manager cleaned up", category="combat_processing")
                     except ImportError:
                         pass  # cleanup_combat_manager not available
-                    
-                    # Also save the primary player info if provided by combat simulation
-                    if updated_player_info is not None:
-                        player_name = party_tracker_data.get("active_character") or next((member for member in party_tracker_data.get("partyMembers", [])), None)
-                        if player_name:
-                            player_name_normalized = normalize_character_name(player_name)
-                            player_file = path_manager.get_character_path(player_name_normalized)
-                            safe_json_dump(updated_player_info, player_file)
-                            debug(f"FILE_OP: Updated primary player file for {player_name}", category="character_updates")
-                    
-                    info(f"SUCCESS: Saved {len(multi_pc_manager.pc_states)} PC files after multi-PC combat", category="combat_processing")
-                else:
-                    # Single-PC mode (original behavior)
+
+                # Single-PC mode (original behavior) - save player file if provided
+                # UPSTREAM: This maintains single-player compatibility
+                if not (multi_pc_manager and MULTI_PC_COMBAT_AVAILABLE):
+                    module_name = party_tracker_data.get("module", "").replace(" ", "_")
+                    path_manager = ModulePathManager(module_name)
+                    from updates.update_character_info import normalize_character_name
                     player_name = party_tracker_data.get("active_character") or next((member for member in party_tracker_data.get("partyMembers", [])), None)
                     if player_name and updated_player_info is not None:
                         player_name_normalized = normalize_character_name(player_name)
@@ -1126,7 +1106,13 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
             # GENERATE TRANSITION NARRATION using the transition_prompt
             info("STATE_CHANGE: Generating transition narration using AI", category="location_transitions")
             try:
-                client = OpenAI(api_key=config.OPENAI_API_KEY)
+                # Use factory for multi-provider support
+                from utils.ai_client_factory import create_chat_client, get_chat_model_name, handle_provider_error
+                client = create_chat_client()
+                
+                # Get provider-aware model
+                model_name = get_chat_model_name()
+                debug(f"Using AI model for transition: {model_name}", category="ai_provider")
 
                 # Build prompt for transition narration
                 transition_messages = [
@@ -1134,11 +1120,25 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                     {"role": "user", "content": transition_prompt}
                 ]
 
-                transition_response = client.chat.completions.create(
-                    model=config.DM_MAIN_MODEL,
-                    messages=transition_messages,
-                    temperature=0.7
-                )
+                try:
+                    transition_response = client.chat.completions.create(
+                        model=model_name,
+                        messages=transition_messages,
+                        temperature=0.7
+                    )
+                except Exception as api_error:
+                    # Check if we should fallback to OpenAI
+                    error_result = handle_provider_error(api_error, context="Transition narration")
+                    if error_result['should_fallback']:
+                        warning(f"Falling back to OpenAI: {api_error}", category="ai_provider")
+                        fallback_client = create_chat_client(use_fallback=True)
+                        transition_response = fallback_client.chat.completions.create(
+                            model=config.DM_MAIN_MODEL,
+                            messages=transition_messages,
+                            temperature=0.7
+                        )
+                    else:
+                        raise
 
                 transition_narration = transition_response.choices[0].message.content.strip()
                 info("SUCCESS: Transition narration generated", category="location_transitions")
@@ -1843,10 +1843,278 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             import traceback
             traceback.print_exc()
 
+    elif action_type == ACTION_REST:
+        # TABLETOP MODE: Phase 3 - Rest Automation Enhancement (Option B)
+        # Automatically restore HP, spell slots, and class features on rest
+        debug("STATE_CHANGE: Processing rest action", category="character_updates")
+        
+        try:
+            rest_type = parameters.get("type", "short")
+            target_characters = parameters.get("characters", [])
+            
+            # If no specific characters, apply to all party members
+            if not target_characters:
+                target_characters = party_tracker_data.get("partyMembers", [])
+            
+            if not target_characters:
+                warning("REST: No characters specified for rest action", category="character_updates")
+                conversation_history.append({
+                    "role": "system",
+                    "content": "[SYSTEM] No characters available for rest."
+                })
+                needs_conversation_history_update = True
+            else:
+                rest_results = []
+                
+                for char_name in target_characters:
+                    result = _process_character_rest(char_name, rest_type, party_tracker_data)
+                    if result:
+                        rest_results.append(result)
+                
+                # Generate summary message
+                if rest_results:
+                    rest_summary = _format_rest_summary(rest_results, rest_type)
+                    conversation_history.append({
+                        "role": "system",
+                        "content": rest_summary
+                    })
+                    needs_conversation_history_update = True
+                    
+                    info(f"REST: Completed {rest_type} rest for {len(rest_results)} characters", 
+                         category="character_updates")
+                else:
+                    warning(f"REST: No valid characters processed for {rest_type} rest", 
+                           category="character_updates")
+                    
+        except Exception as e:
+            error(f"REST: Error processing rest action: {e}", exception=e, category="character_updates")
+            print(f"ERROR: Exception while processing rest action: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
     else:
         print(f"WARNING: Unknown action type: {action_type}")
     
     return create_return(needs_update=needs_conversation_history_update)
+
+
+def _process_character_rest(character_name: str, rest_type: str, party_tracker_data: dict) -> dict:
+    """
+    Process rest for a single character following 5e rules.
+    
+    5e Rest Rules:
+    - Short Rest (>=1 hour): Players spend Hit Dice to heal, refresh shortRest features,
+      Warlocks regain all spell slots
+    - Long Rest (>=8 hours): Full HP restore, all spell slots, all features (short+long rest),
+      removes exhaustion condition
+    
+    Args:
+        character_name: Name of the character to process
+        rest_type: 'short' or 'long'
+        party_tracker_data: Current party tracker data
+        
+    Returns:
+        dict with rest results or None if character not found
+    """
+    try:
+        from utils.file_operations import safe_read_json
+        from updates.update_character_info import update_character_info, find_character_file_fuzzy
+        from utils.module_path_manager import ModulePathManager
+        
+        # Validate rest_type parameter
+        if rest_type not in ["short", "long"]:
+            warning(f"REST: Invalid rest_type '{rest_type}' for {character_name}, defaulting to 'short'", 
+                   category="character_updates")
+            rest_type = "short"
+        
+        # Get current module for path resolution
+        module_name = party_tracker_data.get("module", "").replace(" ", "_")
+        path_manager = ModulePathManager(module_name)
+        
+        # Use fuzzy matching to find character file
+        matched_name = find_character_file_fuzzy(character_name)
+        if matched_name:
+            char_filepath = path_manager.get_character_path(matched_name)
+            debug(f"REST: Fuzzy matched '{character_name}' to '{matched_name}'", category="character_updates")
+        else:
+            # Fallback to normalized name
+            normalized_name = character_name.lower().replace(" ", "_").replace("'", "_")
+            char_filepath = path_manager.get_character_path(normalized_name)
+        
+        character_data = safe_read_json(char_filepath)
+        if not character_data:
+            warning(f"REST: Could not load character data for {character_name} (tried: {char_filepath})", category="character_updates")
+            return None
+        
+        results = {
+            "character": character_name,
+            "rest_type": rest_type,
+            "hp_restored": 0,
+            "spell_slots_restored": 0,
+            "features_reset": [],
+            "exhaustion_reduced": False
+        }
+        
+        # Build update actions list
+        update_actions = []
+        
+        # Check if character is a Warlock (for short rest spell slot recovery)
+        character_class = character_data.get("class", "").lower()
+        is_warlock = "warlock" in character_class
+        
+        # Handle HP restoration (long rest only in 5e)
+        if rest_type == "long":
+            current_hp = character_data.get("hitPoints", 0)
+            max_hp = character_data.get("maxHitPoints", current_hp)
+            
+            if current_hp < max_hp:
+                hp_diff = max_hp - current_hp
+                update_actions.append(f"Restores {hp_diff} hit points (HP {current_hp} -> {max_hp})")
+                results["hp_restored"] = hp_diff
+        # Note: Short rest does NOT auto-heal - players must spend Hit Dice manually
+        
+        # Handle spell slots restoration
+        spellcasting = character_data.get("spellcasting", {})
+        spell_slots = spellcasting.get("spellSlots", {})
+        
+        if spell_slots:
+            for level_key, slot_data in spell_slots.items():
+                if isinstance(slot_data, dict):
+                    current = slot_data.get("current", 0)
+                    max_slots = slot_data.get("max", 0)
+                    
+                    should_restore_slots = False
+                    if rest_type == "long":
+                        # Long rest: all casters restore all spell slots
+                        should_restore_slots = True
+                    elif rest_type == "short" and is_warlock:
+                        # Short rest: only Warlocks restore spell slots
+                        should_restore_slots = True
+                    
+                    if should_restore_slots and current < max_slots:
+                        slots_diff = max_slots - current
+                        update_actions.append(f"Restores {slots_diff} level {level_key.replace('level', '')} spell slot(s)")
+                        results["spell_slots_restored"] += slots_diff
+        
+        # Handle class features that refresh on rest
+        class_features = character_data.get("classFeatures", [])
+        for feature in class_features:
+            usage = feature.get("usage")
+            if usage and isinstance(usage, dict):
+                refresh_on = usage.get("refreshOn", "")
+                current_uses = usage.get("current", 0)
+                max_uses = usage.get("max", 0)
+                
+                should_refresh = False
+                if rest_type == "long" and refresh_on in ["longRest", "shortRest"]:
+                    should_refresh = True
+                elif rest_type == "short" and refresh_on == "shortRest":
+                    should_refresh = True
+                
+                if should_refresh and current_uses < max_uses:
+                    feature_name = feature.get("name", "Unknown")
+                    update_actions.append(f"Refreshes {feature_name} usage ({current_uses} -> {max_uses})")
+                    results["features_reset"].append(feature_name)
+        
+        # Handle exhaustion reduction (long rest only)
+        if rest_type == "long":
+            condition_affected = character_data.get("condition_affected", [])
+            exhaustion_present = False
+            
+            # Schema: condition_affected is list[string], not list[dict]
+            for condition in condition_affected:
+                if isinstance(condition, str) and condition.lower().startswith("exhaustion"):
+                    exhaustion_present = True
+                    break
+            
+            if exhaustion_present:
+                update_actions.append("Removes exhaustion condition")
+                results["exhaustion_reduced"] = True
+        
+        # Execute updates via update_character_info
+        if update_actions:
+            # Combine all actions into a single update
+            combined_action = f"{rest_type.capitalize()} rest: " + "; ".join(update_actions)
+            
+            # Call update_character_info which will handle the actual file update
+            success = update_character_info(character_name, combined_action)
+            
+            if success:
+                debug(f"REST: Successfully processed {rest_type} rest for {character_name}", 
+                      category="character_updates")
+                return results
+            else:
+                warning(f"REST: Failed to update character {character_name}", category="character_updates")
+                return None
+        else:
+            # No updates needed - character already fully rested
+            debug(f"REST: No updates needed for {character_name} (already fully rested)", 
+                  category="character_updates")
+            return results
+            
+    except Exception as e:
+        error(f"REST: Error processing rest for {character_name}: {e}", 
+              exception=e, category="character_updates")
+        return None
+
+
+def _format_rest_summary(rest_results: list, rest_type: str) -> str:
+    """
+    Format rest results into a readable summary message.
+    
+    Args:
+        rest_results: List of rest result dicts from _process_character_rest
+        rest_type: 'short' or 'long'
+        
+    Returns:
+        Formatted summary string
+    """
+    if not rest_results:
+        return f"[SYSTEM] {rest_type.capitalize()} rest completed (no changes)."
+    
+    total_hp = sum(r.get("hp_restored", 0) for r in rest_results)
+    total_spell_slots = sum(r.get("spell_slots_restored", 0) for r in rest_results)
+    total_features = sum(len(r.get("features_reset", [])) for r in rest_results)
+    exhaustion_reduced = any(r.get("exhaustion_reduced", False) for r in rest_results)
+    
+    lines = [f"[SYSTEM] {rest_type.capitalize()} rest completed for {len(rest_results)} character(s):"]
+    
+    # Character details
+    for result in rest_results:
+        char_name = result.get("character", "Unknown")
+        hp = result.get("hp_restored", 0)
+        slots = result.get("spell_slots_restored", 0)
+        features = result.get("features_reset", [])
+        
+        details = []
+        if hp > 0:
+            details.append(f"+{hp} HP")
+        if slots > 0:
+            details.append(f"+{slots} spell slots")
+        if features:
+            details.append(f"refreshed: {', '.join(features)}")
+        
+        if details:
+            lines.append(f"  - {char_name}: {', '.join(details)}")
+        else:
+            lines.append(f"  - {char_name}: (no changes)")
+    
+    # Summary totals
+    summary_parts = []
+    if total_hp > 0:
+        summary_parts.append(f"{total_hp} HP restored")
+    if total_spell_slots > 0:
+        summary_parts.append(f"{total_spell_slots} spell slots restored")
+    if total_features > 0:
+        summary_parts.append(f"{total_features} features refreshed")
+    if exhaustion_reduced:
+        summary_parts.append("exhaustion reduced")
+    
+    if summary_parts:
+        lines.append(f"\nTotal: {', '.join(summary_parts)}.")
+    
+    return "\n".join(lines)
+
 
 def move_background_npc(npc_name, context, current_location_hint=None, party_tracker_data=None):
     """
@@ -2033,7 +2301,13 @@ def find_npc_in_areas(npc_name, path_manager, location_hint=None):
 def get_ai_npc_movement_decision(npc_name, context, npc_data, area_data, location_id, module_name, party_npcs=None, attempt=1):
     """Use AI to determine what to do with the NPC based on context"""
     try:
-        client = OpenAI(api_key=config.OPENAI_API_KEY)
+        # Use factory for multi-provider support
+        from utils.ai_client_factory import create_chat_client, get_chat_model_name, handle_provider_error
+        client = create_chat_client()
+        
+        # Get provider-aware model
+        model_name = get_chat_model_name()
+        debug(f"Using AI model for NPC movement: {model_name}", category="ai_provider")
         
         # Get available locations for potential moves
         available_locations = []
@@ -2150,14 +2424,31 @@ Based on this narrative context, determine the most appropriate action for this 
 
 Remember: This is a background NPC management action, not party NPC management."""
 
-        response = client.chat.completions.create(
-            model=config.NPC_INFO_UPDATE_MODEL,  # Use claude-sonnet-4-20250514 as specified
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.7  # As specified by user
-        )
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.7
+            )
+        except Exception as api_error:
+            # Check if we should fallback to OpenAI
+            error_result = handle_provider_error(api_error, context="NPC movement decision")
+            if error_result['should_fallback']:
+                warning(f"Falling back to OpenAI: {api_error}", category="ai_provider")
+                fallback_client = create_chat_client(use_fallback=True)
+                response = fallback_client.chat.completions.create(
+                    model=config.NPC_INFO_UPDATE_MODEL,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.7
+                )
+            else:
+                raise
         
         # Track token usage
         if USAGE_TRACKING_AVAILABLE:

@@ -22,8 +22,6 @@ from datetime import datetime
 # Add the project root to the Python path so we can import from utils, core, etc.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from openai import OpenAI
-
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
     from utils.openai_usage_tracker import track_response
@@ -33,17 +31,19 @@ except:
     def track_response(r): pass
 
 from jsonschema import validate, ValidationError
-from config import OPENAI_API_KEY, ADVENTURE_SUMMARY_MODEL
+from config import ADVENTURE_SUMMARY_MODEL
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import sanitize_text, safe_json_load, safe_json_dump
 from core.managers.status_manager import status_generating_summary
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.ai_client_factory import create_chat_client, get_chat_model_name, get_model_config  # OPENROUTER: Multi-provider support
 
 # Set script name for logging
 set_script_name("adv_summary")
 
 TEMPERATURE = 0.8
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Initialize client using factory (supports OpenAI and OpenRouter)
+client = create_chat_client()
 
 def get_current_location():
     try:
@@ -225,8 +225,9 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
     for attempt in range(max_retries):
         debug_print(f"Attempt {attempt + 1} to update location JSON")
         try:
+            config = get_model_config("adventure_summary", ADVENTURE_SUMMARY_MODEL)  # OPENROUTER: 3-tier model selection
             response = client.chat.completions.create(
-                model=ADVENTURE_SUMMARY_MODEL,
+                model=config["model"], **config.get("extra_body", {}),
                 temperature=TEMPERATURE,
                 messages=location_updater_prompt
             )
@@ -460,8 +461,9 @@ Your writing should feel immersive, literary, and grounded—like a historical e
 
 
     try:
+        config = get_model_config("adventure_summary", ADVENTURE_SUMMARY_MODEL)  # OPENROUTER: 3-tier model selection
         response = client.chat.completions.create(
-            model=ADVENTURE_SUMMARY_MODEL,
+            model=config["model"], **config.get("extra_body", {}),
             temperature=TEMPERATURE,
             messages=dialogue_data
         )

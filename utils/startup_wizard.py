@@ -19,7 +19,6 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from openai import OpenAI
 from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
 
@@ -31,6 +30,7 @@ from core.managers.status_manager import (
     status_manager, status_processing_ai, status_validating,
     status_loading, status_ready, status_saving
 )
+from utils.ai_client_factory import create_chat_client, get_chat_model_name
 
 # Set script name for logging
 set_script_name("startup_wizard")
@@ -90,8 +90,8 @@ def status_callback(message, is_processing):
 if not web_mode:
     status_manager.set_callback(status_callback)
 
-# Initialize OpenAI client
-client = OpenAI(api_key=config.OPENAI_API_KEY)
+# Initialize AI client using factory (supports OpenAI and OpenRouter)
+client = create_chat_client()
 
 # Conversation file for character creation (separate from main game)
 STARTUP_CONVERSATION_FILE = "modules/conversation_history/startup_conversation.json"
@@ -1718,9 +1718,10 @@ Respond with ONLY a JSON object in this exact format:
   "politicalClimate": "brief political situation"
 }}"""
 
-        client = OpenAI(api_key=config.OPENAI_API_KEY)
+        # Use factory to create client (supports OpenAI and OpenRouter)
+        client = create_chat_client()
         response = client.chat.completions.create(
-            model=config.DM_MINI_MODEL,
+            model=get_chat_model_name(),
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7
         )

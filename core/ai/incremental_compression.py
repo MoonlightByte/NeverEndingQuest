@@ -9,7 +9,6 @@ import os
 import sys
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
-from openai import OpenAI
 import shutil
 
 # Add project root to path for standalone execution
@@ -19,13 +18,15 @@ if __name__ == "__main__":
 import config
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.enhanced_logger import info, debug, warning, error
+from utils.ai_client_factory import create_chat_client, get_chat_model_name
 
 class IncrementalLocationCompressor:
     """Handles incremental compression of messages at current location."""
     
     def __init__(self):
-        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
-        self.COMPRESSION_MODEL = "gpt-4.1-mini-2025-04-14"
+        # Use factory to create client (supports OpenAI and OpenRouter)
+        self.client = create_chat_client()
+        self.COMPRESSION_MODEL = get_chat_model_name()
         self.COMPRESSION_TEMP = 0.3
         self.TRIGGER_THRESHOLD = 15  # Compress when reaching 15 pairs
         self.PRESERVE_RECENT = 5     # Always keep last 5 VALID pairs uncompressed

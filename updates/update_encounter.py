@@ -6,12 +6,11 @@
 import json
 import os
 from jsonschema import validate, ValidationError
-from openai import OpenAI
 import time
 import re
 import copy
 # Import model configuration from config.py
-from config import OPENAI_API_KEY, ENCOUNTER_UPDATE_MODEL
+from config import ENCOUNTER_UPDATE_MODEL
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -22,6 +21,7 @@ except:
     def track_response(r): pass
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.ai_client_factory import create_chat_client, get_model_config  # OPENROUTER: Multi-provider support
 
 # Set script name for logging
 set_script_name("update_encounter")
@@ -32,7 +32,8 @@ set_script_name("update_encounter")
 # Constants
 TEMPERATURE = 0.7
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Initialize AI client using factory (supports OpenAI and OpenRouter)
+client = create_chat_client()
 
 def load_encounter_schema():
     with open("schemas/encounter_schema.json", "r") as schema_file:
@@ -80,8 +81,9 @@ Remember to only update monster information and leave player and NPC data unchan
         ]
 
         # Get AI's response
+        config = get_model_config("encounter_update", ENCOUNTER_UPDATE_MODEL)  # OPENROUTER: 3-tier model selection
         response = client.chat.completions.create(
-            model=ENCOUNTER_UPDATE_MODEL,
+            model=config["model"], **config.get("extra_body", {}),
             temperature=TEMPERATURE,
             messages=prompt
         )

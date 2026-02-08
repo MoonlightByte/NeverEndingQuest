@@ -103,7 +103,6 @@ import shutil
 import os
 from datetime import datetime
 from jsonschema import validate, ValidationError
-from openai import OpenAI
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple, Dict, Any, Optional
 
@@ -117,18 +116,25 @@ except:
 import time
 import re
 # Import model configuration from config.py
-from config import OPENAI_API_KEY, PLAYER_INFO_UPDATE_MODEL, NPC_INFO_UPDATE_MODEL
+from config import PLAYER_INFO_UPDATE_MODEL, NPC_INFO_UPDATE_MODEL
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_write_json, safe_read_json
 from utils.encoding_utils import safe_json_load
 from core.validation.character_validator import AICharacterValidator
 from core.validation.character_effects_validator import AICharacterEffectsValidator
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.ai_client_factory import (
+    create_chat_client,
+    get_chat_model_name,
+    handle_provider_error,
+    get_fallback_notification
+)
 
 # Set script name for logging
 set_script_name(__name__)
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Initialize client using factory (supports OpenAI and OpenRouter)
+client = create_chat_client()
 
 # Constants
 TEMPERATURE = 0.7
@@ -528,10 +534,13 @@ When NPCs deal damage in combat, do NOT update their action arrays. Only update 
 
 def get_model_for_character(character_role):
     """Get the appropriate model based on character role"""
+    # Use factory to get model name (supports OpenAI and OpenRouter)
+    model = get_chat_model_name()
     if character_role == 'player':
-        return PLAYER_INFO_UPDATE_MODEL
+        return model
     else:
-        return NPC_INFO_UPDATE_MODEL
+        # For NPCs, use the mini model if available to save costs
+        return NPC_INFO_UPDATE_MODEL if model.startswith('gpt-') else model
 
 def normalize_status_and_condition(data, character_role):
     """Normalize status and condition fields based on character role"""
@@ -2092,6 +2101,15 @@ Please provide the CORRECT currency values:
             
         except Exception as e:
             error(f"FAILURE: Error during update (attempt {attempt})", exception=e, category="character_updates")
+            
+            # Check if this is a provider error that should trigger fallback
+            error_result = handle_provider_error(e, f"character_update_{character_name}")
+            if error_result['should_fallback'] and attempt < max_attempts:
+                warning(f"Provider error detected, attempting fallback for attempt {attempt + 1}", category="character_updates")
+                # Recreate client with fallback provider
+                client = create_chat_client(use_fallback=True)
+                attempt += 1
+                continue
             
             # Update debug data with exception details
             if 'debug_data' in locals():
