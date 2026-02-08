@@ -1615,7 +1615,7 @@
             cursor: pointer;
             font-size: 12px;
             font-weight: bold;
-            margin-left: 10px;
+            margin-left: 6px;
             transition: background-color 0.3s;
             box-sizing: border-box;
         }
@@ -1642,7 +1642,8 @@
             border-radius: 4px;
             cursor: pointer;
             font-size: 12px;
-            margin-right: 6px;
+            margin-left: 6px;
+            margin-right: 0px;
             transition: background-color 0.3s;
             box-sizing: border-box;
             width: 22px;
@@ -1683,113 +1684,6 @@
             background-color: #E74C3C;
         }
         
-        /* DM Voice Panel Styles */
-        .dm-voice-panel {
-            position: fixed;
-            top: 60px;
-            right: 20px;
-            width: 280px;
-            background-color: #2c2c2c;
-            border: 1px solid #444;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-            z-index: 1000;
-        }
-        
-        .dm-voice-panel-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 16px;
-            background-color: #3a3a3a;
-            border-bottom: 1px solid #444;
-            border-radius: 8px 8px 0 0;
-        }
-        
-        .dm-voice-panel-title {
-            font-weight: 600;
-            color: #e0e0e0;
-            font-size: 14px;
-        }
-        
-        .dm-voice-close {
-            background: none;
-            border: none;
-            color: #999;
-            font-size: 20px;
-            cursor: pointer;
-            padding: 0;
-            width: 24px;
-            height: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .dm-voice-close:hover {
-            color: #fff;
-        }
-        
-        .dm-voice-panel-content {
-            padding: 16px;
-        }
-        
-        .dm-voice-item {
-            margin-bottom: 16px;
-        }
-        
-        .dm-voice-item:last-child {
-            margin-bottom: 0;
-        }
-        
-        .dm-voice-item label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 13px;
-            color: #ccc;
-        }
-        
-        .dm-voice-select {
-            width: 100%;
-            padding: 8px;
-            background-color: #3a3a3a;
-            border: 1px solid #555;
-            border-radius: 4px;
-            color: #e0e0e0;
-            font-size: 13px;
-        }
-        
-        .dm-voice-controls {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-        
-        .dm-voice-controls .dm-voice-select {
-            flex: 1;
-        }
-        
-        .dm-voice-preview-btn {
-            width: 32px;
-            height: 32px;
-            background-color: #4a4a4a;
-            border: none;
-            border-radius: 4px;
-            color: #ddd;
-            cursor: pointer;
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .dm-voice-preview-btn:hover {
-            background-color: #666;
-        }
-        
-        .dm-voice-preview-btn.playing {
-            background-color: #E74C3C;
-        }
         /* Generated Image Styles */
         .generated-image {
             max-width: 100%;
@@ -4117,42 +4011,260 @@
         
         /* --- NEW STYLES for Header Control Refactor --- */
         
-        /* New container to stack the toggles vertically */
-        .toggle-stack {
+        /* Settings Dropdown Container */
+        .settings-dropdown {
+            position: relative;
+            display: inline-block;
+            margin-left: 10px;
+        }
+
+        /* Settings Button */
+        .settings-button {
+            background-color: #444;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
             display: flex;
-            flex-direction: column;
-            gap: 4px; /* Creates a small space between the two toggles */
-            justify-content: center;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            font-weight: bold;
+            transition: background-color 0.3s;
         }
-        
-        /* Remove the default left margin from toggles now that they are stacked */
-        .toggle-stack .image-generation-toggle {
-            margin-left: 0;
+
+        .settings-button:hover {
+            background-color: #555;
         }
-        
-        /* Shrink the toggle slider */
-        .toggle-stack .toggle-slider {
-            width: 34px;
+
+        .settings-button svg {
+            width: 18px;
             height: 18px;
         }
-        
-        /* Shrink the sliding circle inside the toggle */
-        .toggle-stack .toggle-slider::after {
-            width: 14px;
-            height: 14px;
+
+        /* Settings Dropdown Content */
+        .settings-dropdown-content {
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background-color: #2a2a2a;
+            width: 280px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            z-index: 1000;
+            padding: 10px 0;
+            margin-top: 5px;
+            border: 1px solid #444;
+            pointer-events: none;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px) scale(0.98);
+            transform-origin: top right;
+            transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
         }
-        
-        /* Adjust the sliding distance for the smaller toggle */
-        .toggle-stack input:checked + .toggle-slider::after {
+
+        .settings-dropdown-content.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+
+        /* Settings Section */
+        .settings-section {
+            padding: 8px 15px;
+            border-bottom: 1px solid #444;
+        }
+
+        .settings-section:last-child {
+            border-bottom: none;
+        }
+
+        .settings-section-title {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        /* Settings Item */
+        .settings-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 0;
+        }
+
+        .settings-item span {
+            color: #ddd;
+            font-size: 13px;
+        }
+
+        /* Settings Toggle Switch */
+        .settings-toggle {
+            position: relative;
+            width: 36px;
+            height: 20px;
+            display: inline-block;
+            cursor: pointer;
+        }
+
+        .settings-toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+            position: absolute;
+        }
+
+        .settings-toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #555;
+            transition: 0.3s;
+            border-radius: 20px;
+        }
+
+        .settings-toggle-slider::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        .settings-toggle input:checked + .settings-toggle-slider {
+            background-color: #4CAF50;
+        }
+
+        .settings-toggle input:checked + .settings-toggle-slider::after {
             transform: translateX(16px);
         }
         
-        /* Shrink the text next to the toggle */
-        .toggle-stack .toggle-text {
-            font-size: 12px;
+        /* Accordion animation for collapsible sections */
+        .settings-section-collapsible {
+            overflow: hidden;
+            max-height: 0;
+            opacity: 0;
+            transition: max-height 0.3s ease-out, opacity 0.2s ease-out, padding 0.3s ease-out;
+            padding: 0 15px;
+            border-bottom: none;
         }
-        
-        /* Remove duplicate style - now handled in main .toolkit-button definition above */
+
+        .settings-section-collapsible.expanded {
+            max-height: 200px;
+            opacity: 1;
+            padding: 8px 15px;
+            border-bottom: 1px solid #444;
+        }
+
+        /* Settings Select Dropdown */
+        .settings-select {
+            background-color: #333;
+            color: #ddd;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 5px 8px;
+            font-size: 12px;
+            cursor: pointer;
+            width: 140px;
+            box-sizing: border-box;
+        }
+
+        .settings-select:hover {
+            border-color: #777;
+        }
+
+        .settings-select:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+
+        /* Voice Controls Container */
+        .voice-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            width: 140px;
+        }
+
+        .voice-controls .settings-select {
+            width: 112px;
+            flex-shrink: 0;
+        }
+
+        /* Preview Voice Button */
+        .preview-voice-btn {
+            background-color: #4a4a4a;
+            color: #ddd;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 0;
+            font-size: 11px;
+            cursor: pointer;
+            width: 22px;
+            height: 22px;
+            min-width: 22px;
+            min-height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .preview-voice-btn:hover {
+            background-color: #555;
+            border-color: #777;
+        }
+
+        .preview-voice-btn.playing {
+            background-color: #c0392b;
+            border-color: #e74c3c;
+        }
+
+        /* Auto-play Tooltip */
+        .autoplay-tooltip {
+            position: fixed;
+            z-index: 1000;
+            background-color: #2c2c2c;
+            border: 2px solid #7B68EE;
+            border-radius: 8px;
+            padding: 12px;
+            max-width: 280px;
+            color: #d4d4d4;
+            font-size: 13px;
+            line-height: 1.5;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+            pointer-events: none;
+        }
+
+        .autoplay-tooltip.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .autoplay-tooltip-header {
+            color: #7B68EE;
+            font-weight: bold;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #3a3a3a;
+            padding-bottom: 5px;
+        }
+
+        .autoplay-tooltip-content {
+            color: #d4d4d4;
+        }
         
         /* Compression Progress Bar Styles */
         .compression-progress-container {
@@ -4292,27 +4404,67 @@
                 <button class="load-button" id="load-button" onclick="openLoadDialog()" disabled title="Load Game">Load</button>
                 <button class="reset-button" id="reset-button" onclick="openResetDialog()" disabled title="Reset Campaign">Reset</button>
             </div>
-            <div class="toggle-stack">
-                <div class="image-generation-toggle">
-                    <label class="toggle-label">
-                        <input type="checkbox" id="image-generation-toggle" checked>
-                        <span class="toggle-slider"></span>
-                        <span class="toggle-text">AI Images</span>
-                    </label>
-                </div>
-                <div class="image-generation-toggle">
-                    <label class="toggle-label" id="model-toggle-label">
-                        <input type="checkbox" id="model-toggle" unchecked>
-                        <span class="toggle-slider"></span>
-                        <span class="toggle-text" id="model-toggle-text">GPT-4.1</span>
-                    </label>
-                </div>
-                <div class="image-generation-toggle">
-                    <label class="toggle-label" id="tts-toggle-label" title="Enable DM Voice text-to-speech">
-                        <input type="checkbox" id="tts-toggle">
-                        <span class="toggle-slider"></span>
-                        <span class="toggle-text">DM Voice</span>
-                    </label>
+            <div class="settings-dropdown">
+                <button class="settings-button" onclick="toggleSettingsDropdown()" title="Settings">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+                        <path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.68 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/>
+                    </svg>
+                    Settings
+                </button>
+                <div class="settings-dropdown-content" id="settings-dropdown">
+                    <div class="settings-section">
+                        <div class="settings-section-title">Features</div>
+                        <div class="settings-item">
+                            <span>AI Images</span>
+                            <label class="settings-toggle">
+                                <input type="checkbox" id="image-generation-toggle" checked>
+                                <span class="settings-toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="settings-item">
+                            <span>DM Voice</span>
+                            <label class="settings-toggle">
+                                <input type="checkbox" id="tts-toggle">
+                                <span class="settings-toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="settings-section-collapsible" id="dm-voice-settings-section">
+                            <div class="settings-item">
+                                <label for="tts-engine-select">Engine</label>
+                                <select class="settings-select" id="tts-engine-select">
+                                    <option value="browser">Browser (Free)</option>
+                                    <option value="openai">OpenAI Standard</option>
+                                    <option value="openai-hd">OpenAI HD</option>
+                                </select>
+                            </div>
+                            <div class="settings-item">
+                                <label for="tts-voice-select">Voice</label>
+                                <div class="voice-controls">
+                                    <select class="settings-select" id="tts-voice-select">
+                                        <!-- Voices populated dynamically based on engine -->
+                                    </select>
+                                    <button class="preview-voice-btn" id="preview-voice-btn" onclick="previewVoice()" title="Preview voice">▶</button>
+                                </div>
+                            </div>
+                            <div class="settings-item" id="autoplay-toggle-item">
+                                <label>Auto-play</label>
+                                <label class="settings-toggle">
+                                    <input type="checkbox" id="tts-autoplay-toggle">
+                                    <span class="settings-toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="settings-section-title">Model</div>
+                        <div class="settings-item">
+                            <span id="model-toggle-text">GPT-4.1</span>
+                            <label class="settings-toggle" id="model-toggle-label">
+                                <input type="checkbox" id="model-toggle">
+                                <span class="settings-toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -4325,41 +4477,6 @@
             </button>
             
             <button class="exit-button" id="exit-button" onclick="exitGame()" title="Exit Game">× Exit</button>
-        </div>
-    </div>
-    
-    <!-- DM Voice Settings Panel -->
-    <div id="dm-voice-settings-panel" class="dm-voice-panel" style="display: none;">
-        <div class="dm-voice-panel-header">
-            <span class="dm-voice-panel-title">DM Voice Settings</span>
-            <button class="dm-voice-close" onclick="toggleDMVoicePanel()">×</button>
-        </div>
-        <div class="dm-voice-panel-content">
-            <div class="dm-voice-item">
-                <label for="tts-engine-select">Engine</label>
-                <select class="dm-voice-select" id="tts-engine-select">
-                    <option value="browser">Browser (Free)</option>
-                    <option value="openai">OpenAI Standard</option>
-                    <option value="openai-hd">OpenAI HD</option>
-                </select>
-            </div>
-            <div class="dm-voice-item">
-                <label for="tts-voice-select">Voice</label>
-                <div class="dm-voice-controls">
-                    <select class="dm-voice-select" id="tts-voice-select">
-                        <!-- Voices populated dynamically -->
-                    </select>
-                    <button class="dm-voice-preview-btn" id="preview-voice-btn" onclick="previewVoice()" title="Preview voice">▶</button>
-                </div>
-            </div>
-            <div class="dm-voice-item">
-                <label for="tts-autoplay-toggle">Auto-play</label>
-                <label class="toggle-label">
-                    <input type="checkbox" id="tts-autoplay-toggle">
-                    <span class="toggle-slider"></span>
-                    <span class="toggle-text">Auto</span>
-                </label>
-            </div>
         </div>
     </div>
     
@@ -4517,6 +4634,12 @@
         // Cache for tracking images that are confirmed to be missing (avoid repetitive 404s)
         const missingImageCache = new Set();
         const existingImageCache = new Set();
+        
+        // TTS state variables
+        let currentTTSButton = null;
+        let currentBrowserUtterance = null;
+        let currentTTSAudio = null;
+        const ttsCache = new Map();
 
         /**
          * Attempts to load an image, checking the cache first.
@@ -4762,6 +4885,7 @@
         let lastHoveredElement = null; // Track last hovered element to avoid recalculation
         const elementListenerMap = new WeakMap(); // Track which elements have listeners
         let currentlyHoveredName = null; // Track the name of currently hovered character to preserve hover state
+        let currentTooltipElement = null; // Track element with active tooltip for HP updates during combat
 
         function createStatsTooltip(stats) {
             const tooltip = document.createElement('div');
@@ -4927,6 +5051,7 @@
                 }
                 
                 lastHoveredElement = target;
+                currentTooltipElement = target; // Track for HP updates during combat
                 currentStatsTooltip.classList.add('visible');
             }, 50);
         }
@@ -4945,6 +5070,7 @@
             // Reset the last hovered element and name when hiding
             lastHoveredElement = null;
             currentlyHoveredName = null;
+            currentTooltipElement = null; // Clear tracked element
 
             if (immediate) {
                 if (currentStatsTooltip) {
@@ -5006,7 +5132,8 @@
         }
         
         // Add message to output with Tavern AI style
-        function addMessage(outputId, message) {
+        // TABLETOP MODE: Added skipAutoplay parameter to prevent TTS on cached messages
+        function addMessage(outputId, message, skipAutoplay = false) {
             const output = document.getElementById(outputId);
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${message.type}`;
@@ -5039,48 +5166,56 @@
                 header.appendChild(author);
                 header.appendChild(badge);
                 
-                // Create TTS button
-                const ttsButton = document.createElement('button');
-                ttsButton.className = 'tts-button';
-                ttsButton.textContent = '▶';
-                ttsButton.title = 'Play DM Voice';
-                
-                // Check if autoplay is enabled and add indicator
-                const isAutoplayOn = document.getElementById('tts-autoplay-toggle').checked;
-                if (isAutoplayOn) {
-                    ttsButton.classList.add('autoplay-active');
-                    ttsButton.title = 'Auto-play enabled';
-                }
-                
-                ttsButton.onclick = function() {
-                    playTTS(message.content, ttsButton);
-                };
-                
-                // Order: Dungeon Master [DM] [▶] [Generate Image]
-                header.appendChild(ttsButton);
-                
-                // Add image generation button (only if enabled)
-                const isImageGenEnabled = document.getElementById('image-generation-toggle').checked;
-                if (isImageGenEnabled) {
-                    const imageButton = document.createElement('button');
-                    imageButton.className = 'image-generation-button';
-                    imageButton.textContent = 'Generate Image';
-                    imageButton.onclick = function() {
-                        generateImageForMessage(message.content, messageDiv);
+                // TABLETOP MODE: Only show TTS and Image buttons for narrative content (not mechanical messages)
+                let ttsButton = null;
+                if (!message.skipTTS) {
+                    // Create TTS button
+                    ttsButton = document.createElement('button');
+                    ttsButton.className = 'tts-button';
+                    ttsButton.textContent = '▶';
+                    ttsButton.title = 'Play DM Voice';
+
+                    // Check if autoplay is enabled and add indicator
+                    const isAutoplayOn = document.getElementById('tts-autoplay-toggle').checked;
+                    if (isAutoplayOn) {
+                        ttsButton.classList.add('autoplay-active');
+                        ttsButton.title = 'Auto-play enabled';
+                    }
+
+                    ttsButton.onclick = function() {
+                        playTTS(message.content, ttsButton);
                     };
-                    header.appendChild(imageButton);
+
+                    // Order: Dungeon Master [DM] [▶] [Generate Image]
+                    header.appendChild(ttsButton);
+
+                    // Add image generation button (only if enabled)
+                    const isImageGenEnabled = document.getElementById('image-generation-toggle').checked;
+                    if (isImageGenEnabled) {
+                        const imageButton = document.createElement('button');
+                        imageButton.className = 'image-generation-button';
+                        imageButton.textContent = 'Generate Image';
+                        imageButton.onclick = function() {
+                            generateImageForMessage(message.content, messageDiv);
+                        };
+                        header.appendChild(imageButton);
+                    }
                 }
                 contentDiv.appendChild(header);
                 contentDiv.appendChild(text);
                 messageDiv.appendChild(avatar);
                 messageDiv.appendChild(contentDiv);
                 
-                // Auto-play TTS if enabled
+                // TABLETOP MODE: Auto-play TTS if enabled (but skip for cached messages, system text, and Python-mechanical messages)
                 const isTTSEnabled = document.getElementById('tts-toggle').checked;
                 const isAutoplayEnabled = document.getElementById('tts-autoplay-toggle').checked;
-                if (isTTSEnabled && isAutoplayEnabled) {
+                const isSystemContent = message.content.includes('[SYSTEM]') ||
+                                       message.content.includes('---') ||
+                                       /^\s*\/\w+/.test(message.content);
+                const shouldSkipTTS = message.skipTTS || false;  // Python-mechanical messages have skipTTS flag
+                if (!skipAutoplay && !isSystemContent && !shouldSkipTTS && isTTSEnabled && isAutoplayEnabled && ttsButton) {
                     setTimeout(() => {
-                        playTTS(message.content, ttsButton);
+                        playTTSQueued(message.content, ttsButton);
                     }, 100);
                 }
                 
@@ -5103,15 +5238,7 @@
                 contentDiv.appendChild(text);
                 messageDiv.appendChild(avatar);
                 messageDiv.appendChild(contentDiv);
-                
-                // Auto-play TTS if enabled
-                const isTTSEnabled = document.getElementById('tts-toggle').checked;
-                const isAutoplayEnabled = document.getElementById('tts-autoplay-toggle').checked;
-                if (isTTSEnabled && isAutoplayEnabled) {
-                    setTimeout(() => {
-                        playTTS(message.content, ttsButton);
-                    }, 100);
-                }
+                // NOTE: User messages do NOT have TTS buttons - only DM narration does
                 
             } else if (message.type === 'system' || message.type === 'error') {
                 const contentDiv = document.createElement('div');
@@ -5247,6 +5374,7 @@
         });
 
         // Handle cached messages from previous session
+        // TABLETOP MODE: Skip TTS autoplay for cached messages to prevent cacophony
         socket.on('cached_messages', (messages) => {
             console.log(`[MESSAGE_CACHE] Restoring ${messages.length} cached messages`);
             // Add a divider to show where cached messages end
@@ -5256,7 +5384,7 @@
                     content: '--- Previous Session Messages ---'
                 });
                 messages.forEach(msg => {
-                    addMessage('game-output', msg);
+                    addMessage('game-output', msg, true); // true = skip autoplay
                 });
                 addMessage('game-output', {
                     type: 'system',
@@ -6696,49 +6824,54 @@
                 if (!this.checked) {
                     stopTTSPlayback();
                 }
-                // Show/hide DM Voice panel
-                const panel = document.getElementById('dm-voice-settings-panel');
-                if (panel) {
-                    panel.style.display = this.checked ? 'block' : 'none';
-                }
+                // Show/hide DM Voice settings section
+                updateDMVoiceSectionVisibility();
             });
             
-            // Initialize panel visibility
-            const panel = document.getElementById('dm-voice-settings-panel');
-            if (panel) {
-                panel.style.display = ttsToggle.checked ? 'block' : 'none';
-            }
+            // Initialize DM Voice section visibility
+            updateDMVoiceSectionVisibility();
             
+            // Initialize TTS auto-play toggle from localStorage
             const ttsAutoplayToggle = document.getElementById('tts-autoplay-toggle');
             const savedAutoplayState = localStorage.getItem('ttsAutoplayEnabled');
             if (savedAutoplayState !== null) {
                 ttsAutoplayToggle.checked = savedAutoplayState === 'true';
             }
-            
+
+            // Handle TTS auto-play toggle changes
             ttsAutoplayToggle.addEventListener('change', function() {
                 localStorage.setItem('ttsAutoplayEnabled', this.checked);
             });
-            
+
+            // Initialize TTS engine and voice selection
             const engineSelect = document.getElementById('tts-engine-select');
             const voiceSelect = document.getElementById('tts-voice-select');
-            
+
+            // Load saved engine preference
             const savedEngine = localStorage.getItem('ttsEngine') || 'browser';
             engineSelect.value = savedEngine;
-            
+
+            // Populate voices based on engine
             populateTTSVoices(savedEngine);
-            
+
+            // Handle engine selection changes
             engineSelect.addEventListener('change', function() {
                 localStorage.setItem('ttsEngine', this.value);
                 populateTTSVoices(this.value);
+                // Clear TTS cache when engine changes
                 ttsCache.clear();
+                // Stop any preview playing
                 stopPreview();
             });
-            
+
+            // Handle voice selection changes
             voiceSelect.addEventListener('change', function() {
                 localStorage.setItem('ttsVoice_' + engineSelect.value, this.value);
+                // Stop any preview playing when voice changes
                 stopPreview();
             });
-            
+
+            // Load browser voices when available (they load asynchronously)
             if ('speechSynthesis' in window) {
                 speechSynthesis.onvoiceschanged = () => {
                     if (engineSelect.value === 'browser') {
@@ -6746,6 +6879,30 @@
                     }
                 };
             }
+
+            // Create auto-play tooltip
+            const autoplayTooltip = document.createElement('div');
+            autoplayTooltip.className = 'autoplay-tooltip';
+            autoplayTooltip.innerHTML = `
+                <div class="autoplay-tooltip-header">Auto-play Voice</div>
+                <div class="autoplay-tooltip-content">
+                    Automatically plays DM voice when new messages arrive from the Dungeon Master.
+                </div>
+            `;
+            document.body.appendChild(autoplayTooltip);
+
+            // Show tooltip on hover
+            const autoplayToggleItem = document.getElementById('autoplay-toggle-item');
+            autoplayToggleItem.addEventListener('mouseenter', function(e) {
+                const rect = this.getBoundingClientRect();
+                autoplayTooltip.style.left = rect.left + 'px';
+                autoplayTooltip.style.top = (rect.bottom + 5) + 'px';
+                autoplayTooltip.classList.add('visible');
+            });
+
+            autoplayToggleItem.addEventListener('mouseleave', function() {
+                autoplayTooltip.classList.remove('visible');
+            });
             
             // Initialize model toggle
             const modelToggle = document.getElementById('model-toggle');
@@ -7015,13 +7172,22 @@
             window.open('/toolkit', 'ModuleToolkit', 'width=1400,height=900');
         }
         
-        // Toggle DM Voice Settings Panel
-        function toggleDMVoicePanel() {
-            const panel = document.getElementById('dm-voice-settings-panel');
-            if (panel) {
-                panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-            }
+        // Settings dropdown functions
+        function toggleSettingsDropdown() {
+            const dropdown = document.getElementById('settings-dropdown');
+            dropdown.classList.toggle('show');
         }
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const dropdown = document.getElementById('settings-dropdown');
+            const button = event.target.closest('.settings-button');
+            const dropdownContent = event.target.closest('.settings-dropdown-content');
+            
+            if (!button && !dropdownContent && dropdown.classList.contains('show')) {
+                dropdown.classList.remove('show');
+            }
+        });
         
         let diceRolls = { d20: [], damage: [] };
         function rollDice(sides) {
@@ -7613,12 +7779,14 @@
         closeBtn.onclick = function() {
             journalModal.style.display = 'none';
         }
-        window.onclick = function(event) {
+        // TABLETOP MODE: Changed to addEventListener to avoid overwriting upstream window.onclick
+        // This preserves other modal close handlers (portraits, NPCs, etc.)
+        window.addEventListener('click', function(event) {
             // This allows the user to close the journal by clicking on the dark background.
             if (event.target == journalModal) {
                 journalModal.style.display = 'none';
             }
-        }
+        });
 
         // --- Listen for the server's response with quest data ---
         socket.on('plot_data_response', function(response) {
@@ -7905,6 +8073,9 @@
         </div>
     </div>
     
+    <!-- TABLETOP MODE: TTS Queue Manager for sequential playback -->
+    <script src="{{ url_for('static', filename='js/tts_queue_manager.js') }}"></script>
+    
     {% if multiplayer_mode or party_members|length > 1 %}
     <script src="{{ url_for('static', filename='js/tabletop_mode.js') }}"></script>
     {% endif %}
@@ -7949,6 +8120,9 @@
                     loadCharacterStats();
                     loadInventory();
                     // Spells & Magic is shared with inventory in current implementation
+                    
+                    // Refresh initiative tracker to update active PC portrait highlight in combat
+                    requestInitiativeData();
                 } else {
                     console.error('Failed to set active character:', data.error);
                 }
@@ -8198,20 +8372,107 @@
             return voiceSelect ? voiceSelect.value : 'fable';
         }
         
+        // Function to show/hide DM Voice section with accordion animation
+        function updateDMVoiceSectionVisibility() {
+            const dmVoiceSection = document.getElementById('dm-voice-settings-section');
+            const ttsEnabled = document.getElementById('tts-toggle').checked;
+            if (dmVoiceSection) {
+                if (ttsEnabled) {
+                    dmVoiceSection.classList.add('expanded');
+                } else {
+                    dmVoiceSection.classList.remove('expanded');
+                }
+            }
+        }
+
+        // Populate TTS voices based on selected engine
+        function populateTTSVoices(engine) {
+            const voiceSelect = document.getElementById('tts-voice-select');
+            if (!voiceSelect) return;
+            
+            voiceSelect.innerHTML = '';
+            
+            if (engine === 'browser') {
+                // Get browser voices
+                if ('speechSynthesis' in window) {
+                    const voices = speechSynthesis.getVoices();
+                    // Filter for English and Spanish voices, prioritize good quality ones
+                    const filteredVoices = voices.filter(v => 
+                        v.lang.startsWith('en') || v.lang.startsWith('es')
+                    ).sort((a, b) => {
+                        // Prioritize local voices over remote
+                        if (a.localService !== b.localService) return a.localService ? -1 : 1;
+                        return a.name.localeCompare(b.name);
+                    });
+                    
+                    if (filteredVoices.length === 0) {
+                        // Fallback if no filtered voices
+                        voices.slice(0, 10).forEach(voice => {
+                            const option = document.createElement('option');
+                            option.value = voice.name;
+                            option.textContent = `${voice.name} (${voice.lang})`;
+                            voiceSelect.appendChild(option);
+                        });
+                    } else {
+                        filteredVoices.forEach(voice => {
+                            const option = document.createElement('option');
+                            option.value = voice.name;
+                            option.textContent = `${voice.name} (${voice.lang})`;
+                            voiceSelect.appendChild(option);
+                        });
+                    }
+                } else {
+                    const option = document.createElement('option');
+                    option.value = 'default';
+                    option.textContent = 'Default Voice';
+                    voiceSelect.appendChild(option);
+                }
+            } else {
+                // OpenAI voices
+                const openaiVoices = [
+                    { value: 'fable', label: 'Fable (Storyteller)' },
+                    { value: 'onyx', label: 'Onyx (Deep)' },
+                    { value: 'nova', label: 'Nova (Warm)' },
+                    { value: 'alloy', label: 'Alloy (Neutral)' },
+                    { value: 'echo', label: 'Echo (Soft)' },
+                    { value: 'shimmer', label: 'Shimmer (Clear)' }
+                ];
+                openaiVoices.forEach(voice => {
+                    const option = document.createElement('option');
+                    option.value = voice.value;
+                    option.textContent = voice.label;
+                    voiceSelect.appendChild(option);
+                });
+            }
+            
+            // Restore saved voice for this engine
+            const savedVoice = localStorage.getItem('ttsVoice_' + engine);
+            if (savedVoice && voiceSelect.querySelector(`option[value="${savedVoice}"]`)) {
+                voiceSelect.value = savedVoice;
+            }
+        }
+
+        // Preview voice with sample text
+        let previewAudio = null;
+        let previewUtterance = null;
+
         async function previewVoice() {
             const btn = document.getElementById('preview-voice-btn');
             const engine = getSelectedTTSEngine();
             const voice = getSelectedTTSVoice();
             
+            // If already playing, stop it
             if (btn.classList.contains('playing')) {
                 stopPreview();
                 return;
             }
             
+            // Detect voice language and pick appropriate sample text
             const voiceSelect = document.getElementById('tts-voice-select');
             const selectedOption = voiceSelect.options[voiceSelect.selectedIndex];
             const voiceLabel = selectedOption ? selectedOption.textContent : '';
             
+            // Check if Spanish voice
             const isSpanish = voiceLabel.includes('es-') || voiceLabel.includes('español') || voiceLabel.includes('Spanish');
             
             const sampleText = isSpanish 
@@ -8223,6 +8484,7 @@
             btn.title = 'Stop preview';
             
             if (engine === 'browser') {
+                // Use Web Speech API
                 if (!('speechSynthesis' in window)) {
                     resetPreviewBtn(btn);
                     return;
@@ -8247,6 +8509,7 @@
                 
                 speechSynthesis.speak(previewUtterance);
             } else {
+                // Use OpenAI TTS
                 try {
                     const model = engine === 'openai-hd' ? 'tts-1-hd' : 'tts-1';
                     const response = await fetch('/api/tts', {
@@ -8279,13 +8542,13 @@
                 }
             }
         }
-        
+
         function resetPreviewBtn(btn) {
             btn.classList.remove('playing');
             btn.textContent = '▶';
             btn.title = 'Preview voice';
         }
-        
+
         function stopPreview() {
             const btn = document.getElementById('preview-voice-btn');
             if (previewUtterance) {
@@ -8299,77 +8562,22 @@
             resetPreviewBtn(btn);
         }
         
-        function populateTTSVoices(engine) {
-            const voiceSelect = document.getElementById('tts-voice-select');
-            if (!voiceSelect) return;
-            
-            voiceSelect.innerHTML = '';
-            
-            if (engine === 'browser') {
-                if ('speechSynthesis' in window) {
-                    const voices = speechSynthesis.getVoices();
-                    const filteredVoices = voices.filter(v => 
-                        v.lang.startsWith('en') || v.lang.startsWith('es')
-                    ).sort((a, b) => {
-                        if (a.localService !== b.localService) return a.localService ? -1 : 1;
-                        return a.name.localeCompare(b.name);
-                    });
-                    
-                    if (filteredVoices.length === 0) {
-                        voices.slice(0, 10).forEach(voice => {
-                            const option = document.createElement('option');
-                            option.value = voice.name;
-                            option.textContent = `${voice.name} (${voice.lang})`;
-                            voiceSelect.appendChild(option);
-                        });
-                    } else {
-                        filteredVoices.forEach(voice => {
-                            const option = document.createElement('option');
-                            option.value = voice.name;
-                            option.textContent = `${voice.name} (${voice.lang})`;
-                            voiceSelect.appendChild(option);
-                        });
-                    }
-                } else {
-                    const option = document.createElement('option');
-                    option.value = 'default';
-                    option.textContent = 'Default Voice';
-                    voiceSelect.appendChild(option);
-                }
-            } else {
-                const openaiVoices = [
-                    { value: 'fable', label: 'Fable (Storyteller)' },
-                    { value: 'onyx', label: 'Onyx (Deep)' },
-                    { value: 'nova', label: 'Nova (Warm)' },
-                    { value: 'alloy', label: 'Alloy (Neutral)' },
-                    { value: 'echo', label: 'Echo (Soft)' },
-                    { value: 'shimmer', label: 'Shimmer (Clear)' }
-                ];
-                openaiVoices.forEach(voice => {
-                    const option = document.createElement('option');
-                    option.value = voice.value;
-                    option.textContent = voice.label;
-                    voiceSelect.appendChild(option);
-                });
-            }
-            
-            const savedVoice = localStorage.getItem('ttsVoice_' + engine);
-            if (savedVoice && voiceSelect.querySelector(`option[value="${savedVoice}"]`)) {
-                voiceSelect.value = savedVoice;
-            }
+        // Settings dropdown functions
+        function toggleSettingsDropdown() {
+            const dropdown = document.getElementById('settings-dropdown');
+            dropdown.classList.toggle('show');
         }
         
-        function updateDMVoiceSectionVisibility() {
-            const dmVoiceSection = document.getElementById('dm-voice-settings-section');
-            const ttsEnabled = document.getElementById('tts-toggle').checked;
-            if (dmVoiceSection) {
-                if (ttsEnabled) {
-                    dmVoiceSection.classList.add('expanded');
-                } else {
-                    dmVoiceSection.classList.remove('expanded');
-                }
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const dropdown = document.getElementById('settings-dropdown');
+            const button = event.target.closest('.settings-button');
+            const dropdownContent = event.target.closest('.settings-dropdown-content');
+            
+            if (!button && !dropdownContent && dropdown.classList.contains('show')) {
+                dropdown.classList.remove('show');
             }
-        }
+        });
     </script>
 </body>
 </html>

@@ -57,11 +57,14 @@ from collections import deque
 import io
 import zipfile
 from contextlib import redirect_stdout, redirect_stderr
-from openai import OpenAI
 from PIL import Image
 
 # Add parent directory to path so we can import from utils, core, etc.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import AI client factory (supports OpenAI and OpenRouter)
+from utils.ai_client_factory import create_chat_client, get_chat_model_name, get_model_config  # OPENROUTER: Multi-provider support
+from openai import OpenAI
 
 # Token tracking import
 try:
@@ -78,6 +81,22 @@ install_debug_interceptor()
 import main as dm_main
 import utils.reset_campaign as reset_campaign
 import utils.pc_manager as pc_manager
+
+# Import character creator for narrative-aware PC creation
+from utils.character_creator import (
+    backup_conversation_history,
+    restore_conversation_history,
+    is_creation_mode_active,
+    get_party_level,
+    calculate_starting_wealth,
+    get_wealth_guidance_text,
+    generate_ambiguous_transition,
+    get_level_appropriate_spell_guidance,
+    sanitize_character_data,
+    CONVERSATION_HISTORY_FILE,
+    CONVERSATION_BACKUP_FILE,
+)
+from updates.update_character_info import normalize_character_name
 from core.managers.status_manager import set_status_callback, set_compression_callback
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from model_config import DM_MINI_MODEL
@@ -223,6 +242,112 @@ def emit_compression_event(event_type, data):
 
 set_compression_callback(emit_compression_event)
 
+# ============================================================================
+# TABLETOP MODE: Real-time Chat Monitoring System
+# ============================================================================
+# This section adds SocketIO middleware for AI assistant to monitor live chat.
+# Allows the AI coding assistant to see user inputs and LLM responses in real-time
+# without needing to poll files. Logs are written to debug/logs/live_chat_monitor.log
+# ============================================================================
+
+import threading
+import time
+from datetime import datetime
+
+# TABLETOP MODE: Live chat monitor configuration
+LIVE_CHAT_LOG_FILE = "debug/logs/live_chat_monitor.json"
+live_chat_lock = threading.Lock()
+
+# TABLETOP MODE: Initialize live chat log file
+def _init_live_chat_log():
+    """Initialize the live chat monitoring log file"""
+    try:
+        os.makedirs(os.path.dirname(LIVE_CHAT_LOG_FILE), exist_ok=True)
+        if not os.path.exists(LIVE_CHAT_LOG_FILE):
+            with open(LIVE_CHAT_LOG_FILE, 'w', encoding='utf-8') as f:
+                json.dump([], f)
+    except Exception as e:
+        print(f"[TABLETOP MODE] Failed to init live chat log: {e}")
+
+# TABLETOP MODE: Log a chat event for AI assistant monitoring
+def log_chat_event(event_type, content, character=None, metadata=None):
+    """
+    Log chat events for real-time AI assistant monitoring.
+    
+    Args:
+        event_type: 'user_input' or 'ai_response' or 'system'
+        content: The message content
+        character: Character name (for user inputs in multi-PC mode)
+        metadata: Additional context (round info, actions, etc.)
+    """
+    try:
+        entry = {
+            'timestamp': datetime.now().isoformat(),
+            'event_type': event_type,
+            'content': content if isinstance(content, str) else str(content)[:500],
+            'character': character,
+            'metadata': metadata or {}
+        }
+        
+        with live_chat_lock:
+            # Read existing entries
+            entries = []
+            if os.path.exists(LIVE_CHAT_LOG_FILE):
+                try:
+                    with open(LIVE_CHAT_LOG_FILE, 'r', encoding='utf-8') as f:
+                        entries = json.load(f)
+                except:
+                    entries = []
+            
+            # Append new entry
+            entries.append(entry)
+            
+            # Keep only last 100 entries to prevent file bloat
+            entries = entries[-100:]
+            
+            # Write back
+            with open(LIVE_CHAT_LOG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(entries, f, indent=2)
+    except Exception as e:
+        print(f"[TABLETOP MODE] Chat logging error: {e}")
+
+# TABLETOP MODE: Initialize on module load
+_init_live_chat_log()
+
+# TABLETOP MODE: Original SocketIO emit function reference for wrapping
+_original_socketio_emit = socketio.emit
+
+# TABLETOP MODE: Wrapper function to capture game_output events
+def _tabletop_mode_emit_wrapper(event, data=None, *args, **kwargs):
+    """
+    TABLETOP MODE: Wraps socketio.emit to capture game_output for AI monitoring.
+    Intercepts 'game_output' events and logs them for real-time assistant visibility.
+    """
+    # Call original emit
+    result = _original_socketio_emit(event, data, *args, **kwargs)
+    
+    # TABLETOP MODE: Capture game_output events (AI responses)
+    if event == 'game_output' and isinstance(data, dict):
+        msg_type = data.get('type', 'unknown')
+        content = data.get('content', '')
+        
+        if msg_type == 'narration':
+            log_chat_event('ai_response', content, metadata={'type': 'narration'})
+        elif msg_type == 'system':
+            log_chat_event('system', content, metadata={'type': 'system'})
+        elif msg_type == 'combat':
+            log_chat_event('system', content, metadata={'type': 'combat'})
+    
+    return result
+
+# TABLETOP MODE: Replace socketio.emit with wrapped version
+socketio.emit = _tabletop_mode_emit_wrapper
+
+print("[TABLETOP MODE] Real-time chat monitoring enabled - logs to debug/logs/live_chat_monitor.json")
+# ============================================================================
+# END TABLETOP MODE: Real-time Chat Monitoring System
+# ============================================================================
+
 class WebOutputCapture:
     """Captures output and routes it to appropriate queues"""
     def __init__(self, queue, original_stream, is_error=False):
@@ -261,7 +386,8 @@ class WebOutputCapture:
                 clean_line = self.strip_ansi_codes(line)
                 
                 # Check if this is a player status/prompt line
-                if clean_line.startswith('[') and ('HP:' in clean_line or 'XP:' in clean_line):
+                # TABLETOP MODE: Exclude [skipTTS] messages from player prompt filtering
+                if clean_line.startswith('[') and not clean_line.startswith('[skipTTS]') and ('HP:' in clean_line or 'XP:' in clean_line):
                     # This is a player prompt - send to debug
                     debug_output_queue.put({
                         'type': 'debug',
@@ -304,12 +430,17 @@ class WebOutputCapture:
                         if self.dm_buffer:
                             try:
                                 combined_content = '\n'.join(self.dm_buffer)
+                                # TABLETOP MODE: Check for skipTTS marker and strip it
+                                skip_tts = combined_content.startswith('[skipTTS]')
+                                if skip_tts:
+                                    combined_content = combined_content.replace('[skipTTS]', '', 1).strip()
                                 # Remove "Dungeon Master:" prefix from the beginning if present
                                 combined_content = combined_content.replace('Dungeon Master:', '', 1).strip()
                                 if combined_content.strip():  # Only send if there's actual content
                                     message = {
                                         'type': 'narration',
-                                        'content': combined_content
+                                        'content': combined_content,
+                                        'skipTTS': skip_tts  # TABLETOP MODE: Flag for TTS filtering
                                     }
                                     game_output_queue.put(message)
                                     add_to_message_cache(message)
@@ -371,11 +502,16 @@ class WebOutputCapture:
                             if self.dm_buffer:
                                 try:
                                     combined_content = '\n'.join(self.dm_buffer)
+                                    # TABLETOP MODE: Check for skipTTS marker and strip it
+                                    skip_tts = combined_content.startswith('[skipTTS]')
+                                    if skip_tts:
+                                        combined_content = combined_content.replace('[skipTTS]', '', 1).strip()
                                     combined_content = combined_content.replace('Dungeon Master:', '', 1).strip()
                                     if combined_content.strip():
                                         message = {
                                             'type': 'narration',
-                                            'content': combined_content
+                                            'content': combined_content,
+                                            'skipTTS': skip_tts  # TABLETOP MODE: Flag for TTS filtering
                                         }
                                         game_output_queue.put(message)
                                         add_to_message_cache(message)
@@ -436,12 +572,17 @@ class WebOutputCapture:
         # If we're in a DM section, flush it as single message
         if self.in_dm_section and self.dm_buffer:
             combined_content = '\n'.join(self.dm_buffer)
+            # TABLETOP MODE: Check for skipTTS marker and strip it
+            skip_tts = combined_content.startswith('[skipTTS]')
+            if skip_tts:
+                combined_content = combined_content.replace('[skipTTS]', '', 1).strip()
             # Remove "Dungeon Master:" prefix from the beginning if present
             combined_content = combined_content.replace('Dungeon Master:', '', 1).strip()
             if combined_content.strip():  # Only send if there's actual content
                 message = {
                     'type': 'narration',
-                    'content': combined_content
+                    'content': combined_content,
+                    'skipTTS': skip_tts  # TABLETOP MODE: Flag for TTS filtering
                 }
                 game_output_queue.put(message)
                 add_to_message_cache(message)
@@ -771,6 +912,8 @@ def export_character_pdf():
         from utils.file_operations import safe_read_json
         from utils.module_path_manager import ModulePathManager
         from updates.update_character_info import normalize_character_name
+        import glob
+        import os
 
         # 1. Determine character
         character_name = request.args.get('character')
@@ -811,6 +954,25 @@ def export_character_pdf():
         def get_mod(score):
             mod = (score - 10) // 2
             return f"+{mod}" if mod >= 0 else str(mod)
+        
+        def get_hit_die_type(class_name):
+            """Return hit die type based on class (5e standard)"""
+            class_lower = class_name.lower() if class_name else ""
+            # d6 classes
+            if class_lower in ["wizard", "sorcerer"]:
+                return 6
+            # d8 classes
+            elif class_lower in ["bard", "cleric", "druid", "monk", "rogue", "warlock", "thief"]:
+                return 8
+            # d10 classes
+            elif class_lower in ["fighter", "paladin", "ranger"]:
+                return 10
+            # d12 classes
+            elif class_lower in ["barbarian"]:
+                return 12
+            # Default to d8 for unknown classes
+            else:
+                return 8
 
         fields = {
             "CharacterName": char_data.get("name", ""),
@@ -844,7 +1006,10 @@ def export_character_pdf():
             "ProfBonus": f"+{char_data.get('proficiencyBonus', 2)}",
             "HPMax": str(char_data.get("maxHitPoints", 10)),
             "HPCurrent": str(char_data.get("hitPoints", 10)),
-            "HDTotal": f"{char_data.get('level', 1)}d10",
+            
+            # Hit Dice - determine die type by class (5e standard)
+            "HD": str(char_data.get("level", 1)),
+            "HDTotal": f"{char_data.get('level', 1)}d{get_hit_die_type(char_data.get('class', ''))}",
             
             # Currency
             "CP": str(char_data.get("currency", {}).get("copper", 0)),
@@ -858,8 +1023,30 @@ def export_character_pdf():
             "Flaws": char_data.get("flaws", ""),
             "Features and Traits": "\n".join([f"{f['name']}: {f['description']}" for f in char_data.get("classFeatures", [])]),
             "ProficienciesLang": f"LANGUAGES:\n{', '.join(char_data.get('languages', ['Common']))}\n\nARMOR:\n{', '.join(char_data.get('proficiencies', {}).get('armor', []))}\n\nWEAPONS:\n{', '.join(char_data.get('proficiencies', {}).get('weapons', []))}",
-            "Equipment": "\n".join([f"{i['item_name']} (x{i.get('quantity', 1)})" for i in char_data.get("equipment", [])]),
         }
+        
+        # Split equipment into regular equipment and treasure/miscellaneous
+        equipment_items = char_data.get("equipment", [])
+        regular_equipment = []
+        treasure_items = []
+        
+        for item in equipment_items:
+            item_type = item.get("item_type", "").lower()
+            
+            # Check if it's a miscellaneous item (goes to Treasure)
+            is_miscellaneous = (item_type == "miscellaneous")
+            
+            item_text = f"{item['item_name']} (x{item.get('quantity', 1)})"
+            
+            if is_miscellaneous:
+                # Miscellaneous items go to Treasure field
+                treasure_items.append(item_text)
+            else:
+                # All other items (weapon, armor, equipment, consumable, etc.) go to Equipment
+                regular_equipment.append(item_text)
+        
+        fields["Equipment"] = "\n".join(regular_equipment)
+        # Treasure items will be added to page2_fields below
 
         # Skills
         prof_bonus = char_data.get("proficiencyBonus", 2)
@@ -891,6 +1078,136 @@ def export_character_pdf():
         if "Perception" in proficient_skills:
             pp_bonus += prof_bonus
         fields["Passive"] = str(10 + pp_bonus)
+
+        # Saving Throws
+        saving_throw_proficiencies = char_data.get("savingThrows", [])
+        if not isinstance(saving_throw_proficiencies, list):
+            saving_throw_proficiencies = []
+        
+        st_fields = {
+            "ST Strength": "strength",
+            "ST Dexterity": "dexterity", 
+            "ST Constitution": "constitution",
+            "ST Intelligence": "intelligence",
+            "ST Wisdom": "wisdom",
+            "ST Charisma": "charisma"
+        }
+        
+        # Checkbox mapping for saving throw proficiency (Check Box 11-16)
+        st_checkbox_map = {
+            "strength": "Check Box 11",
+            "dexterity": "Check Box 12",
+            "constitution": "Check Box 13",
+            "intelligence": "Check Box 14",
+            "wisdom": "Check Box 15",
+            "charisma": "Check Box 16"
+        }
+        
+        for pdf_field, ability in st_fields.items():
+            base_score = char_data.get("abilities", {}).get(ability, 10)
+            bonus = (base_score - 10) // 2
+            
+            # Check if proficient in this save
+            is_proficient = ability in saving_throw_proficiencies
+            if is_proficient:
+                bonus += prof_bonus
+                # Mark proficiency checkbox
+                if ability in st_checkbox_map:
+                    fields[st_checkbox_map[ability]] = "Yes"
+            
+            fields[pdf_field] = f"+{bonus}" if bonus >= 0 else str(bonus)
+
+        # Weapons & Attacks (3 slots)
+        attacks = char_data.get("attacksAndSpellcasting", [])
+        if isinstance(attacks, list) and len(attacks) > 0:
+            # Weapon 1
+            if len(attacks) >= 1:
+                wpn1 = attacks[0]
+                fields["Wpn Name"] = wpn1.get("name", "")
+                fields["Wpn1 AtkBonus"] = wpn1.get("attackBonus", "")
+                damage_dice = wpn1.get("damageDice", "")
+                damage_bonus = wpn1.get("damageBonus", 0)
+                if damage_dice:
+                    if damage_bonus != 0:
+                        fields["Wpn1 Damage"] = f"{damage_dice}+{damage_bonus}"
+                    else:
+                        fields["Wpn1 Damage"] = damage_dice
+            
+            # Weapon 2
+            if len(attacks) >= 2:
+                wpn2 = attacks[1]
+                fields["Wpn Name 2"] = wpn2.get("name", "")
+                fields["Wpn2 AtkBonus "] = wpn2.get("attackBonus", "")  # Note trailing space
+                damage_dice = wpn2.get("damageDice", "")
+                damage_bonus = wpn2.get("damageBonus", 0)
+                if damage_dice:
+                    if damage_bonus != 0:
+                        fields["Wpn2 Damage "] = f"{damage_dice}+{damage_bonus}"  # Note trailing space
+                    else:
+                        fields["Wpn2 Damage "] = damage_dice
+            
+            # Weapon 3
+            if len(attacks) >= 3:
+                wpn3 = attacks[2]
+                fields["Wpn Name 3"] = wpn3.get("name", "")
+                fields["Wpn3 AtkBonus  "] = wpn3.get("attackBonus", "")  # Note 2 trailing spaces
+                damage_dice = wpn3.get("damageDice", "")
+                damage_bonus = wpn3.get("damageBonus", 0)
+                if damage_dice:
+                    if damage_bonus != 0:
+                        fields["Wpn3 Damage "] = f"{damage_dice}+{damage_bonus}"  # Note trailing space
+                    else:
+                        fields["Wpn3 Damage "] = damage_dice
+
+        # AttacksSpellcasting text area
+        attacks_spellcasting_lines = []
+        spellcasting = char_data.get("spellcasting", {})
+        
+        if spellcasting and spellcasting.get("spells"):
+            # Character is a spellcaster - list cantrips and prepared spells
+            spells_data = spellcasting.get("spells", {})
+            prepared_spells = spellcasting.get("preparedSpells", [])
+            
+            # Cantrips
+            cantrips = spells_data.get("cantrips", [])
+            if cantrips:
+                attacks_spellcasting_lines.append(f"Cantrips: {', '.join(cantrips)}")
+            
+            # Prepared spells by level
+            for level in range(1, 10):
+                level_key = f"level{level}"
+                level_spells = spells_data.get(level_key, [])
+                if level_spells:
+                    # Filter to only prepared spells
+                    prepared = [s for s in level_spells if s in prepared_spells]
+                    if prepared:
+                        attacks_spellcasting_lines.append(f"L{level}: {', '.join(prepared)}")
+        
+        if attacks and isinstance(attacks, list):
+            # Add special attacks for all characters (including non-casters)
+            special_attacks = []
+            for attack in attacks:
+                if isinstance(attack, dict):
+                    name = attack.get("name", "")
+                    desc = attack.get("description", "")
+                    if desc:
+                        special_attacks.append(f"- {name}: {desc}")
+                    elif attack.get("damageDice"):
+                        dmg = attack.get("damageDice")
+                        bonus = attack.get("damageBonus", 0)
+                        if bonus != 0:
+                            special_attacks.append(f"- {name}: {dmg}+{bonus}")
+                        else:
+                            special_attacks.append(f"- {name}: {dmg}")
+            
+            if special_attacks:
+                if attacks_spellcasting_lines:
+                    attacks_spellcasting_lines.append("")  # Blank line separator
+                attacks_spellcasting_lines.append("Special Attacks:")
+                attacks_spellcasting_lines.extend(special_attacks)
+        
+        if attacks_spellcasting_lines:
+            fields["AttacksSpellcasting"] = "\n".join(attacks_spellcasting_lines)
 
         # 5. Fill the form
         # Set NeedAppearances if AcroForm exists (should exist after clone)
@@ -937,11 +1254,52 @@ def export_character_pdf():
             if features_list:
                 page2_fields["Feat+Traits"] = "\n\n".join(features_list)
             
-            # Backstory from background feature
+            # Backstory from background feature + narrative chronicles
+            backstory_parts = []
+            
+            # Add background feature
             background_feature = char_data.get("backgroundFeature", {})
             if isinstance(background_feature, dict):
-                backstory = f"{background_feature.get('name', '')}\n{background_feature.get('description', '')}"
-                page2_fields["Backstory"] = backstory
+                bg_name = background_feature.get('name', '')
+                bg_desc = background_feature.get('description', '')
+                if bg_name or bg_desc:
+                    backstory_parts.append(f"{bg_name}\n{bg_desc}")
+            
+            # Try to load narrative chronicles for this character
+            try:
+                # Look for campaign summaries
+                summary_files = glob.glob("modules/campaign_summaries/*.json")
+                character_name = char_data.get('name', '')
+                
+                if summary_files and character_name:
+                    # Get most recent summary
+                    summary_files.sort(key=os.path.getmtime, reverse=True)
+                    
+                    for summary_file in summary_files[:3]:  # Check last 3 summaries
+                        try:
+                            summary_data = safe_read_json(summary_file)
+                            if summary_data and isinstance(summary_data, dict):
+                                summary_text = summary_data.get('summary', '')
+                                # Check if character is mentioned
+                                if character_name.lower() in summary_text.lower():
+                                    # Extract relevant paragraph
+                                    paragraphs = summary_text.split('\n\n')
+                                    for para in paragraphs:
+                                        if character_name.lower() in para.lower():
+                                            backstory_parts.append(f"\nRecent Adventures:\n{para}")
+                                            break
+                                    break  # Found one, stop searching
+                        except:
+                            continue
+            except:
+                pass  # Don't fail PDF generation if narrative lookup fails
+            
+            if backstory_parts:
+                page2_fields["Backstory"] = "\n\n".join(backstory_parts)
+            
+            # Add Treasure field if there are miscellaneous items
+            if treasure_items:
+                page2_fields["Treasure"] = "\n".join(treasure_items)
             
             writer.update_page_form_field_values(writer.pages[1], page2_fields)
         
@@ -967,36 +1325,89 @@ def export_character_pdf():
                         page3_fields[f"SlotsTotal {field_num}"] = str(slot_data.get("max", 0))
                         page3_fields[f"SlotsRemaining {field_num}"] = str(slot_data.get("current", 0))
                 
-                # Spell names (fields Spells 1014-101013)
+                # Spell names - Field mapping from Docs/5E_CharacterSheet_Filled.pdf
                 spells_data = spellcasting.get("spells", {})
                 prepared_spells = spellcasting.get("preparedSpells", [])
                 
-                field_counter = 1014
-                checkbox_counter = 251
+                # Exact field numbers from filled PDF descriptors:
+                # Cantrips: 1014, 1016-1022 (8 slots)
+                # L1: 1015, 1023-1033 (12 slots, Check Box 251-262)
+                # L2: 1034-1046 (13 slots, Check Box 263-275)
+                # L3: 1047-1059 (13 slots, Check Box 276-288)
+                # L4: 1060-1072 (13 slots, Check Box 289-301)
+                # L5: 1073-1081 (9 slots, Check Box 302-310)
+                # L6: 1082-1090 (9 slots, Check Box 311-319)
+                # L7: 1091-1099 (9 slots, Check Box 320-328)
+                # L8: 10100-10106 (7 slots, Check Box 329-335)
+                # L9: 10107-10109, 101010-101013 (7 slots, Check Box 336-342)
                 
-                # Process cantrips first
+                spell_field_mapping = {
+                    "cantrips": {
+                        "fields": [1014, 1016, 1017, 1018, 1019, 1020, 1021, 1022],
+                        "checkboxes": []  # Cantrips don't have prep checkboxes
+                    },
+                    "level1": {
+                        "fields": [1015, 1023, 1024, 1025, 1026, 1027, 1028, 1029, 1030, 1031, 1032, 1033],
+                        "checkboxes": list(range(251, 263))  # 251-262
+                    },
+                    "level2": {
+                        "fields": list(range(1034, 1047)),  # 1034-1046
+                        "checkboxes": list(range(263, 276))  # 263-275
+                    },
+                    "level3": {
+                        "fields": list(range(1047, 1060)),  # 1047-1059
+                        "checkboxes": list(range(276, 289))  # 276-288
+                    },
+                    "level4": {
+                        "fields": list(range(1060, 1073)),  # 1060-1072
+                        "checkboxes": list(range(289, 302))  # 289-301
+                    },
+                    "level5": {
+                        "fields": list(range(1073, 1082)),  # 1073-1081
+                        "checkboxes": list(range(302, 311))  # 302-310
+                    },
+                    "level6": {
+                        "fields": list(range(1082, 1091)),  # 1082-1090
+                        "checkboxes": list(range(311, 320))  # 311-319
+                    },
+                    "level7": {
+                        "fields": list(range(1091, 1100)),  # 1091-1099
+                        "checkboxes": list(range(320, 329))  # 320-328
+                    },
+                    "level8": {
+                        "fields": list(range(10100, 10107)),  # 10100-10106
+                        "checkboxes": list(range(329, 336))  # 329-335
+                    },
+                    "level9": {
+                        "fields": [10107, 10108, 10109, 101010, 101011, 101012, 101013],
+                        "checkboxes": list(range(336, 343))  # 336-342
+                    }
+                }
+                
+                # Process cantrips (no preparation checkboxes)
                 if "cantrips" in spells_data:
-                    for spell_name in spells_data["cantrips"]:
-                        if field_counter <= 101013:
-                            page3_fields[f"Spells {field_counter}"] = spell_name
-                            # Cantrips don't need preparation checkboxes
-                            field_counter += 1
-                            checkbox_counter += 1
+                    cantrip_fields = spell_field_mapping["cantrips"]["fields"]
+                    for i, spell_name in enumerate(spells_data["cantrips"]):
+                        if i < len(cantrip_fields):
+                            page3_fields[f"Spells {cantrip_fields[i]}"] = spell_name
                 
-                # Process leveled spells (level1-level9)
+                # Process leveled spells (level 1-9)
                 for level in range(1, 10):
                     level_key = f"level{level}"
-                    if level_key in spells_data:
-                        for spell_name in spells_data[level_key]:
-                            if field_counter <= 101013:
-                                page3_fields[f"Spells {field_counter}"] = spell_name
+                    mapping_key = f"level{level}"
+                    
+                    if level_key in spells_data and mapping_key in spell_field_mapping:
+                        level_info = spell_field_mapping[mapping_key]
+                        spell_fields = level_info["fields"]
+                        checkboxes = level_info["checkboxes"]
+                        
+                        for i, spell_name in enumerate(spells_data[level_key]):
+                            if i < len(spell_fields):
+                                page3_fields[f"Spells {spell_fields[i]}"] = spell_name
                                 
                                 # Mark prepared spells with checkbox
-                                if spell_name in prepared_spells and checkbox_counter <= 3083:
-                                    page3_fields[f"Check Box {checkbox_counter}"] = "Yes"
-                                
-                                field_counter += 1
-                                checkbox_counter += 1
+                                if spell_name in prepared_spells and i < len(checkboxes):
+                                    page3_fields[f"Check Box {checkboxes[i]}"] = "Yes"
             
             writer.update_page_form_field_values(writer.pages[2], page3_fields)
 
@@ -1893,11 +2304,11 @@ def promote_to_bestiary():
         The description should be concise (around 100-150 words) and focus on its appearance, typical behavior, and combat tactics.
         Make it sound like an entry from an official monster manual. Do not include stat blocks."""
         
-        from config import OPENAI_API_KEY
-        client = OpenAI(api_key=OPENAI_API_KEY)
+        # Use factory to create client (supports OpenAI and OpenRouter)
+        client = create_chat_client()
         
         response = client.chat.completions.create(
-            model=DM_MINI_MODEL,
+            model=get_chat_model_name(),
             messages=[
                 {"role": "system", "content": "You are a creative writer for a fantasy role-playing game, specializing in monster lore."},
                 {"role": "user", "content": prompt}
@@ -2338,6 +2749,12 @@ def handle_user_input(data):
         'content': user_input,
         'author': character_name or 'You'
     }
+    
+    # TABLETOP MODE: Log user input for AI assistant real-time monitoring
+    log_chat_event('user_input', user_input, character_name, metadata={
+        'queue_size': user_input_queue.qsize()
+    })
+    
     emit('game_output', message)
     add_to_message_cache(message)
 
@@ -3050,107 +3467,195 @@ def get_party_characters_list():
 
 @app.route('/api/party/create_player', methods=['POST'])
 def create_party_player():
-    """Trigger LLM-driven character creation flow for a new player."""
+    """
+    Create a new player character with DM assistance (tabletop mode).
+    
+    Uses narrative pause/resume architecture:
+    1. Backup current conversation history
+    2. Run SP-style character creation in isolated context
+    3. Save character and restore narrative
+    4. Inject ambiguous transition and resume
+    """
     try:
-        from utils.file_operations import safe_write_json
-        
         data = request.json
-        name = data.get('name')
+        name = data.get('name', '').strip()
+        target_level = data.get('level', None)  # Optional: specific level, otherwise use party average
         
         # Validate input
         if not name:
             return jsonify({'error': 'Character name is required'}), 400
-            
-        # 1. Create a skeleton character file (scaffold) immediately.
-        # This is critical so that 'updateCharacterInfo' actions from the LLM have a file to update.
-        new_char = {
-            "character_role": "player",
-            "character_type": "player",
-            "name": name,
-            "type": "player",
-            "size": "Medium",
-            "level": 1,
-            "race": "Placeholder",
-            "class": "Placeholder",
-            "alignment": "neutral",
-            "background": "Adventurer",
-            "status": "alive",
-            "condition": "none",
-            "condition_affected": [],
-            "hitPoints": 10,
-            "maxHitPoints": 10,
-            "armorClass": 10,
-            "initiative": 0,
-            "speed": 30,
-            "abilities": {
-                "strength": 10, "dexterity": 10, "constitution": 10,
-                "intelligence": 10, "wisdom": 10, "charisma": 10
-            },
-            "savingThrows": [],
-            "skills": [],
-            "proficiencyBonus": 2,
-            "senses": {"darkvision": 0, "passivePerception": 10},
-            "languages": ["Common"],
-            "proficiencies": {"armor": [], "weapons": [], "tools": []},
-            "damageVulnerabilities": [], "damageResistances": [], "damageImmunities": [], "conditionImmunities": [],
-            "classFeatures": [], "racialTraits": [],
-            "backgroundFeature": {"name": "Feature", "description": "Standard background feature"},
-            "temporaryEffects": [], "injuries": [], "equipment_effects": [], "feats": [],
-            "equipment": [], "attacksAndSpellcasting": [],
-            "spellcasting": {
-                "ability": "none", "spellSaveDC": 8, "spellAttackBonus": 0,
-                "spells": {}, "spellSlots": {}
-            },
-            "currency": {"gold": 0, "silver": 0, "copper": 0},
-            "experience_points": 0,
-            "exp_required_for_next_level": 300,
-            "personality_traits": "", "ideals": "", "bonds": "", "flaws": ""
-        }
         
-        # Save character file
+        # Check if character already exists
         char_filename = name.lower().replace(' ', '_') + ".json"
         char_path = os.path.join('characters', char_filename)
         
         if os.path.exists(char_path):
             return jsonify({'error': f'Character file {char_filename} already exists!'}), 400
-            
-        success = safe_write_json(char_path, new_char)
-        if not success:
-            return jsonify({'error': 'Failed to save character file'}), 500
-            
-        # 2. Add the character to the party roster immediately
-        pc_manager.add_pc(name)
         
-        # 3. Inject a system command that the LLM will interpret as a request to start creation.
-        # Explicitly instruct the DM to guide the player and use 'updateCharacterInfo'.
+        # Get party tracker and determine level
+        party_tracker = pc_manager.get_party_tracker()
+        if target_level is None:
+            target_level = get_party_level(party_tracker)
+        else:
+            target_level = max(1, min(20, int(target_level)))
         
-        prompt = (
-            f"[SYSTEM] A new player is joining the table! "
-            f"The character sheet for '{name}' has been created with default placeholder values. "
-            f"Please guide the user through a quick 5e character creation interview for '{name}'. "
-            f"Ask them for their Race, Class, Background, and how they want to assign their ability scores.\n\n"
-            f"CRITICAL INSTRUCTIONS FOR CHARACTER UPDATES:\n"
-            f"1. Use the 'updateCharacterInfo' action for '{name}' IMMEDIATELY as choices are made.\n"
-            f"2. When Race is chosen: Update 'race', 'size', 'speed', and 'racialTraits'.\n"
-            f"3. When Class is chosen: Update 'class', 'hitPoints', 'maxHitPoints', 'armorClass', 'proficiencyBonus', and 'classFeatures'.\n"
-            f"4. When Weapons/Gear are chosen: Update 'equipment' AND 'attacksAndSpellcasting'.\n"
-            f"   - 'attacksAndSpellcasting' MUST contain objects with 'name', 'attackBonus', 'damageDice', and 'damageBonus'.\n"
-            f"   - Example: {{\"name\": \"Longsword\", \"attackBonus\": 5, \"damageDice\": \"1d8\", \"damageBonus\": 3}}\n"
-            f"5. Ensure ALL placeholder values (like 'Placeholder') are replaced by the end of the interview.\n"
-            f"6. Do not wait until the end to update the sheet. Update incrementally.\n\n"
-            f"Provide an engaging, in-character welcome to the adventure!"
-        )
+        # Get current location and active PC for transition
+        active_pc = party_tracker.get("active_character", "")
+        if not active_pc and party_tracker.get("partyMembers"):
+            active_pc = party_tracker["partyMembers"][0]
         
-        user_input_queue.put(prompt)
+        current_location = party_tracker.get("worldConditions", {}).get("currentLocation", "current location")
+        module_name = party_tracker.get("module", "the current adventure")
         
-        info(f"TABLETOP: Started DM-assisted character creation for {name}")
+        # TABLETOP MODE: Character Creation with Narrative Pause/Resume
+        info(f"TABLETOP: Starting narrative-aware character creation for {name} at Level {target_level}")
+        
+        # Step 1: Backup conversation history
+        backup_success = backup_conversation_history()
+        if not backup_success:
+            warning("Failed to backup conversation history, proceeding anyway", category="character_creation")
+        
+        # Step 2: Generate creation prompt with level context
+        try:
+            creation_prompt = pc_manager.get_character_creation_prompt(
+                module_name=module_name,
+                character_name=name,
+                party_tracker=party_tracker,
+                level=target_level,
+                is_mid_campaign=True,
+                active_pc=active_pc,
+                current_location=current_location,
+            )
+        except Exception as e:
+            error(f"TABLETOP: Failed to load creation prompt: {e}")
+            # Fallback to basic prompt
+            creation_prompt = (
+                f"[SYSTEM] A new player '{name}' is joining the table at Level {target_level}! "
+                f"Please guide them through 5e character creation. "
+                f"Ask for Race, Class, Background, Ability Scores, Skills, Equipment, and Personality. "
+                f"When complete, output the full character as JSON."
+            )
+        
+        # Step 3: Mark that we're in creation mode
+        safe_write_json(CHARACTER_CREATION_MARKER, {
+            "active": True,
+            "character_name": name,
+            "target_level": target_level,
+            "started_at": datetime.now().isoformat(),
+            "active_pc": active_pc,
+            "current_location": current_location,
+        })
+        
+        # Put the creation prompt in the queue
+        user_input_queue.put(creation_prompt)
+        
+        info(f"TABLETOP: Character creation mode activated for {name} (Level {target_level})")
         return jsonify({
-            'success': True, 
-            'message': f'Character creation started for {name}. Check the game chat!'
+            'success': True,
+            'message': f'Character creation started for {name} at Level {target_level}. Narrative paused.',
+            'creation_mode': True,
+            'character_name': name,
+            'target_level': target_level,
         })
         
     except Exception as e:
         error(f"TABLETOP: Failed to start player creation: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/party/finalize_creation', methods=['POST'])
+def finalize_character_creation():
+    """
+    Finalize character creation after LLM outputs JSON.
+    Called by the game loop when creation is complete.
+    """
+    try:
+        data = request.json
+        character_json = data.get('character_data')
+        
+        if not character_json:
+            return jsonify({'error': 'Character data required'}), 400
+        
+        # Sanitize and validate character data
+        character_data = sanitize_character_data(character_json)
+        character_name = character_data.get('name', 'Unknown')
+        
+        # Save character file
+        char_filename = normalize_character_name(character_name) + ".json"
+        char_path = os.path.join('characters', char_filename)
+        
+        success = safe_write_json(char_path, character_data)
+        if not success:
+            return jsonify({'error': 'Failed to save character file'}), 500
+        
+        # Add to party
+        pc_manager.add_pc(character_name)
+        
+        # Get creation context for transition
+        creation_context = safe_json_load(CHARACTER_CREATION_MARKER) or {}
+        active_pc = creation_context.get('active_pc', '')
+        current_location = creation_context.get('current_location', 'current location')
+        
+        # Get updated party tracker
+        party_tracker = pc_manager.get_party_tracker()
+        
+        # Restore conversation history
+        restore_success = restore_conversation_history()
+        if not restore_success:
+            warning("Failed to restore conversation history", category="character_creation")
+        
+        # Generate transition narrative
+        transition = generate_ambiguous_transition(
+            character_data=character_data,
+            active_pc_name=active_pc or character_name,
+            location_context={"location": current_location},
+        )
+        
+        # Inject transition into narrative
+        user_input_queue.put(transition)
+        
+        # Set new character as active
+        pc_manager.set_active_pc(character_name)
+        
+        # Clean up creation marker
+        if os.path.exists(CHARACTER_CREATION_MARKER):
+            os.remove(CHARACTER_CREATION_MARKER)
+        
+        info(f"TABLETOP: Character creation complete for {character_name}. Narrative resumed.")
+        return jsonify({
+            'success': True,
+            'message': f'Character {character_name} created successfully!',
+            'character_name': character_name,
+            'transition_injected': True,
+        })
+        
+    except Exception as e:
+        error(f"TABLETOP: Failed to finalize character creation: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/party/creation_status', methods=['GET'])
+def get_creation_status():
+    """Get current character creation mode status."""
+    try:
+        is_active = is_creation_mode_active()
+        
+        if is_active:
+            context = safe_json_load(CHARACTER_CREATION_MARKER) or {}
+            return jsonify({
+                'creation_mode_active': True,
+                'character_name': context.get('character_name'),
+                'target_level': context.get('target_level'),
+                'started_at': context.get('started_at'),
+                'active_pc': context.get('active_pc'),
+            })
+        else:
+            return jsonify({
+                'creation_mode_active': False,
+            })
+            
+    except Exception as e:
+        error(f"TABLETOP: Failed to get creation status: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/party/add_character', methods=['POST'])
@@ -4377,11 +4882,8 @@ def fetch_npc_descriptions():
                 error("TOOLKIT: OpenAI API key not found")
                 return
             
-            if not OPENAI_API_KEY:
-                error("TOOLKIT: OpenAI API key not configured")
-                return
-                
-            client = OpenAI(api_key=OPENAI_API_KEY)
+            # Use factory to create client (supports OpenAI and OpenRouter)
+            client = create_chat_client()
             
             # Load NPC compendium
             npc_compendium_path = 'data/bestiary/npc_compendium.json'
@@ -4428,8 +4930,9 @@ Example Output Format:
 
                 try:
                     # Call OpenAI API with the new system message and prompt
+                    config = get_model_config("dm_mini", DM_MINI_MODEL)  # OPENROUTER: 3-tier model selection
                     response = client.chat.completions.create(
-                        model=DM_MINI_MODEL,
+                        model=config["model"], **config.get("extra_body", {}),
                         messages=[
                             {"role": "system", "content": "You are an expert AI prompt engineer specializing in fantasy character art. Your task is to write image generation prompts, not narrative descriptions. The prompts you write will be used to create digital paintings."},
                             {"role": "user", "content": prompt}
