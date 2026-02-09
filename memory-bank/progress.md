@@ -10,7 +10,15 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
-- **Combat API Timeout Protection & StatusTimer Infrastructure (COMPLETED - 2026-02-09):**
+- **Expandable Chat Input Textarea (COMPLETED - 2026-02-09):**
+  - **Objective:** Replace single-line input with auto-expanding textarea for long prompts and detailed action descriptions
+  - **Requirements Met:** 5-line max, push-up effect (chat shrinks, header bars fixed), Enter to send, Shift+Enter for newlines
+  - **Implementation:** CSS (`resize: none`, `overflow: hidden`, `min/max-height`), HTML (`<textarea>`), JavaScript (`autoResizeTextarea()`, `handleKeyDown()`)
+  - **Layout:** Existing flexbox handles push-up - header bars fixed, only chat transcript shrinks upward
+  - **Result:** ~50-line change, zero breaking changes, works for SP and MP modes
+  - **File:** `web/templates/game_interface.html`
+
+- **Combat API Timeout Protection & StatusTimer Infrastructure (COMPLETED - 2026-02-09):
   - **Problem:** Combat validation hung indefinitely on 2026-02-09 (10:57:42) with no timeout on API calls; OpenAI SDK default is 600s (10 minutes), unacceptable for interactive gameplay
   - **Solution:** Added timeout infrastructure and StatusTimer context manager for future UX improvements
   - **Constants Added (model_config.py:50-51):**

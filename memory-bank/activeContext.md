@@ -50,7 +50,20 @@
 - **Job 3: Combat Commands:** `/att` and `/dmg` commands implemented with proper validation.
 
 ## Recent Changes
-- **Combat Round Synchronization & Allied NPC Fix (COMPLETED - 2026-02-09):**
+- **Expandable Chat Input Textarea (COMPLETED - 2026-02-09):**
+    - **Objective:** UI enhancement for long prompts and detailed action descriptions in chat interface
+    - **CSS Changes:** `.input-container` added `align-items: flex-end` (Send button at bottom); `.input-field` added `resize: none`, `overflow: hidden`, `min-height: 40px`, `max-height: 150px` (5-line cap)
+    - **HTML Changes:** `<input type="text">` → `<textarea rows="1">` with `onkeydown` and `oninput` handlers
+    - **JavaScript Functions:**
+      - `handleKeyDown(event)`: Enter sends (no Shift), Shift+Enter inserts newline
+      - `autoResizeTextarea(textarea)`: Grows to content, caps at 150px
+      - `resetTextareaHeight()`: Returns to 40px after send
+      - Paste event listener in `DOMContentLoaded` for immediate resize on paste
+    - **Layout Architecture:** Leverages existing flexbox - `.panel-header` (fixed), `.panel-content#game-output` (`flex: 1`, shrinks), `.input-container` (bottom, expands upward)
+    - **Result:** Clean 50-line implementation, header bars stay fixed, chat shrinks naturally, zero breaking changes
+    - **File:** `web/templates/game_interface.html` (~50 lines)
+
+- **Combat Round Synchronization & Allied NPC Fix (COMPLETED - 2026-02-09):
     - **Problem:** Combat stuck at Round 2, AI refused to increment round; allied NPCs (Scout Kira, liri, Festivus, etc.) not attacking during enemy phase
     - **Root Cause A (Round):** `MultiPCCombatManager.current_round` defaulted to 1 on construction, never synced from encounter file's `combat_round: 2`. Prompt showed Round 1 to AI, AI processed Round 1, returned `combat_round: 2`, but check `2 > 2` failed, skipping `start_new_round()`
     - **Root Cause B (NPCs):** `get_remaining_enemies_for_round()` only returned `CombatantType.ENEMY`, excluding allied `CombatantType.NPC` from batch processing

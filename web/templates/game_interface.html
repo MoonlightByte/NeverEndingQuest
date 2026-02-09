@@ -833,6 +833,7 @@
             padding: 10px;
             background-color: #333;
             border-top: 1px solid #444;
+            align-items: flex-end;
         }
         
         .input-field {
@@ -843,11 +844,17 @@
             color: #e0e0e0;
             border-radius: 3px;
             font-family: 'Courier New', Courier, monospace;
+            resize: none;
+            overflow: hidden;
+            min-height: 40px;
+            max-height: 150px;
+            line-height: 24px;
         }
         
         .send-button {
             margin-left: 10px;
             padding: 8px 20px;
+            height: 40px;
             background-color: #4CAF50;
             color: white;
             border: none;
@@ -4542,14 +4549,15 @@
             {% endif %}
 
             <div class="input-container">
-                <input 
-                    type="text" 
+                <textarea 
                     class="input-field" 
                     id="user-input" 
                     placeholder="Enter your command..."
                     disabled
-                    onkeypress="handleKeyPress(event)"
-                />
+                    onkeydown="handleKeyDown(event)"
+                    oninput="autoResizeTextarea(this)"
+                    rows="1"
+                ></textarea>
                 <button class="send-button" id="send-button" onclick="sendInput()" disabled>Send</button>
             </div>
         </div>
@@ -5604,14 +5612,27 @@
                     character: characterName
                 });
                 input.value = '';
+                resetTextareaHeight();
                 input.focus();
             }
         }
         
-        function handleKeyPress(event) {
-            if (event.key === 'Enter') {
+        function handleKeyDown(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
                 sendInput();
             }
+        }
+        
+        function autoResizeTextarea(textarea) {
+            textarea.style.height = 'auto';
+            const newHeight = Math.min(textarea.scrollHeight, 150);
+            textarea.style.height = newHeight + 'px';
+        }
+        
+        function resetTextareaHeight() {
+            const textarea = document.getElementById('user-input');
+            textarea.style.height = '40px';
         }
         
         // Tab switching function
@@ -6789,7 +6810,14 @@
         }, 5000);
         
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('user-input').focus();
+            const userInput = document.getElementById('user-input');
+            userInput.focus();
+            
+            // Handle paste events to auto-resize textarea
+            userInput.addEventListener('paste', function() {
+                setTimeout(() => autoResizeTextarea(this), 0);
+            });
+            
             loadLocationData();
             requestInitiativeData(); // Load initiative tracker on page load
             requestPartyData(); // Load party display on page load

@@ -1724,3 +1724,61 @@ data = llm.call(role="extract_json", messages=[...], structured_output=Schema)  
 **Plan Document:** `/plans/openrouter_llm_router_architecture.md` (700 lines comprehensive plan)
 
 **Status:** PLANNING PHASE - Under review, not yet implemented
+
+### Expandable Chat Input Textarea (COMPLETED - 2026-02-09)
+
+**Status:** COMPLETED
+**Priority:** Medium (UI/UX Enhancement)
+**Effort:** Small (~30 minutes)
+**Implementation Date:** 2026-02-09
+
+**Objective:**
+Replace single-line text input with auto-expanding textarea for improved long prompt and detailed action descriptions.
+
+**User Requirements:**
+1. Start as single-line height (40px)
+2. Auto-expand line-by-line as user types (no internal scroll)
+3. Cap at 5 lines max (150px) - no infinite growth
+4. Push-up effect: Input expands upward, chat transcript shrinks, header bars (dice/PC/NPC) stay fixed
+5. Send button stays left-aligned at bottom
+6. Enter sends message, Shift+Enter adds newline
+7. No mobile support required
+
+**Implementation:**
+
+**CSS Changes (web/templates/game_interface.html:832-852):**
+- `.input-container`: Added `align-items: flex-end` to keep Send button at bottom
+- `.input-field`: Added textarea-specific styles:
+  - `resize: none` - prevent manual resize handles
+  - `overflow: hidden` - no scrollbar, auto-expand instead
+  - `min-height: 40px` - single line default
+  - `max-height: 150px` - cap at ~5 lines
+  - `line-height: 24px` - consistent line spacing
+
+**HTML Changes (web/templates/game_interface.html:4551-4559):**
+- Changed `<input type="text">` to `<textarea rows="1">`
+- Replaced `onkeypress` with `onkeydown` and added `oninput` handler
+- Added paste event handling via DOMContentLoaded listener
+
+**JavaScript Functions (web/templates/game_interface.html:5619-5635):**
+1. `handleKeyDown(event)`: Intercepts Enter key - sends if no Shift, adds newline if Shift held
+2. `autoResizeTextarea(textarea)`: Calculates scrollHeight, caps at 150px, updates height
+3. `resetTextareaHeight()`: Returns textarea to 40px after message sent
+4. Paste event listener: Triggers resize after paste operation completes
+
+**Layout Behavior:**
+The existing flexbox structure handles the push-up effect naturally:
+- `.panel-header` - Fixed height, no flex-grow (combat/adventure box, scroller, dice strip)
+- `.panel-content#game-output` - `flex: 1`, shrinks as input grows
+- `.input-container` - Bottom-positioned, expands upward
+
+**Result:**
+- Textarea starts at 40px (1 line), expands to max 150px (5 lines)
+- Header bars remain fixed at top, never pushed out of view
+- Chat transcript area flexibly accommodates input expansion
+- Enter sends immediately, Shift+Enter for multi-line input
+- Clean ~50-line change with zero breaking changes
+- Works for both single-player and multi-PC modes
+
+**Files Modified:**
+- `web/templates/game_interface.html` (~50 lines: CSS 9 lines, HTML 10 lines, JS 31 lines)
