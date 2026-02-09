@@ -1255,7 +1255,9 @@ def update_character_info(character_name, changes, character_role=None):
     Returns:
         bool: True if successful, False otherwise
     """
-    
+
+    global client  # Required because fallback reassigns client at line 2110
+
     debug(f"STATE_CHANGE: Updating character info for: {character_name}", category="character_updates")
     
     # Try fuzzy matching first if the character isn't found

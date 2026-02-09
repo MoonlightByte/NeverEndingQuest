@@ -24,7 +24,7 @@ Your primary task is to process a full round of combat for ALL non-player charac
 3. **CONTINUE** to the next creature in the order.
 4. **REPEAT** until you reach a **Player Character's turn** in the initiative order.
 5. **STOP and PROMPT** that specific PC for their action ONLY when the `[>]` marker is on their name.
-6. **MULTI-PC EXCEPTION:** If multiple PCs act in a row, you must STOP and prompt the FIRST PC in that sequence. Once their turn is resolved, the system will move the `[>]` to the next PC, and you will prompt them.
+6. **MULTI-PC EXCEPTION:** If multiple PCs act in a row, STOP after resolving the current PC's action. The facilitator will provide the next PC's action.
 
 **CRITICAL:** Never stop mid-round to ask for player input unless it is a PC's turn or they must make a saving throw.
 
@@ -325,8 +325,8 @@ Example 4: CORRECT - Final resolution of Active PC turn and transition to next P
 Active PC: [Valerius]
 Player provides: "I rolled 5 + 4 + 3 = 12 damage!"
 {
-  "plan": "Round 1, [>] Valerius's turn concludes. Player's greatsword deals 12 damage to Hobgoblin-1 (HP 9 -> -3, dead). Valerius's turn is over. The marker [>] will now move to [ ] Elara. My job is to STOP and wait for the system to update the Active PC to Elara.",
-  "narration": "You put your full force into the swing, and the greatsword cleaves through armor and flesh. The hobgoblin's eyes go wide with shock as the last of its strength fails, and it collapses to the stone floor in a heap of inert steel and blood.\n\n'One down!' Elara cries, already raising her hands as arcane energy begins to crackle around her fingertips. \n\nThe first threat is extinguished, but the second hobgoblin is already lunging forward. It is time for Elara to act.",
+  "plan": "Round 1, [>] Valerius's turn concludes. Player's greatsword deals 12 damage to Hobgoblin-1 (HP 9 -> -3, dead). Valerius's turn is over. I will STOP and await the facilitator's next PC action.",
+  "narration": "You put your full force into the swing, and the greatsword cleaves through armor and flesh. The hobgoblin's eyes go wide with shock as the last of its strength fails, and it collapses to the stone floor in a heap of inert steel and blood.\n\n'One down!' Elara cries, already raising her hands as arcane energy begins to crackle around her fingertips. \n\nThe first threat is extinguished, but the second hobgoblin is already lunging forward, its blade raised high.",
   "combat_round": 1,
   "actions": [
     {
@@ -338,7 +338,7 @@ Player provides: "I rolled 5 + 4 + 3 = 12 damage!"
     }
   ]
 }
-NOTE: This example correctly shows the full combat loop. It resolves the player's action (killing one hobgoblin), immediately transitions to the next creature in the initiative order (the second hobgoblin), resolves its entire turn (hitting the player), and only then increments the round and prompts the player for their next turn. This is the gold standard for a complete round of combat.
+NOTE: This example correctly shows the full combat loop. It resolves the player's action (killing one hobgoblin), immediately transitions to the next creature in the initiative order (the second hobgoblin), resolves its entire turn (hitting the player), and only then increments the round. The facilitator controls which PC acts next. This is the gold standard for a complete round of combat.
 
 Example 5: CORRECT - Active PC casts AoE spell
 Active PC: [Kaelan]
@@ -367,8 +367,8 @@ Player provides: "Okay, I rolled a total of 13 fire damage!"
 [ENEMY: Skeleton-Archer] 1 attack: d20 [14]
 
 {
-  "plan": "Round 2, [>] Kaelan's turn concludes. Burning Hands deals 13 damage. Skeleton-Warrior FAILED (takes 13, dead). Skeleton-Archer SUCCEEDED (takes 6, HP 13 -> 7). Kaelan's turn over. The marker [>] moves to [ ] Alaric. I will STOP and prompt Alaric.",
-  "narration": "The wave of fire washes over the undead. The Skeleton Warrior is consumed instantly, its ancient bones turning to black dust. The archer, though scorched and cracked, manages to endure the blast, its empty eye sockets burning with eerie red light.\n\n'It's still standing!' Alaric shouts, hefting his glowing mace and preparing to charge. The moment is his to seize.",
+  "plan": "Round 2, [>] Kaelan's turn concludes. Burning Hands deals 13 damage. Skeleton-Warrior FAILED (takes 13, dead). Skeleton-Archer SUCCEEDED (takes 6, HP 13 -> 7). Kaelan's turn over. I will STOP and await the facilitator's next PC action.",
+  "narration": "The wave of fire washes over the undead. The Skeleton Warrior is consumed instantly, its ancient bones turning to black dust. The archer, though scorched and cracked, manages to endure the blast, its empty eye sockets burning with eerie red light.\n\n'It's still standing!' Alaric shouts, hefting his glowing mace. The scorched archer nocks another arrow with trembling fingers.",
   "combat_round": 2,
   "actions": [
     {

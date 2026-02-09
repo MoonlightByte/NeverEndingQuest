@@ -116,6 +116,28 @@ Active development of Tabletop Mode features, focusing on party management and U
   - **Quick Start:** Set `OPENROUTER_API_KEY` in config.py, change `LLM_PROVIDER = "openrouter"` in model_config.py
   - **Status:** Phase 1 complete, ready for testing. Phase 2 (image/TTS) and Phase 3 (video) stubbed.
 
+- **Combat Round Synchronization & Allied NPC Fix (COMPLETED - 2026-02-09):**
+  - **Problem:** Combat stuck at Round 2 forever; allied NPCs not attacking during enemy phase batch
+  - **Root Cause:** Manager round state (default 1) never synced from encounter file (round 2); `get_remaining_enemies_for_round()` only returned enemies, not allied NPCs
+  - **Solution:**
+    - Added `sync_round_from_encounter()` method to sync manager state from encounter file on combat start/resume (multi_pc_combat.py:1148)
+    - Call sync after `initialize_turn_queue()` at single convergence point (combat_manager.py:2007-2011)
+    - Include `CombatantType.NPC` alongside `CombatantType.ENEMY` in pending actors list (multi_pc_combat.py:537)
+  - **Reverted Broken Fix:** Removed `clean_old_dm_notes` modification that deleted system messages prematurely
+  - **Result:** Combat advances rounds correctly, allied NPCs participate in enemy phase, round state synchronized
+  - **Files:** `core/managers/multi_pc_combat.py` (+21 lines), `core/managers/combat_manager.py` (+5 lines)
+
+- **Combat Validation & Character Update Fixes (COMPLETED - 2026-02-09):**
+  - **Validation Prompt Fixes (1a-d):** Clarified consolidation rules to prevent validator from rejecting valid PC damage during enemy batch phase
+    - `combat_validation_prompt_multipc_compressed.txt`: 4 edits (consolidation_rule, batch_enemy_phase routing, violation clarification, positive example)
+    - `combat_validation_prompt_multipc.txt`: 2 edits (mirrored for human review)
+  - **Simulation Prompt Fix (2a):** Fixed ambiguous plan_note (line 97) to clarify PC damage routing
+    - `combat_sim_prompt_multipc_compressed.txt`: 1 edit
+  - **UnboundLocalError Fix:** Added `global client` to `update_character_info()` (line 1259)
+    - **Bug:** OpenRouter fallback assignment at line 2110 caused Python scoping issue, breaking all character updates during combat
+    - **File:** `updates/update_character_info.py` (+1 line)
+  - **Result:** Batch enemy phase validation passes, character updates work, damage applies correctly
+
 - **OpenRouter Migration - Phase 1B Model Reference Updates (COMPLETED - 2026-02-06):**
   - **Objective:** Migrate all hardcoded model references to use 3-tier OpenRouter configuration via `get_model_config()`
   - **Migration Script:** Created `scripts/migrate_to_openrouter.py` - AST-based surgical migration tool

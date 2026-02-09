@@ -148,6 +148,7 @@ CRITICAL ENTITY TYPE VALIDATION:
 - FLAG AS INVALID: Any updateCharacterInfo targeting a creature with type: "enemy"
 - FLAG AS INVALID: Any updateEncounter attempting to modify player or NPC HP
 - FLAG AS INVALID: Mixed entity updates (e.g., one action trying to update both monster and player HP)
+- FLAG AS VALID: Multiple updateCharacterInfo actions for different PCs/NPCs damaged during enemy batch phase. This is REQUIRED, not a consolidation violation. The consolidation rule applies ONLY to updateEncounter (one per response for all enemy state changes).
 
 VALIDATION EXAMPLES:
 INVALID - Player HP via updateEncounter:
@@ -299,6 +300,15 @@ VALID - Proper Flow (stops only at active PC turn):
 Plan: "Round 2. Goblin attacked (miss), Aldric shot (8 damage), now it's Valor's turn. After Valor: Elara, Mira and Orc still to act."
 Narration: Describes Goblin and Aldric's full turns, then prompts Valor
 Result: Correctly stopped at active PC's turn with clear plan to continue afterward
+
+VALID - Batch Enemy Phase with PC Damage:
+Context: Enemy Phase after /end command. Goblin-1 hits Valor for 6, Goblin-2 hits Elara for 8.
+Actions: [
+  updateEncounter("Goblin-1 attacks Valor (hit). Goblin-2 attacks Elara (hit)."),
+  updateCharacterInfo(characterName: "Valor", changes: "Takes 6 damage (HP 30->24)"),
+  updateCharacterInfo(characterName: "Elara", changes: "Takes 8 damage (HP 22->14)")
+]
+Result: VALID. ONE updateEncounter for enemy housekeeping. Separate updateCharacterInfo for each damaged PC. Multiple updateCharacterInfo is correct and required here.
 
 CRITICAL EXAMPLE - PROPER COMBAT FLOW (complete round before returning to active PC):
 {

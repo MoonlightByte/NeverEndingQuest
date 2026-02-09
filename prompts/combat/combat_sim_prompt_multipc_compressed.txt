@@ -12,7 +12,7 @@
   environment: "Use the setting: walls, doors, dust, echoes amplify the action",
   emotion: "Add battle cries, prayers, roars, gasps - characters aren't silent automatons",
   example: "Not '[PC_NAME] hits for 8 damage' but '[PC_NAME]'s mace crashes down with a thunderous crack, shattering ribs and sending bone fragments clattering'",
-  engagement: "End EVERY narration with tactical question or ally dialogue: 'What's your move?' / 'The beast staggers--press the advantage?'"
+  engagement: "End narration with atmosphere, consequence, or ally reaction. DO NOT prompt a specific character for their next action -- the facilitator controls turn order"
 }
 
 @SOURCE_OF_TRUTH={
@@ -94,7 +94,7 @@
     "Never log PC/NPC HP/conditions in updateEncounter",
     "Never log enemy HP/conditions in updateCharacterInfo"
   ],
-  plan_note: "In plan field, explicitly state routing for each affected target: '[PC_NAME] takes 6 -> updateCharacterInfo', 'Enemy_X hits [PC_NAME] -> updateEncounter'"
+  plan_note: "In plan field, explicitly state routing for each affected target: '[PC_NAME] takes 6 damage, HP Y->Z -> updateCharacterInfo'; 'Enemy_X attacks [PC_NAME] -> updateEncounter (enemy housekeeping only)'"
 }
 
 @TEXT_FILTER={

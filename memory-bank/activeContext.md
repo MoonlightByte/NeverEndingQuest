@@ -50,6 +50,33 @@
 - **Job 3: Combat Commands:** `/att` and `/dmg` commands implemented with proper validation.
 
 ## Recent Changes
+- **Combat Round Synchronization & Allied NPC Fix (COMPLETED - 2026-02-09):**
+    - **Problem:** Combat stuck at Round 2, AI refused to increment round; allied NPCs (Scout Kira, liri, Festivus, etc.) not attacking during enemy phase
+    - **Root Cause A (Round):** `MultiPCCombatManager.current_round` defaulted to 1 on construction, never synced from encounter file's `combat_round: 2`. Prompt showed Round 1 to AI, AI processed Round 1, returned `combat_round: 2`, but check `2 > 2` failed, skipping `start_new_round()`
+    - **Root Cause B (NPCs):** `get_remaining_enemies_for_round()` only returned `CombatantType.ENEMY`, excluding allied `CombatantType.NPC` from batch processing
+    - **Solution:**
+      - **Round Sync (multi_pc_combat.py:1148):** Added `sync_round_from_encounter()` method to sync manager state from encounter file on combat start/resume
+      - **Sync Call (combat_manager.py:2007-2011):** Call sync method after `initialize_turn_queue()` at single convergence point for all combat entry paths
+      - **NPC Inclusion (multi_pc_combat.py:537):** Changed filter from `== CombatantType.ENEMY` to `in (CombatantType.ENEMY, CombatantType.NPC)`
+      - **Docstring Updates (multi_pc_combat.py:524, 1109):** Updated to reflect "enemies and allied NPCs"
+    - **Reverted Broken Fix:** Removed `clean_old_dm_notes()` modification that was deleting system messages before AI saw them; was causing `/end` command to fail entirely
+    - **Result:** Combat now advances rounds correctly, allied NPCs participate in enemy phase batch, round state stays synchronized with encounter file
+    - **Files:** `core/managers/multi_pc_combat.py` (+20 lines method, +1 line filter change), `core/managers/combat_manager.py` (+5 lines sync call)
+
+- **Combat Validation & Character Update Fixes (COMPLETED - 2026-02-09):**
+    - **Fix 1 (Validation Prompt):** Clarified consolidation rules to prevent AI validator from rejecting valid PC damage actions during enemy batch phase
+      - `@ACTION_TYPES.consolidation_rule` (line 143): "enemy STATE changes" vs "ALL enemy changes"
+      - `@ROUTING_RULES.batch_enemy_phase` (lines 152-155): Explicit guidance that multiple `updateCharacterInfo` is VALID during batch
+      - `@CRITICAL_VIOLATIONS.multiple_update_encounter` (line 178): Added note that multiple `updateCharacterInfo` is not a violation
+      - `@OUTPUT_EXAMPLE.batch_enemy_pc_damage` (lines 311-319): Positive example showing valid routing pattern
+    - **Fix 2 (Simulation Prompt):** Fixed ambiguous plan_note at line 97 to remove "hits PC -> updateEncounter" confusion, now uses "attacks PC -> updateEncounter (housekeeping only)" format
+    - **Fix 3 (Uncompressed Validation Prompt):** Mirrored compressed prompt changes to human-readable version for review
+    - **Fix 4 (UnboundLocalError):** Added `global client` declaration to `update_character_info()` function (line 1259) to resolve Python scoping bug introduced during OpenRouter migration
+      - **Bug:** Assignment `client = create_chat_client(use_fallback=True)` at line 2110 caused Python to treat `client` as local for entire function, making line 1643 fail with `UnboundLocalError`
+      - **Impact:** All `updateCharacterInfo` actions were silently failing during combat since OpenRouter migration
+    - **Result:** Validation now accepts correct action routing, character updates work during combat, batch enemy phase processes correctly
+    - **Files:** `prompts/combat/combat_validation_prompt_multipc_compressed.txt` (+4 edits), `prompts/combat/combat_sim_prompt_multipc_compressed.txt` (+1 edit), `prompts/combat/combat_validation_prompt_multipc.txt` (+2 edits), `updates/update_character_info.py` (+1 line `global client`)
+
 - **Combat API Timeout Protection & StatusTimer Infrastructure (COMPLETED - 2026-02-09):**
     - **Objective:** Prevent indefinite hangs during combat API calls (validation hung at 10:57:42 on 2026-02-09)
     - **StatusTimer Class:** Created in `core/managers/status_manager.py` (lines 143-206) - Context manager for escalating status messages

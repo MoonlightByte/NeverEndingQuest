@@ -2002,10 +2002,15 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
        
        # INITIALIZE TURN QUEUE
        if multi_pc_manager:
-           multi_pc_manager.initialize_turn_queue(encounter_data)
-           debug("[COMBAT_MANAGER] Initialized Turn Queue", category="combat_events")
+            multi_pc_manager.initialize_turn_queue(encounter_data)
+            
+            # TABLETOP MODE: Sync round state from encounter file
+            # The manager defaults to round 1 on construction, but the encounter
+            # may be at a higher round from a previous session
+            if multi_pc_manager.sync_round_from_encounter(encounter_data):
+                info(f"STATE_SYNC: Combat round synced to {multi_pc_manager.current_round} from encounter file", category="combat_events")
 
-   # Check if combat history file exists and has content to determine if we are resuming.
+    # Check if combat history file exists and has content to determine if we are resuming.
    if os.path.exists(conversation_history_file) and os.path.getsize(conversation_history_file) > 100:
        conversation_history = load_json_file(conversation_history_file)
        

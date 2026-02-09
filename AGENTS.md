@@ -1012,6 +1012,119 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Combat Round Synchronization & Allied NPC Fix (COMPLETED - 2026-02-09)
+
+**Status:** COMPLETED  
+**Priority:** High (Combat Flow)  
+**Effort:** Small (~30 minutes)
+
+**Problem:**
+Combat was stuck at Round 2 forever, with the AI refusing to increment to Round 3. Additionally, allied NPCs (Scout Kira, liri, Festivus, Henry Andersen, Dryad Sylara) were not getting attack turns during the enemy phase batch after `/end` command.
+
+**Root Causes:**
+
+1. **Round State Desync:** `MultiPCCombatManager.current_round` defaults to 1 on construction and was never synced from the encounter file's `combat_round: 2`. The initiative tracker prompt showed Round 1 to the AI, which processed Round 1 enemy phase, returned `combat_round: 2`, but the Python check `2 > 2` failed, skipping `start_new_round()`. Combat remained stuck in limbo.
+
+2. **NPC Exclusion:** `get_remaining_enemies_for_round()` (line 537) only returned `CombatantType.ENEMY`, excluding allied `CombatantType.NPC` from the batch processing list. The AI was never instructed to process allied NPC attacks.
+
+**Solution:**
+
+**Round Synchronization (multi_pc_combat.py:1148):**
+```python
+def sync_round_from_encounter(self, encounter_data: Dict[str, Any]) -> bool:
+    """Sync manager round state from persisted encounter file."""
+    encounter_round = encounter_data.get('combat_round', encounter_data.get('current_round', 1))
+    if encounter_round > 0 and encounter_round != self._state.current_round:
+        self._state.current_round = encounter_round
+        return True
+    return False
+```
+
+**Sync Call (combat_manager.py:2007-2011):**
+```python
+# TABLETOP MODE: Sync round state from encounter file
+# The manager defaults to round 1 on construction, but the encounter
+# may be at a higher round from a previous session
+if multi_pc_manager.sync_round_from_encounter(encounter_data):
+    info(f"STATE_SYNC: Combat round synced to {multi_pc_manager.current_round} from encounter file", category="combat_events")
+```
+
+**NPC Inclusion (multi_pc_combat.py:537):**
+```python
+# Before:
+if combatant.type == CombatantType.ENEMY and combatant.status.lower() != "dead":
+
+# After:
+if combatant.type in (CombatantType.ENEMY, CombatantType.NPC) and combatant.status.lower() != "dead":
+```
+
+**Reverted Broken Fix:**
+Removed the `clean_old_dm_notes()` modification that was deleting temporary system messages ("PROCEED TO ENEMY PHASE") before the AI could process them. This would have broken the `/end` command entirely.
+
+**Result:**
+- Combat now advances rounds correctly (Round 2 → Round 3 → etc.)
+- Allied NPCs participate in enemy phase batch attacks
+- Round state stays synchronized with encounter file
+- Manager state is authoritative at runtime, encounter file is ground truth for persistence
+
+**Files Modified:**
+1. `core/managers/multi_pc_combat.py` (+21 lines: `sync_round_from_encounter()` method, docstring updates, filter change)
+2. `core/managers/combat_manager.py` (+5 lines: sync call after `initialize_turn_queue()`)
+
+---
+
+### Combat Validation & Character Update Fixes (COMPLETED - 2026-02-09)
+
+**Status:** COMPLETED  
+**Priority:** High (Combat System)  
+**Effort:** Medium (~2 hours)
+
+**Problems:**
+1. The AI validator was incorrectly rejecting valid `updateCharacterInfo` actions during enemy batch phase, claiming they were "consolidation violations"
+2. The simulation prompt had ambiguous routing guidance that could mislead the AI about where PC damage belongs
+3. Character updates during combat were silently failing with `UnboundLocalError`
+
+**Root Causes:**
+
+1. **Validation Confusion:** The consolidation rule said "ALL enemy changes must be in ONE updateEncounter" but was being interpreted to include PC damage. The validator rejected multiple `updateCharacterInfo` actions even though they're required for PC damage.
+
+2. **Ambiguous Plan Note:** Line 97 of `combat_sim_prompt_multipc_compressed.txt` said `'Enemy_X hits [PC_NAME] -> updateEncounter'` which could be read as "PC damage goes in updateEncounter."
+
+3. **OpenRouter Scoping Bug:** The `update_character_info()` function had `client = create_chat_client(use_fallback=True)` at line 2110 for fallback handling. Because Python saw this assignment anywhere in the function body, it treated `client` as a local variable for the entire function. When line 1643 tried to read `client`, it raised `UnboundLocalError`.
+
+**Solutions:**
+
+**Fix 1a-d - Validation Prompt Clarifications (combat_validation_prompt_multipc_compressed.txt):**
+- Line 143: `consolidation_rule` now explicitly states "enemy STATE changes" and notes that "Multiple updateCharacterInfo actions for different PCs/NPCs damaged during the same enemy phase is VALID and REQUIRED"
+- Lines 152-155: Added `batch_enemy_phase` routing rule explaining the expected pattern after `/end`
+- Line 178: Added parenthetical note to `multiple_update_encounter` violation: "(NOTE: multiple updateCharacterInfo for different PCs/NPCs is VALID, not a violation)"
+- Lines 311-319: Added `batch_enemy_pc_damage` positive example showing valid action routing
+
+**Fix 2a - Simulation Prompt Clarification (combat_sim_prompt_multipc_compressed.txt):**
+- Line 97: Changed `'Enemy_X hits [PC_NAME] -> updateEncounter'` to `'Enemy_X attacks [PC_NAME] -> updateEncounter (enemy housekeeping only)'` and matched line 75's clearer format with `'[PC_NAME] takes 6 damage, HP Y->Z -> updateCharacterInfo'`
+
+**Fix 3a-b - Uncompressed Validation Prompt (combat_validation_prompt_multipc.txt):**
+- Line 151: Added `- FLAG AS VALID: Multiple updateCharacterInfo actions...` bullet
+- Lines 304-311: Added "VALID - Batch Enemy Phase with PC Damage" example section
+
+**Fix 4 - UnboundLocalError Resolution (updates/update_character_info.py):**
+- Line 1259: Added `global client  # Required because fallback reassigns client at line 2110`
+- This allows the function to read the module-level `client` (created at line 137) before the fallback reassignment at line 2110
+
+**Result:**
+- AI validator now accepts correct action routing (1 updateEncounter + multiple updateCharacterInfo during enemy phase)
+- Simulation prompt no longer ambiguous about PC damage routing
+- Character updates work during combat; HP damage is properly applied
+- All combat actions process correctly during batch enemy phase
+
+**Files Modified:**
+1. `prompts/combat/combat_validation_prompt_multipc_compressed.txt` (+9 lines, +1 example)
+2. `prompts/combat/combat_sim_prompt_multipc_compressed.txt` (+1 line edit)
+3. `prompts/combat/combat_validation_prompt_multipc.txt` (+9 lines, +1 example)
+4. `updates/update_character_info.py` (+1 line `global client`)
+
+---
+
 ### Combat API Timeout Protection & StatusTimer Infrastructure (COMPLETED - 2026-02-09)
 
 **Status:** COMPLETED  

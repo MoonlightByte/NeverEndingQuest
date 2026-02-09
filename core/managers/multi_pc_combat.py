@@ -521,22 +521,22 @@ class TurnQueueManager:
                     state.mark_acted()
     
     def get_remaining_enemies_for_round(self) -> List[str]:
-        """Get list of enemies who haven't acted this round."""
+        """Get list of enemies and allied NPCs who haven't acted this round."""
         remaining = []
         current_idx = self.current_turn_index
-        
+
         # Look ahead in queue
         for i in range(len(self.turn_queue)):
             idx = (current_idx + i) % len(self.turn_queue)
             combatant = self.turn_queue[idx]
-            
+
             # Stop when we loop back
             if i > 0 and idx == 0:
                 break
-                
-            if combatant.type == CombatantType.ENEMY and combatant.status.lower() != "dead":
+
+            if combatant.type in (CombatantType.ENEMY, CombatantType.NPC) and combatant.status.lower() != "dead":
                 remaining.append(combatant.name)
-                
+
         return remaining
 
 
@@ -922,7 +922,8 @@ class MultiPCCombatManager:
                         "result": "waiting_for_damage"
                     }, verbose=tt_debug.is_tabletop_verbose())
                 
-                return f"[skipTTS] Dungeon Master: Hit! (Rolled {roll} vs AC {ac}). Roll damage.", None
+                # TABLETOP MODE: Add prefill marker so UI auto-populates /dmg command
+                return f"[skipTTS][prefill:/dmg ] Dungeon Master: Hit! (Rolled {roll} vs AC {ac}). Roll damage.", None
             else:
                 # Miss logic - pass to LLM for narration
                 weapon_context = f" with {weapon_name}" if weapon_name else ""
@@ -1143,6 +1144,26 @@ class MultiPCCombatManager:
             state.reset_for_new_round()
             
         return self._state.current_round
+    
+    def sync_round_from_encounter(self, encounter_data: Dict[str, Any]) -> bool:
+        """
+        Sync manager round state from persisted encounter file.
+        
+        Called on combat start/resume to ensure the manager's current_round
+        matches the encounter file's combat_round. The encounter file is the
+        single source of truth for persisted round state.
+        
+        Args:
+            encounter_data: The encounter JSON data
+            
+        Returns:
+            True if round was synced (values differed), False if already in sync
+        """
+        encounter_round = encounter_data.get('combat_round', encounter_data.get('current_round', 1))
+        if encounter_round > 0 and encounter_round != self._state.current_round:
+            self._state.current_round = encounter_round
+            return True
+        return False
     
     def update_pc_hp(self, character_name: str, new_hp: int) -> None:
         """
@@ -1415,10 +1436,6 @@ class MultiPCCombatManager:
         current_actor = self.get_current_actor()
         actor_name = current_actor.name if current_actor else "Current Actor"
         
-        # Get next PC for continuation prompt
-        next_pc = self.get_next_pc_to_act()
-        next_pc_prompt = f'Ask: "What does {next_pc} do?"' if next_pc else 'Await /end command for enemy phase.'
-        
         # Count remaining PCs
         available_pcs = self.get_available_pcs()
         pcs_remaining = len(available_pcs)
@@ -1438,8 +1455,8 @@ class MultiPCCombatManager:
 ║  2. FLAVOR TEXT: Treat shouts/battle cries as roleplay from {actor_name}.    ║
 ║  3. STOP IMMEDIATELY after this single resolution.                           ║
 ║  4. DO NOT narrate actions for other PCs. Await /end for enemy phase.        ║
-║  4. {next_pc_prompt:<68} ║
-║  5. Return structured JSON with plan, narration, combat_round, actions.      ║
+║  5. DO NOT name or prompt the next PC. The facilitator controls turn order.  ║
+║  6. Return structured JSON with plan, narration, combat_round, actions.      ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
 ║  [WARNING] VIOLATION = CRITICAL FAILURE: Narrating for forbidden actors will ║
 ║      cause combat desync. Only [{actor_name}] has authority to act now.

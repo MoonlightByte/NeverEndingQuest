@@ -140,7 +140,7 @@
   updateCharacterInfo: "PCs and allied/neutral NPCs ONLY (MUST use 'characterName' parameter, NOT 'character')",
   updateEncounter: "Monsters/enemies ONLY (uses changes text)",
   never_cross: "Do not use updateCharacterInfo for monsters; do not use updateEncounter for PCs/NPCs",
-  consolidation_rule: "EXACTLY ONE updateEncounter per response consolidating ALL enemy changes",
+  consolidation_rule: "EXACTLY ONE updateEncounter per response consolidating ALL enemy STATE changes (HP/status/conditions of enemies only). Multiple updateCharacterInfo actions for different PCs/NPCs damaged during the same enemy phase is VALID and REQUIRED.",
   allied_npc_ammo: "If an allied NPC fires a ranged weapon, REQUIRE their updateCharacterInfo to include ammo expenditure in changes",
   parameter_validation: {
     updateCharacterInfo: "Invalid if uses 'character' instead of 'characterName' as parameter key",
@@ -150,7 +150,8 @@
 }
 
 @ROUTING_RULES={
-  valid_enemy_turn_pc_damage: "Enemy turn that only damages PCs/NPCs: updateEncounter may be housekeeping-only; PC/NPC HP MUST be in updateCharacterInfo."
+  valid_enemy_turn_pc_damage: "Enemy turn that only damages PCs/NPCs: updateEncounter may be housekeeping-only; PC/NPC HP MUST be in updateCharacterInfo.",
+  batch_enemy_phase: "When multiple enemies act in batch (after /end), expect: ONE updateEncounter consolidating all enemy actions/state + SEPARATE updateCharacterInfo for EACH PC/NPC that took damage. Multiple updateCharacterInfo is correct here, not a consolidation violation."
 }
 
 @ENTITY_TYPE_VALIDATION={
@@ -174,7 +175,7 @@
   incomplete_round: "Plan/narration shows NPCs remaining but AI stopped",
   premature_prompt: "Asked specific PC to act when it is not their turn (except saves/reactions)",
   order_fragmentation: "Processed 1-2 creatures then stopped and waited for 'continue'",
-  multiple_update_encounter: "More than ONE updateEncounter action per response"
+  multiple_update_encounter: "More than ONE updateEncounter action per response (NOTE: multiple updateCharacterInfo for different PCs/NPCs is VALID, not a violation)"
 }
 
 @JSON_REQUIREMENTS={
@@ -306,5 +307,14 @@
       "negative": "Multiple updateEncounter actions used (2 found). System requires exactly ONE.",
       "recommendation": "Consolidate into ONE updateEncounter: {\"action\":\"updateEncounter\",\"parameters\":{\"encounterId\":\"XXX\",\"changes\":\"Goblin-1 takes 8 damage (HP 15->7). Goblin-2 takes 12 damage and is now dead (HP 10->-2).\"}}"
     }
+  },
+  batch_enemy_pc_damage: {
+    "valid": true,
+    "feedback": {
+      "positive": "Batch enemy phase correctly processed. ONE updateEncounter for enemy housekeeping. Separate updateCharacterInfo for each damaged PC. Routing is correct.",
+      "negative": "",
+      "recommendation": ""
+    },
+    "note": "Example actions array: [updateEncounter(enemy attacks summary), updateCharacterInfo(PC1 takes X damage), updateCharacterInfo(PC2 takes Y damage)] -- this is VALID"
   }
 }
