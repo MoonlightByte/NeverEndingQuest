@@ -427,20 +427,8 @@ data/companion_memories_pre_enhanced/
 NeverEndingQuest.code-workspace
 modules/The_Thornwood_Watch/images/image_metadata.json
 modules/The_Thornwood_Watch/player_quests_The_Thornwood_Watch.json
-plans/fork_analysis_guide.md
-plans/local_tabletop_merge_strategy.md
-plans/local_tabletop_multiplayer.md
-plans/multiplayer_flow_diagram.md
-plans/multiplayer_integration_strategy.md
-plans/multiplayer_ui_design.md
-plans/upstream_merge_strategy.md
+plans/
 Docs/staff_guide.md
-memory-bank/activeContext.md
-memory-bank/productContext.md
-memory-bank/progress.md
-memory-bank/projectbrief.md
-memory-bank/systemPatterns.md
-memory-bank/techContext.md
 
 # Personal documentation
 Docs/
