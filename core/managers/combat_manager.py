@@ -1991,7 +1991,7 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
        error(f"FAILURE: Failed to load encounter file {json_file_path}", exception=e, category="file_operations")
        return None, None
 
-   # MULTI-PC COMBAT: Retrieve or initialize combat manager
+   # TABLETOP MODE: Retrieve or initialize combat manager
    multi_pc_manager = None
    if MULTI_PC_COMBAT_AVAILABLE and is_multi_pc_combat_enabled():
        multi_pc_manager = get_combat_manager()
@@ -2029,7 +2029,7 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
        is_resuming = False
        
    if not is_resuming:
-        # MULTI-PC COMBAT: Select correct system prompt
+        # TABLETOP MODE: Select correct system prompt
         prompt_file = 'combat/combat_sim_prompt.txt'
         is_multipc = MULTI_PC_COMBAT_AVAILABLE and is_multi_pc_combat_enabled()
         
@@ -2040,7 +2040,7 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
 
         system_prompt = read_prompt_from_file(prompt_file)
         
-        # MULTI-PC COMBAT: Replace placeholders in system prompt
+        # TABLETOP MODE: Replace placeholders in system prompt
         if is_multipc:
             # Get all PC names
             pc_names = []
@@ -2052,8 +2052,8 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
             active_pc = party_tracker_data.get("active_character") or (pc_names[0] if pc_names else "Unknown PC")
             
             system_prompt = system_prompt.replace("[PC_LIST]", pc_list_str)
-            system_prompt = system_prompt.replace("[PC_NAME]", active_pc)
-            debug(f"[COMBAT_MANAGER] Replaced Multi-PC placeholders: PC_LIST={pc_list_str}, active={active_pc}", category="combat_events")
+            # TABLETOP MODE: [PC_NAME] left as literal metavariable - per-turn context provides concrete name
+            debug(f"[COMBAT_MANAGER] Replaced Multi-PC placeholders: PC_LIST={pc_list_str}", category="combat_events")
 
         conversation_history = [
             {"role": "system", "content": system_prompt},
@@ -2157,7 +2157,7 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
                except Exception as e:
                    print(f"[COMBAT_MANAGER] Warning: Could not clear cache {cache_file}: {e}")
        
-       # MULTI-PC COMBAT: Authoritative Head Context (JSON for Multi-PC, Text for Single-PC)
+       # TABLETOP MODE: Authoritative Head Context (JSON for Multi-PC, Text for Single-PC)
        if multi_pc_manager:
            conversation_history[2]["content"] = multi_pc_manager.format_multi_pc_head_context()
        else:
@@ -2503,7 +2503,7 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
        debug("AI_CALL: Getting initial scene description...", category="combat_events")
        initiative_order = get_initiative_order(encounter_data)
        
-       # MULTI-PC COMBAT: Check for group initiative handover
+       # TABLETOP MODE: Check for group initiative handover
        initiative_narrative = ""
        if multi_pc_manager:
            combat_initiative = party_tracker_data.get("worldConditions", {}).get("combatInitiative")
@@ -2544,7 +2544,7 @@ Initiative Order: {initiative_order}
 
 Player: {initial_prompt_text}"""
 
-       # MULTI-PC COMBAT: Inject multi-PC context into initial prompt
+       # TABLETOP MODE: Inject multi-PC context into initial prompt
        if multi_pc_manager:
            active_pc = party_tracker_data.get("active_character") or multi_pc_manager.current_pc_name
            initial_prompt = modify_combat_prompt_for_multi_pc(initial_prompt, active_pc, multi_pc_manager)
@@ -2644,7 +2644,7 @@ Player: {initial_prompt_text}"""
        debug("[COMBAT_MANAGER] Syncing character data to encounter", category="combat_events")
        print("DEBUG: [COMBAT_LOOP] Top of while loop - syncing character data")
        
-       # MULTI-PC COMBAT: Reload party tracker to get latest active character
+       # TABLETOP MODE: Reload party tracker to get latest active character
        if multi_pc_manager:
            party_tracker_data = safe_json_load("party_tracker.json") or party_tracker_data
            active_pc = party_tracker_data.get("active_character")
@@ -2660,7 +2660,7 @@ Player: {initial_prompt_text}"""
            debug(f"Could not clear status: {e}", category="status")
        sync_active_encounter()
        
-       # MULTI-PC COMBAT: Sync HP from reloaded encounter data to multi_pc_manager
+       # TABLETOP MODE: Sync HP from reloaded encounter data to multi_pc_manager
        if multi_pc_manager:
            # Reload encounter data to get fresh HP values synced by sync_active_encounter
            temp_encounter_data = safe_json_load(json_file_path)
@@ -2675,7 +2675,7 @@ Player: {initial_prompt_text}"""
        # REFRESH CONVERSATION HISTORY WITH LATEST DATA
        debug("STATE_CHANGE: Refreshing conversation history with latest character data...", category="combat_events")
        
-       # MULTI-PC COMBAT: Authoritative Head Context Refresh
+       # TABLETOP MODE: Authoritative Head Context Refresh
        if multi_pc_manager:
            # Refresh with authoritative Multi-PC JSON
            conversation_history[2]["content"] = multi_pc_manager.format_multi_pc_head_context()
@@ -2767,7 +2767,7 @@ Player: {initial_prompt_text}"""
                input_actor_name = parts[0][1:].strip() # Extract name from [Name]
                clean_input = parts[1].strip()
        
-       # MULTI-PC COMBAT: Force context switch if input tag doesn't match current active PC
+       # TABLETOP MODE: Force context switch if input tag doesn't match current active PC
        # This fixes the bug where tab clicks might be missed, ensuring the correct PC acts.
        if multi_pc_manager and input_actor_name:
            current_active = multi_pc_manager.current_pc_name
@@ -2794,7 +2794,7 @@ Player: {initial_prompt_text}"""
        cmd = clean_input.lower()
        
        # ----------------------------------------------------------------------
-       # MULTI-PC COMBAT: Fast Lane Command Processing
+       # TABLETOP MODE: Fast Lane Command Processing
        # ----------------------------------------------------------------------
        # Handle PC Focus Switch (from UI Tab Click)
        if cmd == "/switch_pc_focus":
@@ -3480,7 +3480,7 @@ All monsters have been defeated. Pass the exit action to end combat:
 2. Stop narration at that point
 3. Return structured JSON with plan, narration, combat_round, and actions"""
        
-       # MULTI-PC COMBAT: Inject multi-PC turn summary and active PC context
+       # TABLETOP MODE: Inject multi-PC turn summary and active PC context
        multi_pc_context = ""
        if multi_pc_manager:
            active_pc = multi_pc_manager.current_pc_name
@@ -3865,7 +3865,7 @@ Rules:
                    # Also update current_round for backwards compatibility
                    encounter_data['current_round'] = new_round
                    
-                   # MULTI-PC COMBAT: Sync round state to manager
+                   # TABLETOP MODE: Sync round state to manager
                    # This resets pc_phase_complete to False so the next round starts in PC Phase
                    if multi_pc_manager:
                        debug(f"STATE_CHANGE: Syncing MultiPCManager to Round {new_round}", category="combat_events")
@@ -3983,7 +3983,7 @@ Rules:
                            if xp_awarded > 0:
                                final_character_updates[character_name].append(f"awarded {xp_awarded} experience points")
 
-       # MULTI-PC COMBAT: Turn Queue Advancement
+       # TABLETOP MODE: Turn Queue Advancement
        if multi_pc_manager and not is_combat_ending:
            # 1. Check for NPC Turn Auto-Advance
            # If the prompt generated an action for an NPC, we must advance past them.
