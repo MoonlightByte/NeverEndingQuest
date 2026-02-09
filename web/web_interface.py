@@ -434,13 +434,21 @@ class WebOutputCapture:
                                 skip_tts = combined_content.startswith('[skipTTS]')
                                 if skip_tts:
                                     combined_content = combined_content.replace('[skipTTS]', '', 1).strip()
+                                # TABLETOP MODE: Check for prefill marker (e.g., [prefill:/dmg ])
+                                prefill_input = None
+                                import re
+                                prefill_match = re.search(r'\[prefill:([^\]]+)\]', combined_content)
+                                if prefill_match:
+                                    prefill_input = prefill_match.group(1)
+                                    combined_content = re.sub(r'\[prefill:[^\]]+\]', '', combined_content).strip()
                                 # Remove "Dungeon Master:" prefix from the beginning if present
                                 combined_content = combined_content.replace('Dungeon Master:', '', 1).strip()
                                 if combined_content.strip():  # Only send if there's actual content
                                     message = {
                                         'type': 'narration',
                                         'content': combined_content,
-                                        'skipTTS': skip_tts  # TABLETOP MODE: Flag for TTS filtering
+                                        'skipTTS': skip_tts,  # TABLETOP MODE: Flag for TTS filtering
+                                        'prefillInput': prefill_input  # TABLETOP MODE: Auto-fill input field
                                     }
                                     game_output_queue.put(message)
                                     add_to_message_cache(message)
@@ -506,12 +514,20 @@ class WebOutputCapture:
                                     skip_tts = combined_content.startswith('[skipTTS]')
                                     if skip_tts:
                                         combined_content = combined_content.replace('[skipTTS]', '', 1).strip()
+                                    # TABLETOP MODE: Check for prefill marker (e.g., [prefill:/dmg ])
+                                    prefill_input = None
+                                    import re
+                                    prefill_match = re.search(r'\[prefill:([^\]]+)\]', combined_content)
+                                    if prefill_match:
+                                        prefill_input = prefill_match.group(1)
+                                        combined_content = re.sub(r'\[prefill:[^\]]+\]', '', combined_content).strip()
                                     combined_content = combined_content.replace('Dungeon Master:', '', 1).strip()
                                     if combined_content.strip():
                                         message = {
                                             'type': 'narration',
                                             'content': combined_content,
-                                            'skipTTS': skip_tts  # TABLETOP MODE: Flag for TTS filtering
+                                            'skipTTS': skip_tts,  # TABLETOP MODE: Flag for TTS filtering
+                                            'prefillInput': prefill_input  # TABLETOP MODE: Auto-fill input field
                                         }
                                         game_output_queue.put(message)
                                         add_to_message_cache(message)
@@ -576,13 +592,21 @@ class WebOutputCapture:
             skip_tts = combined_content.startswith('[skipTTS]')
             if skip_tts:
                 combined_content = combined_content.replace('[skipTTS]', '', 1).strip()
+            # TABLETOP MODE: Check for prefill marker (e.g., [prefill:/dmg ])
+            prefill_input = None
+            import re
+            prefill_match = re.search(r'\[prefill:([^\]]+)\]', combined_content)
+            if prefill_match:
+                prefill_input = prefill_match.group(1)
+                combined_content = re.sub(r'\[prefill:[^\]]+\]', '', combined_content).strip()
             # Remove "Dungeon Master:" prefix from the beginning if present
             combined_content = combined_content.replace('Dungeon Master:', '', 1).strip()
             if combined_content.strip():  # Only send if there's actual content
                 message = {
                     'type': 'narration',
                     'content': combined_content,
-                    'skipTTS': skip_tts  # TABLETOP MODE: Flag for TTS filtering
+                    'skipTTS': skip_tts,  # TABLETOP MODE: Flag for TTS filtering
+                    'prefillInput': prefill_input  # TABLETOP MODE: Auto-fill input field
                 }
                 game_output_queue.put(message)
                 add_to_message_cache(message)

@@ -5219,6 +5219,13 @@
                     }, 100);
                 }
                 
+                // TABLETOP MODE: Auto-prefill input field for DM commands (e.g., /dmg after hit)
+                if (message.prefillInput && !skipAutoplay) {
+                    const input = document.getElementById('user-input');
+                    input.value = message.prefillInput;
+                    input.focus();
+                }
+                
             } else if (message.type === 'user-input') {
                 const avatar = document.createElement('div');
                 avatar.className = 'message-avatar';
