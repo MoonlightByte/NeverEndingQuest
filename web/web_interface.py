@@ -184,6 +184,10 @@ MESSAGE_CACHE_FILE = "modules/conversation_history/game_interface_cache.json"
 MESSAGE_CACHE_SIZE = 15  # Keep last 15 messages
 message_cache = deque(maxlen=MESSAGE_CACHE_SIZE)
 
+# TABLETOP MODE: Persisted UI settings for server startup behavior
+UI_SETTINGS_FILE = "modules/conversation_history/ui_settings.json"
+ALLOWED_BROWSER_PREFERENCES = {"default", "chrome", "edge"}
+
 # Message cache functions
 def load_message_cache():
     """Load message cache from file"""
@@ -215,6 +219,111 @@ def add_to_message_cache(message):
     if message.get('type') in ['narration', 'user-input']:
         message_cache.append(message)
         save_message_cache()
+
+
+# TABLETOP MODE: Browser preference helpers (used by startup auto-open)
+def _get_default_ui_settings():
+    """Return default UI settings."""
+    return {
+        "preferred_browser": "chrome"
+    }
+
+
+def load_ui_settings():
+    """Load UI settings from disk with safe defaults."""
+    try:
+        from utils.file_operations import safe_read_json
+        settings = _get_default_ui_settings()
+        data = safe_read_json(UI_SETTINGS_FILE) or {}
+
+        if isinstance(data, dict):
+            settings.update(data)
+
+        preferred_browser = str(settings.get("preferred_browser", "chrome")).lower().strip()
+        if preferred_browser not in ALLOWED_BROWSER_PREFERENCES:
+            preferred_browser = "chrome"
+        settings["preferred_browser"] = preferred_browser
+
+        return settings
+    except Exception as e:
+        warning(f"Failed to load UI settings: {e}", category="web_interface")
+        return _get_default_ui_settings()
+
+
+def save_ui_settings(settings):
+    """Save UI settings to disk."""
+    try:
+        from utils.file_operations import safe_write_json
+        os.makedirs(os.path.dirname(UI_SETTINGS_FILE), exist_ok=True)
+        return bool(safe_write_json(UI_SETTINGS_FILE, settings))
+    except Exception as e:
+        error(f"Failed to save UI settings: {e}", exception=e, category="web_interface")
+        return False
+
+
+def get_preferred_browser_setting():
+    """Get validated preferred browser setting."""
+    settings = load_ui_settings()
+    preferred_browser = str(settings.get("preferred_browser", "chrome")).lower().strip()
+    if preferred_browser not in ALLOWED_BROWSER_PREFERENCES:
+        return "chrome"
+    return preferred_browser
+
+
+def set_preferred_browser_setting(value):
+    """Set preferred browser setting if valid."""
+    preferred_browser = str(value).lower().strip()
+    if preferred_browser not in ALLOWED_BROWSER_PREFERENCES:
+        return False
+
+    settings = load_ui_settings()
+    settings["preferred_browser"] = preferred_browser
+    return save_ui_settings(settings)
+
+
+def _try_open_in_browser_app(url, browser_name):
+    """Try to open URL in a specific browser app on macOS."""
+    if sys.platform != "darwin":
+        return False
+
+    try:
+        import subprocess
+        subprocess.run(["open", "-a", browser_name, url], check=True)
+        return True
+    except Exception:
+        return False
+
+
+def open_url_with_preference(url, preferred_browser):
+    """Open URL with preferred browser and safe fallback."""
+    preferred = str(preferred_browser or "default").lower().strip()
+
+    if preferred == "chrome":
+        if _try_open_in_browser_app(url, "Google Chrome"):
+            info("Opened browser using Google Chrome", category="web_interface")
+            return
+        for browser_key in ["google-chrome", "chrome"]:
+            try:
+                webbrowser.get(browser_key).open(url)
+                info(f"Opened browser using controller '{browser_key}'", category="web_interface")
+                return
+            except Exception:
+                pass
+
+    elif preferred == "edge":
+        if _try_open_in_browser_app(url, "Microsoft Edge"):
+            info("Opened browser using Microsoft Edge", category="web_interface")
+            return
+        for browser_key in ["microsoft-edge", "edge"]:
+            try:
+                webbrowser.get(browser_key).open(url)
+                info(f"Opened browser using controller '{browser_key}'", category="web_interface")
+                return
+            except Exception:
+                pass
+
+    webbrowser.open(url)
+    info("Opened browser using system default", category="web_interface")
 
 # Status callback function
 def emit_status_update(status_message, is_processing):
@@ -2414,6 +2523,54 @@ def save_toolkit_settings():
     except Exception as e:
         error(f"TOOLKIT: Failed to save settings: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/settings/browser', methods=['GET'])
+def get_browser_settings():
+    """Return persisted browser preference for startup auto-open."""
+    try:
+        preferred_browser = get_preferred_browser_setting()
+        return jsonify({
+            'success': True,
+            'preferred_browser': preferred_browser
+        })
+    except Exception as e:
+        error(f"Failed to fetch browser settings: {e}", exception=e, category="web_interface")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to fetch browser settings'
+        }), 500
+
+
+@app.route('/api/settings/browser', methods=['POST'])
+def set_browser_settings():
+    """Persist browser preference for startup auto-open."""
+    try:
+        data = request.get_json(silent=True) or {}
+        preferred_browser = str(data.get('preferred_browser', '')).lower().strip()
+
+        if preferred_browser not in ALLOWED_BROWSER_PREFERENCES:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid preferred_browser. Expected one of: default, chrome, edge'
+            }), 400
+
+        if not set_preferred_browser_setting(preferred_browser):
+            return jsonify({
+                'success': False,
+                'error': 'Failed to save browser settings'
+            }), 500
+
+        return jsonify({
+            'success': True,
+            'preferred_browser': preferred_browser
+        })
+    except Exception as e:
+        error(f"Failed to save browser settings: {e}", exception=e, category="web_interface")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to save browser settings'
+        }), 500
 
 @app.route('/api/toolkit/modules')
 def get_available_modules_api():
@@ -4731,7 +4888,18 @@ def open_browser():
         port = getattr(config, 'WEB_PORT', 8357)
     except ImportError:
         port = 8357
-    webbrowser.open(f'http://localhost:{port}')
+
+    url = f'http://localhost:{port}'
+    preferred_browser = get_preferred_browser_setting()
+
+    try:
+        open_url_with_preference(url, preferred_browser)
+    except Exception as e:
+        warning(
+            f"Preferred browser open failed ({preferred_browser}): {e}. Falling back to default.",
+            category="web_interface"
+        )
+        webbrowser.open(url)
 
 
 

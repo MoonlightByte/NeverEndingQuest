@@ -3,7 +3,10 @@
  * Handles character tab switching and party management for local tabletop play.
  */
 
-const tabletopSocket = io();
+const tabletopSocket = window.socket || io();
+if (!window.socket) {
+    window.socket = tabletopSocket;
+}
 
 /**
  * Sets the currently active character for the session.
@@ -23,11 +26,18 @@ function setActiveCharacter(characterName) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
+            window.active_character = characterName;
+            if (typeof playerName !== 'undefined') {
+                playerName = characterName;
+            }
+
             updateTabUI(characterName);
+
             // Refresh stats and other data for the new active character
             if (typeof loadCharacterStats === 'function') loadCharacterStats();
             if (typeof loadInventory === 'function') loadInventory();
             if (typeof loadSpellsAndMagic === 'function') loadSpellsAndMagic();
+            if (typeof requestInitiativeData === 'function') requestInitiativeData();
         } else {
             console.error('Failed to set active character:', data.error);
         }
@@ -66,12 +76,23 @@ function updateTabUI(activeName) {
  * Opens the modal for managing the party (adding/removing characters).
  */
 function openManagePartyModal() {
-    document.getElementById('manage-party-modal').style.display = 'block';
+    const modal = document.getElementById('manage-party-modal');
+    if (!modal) {
+        console.error('Manage Party Modal not found in DOM');
+        return;
+    }
+
+    modal.style.display = 'block';
     loadExistingCharacters();
 }
 
 function closeManagePartyModal() {
-    document.getElementById('manage-party-modal').style.display = 'none';
+    const modal = document.getElementById('manage-party-modal');
+    if (!modal) {
+        return;
+    }
+
+    modal.style.display = 'none';
 }
 
 function switchManageTab(tabId) {

@@ -4444,6 +4444,14 @@
                                     <option value="openai-hd">OpenAI HD</option>
                                 </select>
                             </div>
+                            <div class="settings-item" id="tts-browser-setting-item" style="display: none;">
+                                <label for="tts-browser-select">Preferred Browser</label>
+                                <select class="settings-select" id="tts-browser-select">
+                                    <option value="chrome">Chrome (recommended)</option>
+                                    <option value="edge">Edge</option>
+                                    <option value="default">System Default</option>
+                                </select>
+                            </div>
                             <div class="settings-item">
                                 <label for="tts-voice-select">Voice</label>
                                 <div class="voice-controls">
@@ -4632,6 +4640,7 @@
                 window.DEBUG_STATUS_SYNC = {{ 'true' if DEBUG_STATUS_SYNC else 'false' }};
 
         const socket = io();
+        window.socket = socket;
         let connected = false;
         let gameStarted = false;
         let initiativeOrder = []; // Store the ordered list of combatants
@@ -6809,7 +6818,7 @@
             else if (activeTab === 'npcs') loadNPCs();
         }, 5000);
         
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             const userInput = document.getElementById('user-input');
             userInput.focus();
             
@@ -6881,18 +6890,46 @@
             // Initialize TTS engine and voice selection
             const engineSelect = document.getElementById('tts-engine-select');
             const voiceSelect = document.getElementById('tts-voice-select');
+            const browserSelect = document.getElementById('tts-browser-select');
 
             // Load saved engine preference
             const savedEngine = localStorage.getItem('ttsEngine') || 'browser';
             engineSelect.value = savedEngine;
 
+            // TABLETOP MODE: Load preferred browser from server for startup auto-open
+            if (browserSelect) {
+                const serverPreferred = await fetchPreferredBrowserSetting();
+                const localPreferred = localStorage.getItem('ttsPreferredBrowser');
+                const preferredBrowser = serverPreferred || localPreferred || 'chrome';
+
+                if (browserSelect.querySelector(`option[value="${preferredBrowser}"]`)) {
+                    browserSelect.value = preferredBrowser;
+                } else {
+                    browserSelect.value = 'chrome';
+                }
+
+                localStorage.setItem('ttsPreferredBrowser', browserSelect.value);
+
+                browserSelect.addEventListener('change', async function() {
+                    localStorage.setItem('ttsPreferredBrowser', this.value);
+                    const saveOk = await savePreferredBrowserSetting(this.value);
+                    if (!saveOk) {
+                        console.warn('[SETTINGS] Browser preference save failed');
+                    } else {
+                        console.log('[SETTINGS] Browser preference saved. Applies on next server start.');
+                    }
+                });
+            }
+
             // Populate voices based on engine
             populateTTSVoices(savedEngine);
+            updateTTSBrowserPreferenceVisibility();
 
             // Handle engine selection changes
             engineSelect.addEventListener('change', function() {
                 localStorage.setItem('ttsEngine', this.value);
                 populateTTSVoices(this.value);
+                updateTTSBrowserPreferenceVisibility();
                 // Clear TTS cache when engine changes
                 ttsCache.clear();
                 // Stop any preview playing
@@ -8116,76 +8153,7 @@
     {% endif %}
 
     <script>
-        // Ensure character stats are refreshed when tab switches
-        function setActiveCharacter(characterName) {
-            console.log(`Setting active character to: ${characterName}`);
-            
-            fetch('/api/party/set_active', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ character: characterName }),
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Update active_character in the template context (effectively)
-                    window.active_character = characterName;
-                    playerName = characterName;  // Sync initiative highlight immediately (prevents race condition)
-                    
-                    // Update tab UI
-                    document.querySelectorAll('.character-tab').forEach(tab => {
-                        if (tab.getAttribute('data-character') === characterName) {
-                            tab.classList.add('active');
-                        } else {
-                            tab.classList.remove('active');
-                        }
-                    });
-                    
-                    // Update sidebar active state
-                    document.querySelectorAll('.party-member-card').forEach(card => {
-                        if (card.getAttribute('data-character') === characterName) {
-                            card.classList.add('active');
-                        } else {
-                            card.classList.remove('active');
-                        }
-                    });
-
-                    // Refresh stats and other data for the new active character
-                    loadCharacterStats();
-                    loadInventory();
-                    // Spells & Magic is shared with inventory in current implementation
-                    
-                    // Refresh initiative tracker to update active PC portrait highlight in combat
-                    requestInitiativeData();
-                } else {
-                    console.error('Failed to set active character:', data.error);
-                }
-            })
-            .catch(error => {
-                console.error('Error setting active character:', error);
-            });
-        }
-
-        function openManagePartyModal() {
-            const modal = document.getElementById('manage-party-modal');
-            if (modal) {
-                modal.style.display = 'block';
-                if (typeof loadExistingCharacters === 'function') {
-                    loadExistingCharacters();
-                }
-            } else {
-                console.error('Manage Party Modal not found in DOM');
-            }
-        }
-
-        function closeManagePartyModal() {
-            const modal = document.getElementById('manage-party-modal');
-            if (modal) {
-                modal.style.display = 'none';
-            }
-        }
+        // TABLETOP MODE: character tab and party modal handlers are owned by tabletop_mode.js
 
         // Resizer Logic
         document.addEventListener('DOMContentLoaded', () => {
@@ -8418,6 +8386,59 @@
                 } else {
                     dmVoiceSection.classList.remove('expanded');
                 }
+            }
+
+            updateTTSBrowserPreferenceVisibility();
+        }
+
+        // TABLETOP MODE: Show preferred browser setting only for Browser (Free) TTS engine
+        function updateTTSBrowserPreferenceVisibility() {
+            const settingItem = document.getElementById('tts-browser-setting-item');
+            const engineSelect = document.getElementById('tts-engine-select');
+            if (!settingItem || !engineSelect) {
+                return;
+            }
+
+            settingItem.style.display = engineSelect.value === 'browser' ? 'flex' : 'none';
+        }
+
+        async function fetchPreferredBrowserSetting() {
+            try {
+                const response = await fetch('/api/settings/browser');
+                if (!response.ok) {
+                    return null;
+                }
+
+                const data = await response.json();
+                if (!data.success) {
+                    return null;
+                }
+
+                return data.preferred_browser || null;
+            } catch (e) {
+                console.warn('[SETTINGS] Failed to fetch browser preference:', e);
+                return null;
+            }
+        }
+
+        async function savePreferredBrowserSetting(value) {
+            try {
+                const response = await fetch('/api/settings/browser', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ preferred_browser: value })
+                });
+
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    console.warn('[SETTINGS] Failed to save browser preference:', data.error || response.statusText);
+                    return false;
+                }
+
+                return true;
+            } catch (e) {
+                console.warn('[SETTINGS] Failed to save browser preference:', e);
+                return false;
             }
         }
 
