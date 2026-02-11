@@ -153,6 +153,7 @@ Thumbs.db
 
 # IDE
 .vscode/
+VSCode/
 .idea/
 *.swp
 *.swo
