@@ -1,0 +1,45 @@
+schema: spec-driven
+
+context: |
+  NeverEndingQuest is an AI-powered tabletop RPG DM system with TABLETOP MODE extensions.
+  This repository is a merge-safe plugin/modification of upstream MoonlightByte/NeverEndingQuest.
+
+  Core guardrails:
+  - Preserve upstream behavior and structure whenever possible.
+  - Use minimal hooks in host files and mark all required host edits with "# TABLETOP MODE:" comments.
+  - Prefer extension files over core rewrites.
+  - Maintain backward compatibility with single-player mode.
+  - Runtime activation patterns should favor party-size detection (len(partyMembers) > 1).
+  - Python state is ground truth for mechanics; narrative generation must align with persisted state.
+  - Use atomic JSON operations (safe_read_json/safe_write_json), no ad-hoc file writes for game state.
+  - ASCII-only output in Python user-facing console/log text (Windows cp1252 compatibility).
+
+  Current initiative:
+  - OpenRouter LLM Router architecture split into two OpenSpec changes based on plans/openrouter_llm_router_architecture.md.
+  - Change 1: router-facade and model-profile infrastructure.
+  - Change 2: tiered callsite migration and cleanup.
+
+rules:
+  proposal:
+    - Include problem statement, objective, and explicit non-goals.
+    - Include rollout risk analysis and fallback strategy.
+    - Include merge-safety impact and SP/MP compatibility impact.
+    - If touching LLM plumbing, include provider outage/quota behavior and recovery path.
+
+  specs:
+    - Write requirements in testable terms with clear acceptance criteria.
+    - Include invariants for backward compatibility and runtime behavior.
+    - Explicitly specify error handling classes and expected outcomes.
+    - For architecture work, include state truth-source constraints and no-regression expectations.
+
+  design:
+    - "Document architecture boundaries: facade vs factory vs config responsibilities."
+    - Include thread-safety and observability requirements for shared state.
+    - Include migration sequencing and rollback strategy.
+    - Avoid model-specific lock-in; prefer profile/capability-based routing.
+
+  tasks:
+    - Break into small, verifiable tasks with concrete file targets.
+    - Every task should define verification (compile/test/smoke) before completion.
+    - Sequence risky refactors behind prerequisite safety checks.
+    - Do not include auto-commit, auto-push, or destructive git steps.

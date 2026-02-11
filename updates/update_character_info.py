@@ -129,6 +129,7 @@ from utils.ai_client_factory import (
     handle_provider_error,
     get_fallback_notification
 )
+from core.managers.world_observer import get_world_observer
 
 # Set script name for logging
 set_script_name(__name__)
@@ -1955,6 +1956,19 @@ Please provide the CORRECT currency values:
             if save_result:
                 # print(f"[DEBUG] Character data saved successfully!")
                 info(f"SUCCESS: Successfully updated {character_name} ({character_role})!", category="character_updates")
+                
+                # EGO SYSTEM: Record Mechanical Truth
+                try:
+                    observer = get_world_observer()
+                    observer.record_event(
+                        track="MECHANICAL",
+                        event_type="CHARACTER_UPDATE",
+                        actor=character_name,
+                        action="sheet_update",
+                        metadata=updates  # Contains the verified changes (HP, Inventory, etc.)
+                    )
+                except Exception as e:
+                    error(f"WorldObserver hook failed: {e}", category="world_observer")
                 
                 # CRITICAL FIX: Ensure players are added to partyMembers
                 if character_role == 'player':

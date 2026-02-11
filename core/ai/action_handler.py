@@ -796,6 +796,42 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                         print(f"[DEBUG ACTION_HANDLER] SUCCESS! Encounter created with ID: {encounter_id}")
                         break
 
+                # TABLETOP MODE: Validate encounter file has at least one enemy before
+                # starting combat. Prevents zombie combat sessions where the narrator
+                # hallucinated enemy names that combat_builder couldn't resolve, resulting
+                # in an encounter file with only player/NPC entries and zero enemies.
+                encounter_file_check = f"modules/encounters/encounter_{encounter_id}.json"
+                try:
+                    encounter_check_data = safe_json_load(encounter_file_check)
+                    if encounter_check_data:
+                        enemy_count = sum(1 for c in encounter_check_data.get("creatures", [])
+                                          if c.get("type") == "enemy")
+                        if enemy_count == 0:
+                            error(f"TABLETOP MODE: Encounter {encounter_id} created with 0 enemies. "
+                                  f"Aborting combat - narrator may have hallucinated creature names "
+                                  f"that were not found in the bestiary.",
+                                  category="combat_processing")
+                            print(f"[DEBUG ACTION_HANDLER] TABLETOP MODE: Encounter has 0 enemies, aborting combat")
+                            # Clean up the invalid encounter file
+                            try:
+                                os.remove(encounter_file_check)
+                                debug(f"STATE_CHANGE: Removed empty encounter file: {encounter_file_check}",
+                                      category="combat_processing")
+                            except OSError:
+                                pass
+                            # Reset status and return without starting combat
+                            try:
+                                from core.managers.status_manager import status_ready
+                                status_ready()
+                            except Exception:
+                                pass
+                            print("[DEBUG ACTION_HANDLER] ========== CREATE ENCOUNTER END - NO ENEMIES ==========\n")
+                            return {"status": "continue", "needs_update": False}
+                except Exception as e:
+                    error(f"TABLETOP MODE: Failed to validate encounter enemy count: {e}",
+                          exception=e, category="combat_processing")
+                    # Fail open - let combat proceed if validation itself crashes
+
                 party_tracker_data["worldConditions"]["activeCombatEncounter"] = encounter_id
                 safe_json_dump(party_tracker_data, "party_tracker.json")
                 debug(f"STATE_CHANGE: Updated party tracker with combat encounter ID: {encounter_id}", category="combat_processing")

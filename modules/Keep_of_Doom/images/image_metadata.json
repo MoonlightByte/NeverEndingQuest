@@ -75,6 +75,25 @@
       },
       "module": "Keep_of_Doom",
       "original_url": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-WyvHWSGKRCR4BZ5wzE6003Zp/user-dfXEE2dspweXI87DcXrG4ci5/img-ARzvnu45wagUisliSp0rpiLW.png?st=2026-01-18T03%3A58%3A11Z&se=2026-01-18T05%3A58%3A11Z&sp=r&sv=2024-08-04&sr=b&rscd=inline&rsct=image/png&skoid=32836cae-d25f-4fe9-827b-1c8c59c442cc&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-01-18T04%3A25%3A33Z&ske=2026-01-19T04%3A25%3A33Z&sks=b&skv=2024-08-04&sig=bRuiwou%2Bxdn0tC%2Bdhb6ATYzWGeCMci89ulfLptJM6P0%3D"
+    },
+    {
+      "filename": "img_20260211_123951_game_1492_Springmonth_3_190200_C07.png",
+      "prompt": "Epic fantasy RPG scene: Welcome back! As your senses return to the Lord's Study, the faint tick of the frozen grandfather clock, the scent of dust and old candle wax, and the oppressive static of hidden magic all settle around you. Kira glances over with a tight smile. 'We're all in one piece. Ready for the next step?' \n\nAcheron gives a mock bow, his eyes glinting with mischief. 'About time. I was running out of clever remarks for the shadows.'\n\nClaris flexes her shield arm, muttering, 'Feels like this room is holding its breath.'\n\nHenry shifts Festivus onto the rug, brow furrowed in concern. 'Festivus hasn't woken. We could use your insight.'\n\nSylara, brushing dust from an ancient tome, adds quietly, 'The air here is waiting, like the forest before a storm.'\n\nThe containment circle's etched sigils seem to shimmer at the edge of vision. Around the desk and portrait, clues linger: scattered papers, a locket, a ritual dagger, and perhaps the elusive journal or dungeon key. The rug conceals a trapdoor, its seal yet unbroken.\n\nThe tension is thick--the study is both invitation and warning. What do you do next? Will you investigate the circle, search for hidden secrets, try to open the trapdoor, or address your companions' needs?. Medieval style, darker lighting, highly detailed fantasy art style, professional digital painting, atmospheric depth.",
+      "real_world_time": "2026-02-11T12:39:54.207097",
+      "game_time": {
+        "year": 1492,
+        "month": "Springmonth",
+        "day": 3,
+        "time": "19:02:00"
+      },
+      "location": {
+        "id": "C07",
+        "name": "Lord's Study",
+        "area": "Shadowfall Keep",
+        "area_id": "SK001"
+      },
+      "module": "Keep_of_Doom",
+      "original_url": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-WyvHWSGKRCR4BZ5wzE6003Zp/user-dfXEE2dspweXI87DcXrG4ci5/img-bnKGnbrDJxOGpEwnjCRZsvta.png?st=2026-02-10T22%3A39%3A51Z&se=2026-02-11T00%3A39%3A51Z&sp=r&sv=2026-02-06&sr=b&rscd=inline&rsct=image/png&skoid=c6569cb0-0faa-463d-9694-97df3dc1dfb1&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-02-10T01%3A38%3A40Z&ske=2026-02-11T01%3A38%3A40Z&sks=b&skv=2026-02-06&sig=4Cqb1QWSh1JkdJcuECn4AEll5fjb1VYx93721QP7oOI%3D"
     }
   ]
 }

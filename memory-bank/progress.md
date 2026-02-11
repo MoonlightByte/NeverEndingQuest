@@ -10,6 +10,40 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **OpenSpec Initialization for Project Management (COMPLETED - 2026-02-12):**
+  - **Objective:** Initialize OpenSpec spec-driven development framework for structured planning
+  - **Work Completed:**
+    - Ran `openspec init --tools opencode` generating local command/workflow skills
+    - Created project guardrails in `openspec/config.yaml` aligned with AGENTS.md
+    - Split OpenRouter router plan into two changes: `openrouter-llm-router-facade` and `openrouter-llm-callsite-migration`
+    - Fast-forwarded all planning artifacts (proposal, design, specs, tasks) for both changes
+    - Created global OpenSpec workflow skill at `~/.config/opencode/skills/openspec-workflow/SKILL.md`
+  - **Result:** Clean scaffolding for OpenRouter phases; structured planning capability; zero codebase impact
+  - **Files:** `openspec/config.yaml`, `openspec/changes/*` (9 artifacts), global skill
+
+- **EGO + RATIO Concept Plan Revision (COMPLETED - 2026-02-12):**
+  - **Objective:** Tighten cybernetic control architecture based on RSO framework
+  - **Key Architecture:** EGO (fast reflex controller) + RATIO (slow optimizer); Python=P2 ground truth, LLM=P1 narrative
+  - **Decision Relay:** END (drift) → log; ADJUST (distortion) → Tier 1a tweak; ESCALATE (hallucination) → correction + RATIO queue
+  - **Human DM Role:** Exogenous control signal enabling implicit RLHF via "silence = approval"
+  - **Write Tiers:** 1a (EGO+RATIO), 1b (RATIO only), 2 (RATIO+checks), 3 (immutable)
+  - **Future OpenSpec Changes:** `ego-foundation-passive-observer`, `ego-bounded-adjustments`, `ratio-reviewed-evolution`
+  - **Prerequisite:** OpenRouter router facade completion
+  - **Status:** Conceptual review complete; ready for implementation post-tester release
+  - **Files:** `plans/EGO.md` (rewritten, 353 lines)
+
+- **Hallucinated Monster Defense - Three-Layer Safety System (COMPLETED - 2026-02-10):**
+  - **Problem:** Narrator LLM hallucinating creature names (e.g., "spectral servants") led to auto-created stat blocks via monster_builder.py, creating data integrity issues with fabricated monsters
+  - **Root Cause:** `load_or_create_monster()` auto-spawns monster_builder.py when monster file not found; LLM unconstrained in `monsters` array content
+  - **Solution:** Implemented three independent defense layers:
+    - **Layer 1 (Bestiary Gate):** `core/generators/combat_builder.py:147-161` - Blocks auto-creation in tabletop mode (MULTIPLAYER_MODE check), preserves upstream SP behavior
+    - **Layer 2 (Validation):** `core/ai/action_handler.py:798-838` - Validates encounter has ≥1 enemy before combat starts, catches edge cases (SP mode, malformed entries), deletes invalid files, returns gracefully
+    - **Layer 3 (Prompt):** `prompts/system_prompt_compressed.txt:59` - Added `monsterSource` rule to @COMBAT directive, guides LLM to use existing bestiary creatures or explicitly described location monsters
+  - **Defense-in-Depth:** Independent layers provide multiple failure points; Layer 3 reduces frequency, Layers 1-2 provide deterministic safety net
+  - **Failure Cascade:** Hallucinated name → file not found → Layer 1 blocks → no encounter file → combat never starts → error logged → DM can retry with valid creatures
+  - **Backward Compatibility:** SP mode preserves auto-creation; TT mode protected; zero breaking changes
+  - **Files:** 3 files modified, +56 lines total (~35 tokens for prompt)
+
 - **Expandable Chat Input Textarea (COMPLETED - 2026-02-09):**
   - **Objective:** Replace single-line input with auto-expanding textarea for long prompts and detailed action descriptions
   - **Requirements Met:** 5-line max, push-up effect (chat shrinks, header bars fixed), Enter to send, Shift+Enter for newlines

@@ -8132,6 +8132,7 @@
                 if (data.success) {
                     // Update active_character in the template context (effectively)
                     window.active_character = characterName;
+                    playerName = characterName;  // Sync initiative highlight immediately (prevents race condition)
                     
                     // Update tab UI
                     document.querySelectorAll('.character-tab').forEach(tab => {
@@ -8420,6 +8421,51 @@
             }
         }
 
+        // Auto-detect Chrome UK voice for first-time users
+        // TABLETOP MODE: Auto-detect Natural en-GB voice for first-time users (browser-agnostic)
+        // Selects first available Natural English (UK) voice (e.g., Microsoft Libby in Edge, Google UK English in Chrome)
+        function autoDetectNaturalUKVoice() {
+            // Only auto-configure for first-time users (no existing preferences)
+            const hasExistingTTSPref = localStorage.getItem('ttsEnabled');
+            const hasBeenAutoConfigured = localStorage.getItem('ttsVoiceAutoConfigured');
+            if (hasExistingTTSPref !== null || hasBeenAutoConfigured !== null) return;
+
+            // Check if we're using browser engine
+            const engineSelect = document.getElementById('tts-engine-select');
+            if (!engineSelect || engineSelect.value !== 'browser') return;
+
+            // Check for Natural en-GB voice (case-insensitive)
+            if (!('speechSynthesis' in window)) return;
+            const voices = speechSynthesis.getVoices();
+            const ukVoice = voices.find(v => v.lang === 'en-GB' && /natural/i.test(v.name));
+            if (!ukVoice) return;
+
+            // Auto-configure for new user
+            const ttsToggle = document.getElementById('tts-toggle');
+            const voiceSelect = document.getElementById('tts-voice-select');
+
+            if (ttsToggle) {
+                ttsToggle.checked = true;
+                localStorage.setItem('ttsEnabled', 'true');
+            }
+
+            if (voiceSelect && voiceSelect.querySelector(`option[value="${ukVoice.name}"]`)) {
+                voiceSelect.value = ukVoice.name;
+                localStorage.setItem('ttsVoice_browser', ukVoice.name);
+            }
+
+            // Mark as auto-configured to prevent re-detection
+            localStorage.setItem('ttsVoiceAutoConfigured', 'true');
+            localStorage.setItem('ttsVoiceAutoConfiguredDate', new Date().toISOString());
+
+            // Update UI visibility
+            if (typeof updateDMVoiceSectionVisibility === 'function') {
+                updateDMVoiceSectionVisibility();
+            }
+
+            console.log('[TTS] Auto-configured Natural UK voice:', ukVoice.name);
+        }
+
         // Populate TTS voices based on selected engine
         function populateTTSVoices(engine) {
             const voiceSelect = document.getElementById('tts-voice-select');
@@ -8485,6 +8531,9 @@
             if (savedVoice && voiceSelect.querySelector(`option[value="${savedVoice}"]`)) {
                 voiceSelect.value = savedVoice;
             }
+
+            // TABLETOP MODE: Auto-detect Natural en-GB voice for first-time users
+            autoDetectNaturalUKVoice();
         }
 
         // Preview voice with sample text

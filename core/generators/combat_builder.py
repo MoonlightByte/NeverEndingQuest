@@ -145,6 +145,21 @@ def load_or_create_monster(monster_type):
     monster_file = path_manager.get_monster_path(monster_type)
     monster_data = load_json(monster_file)
     if not monster_data:
+        # TABLETOP MODE: In multiplayer mode, refuse to auto-create monsters from
+        # hallucinated names. Only pre-existing bestiary files are valid combat targets.
+        # This prevents the narrator LLM from inventing creatures (e.g., "spectral servant")
+        # that get auto-generated as real stat blocks via monster_builder.py.
+        # In single-player mode, auto-creation is preserved as an upstream feature.
+        try:
+            from config import MULTIPLAYER_MODE
+            if MULTIPLAYER_MODE:
+                error(f"TABLETOP MODE: Monster '{monster_type}' not found in bestiary at "
+                      f"{monster_file}. Refusing to auto-create - narrator may have "
+                      f"hallucinated this creature.", category="combat_builder")
+                return None
+        except ImportError:
+            pass  # config.MULTIPLAYER_MODE not available, use upstream behavior
+        # --- Upstream auto-creation path (single-player mode) ---
         print(f"[COMBAT_BUILDER] Monster file not found, creating: {monster_file}")
         warning(f"MONSTER_LOADING: Monster loading ({monster_type}) - attempting creation", category="combat_builder")
         # Get the path to monster_builder.py relative to the current file

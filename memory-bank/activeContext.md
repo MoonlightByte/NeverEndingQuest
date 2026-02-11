@@ -1,5 +1,9 @@
 ## Current Work Focus
-- **OpenRouter LLM Router Architecture (PLANNING - 2026-02-07):** Comprehensive architecture plan to centralize all 89 LLM calls through a single router interface. Capability-based model routing with Trinity Large Preview (creative/narration) and Gemini 2.5 Flash Lite (mechanics/JSON). Strategic decision to maintain dual-mode support (MULTIPLAYER_MODE toggle) for upstream merge potential while gradually hardening toward TT-only. Plan document created at `/plans/openrouter_llm_router_architecture.md` (700 lines). Not yet implemented - under review.
+- **OpenSpec Initialization (COMPLETED - 2026-02-12):** Initialized OpenSpec spec-driven development framework with OpenCode support. Created project guardrails, split OpenRouter plan into two scaffolded changes (`openrouter-llm-router-facade`, `openrouter-llm-callsite-migration`), and established global OpenSpec workflow skill. Ready for implementation post-tester release.
+
+- **EGO + RATIO Concept Plan (COMPLETED - 2026-02-12):** Revised cybernetic control architecture based on RSO (Relative State Observer) framework. Defined EGO (fast bounded controller) and RATIO (slow optimizer) with strict write tiers, decision relay (END/ADJUST/ESCALATE), and human DM as external training signal. Conceptual review complete; implementation deferred until after OpenRouter router work and tester build stabilization.
+
+- **OpenRouter LLM Router Architecture (PLANNING - 2026-02-07):** Comprehensive architecture plan to centralize all 89 LLM calls through a single router interface. Capability-based model routing with Trinity Large Preview (creative/narration) and Gemini 2.5 Flash Lite (mechanics/JSON). Strategic decision to maintain dual-mode support (MULTIPLAYER_MODE toggle) for upstream merge potential while gradually hardening toward TT-only. Plan document created at `/plans/openrouter_llm_router_architecture.md` (700 lines). OpenSpec scaffolding complete; implementation pending tester release.
 
 - **TTS Auto-Play Fix & Queue Management (COMPLETED - 2026-02-06):** Implemented comprehensive TTS management system with queue control, message filtering, and [skipTTS] tagging. Fixed cacophony on page reload, parallel playback, and mechanical message narration. Only DM narration speaks now; combat results and system commands display but don't break immersion.
 
@@ -50,6 +54,43 @@
 - **Job 3: Combat Commands:** `/att` and `/dmg` commands implemented with proper validation.
 
 ## Recent Changes
+- **OpenSpec Initialization for Project Management (COMPLETED - 2026-02-12):**
+    - **Objective:** Initialize spec-driven development framework for structured OpenRouter and EGO planning
+    - **Initialization:** `openspec init --tools opencode` generated local skills in `.opencode/command/` and `.opencode/skills/openspec-*/`
+    - **Project Guardrails:** Created `openspec/config.yaml` with rules aligned to AGENTS.md conventions (merge-safe, SP/MP compatibility, atomic JSON, ASCII-only)
+    - **OpenRouter Planning:** Split architecture plan into two changes:
+      - `openrouter-llm-router-facade`: Router facade + model profile infrastructure
+      - `openrouter-llm-callsite-migration`: Tiered migration of 89 LLM callsites
+    - **Fast-Forward:** All planning artifacts created (proposal, design, specs, tasks) for both changes
+    - **Global Skill:** Created `~/.config/opencode/skills/openspec-workflow/SKILL.md` for consistent OPSX workflows across projects
+    - **Key Commands:** `/opsx explore`, `/opsx new`, `/opsx continue`, `/opsx ff`, `/opsx apply`, `/opsx verify`, `/opsx archive`
+    - **Result:** Clean scaffolding ready for post-tester implementation; zero current codebase impact
+    - **Files:** `openspec/config.yaml`, `openspec/changes/*` (9 artifacts), global skill
+
+- **EGO + RATIO Concept Plan Revision (COMPLETED - 2026-02-12):**
+    - **Framework:** RSO (Relative State Observer) cybernetic control theory mapping
+      - EGO = State Observer reflex controller (System 1, fast, bounded)
+      - RATIO = Neocortical learning layer (System 2, slow, reflective)
+      - Python/P2 = Mechanical Reality (ground truth)
+      - LLM/P1 = Narrative Reality (interpretation)
+    - **Boundary Contract:** Python state authoritative; Tier 3 immutable; all edits logged/reversible
+    - **Decision Relay:** END (drift) → log; ADJUST (distortion) → Tier 1a tweak; ESCALATE (hallucination) → correction + queue
+    - **Human DM:** Exogenous control signal enabling implicit RLHF; "silence = approval" heuristic
+    - **Write Tiers:** 1a (knobs), 1b (prose), 2 (behavioral), 3 (immutable contracts)
+    - **Future OpenSpec Changes:** `ego-foundation-passive-observer`, `ego-bounded-adjustments`, `ratio-reviewed-evolution`
+    - **Prerequisites:** OpenRouter router stable; baseline metrics; cost/time budgets defined
+    - **Status:** Conceptual review complete; ready for implementation after tester release
+    - **Files:** `plans/EGO.md` (353 lines), `plans/EGO-Comments_on_Cybernetic_Potentials.md`
+
+- **Hallucinated Monster Defense - Three-Layer Safety System (COMPLETED - 2026-02-10):**
+    - **Objective:** Prevent data integrity issues when narrator LLM hallucinates creature names that get auto-generated as real stat blocks
+    - **Layer 1 (Bestiary-Only Gate):** Added TABLETOP MODE guard in `core/generators/combat_builder.py:147-161` - refuses auto-creation in multiplayer mode, preserves upstream SP behavior
+    - **Layer 2 (Enemy Count Validation):** Added validation in `core/ai/action_handler.py:798-838` - checks encounter has ≥1 enemy before combat starts, deletes invalid files, returns gracefully without combat
+    - **Layer 3 (Prompt Constraint):** Added `monsterSource` rule to @COMBAT directive in `prompts/system_prompt_compressed.txt:59` - guides LLM toward valid bestiary creatures, ~35 tokens
+    - **Defense-in-Depth:** Independent layers provide multiple failure points; Layer 3 reduces frequency, Layers 1-2 provide deterministic safety net
+    - **Backward Compatibility:** SP mode preserves auto-creation; TT mode protected; zero breaking changes
+    - **Files Modified:** `core/generators/combat_builder.py` (+14 lines), `core/ai/action_handler.py` (+41 lines), `prompts/system_prompt_compressed.txt` (+1 line)
+
 - **Expandable Chat Input Textarea (COMPLETED - 2026-02-09):**
     - **Objective:** UI enhancement for long prompts and detailed action descriptions in chat interface
     - **CSS Changes:** `.input-container` added `align-items: flex-end` (Send button at bottom); `.input-field` added `resize: none`, `overflow: hidden`, `min-height: 40px`, `max-height: 150px` (5-line cap)

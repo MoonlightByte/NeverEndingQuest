@@ -1725,6 +1725,93 @@ data = llm.call(role="extract_json", messages=[...], structured_output=Schema)  
 
 **Status:** PLANNING PHASE - Under review, not yet implemented
 
+### Hallucinated Monster Defense - Three-Layer Safety System (COMPLETED - 2026-02-10)
+
+**Status:** COMPLETED  
+**Priority:** High (Data Integrity)  
+**Effort:** Small (~1 hour)
+
+**Problem:**
+When the narrator LLM hallucinates creature names (e.g., "spectral servants appear"), the system auto-creates stat blocks via `monster_builder.py`, resulting in encounters with fabricated monsters that were never part of the module's bestiary. This creates data integrity issues where non-existent creatures gain persistent stats and participate in combat.
+
+**Root Cause:**
+The `load_or_create_monster()` function in `combat_builder.py` automatically spawns `monster_builder.py` subprocess when a monster file is not found. The LLM is not constrained in what names it can put in the `monsters` array of `createEncounter` actions.
+
+**Solution - Three Independent Defense Layers:**
+
+**Layer 1: Bestiary-Only Validation Gate (combat_builder.py:147-161)**
+```python
+# TABLETOP MODE: In multiplayer mode, refuse to auto-create monsters from
+# hallucinated names. Only pre-existing bestiary files are valid combat targets.
+try:
+    from config import MULTIPLAYER_MODE
+    if MULTIPLAYER_MODE:
+        error(f"TABLETOP MODE: Monster '{monster_type}' not found in bestiary...")
+        return None
+except ImportError:
+    pass  # config.MULTIPLAYER_MODE not available, use upstream behavior
+```
+- Blocks auto-creation in tabletop mode (MULTIPLAYER_MODE=True)
+- Preserves upstream single-player behavior (auto-creation allowed)
+- Lazy import pattern ensures no upstream impact
+
+**Layer 2: Encounter Enemy Count Validation (action_handler.py:798-838)**
+```python
+# TABLETOP MODE: Validate encounter file has at least one enemy before starting combat
+encounter_file_check = f"modules/encounters/encounter_{encounter_id}.json"
+encounter_check_data = safe_json_load(encounter_file_check)
+if encounter_check_data:
+    enemy_count = sum(1 for c in encounter_check_data.get("creatures", [])
+                      if c.get("type") == "enemy")
+    if enemy_count == 0:
+        error(f"TABLETOP MODE: Encounter {encounter_id} created with 0 enemies...")
+        os.remove(encounter_file_check)  # Cleanup invalid file
+        return {"status": "continue", "needs_update": False}  # Abort combat
+```
+- Catches edge cases Layer 1 doesn't cover (single-player mode, malformed entries)
+- Validates encounter file before combat starts
+- Cleans up invalid encounter file
+- Returns gracefully without starting combat
+
+**Layer 3: Narrator Prompt Constraint (system_prompt_compressed.txt:59)**
+```
+monsterSource: The "monsters" array in createEncounter MUST reference creatures that exist in the game world bestiary or have been explicitly described in the location/area data. Do NOT invent new creature types. Use standard 5e SRD creature names (e.g., "Skeleton", "Bandit", "Wight", "Goblin") that would have pre-built stat blocks.
+```
+- Added to @COMBAT directive
+- Guides LLM toward valid creature names
+- Reduces frequency of hallucinated monster names
+- ~35 tokens added to prompt
+
+**Defense-in-Depth Strategy:**
+
+| Scenario | Fix 3 (Prompt) | Fix 1 (Bestiary Gate) | Fix 2 (Validation) | Result |
+|----------|----------------|----------------------|-------------------|--------|
+| LLM obeys, uses "Skeleton" | Valid name, bestiary hit | Loads from file | Count > 0, passes | Combat starts correctly |
+| LLM ignores, uses "Spectral Servant" | Ignored | Bestiary miss, blocks (TT mode) | Never reached | No combat, encounter aborted |
+| Single-player mode, hallucinated name | Ignored | Skipped (upstream behavior) | Catches 0-enemy encounter | No combat (SP protected too) |
+| Valid name missing from module | Valid SRD name but file doesn't exist | Blocks (TT) or auto-creates (SP) | Catches if all missing | Appropriate failure per mode |
+
+**Failure Cascade (Hallucinated Monster Blocked):**
+1. Narrator says "spectral servants appear" → puts "Spectral Servant" in monsters array
+2. `load_or_create_monster("spectral servant")` → file not found
+3. Layer 1 (if TT mode): Returns None → `generate_encounter()` returns None
+4. Layer 2: Never reached (no encounter file created)
+5. No "Encounter successfully built" message in stdout
+6. Combat never starts, player sees error log
+7. Narrator can retry with valid bestiary creatures
+
+**Files Modified:**
+- `core/generators/combat_builder.py` - Layer 1 bestiary gate (+14 lines)
+- `core/ai/action_handler.py` - Layer 2 validation (+41 lines)
+- `prompts/system_prompt_compressed.txt` - Layer 3 prompt constraint (+1 line)
+
+**Backward Compatibility:**
+- Single-player mode: All three fixes preserve upstream behavior
+- Tabletop mode: Protected against hallucinated monsters while maintaining full combat functionality for valid creatures
+- Zero breaking changes to existing encounters or gameplay
+
+---
+
 ### Expandable Chat Input Textarea (COMPLETED - 2026-02-09)
 
 **Status:** COMPLETED
@@ -1782,3 +1869,153 @@ The existing flexbox structure handles the push-up effect naturally:
 
 **Files Modified:**
 - `web/templates/game_interface.html` (~50 lines: CSS 9 lines, HTML 10 lines, JS 31 lines)
+
+---
+
+### OpenSpec Initialization for Project Management (COMPLETED - 2026-02-12)
+
+**Status:** COMPLETED  
+**Priority:** High (Architecture/Planning)  
+**Effort:** Medium (~1 hour)
+
+**Objective:**
+Initialize OpenSpec spec-driven development framework in the repository for structured planning of OpenRouter LLM Router and future EGO/RATIO cybernetic control system.
+
+**Work Completed:**
+
+**1. OpenSpec Repository Initialization:**
+- Ran `openspec init --tools opencode` to enable OpenCode scaffolding support
+- Generated local OpenSpec command skills in `.opencode/command/` directory
+- Generated local OpenSpec workflow skills in `.opencode/skills/openspec-*/` directory
+- Created project guardrails in `openspec/config.yaml` aligned with AGENTS.md conventions
+
+**2. OpenRouter LLM Router Planning (Split into Two Changes):**
+- Created `openspec/changes/openrouter-llm-router-facade`
+  - Scope: Router facade implementation and model profile infrastructure
+  - Fast-forwarded all artifacts: proposal, design, specs, tasks
+  
+- Created `openspec/changes/openrouter-llm-callsite-migration`
+  - Scope: Tiered migration of 89 LLM callsites to `llm.call()` facade
+  - Fast-forwarded all artifacts: proposal, design, specs, tasks
+
+**3. Global OpenSpec Workflow Skill:**
+- Created `~/.config/opencode/skills/openspec-workflow/SKILL.md`
+- Provides consistent OPSX workflow execution across all projects
+- Includes mandatory confirmation gates for archive operations
+- Supports natural language triggers and explicit OPSX commands
+
+**Key OpenSpec Commands Now Available:**
+```bash
+/opsx explore          # Investigation mode
+/opsx new <name>       # Create new change
+/opsx continue         # Continue current change
+/opsx ff               # Fast-forward planning artifacts
+/opsx apply            # Implement tasks
+/opsx verify           # Validate implementation
+/opsx archive          # Archive change (with confirmation)
+```
+
+**Result:**
+- Clean scaffolding for OpenRouter implementation phases
+- Structured planning capability for complex multi-phase work
+- Consistent workflow across NeverEndingQuest and future projects
+- Zero impact on current codebase (planning-only artifacts)
+
+**Files Modified:**
+- `openspec/config.yaml` (NEW - project guardrails)
+- `openspec/changes/openrouter-llm-router-facade/*` (NEW - 5 artifact files)
+- `openspec/changes/openrouter-llm-callsite-migration/*` (NEW - 4 artifact files)
+- `~/.config/opencode/skills/openspec-workflow/SKILL.md` (NEW - global skill)
+
+---
+
+### EGO + RATIO Concept Plan Revision (COMPLETED - 2026-02-12)
+
+**Status:** COMPLETED (Conceptual Review Only)  
+**Priority:** Medium (Future Architecture)  
+**Effort:** Medium (~2 hours documentation)
+
+**Objective:**
+Revise and tighten the EGO/RATIO cybernetic control architecture plan based on RSO (Relative State Observer) theoretical framework, preparing it for future OpenSpec implementation.
+
+**Conceptual Foundation:**
+EGO/RATIO architecture maps directly to the RSO (Relative State Observer) framework:
+- **EGO (fast, bounded)** = State Observer reflex controller (System 1)
+- **RATIO (slow, reflective)** = Neocortical learning layer (System 2)
+- **Python ground truth** = Mechanical Reality (P2)
+- **LLM narration** = Narrative Reality (P1)
+- **Control objective** = Maximize narrative richness while maintaining P1/P2 consistency
+
+**Key Architectural Decisions:**
+
+**1. Boundary Contract (Non-Negotiable):**
+- Python engine state is authoritative (Realitas)
+- EGO writes only Tier 1a prompt knobs
+- RATIO writes Tier 1a, 1b, and 2 (with review gate)
+- Tier 3 (schemas, contracts) is immutable
+- All edits logged, attributable, reversible
+
+**2. Decision Relay (EGO):**
+- **END (DRIFT):** Acceptable flavor divergence - log only
+- **ADJUST (DISTORTION):** Recoverable mismatch - Tier 1a adjustment
+- **ESCALATE (HALLUCINATION):** Serious causal break - correction + RATIO queue
+
+**3. Human DM as External Input:**
+- Human behavior is exogenous control signal, not noise
+- Distinguish unsanctioned hallucination from table-preferred style drift
+- Use multiple signals: no correction request, no regenerate/edit, stable continuation
+- Enables implicit RLHF without thumbs-up buttons
+
+**4. Write Surface Policy:**
+- **Tier 1a:** Temperature, narration quotas, style weights (EGO + RATIO)
+- **Tier 1b:** Safe prose guidance (RATIO only)
+- **Tier 2:** Behavioral guidance (RATIO + strong checks)
+- **Tier 3:** Immutable schemas and parser-critical contracts
+
+**Implementation Phasing (Conceptual):**
+- **Phase 0:** Gate conditions (router stable, baseline metrics)
+- **Phase 1:** Passive foundation (event capture, no writes)
+- **Phase 2:** EGO observe/classify (dashboard, audit, no live writes)
+- **Phase 3:** Bounded EGO adjustments (Tier 1a canary, rollback enabled)
+- **Phase 4:** RATIO proposal engine (between-session synthesis, review gate)
+- **Phase 5:** Controlled adaptation (pattern library, measured outcomes)
+
+**Go/No-Go Gates:**
+- Gate A: Event coverage complete, prompt import validated
+- Gate B: Classification quality acceptable, no latency impact
+- Gate C: No oscillation, rollback proven
+- Gate D: Review throughput acceptable, net positive edits
+
+**Major Risks:**
+1. Overfitting to short-term play style
+2. Controller oscillation from aggressive tuning
+3. Prompt regression from broad structural edits
+4. DB-as-runtime-source fragility
+5. Cost overrun from frequent analysis calls
+
+**Mitigations:**
+- Strict tier enforcement, write budgets, cooldowns
+- Human/agent review queue
+- Regression replay before deploy
+- Last-good prompt fallback
+- Conservative canary rollout
+
+**OpenSpec Scaffolding for Future Build:**
+Three planned OpenSpec changes when implementation begins:
+1. `ego-foundation-passive-observer` - Phase 1 passive foundation
+2. `ego-bounded-adjustments` - Phase 2-3 bounded adjustments
+3. `ratio-reviewed-evolution` - Phase 4-5 RATIO adaptation
+
+**Prerequisite Dependency:**
+Requires completion of `openrouter-llm-router-facade` for unified `llm.call()` entrypoint with role/task routing and usage stats.
+
+**Files Modified:**
+- `plans/EGO.md` (REWRITTEN - concise architecture, 353 lines)
+- `plans/EGO-Comments_on_Cybernetic_Potentials.md` (REFERENCE - theoretical analysis)
+
+**Status:**
+Ready for implementation when:
+1. Current tester build stabilized and released
+2. OpenRouter router changes completed and validated
+3. Baseline divergence metrics captured
+4. Cost and time budgets defined for canary sessions

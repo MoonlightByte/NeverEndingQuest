@@ -2524,11 +2524,13 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
                multi_pc_manager.roll_group_initiative()
                initiative_narrative = get_multi_pc_initiative_narrative(multi_pc_manager)
        
-       initial_prompt_text = f"""The setup scene for the combat has already been given and described to the party. Now, describe the combat situation and the enemies the party faces."""
+       # TABLETOP MODE: Anchor narration to Immutable Roster to prevent phantom enemy hallucination
+       initial_prompt_text = f"""The setup scene for the combat has already been given and described to the party. Now, describe the combat situation and ONLY the enemies listed in the VALID TARGETS & ACTORS (IMMUTABLE) roster that the party faces."""
        if initiative_narrative:
            initial_prompt_text = f"{initiative_narrative}\n\n{initial_prompt_text}"
 
-       initial_prompt = f"""Dungeon Master Note: Respond with valid JSON containing a 'narration' field, 'combat_round' field, and an 'actions' array. This is the start of combat, so please describe the scene and set initiative order, but don't take any actions yet. Start off by hooking the player and engaging them for the start of combat the way any world class dungeon master would.
+       # TABLETOP MODE: Reinforce Immutable Roster constraint in initial scene prompt
+       initial_prompt = f"""Dungeon Master Note: Respond with valid JSON containing a 'narration' field, 'combat_round' field, and an 'actions' array. This is the start of combat, so describe the scene using ONLY creatures from the VALID TARGETS & ACTORS (IMMUTABLE) roster and set initiative order, but don't take any actions yet. Start off by hooking the player and engaging them for the start of combat the way any world class dungeon master would.
 
 Important Character Field Definitions:
 - 'status' field: Overall life/death state - ONLY use 'alive', 'dead', 'unconscious', or 'defeated' (lowercase)
@@ -3438,26 +3440,31 @@ turn_window: {json.dumps(turn_window_json.get('turn_window', []))}
                    ac_block += f"{name}: {ac_values[name]}\n"
            ac_block += "\n"
        
-       # Check if all monsters are defeated
+       # BUG FIX: check_all_monsters_defeated() used wrong field names since
+       # upstream commit 9b77d91 ('combatants' vs 'creatures', 'hitPoints' vs
+       # 'currentHitPoints'). Encounter schema uses 'creatures'/'currentHitPoints'.
+       # This fix also adds status check for robustness (matches xp.py logic).
        def check_all_monsters_defeated(encounter):
-           """Check if all monsters/enemies have 0 or negative HP"""
-           if not encounter or 'combatants' not in encounter:
+           """Check if all enemies have 0 or negative HP or defeated status"""
+           if not encounter or 'creatures' not in encounter:
                return False
-           
-           has_monsters = False
+
+           has_enemies = False
            all_defeated = True
-           
-           for combatant in encounter['combatants']:
-               # Check if this is a monster/enemy (not player or allied NPC)
-               if combatant.get('type') == 'enemy':
-                   has_monsters = True
-                   current_hp = combatant.get('hitPoints', 0)
-                   if current_hp > 0:
+
+           for creature in encounter['creatures']:
+               # Check if this is an enemy (not player or allied NPC)
+               if creature.get('type') == 'enemy':
+                   has_enemies = True
+                   current_hp = creature.get('currentHitPoints', 0)
+                   status = creature.get('status', 'alive').lower()
+                   # Defeated if HP <= 0 OR status indicates defeat
+                   if current_hp > 0 and status not in ('dead', 'defeated', 'unconscious'):
                        all_defeated = False
                        break
-           
-           # Only return True if there were monsters and all are defeated
-           return has_monsters and all_defeated
+
+           # Only return True if there were enemies and all are defeated
+           return has_enemies and all_defeated
        
        # Determine the required response based on combat state
        all_monsters_defeated = check_all_monsters_defeated(encounter_data)
@@ -3981,26 +3988,50 @@ Rules:
                            # The encounter file may have stale HP values that would overwrite healing done during combat
                            # Only award XP when combat ends
 
-                           # COMMENTED OUT: This line was setting HP from the encounter file, which can be stale
-                           # final_hp = creature.get("currentHitPoints")
-                           # final_character_updates[character_name].append(f"set hitPoints to {final_hp}")
+                            # COMMENTED OUT: This line was setting HP from the encounter file, which can be stale
+                            # final_hp = creature.get("currentHitPoints")
+                            # final_character_updates[character_name].append(f"set hitPoints to {final_hp}")
 
                            if xp_awarded > 0:
-                               final_character_updates[character_name].append(f"awarded {xp_awarded} experience points")
+                                final_character_updates[character_name].append(f"awarded {xp_awarded} experience points")
 
-       # TABLETOP MODE: Turn Queue Advancement
-       if multi_pc_manager and not is_combat_ending:
-           # 1. Check for NPC Turn Auto-Advance
-           # If the prompt generated an action for an NPC, we must advance past them.
-           current_actor = multi_pc_manager.get_current_actor()
-           # Advance NPC turns automatically if they were the active actor
-           if current_actor and (current_actor.type == CombatantType.NPC):
-               # If we successfully generated actions (meaning the AI processed the NPC's turn), advance.
-               if actions: 
-                   debug(f"[COMBAT_MANAGER] Auto-advancing turn for NPC {current_actor.name}", category="combat_events")
-                   next_actor = multi_pc_manager.advance_turn()
+           # BUG FIX: Post-action auto-exit safety net
+           # If the LLM processed an updateEncounter that killed the last enemy
+           # but didn't return an exit action, force combat end and award XP.
+           # This is a defensive check - the pre-LLM check (check_all_monsters_defeated)
+           # should have already instructed the LLM to exit, but LLMs can ignore instructions.
+           if not is_combat_ending and check_all_monsters_defeated(encounter_data):
+               info("AUTO_EXIT: All enemies defeated after action processing. LLM failed to call exit - forcing combat end.", category="combat_events")
+               is_combat_ending = True
+
+               # Calculate and award XP (same logic as the normal exit path)
+               xp_narrative, xp_awarded = calculate_xp()
+               info(f"XP_AWARD: Auto-exit calculated {xp_awarded} XP per participant.", category="xp_tracking")
+               conversation_history.append({"role": "user", "content": f"XP Awarded: {xp_narrative}"})
+               save_json_file(conversation_history_file, conversation_history)
+
+               for creature in encounter_data.get("creatures", []):
+                    if creature.get("type") in ["player", "npc"]:
+                        character_name = creature.get("name")
+                        if character_name:
+                            if character_name not in final_character_updates:
+                                final_character_updates[character_name] = []
+                            if xp_awarded > 0:
+                                final_character_updates[character_name].append(f"awarded {xp_awarded} experience points")
+
+           # TABLETOP MODE: Turn Queue Advancement
+           if multi_pc_manager and not is_combat_ending:
+               # 1. Check for NPC Turn Auto-Advance
+               # If the prompt generated an action for an NPC, we must advance past them.
+               current_actor = multi_pc_manager.get_current_actor()
+               # Advance NPC turns automatically if they were the active actor
+               if current_actor and (current_actor.type == CombatantType.NPC):
+                   # If we successfully generated actions (meaning the AI processed the NPC's turn), advance.
+                   if actions: 
+                       debug(f"[COMBAT_MANAGER] Auto-advancing turn for NPC {current_actor.name}", category="combat_events")
+                       next_actor = multi_pc_manager.advance_turn()
                    
-                   # If next is PC, update tracker/UI
+                       # If next is PC, update tracker/UI
                    if next_actor.type == CombatantType.PC:
                        party_tracker_data["active_character"] = next_actor.name
                        safe_write_json("party_tracker.json", party_tracker_data)
