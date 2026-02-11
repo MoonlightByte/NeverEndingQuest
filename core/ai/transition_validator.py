@@ -8,15 +8,14 @@ are appropriate given exploration status, encounters, and plot progression.
 import json
 import os
 from typing import Dict, List, Any, Optional
-from openai import OpenAI
-from config import OPENAI_API_KEY
 from model_config import TRANSITION_VALIDATOR_MODEL, TRANSITION_VALIDATOR_TEMPERATURE
 from utils.enhanced_logger import debug, info, warning, error
 from utils.file_operations import safe_read_json
+from utils.ai_client_factory import create_chat_client, get_chat_model_name, handle_provider_error
 
 
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Initialize AI client using factory (supports OpenAI and OpenRouter)
+client = create_chat_client()
 
 
 def load_transition_validation_prompt() -> str:
@@ -147,15 +146,34 @@ at an intermediate location due to unexplored encounters. Respond with JSON only
     try:
         # Call AI agent
         debug("Sending request to transition validator AI", category="transition_validation")
+        model_name = get_chat_model_name()
+        actual_model_used = model_name
 
-        response = client.chat.completions.create(
-            model=TRANSITION_VALIDATOR_MODEL,
-            temperature=TRANSITION_VALIDATOR_TEMPERATURE,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
-            ]
-        )
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                temperature=TRANSITION_VALIDATOR_TEMPERATURE,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message}
+                ]
+            )
+        except Exception as api_error:
+            error_result = handle_provider_error(api_error, context="Transition validation")
+            if error_result["should_fallback"]:
+                warning(f"Falling back to OpenAI: {api_error}", category="ai_provider")
+                fallback_client = create_chat_client(use_fallback=True)
+                response = fallback_client.chat.completions.create(
+                model=actual_model_used,
+                    temperature=TRANSITION_VALIDATOR_TEMPERATURE,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message}
+                    ]
+                )
+                actual_model_used = TRANSITION_VALIDATOR_MODEL
+            else:
+                raise
 
         # Log API call
         try:

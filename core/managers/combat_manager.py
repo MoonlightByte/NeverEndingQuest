@@ -125,7 +125,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from model_config import USE_COMPRESSED_COMBAT, COMBAT_API_TIMEOUT_SECONDS
 from datetime import datetime
 from utils.xp import main as calculate_xp
-from openai import OpenAI
+from utils.ai_client_factory import create_chat_client
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -236,8 +236,8 @@ def get_combat_temperature(encounter_data, validation_attempt=0):
     
     return final_temp
 
-# OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
+# AI client (factory supports OpenAI and OpenRouter)
+client = create_chat_client()
 
 conversation_history_file = "modules/conversation_history/combat_conversation_history.json"
 second_model_history_file = "modules/conversation_history/second_model_history.json"

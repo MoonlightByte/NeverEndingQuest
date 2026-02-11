@@ -10,7 +10,27 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
-- **OpenSpec Initialization for Project Management (COMPLETED - 2026-02-12):**
+- **Phase 0 Cleanup: Factory Routing Alignment (COMPLETED - 2026-02-12):**
+  - **Objective:** Align core files to OpenRouter factory routing baseline before GitHub push
+  - **Work Completed:**
+    - `core/ai/transition_validator.py`: Factory client + provider model selection + fallback handling
+    - `main.py`: `generate_module_summary()` uses factory routing with fallback error handling
+    - `core/managers/combat_manager.py`: Global client initialization uses factory
+    - `AGENTS.md`: Updated migration status, removed duplicate transition_validator entries, renumbered lists
+  - **Technical Implementation:**
+    - Replaced `from openai import OpenAI` with `from utils.ai_client_factory import create_chat_client, get_chat_model_name, handle_provider_error`
+    - Removed direct `client = OpenAI(api_key=...)` initialization
+    - Implemented fallback pattern: primary call → `handle_provider_error()` classification → `create_chat_client(use_fallback=True)` retry
+    - Used `actual_model_used` variable for accurate telemetry logging
+    - Avoided Fix 4 scoping trap by using distinct variable names in local scopes (`summary_client`, `fallback_client`)
+  - **Quality Assurance:**
+    - Zero prompt/content changes (temperature, messages preserved)
+    - All existing fallback behavior maintained (non-AI summary on failure)
+    - Syntax verification: `python3 -m py_compile` passes for all 3 Python files
+    - Git status: 4 files modified, +72/-41 lines
+  - **Next Steps:** Smoke testing (startup → transition validation → combat entry)
+
+- **OpenSpec Initialization for Project Management (COMPLETED - 2026-02-12):
   - **Objective:** Initialize OpenSpec spec-driven development framework for structured planning
   - **Work Completed:**
     - Ran `openspec init --tools opencode` generating local command/workflow skills

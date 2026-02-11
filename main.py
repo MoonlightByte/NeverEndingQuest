@@ -160,7 +160,7 @@ from config import (
 )
 
 # Initialize AI client using factory (supports OpenAI and OpenRouter)
-from utils.ai_client_factory import create_chat_client, reset_fallback_status
+from utils.ai_client_factory import create_chat_client, reset_fallback_status, get_chat_model_name, handle_provider_error
 reset_fallback_status()  # Reset fallback tracking at module load
 client = create_chat_client()
 
@@ -1713,18 +1713,16 @@ def generate_module_summary(conversation_history, party_tracker_data, module_nam
         # If we have substantial conversation, generate AI summary from actual gameplay
         if len(meaningful_messages) >= 3:
             try:
-                from openai import OpenAI
-                import config
-                
+                # Generate summary using AI client factory (OpenAI/OpenRouter)
+                summary_client = create_chat_client()
+                summary_model = get_chat_model_name()
+
                 # Prepare conversation for summarization
                 conversation_text = ""
                 for msg in meaningful_messages:  # All meaningful messages from this module
                     role = "Player" if msg.get("role") == "user" else "DM"
                     content = msg.get("content", "")
                     conversation_text += f"{role}: {content}\n\n"
-                
-                # Generate summary using AI
-                client = OpenAI(api_key=config.OPENAI_API_KEY)
                 
                 summary_prompt = f"""You are creating an adventure chronicle for a 5th edition session. Summarize this actual gameplay conversation from the {module_name} module into a compelling narrative story.
 
@@ -1744,14 +1742,29 @@ ACTUAL GAMEPLAY CONVERSATION:
 
 Write a compelling chronicle of these actual events:"""
 
-                response = client.chat.completions.create(
-                    model=config.DM_SUMMARIZATION_MODEL,
-                    messages=[
-                        {"role": "system", "content": "You are an expert at creating beautiful adventure chronicles from 5th edition gameplay, focusing only on events that actually occurred."},
-                        {"role": "user", "content": summary_prompt}
-                    ],
-                    temperature=0.7
-                )
+                try:
+                    response = summary_client.chat.completions.create(
+                        model=summary_model,
+                        messages=[
+                            {"role": "system", "content": "You are an expert at creating beautiful adventure chronicles from 5th edition gameplay, focusing only on events that actually occurred."},
+                            {"role": "user", "content": summary_prompt}
+                        ],
+                        temperature=0.7
+                    )
+                except Exception as api_error:
+                    error_result = handle_provider_error(api_error, context="Module summary generation")
+                    if error_result["should_fallback"]:
+                        fallback_client = create_chat_client(use_fallback=True)
+                        response = fallback_client.chat.completions.create(
+                            model=DM_SUMMARIZATION_MODEL,
+                            messages=[
+                                {"role": "system", "content": "You are an expert at creating beautiful adventure chronicles from 5th edition gameplay, focusing only on events that actually occurred."},
+                                {"role": "user", "content": summary_prompt}
+                            ],
+                            temperature=0.7
+                        )
+                    else:
+                        raise
 
                 # Log API call to master log
                 try:

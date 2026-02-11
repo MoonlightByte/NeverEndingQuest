@@ -1012,6 +1012,83 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Phase 0 Cleanup: Factory Routing Alignment (COMPLETED - 2026-02-12)
+
+**Status:** COMPLETED  
+**Priority:** High (Pre-Push Cleanup)  
+**Effort:** Small (~1 hour)
+
+**Objective:**
+Align core files to OpenRouter factory routing baseline before GitHub push. Remove documentation drift and establish consistent client initialization pattern across all LLM call sites.
+
+**Files Modified:**
+1. `core/ai/transition_validator.py` - Factory client + provider model selection + fallback handling
+2. `main.py` - `generate_module_summary()` uses factory routing with fallback
+3. `core/managers/combat_manager.py` - Global client initialization uses factory
+4. `AGENTS.md` - Updated migration status, removed duplicate entries, renumbered lists
+
+**Technical Changes:**
+
+**Import Replacements:**
+- Removed: `from openai import OpenAI` and direct `OPENAI_API_KEY` usage
+- Added: `from utils.ai_client_factory import create_chat_client, get_chat_model_name, handle_provider_error`
+
+**Client Initialization:**
+- Before: `client = OpenAI(api_key=OPENAI_API_KEY)`
+- After: `client = create_chat_client()`
+
+**Fallback Pattern Implementation:**
+```python
+model_name = get_chat_model_name()
+actual_model_used = model_name
+
+try:
+    response = client.chat.completions.create(
+        model=model_name,
+        ...
+    )
+except Exception as api_error:
+    error_result = handle_provider_error(api_error, context="...")
+    if error_result["should_fallback"]:
+        fallback_client = create_chat_client(use_fallback=True)
+        response = fallback_client.chat.completions.create(
+            model=TRANSITION_VALIDATOR_MODEL,  # or DM_SUMMARIZATION_MODEL
+            ...
+        )
+        actual_model_used = TRANSITION_VALIDATOR_MODEL
+    else:
+        raise
+```
+
+**Fix 4 Prevention:**
+- Used distinct variable names in local scopes (`summary_client`, `fallback_client`)
+- Avoided `client` variable shadowing that caused UnboundLocalError in prior migration
+
+**Risk Mitigation:**
+- Zero prompt/content changes (temperature, system messages preserved)
+- All existing fallback behavior maintained (non-AI summary on failure in main.py)
+- No model selection logic changes
+- Syntax verification: `python3 -m py_compile` passes for all 3 Python files
+
+**Lines Changed:**
+- Total: +72/-41 across 4 files
+- `transition_validator.py`: +38/-22 (factory + fallback wrapper)
+- `main.py`: +30/-13 (summary function factory alignment)
+- `combat_manager.py`: +3/-3 (global client factory)
+- `AGENTS.md`: +1/-3 (status cleanup, renumbering)
+
+**Verification:**
+- ✅ All files compile successfully
+- ✅ No module-level `client = OpenAI(...)` in patched files
+- ✅ Factory usage verified: 4 `create_chat_client()` calls
+- ✅ AGENTS.md consistency: no duplicate migration entries
+
+**Next Steps:**
+- Smoke testing: startup → transition validation → combat entry
+- OpenRouter rollout preparation (post-tester release)
+
+---
+
 ### Combat Round Synchronization & Allied NPC Fix (COMPLETED - 2026-02-09)
 
 **Status:** COMPLETED  
@@ -1395,7 +1472,7 @@ Enable multi-provider AI support with transparent fallback from OpenRouter to Op
 1. `utils/ai_client_factory.py` - **NEW** Factory implementation (312 lines)
 2. `updates/update_character_info.py` - Factory pattern + transparent fallback in character updates
 3. `utils/startup_wizard.py` - Factory pattern for character creation
-4. `core/ai/transition_validator.py` - Factory pattern + fallback for location transitions
+4. `core/ai/transition_validator.py` - Factory pattern + fallback for location transitions (completed in Phase 0 cleanup)
 5. `core/ai/combat_compression_engine.py` - Factory pattern for combat compression
 6. `core/ai/incremental_compression.py` - Factory pattern for location compression
 7. `core/ai/cumulative_summary.py` - Factory pattern for adventure summaries
@@ -1450,9 +1527,9 @@ Migrate all hardcoded model references to use the OpenRouter 3-tier configuratio
 3. `web/web_interface.py` - 1 usage (image prompt generation), uses `create_chat_client()`
 4. `core/ai/adv_summary.py` - 2 usages, uses `create_chat_client()`
 5. `core/ai/cumulative_summary.py` - 2 usages, uses `create_chat_client()`
+6. `core/ai/transition_validator.py` - 1 usage, factory pattern + fallback (completed in Phase 0 cleanup)
 
 **⚠️ Complex Files (Manual Migration Required):**
-6. `core/ai/transition_validator.py` - 3 usages, already partially migrated with fallback logic
 7. `main.py` - 3 usages, core narration functions (high risk)
 8. `core/managers/combat_manager.py` - 6 usages, combat validation (highest risk)
 

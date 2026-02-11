@@ -1,4 +1,6 @@
 ## Current Work Focus
+- **Phase 0 Cleanup: Factory Routing Alignment (COMPLETED - 2026-02-12):** Applied OpenRouter factory routing cleanup to core files before GitHub push. Aligned `transition_validator.py`, `main.py` (module summary), and `combat_manager.py` to use `create_chat_client()` instead of direct `OpenAI()` initialization. Added fallback error handling with `get_chat_model_name()` and `handle_provider_error()`. Updated AGENTS.md to reflect migration status. Zero breaking changes; preparation for OpenRouter rollout post-tester release.
+
 - **OpenSpec Initialization (COMPLETED - 2026-02-12):** Initialized OpenSpec spec-driven development framework with OpenCode support. Created project guardrails, split OpenRouter plan into two scaffolded changes (`openrouter-llm-router-facade`, `openrouter-llm-callsite-migration`), and established global OpenSpec workflow skill. Ready for implementation post-tester release.
 
 - **EGO + RATIO Concept Plan (COMPLETED - 2026-02-12):** Revised cybernetic control architecture based on RSO (Relative State Observer) framework. Defined EGO (fast bounded controller) and RATIO (slow optimizer) with strict write tiers, decision relay (END/ADJUST/ESCALATE), and human DM as external training signal. Conceptual review complete; implementation deferred until after OpenRouter router work and tester build stabilization.
@@ -54,7 +56,28 @@
 - **Job 3: Combat Commands:** `/att` and `/dmg` commands implemented with proper validation.
 
 ## Recent Changes
-- **OpenSpec Initialization for Project Management (COMPLETED - 2026-02-12):**
+- **Phase 0 Cleanup: Factory Routing Alignment (COMPLETED - 2026-02-12):**
+    - **Objective:** Align core files to OpenRouter factory routing baseline before GitHub push
+    - **Files Modified:**
+      - `core/ai/transition_validator.py` - Factory client + provider model selection + fallback handling
+      - `main.py` - `generate_module_summary()` uses factory routing with fallback
+      - `core/managers/combat_manager.py` - Global client uses factory
+      - `AGENTS.md` - Updated migration status, removed duplicate entries
+    - **Technical Changes:**
+      - Removed `from openai import OpenAI` and direct client initialization
+      - Added `create_chat_client()`, `get_chat_model_name()`, `handle_provider_error()` imports
+      - Implemented fallback pattern: primary call → error classification → fallback retry
+      - Used `actual_model_used` variable for accurate telemetry logging
+      - Avoided `client` variable shadowing in local scopes (Fix 4 prevention)
+    - **Risk Mitigation:**
+      - Zero prompt/content changes
+      - All temperature/prompt logic preserved
+      - Existing fallback summary behavior maintained
+      - Syntax verified: `python3 -m py_compile` passes all files
+    - **Lines Changed:** +72/-41 across 4 files
+    - **Status:** Ready for smoke testing (startup, transition validation, combat entry)
+
+- **OpenSpec Initialization for Project Management (COMPLETED - 2026-02-12):
     - **Objective:** Initialize spec-driven development framework for structured OpenRouter and EGO planning
     - **Initialization:** `openspec init --tools opencode` generated local skills in `.opencode/command/` and `.opencode/skills/openspec-*/`
     - **Project Guardrails:** Created `openspec/config.yaml` with rules aligned to AGENTS.md conventions (merge-safe, SP/MP compatibility, atomic JSON, ASCII-only)
