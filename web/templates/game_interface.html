@@ -6325,12 +6325,27 @@
             container.innerHTML = html;
 
             // Load portrait with caching
+            // TABLETOP MODE: Promoted NPCs may rely on module NPC media when no static portrait exists.
             const portraitUrl = `/static/portraits/${normalizedName}.png`;
+            const npcPortraitJpg = `/media/npcs/${normalizedName}.jpg`;
+            const npcPortraitPng = `/media/npcs/${normalizedName}.png`;
             const portraitImg = document.getElementById('char-portrait-img');
             if (portraitImg) {
                 tryLoadImage(portraitUrl, 
                     () => { portraitImg.src = portraitUrl; },
-                    () => { portraitImg.src = '/static/icons/default_portrait.png'; }
+                    () => {
+                        tryLoadImage(
+                            npcPortraitJpg,
+                            () => { portraitImg.src = npcPortraitJpg; },
+                            () => {
+                                tryLoadImage(
+                                    npcPortraitPng,
+                                    () => { portraitImg.src = npcPortraitPng; },
+                                    () => { portraitImg.src = '/static/icons/default_portrait.png'; }
+                                );
+                            }
+                        );
+                    }
                 );
             }
             
@@ -6789,6 +6804,10 @@
                     // Clean the character name for the filename
                     const cleanName = combatant.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
                     const portraitUrl = `/static/portraits/${cleanName}.png`;
+                    const npcThumbUrl = `/media/npcs/${cleanName}_thumb.jpg`;
+                    const npcVideoUrl = `/media/npcs/${cleanName}_video.mp4`;
+                    const npcImageJpg = `/media/npcs/${cleanName}.jpg`;
+                    const npcImagePng = `/media/npcs/${cleanName}.png`;
 
                     item.style.backgroundSize = 'cover';
                     item.style.backgroundPosition = 'center';
@@ -6797,11 +6816,34 @@
 
                     tryLoadImage(portraitUrl, 
                         () => { item.style.backgroundImage = `url('${portraitUrl}')`; },
-                        () => { item.style.backgroundImage = ''; }
+                        () => {
+                            tryLoadImage(
+                                npcThumbUrl,
+                                () => { item.style.backgroundImage = `url('${npcThumbUrl}')`; },
+                                () => { item.style.backgroundImage = ''; }
+                            );
+                        }
                     );
 
                     // Add stats tooltip on hover
                     attachTooltipListeners(item);
+
+                    // TABLETOP MODE: Keep module NPC video/image media available after NPC -> PC promotion.
+                    item.addEventListener('click', function() {
+                        const video = document.createElement('video');
+                        video.src = npcVideoUrl;
+                        video.onloadedmetadata = () => showVideoPopup(item, npcVideoUrl);
+                        video.onerror = () => {
+                            const imgJpg = new Image();
+                            imgJpg.src = npcImageJpg;
+                            imgJpg.onload = () => showImagePopup(item, imgJpg.src);
+                            imgJpg.onerror = () => {
+                                const imgPng = new Image();
+                                imgPng.src = npcImagePng;
+                                imgPng.onload = () => showImagePopup(item, imgPng.src);
+                            };
+                        };
+                    });
                 }
                 
                 // Add special handling for NPCs
@@ -6974,9 +7016,23 @@
                     }
                     
                     const cleanName = member.name.toLowerCase().replace(/\s+/g, '_').replace(/'/g, "");
-                    const basePath = member.type === 'player' ? `/static/portraits/${cleanName}` : `/media/npcs/${cleanName}`;
-                    const thumbUrl = member.type === 'player' ? `${basePath}.png` : `${basePath}_thumb.jpg`;
-                    const videoUrl = `${basePath}_video.mp4`;
+                    const playerPortraitUrl = `/static/portraits/${cleanName}.png`;
+                    const npcBasePath = `/media/npcs/${cleanName}`;
+                    const videoCandidates = member.type === 'player'
+                        ? [`${npcBasePath}_video.mp4`]
+                        : [`${npcBasePath}_video.mp4`];
+                    const imageCandidates = member.type === 'player'
+                        ? [
+                            playerPortraitUrl,
+                            `${npcBasePath}_thumb.jpg`,
+                            `${npcBasePath}.jpg`,
+                            `${npcBasePath}.png`,
+                        ]
+                        : [
+                            `${npcBasePath}_thumb.jpg`,
+                            `${npcBasePath}.jpg`,
+                            `${npcBasePath}.png`,
+                        ];
 
                     item.style.backgroundSize = 'cover';
                     item.style.backgroundPosition = 'center';
@@ -6984,10 +7040,22 @@
                     item.style.textShadow = '1px 1px 2px black, -1px -1px 2px black';
                     item.style.cursor = 'pointer';
 
-                    tryLoadImage(thumbUrl, 
-                        () => { item.style.backgroundImage = `url('${thumbUrl}')`; },
-                        () => { item.style.backgroundImage = ''; }
-                    );
+                    const applyFirstAvailableImage = (urls, onDone) => {
+                        if (!urls.length) {
+                            onDone(false, '');
+                            return;
+                        }
+                        const [first, ...rest] = urls;
+                        tryLoadImage(
+                            first,
+                            () => onDone(true, first),
+                            () => applyFirstAvailableImage(rest, onDone)
+                        );
+                    };
+
+                    applyFirstAvailableImage(imageCandidates, (hasImage, selectedImage) => {
+                        item.style.backgroundImage = hasImage ? `url('${selectedImage}')` : '';
+                    });
 
                     const textSpan = document.createElement('span');
                     textSpan.classList.add('initiative-item-text');
@@ -7013,21 +7081,23 @@
                     item.addEventListener('click', function() {
                         // On click, check for video first. If it exists, show it.
                         // If not, fall back to showing the full-size image.
-                        const video = document.createElement('video');
-                        video.src = videoUrl;
-                        video.onloadedmetadata = () => showVideoPopup(item, videoUrl);
-                        video.onerror = () => {
-                            // Video failed, try JPG image
-                            const imgJpg = new Image();
-                            imgJpg.src = basePath + '.jpg';
-                            imgJpg.onload = () => showImagePopup(item, imgJpg.src);
-                            imgJpg.onerror = () => {
-                                // JPG failed, try PNG image
-                                const imgPng = new Image();
-                                imgPng.src = basePath + '.png';
-                                imgPng.onload = () => showImagePopup(item, imgPng.src);
-                            };
+                        const tryVideoAt = (urls) => {
+                            if (!urls.length) {
+                                applyFirstAvailableImage(imageCandidates, (hasImage, selectedImage) => {
+                                    if (hasImage) {
+                                        showImagePopup(item, selectedImage);
+                                    }
+                                });
+                                return;
+                            }
+                            const [firstVideo, ...restVideos] = urls;
+                            const video = document.createElement('video');
+                            video.src = firstVideo;
+                            video.onloadedmetadata = () => showVideoPopup(item, firstVideo);
+                            video.onerror = () => tryVideoAt(restVideos);
                         };
+
+                        tryVideoAt(videoCandidates);
                     });
 
                     partyContainer.appendChild(item);
