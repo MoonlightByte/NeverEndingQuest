@@ -2240,3 +2240,123 @@ Ready for implementation when:
 2. OpenRouter router changes completed and validated
 3. Baseline divergence metrics captured
 4. Cost and time budgets defined for canary sessions
+
+### Memory Foundation Retrieval + Backfill (COMPLETED - 2026-02-13)
+
+**Status:** COMPLETED  
+**Priority:** High (Narrative Continuity Foundation)  
+**Effort:** Medium (~3-4 hours)
+
+**Objective:**
+Implement Stage 1 memory foundation with deterministic retrieval, idempotent ingest, read-only inspection route, and practical backfill tooling for existing campaign histories.
+
+**Core Implementation:**
+1. **Memory package scaffold (`core/memory/`):**
+   - `memory_db.py`: SQLite bootstrap + idempotent migrations (`schema_migrations`)
+   - `memory_retrieval.py`: deterministic ranking queries
+   - `memory_ingest.py`: journal ingest + file ingest + history backfill
+   - `__init__.py`: exported service surface
+
+2. **Schema + readiness tables (`memory_db.py`):**
+   - Core: `entities`, `entity_aliases`, `entity_roles`, `journal_entries`, `memory_events`, `memory_links`, `companion_memory_state`, `retrieval_snippets`
+   - EGO/RATIO readiness (additive/optional): `memory_policy_profiles`, `memory_policy_assignments`, `retrieval_audit_log`, `controller_change_log`, `memory_event_provenance`
+
+3. **Deterministic retrieval (`memory_retrieval.py`):**
+   - `get_entity_timeline()` with weighted SQL scoring (pinned/active-PC/importance/persistence/decay/reinforcement)
+   - `get_context_memories()` scene-aware pack retrieval
+   - `get_retirement_return_memories()` milestone retrieval
+   - Guardrails: limit clamping + deterministic tie-break (`event_ts`, `event_id`)
+   - Optional audit logging (best-effort no-op if table absent)
+
+4. **Ingestion + backfill (`memory_ingest.py` + script):**
+   - `ingest_journal_entry()` checksum idempotency (`source_type`, `checksum`)
+   - `ingest_journal_file()` malformed-entry tolerance + deferred-link metadata
+   - `backfill_memory_db_from_histories()` pulls from:
+     - `journal.json`
+     - `modules/conversation_history/conversation_history.json`
+     - `modules/conversation_history/combat_conversation_history.json`
+   - Auto-upserts party entities from `party_tracker.json` and links events by known names
+   - New script: `scripts/backfill_memory_db.py`
+
+5. **Backfill utility flags (NEW):**
+   - `--dry-run`: runs against temp DB copy and discards writes
+   - `--include-system`: includes `role=system` history messages in backfill source set
+
+6. **Web route integration (`web/routes/memory_routes.py` + `web/web_interface.py`):**
+   - `GET /api/memory/entity/<entity_id>?limit=25`
+   - Startup memory DB init hook is guarded and non-blocking
+   - Fallback behavior returns safe empty timeline when DB unavailable
+
+**Backfill Results (2026-02-13):**
+- Default (no system messages):
+  - `journal`: 40
+  - `conversation_history`: 48
+  - `combat_history`: 23
+  - `events_created`: 111
+  - `links_created`: 478
+- Include-system dry-run:
+  - `conversation_history`: 65
+  - `combat_history`: 34
+  - `events_created`: 139
+  - `links_created`: 534
+
+**Validation:**
+- `python3 -m py_compile core/memory/memory_db.py core/memory/memory_retrieval.py core/memory/memory_ingest.py core/memory/__init__.py web/routes/memory_routes.py` -> PASS
+- `python3 scripts/test_memory_retrieval_plan.py` -> PASS (9 tests)
+- `.venv/bin/python scripts/test_memory_foundation.py` -> PASS (5 tests)
+
+**Files Added:**
+- `core/memory/memory_db.py`
+- `core/memory/memory_retrieval.py`
+- `core/memory/memory_ingest.py`
+- `core/memory/__init__.py`
+- `web/routes/memory_routes.py`
+- `scripts/backfill_memory_db.py`
+- `scripts/test_memory_foundation.py`
+
+**Files Modified:**
+- `web/web_interface.py`
+- `plans/memory.md`
+- `openspec/changes/memory-schema-retrieval-foundation/*`
+
+### Memory Backfill Source Selection + DB Portability Tools (COMPLETED - 2026-02-13)
+
+**Status:** COMPLETED  
+**Priority:** High (Archive/Restore Readiness)  
+**Effort:** Small-Medium (~1-2 hours)
+
+**Objective:**
+Add operator-safe source selection and portability tooling so memory DB workflows can support future campaign archive/restore operations without coupling to gameplay runtime.
+
+**Implementation:**
+1. **Selective source backfill (`scripts/backfill_memory_db.py` + `core/memory/memory_ingest.py`):**
+   - Added `--sources` CSV selector with allowed values: `journal`, `conversation`, `combat`
+   - Invalid values fail fast with clear error output
+   - Backfill orchestration now gates source channels deterministically
+
+2. **Portability module (`core/memory/memory_portability.py`):**
+   - `export_memory_db_package()`
+   - `validate_memory_package()`
+   - `import_memory_db_package()`
+   - Export manifest includes schema version, timestamp, row counts, applied migrations, campaign metadata, and DB SHA-256 integrity hash
+
+3. **Safe import defaults:**
+   - Import blocks overwrite unless explicit `--overwrite`
+   - `--dry-run` performs full validation with zero writes
+
+4. **Tooling integration:**
+   - `scripts/backfill_memory_db.py` now supports backfill, export, and import workflows
+   - `core/memory/__init__.py` exports portability helpers
+
+5. **Tests:**
+   - New `scripts/test_memory_backfill_portability.py`
+   - Covers selector parsing/validation, selective ingest idempotency, export/import safety defaults, manifest compatibility checks
+
+**Validation:**
+- `python3 -m py_compile core/memory/memory_ingest.py core/memory/memory_portability.py core/memory/__init__.py scripts/backfill_memory_db.py scripts/test_memory_backfill_portability.py` -> PASS
+- `python3 scripts/test_memory_backfill_portability.py` -> PASS
+- `python3 scripts/backfill_memory_db.py --sources journal,foo` -> expected error (invalid selector)
+
+**OpenSpec:**
+- Created and applied change: `memory-backfill-portability-tools`
+- Archived to: `openspec/changes/archive/2026-02-13-memory-backfill-portability-tools`

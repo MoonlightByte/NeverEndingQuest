@@ -165,3 +165,53 @@ The system maintains two formats for LLM prompts to support both development and
   - `completeness_error`
   - `success`
 - This keeps UI behavior flexible while centralizing persistence correctness.
+
+### 11. Two-Plane Memory Retrieval Pattern (2026-02-13)
+- Memory architecture now separates:
+  - **God mode history plane**: persistent, additive record in SQLite (`data/memory.db`)
+  - **Prompt retrieval plane**: deterministic bounded top-K query outputs
+- Core modules:
+  - `core/memory/memory_db.py` (migrations and schema)
+  - `core/memory/memory_retrieval.py` (ranking retrieval contracts)
+  - `core/memory/memory_ingest.py` (idempotent ingest + backfill)
+- Retrieval ranking combines pinned state, active-PC relevance, importance, persistence class, decay bucket, and reinforcement.
+- Guardrails:
+  - limit clamping
+  - deterministic tie-break ordering
+  - optional audit logging that is best-effort and non-blocking
+
+### 12. Archive-Ready Backfill Pattern (2026-02-13)
+- Backfill utility: `scripts/backfill_memory_db.py`
+- Sources:
+  - `journal.json`
+  - `modules/conversation_history/conversation_history.json`
+  - `modules/conversation_history/combat_conversation_history.json`
+- Identity/linking behavior:
+  - Upsert known party entities from `party_tracker.json`
+  - Link events by known entity-name matches
+  - Deferred-link fallback when confidence is low/no match
+- Operational flags:
+  - `--dry-run` for non-destructive preview on temp DB copy
+  - `--include-system` to include system-channel history content
+
+### 13. Memory Portability Package Pattern (2026-02-13)
+- Portability module: `core/memory/memory_portability.py`
+- Exposes explicit operators for campaign continuity workflows:
+  - `export_memory_db_package()`
+  - `validate_memory_package()`
+  - `import_memory_db_package()`
+- Export package shape:
+  - `memory.db` DB artifact copy
+  - `manifest.json` with schema version, row counts, migration set, campaign metadata, SHA-256 hash
+- Import safety model:
+  - validate-first (manifest/schema/hash)
+  - non-destructive by default (no overwrite unless explicit)
+  - `dry_run` mode for zero-write validation
+
+### 14. Selective Source Ingestion Pattern (2026-02-13)
+- Backfill supports deterministic source gating via `--sources`:
+  - `journal`
+  - `conversation`
+  - `combat`
+- Invalid selector values fail fast with clear allowed-value output.
+- Source gating preserves idempotency guarantees because ingest dedupe remains keyed on source/checksum.

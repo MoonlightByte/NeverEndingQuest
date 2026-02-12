@@ -1,4 +1,8 @@
 ## Current Work Focus
+- **Memory Backfill Source Selection + DB Portability Tools (COMPLETED - 2026-02-13):** Follow-up tooling change is complete. Backfill now supports explicit source gating (`--sources journal,conversation,combat`) and memory DB portability workflows (export package, validate package, import package with safe non-destructive defaults). This establishes practical archive/restore groundwork while keeping runtime gameplay paths unchanged.
+
+- **Memory Foundation Retrieval + Backfill (COMPLETED - 2026-02-13):** Stage 1 memory foundation is implemented and validated. SQLite memory DB (`data/memory.db`) now supports deterministic timeline retrieval, context-pack retrieval, retirement/return retrieval, idempotent journal ingest, and backfill from current campaign history files. Read-only inspection endpoint is live (`GET /api/memory/entity/<entity_id>`), startup init is guarded/non-blocking, and backfill utility now supports `--dry-run` plus `--include-system` for archive-readiness workflows.
+
 - **Tabletop Character Lifecycle and Creation Hardening (COMPLETED - 2026-02-12):** PC creation and onboarding stack is now unified around shared validation/audit gates, with readiness repair and NPC -> PC promotion lifecycle in place. Immediate focus shifts to play-session validation and retirement workflow planning (future change).
 
 - **Initiative Phase 1 Two-Group Start Gate (COMPLETED - 2026-02-12):** Implemented deterministic combat startup with facilitator `/init <1-20>` gating. Encounter files now persist Phase 1 initiative state (`initiativeMode`, `initiativeRolls`, `initiativeWinner`, `roundStartsWith`, `awaitingPcGroupRoll`), combat loop blocks until valid `/init`, ties resolve to `dmGroup`, and DM-start rounds trigger immediate enemy batch without changing `/end` semantics. Added dynamic `=== INITIATIVE STATE ===` prompt section and aligned compressed sim/validation prompt wording to accept initiative-driven ENEMY_PHASE entry.
@@ -16,6 +20,37 @@
 - **TTS Auto-Play Fix & Queue Management (COMPLETED - 2026-02-06):** Implemented comprehensive TTS management system with queue control, message filtering, and [skipTTS] tagging. Fixed cacophony on page reload, parallel playback, and mechanical message narration. Only DM narration speaks now; combat results and system commands display but don't break immersion.
 
 ## Recent Changes
+- **Memory Backfill Source Selection + DB Portability Tools (COMPLETED - 2026-02-13):**
+    - Added `--sources` CSV parsing and strict validation in `scripts/backfill_memory_db.py`.
+    - Added source-gating support in `backfill_memory_db_from_histories(...)` (journal/conversation/combat channel selection).
+    - Added new portability module `core/memory/memory_portability.py` with export/validate/import contracts.
+    - Export writes package DB copy + manifest metadata and integrity hash.
+    - Import validates manifest/schema/hash and defaults to non-destructive behavior unless `--overwrite` is explicitly provided.
+    - Import supports `--dry-run` for compatibility/integrity checks with zero writes.
+    - Added tests in `scripts/test_memory_backfill_portability.py`; all checks passed.
+    - OpenSpec change `memory-backfill-portability-tools` was completed and archived.
+
+- **Memory Foundation Retrieval + Backfill (COMPLETED - 2026-02-13):**
+    - Added `core/memory/memory_db.py` with idempotent migrations and additive readiness tables (`memory_policy_profiles`, `memory_policy_assignments`, `retrieval_audit_log`, `controller_change_log`, `memory_event_provenance`).
+    - Added deterministic retrieval module `core/memory/memory_retrieval.py` with:
+      - `get_entity_timeline(...)`
+      - `get_context_memories(...)`
+      - `get_retirement_return_memories(...)`
+      - retrieval guardrails and optional best-effort audit logging.
+    - Added ingestion/backfill module `core/memory/memory_ingest.py` with:
+      - `ingest_journal_entry(...)` (source/checksum dedupe)
+      - `ingest_journal_file(...)` (malformed-entry tolerant)
+      - `backfill_memory_db_from_histories(...)` (journal + narrative history + combat history).
+    - Added route `web/routes/memory_routes.py` and route registration/startup DB init hook in `web/web_interface.py`.
+    - Added CLI utility `scripts/backfill_memory_db.py` with `--dry-run` and `--include-system` flags.
+    - Backfill metrics:
+      - Default: journal=40, conversation=48, combat=23, events=111, links=478
+      - Include-system dry-run: conversation=65, combat=34, events=139, links=534
+    - Validation:
+      - `python3 -m py_compile core/memory/memory_db.py core/memory/memory_retrieval.py core/memory/memory_ingest.py core/memory/__init__.py web/routes/memory_routes.py` -> PASS
+      - `python3 scripts/test_memory_retrieval_plan.py` -> PASS
+      - `.venv/bin/python scripts/test_memory_foundation.py` -> PASS
+
 - **NPC -> PC Role Lifecycle (COMPLETED - 2026-02-12):**
     - Add Existing now supports `players`, `npc_companions`, and `all` source modes with explicit `Promote` action for NPC companions.
     - Added promotion endpoints in `web/routes/tabletop_party_routes.py`:

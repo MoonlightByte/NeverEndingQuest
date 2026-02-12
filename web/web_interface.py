@@ -100,7 +100,9 @@ from web.routes.character_sheet_routes import (
     readiness_repair_apply_impl,
     readiness_repair_preview_impl,
 )
+from web.routes.memory_routes import register_memory_routes
 from web.routes.tabletop_party_routes import register_tabletop_party_routes
+from core.memory.memory_db import init_memory_db, DEFAULT_MEMORY_DB_PATH
 
 # Import toolkit components for API support
 try:
@@ -152,6 +154,18 @@ app = Flask(__name__,
             static_folder=static_dir)
 app.config['SECRET_KEY'] = 'dungeon-master-secret-key'
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+# TABLETOP MODE: Initialize memory DB foundation as optional startup hook.
+try:
+    if init_memory_db(DEFAULT_MEMORY_DB_PATH):
+        info(f"MEMORY_DB: Ready at {DEFAULT_MEMORY_DB_PATH}", category="web_interface")
+    else:
+        warning("MEMORY_DB: Initialization failed, using legacy JSON paths", category="web_interface")
+except Exception as memory_init_error:
+    warning(
+        f"MEMORY_DB: Startup init exception, continuing without DB: {memory_init_error}",
+        category="web_interface",
+    )
 
 # Add static route for graphic_packs to improve thumbnail loading performance
 @app.route('/graphic_packs/<path:filename>')
@@ -1884,6 +1898,8 @@ register_browser_settings_routes(
     set_preferred_browser_setting,
     ALLOWED_BROWSER_PREFERENCES,
 )
+# TABLETOP MODE: Read-only memory timeline inspection route.
+register_memory_routes(app)
 
 @app.route('/api/toolkit/modules')
 def get_available_modules_api():

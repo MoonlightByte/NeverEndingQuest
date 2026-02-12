@@ -10,6 +10,40 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **Memory Backfill Source Selection + DB Portability Tools (COMPLETED - 2026-02-13):**
+  - Added `--sources` selector to `scripts/backfill_memory_db.py` with strict allowed values: `journal`, `conversation`, `combat`.
+  - Added portability module `core/memory/memory_portability.py` with:
+    - `export_memory_db_package()`
+    - `validate_memory_package()`
+    - `import_memory_db_package()`
+  - Export now creates DB package + manifest (schema version, row counts, migrations, campaign metadata, SHA-256 hash).
+  - Import defaults are non-destructive (requires explicit `--overwrite` to replace existing target DB).
+  - Import supports `--dry-run` validation-only mode.
+  - Added test suite `scripts/test_memory_backfill_portability.py` and passed validation checks.
+  - OpenSpec change `memory-backfill-portability-tools` completed and archived.
+
+- **Memory Foundation Retrieval + Backfill (COMPLETED - 2026-02-13):**
+  - Added canonical memory package in `core/memory/`:
+    - `memory_db.py` (idempotent SQLite migrations + additive readiness tables)
+    - `memory_retrieval.py` (deterministic retrieval for timeline/context/retirement-return)
+    - `memory_ingest.py` (idempotent ingest + history backfill)
+    - `__init__.py` exports
+  - Added read-only API route: `GET /api/memory/entity/<entity_id>?limit=25` via `web/routes/memory_routes.py` and registration in `web/web_interface.py`.
+  - Added startup-safe memory init hook in `web/web_interface.py` (non-blocking fallback).
+  - Added backfill tool: `scripts/backfill_memory_db.py` with:
+    - `--dry-run` (temp DB copy, no persistent writes)
+    - `--include-system` (include role=system history messages)
+  - Backfill run result (default):
+    - journal=40, conversation=48, combat=23
+    - events_created=111, links_created=478
+  - Dry-run include-system result:
+    - conversation=65, combat=34
+    - events_created=139, links_created=534
+  - Validation:
+    - `python3 -m py_compile core/memory/memory_db.py core/memory/memory_retrieval.py core/memory/memory_ingest.py core/memory/__init__.py web/routes/memory_routes.py` -> PASS
+    - `python3 scripts/test_memory_retrieval_plan.py` -> PASS
+    - `.venv/bin/python scripts/test_memory_foundation.py` -> PASS
+
 - **NPC -> PC Role Lifecycle Promotion (COMPLETED - 2026-02-12):**
   - Added Add Existing source modes (`players`, `npc_companions`, `all`) and promote action flow.
   - Added promotion preview/apply endpoints with explicit confirmation and no chat side effects.

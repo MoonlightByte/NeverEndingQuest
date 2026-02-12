@@ -334,9 +334,8 @@ modules/*/encounters/
 modules/campaign_archives/
 modules/campaign_summaries/
 
-# Player-generated modules - only Keep_of_Doom and The_Thornwood_Watch are core
+# Player-generated modules - only The_Thornwood_Watch is core
 modules/*/
-!modules/Keep_of_Doom/
 !modules/The_Thornwood_Watch/
 # Game state files - should NOT be tracked
 # modules/campaign.json
@@ -434,10 +433,4 @@ Docs/staff_guide.md
 # Personal documentation
 Docs/
 data/bestiary/npc_compendium.json
-modules/Keep_of_Doom/player_quests_Keep_of_Doom.json
-modules/Keep_of_Doom/images/image_metadata.json
-data/bestiary/npc_compendium.json
-data/bestiary/npc_compendium.json
-modules/Keep_of_Doom/images/image_metadata.json
-modules/Keep_of_Doom/images/image_metadata.json
 session-ses_3d04.md
