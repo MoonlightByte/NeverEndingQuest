@@ -187,7 +187,7 @@
   },
   enemy_phase: {
     name: "ENEMY_PHASE",
-    trigger: "Human DM issues /end command after all PCs have acted",
+    trigger: "Human DM issues /end command after all PCs have acted, OR initiative state sets dmGroup to start the round at combat start",
     meaning: "All enemies and NPCs resolve their turns in batch; all PCs are FORBIDDEN",
     behavior: "Process ALL enemies/NPCs in initiative order in ONE response, then STOP"
   },

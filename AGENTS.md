@@ -1012,6 +1012,53 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Initiative Phase 1 Two-Group Start Gate (COMPLETED - 2026-02-12)
+
+**Status:** COMPLETED  
+**Priority:** High (Combat Flow)  
+**Effort:** Small (~1-2 hours)
+
+**Objective:**
+Implement Phase 1 two-group initiative startup so combat opening phase is deterministic (`dmGroup` vs `pcGroup`) without changing the existing `/end` enemy-batch flow.
+
+**Implementation:**
+1. **Encounter startup state** (`core/ai/action_handler.py`):
+   - Added Phase 1 fields on encounter creation:
+     - `initiativeMode: "two_group_phase1"`
+     - `initiativeRolls: {"dmGroup": <d20>, "pcGroup": null}`
+     - `initiativeWinner: null`
+     - `roundStartsWith: null`
+     - `awaitingPcGroupRoll: true`
+   - DM group pre-roll now generated in Python (`random.randint(1, 20)`).
+   - Preserved compatibility mirror in `party_tracker.json -> worldConditions.combatInitiative`.
+
+2. **Combat gate + resolver** (`core/managers/combat_manager.py`):
+   - Added hard gate while `awaitingPcGroupRoll=true`.
+   - Only accepts `/init <1-20>`; all other input blocked with usage prompt.
+   - On valid `/init`, persists `pcGroup` roll, computes winner, sets `roundStartsWith`, clears waiting flag.
+   - Tie rule enforced: `dmGroup` wins ties.
+   - If `dmGroup` wins, injects explicit enemy-phase trigger and immediately runs opening enemy batch.
+   - Added help command entry: `/init [1-20] - Set PC group initiative roll`.
+
+3. **Prompt/runtime phase consistency** (`core/managers/combat_manager.py`):
+   - Added dynamic `=== INITIATIVE STATE ===` block to combat prompt context:
+     - `MODE`, `DM_GROUP_ROLL`, `PC_GROUP_ROLL`, `WINNER`, `ROUND_STARTS_WITH`, `CURRENT_PHASE`
+   - Round advancement now applies persisted `roundStartsWith` to deterministically set each new round opener.
+
+4. **Prompt wording alignment (minimal edits):**
+   - `prompts/combat/combat_sim_prompt_multipc_compressed.txt`: ENEMY_PHASE can start via `/end` OR initiative-driven DM start.
+   - `prompts/combat/combat_validation_prompt_multipc_compressed.txt`: validation rules now accept initiative-driven ENEMY_PHASE start and matching routing.
+
+**Verification:**
+- `python3 -m py_compile core/ai/action_handler.py core/managers/combat_manager.py`
+- `python3 scripts/test_multi_pc_combat.py` -> PASS (40 tests, 0 failures, 0 errors)
+
+**Files Modified:**
+- `core/ai/action_handler.py`
+- `core/managers/combat_manager.py`
+- `prompts/combat/combat_sim_prompt_multipc_compressed.txt`
+- `prompts/combat/combat_validation_prompt_multipc_compressed.txt`
+
 ### Web Interface TT Merge Refactor Completion (COMPLETED - 2026-02-12)
 
 **Status:** COMPLETED  

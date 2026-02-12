@@ -1,4 +1,6 @@
 ## Current Work Focus
+- **Initiative Phase 1 Two-Group Start Gate (COMPLETED - 2026-02-12):** Implemented deterministic combat startup with facilitator `/init <1-20>` gating. Encounter files now persist Phase 1 initiative state (`initiativeMode`, `initiativeRolls`, `initiativeWinner`, `roundStartsWith`, `awaitingPcGroupRoll`), combat loop blocks until valid `/init`, ties resolve to `dmGroup`, and DM-start rounds trigger immediate enemy batch without changing `/end` semantics. Added dynamic `=== INITIATIVE STATE ===` prompt section and aligned compressed sim/validation prompt wording to accept initiative-driven ENEMY_PHASE entry.
+
 - **Web Interface TT Merge Refactor Completion (COMPLETED - 2026-02-12):** Completed increments 7-9 from `plans/web_interface_tt_merge_refactor.md`. Host socket handlers in `web/web_interface.py` are now thin wrappers for plot/storage extraction, WebOutputCapture debug filtering is deduped with shared helper markers, and live chat monitor wrapper lifecycle is extension-owned with idempotent setup and optional teardown. Commit: `094a938`.
 
 - **Phase 0 Cleanup: Factory Routing Alignment (COMPLETED - 2026-02-12):** Applied OpenRouter factory routing cleanup to core files before GitHub push. Aligned `transition_validator.py`, `main.py` (module summary), and `combat_manager.py` to use `create_chat_client()` instead of direct `OpenAI()` initialization. Added fallback error handling with `get_chat_model_name()` and `handle_provider_error()`. Updated AGENTS.md to reflect migration status. Zero breaking changes; preparation for OpenRouter rollout post-tester release.
@@ -12,6 +14,19 @@
 - **TTS Auto-Play Fix & Queue Management (COMPLETED - 2026-02-06):** Implemented comprehensive TTS management system with queue control, message filtering, and [skipTTS] tagging. Fixed cacophony on page reload, parallel playback, and mechanical message narration. Only DM narration speaks now; combat results and system commands display but don't break immersion.
 
 ## Recent Changes
+- **Initiative Phase 1 Two-Group Start Gate (COMPLETED - 2026-02-12):**
+    - `core/ai/action_handler.py`: Added encounter startup initialization for Phase 1 initiative state with DM pre-roll (`random.randint(1, 20)`) and compatibility mirror in `party_tracker.json`.
+    - `core/managers/combat_manager.py`: Added hard gate for `awaitingPcGroupRoll`; only `/init <1-20>` accepted before combat progression.
+    - On valid `/init`, stores `pcGroup` roll, computes winner, sets `roundStartsWith`, clears waiting flag, and starts PC or enemy phase accordingly.
+    - Tie behavior enforced: `dmGroup` wins ties.
+    - Added `=== INITIATIVE STATE ===` dynamic block to combat prompt context and deterministic round opener logic based on persisted `roundStartsWith`.
+    - Prompt updates:
+      - `prompts/combat/combat_sim_prompt_multipc_compressed.txt`: ENEMY_PHASE can begin via `/end` or initiative-driven DM start.
+      - `prompts/combat/combat_validation_prompt_multipc_compressed.txt`: Validation accepts initiative-driven ENEMY_PHASE start and routing.
+    - Validation:
+      - `python3 -m py_compile core/ai/action_handler.py core/managers/combat_manager.py` -> PASS
+      - `python3 scripts/test_multi_pc_combat.py` -> PASS (40 tests, 0 failures, 0 errors)
+
 - **Web Interface TT Merge Refactor Completion (COMPLETED - 2026-02-12):**
     - **Scope:** Increment 7 (plot/storage socket extraction), Increment 8 (WebOutputCapture filter dedupe), Increment 9 (emit wrapper lifecycle hardening)
     - **Architecture:** Preserved merge-safe host hooks; moved TABLETOP MODE implementation details into extension/route modules

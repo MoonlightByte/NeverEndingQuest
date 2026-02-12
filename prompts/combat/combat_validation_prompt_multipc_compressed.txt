@@ -49,6 +49,7 @@
 @FLOW_RULES={
   golden_rule_multipc: "Process ALL non-player turns in order before stopping at [>] marked PC; only stop at active PC's turn or for saves",
   batch_processing: "During Enemy Phase (no PCs pending), process ALL enemies in sequence",
+  initiative_dm_start_valid: "Valid: Enemy Phase may start at combat start (without /end) when initiative state indicates ROUND_STARTS_WITH=dmGroup or initiativeWinner=dmGroup.",
   turn_processing: "Immediately reflect results after each damaging action in narration",
   dead_skip: "Dead creatures are not targeted and do not act",
   exit_when: "If no enemy remains with status='alive' -> MUST call exit action immediately (includes defeated/fled)",
@@ -151,7 +152,7 @@
 
 @ROUTING_RULES={
   valid_enemy_turn_pc_damage: "Enemy turn that only damages PCs/NPCs: updateEncounter may be housekeeping-only; PC/NPC HP MUST be in updateCharacterInfo.",
-  batch_enemy_phase: "When multiple enemies act in batch (after /end), expect: ONE updateEncounter consolidating all enemy actions/state + SEPARATE updateCharacterInfo for EACH PC/NPC that took damage. Multiple updateCharacterInfo is correct here, not a consolidation violation."
+  batch_enemy_phase: "When multiple enemies act in batch (after /end OR initiative-driven DM start), expect: ONE updateEncounter consolidating all enemy actions/state + SEPARATE updateCharacterInfo for EACH PC/NPC that took damage. Multiple updateCharacterInfo is correct here, not a consolidation violation."
 }
 
 @ENTITY_TYPE_VALIDATION={

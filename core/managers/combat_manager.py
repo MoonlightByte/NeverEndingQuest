@@ -2799,10 +2799,94 @@ Player: {initial_prompt_text}"""
                    # for the immediate command processing below.
        
        cmd = clean_input.lower()
-       
-       # ----------------------------------------------------------------------
-       # TABLETOP MODE: Fast Lane Command Processing
-       # ----------------------------------------------------------------------
+
+       # TABLETOP MODE: Phase 1 initiative gate
+       # When awaiting facilitator PC group roll, block all combat progression
+       # until valid `/init <1-20>` is received.
+       if multi_pc_manager and encounter_data.get("awaitingPcGroupRoll", False):
+           if cmd.startswith("/init"):
+               parts = clean_input.split()
+               if len(parts) != 2:
+                   print("Dungeon Master: [SYSTEM] Initiative pending. Usage: /init <1-20>")
+                   import sys
+                   sys.stdout.flush()
+                   continue
+
+               try:
+                   pc_group_roll = int(parts[1])
+               except ValueError:
+                   print("Dungeon Master: [SYSTEM] Initiative pending. Usage: /init <1-20>")
+                   import sys
+                   sys.stdout.flush()
+                   continue
+
+               if pc_group_roll < 1 or pc_group_roll > 20:
+                   print("Dungeon Master: [SYSTEM] Initiative pending. Roll must be between 1 and 20.")
+                   import sys
+                   sys.stdout.flush()
+                   continue
+
+               initiative_rolls = encounter_data.get("initiativeRolls", {})
+               dm_group_roll = initiative_rolls.get("dmGroup", 1)
+
+               if pc_group_roll > dm_group_roll:
+                   winner = "pcGroup"
+                   multi_pc_manager.pc_phase_complete = False
+                   phase_label = "PC_PHASE"
+               else:
+                   # Tie rule: DM group wins ties in Phase 1
+                   winner = "dmGroup"
+                   multi_pc_manager.pc_phase_complete = True
+                   phase_label = "ENEMY_PHASE"
+
+               encounter_data["initiativeMode"] = "two_group_phase1"
+               encounter_data["initiativeRolls"] = {
+                   "dmGroup": dm_group_roll,
+                   "pcGroup": pc_group_roll
+               }
+               encounter_data["initiativeWinner"] = winner
+               encounter_data["roundStartsWith"] = winner
+               encounter_data["awaitingPcGroupRoll"] = False
+               save_json_file(json_file_path, encounter_data)
+
+               debug(
+                   f"INITIATIVE: Received /init {pc_group_roll}. "
+                   f"DM_GROUP={dm_group_roll}, winner={winner}, phase={phase_label}",
+                   category="combat_events"
+               )
+               print(
+                   f"Dungeon Master: [SYSTEM] Initiative locked. "
+                   f"DM_GROUP {dm_group_roll} vs PC_GROUP {pc_group_roll}. "
+                   f"Starting {phase_label}."
+               )
+               import sys
+               sys.stdout.flush()
+
+               if winner == "pcGroup":
+                   # Wait for the facilitator's first PC action.
+                   continue
+
+               # DM group starts: inject explicit enemy-phase trigger and fall through to AI.
+               pending_enemies = multi_pc_manager.get_remaining_enemies_for_round()
+               pending_list_str = ", ".join(pending_enemies) if pending_enemies else "all remaining enemies/NPCs"
+               system_msg = (
+                   "System: Initiative resolved. DM_GROUP won the opening phase. PROCEED TO ENEMY PHASE.\n"
+                   f"Turn Order: {pending_list_str}.\n"
+                   "INSTRUCTIONS: Generate actions for exactly these combatants in order. Once they have acted, STOP.\n"
+                   "If this ends the round, increment 'combat_round' in your JSON, but DO NOT narrate the start of the next round."
+               )
+               conversation_history.append({"role": "user", "content": system_msg})
+               save_json_file(conversation_history_file, conversation_history)
+               user_input_text = "Enemies turn."
+           else:
+               print("Dungeon Master: [SYSTEM] Initiative pending. Enter /init <1-20> to begin combat.")
+               import sys
+               sys.stdout.flush()
+               continue
+        
+        # ----------------------------------------------------------------------
+        # TABLETOP MODE: Fast Lane Command Processing
+        # ----------------------------------------------------------------------
        # Handle PC Focus Switch (from UI Tab Click)
        if cmd == "/switch_pc_focus":
            debug("SWITCH: Detected PC switch command, refreshing loop", category="combat_events")
@@ -2894,12 +2978,13 @@ Player: {initial_prompt_text}"""
            help_msg = (
                "Dungeon Master: [SYSTEM] Available Combat Commands:\n"
                "  /stats      - View full character stats\n"
-               "  /hp [val]   - Combat Heal (positive) or damage (negative)\n"
-               "  /att [target] [roll] [weapon] - Attack a target\n"
-               "  /dmg [val]  - Apply damage\n"
-               "  /end        - End PC combat turn\n"
-               "  /end_combat - Force end the current combat encounter\n"
-               "  /save       - Save current game state\n"
+                "  /hp [val]   - Combat Heal (positive) or damage (negative)\n"
+                "  /att [target] [roll] [weapon] - Attack a target\n"
+                "  /dmg [val]  - Apply damage\n"
+                "  /init [1-20] - Set PC group initiative roll\n"
+                "  /end        - End PC combat turn\n"
+                "  /end_combat - Force end the current combat encounter\n"
+                "  /save       - Save current game state\n"
                "  /quit       - Exit the game\n"
                "  /help       - Show this help message"
            )
@@ -3496,6 +3581,13 @@ All monsters have been defeated. Pass the exit action to end combat:
        multi_pc_context = ""
        if multi_pc_manager:
            active_pc = multi_pc_manager.current_pc_name
+
+           initiative_mode = encounter_data.get("initiativeMode", "two_group_phase1")
+           initiative_rolls = encounter_data.get("initiativeRolls", {})
+           dm_group_roll = initiative_rolls.get("dmGroup", "pending")
+           pc_group_roll = initiative_rolls.get("pcGroup", "pending")
+           initiative_winner = encounter_data.get("initiativeWinner", "pending")
+           round_starts_with = encounter_data.get("roundStartsWith", initiative_winner)
            
            # Get explicit phase state
            current_phase = multi_pc_manager.combat_phase
@@ -3503,6 +3595,14 @@ All monsters have been defeated. Pass the exit action to end combat:
            pending_str = ", ".join(pending_enemies) if pending_enemies else "None"
            
            multi_pc_context = f"""
+=== INITIATIVE STATE ===
+MODE: {initiative_mode}
+DM_GROUP_ROLL: {dm_group_roll}
+PC_GROUP_ROLL: {pc_group_roll}
+WINNER: {initiative_winner}
+ROUND_STARTS_WITH: {round_starts_with}
+CURRENT_PHASE: {current_phase}
+
 === COMBAT PHASE STATE ===
 CURRENT_PHASE: {current_phase}
 PC_PHASE_COMPLETE: {multi_pc_manager.pc_phase_complete}
@@ -3878,12 +3978,27 @@ Rules:
                    encounter_data['current_round'] = new_round
                    
                    # TABLETOP MODE: Sync round state to manager
-                   # This resets pc_phase_complete to False so the next round starts in PC Phase
                    if multi_pc_manager:
                        debug(f"STATE_CHANGE: Syncing MultiPCManager to Round {new_round}", category="combat_events")
                        multi_pc_manager.start_new_round()
                        # Ensure manager round matches (start_new_round increments, but let's be safe)
                        multi_pc_manager.current_round = new_round
+
+                       # TABLETOP MODE: Phase 1 deterministic round start.
+                       # Persisted roundStartsWith controls which phase opens each new round.
+                       round_starts_with = encounter_data.get("roundStartsWith", "pcGroup")
+                       if round_starts_with == "dmGroup":
+                           multi_pc_manager.pc_phase_complete = True
+                           debug(
+                               "STATE_CHANGE: Applied roundStartsWith=dmGroup -> ENEMY_PHASE start",
+                               category="combat_events"
+                           )
+                       else:
+                           multi_pc_manager.pc_phase_complete = False
+                           debug(
+                               "STATE_CHANGE: Applied roundStartsWith=pcGroup -> PC_PHASE start",
+                               category="combat_events"
+                           )
 
                    # Save the updated encounter data
                    save_json_file(f"modules/encounters/encounter_{encounter_id}.json", encounter_data)
@@ -3908,8 +4023,8 @@ Rules:
                        else:
                            debug(f"COMPRESSION: No compression occurred (still {len(conversation_history)} messages)", category="combat_events")
                            
-               elif isinstance(new_round, int) and new_round < current_round:
-                   warning(f"VALIDATION: Ignoring backward round progression from {current_round} to {new_round}", category="combat_events")
+               elif isinstance(new_round, int) and new_round < current_combat_round:
+                   warning(f"VALIDATION: Ignoring backward round progression from {current_combat_round} to {new_round}", category="combat_events")
            
                
        except json.JSONDecodeError as e:

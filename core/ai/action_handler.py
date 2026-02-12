@@ -54,6 +54,7 @@ See LICENSE file for full terms.
 import json
 import subprocess
 import os
+import random
 from datetime import datetime
 from openai import OpenAI
 import config
@@ -844,17 +845,33 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                         if multi_pc_manager:
                             debug(f"STATE_CHANGE: Multi-PC combat manager initialized with {len(multi_pc_manager.pc_states)} PCs", category="combat_processing")
                             
-                            # Roll group initiative BEFORE combat starts
-                            party_roll, enemy_roll, party_goes_first = multi_pc_manager.roll_group_initiative()
-                            initiative_result = "PARTY ACTS FIRST" if party_goes_first else "ENEMIES ACT FIRST"
-                            print(f"[DEBUG ACTION_HANDLER] GROUP INITIATIVE: Party {party_roll} vs Enemies {enemy_roll} - {initiative_result}")
-                            debug(f"COMBAT: Group initiative - Party: {party_roll}, Enemies: {enemy_roll} - {initiative_result}", category="combat_processing")
-                            
-                            # Store initiative result in party tracker for combat system
+                            # TABLETOP MODE: Phase 1 two-group initiative state
+                            # Roll DM group now, wait for facilitator PC roll via /init.
+                            dm_group_roll = random.randint(1, 20)
+                            encounter_file = f"modules/encounters/encounter_{encounter_id}.json"
+                            encounter_data_for_init = safe_json_load(encounter_file) or {}
+                            encounter_data_for_init["initiativeMode"] = "two_group_phase1"
+                            encounter_data_for_init["initiativeRolls"] = {
+                                "dmGroup": dm_group_roll,
+                                "pcGroup": None
+                            }
+                            encounter_data_for_init["initiativeWinner"] = None
+                            encounter_data_for_init["roundStartsWith"] = None
+                            encounter_data_for_init["awaitingPcGroupRoll"] = True
+                            safe_json_dump(encounter_data_for_init, encounter_file)
+
+                            print(f"[DEBUG ACTION_HANDLER] PHASE1 INIT: DM group pre-roll={dm_group_roll}; awaiting /init from facilitator")
+                            debug(
+                                f"COMBAT: Initialized Phase 1 initiative state for encounter {encounter_id} "
+                                f"(dmGroup={dm_group_roll}, awaitingPcGroupRoll=True)",
+                                category="combat_processing"
+                            )
+
+                            # Legacy compatibility mirror for older paths that still read party tracker.
                             party_tracker_data["worldConditions"]["combatInitiative"] = {
-                                "partyRoll": party_roll,
-                                "enemyRoll": enemy_roll,
-                                "partyGoesFirst": party_goes_first
+                                "partyRoll": None,
+                                "enemyRoll": dm_group_roll,
+                                "partyGoesFirst": None
                             }
                             safe_json_dump(party_tracker_data, "party_tracker.json")
                     except Exception as e:

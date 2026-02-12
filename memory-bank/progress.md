@@ -10,6 +10,19 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **Initiative Phase 1 Two-Group Start Gate (COMPLETED - 2026-02-12):**
+  - **Objective:** Add deterministic combat opening phase (`dmGroup` vs `pcGroup`) while preserving existing `/end` enemy-batch flow.
+  - **Implementation:**
+    - `core/ai/action_handler.py`: Encounter startup now persists Phase 1 initiative state (`initiativeMode`, `initiativeRolls`, `initiativeWinner`, `roundStartsWith`, `awaitingPcGroupRoll`) with DM pre-roll in Python.
+    - `core/managers/combat_manager.py`: Added `/init <1-20>` gate, strict blocking until valid roll, tie rule (`dmGroup` wins), and immediate enemy-phase trigger when DM starts.
+    - Dynamic prompt context includes `=== INITIATIVE STATE ===` for runtime phase authority.
+    - New-round phase opener now follows persisted `roundStartsWith` deterministically.
+    - Prompt alignment updates in compressed sim/validation prompts to allow initiative-driven ENEMY_PHASE start alongside `/end` flow.
+  - **Validation:**
+    - `python3 -m py_compile core/ai/action_handler.py core/managers/combat_manager.py` -> PASS
+    - `python3 scripts/test_multi_pc_combat.py` -> PASS (40 tests, 0 failures, 0 errors)
+  - **Files:** `core/ai/action_handler.py`, `core/managers/combat_manager.py`, `prompts/combat/combat_sim_prompt_multipc_compressed.txt`, `prompts/combat/combat_validation_prompt_multipc_compressed.txt`.
+
 - **Web Interface TT Merge Refactor Completion (COMPLETED - 2026-02-12):**
   - **Objective:** Reduce divergence from upstream `web/web_interface.py` by extracting TABLETOP MODE logic into extension/route modules while preserving behavior and thin host hooks.
   - **Increments Completed:**
