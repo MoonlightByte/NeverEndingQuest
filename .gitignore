@@ -419,11 +419,14 @@ init_prompt_test_history.json
 sample_current_location.md
 telemetry_log.jsonl
 development/
+exports/
 modules/validation_cache.json
 # Dynamic companion memory files (character-specific, generated during gameplay)
 data/companion_memories_compressed/*_memories_*.json
 data/companion_memories_backup/
 data/companion_memories_pre_enhanced/
+data/memory.db
+data/world_surveillance.db
 NeverEndingQuest.code-workspace
 modules/The_Thornwood_Watch/images/image_metadata.json
 modules/The_Thornwood_Watch/player_quests_The_Thornwood_Watch.json

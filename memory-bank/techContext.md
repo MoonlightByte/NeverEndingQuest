@@ -59,6 +59,12 @@
   - `--overwrite`
   - `--dry-run` (import validation-only)
 
+## World Observer Telemetry DB (Current State)
+- `core/managers/world_observer.py` uses `data/world_surveillance.db` as a write-only telemetry ledger for event/surveillance logs.
+- Current gameplay does not depend on reading this DB; it is non-critical and regenerable.
+- The DB file can be safely deleted when needed; it will be recreated automatically when `get_world_observer()` is invoked.
+- This remains aligned with future EGO/RATIO observability plans, but is not a hard runtime dependency today.
+
 ## LLM Router Architecture (PLANNED)
 **Status:** Architecture plan complete, implementation pending
 **Location:** `/plans/openrouter_llm_router_architecture.md`
