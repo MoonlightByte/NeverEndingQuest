@@ -1,0 +1,476 @@
+# SPDX-FileCopyrightText: 2024 MoonlightByte
+# SPDX-License-Identifier: Fair-Source-1.0
+# License: See LICENSE file in the repository root
+# This software is subject to the terms of the Fair Source License.
+
+"""
+NeverEndingQuest Web Extension - Tabletop socket handlers
+Copyright (c) 2024 MoonlightByte
+Licensed under Fair Source License 1.0
+
+This software is free for non-commercial and educational use.
+Commercial competing use is prohibited for 2 years from release.
+See LICENSE file for full terms.
+"""
+
+import json
+import os
+from typing import Callable
+
+
+def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Callable[..., None]) -> None:
+    """Handle requests for party member display and current location NPCs (non-combat)."""
+    try:
+        from utils.file_operations import safe_read_json
+        from utils.module_path_manager import ModulePathManager
+        from updates.update_character_info import normalize_character_name, find_character_file_fuzzy
+
+        party_tracker = safe_read_json("party_tracker.json")
+        if not party_tracker:
+            emit_fn('party_data_response', {'members': []})
+            return
+
+        current_module = party_tracker.get("module", "").replace(" ", "_")
+        path_manager = ModulePathManager(current_module)
+
+        party_members = []
+
+        active_name = party_tracker.get('active_character')
+        if not active_name and party_tracker.get('partyMembers'):
+            active_name = party_tracker['partyMembers'][0]
+
+        if active_name:
+            player_name = normalize_character_name(active_name)
+
+            try:
+                player_file = path_manager.get_character_path(player_name)
+                if os.path.exists(player_file):
+                    player_data = safe_read_json(player_file)
+                    if player_data:
+                        spells_by_level = {}
+                        spellcasting = player_data.get('spellcasting', {})
+                        if spellcasting.get('spells'):
+                            spells_data = spellcasting['spells']
+                            if spells_data.get('cantrips') and len(spells_data['cantrips']) > 0:
+                                spells_by_level[0] = spells_data['cantrips']
+                            for i in range(1, 10):
+                                key = f'level{i}'
+                                if spells_data.get(key) and len(spells_data[key]) > 0:
+                                    spells_by_level[i] = spells_data[key]
+
+                        class_features = []
+                        for feature in player_data.get('classFeatures', []):
+                            feature_info = {'name': feature.get('name', '')}
+                            if 'usage' in feature:
+                                usage = feature['usage']
+                                if usage.get('current') is not None and usage.get('max'):
+                                    feature_info['usage'] = f"{usage['current']}/{usage['max']}"
+                            class_features.append(feature_info)
+
+                        primary_attack = {'bonus': 0, 'damage': '1d4'}
+                        attacks = player_data.get('attacksAndSpellcasting', [])
+                        if attacks and isinstance(attacks, list) and len(attacks) > 0:
+                            first_attack = attacks[0]
+                            damage_dice = first_attack.get('damageDice', '1d4')
+                            damage_bonus = first_attack.get('damageBonus', 0)
+                            if damage_bonus > 0:
+                                damage_str = f"{damage_dice}+{damage_bonus}"
+                            elif damage_bonus < 0:
+                                damage_str = f"{damage_dice}{damage_bonus}"
+                            else:
+                                damage_str = damage_dice
+                            primary_attack = {
+                                'bonus': first_attack.get('attackBonus', 0),
+                                'damage': damage_str,
+                                'name': first_attack.get('name', 'Attack')
+                            }
+
+                        party_members.append({
+                            'name': player_data.get('name', player_name),
+                            'type': 'player',
+                            'currentHp': player_data.get('hitPoints', player_data.get('currentHp', 0)),
+                            'maxHp': player_data.get('maxHitPoints', player_data.get('maxHp', 0)),
+                            'level': player_data.get('level', 1),
+                            'class': player_data.get('class', 'Unknown'),
+                            'ac': player_data.get('armorClass', 10),
+                            'speed': player_data.get('speed', 30),
+                            'initiative': player_data.get('initiative', 0),
+                            'primaryAttack': primary_attack,
+                            'spellSlots': spellcasting.get('spellSlots', player_data.get('spellSlots', {})),
+                            'spells': spells_by_level,
+                            'conditions': player_data.get('conditions', []),
+                            'classFeatures': class_features
+                        })
+            except Exception:
+                party_members.append({
+                    'name': player_name,
+                    'type': 'player'
+                })
+
+        for npc_info in party_tracker.get('partyNPCs', []):
+            npc_name = npc_info['name']
+
+            try:
+                matched_name = find_character_file_fuzzy(npc_name)
+                if matched_name:
+                    npc_file = path_manager.get_character_path(matched_name)
+                    if os.path.exists(npc_file):
+                        npc_data = safe_read_json(npc_file)
+                        if npc_data:
+                            spells_by_level = {}
+                            spellcasting = npc_data.get('spellcasting', {})
+                            if spellcasting.get('spells'):
+                                spells_data = spellcasting['spells']
+                                if spells_data.get('cantrips') and len(spells_data['cantrips']) > 0:
+                                    spells_by_level[0] = spells_data['cantrips']
+                                for i in range(1, 10):
+                                    key = f'level{i}'
+                                    if spells_data.get(key) and len(spells_data[key]) > 0:
+                                        spells_by_level[i] = spells_data[key]
+
+                            class_features = []
+                            for feature in npc_data.get('classFeatures', []):
+                                feature_info = {'name': feature.get('name', '')}
+                                if 'usage' in feature:
+                                    usage = feature['usage']
+                                    if usage.get('current') is not None and usage.get('max'):
+                                        feature_info['usage'] = f"{usage['current']}/{usage['max']}"
+                                class_features.append(feature_info)
+
+                            primary_attack = {'bonus': 0, 'damage': '1d4'}
+                            attacks = npc_data.get('attacksAndSpellcasting', [])
+                            if attacks and isinstance(attacks, list) and len(attacks) > 0:
+                                first_attack = attacks[0]
+                                damage_dice = first_attack.get('damageDice', '1d4')
+                                damage_bonus = first_attack.get('damageBonus', 0)
+                                if damage_bonus > 0:
+                                    damage_str = f"{damage_dice}+{damage_bonus}"
+                                elif damage_bonus < 0:
+                                    damage_str = f"{damage_dice}{damage_bonus}"
+                                else:
+                                    damage_str = damage_dice
+                                primary_attack = {
+                                    'bonus': first_attack.get('attackBonus', 0),
+                                    'damage': damage_str,
+                                    'name': first_attack.get('name', 'Attack')
+                                }
+
+                            ammunition_info = []
+                            ammunition = npc_data.get('ammunition', [])
+                            if ammunition:
+                                for ammo in ammunition:
+                                    if isinstance(ammo, dict):
+                                        ammo_name = ammo.get('name', 'Unknown')
+                                        ammo_qty = ammo.get('quantity', 0)
+                                        ammunition_info.append({'name': ammo_name, 'quantity': ammo_qty})
+
+                            party_members.append({
+                                'name': npc_data.get('name', npc_name),
+                                'type': 'npc',
+                                'currentHp': npc_data.get('hitPoints', npc_data.get('currentHp', 0)),
+                                'maxHp': npc_data.get('maxHitPoints', npc_data.get('maxHp', 0)),
+                                'level': npc_data.get('level', 1),
+                                'class': npc_data.get('class', 'Unknown'),
+                                'ac': npc_data.get('armorClass', 10),
+                                'speed': npc_data.get('speed', 30),
+                                'initiative': npc_data.get('initiative', 0),
+                                'primaryAttack': primary_attack,
+                                'ammunition': ammunition_info,
+                                'spellSlots': spellcasting.get('spellSlots', npc_data.get('spellSlots', {})),
+                                'spells': spells_by_level,
+                                'conditions': npc_data.get('conditions', []),
+                                'classFeatures': class_features
+                            })
+                            continue
+            except Exception:
+                pass
+
+            party_members.append({
+                'name': npc_name,
+                'type': 'npc'
+            })
+
+        location_npcs = []
+        world_conditions = party_tracker.get("worldConditions", {})
+        current_area_id = world_conditions.get("currentAreaId")
+        current_location_id = world_conditions.get("currentLocationId")
+
+        if current_module and current_area_id and current_location_id:
+            areas_dir = os.path.join("modules", current_module, "areas")
+            area_file_path = os.path.join(areas_dir, f"{current_area_id}.json")
+
+            if os.path.exists(area_file_path):
+                area_data = safe_read_json(area_file_path)
+                if area_data and 'locations' in area_data:
+                    current_location_data = next(
+                        (loc for loc in area_data['locations'] if loc.get('locationId') == current_location_id),
+                        None,
+                    )
+
+                    if current_location_data and 'npcs' in current_location_data:
+                        for npc in current_location_data['npcs']:
+                            npc_name = npc.get('name') if isinstance(npc, dict) else npc
+                            if npc_name:
+                                if not any(npc_name.lower() in member['name'].lower() for member in party_members):
+                                    npc_data_dict = {'name': npc_name, 'type': 'location_npc'}
+                                    try:
+                                        matched_name = find_character_file_fuzzy(npc_name)
+                                        if matched_name:
+                                            npc_file = path_manager.get_character_path(matched_name)
+                                            if os.path.exists(npc_file):
+                                                npc_data = safe_read_json(npc_file)
+                                                if npc_data:
+                                                    npc_data_dict['currentHp'] = npc_data.get('hitPoints', npc_data.get('currentHp', 0))
+                                                    npc_data_dict['maxHp'] = npc_data.get('maxHitPoints', npc_data.get('maxHp', 0))
+                                    except Exception:
+                                        pass
+                                    location_npcs.append(npc_data_dict)
+
+        emit_fn('party_data_response', {'members': party_members, 'location_npcs': location_npcs})
+
+    except Exception as request_error:
+        error_fn(f"Failed to get party data: {str(request_error)}", exception=request_error, category="web_interface")
+        emit_fn('party_data_response', {'members': [], 'location_npcs': []})
+
+
+def handle_initiative_data_request_impl(emit_fn: Callable[..., None], error_fn: Callable[..., None]) -> None:
+    """Handle requests for current combat initiative order."""
+    try:
+        from utils.file_operations import safe_read_json
+
+        party_tracker = safe_read_json("party_tracker.json")
+        if not party_tracker:
+            emit_fn('initiative_data_response', {'active': False, 'combatants': []})
+            return
+
+        active_encounter_id = party_tracker.get("worldConditions", {}).get("activeCombatEncounter")
+        if not active_encounter_id:
+            emit_fn('initiative_data_response', {'active': False, 'combatants': []})
+            return
+
+        encounter_file = f"modules/encounters/encounter_{active_encounter_id}.json"
+        encounter_data = safe_read_json(encounter_file)
+        if not encounter_data or "creatures" not in encounter_data:
+            emit_fn('initiative_data_response', {'active': False, 'combatants': []})
+            return
+
+        living_combatants = [
+            creature for creature in encounter_data["creatures"]
+            if creature.get("status", "unknown").lower() == "alive"
+        ]
+
+        if not living_combatants:
+            emit_fn('initiative_data_response', {'active': False, 'combatants': []})
+            return
+
+        sorted_combatants = sorted(
+            living_combatants,
+            key=lambda item: item.get("initiative", 0),
+            reverse=True,
+        )
+
+        from utils.module_path_manager import ModulePathManager
+        from updates.update_character_info import normalize_character_name, find_character_file_fuzzy
+
+        party_tracker = safe_read_json("party_tracker.json")
+        current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else ""
+        path_manager = ModulePathManager(current_module) if current_module else None
+
+        combatant_list = []
+        for combatant in sorted_combatants:
+            combatant_data = {
+                "name": combatant.get("name"),
+                "type": combatant.get("type"),
+                "initiative": combatant.get("initiative"),
+                "currentHp": combatant.get("currentHitPoints"),
+                "maxHp": combatant.get("maxHitPoints"),
+                "monsterType": combatant.get("monsterType"),
+                "class": combatant.get("class"),
+            }
+
+            if path_manager and combatant.get("type") in ['player', 'npc']:
+                try:
+                    character_name = normalize_character_name(combatant.get("name", ""))
+
+                    if combatant.get("type") == 'npc':
+                        matched_name = find_character_file_fuzzy(character_name)
+                        if matched_name:
+                            char_file = path_manager.get_character_path(matched_name)
+                        else:
+                            char_file = None
+                    else:
+                        char_file = path_manager.get_character_path(character_name)
+
+                    if char_file and os.path.exists(char_file):
+                        char_data = safe_read_json(char_file)
+                        if char_data:
+                            spells_by_level = {}
+                            spellcasting = char_data.get('spellcasting', {})
+                            if spellcasting.get('spells'):
+                                spells_data = spellcasting['spells']
+                                if spells_data.get('cantrips') and len(spells_data['cantrips']) > 0:
+                                    spells_by_level[0] = spells_data['cantrips']
+                                for i in range(1, 10):
+                                    key = f'level{i}'
+                                    if spells_data.get(key) and len(spells_data[key]) > 0:
+                                        spells_by_level[i] = spells_data[key]
+
+                            class_features = []
+                            for feature in char_data.get('classFeatures', []):
+                                feature_info = {'name': feature.get('name', '')}
+                                if 'usage' in feature:
+                                    usage = feature['usage']
+                                    if usage.get('current') is not None and usage.get('max'):
+                                        feature_info['usage'] = f"{usage['current']}/{usage['max']}"
+                                class_features.append(feature_info)
+
+                            primary_attack = {'bonus': 0, 'damage': '1d4'}
+                            attacks = char_data.get('attacksAndSpellcasting', [])
+                            if attacks and isinstance(attacks, list) and len(attacks) > 0:
+                                first_attack = attacks[0]
+                                damage_dice = first_attack.get('damageDice', '1d4')
+                                damage_bonus = first_attack.get('damageBonus', 0)
+                                if damage_bonus > 0:
+                                    damage_str = f"{damage_dice}+{damage_bonus}"
+                                elif damage_bonus < 0:
+                                    damage_str = f"{damage_dice}{damage_bonus}"
+                                else:
+                                    damage_str = damage_dice
+                                primary_attack = {
+                                    'bonus': first_attack.get('attackBonus', 0),
+                                    'damage': damage_str,
+                                    'name': first_attack.get('name', 'Attack')
+                                }
+
+                            ammunition_info = []
+                            ammunition = char_data.get('ammunition', [])
+                            if ammunition:
+                                for ammo in ammunition:
+                                    if isinstance(ammo, dict):
+                                        ammo_name = ammo.get('name', 'Unknown')
+                                        ammo_qty = ammo.get('quantity', 0)
+                                        ammunition_info.append({'name': ammo_name, 'quantity': ammo_qty})
+
+                            combatant_data.update({
+                                'level': char_data.get('level', 1),
+                                'ac': char_data.get('armorClass', 10),
+                                'speed': char_data.get('speed', 30),
+                                'primaryAttack': primary_attack,
+                                'ammunition': ammunition_info,
+                                'spellSlots': spellcasting.get('spellSlots', char_data.get('spellSlots', {})),
+                                'spells': spells_by_level,
+                                'conditions': char_data.get('conditions', []),
+                                'classFeatures': class_features,
+                                'abilities': char_data.get('abilities', {}),
+                            })
+                except Exception as load_error:
+                    error_fn(
+                        f"Error loading character data for {combatant.get('name', 'unknown')}: {load_error}",
+                        category="web_interface",
+                    )
+
+            combatant_list.append(combatant_data)
+
+        emit_fn('initiative_data_response', {
+            'active': True,
+            'combatants': combatant_list,
+            'round': encounter_data.get('combat_round', 1),
+        })
+
+    except Exception as request_error:
+        error_fn(f"Error handling initiative data request: {request_error}", exception=request_error, category="web_interface")
+        emit_fn('initiative_data_response', {'active': False, 'combatants': []})
+
+
+def handle_plot_data_request_impl(emit_fn: Callable[..., None], debug_fn: Callable[..., None]) -> None:
+    """Handle requests for the current module's plot data."""
+    try:
+        party_tracker_path = 'party_tracker.json'
+        if not os.path.exists(party_tracker_path):
+            emit_fn('plot_data_response', {'data': None, 'error': 'Party tracker not found'})
+            return
+
+        with open(party_tracker_path, 'r', encoding='utf-8') as tracker_file:
+            party_tracker = json.load(tracker_file)
+
+        current_module = party_tracker.get("module", "").replace(" ", "_")
+        if not current_module:
+            emit_fn('plot_data_response', {'data': None, 'error': 'Current module not set in party tracker'})
+            return
+
+        from utils.module_path_manager import ModulePathManager
+        path_manager = ModulePathManager(current_module)
+
+        player_quests_path = os.path.join(path_manager.module_dir, f"player_quests_{current_module}.json")
+
+        if os.path.exists(player_quests_path):
+            with open(player_quests_path, 'r', encoding='utf-8') as quests_file:
+                player_quests_data = json.load(quests_file)
+
+            plot_data = {"plotPoints": []}
+
+            for quest_data in player_quests_data.get("quests", {}).values():
+                plot_point = {
+                    "id": quest_data.get("id"),
+                    "title": quest_data.get("title"),
+                    "description": quest_data.get("playerDescription", quest_data.get("originalDescription", "")),
+                    "status": quest_data.get("status"),
+                    "sideQuests": []
+                }
+
+                for sq_data in quest_data.get("sideQuests", {}).values():
+                    plot_point["sideQuests"].append({
+                        "id": sq_data.get("id"),
+                        "title": sq_data.get("title"),
+                        "description": sq_data.get("playerDescription", ""),
+                        "status": sq_data.get("status")
+                    })
+
+                plot_data["plotPoints"].append(plot_point)
+
+            debug_fn(f"WEB_INTERFACE: Using player-friendly quests for {current_module}", category="web_interface")
+        else:
+            plot_file_path = path_manager.get_plot_path()
+
+            if not os.path.exists(plot_file_path):
+                emit_fn('plot_data_response', {'data': None, 'error': f'Plot file not found for module: {current_module}'})
+                return
+
+            with open(plot_file_path, 'r', encoding='utf-8') as plot_file:
+                plot_data = json.load(plot_file)
+
+            debug_fn(
+                f"WEB_INTERFACE: Using original plot data for {current_module} (no player quests file)",
+                category="web_interface"
+            )
+
+        emit_fn('plot_data_response', {'data': plot_data})
+
+    except Exception as request_error:
+        emit_fn('plot_data_response', {'data': None, 'error': str(request_error)})
+
+
+def handle_storage_data_request_impl(
+    emit_fn: Callable[..., None],
+    debug_fn: Callable[..., None],
+    error_fn: Callable[..., None]
+) -> None:
+    """Handle requests to view all player storage."""
+    debug_fn("WEB_REQUEST: Received request for storage data from client", category="web_interface")
+    try:
+        from core.managers.storage_manager import get_storage_manager
+        manager = get_storage_manager()
+        storage_data = manager.view_storage()
+
+        if storage_data.get("success"):
+            emit_fn('storage_data_response', {'data': storage_data})
+        else:
+            emit_fn('error', {'message': 'Failed to retrieve storage data.'})
+
+    except Exception as request_error:
+        error_fn(
+            f"ERROR handling storage request: {request_error}",
+            exception=request_error,
+            category="web_interface"
+        )
+        emit_fn('error', {'message': 'An internal error occurred while fetching storage data.'})
