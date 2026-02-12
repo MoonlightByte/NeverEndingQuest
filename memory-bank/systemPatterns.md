@@ -18,6 +18,15 @@ The Tabletop Multiplayer system is implemented as a **Merge-Safe Plugin/Overlay*
 - **PCs**: Explicitly listed in `partyMembers`. Managed via Python functions.
 - **NPCs**: Listed in `partyNPCs`. Managed via LLM or specific NPC logic.
 
+### 3b. Role Lifecycle Continuity (NPC -> PC)
+- Promotion is an in-place role transition, not a file clone.
+- Character identity continuity is preserved via:
+  - `character_id` (stable identity token)
+  - `_tabletop_role_history` (append-only transition events)
+- Role transitions normalize all role markers together (`type`, `character_type`, `character_role`).
+- Party transition rule: remove from `partyNPCs`, add to `partyMembers`, keep `active_character` unchanged.
+- This enables future PC -> NPC retirement without splitting character identity.
+
 ### 4. Component Relationship
 - `web_interface.py`: Exposes API for PC management and character switching.
 - `utils/pc_manager.py`: Logic for modifying party state and building entrance prompts.
@@ -30,6 +39,14 @@ The Tabletop Multiplayer system is implemented as a **Merge-Safe Plugin/Overlay*
 - It calls `pc_manager.get_entrance_prompt()` to build a high-quality DM instruction.
 - The instruction is injected into `user_input_queue`, appearing to the engine as a high-priority narrative request.
 - This pattern allows for rich, context-aware narration without modifying the core LLM processing loop.
+
+### 5b. Non-Chat Background Repair Pattern
+- Character readiness remediation runs through dedicated API endpoints (preview/apply), not chat commands.
+- Repairs are safety-bounded:
+  - whitelist-only narrative field updates
+  - mechanical snapshot guard to block unintended stat changes
+  - post-patch audit gate before persistence
+- UI uses preview -> confirm so facilitator control is preserved.
 
 ### 6. Passive Multi-PC Combat Tracking Pattern
 - `MultiPCCombatManager` (in `multi_pc_combat.py`) maintains a lightweight, in-memory state of the current combat.
@@ -140,3 +157,11 @@ The system maintains two formats for LLM prompts to support both development and
 4. **Synchronization:** Keep both formats in sync - compressed is the "source of truth" for production
 
 **Key Insight:** The compressed format often contains **more** structured content than the uncompressed version because it evolved separately with additional rules and validators. When porting features between modes (single-player → multi-PC), always compare compressed files, not uncompressed.
+
+### 10. Shared Character Audit Pipeline
+- Creation, promotion, and readiness repair all route through shared server-side audit logic.
+- Deterministic outcomes are used across flows:
+  - `schema_error`
+  - `completeness_error`
+  - `success`
+- This keeps UI behavior flexible while centralizing persistence correctness.

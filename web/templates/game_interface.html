@@ -4691,6 +4691,78 @@
             if (!str) return str;
             return str.replace(/\b\w/g, l => l.toUpperCase());
         }
+
+        const CANONICAL_SAVING_THROW_KEYS = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
+        const SAVING_THROW_LABELS = {
+            strength: 'Strength',
+            dexterity: 'Dexterity',
+            constitution: 'Constitution',
+            intelligence: 'Intelligence',
+            wisdom: 'Wisdom',
+            charisma: 'Charisma'
+        };
+        const SAVING_THROW_TOKEN_MAP = {
+            str: 'strength',
+            strength: 'strength',
+            dex: 'dexterity',
+            dexterity: 'dexterity',
+            con: 'constitution',
+            constitution: 'constitution',
+            int: 'intelligence',
+            intelligence: 'intelligence',
+            wis: 'wisdom',
+            wisdom: 'wisdom',
+            cha: 'charisma',
+            charisma: 'charisma'
+        };
+        const SAVING_THROW_CLASS_ALIAS_MAP = {
+            thief: 'rogue'
+        };
+        const SAVING_THROW_CLASS_FALLBACKS = {
+            barbarian: ['strength', 'constitution'],
+            bard: ['dexterity', 'charisma'],
+            cleric: ['wisdom', 'charisma'],
+            druid: ['intelligence', 'wisdom'],
+            fighter: ['strength', 'constitution'],
+            monk: ['strength', 'dexterity'],
+            paladin: ['wisdom', 'charisma'],
+            ranger: ['strength', 'dexterity'],
+            rogue: ['dexterity', 'intelligence'],
+            sorcerer: ['constitution', 'charisma'],
+            warlock: ['wisdom', 'charisma'],
+            wizard: ['intelligence', 'wisdom']
+        };
+
+        function normalizeSavingThrowToken(value) {
+            if (typeof value !== 'string') return '';
+            const token = value.toLowerCase().trim().replace(/[^a-z]/g, '');
+            return SAVING_THROW_TOKEN_MAP[token] || '';
+        }
+
+        function normalizeSavingThrows(values) {
+            const normalized = new Set();
+            if (!Array.isArray(values)) return normalized;
+            values.forEach(value => {
+                const key = normalizeSavingThrowToken(value);
+                if (key) normalized.add(key);
+            });
+            return normalized;
+        }
+
+        function getClassFallbackSavingThrows(className) {
+            if (typeof className !== 'string') return new Set();
+            let classToken = className.toLowerCase().trim().replace(/[^a-z]/g, '');
+            classToken = SAVING_THROW_CLASS_ALIAS_MAP[classToken] || classToken;
+            return new Set(SAVING_THROW_CLASS_FALLBACKS[classToken] || []);
+        }
+
+        function getEffectiveSavingThrowProficiencies(entity) {
+            const normalized = normalizeSavingThrows(entity?.savingThrows);
+            if (normalized.size > 0) {
+                return normalized;
+            }
+            return getClassFallbackSavingThrows(entity?.class);
+        }
         
         // Helper function to highlight the current turn in initiative tracker
         function highlightCurrentTurn() {
@@ -5860,6 +5932,140 @@
             }
         }
 
+        let readinessRepairState = {
+            character: null,
+            updates: {},
+            proposedUpdates: [],
+        };
+
+        function escapeRepairHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function closeReadinessRepairModal() {
+            const modal = document.getElementById('readiness-repair-modal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+            readinessRepairState = {
+                character: null,
+                updates: {},
+                proposedUpdates: [],
+            };
+        }
+
+        async function openReadinessRepairModal(characterName) {
+            try {
+                const modal = document.getElementById('readiness-repair-modal');
+                const body = document.getElementById('readiness-repair-body');
+                const confirmButton = document.getElementById('readiness-repair-confirm');
+                const title = document.getElementById('readiness-repair-title');
+                if (!modal || !body || !confirmButton || !title) {
+                    return;
+                }
+
+                title.textContent = `Readiness Repair Preview - ${characterName}`;
+                body.innerHTML = '<div class="loading">Building repair preview...</div>';
+                confirmButton.disabled = true;
+                modal.style.display = 'block';
+
+                const response = await fetch('/api/character_sheet/readiness_repair/preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ character: characterName }),
+                });
+                const payload = await response.json();
+
+                if (!response.ok || !payload.success) {
+                    const retryText = payload.retry_after_seconds ? ` Retry in ${payload.retry_after_seconds}s.` : '';
+                    body.innerHTML = `<div class="loading" style="color:#f6d088;">${escapeRepairHtml(payload.error || 'Repair preview failed.')}${retryText}</div>`;
+                    return;
+                }
+
+                if (payload.ready) {
+                    body.innerHTML = '<div class="loading">This character is already readiness-complete.</div>';
+                    return;
+                }
+
+                const rows = Array.isArray(payload.proposed_updates) ? payload.proposed_updates : [];
+                if (rows.length === 0) {
+                    body.innerHTML = '<div class="loading">No repair updates available for the current warnings.</div>';
+                    return;
+                }
+
+                readinessRepairState = {
+                    character: characterName,
+                    updates: payload.updates || {},
+                    proposedUpdates: rows,
+                };
+
+                let html = '<div style="margin-bottom: 8px; color: #ccc;">Review proposed narrative-only field updates.</div>';
+                rows.forEach((row) => {
+                    html += `<div style="border: 1px solid #444; border-radius: 6px; padding: 8px; margin-bottom: 8px; background: rgba(20,20,20,0.7);">
+                                <div style="font-weight: bold; color: #4CAF50; margin-bottom: 6px;">${escapeRepairHtml(row.field)}</div>
+                                <div style="margin-bottom: 4px;"><span style="color:#f6d088;">Before:</span> ${escapeRepairHtml(row.before || '(empty)')}</div>
+                                <div><span style="color:#4CAF50;">After:</span> ${escapeRepairHtml(row.after)}</div>
+                             </div>`;
+                });
+                body.innerHTML = html;
+                confirmButton.disabled = false;
+            } catch (error) {
+                const body = document.getElementById('readiness-repair-body');
+                if (body) {
+                    body.innerHTML = `<div class="loading" style="color:#f6d088;">${escapeRepairHtml(error.message || 'Repair preview failed.')}</div>`;
+                }
+            }
+        }
+
+        async function confirmReadinessRepairApply() {
+            if (!readinessRepairState.character) {
+                return;
+            }
+
+            const confirmButton = document.getElementById('readiness-repair-confirm');
+            const cancelButton = document.getElementById('readiness-repair-cancel');
+            const body = document.getElementById('readiness-repair-body');
+            if (!confirmButton || !cancelButton || !body) {
+                return;
+            }
+
+            try {
+                confirmButton.disabled = true;
+                cancelButton.disabled = true;
+                body.innerHTML = '<div class="loading">Applying readiness repair...</div>';
+
+                const response = await fetch('/api/character_sheet/readiness_repair/apply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        character: readinessRepairState.character,
+                        updates: readinessRepairState.updates,
+                    }),
+                });
+                const payload = await response.json();
+
+                if (!response.ok || !payload.success) {
+                    const retryText = payload.retry_after_seconds ? ` Retry in ${payload.retry_after_seconds}s.` : '';
+                    body.innerHTML = `<div class="loading" style="color:#f6d088;">${escapeRepairHtml(payload.error || 'Repair apply failed.')}${retryText}</div>`;
+                    confirmButton.disabled = false;
+                    cancelButton.disabled = false;
+                    return;
+                }
+
+                closeReadinessRepairModal();
+                loadCharacterStats();
+            } catch (error) {
+                body.innerHTML = `<div class="loading" style="color:#f6d088;">${escapeRepairHtml(error.message || 'Repair apply failed.')}</div>`;
+                confirmButton.disabled = false;
+                cancelButton.disabled = false;
+            }
+        }
+
         function displayCharacterStats(data) {
             // Save scroll position before updating
             const scrollableContainer = document.getElementById('stats-tab');
@@ -5874,6 +6080,26 @@
             if (!data) {
                 container.innerHTML = '<div class="loading">No character data available</div>';
                 return;
+            }
+
+            function getCharacterReadinessWarnings(characterData) {
+                const warnings = [];
+                if (!characterData.backgroundFeature || !characterData.backgroundFeature.description) {
+                    warnings.push('backgroundFeature.description');
+                }
+                if (!characterData.personality_traits || !String(characterData.personality_traits).trim()) {
+                    warnings.push('personality_traits');
+                }
+                if (!characterData.ideals || !String(characterData.ideals).trim()) {
+                    warnings.push('ideals');
+                }
+                if (!characterData.bonds || !String(characterData.bonds).trim()) {
+                    warnings.push('bonds');
+                }
+                if (!characterData.flaws || !String(characterData.flaws).trim()) {
+                    warnings.push('flaws');
+                }
+                return warnings;
             }
             
             // Data Normalization for Skills (Backward-Compatible)
@@ -5912,6 +6138,13 @@
             if (hpPercent <= 25) hpClass = 'low'; else if (hpPercent <= 50) hpClass = 'medium';
             // normalizedName already defined above
             let html = '<div class="character-sheet">';
+            const readinessWarnings = getCharacterReadinessWarnings(data);
+            if (readinessWarnings.length > 0) {
+                html += `<div style="margin-bottom: 8px; padding: 8px; border: 1px solid #8a6d3b; background: rgba(138, 109, 59, 0.2); color: #f6d088; border-radius: 6px;">
+                            <div style="margin-bottom: 8px;">Sheet readiness warning: missing ${readinessWarnings.join(', ')}</div>
+                            <button class="pdf-button" style="padding: 6px 10px; font-size: 11px;" onclick="openReadinessRepairModal('${normalizedName}')">Repair</button>
+                         </div>`;
+            }
             
             // --- NEW TWO-COLUMN TOP SECTION ---
             html += `<div class="character-sheet-top">
@@ -6021,16 +6254,16 @@
             html += '</div>';
 
             // Saving Throws (Full-width with 2-column internal layout)
-            if (data.savingThrows && data.savingThrows.length > 0) {
-                html += '<div class="stat-group saving-throws-group" style="margin-top: 3px;"><h4>Saving Throws</h4><div class="stat-group-content">';
-                ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma'].forEach(save => {
-                    const isProficient = data.savingThrows.includes(save);
-                    const abilityMod = data.abilities ? Math.floor((data.abilities[save.toLowerCase()] - 10) / 2) : 0;
-                    const bonus = isProficient ? abilityMod + (data.proficiencyBonus || 2) : abilityMod;
-                    html += `<div class="save-item"><span class="save-name">${save} ${isProficient ? '●' : '○'}</span><span class="save-value">${bonus >= 0 ? '+' : ''}${bonus}</span></div>`;
-                });
-                html += '</div></div>';
-            }
+            const saveProficiencies = getEffectiveSavingThrowProficiencies(data);
+            html += '<div class="stat-group saving-throws-group" style="margin-top: 3px;"><h4>Saving Throws</h4><div class="stat-group-content">';
+            CANONICAL_SAVING_THROW_KEYS.forEach(saveKey => {
+                const isProficient = saveProficiencies.has(saveKey);
+                const abilityScore = data.abilities ? (data.abilities[saveKey] || 10) : 10;
+                const abilityMod = Math.floor((abilityScore - 10) / 2);
+                const bonus = isProficient ? abilityMod + (data.proficiencyBonus || 2) : abilityMod;
+                html += `<div class="save-item"><span class="save-name">${SAVING_THROW_LABELS[saveKey]} ${isProficient ? '●' : '○'}</span><span class="save-value">${bonus >= 0 ? '+' : ''}${bonus}</span></div>`;
+            });
+            html += '</div></div>';
             // Skills section removed - now shown via ability score tooltips
             
             // Features and other sections (in abilities-grid for better layout)
@@ -6251,15 +6484,19 @@
                 
                 html += '<div class="npc-skills-saves-container">';
                 
-                if (npc.savingThrows && npc.savingThrows.length > 0) {
-                    const savesData = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma'].map(save => {
-                        const isProficient = npc.savingThrows.includes(save);
-                        const abilityMod = npc.abilities ? Math.floor((npc.abilities[save.toLowerCase()] - 10) / 2) : 0;
-                        const bonus = isProficient ? abilityMod + (npc.proficiencyBonus || 3) : abilityMod;
-                        return { name: save, proficient: isProficient, bonus: bonus >= 0 ? `+${bonus}` : `${bonus}` };
-                    });
-                    html += `<button class="npc-detail-button" onclick="showNPCSaves('${npc.name}', ${JSON.stringify(savesData).replace(/"/g, '&quot;')})">Saving Throw</button>`;
-                }
+                const npcSaveProficiencies = getEffectiveSavingThrowProficiencies(npc);
+                const savesData = CANONICAL_SAVING_THROW_KEYS.map(saveKey => {
+                    const isProficient = npcSaveProficiencies.has(saveKey);
+                    const abilityScore = npc.abilities ? (npc.abilities[saveKey] || 10) : 10;
+                    const abilityMod = Math.floor((abilityScore - 10) / 2);
+                    const bonus = isProficient ? abilityMod + (npc.proficiencyBonus || 3) : abilityMod;
+                    return {
+                        name: SAVING_THROW_LABELS[saveKey],
+                        proficient: isProficient,
+                        bonus: bonus >= 0 ? `+${bonus}` : `${bonus}`
+                    };
+                });
+                html += `<button class="npc-detail-button" onclick="showNPCSaves('${npc.name}', ${JSON.stringify(savesData).replace(/"/g, '&quot;')})">Saving Throw</button>`;
                 
                 if (npc.skills) {
                     let skillsData = Object.entries(npc.skills).map(([skill, value]) => ({ name: skill, bonus: value >= 0 ? `+${value}` : `${value}` }));
@@ -7592,6 +7829,22 @@
             </div>
             <div id="update-progress" style="display:none; margin-top: 20px;">
                 <p id="update-status">Updating...</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="readiness-repair-modal" class="npc-details-modal" style="display: none;">
+        <div class="npc-details-modal-content" style="max-width: 700px;">
+            <div class="npc-details-header" style="border-bottom: 2px solid #8a6d3b;">
+                <div id="readiness-repair-title" class="npc-details-title" style="color: #f6d088;">Readiness Repair Preview</div>
+                <span class="npc-details-close" onclick="closeReadinessRepairModal()">&times;</span>
+            </div>
+            <div id="readiness-repair-body" class="npc-details-body" style="padding: 16px; max-height: 60vh; overflow-y: auto;">
+                <div class="loading">Loading preview...</div>
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end; padding: 0 16px 16px 16px;">
+                <button id="readiness-repair-cancel" class="dialog-button secondary" onclick="closeReadinessRepairModal()">Cancel</button>
+                <button id="readiness-repair-confirm" class="dialog-button primary" onclick="confirmReadinessRepairApply()" disabled>Confirm Repair</button>
             </div>
         </div>
     </div>

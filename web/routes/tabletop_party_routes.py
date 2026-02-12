@@ -14,8 +14,9 @@ See LICENSE file for full terms.
 """
 
 import os
+from copy import deepcopy
 from datetime import datetime
-from typing import Any
+from typing import Any, Dict, List
 
 from flask import Flask, jsonify, request
 
@@ -28,7 +29,12 @@ from utils.character_creator import (
     get_party_level,
     is_creation_mode_active,
     restore_conversation_history,
-    sanitize_character_data,
+)
+from utils.character_creation_audit import (
+    AUDIT_RESULT_SCHEMA_ERROR,
+    AUDIT_RESULT_SUCCESS,
+    audit_character_creation,
+    audit_character_readiness,
 )
 from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import error, info, warning
@@ -38,6 +44,64 @@ from utils.module_path_manager import ModulePathManager
 
 def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
     """Register TABLETOP MODE party and character creation API routes."""
+
+    def _split_csv(value: Any) -> list[str]:
+        if not value:
+            return []
+        if isinstance(value, list):
+            return [str(entry).strip() for entry in value if str(entry).strip()]
+        return [segment.strip() for segment in str(value).split(',') if segment.strip()]
+
+    def _safe_int(value: Any, default: int) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _normalize_lookup_name(value: str) -> str:
+        return normalize_character_name(str(value or ""))
+
+    def _extract_npc_name(entry: Any) -> str:
+        if isinstance(entry, dict):
+            return str(entry.get("name", "")).strip()
+        return str(entry or "").strip()
+
+    def _party_npc_names(party_tracker: Dict[str, Any]) -> List[str]:
+        npc_entries = party_tracker.get("partyNPCs", [])
+        npc_names: List[str] = []
+        for npc_entry in npc_entries:
+            npc_name = _extract_npc_name(npc_entry)
+            if npc_name:
+                npc_names.append(npc_name)
+        return npc_names
+
+    def _remove_npc_entry_by_name(party_tracker: Dict[str, Any], character_name: str) -> None:
+        normalized_target = _normalize_lookup_name(character_name)
+        filtered: List[Any] = []
+        for npc_entry in party_tracker.get("partyNPCs", []):
+            npc_name = _extract_npc_name(npc_entry)
+            if _normalize_lookup_name(npc_name) == normalized_target:
+                continue
+            filtered.append(npc_entry)
+        party_tracker["partyNPCs"] = filtered
+
+    def _load_character_data(character_name: str) -> Dict[str, Any]:
+        char_data = pc_manager.get_character_state(character_name)
+        if isinstance(char_data, dict) and char_data:
+            return char_data
+
+        normalized_name = _normalize_lookup_name(character_name)
+        fallback_path = os.path.join("characters", f"{normalized_name}.json")
+        fallback_data = safe_read_json(fallback_path)
+        if isinstance(fallback_data, dict):
+            return fallback_data
+        return {}
+
+    def _save_character_data(character_name: str, character_data: Dict[str, Any]) -> bool:
+        path_manager = ModulePathManager()
+        normalized_name = _normalize_lookup_name(character_name)
+        char_path = path_manager.get_character_path(normalized_name)
+        return safe_write_json(char_path, character_data)
 
     @app.route('/api/party')
     def get_party() -> Any:
@@ -84,15 +148,24 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
 
     @app.route('/api/party/characters')
     def get_party_characters_list() -> Any:
-        """List available player characters from global and module paths."""
+        """List Add Existing candidates by source mode."""
         try:
             party_tracker = safe_read_json("party_tracker.json") or {}
             current_module = (party_tracker.get("module") or "").replace(" ", "_") or None
+            source_mode = str(request.args.get("source", "players")).strip().lower()
+            if source_mode not in ("players", "npc_companions", "all"):
+                source_mode = "players"
 
-            available_characters = []
+            party_members = set(party_tracker.get("partyMembers", []))
+            normalized_party_members = {normalize_character_name(member) for member in party_members}
 
-            def is_player(char_data: dict) -> bool:
+            available_characters: list[dict[str, Any]] = []
+            seen_names: set[str] = set()
+
+            def is_player(char_data: Any) -> bool:
                 if not char_data:
+                    return False
+                if not isinstance(char_data, dict):
                     return False
                 char_type = (char_data.get("type") or char_data.get("character_type") or "").lower()
                 if char_type == "npc":
@@ -112,26 +185,71 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
                         char_path = os.path.join(directory, filename)
                         char_data = safe_read_json(char_path)
                         if is_player(char_data):
+                            if not isinstance(char_data, dict):
+                                continue
+                            character_name = char_data.get('name', filename.replace('.json', ''))
+                            normalized_lookup_name = normalize_character_name(character_name)
+                            if (
+                                character_name in party_members
+                                or normalized_lookup_name in normalized_party_members
+                                or normalized_lookup_name in seen_names
+                            ):
+                                continue
+                            seen_names.add(normalized_lookup_name)
                             available_characters.append({
                                 'filename': filename,
-                                'name': char_data.get('name', filename.replace('.json', '')),
+                                'name': character_name,
                                 'level': char_data.get('level', 1),
                                 'class': char_data.get('class', 'Unknown'),
                                 'module_specific': module_specific,
+                                'source': 'players',
+                                'candidate_type': 'player',
+                                'action': 'add',
+                                'before_role': 'player',
+                                'after_role': 'player',
                             })
                     except Exception:
                         continue
 
-            scan_dir('characters', module_specific=False)
+            if source_mode in ("players", "all"):
+                scan_dir('characters', module_specific=False)
 
-            if current_module:
-                try:
-                    path_manager = ModulePathManager(current_module)
-                    scan_dir(path_manager.get_characters_dir(), module_specific=True)
-                except Exception:
-                    pass
+                if current_module:
+                    try:
+                        path_manager = ModulePathManager(current_module)
+                        scan_dir(os.path.join(path_manager.module_dir, "characters"), module_specific=True)
+                    except Exception:
+                        pass
 
-            return jsonify({'characters': available_characters})
+            if source_mode in ("npc_companions", "all"):
+                npc_names = _party_npc_names(party_tracker)
+                for npc_name in npc_names:
+                    normalized_lookup_name = _normalize_lookup_name(npc_name)
+                    if (
+                        not npc_name
+                        or normalized_lookup_name in normalized_party_members
+                        or normalized_lookup_name in seen_names
+                    ):
+                        continue
+
+                    npc_data = _load_character_data(npc_name)
+                    seen_names.add(normalized_lookup_name)
+                    available_characters.append({
+                        'filename': f"{normalized_lookup_name}.json",
+                        'name': npc_name,
+                        'level': npc_data.get('level', 1),
+                        'class': npc_data.get('class', 'Unknown'),
+                        'module_specific': True,
+                        'source': 'npc_companions',
+                        'candidate_type': 'npc_companion',
+                        'action': 'promote',
+                        'before_role': 'npc',
+                        'after_role': 'player',
+                        'has_character_id': bool(str(npc_data.get('character_id', '')).strip()),
+                        'has_role_history': isinstance(npc_data.get('_tabletop_role_history'), list),
+                    })
+
+            return jsonify({'characters': available_characters, 'source': source_mode})
         except Exception as route_error:
             error(f"TABLETOP: Failed to list characters: {route_error}")
             return jsonify({'error': str(route_error)}), 500
@@ -223,7 +341,20 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
             if not character_json:
                 return jsonify({'error': 'Character data required'}), 400
 
-            character_data = sanitize_character_data(character_json)
+            audit_result = audit_character_creation(
+                character_json,
+                source="tabletop_route_finalize_creation",
+                enable_enrichment=True,
+            )
+            if audit_result.result_type != AUDIT_RESULT_SUCCESS:
+                return jsonify({
+                    'error': 'Character data failed validation',
+                    'result_type': audit_result.result_type,
+                    'errors': audit_result.errors,
+                    'missing_paths': audit_result.missing_paths,
+                }), 400
+
+            character_data = audit_result.normalized_data
             character_name = character_data.get('name', 'Unknown')
 
             char_filename = normalize_character_name(character_name) + ".json"
@@ -337,6 +468,199 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
             error(f"TABLETOP: Failed to remove character: {route_error}")
             return jsonify({'error': str(route_error)}), 500
 
+    @app.route('/api/party/promotion/preview', methods=['POST'])
+    def preview_npc_promotion() -> Any:
+        """Preview NPC companion promotion to PC without writing state."""
+        data = request.get_json(silent=True) or {}
+        character_name = str(data.get('character', '')).strip()
+        if not character_name:
+            return jsonify({'error': 'Character name required'}), 400
+
+        try:
+            party_tracker = pc_manager.get_party_tracker()
+            npc_names = _party_npc_names(party_tracker)
+            normalized_npc_names = {_normalize_lookup_name(name) for name in npc_names}
+            normalized_party_members = {
+                _normalize_lookup_name(name) for name in party_tracker.get('partyMembers', [])
+            }
+            normalized_character = _normalize_lookup_name(character_name)
+
+            if normalized_character in normalized_party_members:
+                return jsonify({'error': 'Character is already a party member'}), 400
+            if normalized_character not in normalized_npc_names:
+                return jsonify({'error': 'Character is not a promotable party NPC companion'}), 400
+
+            character_data = _load_character_data(character_name)
+            if not character_data:
+                error(
+                    f"TABLETOP_PROMOTION action=preview character={character_name} status=failed reason=missing_character_file",
+                    category="tabletop_mode"
+                )
+                return jsonify({'error': 'Character data not found'}), 404
+
+            preview_data = deepcopy(character_data)
+            had_character_id = bool(str(preview_data.get('character_id', '')).strip())
+            pc_manager.ensure_stable_character_id(preview_data)
+            pc_manager.normalize_character_role_fields(preview_data, 'player')
+
+            readiness = audit_character_readiness(preview_data)
+            warnings = readiness.get('warnings', []) if isinstance(readiness, dict) else []
+
+            expected_changes = {
+                'character_id': 'unchanged' if had_character_id else 'will_generate',
+                'role_fields': {
+                    'type': 'player',
+                    'character_type': 'player',
+                    'character_role': 'player',
+                },
+                'party_transition': {
+                    'remove_from': 'partyNPCs',
+                    'add_to': 'partyMembers',
+                    'active_character_unchanged': True,
+                },
+                'lifecycle_event': {
+                    'action': 'promoted_to_pc',
+                    'from_role': 'npc',
+                    'to_role': 'player',
+                    'source': 'manage_party_add_existing',
+                }
+            }
+
+            info(
+                f"TABLETOP_PROMOTION action=preview character={character_name} status=success warnings={len(warnings)}",
+                category="tabletop_mode"
+            )
+            return jsonify({
+                'success': True,
+                'character': {
+                    'name': preview_data.get('name', character_name),
+                    'level': preview_data.get('level', 1),
+                    'class': preview_data.get('class', 'Unknown'),
+                    'before_role': 'npc',
+                    'after_role': 'player',
+                    'character_id': preview_data.get('character_id', ''),
+                },
+                'expected_changes': expected_changes,
+                'warnings': warnings,
+                'requires_confirmation': True,
+            })
+        except Exception as route_error:
+            error(
+                f"TABLETOP_PROMOTION action=preview character={character_name} status=failed reason={route_error}",
+                category="tabletop_mode"
+            )
+            return jsonify({'error': str(route_error)}), 500
+
+    @app.route('/api/party/promotion/apply', methods=['POST'])
+    def apply_npc_promotion() -> Any:
+        """Apply confirmed NPC companion promotion to PC."""
+        data = request.get_json(silent=True) or {}
+        character_name = str(data.get('character', '')).strip()
+        confirmed = bool(data.get('confirm', False))
+
+        if not character_name:
+            return jsonify({'error': 'Character name required'}), 400
+        if not confirmed:
+            return jsonify({'error': 'Promotion confirmation required'}), 400
+
+        try:
+            party_tracker = pc_manager.get_party_tracker()
+            original_active_character = party_tracker.get('active_character', '')
+
+            npc_names = _party_npc_names(party_tracker)
+            normalized_npc_names = {_normalize_lookup_name(name) for name in npc_names}
+            normalized_party_members = {
+                _normalize_lookup_name(name) for name in party_tracker.get('partyMembers', [])
+            }
+            normalized_character = _normalize_lookup_name(character_name)
+
+            if normalized_character in normalized_party_members:
+                return jsonify({'error': 'Character is already a party member'}), 400
+            if normalized_character not in normalized_npc_names:
+                return jsonify({'error': 'Character is not a promotable party NPC companion'}), 400
+
+            character_data = _load_character_data(character_name)
+            if not character_data:
+                error(
+                    f"TABLETOP_PROMOTION action=apply character={character_name} status=failed reason=missing_character_file",
+                    category="tabletop_mode"
+                )
+                return jsonify({'error': 'Character data not found'}), 404
+
+            updated_data = deepcopy(character_data)
+            generated_character_id = not bool(str(updated_data.get('character_id', '')).strip())
+            pc_manager.ensure_stable_character_id(updated_data)
+            pc_manager.normalize_character_role_fields(updated_data, 'player')
+            pc_manager.append_role_history_event(
+                updated_data,
+                action='promoted_to_pc',
+                from_role='npc',
+                to_role='player',
+                source='manage_party_add_existing',
+                actor='dm',
+            )
+
+            audit_result = audit_character_creation(
+                updated_data,
+                source='tabletop_npc_promotion_apply',
+                enable_enrichment=False,
+            )
+            if audit_result.result_type == AUDIT_RESULT_SCHEMA_ERROR:
+                error(
+                    f"TABLETOP_PROMOTION action=apply character={character_name} status=failed reason=schema_validation",
+                    category="tabletop_mode"
+                )
+                return jsonify({
+                    'error': 'Promotion blocked by critical validation failure',
+                    'result_type': audit_result.result_type,
+                    'errors': audit_result.errors,
+                    'missing_paths': audit_result.missing_paths,
+                }), 400
+
+            readiness = audit_character_readiness(updated_data)
+            warnings = readiness.get('warnings', []) if isinstance(readiness, dict) else []
+
+            if not _save_character_data(character_name, updated_data):
+                error(
+                    f"TABLETOP_PROMOTION action=apply character={character_name} status=failed reason=character_write_failed",
+                    category="tabletop_mode"
+                )
+                return jsonify({'error': 'Failed to save promoted character data'}), 500
+
+            _remove_npc_entry_by_name(party_tracker, character_name)
+
+            if character_name not in party_tracker.get('partyMembers', []):
+                party_tracker.setdefault('partyMembers', []).append(character_name)
+
+            # TABLETOP MODE: Promotion apply should not auto-switch active_character.
+            party_tracker['active_character'] = original_active_character
+
+            if not safe_write_json('party_tracker.json', party_tracker):
+                error(
+                    f"TABLETOP_PROMOTION action=apply character={character_name} status=failed reason=party_tracker_write_failed",
+                    category="tabletop_mode"
+                )
+                return jsonify({'error': 'Failed to save party tracker updates'}), 500
+
+            info(
+                f"TABLETOP_PROMOTION action=apply character={character_name} status=success warnings={len(warnings)} generated_character_id={generated_character_id}",
+                category="tabletop_mode"
+            )
+            return jsonify({
+                'success': True,
+                'character_name': character_name,
+                'warnings': warnings,
+                'generated_character_id': generated_character_id,
+                'active_character': party_tracker.get('active_character', ''),
+                'partyMembers': party_tracker.get('partyMembers', []),
+            })
+        except Exception as route_error:
+            error(
+                f"TABLETOP_PROMOTION action=apply character={character_name} status=failed reason={route_error}",
+                category="tabletop_mode"
+            )
+            return jsonify({'error': str(route_error)}), 500
+
     @app.route('/api/party/create_manual', methods=['POST'])
     def create_manual_character() -> Any:
         """Manually create a character from form data and add to party."""
@@ -346,67 +670,132 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
             if not name:
                 return jsonify({'error': 'Character name is required'}), 400
 
-            new_char = {
+            new_char_payload = {
                 "character_role": "player",
                 "character_type": "player",
                 "name": name,
                 "type": "player",
                 "size": "Medium",
-                "level": int(data.get('level', 1)),
+                "level": _safe_int(data.get('level', 1), 1),
                 "race": data.get('race', 'Human'),
                 "class": data.get('class', 'Fighter'),
-                "alignment": data.get('alignment', 'neutral'),
+                "alignment": str(data.get('alignment', 'neutral')).strip().lower(),
                 "background": data.get('background', 'Adventurer'),
                 "status": "alive",
                 "condition": "none",
                 "condition_affected": [],
-                "hitPoints": int(data.get('hp', 10)),
-                "maxHitPoints": int(data.get('hp', 10)),
-                "armorClass": int(data.get('ac', 10)),
-                "initiative": int(data.get('initiative', 0)),
-                "speed": int(data.get('speed', 30)),
+                "hitPoints": _safe_int(data.get('hp', 10), 10),
+                "maxHitPoints": _safe_int(data.get('max_hp', data.get('hp', 10)), _safe_int(data.get('hp', 10), 10)),
+                "armorClass": _safe_int(data.get('ac', 10), 10),
+                "initiative": _safe_int(data.get('initiative', 0), 0),
+                "speed": _safe_int(data.get('speed', 30), 30),
                 "abilities": {
-                    "strength": int(data.get('str', 10)),
-                    "dexterity": int(data.get('dex', 10)),
-                    "constitution": int(data.get('con', 10)),
-                    "intelligence": int(data.get('int', 10)),
-                    "wisdom": int(data.get('wis', 10)),
-                    "charisma": int(data.get('cha', 10)),
+                    "strength": _safe_int(data.get('str', 10), 10),
+                    "dexterity": _safe_int(data.get('dex', 10), 10),
+                    "constitution": _safe_int(data.get('con', 10), 10),
+                    "intelligence": _safe_int(data.get('int', 10), 10),
+                    "wisdom": _safe_int(data.get('wis', 10), 10),
+                    "charisma": _safe_int(data.get('cha', 10), 10),
                 },
-                "savingThrows": [],
-                "skills": [],
+                "savingThrows": _split_csv(data.get('saving_throws', '')),
+                "skills": _split_csv(data.get('skills', '')),
                 "proficiencyBonus": 2,
                 "senses": {"darkvision": 0, "passivePerception": 10},
-                "languages": ["Common"],
-                "proficiencies": {"armor": [], "weapons": [], "tools": []},
+                "languages": _split_csv(data.get('languages', 'Common')),
+                "proficiencies": {
+                    "armor": _split_csv(data.get('prof_armor', '')),
+                    "weapons": _split_csv(data.get('prof_weapons', '')),
+                    "tools": _split_csv(data.get('prof_tools', '')),
+                },
                 "damageVulnerabilities": [],
                 "damageResistances": [],
                 "damageImmunities": [],
                 "conditionImmunities": [],
                 "classFeatures": [],
                 "racialTraits": [],
-                "backgroundFeature": {"name": "Feature", "description": "Standard background feature"},
+                "backgroundFeature": {
+                    "name": data.get('background_feature_name', 'Background Feature'),
+                    "description": data.get('background_feature_description', ''),
+                    "source": "SRD 5.2.1",
+                },
                 "temporaryEffects": [],
                 "injuries": [],
                 "equipment_effects": [],
                 "feats": [],
-                "equipment": [],
-                "attacksAndSpellcasting": [],
+                "equipment": [
+                    {
+                        "item_name": item_name,
+                        "item_type": "equipment",
+                        "item_subtype": "other",
+                        "description": "Manual entry",
+                        "quantity": 1,
+                    }
+                    for item_name in _split_csv(data.get('equipment', ''))
+                ],
+                "attacksAndSpellcasting": [
+                    {
+                        "name": attack_name,
+                        "attackBonus": 0,
+                        "damageDice": "1d4",
+                        "damageBonus": 0,
+                        "damageType": "bludgeoning",
+                        "type": "melee",
+                        "description": "Manual attack entry",
+                    }
+                    for attack_name in _split_csv(data.get('attacks', ''))
+                ],
                 "spellcasting": {
-                    "ability": "none",
-                    "spellSaveDC": 8,
-                    "spellAttackBonus": 0,
-                    "spells": {},
-                    "spellSlots": {},
+                    "ability": data.get('spellcasting_ability', 'none'),
+                    "spellSaveDC": _safe_int(data.get('spell_dc', 8), 8),
+                    "spellAttackBonus": _safe_int(data.get('spell_attack_bonus', 0), 0),
+                    "spells": {
+                        "cantrips": _split_csv(data.get('cantrips', '')),
+                        "level1": _split_csv(data.get('level1_spells', '')),
+                        "level2": [],
+                        "level3": [],
+                        "level4": [],
+                        "level5": [],
+                        "level6": [],
+                        "level7": [],
+                        "level8": [],
+                        "level9": [],
+                    },
+                    "spellSlots": {
+                        "level1": {"current": 0, "max": 0},
+                        "level2": {"current": 0, "max": 0},
+                        "level3": {"current": 0, "max": 0},
+                        "level4": {"current": 0, "max": 0},
+                        "level5": {"current": 0, "max": 0},
+                        "level6": {"current": 0, "max": 0},
+                        "level7": {"current": 0, "max": 0},
+                        "level8": {"current": 0, "max": 0},
+                        "level9": {"current": 0, "max": 0},
+                    },
+                    "preparedSpells": [],
                 },
                 "currency": {"gold": 0, "silver": 0, "copper": 0},
                 "experience_points": 0,
                 "exp_required_for_next_level": 300,
-                "personality_traits": "",
-                "ideals": "",
-                "bonds": "",
-                "flaws": "",
+                "personality_traits": data.get('personality_traits', ''),
+                "ideals": data.get('ideals', ''),
+                "bonds": data.get('bonds', ''),
+                "flaws": data.get('flaws', ''),
             }
+
+            audit_result = audit_character_creation(
+                new_char_payload,
+                source="tabletop_route_roll_your_own",
+                enable_enrichment=True,
+            )
+            if audit_result.result_type != AUDIT_RESULT_SUCCESS:
+                return jsonify({
+                    'error': 'Manual character validation failed',
+                    'result_type': audit_result.result_type,
+                    'errors': audit_result.errors,
+                    'missing_paths': audit_result.missing_paths,
+                }), 400
+
+            new_char = audit_result.normalized_data
 
             char_filename = name.lower().replace(' ', '_') + ".json"
             char_path = os.path.join('characters', char_filename)

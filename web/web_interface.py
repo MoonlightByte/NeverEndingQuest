@@ -95,7 +95,11 @@ from web.extensions.tabletop_socket_handlers import (
 )
 from web.output_markers import extract_output_markers
 from web.routes.browser_settings_routes import register_browser_settings_routes
-from web.routes.character_sheet_routes import export_character_pdf_impl
+from web.routes.character_sheet_routes import (
+    export_character_pdf_impl,
+    readiness_repair_apply_impl,
+    readiness_repair_preview_impl,
+)
 from web.routes.tabletop_party_routes import register_tabletop_party_routes
 
 # Import toolkit components for API support
@@ -897,6 +901,20 @@ def get_spell_data():
 def export_character_pdf():
     """Fill the official 5E Character Sheet PDF with active character data"""
     return export_character_pdf_impl(request)
+
+
+@app.route('/api/character_sheet/readiness_repair/preview', methods=['POST'])
+def readiness_repair_preview():
+    # TABLETOP MODE: Character sheet readiness repair preview endpoint.
+    """Preview readiness repair proposal for current character sheet."""
+    return readiness_repair_preview_impl(request)
+
+
+@app.route('/api/character_sheet/readiness_repair/apply', methods=['POST'])
+def readiness_repair_apply():
+    # TABLETOP MODE: Character sheet readiness repair apply endpoint.
+    """Apply readiness repair proposal after explicit confirmation."""
+    return readiness_repair_apply_impl(request)
 
 # ============================================================================
 # MODULE TOOLKIT API ENDPOINTS

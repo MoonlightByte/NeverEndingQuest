@@ -10,6 +10,45 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **NPC -> PC Role Lifecycle Promotion (COMPLETED - 2026-02-12):**
+  - Added Add Existing source modes (`players`, `npc_companions`, `all`) and promote action flow.
+  - Added promotion preview/apply endpoints with explicit confirmation and no chat side effects.
+  - Added identity/lifecycle helpers in `utils/pc_manager.py`:
+    - `ensure_stable_character_id()`
+    - `append_role_history_event()`
+    - `normalize_character_role_fields()`
+  - Promotion now preserves active character (no auto-switch), updates role markers in place, and records `_tabletop_role_history`.
+  - Added schema support for `character_id` and `_tabletop_role_history` in `schemas/char_schema.json`.
+  - Validation:
+    - `python3 -m py_compile utils/pc_manager.py web/routes/tabletop_party_routes.py` -> PASS
+    - API smoke: preview/apply PASS; membership move PASS; active-character unchanged PASS.
+
+- **Saving Throw Normalization and GUI/PDF Consistency (COMPLETED - 2026-02-12):**
+  - Added shared helper `utils/saving_throw_utils.py` for case-insensitive save normalization and class fallback (includes `thief -> rogue` alias).
+  - GUI now always renders six Saving Throws and uses normalized/fallback proficiency logic.
+  - PDF saving throw checkboxes/bonuses now use the same normalized/fallback source.
+  - Added optional backfill utility `scripts/backfill_saving_throws.py` (dry-run default, explicit `--apply`).
+  - Validation:
+    - `python3 -m py_compile utils/saving_throw_utils.py scripts/backfill_saving_throws.py web/routes/character_sheet_routes.py` -> PASS
+    - Dry-run and apply runs completed; Cyrius/Tester/Xerxes now consistent in GUI/PDF.
+
+- **Character Readiness Repair Workflow (COMPLETED - 2026-02-12):**
+  - Added in-sheet `Repair` action with preview -> confirm flow in `web/templates/game_interface.html`.
+  - Added backend endpoints:
+    - `POST /api/character_sheet/readiness_repair/preview`
+    - `POST /api/character_sheet/readiness_repair/apply`
+  - Repair pipeline is non-chat, cooldown-protected, whitelist-restricted to narrative fields, and audit-gated.
+  - Verified real recovery on `tester` and `xerxes` (readiness warnings cleared, PDF export preserved).
+
+- **PC Creation Workflow Unification (COMPLETED - 2026-02-12):**
+  - Added shared creation audit pipeline in `utils/character_creation_audit.py` with deterministic result types:
+    - `schema_error`, `completeness_error`, `success`
+  - Hardened Create with DM finalization in `main.py` (raw/fenced JSON extraction + correction loop).
+  - Expanded Roll Your Own form and backend validation path.
+  - Added Add Existing filter/dedupe to exclude current party members.
+  - Extended startup to support iterative multi-PC creation loop while preserving SP behavior.
+  - Full smoke suite (API + compile + script tests) passed on 2026-02-12.
+
 - **Initiative Phase 1 Two-Group Start Gate (COMPLETED - 2026-02-12):**
   - **Objective:** Add deterministic combat opening phase (`dmGroup` vs `pcGroup`) while preserving existing `/end` enemy-batch flow.
   - **Implementation:**

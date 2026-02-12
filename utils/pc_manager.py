@@ -10,6 +10,8 @@ for future database migration path.
 """
 
 import os
+import uuid
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.enhanced_logger import info, error, debug
@@ -306,6 +308,66 @@ def get_character_access_stats() -> Dict[str, int]:
     return _character_access_stats.copy()
 
 
+def ensure_stable_character_id(character_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensure character_data has a stable character_id (generated once)."""
+    if not isinstance(character_data, dict):
+        return character_data
+
+    existing_id = str(character_data.get("character_id", "")).strip()
+    if existing_id:
+        return character_data
+
+    character_data["character_id"] = str(uuid.uuid4())
+    return character_data
+
+
+def append_role_history_event(
+    character_data: Dict[str, Any],
+    action: str,
+    from_role: str,
+    to_role: str,
+    source: str = "manage_party_add_existing",
+    actor: str = "dm",
+) -> Dict[str, Any]:
+    """Append a role transition event to _tabletop_role_history."""
+    if not isinstance(character_data, dict):
+        return character_data
+
+    history = character_data.get("_tabletop_role_history")
+    if not isinstance(history, list):
+        history = []
+
+    history.append({
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "action": str(action),
+        "from_role": str(from_role),
+        "to_role": str(to_role),
+        "source": str(source),
+        "actor": str(actor),
+    })
+    character_data["_tabletop_role_history"] = history
+    return character_data
+
+
+def normalize_character_role_fields(character_data: Dict[str, Any], role: str) -> Dict[str, Any]:
+    """Normalize all role marker fields consistently for character records."""
+    if not isinstance(character_data, dict):
+        return character_data
+
+    normalized_role = str(role or "player").strip().lower()
+    if normalized_role in ("pc", "player"):
+        normalized_role = "player"
+    elif normalized_role == "npc":
+        normalized_role = "npc"
+    else:
+        normalized_role = "player"
+
+    character_data["type"] = normalized_role
+    character_data["character_type"] = normalized_role
+    character_data["character_role"] = normalized_role
+    return character_data
+
+
 # DATABASE MIGRATION TODO:
 # To migrate to database backend:
 # 1. Update CHARACTER_STORAGE_BACKEND constant
@@ -357,10 +419,16 @@ def add_pc(character_name: str) -> bool:
         return True
     
     # Check if they were accidentally added as an NPC
-    npc_names = [npc.get("name") for npc in data["partyNPCs"]]
+    npc_names = [
+        npc.get("name") if isinstance(npc, dict) else str(npc)
+        for npc in data["partyNPCs"]
+    ]
     if character_name in npc_names:
         info(f"Moving '{character_name}' from NPCs to PCs.")
-        data["partyNPCs"] = [npc for npc in data["partyNPCs"] if npc.get("name") != character_name]
+        data["partyNPCs"] = [
+            npc for npc in data["partyNPCs"]
+            if (npc.get("name") if isinstance(npc, dict) else str(npc)) != character_name
+        ]
     
     data["partyMembers"].append(character_name)
     
@@ -441,13 +509,17 @@ def get_entrance_prompt(character_name: str, character_data: Dict[str, Any], par
         summary_file = "modules/conversation_history/conversation_history.json"
         if os.path.exists(summary_file):
             history = safe_read_json(summary_file)
-            if history:
+            if history and isinstance(history, list):
                 # Look for last summary or just take last few messages
                 for msg in reversed(history):
-                    if "=== LOCATION SUMMARY ===" in msg.get("content", "") or "=== MODULE SUMMARY ===" in msg.get("content", ""):
-                        recent_summary = msg.get("content", "")[:500] + "..."
+                    if isinstance(msg, dict):
+                        content = str(msg.get("content", ""))
+                    else:
+                        continue
+                    if "=== LOCATION SUMMARY ===" in content or "=== MODULE SUMMARY ===" in content:
+                        recent_summary = content[:500] + "..."
                         break
-    except:
+    except Exception:
         pass
 
     world = party_tracker.get("worldConditions", {})
@@ -544,9 +616,8 @@ def get_character_creation_prompt(
             history = safe_read_json(summary_file)
             if history and isinstance(history, list):
                 for msg in reversed(history):
-                    # Ensure msg is a dict before calling .get()
                     if isinstance(msg, dict):
-                        content = msg.get("content", "")
+                        content = str(msg.get("content", ""))
                         if "=== LOCATION SUMMARY ===" in content or "=== MODULE SUMMARY ===" in content:
                             recent_summary = content[:500] + "..." if len(content) > 500 else content
                             break

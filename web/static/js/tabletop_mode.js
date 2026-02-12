@@ -108,19 +108,30 @@ function switchManageTab(tabId) {
 
 function loadExistingCharacters() {
     const listContainer = document.getElementById('existing-character-list');
-    listContainer.innerHTML = '<div class="loading">Searching /characters...</div>';
+    const sourceSelect = document.getElementById('add-existing-source');
+    const sourceMode = sourceSelect ? sourceSelect.value : 'players';
+    listContainer.innerHTML = '<div class="loading">Loading candidates...</div>';
 
-    fetch('/api/party/characters')
+    fetch(`/api/party/characters?source=${encodeURIComponent(sourceMode)}`)
     .then(response => response.json())
     .then(data => {
         if (data.characters && data.characters.length > 0) {
             let html = '';
             data.characters.forEach(char => {
+                const candidateName = escapeHtml(char.name || 'Unknown');
+                const roleBadge = char.action === 'promote'
+                    ? '<span class="save-mode-badge" style="background: #6a4f1f;">NPC -> PC</span>'
+                    : '<span class="save-mode-badge essential">Player</span>';
+                const primaryAction = char.action === 'promote' ? 'Promote' : 'Add';
                 html += `
-                    <div class="save-item" onclick="addCharacterToParty('${char.name}')">
+                    <div class="save-item" style="cursor: default;">
                         <div class="save-item-header">
-                            ${char.name}
-                            <span class="save-mode-badge essential">Lvl ${char.level} ${char.class}</span>
+                            ${candidateName}
+                            <span class="save-mode-badge essential">Lvl ${char.level || 1} ${escapeHtml(char.class || 'Unknown')}</span>
+                            ${roleBadge}
+                        </div>
+                        <div style="margin-top: 8px; display: flex; justify-content: flex-end; gap: 8px;">
+                            <button class="dialog-button primary" onclick='handleExistingCharacterAction(${JSON.stringify(char.name)}, ${JSON.stringify(char.action)})'>${primaryAction}</button>
                         </div>
                     </div>
                 `;
@@ -133,6 +144,85 @@ function loadExistingCharacters() {
     .catch(error => {
         console.error('Error loading characters:', error);
         listContainer.innerHTML = '<div class="error">Failed to load characters.</div>';
+    });
+}
+
+function escapeHtml(value) {
+    const text = String(value == null ? '' : value);
+    return text
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
+function handleExistingCharacterAction(characterName, action) {
+    if (action === 'promote') {
+        previewPromotion(characterName);
+        return;
+    }
+    addCharacterToParty(characterName);
+}
+
+function previewPromotion(characterName) {
+    fetch('/api/party/promotion/preview', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ character: characterName }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            alert('Error: ' + (data.error || 'Failed to preview promotion.'));
+            return;
+        }
+
+        const character = data.character || {};
+        const warnings = Array.isArray(data.warnings) && data.warnings.length > 0
+            ? `\n\nWarnings:\n- ${data.warnings.join('\n- ')}`
+            : '';
+        const confirmText =
+            `Promote ${character.name || characterName}?\n\n` +
+            `Role: ${character.before_role || 'npc'} -> ${character.after_role || 'player'}\n` +
+            `This keeps the same character file and does not switch active character.${warnings}`;
+
+        if (!confirm(confirmText)) {
+            return;
+        }
+
+        applyPromotion(characterName);
+    })
+    .catch(error => {
+        console.error('Error previewing promotion:', error);
+        alert('Failed to preview promotion.');
+    });
+}
+
+function applyPromotion(characterName) {
+    fetch('/api/party/promotion/apply', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ character: characterName, confirm: true }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+                alert('Promotion completed with warnings:\n- ' + data.warnings.join('\n- '));
+            }
+            window.location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Promotion failed.'));
+        }
+    })
+    .catch(error => {
+        console.error('Error applying promotion:', error);
+        alert('Failed to apply promotion.');
     });
 }
 
@@ -152,11 +242,15 @@ function submitQuickCreate() {
         if (result.success) {
             window.location.reload();
         } else {
-            alert('Error: ' + result.error);
+            if (result.missing_paths && result.missing_paths.length > 0) {
+                alert('Error: ' + result.error + '\nMissing or invalid: ' + result.missing_paths.join(', '));
+            } else {
+                alert('Error: ' + result.error);
+            }
         }
     })
     .catch(error => {
-        console.error('Error in quick create:', error);
+        console.error('Error in Roll Your Own create:', error);
     });
 }
 

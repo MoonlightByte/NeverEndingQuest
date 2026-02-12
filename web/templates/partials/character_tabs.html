@@ -33,12 +33,20 @@
             <div class="tabs" style="margin-bottom: 15px;">
                 <button class="tab-button active" onclick="switchManageTab('add-existing')">Add Existing</button>
                 <button class="tab-button" onclick="switchManageTab('dm-interview')">Create with DM</button>
-                <button class="tab-button" onclick="switchManageTab('quick-create')">DM Quick-Create</button>
+                <button class="tab-button" onclick="switchManageTab('quick-create')">Roll Your Own</button>
             </div>
 
             <!-- Tab: Add Existing -->
             <div id="tab-add-existing" class="manage-tab-content">
-                <p style="margin-bottom: 10px; color: #aaa;">Select a character from your /characters folder:</p>
+                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                    <label for="add-existing-source" style="color: #aaa; min-width: 110px;">Source</label>
+                    <select id="add-existing-source" onchange="loadExistingCharacters()" style="flex: 1; background: #1f1f1f; color: #ddd; border: 1px solid #444; border-radius: 4px; padding: 6px;">
+                        <option value="players">Players</option>
+                        <option value="npc_companions">NPC Companions</option>
+                        <option value="all">All</option>
+                    </select>
+                </div>
+                <p style="margin-bottom: 10px; color: #aaa;">Select a character to add or promote:</p>
                 <div id="existing-character-list" class="save-list" style="max-height: 300px;">
                     <div class="loading">Loading characters...</div>
                 </div>
@@ -58,9 +66,10 @@
                 </form>
             </div>
 
-            <!-- Tab: Quick Create -->
+            <!-- Tab: Roll Your Own -->
             <div id="tab-quick-create" class="manage-tab-content" style="display: none;">
                 <form id="quick-create-form" class="save-form">
+                    <h4 style="margin: 0 0 8px 0; color: #ddd;">Identity</h4>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                         <div>
                             <label>Name</label>
@@ -78,10 +87,18 @@
                             <label>Level</label>
                             <input type="number" name="level" value="1" min="1">
                         </div>
+                        <div>
+                            <label>Alignment</label>
+                            <input type="text" name="alignment" placeholder="e.g. neutral good">
+                        </div>
+                        <div>
+                            <label>Background</label>
+                            <input type="text" name="background" placeholder="e.g. Folk Hero">
+                        </div>
                     </div>
                     
                     <div style="margin-top: 15px;">
-                        <label>Ability Scores (Manual/Rolled)</label>
+                        <label>Ability Scores</label>
                         <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px;">
                             <div><label style="font-size: 10px;">STR</label><input type="number" name="str" value="10"></div>
                             <div><label style="font-size: 10px;">DEX</label><input type="number" name="dex" value="10"></div>
@@ -92,6 +109,7 @@
                         </div>
                     </div>
 
+                    <h4 style="margin: 15px 0 8px 0; color: #ddd;">Combat</h4>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
                         <div>
                             <label>AC</label>
@@ -100,6 +118,110 @@
                         <div>
                             <label>HP</label>
                             <input type="number" name="hp" value="10">
+                        </div>
+                        <div>
+                            <label>Initiative</label>
+                            <input type="number" name="initiative" value="0">
+                        </div>
+                        <div>
+                            <label>Speed</label>
+                            <input type="number" name="speed" value="30">
+                        </div>
+                    </div>
+
+                    <h4 style="margin: 15px 0 8px 0; color: #ddd;">Saves and Skills</h4>
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
+                        <div>
+                            <label>Saving Throws (comma-separated)</label>
+                            <input type="text" name="saving_throws" placeholder="Strength, Constitution">
+                        </div>
+                        <div>
+                            <label>Skills (comma-separated)</label>
+                            <input type="text" name="skills" placeholder="Athletics, Perception">
+                        </div>
+                    </div>
+
+                    <h4 style="margin: 15px 0 8px 0; color: #ddd;">Proficiencies and Languages</h4>
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
+                        <div>
+                            <label>Languages (comma-separated)</label>
+                            <input type="text" name="languages" value="Common">
+                        </div>
+                        <div>
+                            <label>Armor Proficiencies</label>
+                            <input type="text" name="prof_armor" placeholder="Light, Medium, Shields">
+                        </div>
+                        <div>
+                            <label>Weapon Proficiencies</label>
+                            <input type="text" name="prof_weapons" placeholder="Simple, Martial">
+                        </div>
+                        <div>
+                            <label>Tool Proficiencies</label>
+                            <input type="text" name="prof_tools" placeholder="Thieves' Tools">
+                        </div>
+                    </div>
+
+                    <h4 style="margin: 15px 0 8px 0; color: #ddd;">Equipment and Attacks</h4>
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
+                        <div>
+                            <label>Equipment (comma-separated)</label>
+                            <input type="text" name="equipment" placeholder="Longsword, Shield, Rope">
+                        </div>
+                        <div>
+                            <label>Attacks (comma-separated)</label>
+                            <input type="text" name="attacks" placeholder="Longsword, Handaxe">
+                        </div>
+                    </div>
+
+                    <h4 style="margin: 15px 0 8px 0; color: #ddd;">Spellcasting</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label>Spellcasting Ability</label>
+                            <input type="text" name="spellcasting_ability" value="none">
+                        </div>
+                        <div>
+                            <label>Spell Save DC</label>
+                            <input type="number" name="spell_dc" value="8">
+                        </div>
+                        <div>
+                            <label>Spell Attack Bonus</label>
+                            <input type="number" name="spell_attack_bonus" value="0">
+                        </div>
+                        <div>
+                            <label>Cantrips (comma-separated)</label>
+                            <input type="text" name="cantrips" placeholder="Light, Guidance">
+                        </div>
+                        <div style="grid-column: span 2;">
+                            <label>1st-Level Spells (comma-separated)</label>
+                            <input type="text" name="level1_spells" placeholder="Cure Wounds, Shield of Faith">
+                        </div>
+                    </div>
+
+                    <h4 style="margin: 15px 0 8px 0; color: #ddd;">Personality and Background</h4>
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
+                        <div>
+                            <label>Personality Traits</label>
+                            <textarea name="personality_traits" rows="2" placeholder="How does this hero act?"></textarea>
+                        </div>
+                        <div>
+                            <label>Ideals</label>
+                            <textarea name="ideals" rows="2" placeholder="What do they believe in?"></textarea>
+                        </div>
+                        <div>
+                            <label>Bonds</label>
+                            <textarea name="bonds" rows="2" placeholder="Who or what matters most?"></textarea>
+                        </div>
+                        <div>
+                            <label>Flaws</label>
+                            <textarea name="flaws" rows="2" placeholder="What complicates their life?"></textarea>
+                        </div>
+                        <div>
+                            <label>Background Feature Name</label>
+                            <input type="text" name="background_feature_name" placeholder="Feature name">
+                        </div>
+                        <div>
+                            <label>Background Feature Description</label>
+                            <textarea name="background_feature_description" rows="2" placeholder="What benefit does the feature provide?"></textarea>
                         </div>
                     </div>
 

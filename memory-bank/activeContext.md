@@ -1,4 +1,6 @@
 ## Current Work Focus
+- **Tabletop Character Lifecycle and Creation Hardening (COMPLETED - 2026-02-12):** PC creation and onboarding stack is now unified around shared validation/audit gates, with readiness repair and NPC -> PC promotion lifecycle in place. Immediate focus shifts to play-session validation and retirement workflow planning (future change).
+
 - **Initiative Phase 1 Two-Group Start Gate (COMPLETED - 2026-02-12):** Implemented deterministic combat startup with facilitator `/init <1-20>` gating. Encounter files now persist Phase 1 initiative state (`initiativeMode`, `initiativeRolls`, `initiativeWinner`, `roundStartsWith`, `awaitingPcGroupRoll`), combat loop blocks until valid `/init`, ties resolve to `dmGroup`, and DM-start rounds trigger immediate enemy batch without changing `/end` semantics. Added dynamic `=== INITIATIVE STATE ===` prompt section and aligned compressed sim/validation prompt wording to accept initiative-driven ENEMY_PHASE entry.
 
 - **Web Interface TT Merge Refactor Completion (COMPLETED - 2026-02-12):** Completed increments 7-9 from `plans/web_interface_tt_merge_refactor.md`. Host socket handlers in `web/web_interface.py` are now thin wrappers for plot/storage extraction, WebOutputCapture debug filtering is deduped with shared helper markers, and live chat monitor wrapper lifecycle is extension-owned with idempotent setup and optional teardown. Commit: `094a938`.
@@ -14,6 +16,34 @@
 - **TTS Auto-Play Fix & Queue Management (COMPLETED - 2026-02-06):** Implemented comprehensive TTS management system with queue control, message filtering, and [skipTTS] tagging. Fixed cacophony on page reload, parallel playback, and mechanical message narration. Only DM narration speaks now; combat results and system commands display but don't break immersion.
 
 ## Recent Changes
+- **NPC -> PC Role Lifecycle (COMPLETED - 2026-02-12):**
+    - Add Existing now supports `players`, `npc_companions`, and `all` source modes with explicit `Promote` action for NPC companions.
+    - Added promotion endpoints in `web/routes/tabletop_party_routes.py`:
+      - `POST /api/party/promotion/preview` (no writes)
+      - `POST /api/party/promotion/apply` (confirm required)
+    - Promotion is in-place (same character file), normalizes role markers to player, removes from `partyNPCs`, adds to `partyMembers`, and preserves `active_character`.
+    - Added identity/lifecycle metadata support:
+      - `character_id` (stable identity)
+      - `_tabletop_role_history` (append-only transition events)
+    - Added schema support in `schemas/char_schema.json` so lifecycle metadata persists without validation failures.
+
+- **Saving Throws Consistency Fix (COMPLETED - 2026-02-12):**
+    - Added shared normalization/fallback helper `utils/saving_throw_utils.py`.
+    - Character sheet now always renders six saves and no longer hides panel when `savingThrows` is empty.
+    - PDF export now uses same normalized/fallback proficiency source as GUI, preventing case-mismatch drift.
+    - Added `scripts/backfill_saving_throws.py` for deterministic one-time data cleanup.
+
+- **Readiness Repair Workflow (COMPLETED - 2026-02-12):**
+    - Added `Repair` button in sheet readiness warning block.
+    - Added preview/confirm APIs with cooldown, whitelist-only narrative patching, mechanical-field guard, and post-patch audit gate.
+    - Successfully repaired incomplete characters (`tester`, `xerxes`) and confirmed warning clearance.
+
+- **PC Creation Unification (COMPLETED - 2026-02-12):**
+    - Added shared creation audit module (`utils/character_creation_audit.py`) used by startup, DM interview finalization, and Roll Your Own/manual create.
+    - Startup now supports iterative multi-PC creation loop.
+    - Add Existing candidate endpoint now filters out current party members and dedupes scan results.
+    - End-to-end API smoke suite passed (creation validation, repair, promotion, PDF compatibility).
+
 - **Initiative Phase 1 Two-Group Start Gate (COMPLETED - 2026-02-12):**
     - `core/ai/action_handler.py`: Added encounter startup initialization for Phase 1 initiative state with DM pre-roll (`random.randint(1, 20)`) and compatibility mirror in `party_tracker.json`.
     - `core/managers/combat_manager.py`: Added hard gate for `awaitingPcGroupRoll`; only `/init <1-20>` accepted before combat progression.

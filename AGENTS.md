@@ -1012,6 +1012,67 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Tabletop Character Stack Hardening (COMPLETED - 2026-02-12)
+
+**Status:** COMPLETED  
+**Priority:** High (Tabletop UX / Data Integrity)  
+**Effort:** Large (multi-change sequence)
+
+**Objective:**
+Stabilize and unify tabletop character creation, readiness repair, saving-throw consistency, and NPC->PC promotion lifecycle for live facilitator workflows.
+
+**Completed OpenSpec Changes:**
+1. `tt-pc-creation-unification`
+2. `tt-character-readiness-repair`
+3. `tt-saving-throws-normalization`
+4. `tt-npc-pc-role-lifecycle`
+
+**Implementation Highlights:**
+- **Shared Creation Audit Pipeline:** Added `utils/character_creation_audit.py` and routed startup/manual/DM-interview finalization through deterministic audit outcomes (`schema_error`, `completeness_error`, `success`).
+- **Readiness Repair Flow:** Added in-sheet `Repair` preview->confirm workflow with endpoints in `web/routes/character_sheet_routes.py`; non-chat, cooldown-protected, narrative-whitelist patching, mechanical guard, and post-patch audit.
+- **Saving Throws Consistency:** Added `utils/saving_throw_utils.py`; GUI now always renders six saves, PDF export uses identical normalized/fallback proficiency logic, and one-time cleanup utility added at `scripts/backfill_saving_throws.py`.
+- **NPC->PC Lifecycle Promotion:** Add Existing now supports `players`/`npc_companions`/`all`; added promotion preview/apply endpoints in `web/routes/tabletop_party_routes.py`, in-place role promotion, `active_character` preserved, and lifecycle metadata persisted.
+
+**Schema Update Required for Lifecycle Metadata:**
+- Added `character_id` and `_tabletop_role_history` to `schemas/char_schema.json` `properties` so promotion metadata passes validation with `additionalProperties: false`.
+
+**Identity and Lifecycle Pattern (New Standard):**
+- Maintain one canonical character file across role transitions.
+- Promote in place (`npc` -> `player`) by normalizing `type`, `character_type`, and `character_role`.
+- Ensure stable `character_id` and append `_tabletop_role_history` events.
+- Do not auto-switch `active_character` on promotion.
+
+**Validation / Testing (2026-02-12):**
+- `python3 -m py_compile main.py utils/startup_wizard.py utils/character_creation_audit.py utils/saving_throw_utils.py utils/pc_manager.py web/routes/tabletop_party_routes.py web/routes/character_sheet_routes.py web/web_interface.py scripts/backfill_saving_throws.py` -> PASS
+- `.venv/bin/python scripts/test_character_creation_audit.py` -> PASS
+- `python3 scripts/backfill_saving_throws.py` dry-run -> PASS
+- End-to-end API smoke suite -> PASS:
+  - creation validation endpoints
+  - readiness repair preview/apply
+  - promotion preview/apply (membership transition + active-character invariance)
+  - PDF export compatibility
+
+**Files Added:**
+- `utils/character_creation_audit.py`
+- `utils/saving_throw_utils.py`
+- `scripts/backfill_saving_throws.py`
+- OpenSpec artifacts under `openspec/changes/tt-pc-creation-unification/`
+- OpenSpec artifacts under `openspec/changes/tt-character-readiness-repair/`
+- OpenSpec artifacts under `openspec/changes/tt-saving-throws-normalization/`
+- OpenSpec artifacts under `openspec/changes/tt-npc-pc-role-lifecycle/`
+
+**Files Modified (key):**
+- `main.py`
+- `utils/startup_wizard.py`
+- `utils/pc_manager.py`
+- `web/routes/tabletop_party_routes.py`
+- `web/routes/character_sheet_routes.py`
+- `web/templates/game_interface.html`
+- `web/templates/partials/character_tabs.html`
+- `web/static/js/tabletop_mode.js`
+- `web/web_interface.py`
+- `schemas/char_schema.json`
+
 ### Initiative Phase 1 Two-Group Start Gate (COMPLETED - 2026-02-12)
 
 **Status:** COMPLETED  

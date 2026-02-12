@@ -14,10 +14,105 @@ See LICENSE file for full terms.
 """
 
 import io
+import threading
+import time
+from typing import Any, Dict, Tuple
 
 from flask import jsonify, send_file
 
-from utils.enhanced_logger import error, warning
+from utils.character_creation_audit import (
+    AUDIT_RESULT_SUCCESS,
+    READINESS_REPAIR_WRITABLE_FIELDS,
+    apply_readiness_repair_patch,
+    audit_character_creation,
+    audit_character_readiness,
+    build_readiness_repair_proposal,
+    diff_mechanical_snapshot,
+    get_mechanical_snapshot,
+    sanitize_readiness_repair_patch,
+)
+from utils.enhanced_logger import error, info, warning
+from utils.saving_throw_utils import get_effective_saving_throw_proficiencies
+
+
+READINESS_REPAIR_COOLDOWN_SECONDS = 15
+_repair_cooldown_state: Dict[str, float] = {}
+_repair_cooldown_lock = threading.Lock()
+
+
+def _normalize_requested_character(request: Any) -> Tuple[str, str]:
+    """Resolve raw and normalized character names from request payload."""
+    from updates.update_character_info import normalize_character_name
+
+    request_data = request.get_json(silent=True) or {}
+    raw_name = str(
+        request_data.get("character")
+        or request_data.get("character_name")
+        or request.args.get("character")
+        or ""
+    ).strip()
+    return raw_name, normalize_character_name(raw_name) if raw_name else ""
+
+
+def _load_character_payload(normalized_name: str) -> Tuple[Dict[str, Any], str]:
+    """Load character JSON and its path by normalized name."""
+    import os
+    from utils.file_operations import safe_read_json
+    from utils.module_path_manager import ModulePathManager
+
+    path_manager = ModulePathManager()
+    character_path = path_manager.get_character_path(normalized_name)
+    if not os.path.exists(character_path):
+        return {}, character_path
+
+    data = safe_read_json(character_path)
+    if not isinstance(data, dict):
+        return {}, character_path
+    return data, character_path
+
+
+def _check_repair_cooldown(action: str, normalized_name: str) -> Tuple[bool, int]:
+    """Return (is_limited, retry_after_seconds)."""
+    now = time.time()
+    cooldown_key = f"{action}:{normalized_name}"
+    with _repair_cooldown_lock:
+        last_at = _repair_cooldown_state.get(cooldown_key, 0.0)
+        elapsed = now - last_at
+        if elapsed < READINESS_REPAIR_COOLDOWN_SECONDS:
+            retry_after = int(READINESS_REPAIR_COOLDOWN_SECONDS - elapsed) + 1
+            return True, retry_after
+
+        _repair_cooldown_state[cooldown_key] = now
+        return False, 0
+
+
+def _format_repair_preview(character_data: Dict[str, Any], updates: Dict[str, str]) -> Dict[str, Any]:
+    """Build field-by-field preview object for UI modal."""
+    def get_nested_value(data: Dict[str, Any], path: str) -> Any:
+        current: Any = data
+        for key in path.split("."):
+            if not isinstance(current, dict) or key not in current:
+                return None
+            current = current[key]
+        return current
+
+    preview_rows = []
+    for field_path in READINESS_REPAIR_WRITABLE_FIELDS:
+        if field_path not in updates:
+            continue
+        before_value = get_nested_value(character_data, field_path)
+        preview_rows.append(
+            {
+                "field": field_path,
+                "before": str(before_value or "").strip(),
+                "after": updates[field_path],
+            }
+        )
+
+    return {
+        "proposed_updates": preview_rows,
+        "updates": updates,
+    }
 
 
 def export_character_pdf_impl(request):
@@ -56,6 +151,15 @@ def export_character_pdf_impl(request):
         char_data = safe_read_json(player_file)
         if not char_data:
             return jsonify({'error': 'Failed to read character data'}), 500
+
+        # TABLETOP MODE: Non-fatal readiness audit visibility for legacy sheets.
+        readiness = audit_character_readiness(char_data)
+        readiness_warnings = readiness.get("warnings", []) if isinstance(readiness, dict) else []
+        if readiness_warnings:
+            warning(
+                f"PDF_EXPORT: Readiness audit warnings for {normalized_name}: {'; '.join(readiness_warnings[:5])}",
+                category="character_creation",
+            )
 
         # 3. Load template PDF
         template_path = "templates/pdf/5E_CharacterSheet_Fillable.pdf"
@@ -198,9 +302,10 @@ def export_character_pdf_impl(request):
         fields["Passive"] = str(10 + pp_bonus)
 
         # Saving Throws
-        saving_throw_proficiencies = char_data.get("savingThrows", [])
-        if not isinstance(saving_throw_proficiencies, list):
-            saving_throw_proficiencies = []
+        saving_throw_proficiencies = get_effective_saving_throw_proficiencies(
+            char_data.get("savingThrows", []),
+            char_data.get("class", ""),
+        )
 
         st_fields = {
             "ST Strength": "strength",
@@ -504,12 +609,15 @@ def export_character_pdf_impl(request):
         output_stream.seek(0)
 
         filename = f"{normalized_name}_CharacterSheet.pdf"
-        return send_file(
+        response = send_file(
             output_stream,
             mimetype='application/pdf',
             as_attachment=True,
             download_name=filename,
         )
+        if readiness_warnings:
+            response.headers["X-Character-Readiness-Warnings"] = " | ".join(readiness_warnings[:3])
+        return response
 
     except Exception as route_error:
         error(f"PDF_EXPORT: Failed to generate character sheet PDF: {route_error}")
@@ -517,3 +625,225 @@ def export_character_pdf_impl(request):
 
         traceback.print_exc()
         return jsonify({'error': str(route_error)}), 500
+
+
+def readiness_repair_preview_impl(request):
+    """Preview narrative-only character readiness repairs without saving."""
+    try:
+        raw_name, normalized_name = _normalize_requested_character(request)
+        if not normalized_name:
+            return jsonify({"success": False, "error": "Missing character name"}), 400
+
+        is_limited, retry_after = _check_repair_cooldown("preview", normalized_name)
+        if is_limited:
+            info(
+                f"READINESS_REPAIR action=preview character={normalized_name} outcome=cooldown retry_after={retry_after}",
+                category="character_creation",
+            )
+            return jsonify(
+                {
+                    "success": False,
+                    "rate_limited": True,
+                    "retry_after_seconds": retry_after,
+                    "error": "Repair preview is on cooldown for this character",
+                }
+            ), 429
+
+        character_data, character_path = _load_character_payload(normalized_name)
+        if not character_data:
+            return jsonify({"success": False, "error": f"Character not found: {normalized_name}"}), 404
+
+        audit_result = audit_character_creation(
+            character_data,
+            source="readiness_repair_preview",
+            enable_enrichment=False,
+        )
+        if audit_result.result_type == AUDIT_RESULT_SUCCESS:
+            info(
+                f"READINESS_REPAIR action=preview character={normalized_name} outcome=already_ready warnings=0",
+                category="character_creation",
+            )
+            return jsonify(
+                {
+                    "success": True,
+                    "ready": True,
+                    "character": raw_name or normalized_name,
+                    "warnings": [],
+                    "missing_fields": [],
+                    "proposed_updates": [],
+                    "updates": {},
+                    "character_path": character_path,
+                }
+            )
+
+        missing_fields = [path for path in audit_result.missing_paths if path in READINESS_REPAIR_WRITABLE_FIELDS]
+        proposal = build_readiness_repair_proposal(character_data, missing_fields)
+        updates = sanitize_readiness_repair_patch(proposal)
+        preview = _format_repair_preview(character_data, updates)
+
+        info(
+            (
+                f"READINESS_REPAIR action=preview character={normalized_name} "
+                f"outcome=ok warnings={len(audit_result.errors)} updates={len(updates)} source={proposal.get('source', 'unknown')}"
+            ),
+            category="character_creation",
+        )
+        return jsonify(
+            {
+                "success": True,
+                "ready": False,
+                "character": raw_name or normalized_name,
+                "result_type": audit_result.result_type,
+                "warnings": [f"{entry['path']}: {entry['message']}" for entry in audit_result.errors],
+                "missing_fields": missing_fields,
+                "proposal_source": proposal.get("source", "fallback"),
+                **preview,
+                "character_path": character_path,
+            }
+        )
+    except Exception as route_error:
+        error(
+            f"READINESS_REPAIR action=preview outcome=error detail={route_error}",
+            exception=route_error,
+            category="character_creation",
+        )
+        return jsonify({"success": False, "error": "Failed to generate repair preview"}), 500
+
+
+def readiness_repair_apply_impl(request):
+    """Apply narrative-only character readiness repairs after explicit confirm."""
+    try:
+        from utils.file_operations import safe_write_json
+
+        raw_name, normalized_name = _normalize_requested_character(request)
+        if not normalized_name:
+            return jsonify({"success": False, "error": "Missing character name"}), 400
+
+        is_limited, retry_after = _check_repair_cooldown("apply", normalized_name)
+        if is_limited:
+            info(
+                f"READINESS_REPAIR action=apply character={normalized_name} outcome=cooldown retry_after={retry_after}",
+                category="character_creation",
+            )
+            return jsonify(
+                {
+                    "success": False,
+                    "rate_limited": True,
+                    "retry_after_seconds": retry_after,
+                    "error": "Repair apply is on cooldown for this character",
+                }
+            ), 429
+
+        character_data, character_path = _load_character_payload(normalized_name)
+        if not character_data:
+            return jsonify({"success": False, "error": f"Character not found: {normalized_name}"}), 404
+
+        request_data = request.get_json(silent=True) or {}
+        request_updates = request_data.get("updates", {})
+        sanitized_request_updates = sanitize_readiness_repair_patch({"updates": request_updates})
+
+        before_snapshot = get_mechanical_snapshot(character_data)
+
+        audit_before = audit_character_creation(
+            character_data,
+            source="readiness_repair_apply_pre",
+            enable_enrichment=False,
+        )
+        missing_fields = [path for path in audit_before.missing_paths if path in READINESS_REPAIR_WRITABLE_FIELDS]
+
+        if audit_before.result_type == AUDIT_RESULT_SUCCESS and not sanitized_request_updates:
+            return jsonify(
+                {
+                    "success": True,
+                    "ready": True,
+                    "character": raw_name or normalized_name,
+                    "warnings": [],
+                    "updated_fields": [],
+                }
+            )
+
+        if sanitized_request_updates:
+            updates = sanitized_request_updates
+            proposal_source = "client"
+        else:
+            proposal = build_readiness_repair_proposal(character_data, missing_fields)
+            updates = sanitize_readiness_repair_patch(proposal)
+            proposal_source = proposal.get("source", "fallback")
+
+        if not updates:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "No valid repair updates were produced",
+                    "missing_fields": missing_fields,
+                }
+            ), 400
+
+        patched_data = apply_readiness_repair_patch(character_data, updates)
+        after_snapshot = get_mechanical_snapshot(patched_data)
+        changed_mechanics = diff_mechanical_snapshot(before_snapshot, after_snapshot)
+        if changed_mechanics:
+            warning(
+                (
+                    f"READINESS_REPAIR action=apply character={normalized_name} outcome=blocked "
+                    f"mechanical_changes={','.join(changed_mechanics)}"
+                ),
+                category="character_creation",
+            )
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "Repair was blocked because mechanical fields changed",
+                    "changed_mechanical_fields": changed_mechanics,
+                }
+            ), 400
+
+        audit_after = audit_character_creation(
+            patched_data,
+            source="readiness_repair_apply_post",
+            enable_enrichment=False,
+        )
+        if audit_after.result_type != AUDIT_RESULT_SUCCESS:
+            warning(
+                (
+                    f"READINESS_REPAIR action=apply character={normalized_name} outcome=audit_block "
+                    f"errors={len(audit_after.errors)}"
+                ),
+                category="character_creation",
+            )
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "Patched character failed readiness audit",
+                    "result_type": audit_after.result_type,
+                    "errors": audit_after.errors,
+                }
+            ), 400
+
+        if not safe_write_json(character_path, patched_data):
+            return jsonify({"success": False, "error": "Failed to save repaired character"}), 500
+
+        readiness = audit_character_readiness(patched_data)
+        info(
+            (
+                f"READINESS_REPAIR action=apply character={normalized_name} outcome=saved "
+                f"updated={len(updates)} source={proposal_source} warnings_after={len(readiness.get('warnings', []))}"
+            ),
+            category="character_creation",
+        )
+        return jsonify(
+            {
+                "success": True,
+                "character": raw_name or normalized_name,
+                "updated_fields": sorted(list(updates.keys())),
+                "proposal_source": proposal_source,
+                "readiness": readiness,
+            }
+        )
+    except Exception as route_error:
+        error(
+            f"READINESS_REPAIR action=apply outcome=error detail={route_error}",
+            exception=route_error,
+            category="character_creation",
+        )
+        return jsonify({"success": False, "error": "Failed to apply repair"}), 500

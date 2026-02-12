@@ -31,6 +31,7 @@ from core.managers.status_manager import (
     status_loading, status_ready, status_saving
 )
 from utils.ai_client_factory import create_chat_client, get_chat_model_name
+from utils.character_creation_audit import AUDIT_RESULT_SUCCESS, audit_character_creation
 
 # Set script name for logging
 set_script_name("startup_wizard")
@@ -146,14 +147,34 @@ def run_startup_sequence():
         if not character_name:
             print("Character setup cancelled. Exiting...")
             return False
+
+        created_characters = [character_name]
+
+        # TABLETOP MODE: Optional multi-PC startup loop.
+        while True:
+            add_more = input("Dungeon Master: Add another player character? (y/n): ").strip().lower()
+            if add_more not in ["y", "yes"]:
+                break
+
+            next_character = create_new_character(conversation, selected_module)
+            if next_character:
+                created_characters.append(next_character)
+                print(f"Dungeon Master: Added player {next_character} to startup party.")
+                continue
+
+            print("Dungeon Master: Additional player creation failed.")
+            retry_secondary = input("Dungeon Master: Retry creating another player? (y/n): ").strip().lower()
+            if retry_secondary in ["y", "yes"]:
+                continue
+            break
         
         # Step 3: Update party tracker
-        update_party_tracker(selected_module['name'], character_name)
+        update_party_tracker(selected_module['name'], created_characters)
         
         # Cleanup
         cleanup_startup_conversation()
         
-        print(f"\nDungeon Master: Setup complete! Welcome, {character_name}!")
+        print(f"\nDungeon Master: Setup complete! Party members: {', '.join(created_characters)}")
         print(f"Dungeon Master: Your adventure in {selected_module['display_name']} is about to begin...\n")
         
         return True
@@ -510,6 +531,45 @@ def create_new_character(conversation, module):
                 print("Error: Character creation failed after multiple attempts.")
                 return None
         
+        # Shared creation audit pipeline
+        audit_result = audit_character_creation(
+            character_data,
+            source="startup_wizard",
+            enable_enrichment=True,
+        )
+        if audit_result.result_type != AUDIT_RESULT_SUCCESS:
+            retry_count += 1
+            missing_paths = ", ".join(audit_result.missing_paths[:12]) if audit_result.missing_paths else "unknown"
+            if retry_count < max_retries:
+                print(f"Character audit failed: {audit_result.result_type} ({missing_paths})")
+                print(f"Attempting to fix and retry... (Attempt {retry_count + 1}/{max_retries})")
+                conversation.append({
+                    "role": "system",
+                    "content": (
+                        "Previous character creation failed shared audit. "
+                        f"Result: {audit_result.result_type}. Missing/invalid: {missing_paths}. "
+                        "Please produce a complete schema-valid character JSON."
+                    ),
+                })
+                continue
+
+            print(f"Error: Character audit failed after {max_retries} attempts: {audit_result.result_type}")
+            print("Dungeon Master: Let me try creating a simple backup character for you...")
+            fallback_character = create_fallback_character(module)
+            if fallback_character:
+                character_name = fallback_character['name']
+                success = save_character_to_module(fallback_character, module['name'])
+                if success:
+                    print(f"Dungeon Master: I've created a basic {fallback_character['class']} character named {character_name} for you!")
+                    print("You can always create a new character later when the system is working better.")
+                    from updates.update_character_info import normalize_character_name
+                    return normalize_character_name(character_name)
+
+            print("Error: All character creation methods failed. Please try again later.")
+            return None
+
+        character_data = audit_result.normalized_data
+
         # Validate character data with detailed error reporting
         valid, error = validate_character_with_recovery(character_data)
         if valid:
@@ -1555,8 +1615,19 @@ def update_party_tracker(module_name, character_name):
         # Update module
         party_data["module"] = module_name
         
-        # Update party members - store display name
-        party_data["partyMembers"] = [character_name]
+        if isinstance(character_name, list):
+            new_members = character_name
+        else:
+            new_members = [character_name]
+
+        existing_members = party_data.get("partyMembers", [])
+        for member in new_members:
+            if member and member not in existing_members:
+                existing_members.append(member)
+        party_data["partyMembers"] = existing_members
+
+        if existing_members:
+            party_data["active_character"] = existing_members[0]
         
         # Initialize other required fields if they don't exist
         if "partyNPCs" not in party_data:

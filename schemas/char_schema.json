@@ -444,6 +444,24 @@
     "exp_required_for_next_level": {
       "type": "integer"
     },
+    "character_id": {
+      "type": "string"
+    },
+    "_tabletop_role_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {"type": "string"},
+          "action": {"type": "string"},
+          "from_role": {"type": "string"},
+          "to_role": {"type": "string"},
+          "source": {"type": "string"},
+          "actor": {"type": "string"}
+        },
+        "required": ["timestamp", "action", "from_role", "to_role", "source", "actor"]
+      }
+    },
     "challengeRating": {
       "type": "number"
     },

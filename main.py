@@ -115,9 +115,12 @@ from utils.character_creator import (
     get_party_level,
     calculate_starting_wealth,
     generate_ambiguous_transition,
-    sanitize_character_data,
     restore_conversation_history,
     CHARACTER_CREATION_MARKER,
+)
+from utils.character_creation_audit import (
+    AUDIT_RESULT_SUCCESS,
+    audit_character_creation,
 )
 from utils import pc_manager
 
@@ -1865,10 +1868,10 @@ def compress_conversation_history_on_module_transition(conversation_history, mod
     return compressed_history
 
 def extract_json_from_codeblock(text):
-    match = re.search(r'```json\n(.*?)```', text, re.DOTALL)
+    match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
     if match:
-        return match.group(1)
-    return text
+        return match.group(1).strip()
+    return text.strip()
 
 def handle_character_creation_response(response, party_tracker_data, conversation_history):
     """
@@ -1884,27 +1887,49 @@ def handle_character_creation_response(response, party_tracker_data, conversatio
         True if character creation was finalized, False otherwise
     """
     try:
-        # Check if response looks like complete character JSON
         response_text = response.strip()
-        
-        # Look for JSON object in response
-        if not (response_text.startswith('{') and response_text.endswith('}')):
+        if not response_text:
             return False
-        
-        # Try to parse as character data
-        cleaned_response = re.sub(r'^```json\s*|\s*```$', '', response_text, flags=re.MULTILINE)
-        character_data = json.loads(cleaned_response)
-        
-        # Validate it has required character fields
-        required_fields = ["name", "race", "class", "level", "abilities"]
-        if not all(field in character_data for field in required_fields):
+
+        candidate_json = None
+        cleaned_response = extract_json_from_codeblock(response_text)
+        if cleaned_response.startswith("{") and cleaned_response.endswith("}"):
+            candidate_json = cleaned_response
+        elif response_text.startswith("{") and response_text.endswith("}"):
+            candidate_json = response_text
+
+        if candidate_json is None:
             return False
+
+        character_data = json.loads(candidate_json)
+
+        audit_result = audit_character_creation(
+            character_data,
+            source="main_dm_interview_finalize",
+            enable_enrichment=True,
+        )
+
+        if audit_result.result_type != AUDIT_RESULT_SUCCESS:
+            missing_paths_text = ", ".join(audit_result.missing_paths[:12]) if audit_result.missing_paths else "unknown"
+            corrective_note = (
+                "Character creation final JSON failed validation. "
+                f"Result: {audit_result.result_type}. "
+                f"Missing/invalid paths: {missing_paths_text}. "
+                "Output a single corrected JSON object with all required fields completed."
+            )
+            conversation_history.append({"role": "user", "content": corrective_note})
+            save_conversation_history(conversation_history)
+            warning(
+                f"CHARACTER_CREATION: Audit blocked finalization ({audit_result.result_type})",
+                category="character_creation",
+            )
+            print(colored("[SYSTEM]", "yellow"), colored("Character JSON incomplete. Creation mode remains active.", "yellow"))
+            return True
         
         # This looks like a character JSON! Process it.
+        character_data = audit_result.normalized_data
         info(f"CHARACTER_CREATION: Detected character JSON for {character_data.get('name')}", category="character_creation")
         
-        # Sanitize character data
-        character_data = sanitize_character_data(character_data)
         character_name = character_data.get('name', 'Unknown')
         
         # Save character file
