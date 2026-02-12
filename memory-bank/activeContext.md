@@ -1,4 +1,6 @@
 ## Current Work Focus
+- **Web Interface TT Merge Refactor Completion (COMPLETED - 2026-02-12):** Completed increments 7-9 from `plans/web_interface_tt_merge_refactor.md`. Host socket handlers in `web/web_interface.py` are now thin wrappers for plot/storage extraction, WebOutputCapture debug filtering is deduped with shared helper markers, and live chat monitor wrapper lifecycle is extension-owned with idempotent setup and optional teardown. Commit: `094a938`.
+
 - **Phase 0 Cleanup: Factory Routing Alignment (COMPLETED - 2026-02-12):** Applied OpenRouter factory routing cleanup to core files before GitHub push. Aligned `transition_validator.py`, `main.py` (module summary), and `combat_manager.py` to use `create_chat_client()` instead of direct `OpenAI()` initialization. Added fallback error handling with `get_chat_model_name()` and `handle_provider_error()`. Updated AGENTS.md to reflect migration status. Zero breaking changes; preparation for OpenRouter rollout post-tester release.
 
 - **OpenSpec Initialization (COMPLETED - 2026-02-12):** Initialized OpenSpec spec-driven development framework with OpenCode support. Created project guardrails, split OpenRouter plan into two scaffolded changes (`openrouter-llm-router-facade`, `openrouter-llm-callsite-migration`), and established global OpenSpec workflow skill. Ready for implementation post-tester release.
@@ -10,6 +12,13 @@
 - **TTS Auto-Play Fix & Queue Management (COMPLETED - 2026-02-06):** Implemented comprehensive TTS management system with queue control, message filtering, and [skipTTS] tagging. Fixed cacophony on page reload, parallel playback, and mechanical message narration. Only DM narration speaks now; combat results and system commands display but don't break immersion.
 
 ## Recent Changes
+- **Web Interface TT Merge Refactor Completion (COMPLETED - 2026-02-12):**
+    - **Scope:** Increment 7 (plot/storage socket extraction), Increment 8 (WebOutputCapture filter dedupe), Increment 9 (emit wrapper lifecycle hardening)
+    - **Architecture:** Preserved merge-safe host hooks; moved TABLETOP MODE implementation details into extension/route modules
+    - **Validation:** `python3 -m py_compile` passed for changed files; grep checks confirmed thin wrappers and extension ownership
+    - **Commit:** `094a938` - `refactor(web): reduce TT divergence via extension hooks`
+    - **Files:** `web/web_interface.py`, `web/output_markers.py`, `web/extensions/__init__.py`, `web/extensions/live_chat_monitor.py`, `web/extensions/tabletop_socket_handlers.py`, `web/routes/__init__.py`, `web/routes/browser_settings_routes.py`, `web/routes/character_sheet_routes.py`, `web/routes/tabletop_party_routes.py`
+
 - **OpenRouter LLM Router Architecture Plan (COMPLETED - 2026-02-07):**
     - **Objective:** Centralize 89 LLM call sites across 39 files through single router interface
     - **Capability-Based Routing:** Trinity Large Preview (free) for creative/narration, Gemini 2.5 Flash Lite for mechanics/JSON

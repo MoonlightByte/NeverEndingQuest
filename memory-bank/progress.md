@@ -10,6 +10,16 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **Web Interface TT Merge Refactor Completion (COMPLETED - 2026-02-12):**
+  - **Objective:** Reduce divergence from upstream `web/web_interface.py` by extracting TABLETOP MODE logic into extension/route modules while preserving behavior and thin host hooks.
+  - **Increments Completed:**
+    - Increment 7: Extracted `request_plot_data` + `request_storage_data` socket handler implementations to `web/extensions/tabletop_socket_handlers.py`.
+    - Increment 8: Deduped WebOutputCapture debug-line filtering with shared helper/marker list in `web/web_interface.py`.
+    - Increment 9: Hardened live chat monitor wrapper lifecycle in `web/extensions/live_chat_monitor.py` with idempotent setup + optional teardown.
+  - **Validation:** `python3 -m py_compile` passed for changed files; grep checks verified thin host wrappers and extension-owned wrapper lifecycle.
+  - **Commit:** `094a938` - `refactor(web): reduce TT divergence via extension hooks`.
+  - **Files:** `web/web_interface.py`, `web/output_markers.py`, `web/extensions/*`, `web/routes/*`.
+
 - **Phase 0 Cleanup: Factory Routing Alignment (COMPLETED - 2026-02-12):**
   - **Objective:** Align core files to OpenRouter factory routing baseline before GitHub push
   - **Work Completed:**

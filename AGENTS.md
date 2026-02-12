@@ -1012,6 +1012,42 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Web Interface TT Merge Refactor Completion (COMPLETED - 2026-02-12)
+
+**Status:** COMPLETED  
+**Priority:** High (Merge Safety)  
+**Effort:** Medium (~2-3 hours incremental)
+
+**Objective:**
+Reduce divergence from upstream in `web/web_interface.py` by extracting TABLETOP MODE logic into extension/route modules while preserving behavior and keeping host hooks thin.
+
+**Increments Completed:**
+1. **Increment 7:** Extracted `request_plot_data` and `request_storage_data` socket handler implementations to `web/extensions/tabletop_socket_handlers.py`; host handlers remain thin wrappers.
+2. **Increment 8:** Deduped repeated WebOutputCapture debug-line filter logic with shared helper and marker list in `web/web_interface.py`.
+3. **Increment 9:** Hardened live chat monitor wrapper lifecycle in `web/extensions/live_chat_monitor.py` with idempotent setup and optional teardown helper.
+
+**Validation:**
+- `python3 -m py_compile web/web_interface.py web/extensions/tabletop_socket_handlers.py`
+- `python3 -m py_compile web/web_interface.py`
+- `python3 -m py_compile web/web_interface.py web/extensions/live_chat_monitor.py`
+- Grep verification confirmed host wrappers are thin and wrapper lifecycle ownership is centralized in extension module.
+
+**Commit:**
+- `094a938` - `refactor(web): reduce TT divergence via extension hooks`
+
+**Files in Commit:**
+- `web/web_interface.py`
+- `web/output_markers.py`
+- `web/extensions/__init__.py`
+- `web/extensions/live_chat_monitor.py`
+- `web/extensions/tabletop_socket_handlers.py`
+- `web/routes/__init__.py`
+- `web/routes/browser_settings_routes.py`
+- `web/routes/character_sheet_routes.py`
+- `web/routes/tabletop_party_routes.py`
+
+---
+
 ### Phase 0 Cleanup: Factory Routing Alignment (COMPLETED - 2026-02-12)
 
 **Status:** COMPLETED  
