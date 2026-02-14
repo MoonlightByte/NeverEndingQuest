@@ -10,6 +10,23 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **Streaming UX Reversion to Foundation-Only (IN PROGRESS - 2026-02-14):**
+  - Reverted runtime streaming execution paths to restore canonical block narration UX.
+  - Kept future-facing foundation stubs:
+    - `web/extensions/streaming_events.py` (dormant backend lifecycle helper)
+    - `model_config.py` streaming flags (defaults OFF)
+    - minimal transport/template wiring in `web/web_interface.py`
+  - Explicitly removed stream-execution coupling from `WebOutputCapture` (no canonical suppression hooks in rollback mode).
+  - Reversion OpenSpec artifacts updated to match selective keep/revert strategy:
+    - `openspec/changes/streaming-ux-dual-pipeline/`
+    - `openspec/changes/streaming-ux-stabilization/`
+    - `openspec/changes/streaming-ux-reversion/`
+  - Validation:
+    - `python3 -m py_compile main.py core/managers/combat_manager.py web/web_interface.py web/extensions/streaming_events.py` -> PASS
+    - `python3 scripts/test_multi_pc_combat.py` -> PASS (40 tests)
+    - Dormant sanity check (`ENABLE_CHAT_STREAMING=False`): stream start emits no events -> PASS
+  - Remaining: manual smoke (`intro + non-combat turn + combat round`) and finalize commit.
+
 - **Memory Backfill Source Selection + DB Portability Tools (COMPLETED - 2026-02-13):**
   - Added `--sources` selector to `scripts/backfill_memory_db.py` with strict allowed values: `journal`, `conversation`, `combat`.
   - Added portability module `core/memory/memory_portability.py` with:

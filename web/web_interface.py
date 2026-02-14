@@ -85,8 +85,9 @@ import utils.pc_manager as pc_manager
 from updates.update_character_info import normalize_character_name
 from core.managers.status_manager import set_status_callback, set_compression_callback
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
-from model_config import DM_MINI_MODEL
+from model_config import DM_MINI_MODEL, ENABLE_BROWSER_TTS_STREAM_SYNC, ENABLE_CHAT_STREAMING
 from web.extensions.live_chat_monitor import setup_live_chat_monitor
+from web.extensions.streaming_events import configure_stream_transport
 from web.extensions.tabletop_socket_handlers import (
     handle_initiative_data_request_impl,
     handle_party_data_request_impl,
@@ -368,6 +369,9 @@ set_compression_callback(emit_compression_event)
 
 # TABLETOP MODE: Real-time chat monitoring extension hook
 log_chat_event = setup_live_chat_monitor(socketio)
+
+# TABLETOP MODE: Streaming event transport host hook.
+configure_stream_transport(socketio.emit)
 
 # TABLETOP MODE: Shared debug-line filter markers for WebOutputCapture
 WEB_OUTPUT_DEBUG_FILTER_MARKERS = [
@@ -700,7 +704,9 @@ def index():
                          party_members=party_members, 
                          active_character=active_character,
                          multiplayer_mode=MULTIPLAYER_MODE,
-                         DEBUG_STATUS_SYNC=DEBUG_STATUS_SYNC)
+                         DEBUG_STATUS_SYNC=DEBUG_STATUS_SYNC,
+                         ENABLE_CHAT_STREAMING=ENABLE_CHAT_STREAMING,
+                         ENABLE_BROWSER_TTS_STREAM_SYNC=ENABLE_BROWSER_TTS_STREAM_SYNC)
 
 @app.route('/static/media/videos/<path:filename>')
 def serve_video(filename):

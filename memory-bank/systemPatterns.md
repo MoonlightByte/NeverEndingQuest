@@ -215,3 +215,15 @@ The system maintains two formats for LLM prompts to support both development and
   - `combat`
 - Invalid selector values fail fast with clear allowed-value output.
 - Source gating preserves idempotency guarantees because ingest dedupe remains keyed on source/checksum.
+
+### 15. Dormant Streaming Foundation Pattern (2026-02-14)
+- When streaming UX regresses player experience, keep backend lifecycle scaffolding but disable runtime execution.
+- **Keep:**
+  - `web/extensions/streaming_events.py` (event lifecycle helper)
+  - `model_config.py` stream flags with defaults OFF
+  - minimal host transport + template flag pass-through in `web/web_interface.py`
+- **Revert:**
+  - runtime generation integrations (`main.py`, `combat_manager.py`)
+  - frontend draft rendering and stream sentence TTS (`game_interface.html`, `tts_queue_manager.js`)
+- Preserve baseline canonical narration path (`WebOutputCapture` -> `game_output`) with no stream suppression coupling.
+- This pattern keeps merge-safe future runway while eliminating immediate UX/token-cost risk.

@@ -1012,6 +1012,40 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Streaming UX Reversion to Foundation-Only (IN PROGRESS - 2026-02-14)
+
+**Status:** IN PROGRESS  
+**Priority:** High (Narration UX Stability)  
+**Effort:** Medium (~1 session)
+
+**Objective:**
+Roll back player-facing streaming execution paths (JSON token draft rendering + stream sentence TTS) while preserving a minimal backend foundation for future stream-safe redesign.
+
+**Selective Keep/Revert Plan Applied:**
+- **Keep foundation:**
+  - `model_config.py` streaming flags (`ENABLE_CHAT_STREAMING`, `ENABLE_BROWSER_TTS_STREAM_SYNC`, `STREAM_SUPERSEDED_VISIBLE`) with defaults OFF
+  - `web/extensions/streaming_events.py` as dormant lifecycle helper
+  - minimal host transport/template wiring in `web/web_interface.py`
+- **Revert execution:**
+  - `main.py` streaming attempt/commit integration
+  - `core/managers/combat_manager.py` streaming attempt/commit integration
+  - `web/templates/game_interface.html` draft stream chat rendering and sentence-level stream TTS pipeline
+  - `web/static/js/tts_queue_manager.js` stream source-tag queue behavior
+- **WebOutputCapture guardrail:** removed stream-based canonical suppression hook usage from `web/web_interface.py` to keep baseline narration emit path explicit.
+
+**OpenSpec Artifacts:**
+- `openspec/changes/streaming-ux-dual-pipeline/` (execution attempt history)
+- `openspec/changes/streaming-ux-stabilization/` (diagnosis/hardening pass)
+- `openspec/changes/streaming-ux-reversion/` (selective rollback spec and tasks)
+
+**Verification:**
+- `python3 -m py_compile main.py core/managers/combat_manager.py web/web_interface.py web/extensions/streaming_events.py` -> PASS
+- `python3 scripts/test_multi_pc_combat.py` -> PASS (40 tests)
+- Dormant foundation sanity (`ENABLE_CHAT_STREAMING=False`): `start_stream(...)` returns `None`, no stream events emitted -> PASS
+
+**Remaining:**
+- Manual smoke pass (`intro + one non-combat turn + one combat round`) before final verify/archive and commit.
+
 ### Tabletop Character Stack Hardening (COMPLETED - 2026-02-12)
 
 **Status:** COMPLETED  

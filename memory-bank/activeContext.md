@@ -1,4 +1,6 @@
 ## Current Work Focus
+- **Streaming UX Reversion to Foundation-Only (IN PROGRESS - 2026-02-14):** Runtime streaming execution has been rolled back to stable block-output narration while preserving future-facing foundations (flags OFF, backend stream helper, minimal host transport wiring). Current focus is final smoke validation and clean commit packaging.
+
 - **Memory Backfill Source Selection + DB Portability Tools (COMPLETED - 2026-02-13):** Follow-up tooling change is complete. Backfill now supports explicit source gating (`--sources journal,conversation,combat`) and memory DB portability workflows (export package, validate package, import package with safe non-destructive defaults). This establishes practical archive/restore groundwork while keeping runtime gameplay paths unchanged.
 
 - **Memory Foundation Retrieval + Backfill (COMPLETED - 2026-02-13):** Stage 1 memory foundation is implemented and validated. SQLite memory DB (`data/memory.db`) now supports deterministic timeline retrieval, context-pack retrieval, retirement/return retrieval, idempotent journal ingest, and backfill from current campaign history files. Read-only inspection endpoint is live (`GET /api/memory/entity/<entity_id>`), startup init is guarded/non-blocking, and backfill utility now supports `--dry-run` plus `--include-system` for archive-readiness workflows.
@@ -20,6 +22,18 @@
 - **TTS Auto-Play Fix & Queue Management (COMPLETED - 2026-02-06):** Implemented comprehensive TTS management system with queue control, message filtering, and [skipTTS] tagging. Fixed cacophony on page reload, parallel playback, and mechanical message narration. Only DM narration speaks now; combat results and system commands display but don't break immersion.
 
 ## Recent Changes
+- **Streaming UX Reversion to Foundation-Only (IN PROGRESS - 2026-02-14):**
+    - Selective rollback applied:
+      - Reverted execution integrations in `main.py`, `core/managers/combat_manager.py`, `web/templates/game_interface.html`, and `web/static/js/tts_queue_manager.js`.
+      - Preserved foundation in `web/extensions/streaming_events.py`, `model_config.py` (flags OFF), and minimal host wiring in `web/web_interface.py`.
+    - Removed stream-suppression coupling from `WebOutputCapture` so canonical narration emit path remains baseline.
+    - Revised `openspec/changes/streaming-ux-reversion/*` to encode file-level keep/revert decisions and validation gates.
+    - Verification complete for non-interactive checks:
+      - `python3 -m py_compile main.py core/managers/combat_manager.py web/web_interface.py web/extensions/streaming_events.py` -> PASS
+      - `python3 scripts/test_multi_pc_combat.py` -> PASS (40 tests)
+      - Dormant stream sanity check with flags OFF -> PASS (no stream events emitted)
+    - Pending: manual smoke test pass before final verify/archive and commit.
+
 - **Memory Backfill Source Selection + DB Portability Tools (COMPLETED - 2026-02-13):**
     - Added `--sources` CSV parsing and strict validation in `scripts/backfill_memory_db.py`.
     - Added source-gating support in `backfill_memory_db_from_histories(...)` (journal/conversation/combat channel selection).

@@ -50,6 +50,12 @@ USE_COMPRESSED_COMBAT = True                            # Toggle for compressed 
 COMBAT_API_TIMEOUT_SECONDS = 120                        # Per-call timeout for combat LLM calls (prevents indefinite hangs)
 COMBAT_CONNECT_TIMEOUT_SECONDS = 10                     # TCP connection timeout for combat LLM calls
 
+# --- Streaming UX Settings ---
+# TABLETOP MODE: Reversion defaults - keep stable block narration UX.
+ENABLE_CHAT_STREAMING = False                          # Reversion default: keep canonical block narration path
+ENABLE_BROWSER_TTS_STREAM_SYNC = False                 # Reversion default: disable sentence-level stream TTS
+STREAM_SUPERSEDED_VISIBLE = False                      # Hide superseded draft attempts by default for cleaner UX
+
 # --- Conversation Compression Settings ---
 # Enable/disable compression types before API calls
 COMPRESSION_ENABLED = True                              # Master switch for all compression
