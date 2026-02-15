@@ -2204,6 +2204,20 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                 return process_ai_response(ai_response_after_combat, party_tracker_data, location_data, post_combat_history)
             # --- END SIGNAL-BASED SUB-SYSTEM CONTROL ---
             
+            # C1.3: Handle explicit error status from action processing (e.g., encounter init failure)
+            if isinstance(result, dict) and result.get("status") == "error":
+                error_msg = result.get("error_message", "Unknown error in action processing")
+                error(f"ACTION_ERROR: {error_msg}", category="action_processing")
+                # Add deterministic system error to conversation instead of continuing with potentially corrupted state
+                conversation_history.append({
+                    "role": "system",
+                    "content": f"[SYSTEM] {error_msg}"
+                })
+                save_conversation_history(conversation_history)
+                # C1.A2: Prevent continuing normal combat narration flow after error
+                # DO NOT fall through to assistant append - abort response path immediately
+                return {"role": "system", "content": f"[SYSTEM] {error_msg}"}
+
             if isinstance(result, dict):
                 if result.get("status") == "exit": return "exit"
                 if result.get("status") == "restart": return "restart"
@@ -2852,6 +2866,87 @@ def check_all_modules_plot_completion():
     
     return all_modules_data
 
+
+def _normalize_combat_command_input(raw_input_text):
+    """Normalize user input for combat command guard checks."""
+    raw_input = (raw_input_text or "").strip()
+    clean_input = raw_input
+
+    # Handle tagged multi-PC inputs like "[Character]: /command"
+    if raw_input.startswith("[") and "]:" in raw_input:
+        parts = raw_input.split("]:", 1)
+        if len(parts) == 2:
+            clean_input = parts[1].strip()
+
+    return clean_input
+
+
+def _is_combat_only_command(clean_input):
+    """Return True if input is a combat-only command or command form."""
+    cmd = (clean_input or "").lower()
+
+    combat_commands = [
+        "/init", "\\init", "init",
+        "/end", "\\end", "end turn", "end",
+        "/pass", "\\pass",
+        "/att", "\\att", "attack",
+        "/dmg", "\\dmg",
+        "/end_combat", "\\end_combat", "exit combat",
+        "/switch_pc_focus"
+    ]
+
+    return (
+        cmd in combat_commands
+        or cmd.startswith("/init ")
+        or cmd.startswith("\\init ")
+        or cmd.startswith("/att ")
+        or cmd.startswith("\\att ")
+        or cmd.startswith("/dmg ")
+        or cmd.startswith("\\dmg ")
+        or cmd.startswith("/end ")
+        or cmd.startswith("\\end ")
+        or cmd.startswith("/pass ")
+        or cmd.startswith("\\pass ")
+    )
+
+
+def get_noncombat_guard_message(raw_input_text, active_combat_encounter):
+    """Return deterministic system guidance for combat-only commands outside combat."""
+    clean_input = _normalize_combat_command_input(raw_input_text)
+    cmd = clean_input.lower()
+
+    if active_combat_encounter or not _is_combat_only_command(clean_input):
+        return None
+
+    if cmd.startswith("/init") or cmd.startswith("\\init") or cmd == "init":
+        return "[skipTTS] Dungeon Master: [SYSTEM] No active combat encounter. Use /init after combat has started. To start combat, describe your party approaching or encountering enemies."
+    if (
+        cmd in ["/end", "\\end", "end turn", "end", "/pass", "\\pass"]
+        or cmd.startswith("/end ")
+        or cmd.startswith("\\end ")
+        or cmd.startswith("/pass ")
+        or cmd.startswith("\\pass ")
+    ):
+        return "[skipTTS] Dungeon Master: [SYSTEM] No active combat encounter. The /end command is used to end your turn during combat."
+    if cmd in ["/att", "\\att", "attack"] or cmd.startswith("/att ") or cmd.startswith("\\att "):
+        return "[skipTTS] Dungeon Master: [SYSTEM] No active combat encounter. Use /att after combat has started with an enemy."
+    if cmd in ["/dmg", "\\dmg"] or cmd.startswith("/dmg ") or cmd.startswith("\\dmg "):
+        return "[skipTTS] Dungeon Master: [SYSTEM] No active combat encounter. Use /dmg after hitting an enemy during combat."
+    if cmd in ["/end_combat", "\\end_combat", "exit combat"]:
+        return "[skipTTS] Dungeon Master: [SYSTEM] No active combat encounter to end."
+    if cmd == "/switch_pc_focus":
+        return "[skipTTS] Dungeon Master: [SYSTEM] No active combat encounter. Use /switch_pc_focus during combat to switch focus between party members."
+
+    return "[skipTTS] Dungeon Master: [SYSTEM] That command is only available during active combat."
+
+
+def get_validation_retry_exhaustion_message():
+    """Return deterministic fail-closed message for validation retry exhaustion."""
+    return (
+        "[SYSTEM] Unable to generate a valid response after multiple attempts. "
+        "The game state may be inconsistent. Please try a different action or restart the session."
+    )
+
 def main_game_loop():
     global needs_conversation_history_update, should_inject_creation_prompt
 
@@ -3484,6 +3579,18 @@ def main_game_loop():
             # Check for local commands
             if handle_local_command(user_input_text):
                 continue
+
+            # TABLETOP MODE: C2 - Combat-only command routing guards
+            # Block combat-only commands when no active combat encounter is present
+            clean_input = _normalize_combat_command_input(user_input_text)
+            if _is_combat_only_command(clean_input):
+                party_tracker_for_combat_check = load_json_file("party_tracker.json")
+                active_combat = party_tracker_for_combat_check.get("worldConditions", {}).get("activeCombatEncounter", "")
+                guard_msg = get_noncombat_guard_message(user_input_text, active_combat)
+                if guard_msg:
+                    print(colored(guard_msg, "yellow"))
+                    sys.stdout.flush()
+                    continue
     
         party_tracker_data = load_json_file("party_tracker.json") 
     
@@ -4204,21 +4311,18 @@ def main_game_loop():
                 warning(f"VALIDATION: Unexpected validation result: is_valid={is_valid}, reason={validation_reason}. Retrying.", category="ai_validation")
                 retry_count += 1
     
+        # TABLETOP MODE C1.1: Fail-closed - do NOT execute invalid responses after validation exhaustion
         if not valid_response_received:
-            error("FAILURE: Failed to generate a valid response after 5 attempts. Proceeding with the last generated response.", category="ai_validation")
-            if ai_response_content: 
-                result = process_ai_response(ai_response_content, party_tracker_data, location_data, conversation_history) 
-                if result == "exit": return
-                if result == "restart":
-                    print("\n[SYSTEM] Restarting game with restored save...\n")
-                    main_game_loop()
-                    return
-            else:
-                error("FAILURE: No AI response was generated after retries.", category="ai_validation")
-                conversation_history.append({"role": "assistant", "content": "I seem to be having trouble formulating a response. Could you try rephrasing your action or query?"})
-                save_conversation_history(conversation_history)
-    
-        status_ready()
+            error("FAILURE: Failed to generate a valid response after 5 attempts. STOPPING to prevent desync.", category="ai_validation")
+            # C1.A1: No code path executes invalid combat response as canonical progression
+            # Add deterministic error instead of executing invalid response
+            error_message = get_validation_retry_exhaustion_message()
+            conversation_history.append({"role": "system", "content": error_message})
+            save_conversation_history(conversation_history)
+            # C1.A2: Encounter init failure does not continue normal combat narration flow
+            # Abort turn processing - skip post-turn history update path
+            status_ready()
+            continue
 
         # This block now only runs if a response was NOT held
         # CRITICAL: Reload party tracker to ensure we have the latest module information after any updates

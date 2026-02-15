@@ -820,14 +820,16 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                                       category="combat_processing")
                             except OSError:
                                 pass
-                            # Reset status and return without starting combat
+                            # C1.2: Return explicit error status instead of silent continue
+                            # Reset status and return error to prevent fake combat continuation
                             try:
                                 from core.managers.status_manager import status_ready
                                 status_ready()
                             except Exception:
                                 pass
                             print("[DEBUG ACTION_HANDLER] ========== CREATE ENCOUNTER END - NO ENEMIES ==========\n")
-                            return {"status": "continue", "needs_update": False}
+                            # C1.A2: Return explicit error status to prevent continuing combat narration
+                            return {"status": "error", "error_message": "Encounter created with zero enemies. Combat aborted - narrator may have hallucinated creature names not in bestiary."}
                 except Exception as e:
                     error(f"TABLETOP MODE: Failed to validate encounter enemy count: {e}",
                           exception=e, category="combat_processing")
@@ -980,33 +982,36 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                 print(f"[DEBUG ACTION_HANDLER] Full stdout: {result.stdout}")
                 print(f"[DEBUG ACTION_HANDLER] Full stderr: {result.stderr}")
                 print("[DEBUG ACTION_HANDLER] ========== CREATE ENCOUNTER END WITH FAILURE ==========\n")
-                # Reset status on failure
+                # C1.2: Return explicit error status instead of silent continue
                 try:
                     from core.managers.status_manager import status_ready
                     status_ready()
                 except Exception:
                     pass
+                return {"status": "error", "error_message": "Combat encounter creation failed. Check game logs for details."}
 
         except subprocess.CalledProcessError as e:
             print(f"Error occurred while running combat_builder.py: {e}")
             print("Error output:", e.stderr)
             print("Standard output:", e.stdout)
-            # Reset status on exception
+            # C1.2: Return explicit error status on subprocess failure
             try:
                 from core.managers.status_manager import status_ready
                 status_ready()
             except Exception:
                 pass
+            return {"status": "error", "error_message": f"Combat builder subprocess failed: {e}"}
         except Exception as e:
             print(f"Unexpected error occurred: {e}")
             import traceback
             traceback.print_exc()
-            # Reset status on exception
+            # C1.2: Return explicit error status on unexpected exception
             try:
                 from core.managers.status_manager import status_ready
                 status_ready()
             except Exception:
                 pass
+            return {"status": "error", "error_message": f"Unexpected error during encounter creation: {e}"}
 
     elif action_type == ACTION_UPDATE_TIME:
         status_advancing_time()
