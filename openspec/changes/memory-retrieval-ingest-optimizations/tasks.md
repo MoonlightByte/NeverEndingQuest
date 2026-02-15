@@ -59,7 +59,9 @@
   - All functions return empty list `[]` when DB missing, no exceptions
   - No DB file created by any retrieval operation
 - [x] 5.3 Implement explicit audit policy under read-only retrieval: retrieval queries remain read-only; audit writes use dedicated best-effort writer connection (`mode=rw`, no create).
-  - `get_context_memories()` and `get_retirement_return_memories()` use separate `_connect()` for audit logging only when `enable_audit=True`
+  - `get_entity_timeline()` now uses separate `_connect()` for audit logging with try/finally
+  - `get_context_memories()` uses separate `_connect()` for audit logging
+  - `get_retirement_return_memories()` uses separate `_connect()` for audit logging
   - Audit failures are debug-logged and non-critical
 - [x] 5.4 Normalize candidate telemetry for all retrieval functions to report pre-limit candidate counts separately from returned rows.
   - `get_entity_timeline()` reports via audit log (pre_candidate_count from memory_links)
@@ -68,6 +70,13 @@
   - All three functions report `candidate_count >= result_count` in audit logs
 - [x] 5.5 Add regression tests for: (a) read-only no-create behavior on missing DB for all retrieval APIs, (b) audit write path behavior under read-only retrieval, (c) deterministic ordering unchanged after compliance pass.
   - (a) Covered in Test 3.3 (`test_readonly_no_create()`)
-  - (b) Implemented in Test 5.5b (`test_audit_write_path_under_readonly()`) - verifies audit logging works with read-only retrieval
+  - (b) Implemented in Test 5.5b (`test_audit_write_path_under_readonly()`) - verifies audit logging works with separate write connection
   - (c) Implicitly covered by all existing deterministic ordering tests (3.1, 3.4, 3.5) plus new Test 5.4/5.5 (`test_candidate_telemetry_consistency()`)
   - Test 5.4/5.5 also verifies candidate telemetry reporting for all three retrieval functions
+
+## Archive Notes
+
+**Status**: COMPLETE - All 18 tasks finished (100%)
+**Commit**: a97f361 feat(memory): Complete Section 5 read-only retrieval hardening
+**Verification**: All 32 memory tests passing
+**Date**: 2026-02-15
