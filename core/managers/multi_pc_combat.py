@@ -519,14 +519,27 @@ class TurnQueueManager:
             for name, state in self.state_manager.pc_states.items():
                 if state.status == PCStatus.READY:
                     state.mark_acted()
+
+    @staticmethod
+    def _is_valid_enemy_phase_actor(combatant: Combatant) -> bool:
+        """Return True if combatant is a living non-PC actor for enemy phase."""
+        if combatant.type not in (CombatantType.ENEMY, CombatantType.NPC):
+            return False
+
+        status = (combatant.status or "").strip().lower()
+        return status not in ("dead", "defeated", "incapacitated", "unconscious", "stable")
     
     def get_remaining_enemies_for_round(self) -> List[str]:
         """Get list of enemies and allied NPCs who haven't acted this round."""
+        if not self.turn_queue:
+            return []
+
         remaining = []
-        current_idx = self.current_turn_index
+        queue_size = len(self.turn_queue)
+        current_idx = self.current_turn_index if 0 <= self.current_turn_index < queue_size else 0
 
         # Look ahead in queue
-        for i in range(len(self.turn_queue)):
+        for i in range(queue_size):
             idx = (current_idx + i) % len(self.turn_queue)
             combatant = self.turn_queue[idx]
 
@@ -534,7 +547,8 @@ class TurnQueueManager:
             if i > 0 and idx == 0:
                 break
 
-            if combatant.type in (CombatantType.ENEMY, CombatantType.NPC) and combatant.status.lower() != "dead":
+            # TABLETOP MODE: C4.1 - Deterministic actor list for valid living non-PC actors
+            if self._is_valid_enemy_phase_actor(combatant):
                 remaining.append(combatant.name)
 
         return remaining
@@ -1426,9 +1440,10 @@ class MultiPCCombatManager:
 ║  1. Resolve turns for ALL listed ENEMIES and NPC ALLIES in order.            ║
 ║  2. STRICT: Only narrate for DM-controlled entities (Enemies/NPC Allies).    ║
 ║  3. NEVER narrate actions for Forbidden Player Characters listed above.       ║
-║  4. STOP immediately after the last enemy/NPC ally acts.                     ║
-║  5. Announce round completion and ask for PC actions.                        ║
-║  6. Return structured JSON with plan, narration, combat_round, actions.      ║
+║  4. PCs may appear in updateCharacterInfo ONLY as targets of enemy/NPC effects. ║
+║  5. STOP immediately after the last enemy/NPC ally acts.                     ║
+║  6. Announce round completion and ask for PC actions.                        ║
+║  7. Return structured JSON with plan, narration, combat_round, actions.      ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 

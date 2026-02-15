@@ -984,6 +984,92 @@ def normalize_encounter_status(encounter_data):
     
     return encounter_data
 
+
+def normalize_phase1_initiative(encounter_data, party_tracker_data):
+    """Normalize encounter initiative fields for Phase 1 two-group flow."""
+    if not encounter_data or not isinstance(encounter_data, dict):
+        return encounter_data, False, None
+
+    world_conditions = {}
+    if isinstance(party_tracker_data, dict):
+        world_conditions = party_tracker_data.get("worldConditions", {}) or {}
+
+    mirror = world_conditions.get("combatInitiative", {})
+    if not isinstance(mirror, dict):
+        mirror = {}
+
+    changed = False
+    rolls = encounter_data.get("initiativeRolls")
+    if not isinstance(rolls, dict):
+        rolls = {}
+
+    dm_group = rolls.get("dmGroup")
+    pc_group = rolls.get("pcGroup")
+    initiative_winner = encounter_data.get("initiativeWinner")
+    round_starts_with = encounter_data.get("roundStartsWith")
+    awaiting_pc_group_roll = encounter_data.get("awaitingPcGroupRoll")
+
+    if dm_group is None and mirror.get("enemyRoll") is not None:
+        dm_group = mirror.get("enemyRoll")
+        changed = True
+    if pc_group is None and mirror.get("partyRoll") is not None:
+        pc_group = mirror.get("partyRoll")
+        changed = True
+
+    if encounter_data.get("initiativeMode") != "two_group_phase1":
+        encounter_data["initiativeMode"] = "two_group_phase1"
+        changed = True
+
+    if encounter_data.get("initiativeRolls") != {"dmGroup": dm_group, "pcGroup": pc_group}:
+        encounter_data["initiativeRolls"] = {"dmGroup": dm_group, "pcGroup": pc_group}
+        changed = True
+
+    if initiative_winner not in ("pcGroup", "dmGroup"):
+        party_goes_first = mirror.get("partyGoesFirst")
+        if party_goes_first is True:
+            initiative_winner = "pcGroup"
+            changed = True
+        elif party_goes_first is False:
+            initiative_winner = "dmGroup"
+            changed = True
+
+    if round_starts_with not in ("pcGroup", "dmGroup") and initiative_winner in ("pcGroup", "dmGroup"):
+        round_starts_with = initiative_winner
+        changed = True
+
+    current_round = encounter_data.get("combat_round", encounter_data.get("current_round", 1))
+    try:
+        current_round_value = int(current_round)
+    except Exception:
+        current_round_value = 1
+
+    if current_round_value > 1:
+        desired_awaiting = False
+    elif initiative_winner in ("pcGroup", "dmGroup"):
+        desired_awaiting = False
+    else:
+        desired_awaiting = True
+
+    if awaiting_pc_group_roll != desired_awaiting:
+        awaiting_pc_group_roll = desired_awaiting
+        changed = True
+
+    encounter_data["initiativeWinner"] = initiative_winner
+    encounter_data["roundStartsWith"] = round_starts_with
+    encounter_data["awaitingPcGroupRoll"] = awaiting_pc_group_roll
+
+    party_goes_first_out = None
+    if initiative_winner in ("pcGroup", "dmGroup"):
+        party_goes_first_out = initiative_winner == "pcGroup"
+
+    mirror_payload = {
+        "partyRoll": pc_group,
+        "enemyRoll": dm_group,
+        "partyGoesFirst": party_goes_first_out,
+    }
+
+    return encounter_data, changed, mirror_payload
+
 def get_initiative_order(encounter_data):
     """Generate initiative order string for combat validation context"""
     if not encounter_data or not isinstance(encounter_data, dict):
@@ -1841,53 +1927,101 @@ def compress_old_combat_rounds(conversation_history, current_round, keep_recent_
         error(f"COMPRESSION: Error compressing combat rounds", exception=e, category="combat_events")
         return conversation_history
 
-def validate_combatant_integrity(response_json_str, encounter_data):
+def _normalize_combatant_name(name):
+    """Normalize combatant names for case-insensitive fuzzy matching."""
+    return str(name or "").split("(")[0].strip().lower()
+
+
+def _name_matches_authoritative_roster(candidate_name, authoritative_names):
+    """Return True when candidate name fuzzily matches a known roster entry."""
+    if not candidate_name:
+        return False
+
+    for known_name in authoritative_names:
+        if candidate_name in known_name or known_name in candidate_name:
+            return True
+    return False
+
+
+def _collect_authoritative_combat_roster(encounter_data, multi_pc_manager=None, party_tracker_data=None):
+    """Collect authoritative combat roster from encounter + active multi-PC roster."""
+    roster = []
+    seen = set()
+
+    def add_entry(name, combatant_type):
+        normalized_name = _normalize_combatant_name(name)
+        if not normalized_name or normalized_name in seen:
+            return
+
+        seen.add(normalized_name)
+        roster.append({
+            "name": str(name).strip(),
+            "type": str(combatant_type or "unknown").strip(),
+            "normalized_name": normalized_name,
+        })
+
+    for creature in encounter_data.get("creatures", []):
+        add_entry(creature.get("name", "Unknown"), creature.get("type", "unknown"))
+
+    # TABLETOP MODE: C4.2 - Include active multi-PC roster so non-active PCs are valid targets
+    if multi_pc_manager:
+        for pc_name in multi_pc_manager.pc_states.keys():
+            add_entry(pc_name, "player")
+    elif isinstance(party_tracker_data, dict):
+        for member in party_tracker_data.get("partyMembers", []):
+            if isinstance(member, dict):
+                add_entry(member.get("name", ""), "player")
+            else:
+                add_entry(member, "player")
+
+    return roster
+
+
+def validate_combatant_integrity(response_json_str, encounter_data, multi_pc_manager=None, party_tracker_data=None):
     """
     Validates that the AI has not hallucinated new combatants or acted for non-existent ones.
     Returns True if valid, or an error message string if invalid.
     """
     try:
+        if not isinstance(response_json_str, str):
+            return True
+
         response = json.loads(response_json_str)
         actions = response.get("actions", [])
         
-        # 1. Build authoritative list of known combatants (case-insensitive)
-        known_combatants = set()
-        for c in encounter_data.get("creatures", []):
-            known_combatants.add(c.get("name", "").lower().strip())
-        
-        # 2. Extract actors from actions
-        # We look for 'characterName' in updateCharacterInfo/updateNPCInfo
-        
-        unknown_actors = set()
+        # 1. Build authoritative list of valid combat targets from encounter + multi-PC roster
+        authoritative_roster = _collect_authoritative_combat_roster(
+            encounter_data,
+            multi_pc_manager=multi_pc_manager,
+            party_tracker_data=party_tracker_data,
+        )
+        authoritative_names = [entry["normalized_name"] for entry in authoritative_roster]
+
+        # 2. Validate updateCharacterInfo/updateNPCInfo targets against authoritative roster
+        unknown_targets = set()
         
         for action in actions:
             act_type = action.get("action", "").lower()
             params = action.get("parameters", {})
             
-            # Direct actor check
+            # updateCharacterInfo/updateNPCInfo target check
             if act_type in ["updatecharacterinfo", "updatenpcinfo"]:
                 char_name = params.get("characterName", "") or params.get("npcName", "")
                 if char_name:
-                    # Normalize name (remove markers like ' (NPC)')
-                    clean_name = char_name.split('(')[0].strip().lower()
-                    
-                    # Fuzzy check: is this name "close enough" to a known combatant?
-                    found = False
-                    for known in known_combatants:
-                        if clean_name in known or known in clean_name:
-                            found = True
-                            break
-                    
-                    if not found:
-                        unknown_actors.add(char_name)
-        
-        if unknown_actors:
-            # Construct a strict rejection message
-            known_list_str = ", ".join([c.get("name", "Unknown") for c in encounter_data.get("creatures", [])])
+                    clean_name = _normalize_combatant_name(char_name)
+
+                    if not _name_matches_authoritative_roster(clean_name, authoritative_names):
+                        unknown_targets.add(char_name)
+
+        if unknown_targets:
+            # Construct strict rejection message with expanded authoritative roster
+            known_list_str = ", ".join(
+                [f"{entry['name']} ({entry['type']})" for entry in authoritative_roster]
+            )
             return (
-                f"INTEGRITY ERROR: You are attempting to update the following characters who are NOT in the current encounter: {', '.join(unknown_actors)}.\n"
-                f"The valid list of combatants is: {known_list_str}.\n"
-                "You strictly forbidden from hallucinating new actors. Please correct your response to only reference valid combatants."
+                f"INTEGRITY ERROR: updateCharacterInfo/updateNPCInfo references targets not in the authoritative combat roster: {', '.join(unknown_targets)}.\n"
+                f"The valid target roster is: {known_list_str}.\n"
+                "PCs remain forbidden as DM-controlled actors during ENEMY_PHASE, but PCs are valid targets for enemy/NPC effects."
             )
             
         return True
@@ -1969,6 +2103,7 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
    # Initialize path manager
    from utils.module_path_manager import ModulePathManager
    from utils.encoding_utils import safe_json_load
+   party_tracker = {}
    try:
        party_tracker = safe_json_load("party_tracker.json")
        current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
@@ -1990,6 +2125,18 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
        print(f"[COMBAT_MANAGER] Exception loading encounter: {str(e)}")
        error(f"FAILURE: Failed to load encounter file {json_file_path}", exception=e, category="file_operations")
        return None, None
+
+   # TABLETOP MODE: C3.1/C3.2 - Normalize Phase 1 initiative state for active encounters
+   if MULTI_PC_COMBAT_AVAILABLE and is_multi_pc_combat_enabled():
+       encounter_data, encounter_changed, mirror_payload = normalize_phase1_initiative(encounter_data, party_tracker)
+       if encounter_changed:
+           save_json_file(json_file_path, encounter_data)
+           debug("STATE_SYNC: Normalized Phase 1 initiative state", category="combat_events")
+       if mirror_payload:
+           party_tracker.setdefault("worldConditions", {})["combatInitiative"] = mirror_payload
+           party_tracker_data.setdefault("worldConditions", {})["combatInitiative"] = mirror_payload
+           save_json_file("party_tracker.json", party_tracker)
+           debug("STATE_SYNC: Updated party tracker combatInitiative mirror", category="combat_events")
 
    # TABLETOP MODE: Retrieve or initialize combat manager
    multi_pc_manager = None
@@ -2379,10 +2526,20 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
    
    all_dynamic_state = "\n".join(dynamic_state_parts)
 
-   # Append Immutable Roster to prevent hallucinations
-   roster_list = [f"- {c.get('name', 'Unknown')} ({c.get('type', 'unknown')})" for c in encounter_data.get("creatures", [])]
-   roster_str = "\n".join(roster_list)
-   all_dynamic_state += f"\n\n++ VALID TARGETS & ACTORS (IMMUTABLE) ++\n{roster_str}\nRULES: This is the definitive list of all beings in the scene. Do NOT narrate actions for anyone not on this list."
+   # TABLETOP MODE: C4.2/C4.3 - Include active multi-PC roster so PCs are valid targets
+   roster_entries = _collect_authoritative_combat_roster(
+       encounter_data,
+       multi_pc_manager=multi_pc_manager,
+       party_tracker_data=party_tracker_data,
+   )
+   roster_list = [f"- {entry['name']} ({entry['type']})" for entry in roster_entries]
+   roster_str = "\n".join(roster_list) if roster_list else "- None"
+   all_dynamic_state += (
+       f"\n\n++ VALID TARGETS & ACTORS (IMMUTABLE) ++\n{roster_str}\n"
+       "RULES: This is the definitive list of all beings in the scene. "
+       "Do NOT narrate actions for anyone not on this list. "
+       "During ENEMY_PHASE, PCs remain forbidden as actors but are valid targets."
+   )
    
    # Initialize round tracking and generate prerolls
    # Use combat_round as primary, fall back to current_round
@@ -2512,17 +2669,22 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
        initiative_narrative = ""
        if multi_pc_manager:
            combat_initiative = party_tracker_data.get("worldConditions", {}).get("combatInitiative")
-           if combat_initiative:
-               # Use stored initiative from action_handler
-               debug(f"[COMBAT_MANAGER] Using group initiative from party tracker: {combat_initiative}", category="combat_events")
-               multi_pc_manager.party_initiative = combat_initiative.get("partyRoll", 0)
-               multi_pc_manager.enemy_initiative = combat_initiative.get("enemyRoll", 0)
-               multi_pc_manager.party_goes_first = combat_initiative.get("partyGoesFirst", True)
-               initiative_narrative = get_multi_pc_initiative_narrative(multi_pc_manager)
-           else:
-               # Roll now if missing (fallback)
-               multi_pc_manager.roll_group_initiative()
-               initiative_narrative = get_multi_pc_initiative_narrative(multi_pc_manager)
+           if not combat_initiative:
+               # TABLETOP MODE: C3.2 - Derive from normalized encounter state; do not use legacy reroll fallback
+               normalized_rolls = encounter_data.get("initiativeRolls", {})
+               normalized_winner = encounter_data.get("initiativeWinner")
+               combat_initiative = {
+                   "partyRoll": normalized_rolls.get("pcGroup"),
+                   "enemyRoll": normalized_rolls.get("dmGroup"),
+                   "partyGoesFirst": (normalized_winner == "pcGroup") if normalized_winner in ("pcGroup", "dmGroup") else True
+               }
+               party_tracker_data.setdefault("worldConditions", {})["combatInitiative"] = combat_initiative
+
+           debug(f"[COMBAT_MANAGER] Using group initiative state: {combat_initiative}", category="combat_events")
+           multi_pc_manager.party_initiative = combat_initiative.get("partyRoll", 0) or 0
+           multi_pc_manager.enemy_initiative = combat_initiative.get("enemyRoll", 0) or 0
+           multi_pc_manager.party_goes_first = combat_initiative.get("partyGoesFirst", True)
+           initiative_narrative = get_multi_pc_initiative_narrative(multi_pc_manager)
        
        # TABLETOP MODE: Anchor narration to Immutable Roster to prevent phantom enemy hallucination
        initial_prompt_text = f"""The setup scene for the combat has already been given and described to the party. Now, describe the combat situation and ONLY the enemies listed in the VALID TARGETS & ACTORS (IMMUTABLE) roster that the party faces."""
@@ -2848,6 +3010,14 @@ Player: {initial_prompt_text}"""
                encounter_data["roundStartsWith"] = winner
                encounter_data["awaitingPcGroupRoll"] = False
                save_json_file(json_file_path, encounter_data)
+
+               # TABLETOP MODE: C3.3 - Sync compatibility mirror after /init resolution
+               party_tracker_data.setdefault("worldConditions", {})["combatInitiative"] = {
+                   "partyRoll": pc_group_roll,
+                   "enemyRoll": dm_group_roll,
+                   "partyGoesFirst": (winner == "pcGroup")
+               }
+               save_json_file("party_tracker.json", party_tracker_data)
 
                debug(
                    f"INITIATIVE: Received /init {pc_group_roll}. "
@@ -3350,10 +3520,20 @@ Player: {initial_prompt_text}"""
        
        all_dynamic_state = "\n".join(dynamic_state_parts)
 
-       # Append Immutable Roster to prevent hallucinations
-       roster_list = [f"- {c.get('name', 'Unknown')} ({c.get('type', 'unknown')})" for c in encounter_data.get("creatures", [])]
-       roster_str = "\n".join(roster_list)
-       all_dynamic_state += f"\n\n++ VALID TARGETS & ACTORS (IMMUTABLE) ++\n{roster_str}\nRULES: This is the definitive list of all beings in the scene. Do NOT narrate actions for anyone not on this list."
+       # TABLETOP MODE: C4.2/C4.3 - Include active multi-PC roster so PCs are valid targets
+       roster_entries = _collect_authoritative_combat_roster(
+           encounter_data,
+           multi_pc_manager=multi_pc_manager,
+           party_tracker_data=party_tracker_data,
+       )
+       roster_list = [f"- {entry['name']} ({entry['type']})" for entry in roster_entries]
+       roster_str = "\n".join(roster_list) if roster_list else "- None"
+       all_dynamic_state += (
+           f"\n\n++ VALID TARGETS & ACTORS (IMMUTABLE) ++\n{roster_str}\n"
+           "RULES: This is the definitive list of all beings in the scene. "
+           "Do NOT narrate actions for anyone not on this list. "
+           "During ENEMY_PHASE, PCs remain forbidden as actors but are valid targets."
+       )
        
        # Check if we need new prerolls based on round progression
        # Use combat_round as primary, fall back to current_round
@@ -3816,7 +3996,12 @@ Rules:
                # ---------------------------------------------------------
                # This catches hallucinations where the AI invents new creatures or acts for
                # creatures that are not in the encounter.
-               integrity_check = validate_combatant_integrity(ai_response, encounter_data)
+               integrity_check = validate_combatant_integrity(
+                   ai_response,
+                   encounter_data,
+                   multi_pc_manager=multi_pc_manager,
+                   party_tracker_data=party_tracker_data,
+               )
                if integrity_check is not True:
                    # Integrity check failed
                    debug(f"VALIDATION: Combatant Integrity Failed (Attempt {attempt + 1}/{max_retries})", category="combat_validation")
