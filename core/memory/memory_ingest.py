@@ -45,8 +45,27 @@ def _build_entry_checksum(entry: Dict[str, Any], source_type: str) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def ingest_journal_entry(entry: Dict[str, Any], db_path: str = DEFAULT_MEMORY_DB_PATH) -> Dict[str, Any]:
-    """Idempotently insert one journal entry by (source_type, checksum)."""
+def _resolve_entry_timestamp(entry: Dict[str, Any]) -> str:
+    """Resolve entry timestamp with precedence: entry_ts > timestamp > source_ts > now."""
+    for key in ("entry_ts", "timestamp", "source_ts", "created_at"):
+        value = entry.get(key)
+        if value and str(value).strip():
+            return str(value).strip()
+    return _utc_now_iso()
+
+
+def ingest_journal_entry(
+    entry: Dict[str, Any],
+    db_path: str = DEFAULT_MEMORY_DB_PATH,
+    conn: Optional[sqlite3.Connection] = None,
+) -> Dict[str, Any]:
+    """Idempotently insert one journal entry by (source_type, checksum).
+    
+    Args:
+        entry: The journal entry to ingest
+        db_path: Database path (used only if conn is None)
+        conn: Optional shared connection for batch operations
+    """
     source_type = str(entry.get("source_type", "journal")).strip() or "journal"
     content = str(entry.get("content", "")).strip()
     if not content:
@@ -57,21 +76,58 @@ def ingest_journal_entry(entry: Dict[str, Any], db_path: str = DEFAULT_MEMORY_DB
 
     checksum = str(entry.get("checksum", "")).strip() or _build_entry_checksum(entry, source_type)
     payload = {
-        "entry_ts": str(entry.get("entry_ts", "")).strip() or _utc_now_iso(),
+        "entry_ts": _resolve_entry_timestamp(entry),
         "title": str(entry.get("title", "")).strip() or None,
         "content": content,
         "source_type": source_type,
         "source_ref": str(entry.get("source_ref", "")).strip() or None,
         "checksum": checksum,
         "metadata_json": entry.get("metadata_json") if isinstance(entry.get("metadata_json"), str) else json.dumps(entry.get("metadata", {})),
-        "created_at": str(entry.get("created_at", "")).strip() or _utc_now_iso(),
+        "created_at": _resolve_entry_timestamp(entry),
     }
 
-    conn: Optional[sqlite3.Connection] = None
+    should_close_conn = conn is None
     try:
-        conn = _connect(db_path)
-        with conn:
-            conn.execute(
+        if conn is None:
+            conn = _connect(db_path)
+        
+        # Use transaction context for standalone connections
+        if should_close_conn:
+            with conn:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO journal_entries (
+                        entry_ts, title, content, source_type, source_ref,
+                        checksum, metadata_json, created_at
+                    ) VALUES (
+                        :entry_ts, :title, :content, :source_type, :source_ref,
+                        :checksum, :metadata_json, :created_at
+                    )
+                    ON CONFLICT(source_type, checksum) DO NOTHING
+                    """,
+                    payload,
+                )
+
+                row = conn.execute(
+                    """
+                    SELECT entry_id
+                    FROM journal_entries
+                    WHERE source_type = :source_type
+                      AND checksum = :checksum
+                    """,
+                    {"source_type": source_type, "checksum": checksum},
+                ).fetchone()
+
+                entry_id = int(row[0]) if row else 0
+                return {
+                    "status": "success",
+                    "entry_id": entry_id,
+                    "checksum": checksum,
+                    "source_type": source_type,
+                }
+        else:
+            # Shared connection: caller controls transaction
+            cursor = conn.execute(
                 """
                 INSERT INTO journal_entries (
                     entry_ts, title, content, source_type, source_ref,
@@ -95,13 +151,13 @@ def ingest_journal_entry(entry: Dict[str, Any], db_path: str = DEFAULT_MEMORY_DB
                 {"source_type": source_type, "checksum": checksum},
             ).fetchone()
 
-        entry_id = int(row[0]) if row else 0
-        return {
-            "status": "success",
-            "entry_id": entry_id,
-            "checksum": checksum,
-            "source_type": source_type,
-        }
+            entry_id = int(row[0]) if row else 0
+            return {
+                "status": "success",
+                "entry_id": entry_id,
+                "checksum": checksum,
+                "source_type": source_type,
+            }
     except Exception as ingest_error:
         error(
             f"MEMORY_INGEST: Failed to ingest journal entry: {ingest_error}",
@@ -115,7 +171,7 @@ def ingest_journal_entry(entry: Dict[str, Any], db_path: str = DEFAULT_MEMORY_DB
             "source_type": source_type,
         }
     finally:
-        if conn is not None:
+        if should_close_conn and conn is not None:
             conn.close()
 
 
@@ -128,6 +184,172 @@ def _to_journal_entries(source_data: Any) -> List[Dict[str, Any]]:
         if isinstance(entries, list):
             return [entry for entry in entries if isinstance(entry, dict)]
     return []
+
+
+def ingest_journal_entries_batch(
+    entries: List[Dict[str, Any]],
+    db_path: str = DEFAULT_MEMORY_DB_PATH,
+    batch_size: int = 50,
+) -> Dict[str, Any]:
+    """Ingest multiple journal entries using shared connection with batched transactions.
+    
+    Args:
+        entries: List of journal entries to ingest
+        db_path: Database path
+        batch_size: Number of entries per transaction batch
+    
+    Returns:
+        Dict with status, counts, and error details
+    """
+    if not entries:
+        return {
+            "status": "success",
+            "total": 0,
+            "ingested": 0,
+            "skipped": 0,
+            "errors": 0,
+        }
+
+    conn: Optional[sqlite3.Connection] = None
+    try:
+        conn = _connect(db_path)
+        ingested = 0
+        skipped = 0
+        errors = 0
+        error_items: List[Dict[str, Any]] = []
+
+        for i in range(0, len(entries), batch_size):
+            batch = entries[i:i + batch_size]
+            try:
+                with conn:
+                    for idx, entry in enumerate(batch):
+                        result = _ingest_journal_entry_internal(
+                            entry, db_path=db_path, conn=conn
+                        )
+                        if result.get("status") == "success":
+                            # rowcount == 1 means new insert, 0 means conflict/duplicate
+                            if result.get("inserted", False):
+                                ingested += 1
+                            else:
+                                skipped += 1
+                        else:
+                            errors += 1
+                            error_items.append({
+                                "batch_index": i + idx,
+                                "message": result.get("message", "unknown"),
+                            })
+            except Exception as batch_error:
+                error(
+                    f"MEMORY_INGEST: Batch {i//batch_size} failed: {batch_error}",
+                    exception=batch_error,
+                    category="memory_ingest",
+                )
+                errors += len(batch)
+                for idx in range(len(batch)):
+                    error_items.append({
+                        "batch_index": i + idx,
+                        "message": f"batch failure: {batch_error}",
+                    })
+
+        return {
+            "status": "success" if errors == 0 else "partial",
+            "total": len(entries),
+            "ingested": ingested,
+            "skipped": skipped,
+            "errors": errors,
+            "error_items": error_items[:10],
+        }
+    except Exception as conn_error:
+        error(
+            f"MEMORY_INGEST: Batch ingest failed: {conn_error}",
+            exception=conn_error,
+            category="memory_ingest",
+        )
+        return {
+            "status": "error",
+            "message": str(conn_error),
+            "total": len(entries),
+            "ingested": 0,
+            "skipped": 0,
+            "errors": len(entries),
+        }
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def _ingest_journal_entry_internal(
+    entry: Dict[str, Any],
+    db_path: str = DEFAULT_MEMORY_DB_PATH,
+    conn: Optional[sqlite3.Connection] = None,
+) -> Dict[str, Any]:
+    """Internal variant that tracks whether row was actually inserted vs duplicate.
+    
+    Returns result with 'inserted' boolean to distinguish new rows from conflicts.
+    """
+    source_type = str(entry.get("source_type", "journal")).strip() or "journal"
+    content = str(entry.get("content", "")).strip()
+    if not content:
+        return {
+            "status": "error",
+            "message": "Journal entry content is required",
+        }
+
+    checksum = str(entry.get("checksum", "")).strip() or _build_entry_checksum(entry, source_type)
+    payload = {
+        "entry_ts": _resolve_entry_timestamp(entry),
+        "title": str(entry.get("title", "")).strip() or None,
+        "content": content,
+        "source_type": source_type,
+        "source_ref": str(entry.get("source_ref", "")).strip() or None,
+        "checksum": checksum,
+        "metadata_json": entry.get("metadata_json") if isinstance(entry.get("metadata_json"), str) else json.dumps(entry.get("metadata", {})),
+        "created_at": _resolve_entry_timestamp(entry),
+    }
+
+    try:
+        cursor = conn.execute(
+            """
+            INSERT INTO journal_entries (
+                entry_ts, title, content, source_type, source_ref,
+                checksum, metadata_json, created_at
+            ) VALUES (
+                :entry_ts, :title, :content, :source_type, :source_ref,
+                :checksum, :metadata_json, :created_at
+            )
+            ON CONFLICT(source_type, checksum) DO NOTHING
+            """,
+            payload,
+        )
+
+        # rowcount == 1 means new insert, 0 means conflict/duplicate
+        was_inserted = cursor.rowcount == 1
+
+        row = conn.execute(
+            """
+            SELECT entry_id
+            FROM journal_entries
+            WHERE source_type = :source_type
+              AND checksum = :checksum
+            """,
+            {"source_type": source_type, "checksum": checksum},
+        ).fetchone()
+
+        entry_id = int(row[0]) if row else 0
+        return {
+            "status": "success",
+            "entry_id": entry_id,
+            "checksum": checksum,
+            "source_type": source_type,
+            "inserted": was_inserted,
+        }
+    except Exception as ingest_error:
+        return {
+            "status": "error",
+            "message": str(ingest_error),
+            "checksum": checksum,
+            "source_type": source_type,
+        }
 
 
 def ingest_journal_file(
@@ -472,8 +694,19 @@ def backfill_memory_db_from_histories(
     combat_history_path: str = "modules/conversation_history/combat_conversation_history.json",
     include_system_messages: bool = False,
     sources: Optional[List[str]] = None,
+    batch_size: int = 50,
 ) -> Dict[str, Any]:
-    """Backfill memory DB from current journal and conversation histories."""
+    """Backfill memory DB from current journal and conversation histories using shared connection and batched transactions.
+    
+    Args:
+        db_path: Path to the memory database
+        journal_path: Path to journal.json
+        conversation_path: Path to conversation history
+        combat_history_path: Path to combat conversation history
+        include_system_messages: Whether to include system messages in history ingestion
+        sources: List of sources to ingest ("journal", "conversation", "combat")
+        batch_size: Number of entries per transaction batch
+    """
     from core.memory.memory_db import init_memory_db
 
     init_ok = init_memory_db(db_path)
@@ -510,6 +743,8 @@ def backfill_memory_db_from_histories(
 
     try:
         conn = _connect(db_path)
+        
+        # Upsert all entities in initial transaction
         with conn:
             for details in entity_map.values():
                 _upsert_entity(conn, details["entity_id"], details["display_name"], details["role"])
@@ -518,41 +753,49 @@ def backfill_memory_db_from_histories(
         if "journal" in selected_sources:
             journal_data = safe_read_json(journal_path)
             journal_entries = _to_journal_entries(journal_data)
-            for index, raw_entry in enumerate(journal_entries):
+            
+            for i in range(0, len(journal_entries), batch_size):
+                batch = journal_entries[i:i + batch_size]
                 try:
-                    entry_payload = {
-                        "entry_ts": raw_entry.get("entry_ts") or raw_entry.get("timestamp") or _utc_now_iso(),
-                        "title": raw_entry.get("title") or raw_entry.get("location") or "Journal Entry",
-                        "content": raw_entry.get("content") or raw_entry.get("entry") or raw_entry.get("summary") or "",
-                        "source_type": "journal",
-                        "source_ref": f"{journal_path}:{index}",
-                        "metadata": raw_entry.get("metadata", {}),
-                    }
-                    ingest_result = ingest_journal_entry(entry_payload, db_path=db_path)
-                    if ingest_result.get("status") != "success":
-                        source_errors["journal"] += 1
-                        continue
-
-                    source_totals["journal"] += 1
-                    linked_entities = _extract_linked_entity_ids(entry_payload["content"], entity_map)
-
                     with conn:
-                        event_id = _create_event_for_entry(
-                            conn,
-                            entry_id=int(ingest_result["entry_id"]),
-                            entry_ts=entry_payload["entry_ts"],
-                            source_type="journal",
-                            summary=entry_payload["content"],
-                            source_ref=entry_payload["source_ref"],
-                            checksum=str(ingest_result.get("checksum", "")),
-                            linked_entities=linked_entities,
-                            active_entity_ids=active_entity_ids,
-                        )
-                        created_events += 1
-                        created_links += _link_event_entities(conn, event_id, linked_entities, fallback_entity_id)
-                except Exception as source_error:
-                    source_errors["journal"] += 1
-                    error(f"MEMORY_INGEST: Journal backfill failure at index {index}: {source_error}", category="memory_ingest")
+                        for index, raw_entry in enumerate(batch):
+                            try:
+                                entry_payload = {
+                                    "entry_ts": _resolve_entry_timestamp(raw_entry),
+                                    "title": raw_entry.get("title") or raw_entry.get("location") or "Journal Entry",
+                                    "content": raw_entry.get("content") or raw_entry.get("entry") or raw_entry.get("summary") or "",
+                                    "source_type": "journal",
+                                    "source_ref": f"{journal_path}:{i + index}",
+                                    "metadata": raw_entry.get("metadata", {}),
+                                }
+                                ingest_result = ingest_journal_entry(entry_payload, db_path=db_path, conn=conn)
+                                if ingest_result.get("status") != "success":
+                                    source_errors["journal"] += 1
+                                    continue
+
+                                source_totals["journal"] += 1
+                                linked_entities = _extract_linked_entity_ids(entry_payload["content"], entity_map)
+
+                                event_id = _create_event_for_entry(
+                                    conn,
+                                    entry_id=int(ingest_result["entry_id"]),
+                                    entry_ts=entry_payload["entry_ts"],
+                                    source_type="journal",
+                                    summary=entry_payload["content"],
+                                    source_ref=entry_payload["source_ref"],
+                                    checksum=str(ingest_result.get("checksum", "")),
+                                    linked_entities=linked_entities,
+                                    active_entity_ids=active_entity_ids,
+                                )
+                                created_events += 1
+                                created_links += _link_event_entities(conn, event_id, linked_entities, fallback_entity_id)
+                            except Exception as entry_error:
+                                source_errors["journal"] += 1
+                                error(f"MEMORY_INGEST: Journal backfill failure at index {i + index}: {entry_error}", category="memory_ingest")
+                except Exception as batch_error:
+                    error(f"MEMORY_INGEST: Journal batch failed: {batch_error}", category="memory_ingest")
+                    for _ in batch:
+                        source_errors["journal"] += 1
 
         # Source 2 and 3: conversation histories
         source_definitions = [
@@ -578,35 +821,43 @@ def backfill_memory_db_from_histories(
                 source_type,
                 include_system=include_system_messages,
             )
-            for entry in entries:
+            
+            for i in range(0, len(entries), batch_size):
+                batch = entries[i:i + batch_size]
                 try:
-                    ingest_result = ingest_journal_entry(entry, db_path=db_path)
-                    if ingest_result.get("status") != "success":
-                        source_errors[source_type] += 1
-                        continue
-
-                    source_totals[source_type] += 1
-                    linked_entities = _extract_linked_entity_ids(entry["content"], entity_map)
                     with conn:
-                        event_id = _create_event_for_entry(
-                            conn,
-                            entry_id=int(ingest_result["entry_id"]),
-                            entry_ts=entry["entry_ts"],
-                            source_type=source_type,
-                            summary=entry["content"],
-                            source_ref=entry["source_ref"],
-                            checksum=str(ingest_result.get("checksum", "")),
-                            linked_entities=linked_entities,
-                            active_entity_ids=active_entity_ids,
-                        )
-                        created_events += 1
-                        created_links += _link_event_entities(conn, event_id, linked_entities, fallback_entity_id)
-                except Exception as source_error:
-                    source_errors[source_type] += 1
-                    error(
-                        f"MEMORY_INGEST: {source_type} backfill failure at {entry.get('source_ref', 'unknown')}: {source_error}",
-                        category="memory_ingest",
-                    )
+                        for entry in batch:
+                            try:
+                                ingest_result = ingest_journal_entry(entry, db_path=db_path, conn=conn)
+                                if ingest_result.get("status") != "success":
+                                    source_errors[source_type] += 1
+                                    continue
+
+                                source_totals[source_type] += 1
+                                linked_entities = _extract_linked_entity_ids(entry["content"], entity_map)
+                                event_id = _create_event_for_entry(
+                                    conn,
+                                    entry_id=int(ingest_result["entry_id"]),
+                                    entry_ts=entry["entry_ts"],
+                                    source_type=source_type,
+                                    summary=entry["content"],
+                                    source_ref=entry["source_ref"],
+                                    checksum=str(ingest_result.get("checksum", "")),
+                                    linked_entities=linked_entities,
+                                    active_entity_ids=active_entity_ids,
+                                )
+                                created_events += 1
+                                created_links += _link_event_entities(conn, event_id, linked_entities, fallback_entity_id)
+                            except Exception as entry_error:
+                                source_errors[source_type] += 1
+                                error(
+                                    f"MEMORY_INGEST: {source_type} backfill failure at {entry.get('source_ref', 'unknown')}: {entry_error}",
+                                    category="memory_ingest",
+                                )
+                except Exception as batch_error:
+                    error(f"MEMORY_INGEST: {source_type} batch failed: {batch_error}", category="memory_ingest")
+                    for _ in batch:
+                        source_errors[source_type] += 1
 
         result = {
             "status": "success",

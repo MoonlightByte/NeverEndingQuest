@@ -813,6 +813,52 @@ These sizes are acceptable for local SQLite with indexes.
 3. Optional precomputed `retrieval_snippets` for hot paths.
 4. Periodic `VACUUM` and index maintenance (non-blocking maintenance window).
 
+### Performance Guarantees (Retrieval/Ingest Optimizations - 2026-02-15)
+
+**Verified Implementation Characteristics:**
+
+| Capability | Implementation | Guarantee |
+|------------|---------------|-----------|
+| **Bounded Candidate Pre-selection** | `get_entity_timeline()` uses `MIN(MAX_LIMIT, safe_limit * 3)` candidate pool | Query cost O(candidate_limit), not O(table_size) |
+| **Event-level De-duplication** | `SELECT DISTINCT` in final projection + subquery-based entity filtering | One row per event even with multiple entity links |
+| **Deterministic Ordering** | Score DESC → event_ts DESC → event_id ASC tie-breaker | Identical results across repeated calls |
+| **Read-Only Retrieval** | All retrieval APIs use `_connect_readonly()` with existence check | No implicit DB creation, empty-safe on missing DB |
+| **Shared Connection Ingest** | Optional `conn` parameter in `ingest_journal_entry()` | Single connection per batch, no per-entry overhead |
+| **Batched Transactions** | `ingest_journal_entries_batch()` with configurable `batch_size` | Throughput scaling with bounded memory per batch |
+| **Timestamp Precedence** | `entry_ts > timestamp > source_ts > created_at > now()` | Deterministic temporal ordering regardless of source |
+| **Idempotent Ingest** | `ON CONFLICT(source_type, checksum) DO NOTHING` | Safe re-ingestion without duplicate creation |
+
+**Retrieval API Behaviors:**
+
+- `get_entity_timeline(entity_id, limit=25)` → List of events ranked by composite score
+  - Returns `[]` (empty list) when DB missing or entity not found
+  - Never creates DB file on read-only connection
+  - Candidate telemetry reported in audit log when `enable_audit=True`
+
+- `get_context_memories(scene_type, active_entities, limit=12)` → Scene-aware memory pack
+  - Modality tag matching for scene-type relevance boost
+  - Returns `[]` when DB missing or no active entities
+
+- `get_retirement_return_memories(entity_id, limit=20)` → Role transition milestones
+  - Filters for `event_type IN ('role_transition', 'milestone')` with retirement/return keywords
+  - Returns `[]` when DB missing or no matching events
+
+**Audit Policy (Read-Only Compliance):**
+
+- Retrieval queries use read-only connections exclusively
+- Audit writes (when enabled) use separate best-effort writer connections
+- Audit failures are debug-logged and non-blocking
+- No retrieval latency impact from audit persistence
+
+**Test Coverage:**
+
+- 5 regression tests in `scripts/test_memory_regression_coverage.py`
+  - Deterministic ordering with de-duplication (3.1)
+  - Batch-mode idempotency (3.2)
+  - Read-only no-create behavior (3.3)
+  - Deterministic tie-breaker (3.4)
+  - Context memories determinism (3.5)
+
 ---
 
 ## Priority Semantics (Active PCs and Major Events)
@@ -1058,4 +1104,72 @@ Export manifest should include:
 - DB filename and SHA-256 integrity hash
 - row-count summary for key tables
 - applied migration IDs
+
+---
+
+## Many Worlds Save/Restore Support (2026-02-15)
+
+### Snapshot-Isolated Memory DB
+
+Memory DB state is now part of the save/restore contract, ensuring timeline coherence when players reload earlier saves.
+
+**Behavior:**
+
+1. **Save creates memory package:** Each save game includes a `memory_db_package/` directory containing a snapshot of `data/memory.db` at that point in time.
+
+2. **Restore imports memory package:** When restoring a save, the memory DB is rewound to the saved state, preventing timeline drift where gameplay JSON rewinds but memory DB stays "in the future."
+
+3. **Legacy saves use deterministic fallback:** Saves created before memory parity was implemented trigger a clean memory DB initialization (not "keep current state"), ensuring consistent behavior.
+
+### Worldline Lineage Metadata
+
+Each save includes lineage fields that track timeline ancestry:
+
+```json
+{
+  "save_id": "uuid-of-this-save",
+  "worldline_id": "uuid-of-timeline",
+  "lineage": {
+    "parent_save_id": "uuid-of-parent-save-or-null",
+    "parent_worldline_id": "uuid-of-parent-worldline-or-null",
+    "fork_origin_save_id": "uuid-of-fork-origin-or-null",
+    "created_after_restore": true
+  },
+  "memory_package": {
+    "status": "success",
+    "row_counts": {...}
+  }
+}
+```
+
+### Fork-on-First-Save-After-Restore
+
+Default worldline behavior:
+
+1. After any restore operation, the next save creates a new `worldline_id` (divergent branch).
+2. Subsequent saves (without another restore) continue on the same worldline.
+3. Process restart preserves fork intent via `modules/conversation_history/restore_context.json`.
+
+**Example timeline:**
+
+```
+Save A (worldline W1) -> Play -> Save B (worldline W1)
+Restore A -> Play -> Save C (worldline W2, forked from A)
+Save D (worldline W2, continues on fork)
+Restore C -> Play -> Save E (worldline W3, forked from C)
+```
+
+### Integration Points
+
+- `updates/save_game_manager.py`: Save/restore hooks for memory package export/import
+- `modules/conversation_history/restore_context.json`: Persisted fork context for process-restart safety
+- `core/memory/memory_portability.py`: Package validation and transport primitives
+
+### Listing Saves with Lineage
+
+Save listing (`SaveGameManager.list_save_games()`) includes:
+- `memory_package_present`: boolean indicating if memory package exists
+- All lineage fields from metadata
+
+This enables UI/CLI visualization of branch structure without loading individual saves.
 - basic campaign metadata snapshot

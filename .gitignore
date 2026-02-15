@@ -186,6 +186,9 @@ testing/
 test_*.py
 *_test.py
 
+# Allow memory regression tests (not auto-generated)
+!scripts/test_memory_regression_coverage.py
+
 # Documentation files (keep core docs, exclude development plans)
 *_plan.md
 *_analysis.md

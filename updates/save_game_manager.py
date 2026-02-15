@@ -64,6 +64,7 @@ import os
 import shutil
 import zipfile
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
@@ -72,6 +73,22 @@ from utils.file_operations import safe_write_json, safe_read_json
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+
+# TABLETOP MODE: Memory foundation integration for Many Worlds support
+try:
+    from core.memory.memory_db import DEFAULT_MEMORY_DB_PATH
+    from core.memory.memory_portability import (
+        export_memory_db_package,
+        import_memory_db_package,
+        validate_memory_package,
+    )
+    MEMORY_PARITY_ENABLED = True
+except ImportError:
+    MEMORY_PARITY_ENABLED = False
+    DEFAULT_MEMORY_DB_PATH = "data/memory.db"
+
+# Restore context file for fork-on-first-save-after-restore behavior
+RESTORE_CONTEXT_FILE = "modules/conversation_history/restore_context.json"
 
 # Set script name for logging
 set_script_name(__name__)
@@ -82,6 +99,7 @@ class SaveGameManager:
     def __init__(self):
         self.current_module = None
         self.path_manager = None
+        self._current_worldline: Optional[str] = None
         self._initialize_module_context()
     
     def _initialize_module_context(self):
@@ -326,23 +344,229 @@ class SaveGameManager:
         except Exception as e:
             warning(f"FILE_OP: Could not load current location for metadata", category="save_game")
         
+        # TABLETOP MODE: Generate worldline lineage fields for Many Worlds support
+        save_id = str(uuid.uuid4())
+        lineage_info = self._generate_lineage_info()
+        
         metadata = {
             "save_timestamp": timestamp.isoformat(),
             "save_date_readable": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
             "description": description,
             "save_mode": save_mode,
             "module": self.current_module or "Unknown",
+            # TABLETOP MODE: Worldline lineage fields
+            "save_id": save_id,
+            "worldline_id": lineage_info["worldline_id"],
+            "lineage": {
+                "parent_save_id": lineage_info["parent_save_id"],
+                "parent_worldline_id": lineage_info["parent_worldline_id"],
+                "fork_origin_save_id": lineage_info["fork_origin_save_id"],
+                "created_after_restore": lineage_info["created_after_restore"],
+            },
             "game_state": {
                 **party_info,
                 **location_info,
             },
             "system_info": {
-                "save_format_version": "1.0",
+                "save_format_version": "1.1",
                 "created_by": "NeverEndingQuest Save System",
             }
         }
         
         return metadata
+    
+    def _generate_lineage_info(self) -> Dict[str, Any]:
+        """Generate worldline lineage info for current save.
+        
+        TABLETOP MODE: Implements fork-on-first-save-after-restore behavior.
+        """
+        restore_context = self._load_restore_context()
+        
+        if restore_context and restore_context.get("pending_fork", False):
+            worldline_id = str(uuid.uuid4())
+            return {
+                "worldline_id": worldline_id,
+                "parent_save_id": restore_context.get("restored_save_id"),
+                "parent_worldline_id": restore_context.get("restored_worldline_id"),
+                "fork_origin_save_id": restore_context.get("restored_save_id"),
+                "created_after_restore": True,
+            }
+        else:
+            previous_worldline = self._get_current_worldline()
+            return {
+                "worldline_id": previous_worldline,
+                "parent_save_id": None,
+                "parent_worldline_id": None,
+                "fork_origin_save_id": None,
+                "created_after_restore": False,
+            }
+    
+    def _get_current_worldline(self) -> str:
+        """Get the current active worldline ID from most recent save or restore context.
+        
+        TABLETOP MODE: Caches worldline ID so sequential saves share the same worldline.
+        """
+        if self._current_worldline:
+            return self._current_worldline
+        
+        restore_context = self._load_restore_context()
+        if restore_context and restore_context.get("current_worldline_id"):
+            self._current_worldline = restore_context["current_worldline_id"]
+            return self._current_worldline
+        
+        saves = self.list_save_games()
+        if saves:
+            most_recent = saves[0]
+            worldline = most_recent.get("worldline_id", str(uuid.uuid4()))
+            self._current_worldline = worldline
+            return self._current_worldline
+        
+        self._current_worldline = str(uuid.uuid4())
+        return self._current_worldline
+    
+    def _load_restore_context(self) -> Optional[Dict[str, Any]]:
+        """Load restore context from file for fork-on-first-save behavior."""
+        try:
+            if os.path.exists(RESTORE_CONTEXT_FILE):
+                return safe_json_load(RESTORE_CONTEXT_FILE)
+        except Exception as e:
+            debug(f"Could not load restore context: {e}", category="save_game")
+        return None
+    
+    def _save_restore_context(self, context: Dict[str, Any]) -> None:
+        """Persist restore context for fork-on-first-save behavior."""
+        try:
+            os.makedirs(os.path.dirname(RESTORE_CONTEXT_FILE), exist_ok=True)
+            safe_write_json(RESTORE_CONTEXT_FILE, context)
+        except Exception as e:
+            warning(f"Could not save restore context: {e}", category="save_game")
+    
+    def _clear_restore_context(self) -> None:
+        """Clear restore context after fork has been applied."""
+        try:
+            if os.path.exists(RESTORE_CONTEXT_FILE):
+                os.remove(RESTORE_CONTEXT_FILE)
+        except Exception as e:
+            debug(f"Could not clear restore context: {e}", category="save_game")
+    
+    def _export_memory_package(self, save_path: str) -> Optional[Dict[str, Any]]:
+        """Export memory DB package into save directory.
+        
+        TABLETOP MODE: Creates memory_db_package/ subdirectory in save folder.
+        Returns package info for metadata, or None if memory parity disabled.
+        """
+        if not MEMORY_PARITY_ENABLED:
+            return {"status": "disabled", "message": "Memory parity not available"}
+        
+        if not os.path.exists(DEFAULT_MEMORY_DB_PATH):
+            return {"status": "no_db", "message": "No memory DB to export"}
+        
+        package_dir = os.path.join(save_path, "memory_db_package")
+        try:
+            result = export_memory_db_package(
+                DEFAULT_MEMORY_DB_PATH,
+                package_dir,
+                overwrite=True,
+            )
+            if result.get("status") == "success":
+                info(f"FILE_OP: Exported memory package to {package_dir}", category="save_game")
+            return result
+        except Exception as e:
+            error(f"FAILURE: Failed to export memory package: {e}", exception=e, category="save_game")
+            return {"status": "error", "message": str(e)}
+    
+    def _preflight_validate_memory_package(self, save_path: str) -> Dict[str, Any]:
+        """Preflight validation for memory package before restore mutations.
+        
+        TABLETOP MODE: Validates package integrity/compatibility before any
+        restore file operations (backup, cleanup, copy) to ensure atomic failure.
+        Returns validation result or legacy status if no package exists.
+        """
+        if not MEMORY_PARITY_ENABLED:
+            return {"status": "disabled", "message": "Memory parity not available"}
+        
+        package_dir = os.path.join(save_path, "memory_db_package")
+        
+        if os.path.exists(package_dir) and os.path.isdir(package_dir):
+            validation = validate_memory_package(package_dir)
+            if validation.get("status") != "success":
+                error(f"FAILURE: Memory package preflight validation failed: {validation.get('message')}", category="save_game")
+                return {"status": "error", "message": validation.get("message")}
+            return {"status": "success", "package_dir": package_dir, "preflight": True}
+        else:
+            return {"status": "legacy", "message": "No memory package - will use legacy fallback"}
+    
+    def _import_memory_package(self, save_path: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """Import memory package from save directory or apply legacy fallback.
+        
+        TABLETOP MODE: Handles three cases:
+        1. Memory package exists -> import with validation (assumes preflight passed)
+        2. Legacy save (no package) -> clean init fallback
+        3. Memory parity disabled -> return disabled status
+        """
+        if not MEMORY_PARITY_ENABLED:
+            return {"status": "disabled", "message": "Memory parity not available"}
+        
+        package_dir = os.path.join(save_path, "memory_db_package")
+        
+        if os.path.exists(package_dir) and os.path.isdir(package_dir):
+            # Skip re-validation here - assume preflight passed
+            try:
+                result = import_memory_db_package(
+                    package_dir,
+                    DEFAULT_MEMORY_DB_PATH,
+                    overwrite=True,
+                )
+                if result.get("status") == "success":
+                    info(f"FILE_OP: Imported memory package from {package_dir}", category="save_game")
+                return result
+            except Exception as e:
+                error(f"FAILURE: Failed to import memory package: {e}", exception=e, category="save_game")
+                return {"status": "error", "message": str(e)}
+        else:
+            info(f"FILE_OP: Legacy save detected, initializing clean memory DB", category="save_game")
+            success, message = self._init_clean_memory_db()
+            if not success:
+                return {"status": "error", "message": f"Legacy fallback failed: {message}"}
+            return {"status": "legacy_fallback", "message": "Legacy save - clean memory init applied"}
+    
+    def _init_clean_memory_db(self) -> Tuple[bool, str]:
+        """Initialize a clean memory DB for legacy save fallback.
+        
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        try:
+            if os.path.exists(DEFAULT_MEMORY_DB_PATH):
+                os.remove(DEFAULT_MEMORY_DB_PATH)
+            
+            os.makedirs(os.path.dirname(DEFAULT_MEMORY_DB_PATH) or ".", exist_ok=True)
+            
+            if MEMORY_PARITY_ENABLED:
+                from core.memory.memory_db import init_memory_db
+                init_memory_db(DEFAULT_MEMORY_DB_PATH)
+                info(f"FILE_OP: Initialized clean memory DB at {DEFAULT_MEMORY_DB_PATH}", category="save_game")
+            return True, "Clean memory DB initialized successfully"
+        except Exception as e:
+            error_msg = f"Failed to initialize clean memory DB: {e}"
+            error(f"FAILURE: {error_msg}", exception=e, category="save_game")
+            return False, error_msg
+    
+    def _setup_restore_context(self, metadata: Dict[str, Any]) -> None:
+        """Set up restore context for fork-on-first-save behavior.
+        
+        TABLETOP MODE: Persists context so next save knows to fork a new worldline.
+        Also clears cached worldline to ensure new one is generated.
+        """
+        context = {
+            "restored_save_id": metadata.get("save_id"),
+            "restored_worldline_id": metadata.get("worldline_id"),
+            "current_worldline_id": metadata.get("worldline_id"),
+            "restore_timestamp": datetime.now().isoformat(),
+            "pending_fork": True,
+        }
+        self._save_restore_context(context)
+        self._current_worldline = None
     
     def create_save_game(self, description: str = "", save_mode: str = "essential") -> Tuple[bool, str]:
         """
@@ -428,8 +652,35 @@ class SaveGameManager:
                 "total_files_processed": len(copied_files) + len(skipped_files),
             }
             
+            # TABLETOP MODE: Export memory DB package for Many Worlds support
+            memory_package_result = self._export_memory_package(save_path)
+            if memory_package_result:
+                metadata["memory_package"] = memory_package_result
+            
+            # TABLETOP MODE: Enforce explicit save failure if memory parity export fails
+            if MEMORY_PARITY_ENABLED and os.path.exists(DEFAULT_MEMORY_DB_PATH):
+                if memory_package_result and memory_package_result.get("status") == "error":
+                    error_msg = f"Save failed: memory package export error - {memory_package_result.get('message', 'unknown error')}"
+                    error(f"FAILURE: {error_msg}", category="save_game")
+                    return False, error_msg
+            
             # Save updated metadata
             safe_write_json(metadata_path, metadata)
+            
+            # TABLETOP MODE: Clear restore context if this was a fork save
+            if metadata.get("lineage", {}).get("created_after_restore", False):
+                self._clear_restore_context()
+                # Update restore context with new worldline for future saves
+                self._save_restore_context({
+                    "current_worldline_id": metadata["worldline_id"],
+                    "pending_fork": False,
+                    "last_save_id": metadata["save_id"],
+                })
+                # Cache the new worldline so subsequent saves share it
+                self._current_worldline = metadata["worldline_id"]
+            else:
+                # Cache the worldline for non-fork saves too
+                self._current_worldline = metadata["worldline_id"]
             
             success_msg = f"Save game created successfully: {save_path}"
             success_msg += f"\nCopied {len(copied_files)} files"
@@ -437,6 +688,10 @@ class SaveGameManager:
                 success_msg += " (essential files only)"
             else:
                 success_msg += " (full save)"
+            
+            # TABLETOP MODE: Add memory package status to success message
+            if memory_package_result and memory_package_result.get("status") == "success":
+                success_msg += f"\nMemory package: {memory_package_result.get('row_counts', {})}"
             
             info(f"SUCCESS: {success_msg}", category="save_game")
             return True, success_msg
@@ -464,6 +719,10 @@ class SaveGameManager:
                         if metadata:
                             metadata["save_folder"] = item
                             metadata["save_path"] = item_path
+                            # TABLETOP MODE: Add convenience field for memory package presence
+                            metadata["memory_package_present"] = os.path.exists(
+                                os.path.join(item_path, "memory_db_package")
+                            )
                             save_games.append(metadata)
         except Exception as e:
             error(f"FAILURE: Error listing save games", exception=e, category="save_game")
@@ -494,6 +753,11 @@ class SaveGameManager:
             metadata = safe_read_json(metadata_path)
             if not metadata:
                 return False, "Could not read save game metadata"
+            
+            # TABLETOP MODE: Preflight validate memory package BEFORE any mutations
+            preflight = self._preflight_validate_memory_package(save_path)
+            if preflight.get("status") == "error":
+                return False, f"Restore preflight failed: {preflight.get('message')}"
             
             # Create backup of current state before restoring
             backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -571,6 +835,11 @@ class SaveGameManager:
             
             # Walk through save directory and copy files back
             for root, dirs, files in os.walk(save_path):
+                # TABLETOP MODE: Exclude memory_db_package from generic copy loop
+                # Package is handled exclusively via managed import path
+                if "memory_db_package" in dirs:
+                    dirs.remove("memory_db_package")
+                
                 # Skip metadata file
                 if "save_metadata.json" in files:
                     files.remove("save_metadata.json")
@@ -594,9 +863,26 @@ class SaveGameManager:
                         error(f"FAILURE: Failed to restore {dest_file}", exception=e, category="save_game")
                         failed_files.append(dest_file)
             
+            # TABLETOP MODE: Import memory package for Many Worlds support
+            memory_result = self._import_memory_package(save_path, metadata)
+            if memory_result.get("status") == "error":
+                # Memory package exists but failed - fail the restore
+                return False, f"Memory package restore failed: {memory_result.get('message')}"
+            
+            # TABLETOP MODE: Set up restore context for fork-on-first-save behavior
+            self._setup_restore_context(metadata)
+            
             success_msg = f"Save game restored successfully from: {save_folder}"
             success_msg += f"\nRestored {len(restored_files)} files"
             success_msg += f"\nBackup created: {backup_dir}"
+            
+            # TABLETOP MODE: Add memory package status to success message
+            if memory_result.get("status") == "success":
+                success_msg += f"\nMemory package: restored"
+            elif memory_result.get("status") == "legacy_fallback":
+                success_msg += f"\nMemory package: legacy fallback (clean init)"
+            elif memory_result.get("status") == "disabled":
+                success_msg += f"\nMemory package: parity disabled"
             
             if failed_files:
                 success_msg += f"\nFailed to restore {len(failed_files)} files"

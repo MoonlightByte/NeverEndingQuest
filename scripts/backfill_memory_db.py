@@ -99,6 +99,12 @@ def main() -> int:
         action="store_true",
         help="Allow replacing existing output/target in export/import workflows",
     )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=50,
+        help="Number of entries per transaction batch for backfill (default: 50)",
+    )
     args = parser.parse_args()
 
     if args.export_package and args.import_package:
@@ -153,6 +159,10 @@ def main() -> int:
         print(json.dumps({"status": "error", "message": str(parse_error)}, indent=2))
         return 1
 
+    if args.batch_size <= 0:
+        print(json.dumps({"status": "error", "message": f"--batch-size must be positive, got {args.batch_size}"}, indent=2))
+        return 1
+
     db_path_to_use = args.db_path
     temp_dir = None
     if args.dry_run:
@@ -169,6 +179,7 @@ def main() -> int:
             combat_history_path=args.combat_path,
             include_system_messages=bool(args.include_system),
             sources=selected_sources,
+            batch_size=args.batch_size,
         )
         if args.dry_run:
             result["dry_run"] = True
