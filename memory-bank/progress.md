@@ -10,7 +10,7 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
-- **Streaming UX Reversion to Foundation-Only (IN PROGRESS - 2026-02-14):**
+- **Streaming UX Reversion to Foundation-Only (COMPLETED - 2026-02-15):**
   - Reverted runtime streaming execution paths to restore canonical block narration UX.
   - Kept future-facing foundation stubs:
     - `web/extensions/streaming_events.py` (dormant backend lifecycle helper)
@@ -20,12 +20,17 @@ Active development of Tabletop Mode features, focusing on party management and U
   - Reversion OpenSpec artifacts updated to match selective keep/revert strategy:
     - `openspec/changes/streaming-ux-dual-pipeline/`
     - `openspec/changes/streaming-ux-stabilization/`
-    - `openspec/changes/streaming-ux-reversion/`
+    - `openspec/changes/archive/2026-02-15-streaming-ux-reversion/`
+  - Synced main specs:
+    - `openspec/specs/canonical-output-single-path/spec.md`
+    - `openspec/specs/streaming-disabled-stable-output/spec.md`
+    - `openspec/specs/tts-block-narration-only/spec.md`
   - Validation:
     - `python3 -m py_compile main.py core/managers/combat_manager.py web/web_interface.py web/extensions/streaming_events.py` -> PASS
     - `python3 scripts/test_multi_pc_combat.py` -> PASS (40 tests)
     - Dormant sanity check (`ENABLE_CHAT_STREAMING=False`): stream start emits no events -> PASS
-  - Remaining: manual smoke (`intro + non-combat turn + combat round`) and finalize commit.
+  - Manual smoke complete: intro + one non-combat turn + one combat round passed with no stream events and no JSON token leakage.
+  - OpenSpec verify/archive complete; only follow-up warning is to align `scripts/test_streaming_ux_stabilization.py` with rollback expectations.
 
 - **Memory Backfill Source Selection + DB Portability Tools (COMPLETED - 2026-02-13):**
   - Added `--sources` selector to `scripts/backfill_memory_db.py` with strict allowed values: `journal`, `conversation`, `combat`.

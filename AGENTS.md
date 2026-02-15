@@ -1012,9 +1012,9 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
-### Streaming UX Reversion to Foundation-Only (IN PROGRESS - 2026-02-14)
+### Streaming UX Reversion to Foundation-Only (COMPLETED - 2026-02-15)
 
-**Status:** IN PROGRESS  
+**Status:** COMPLETED  
 **Priority:** High (Narration UX Stability)  
 **Effort:** Medium (~1 session)
 
@@ -1036,15 +1036,21 @@ Roll back player-facing streaming execution paths (JSON token draft rendering + 
 **OpenSpec Artifacts:**
 - `openspec/changes/streaming-ux-dual-pipeline/` (execution attempt history)
 - `openspec/changes/streaming-ux-stabilization/` (diagnosis/hardening pass)
-- `openspec/changes/streaming-ux-reversion/` (selective rollback spec and tasks)
+- `openspec/changes/archive/2026-02-15-streaming-ux-reversion/` (archived selective rollback spec and tasks)
+- Synced main specs:
+  - `openspec/specs/canonical-output-single-path/spec.md`
+  - `openspec/specs/streaming-disabled-stable-output/spec.md`
+  - `openspec/specs/tts-block-narration-only/spec.md`
 
 **Verification:**
 - `python3 -m py_compile main.py core/managers/combat_manager.py web/web_interface.py web/extensions/streaming_events.py` -> PASS
 - `python3 scripts/test_multi_pc_combat.py` -> PASS (40 tests)
 - Dormant foundation sanity (`ENABLE_CHAT_STREAMING=False`): `start_stream(...)` returns `None`, no stream events emitted -> PASS
 
-**Remaining:**
-- Manual smoke pass (`intro + one non-combat turn + one combat round`) before final verify/archive and commit.
+**Verification Completion:**
+- Manual smoke pass completed (`intro + one non-combat turn + one combat round`) with no stream events and no JSON leakage in narration output.
+- `/opsx-verify streaming-ux-reversion` completed; warning only: legacy `scripts/test_streaming_ux_stabilization.py` assertions still target pre-reversion behavior.
+- `/opsx-archive streaming-ux-reversion` completed with spec sync.
 
 ### Tabletop Character Stack Hardening (COMPLETED - 2026-02-12)
 

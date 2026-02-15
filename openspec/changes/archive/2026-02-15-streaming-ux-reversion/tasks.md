@@ -19,14 +19,14 @@
 
 ## 1. Runtime Rollback Outcome
 
-- [ ] 1.1 Confirm runtime behavior is block-output-only narration in startup, narrative turns, and combat turns.
-- [ ] 1.2 Confirm no raw JSON token leakage (`{}`, `\\n`, escaped fragments) appears in player chat.
-- [ ] 1.3 Confirm no duplicate draft + canonical narration output appears for the same turn.
-- [ ] 1.4 Confirm manual/API TTS still works for canonical block narration messages.
+- [x] 1.1 Confirm runtime behavior is block-output-only narration in startup, narrative turns, and combat turns.
+- [x] 1.2 Confirm no raw JSON token leakage (`{}`, `\\n`, escaped fragments) appears in player chat.
+- [x] 1.3 Confirm no duplicate draft + canonical narration output appears for the same turn.
+- [x] 1.4 Confirm manual/API TTS still works for canonical block narration messages.
 
 ## 2. Validation and Regression
 
 - [x] 2.1 Compile-check rollback-affected modules.
 - [x] 2.2 Run `python3 scripts/test_multi_pc_combat.py`.
 - [x] 2.3 Run targeted streaming sanity tests (foundation dormant with flags OFF).
-- [ ] 2.4 Manual smoke: intro + one non-combat turn + one combat round.
+- [x] 2.4 Manual smoke: intro + one non-combat turn + one combat round.
