@@ -1012,6 +1012,141 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Exit/Enter GUI Button Implementation Plan (PLANNED - 2026-02-15)
+
+**Status:** PLANNED  
+**Priority:** Medium (User Experience Enhancement)  
+**Effort:** Small (~1-2 hours)
+
+**Objective:**
+Add Exit button to web GUI that gracefully stops all Python processes without requiring Ctrl+C in terminal.
+
+**User Experience:**
+- Click "Exit" in pinned browser tab
+- Server acknowledges and gracefully shuts down
+- Terminal prints "Shutting down NeverEndingQuest Web Interface..."
+- User must manually restart with `python run_web.py`
+
+**Phase 1 (Exit Only - Recommended):**
+- Modify `handle_user_exit()` in `web/web_interface.py` to gracefully stop server
+- Use exit code 91 so launcher knows intentional shutdown (not error)
+- Update `run_web.py` to detect code 91 and print shutdown message without restart
+- Update GUI button to show waiting message during shutdown
+
+**Phase 2 (Full Exit/Enter - Future):**
+- Requires persistent supervisor/watcher process (not implemented in Phase 1)
+- Allows Enter button to restart server without manual terminal command
+- Deferred due to complexity/maintenance concerns
+
+**Files to Modify:**
+- `web/web_interface.py` - Graceful shutdown handler
+- `run_web.py` - Exit code 91 detection
+- `web/templates/game_interface.html` - Exit button UI
+
+**Plan Location:** `/plans/exit-enter.md`
+
+### TTS Text Sync Browser-First Implementation (COMPLETED - 2026-02-15)
+
+**Status:** COMPLETED  
+**Priority:** Medium (UX Enhancement)  
+**Effort:** Medium (~4-5 hours)  
+**Implementation Date:** 2026-02-15
+
+**Objective:**
+Implement word-by-word text reveal synchronized with Browser TTS speech, with fallback faux sync for browsers/voices that don't emit boundary events.
+
+**Implementation Highlights:**
+
+**1. Configuration & Toggle Wiring (C1):**
+- Added `ENABLE_BROWSER_WORD_SYNC = False` in `model_config.py` - Browser TTS word-boundary synchronized text reveal (default OFF)
+- Added `ENABLE_TTS_ESTIMATED_TIMING = False` in `model_config.py` - Future OpenAI TTS timing estimation (scaffold only)
+- Wired config flags through `web/web_interface.py` template context
+- Added "Word Sync" toggle in DM Voice settings with browser-only visibility
+- Added localStorage persistence for toggle state
+
+**2. Browser Reveal Rendering Layer (C2):**
+- Added CSS classes for narration reveal mode (`.revealed`, `.unrevealed` with `display: none`)
+- Added reveal-helper functions: `isWordSyncEnabled()`, `initRevealMode()`, `updateReveal()`, `finalizeReveal()`, `clearRevealMode()`
+- Updated `addMessage()` to apply `reveal-mode` class and pre-initialize reveal DOM for autoplay
+- Lazy-init pattern: reveal only activates when boundary/timer events arrive
+
+**3. Browser TTS Boundary Sync Integration (C3):**
+- Implemented `SpeechSynthesisUtterance.onboundary` handler with stale-callback guard
+- Updated stop/error/end handlers to finalize reveal state deterministically
+- Added `notifyTTSPlaybackEnded()` for explicit Browser TTS queue completion
+
+**4. Estimated Timeline Fallback (Faux Sync):**
+- Added 1000ms watchdog timeout - switches to faux sync if no boundaries
+- Calculates word-end checkpoints from text using regex
+- Estimates duration (165 WPM base, 3x slowdown factor applied)
+- Drives updates via `setInterval` with calculated tick timing
+- Real boundaries take precedence over faux sync if they arrive
+
+**5. Queue and Strategy Abstraction (C4):**
+- Added `SYNC_STRATEGY` constants: `BROWSER_BOUNDARY`, `NONE`, `ESTIMATED_TIMELINE`
+- Queue items carry immutable `syncStrategy` field
+- Manual TTS replay uses `'none'` strategy to prevent text reveal rerun
+- Auto-scroll chat as reveal text grows
+
+**Files Modified:**
+- `model_config.py` - Added sync feature flags
+- `web/web_interface.py` - Template context wiring
+- `web/templates/game_interface.html` - Core implementation (~300 lines)
+- `web/static/js/tts_queue_manager.js` - Queue strategy and completion callbacks
+
+**Verification:**
+- `python3 -m py_compile model_config.py web/web_interface.py` -> PASS
+- Edge (MS TTS): Real boundary sync works
+- Chrome/other: Faux sync fallback triggers after watchdog
+- Stop mid-playback: Text finalizes, queue advances
+- Manual replay: Audio only, no text reveal rerun
+
+---
+
+### Combat State Init and Batching Hardening (C1-C5) (COMPLETED - 2026-02-15)
+
+**Status:** COMPLETED  
+**Priority:** High (Combat Flow Integrity)  
+**Effort:** Medium (~1 session)
+
+**Objective:**
+Harden combat entry, command routing, initiative startup state, and enemy-phase batching integrity using the OpenSpec change `combat-state-init-and-batching-hardening`.
+
+**Implementation (C1-C5):**
+- **C1 Fail-closed combat entry:**
+  - `main.py` now aborts safely after validation retry exhaustion with deterministic system error output.
+  - `main.py` handles explicit `{"status":"error"}` from action processing and blocks fake continuation.
+  - `core/ai/action_handler.py` returns explicit error dicts on `createEncounter` failure paths (no silent continue).
+- **C2 Combat-only command guards:**
+  - `main.py` intercepts combat-only commands outside active combat (`/init`, `/end`, `/pass`, `/att`, `/dmg`, aliases/forms).
+  - Guard path returns deterministic `[SYSTEM]` + `[skipTTS]` guidance and prevents narrator drift.
+- **C3 Phase 1 initiative consistency:**
+  - `core/managers/combat_manager.py` added startup normalizer for two-group initiative state (`initiativeMode`, `initiativeRolls`, `initiativeWinner`, `roundStartsWith`, `awaitingPcGroupRoll`).
+  - Legacy startup reroll fallback removed; startup now derives from normalized persisted state.
+  - `/init` resolution mirrors compatibility initiative state to `party_tracker.json -> worldConditions.combatInitiative`.
+- **C4 Enemy/NPC batch integrity + targeting:**
+  - `core/managers/multi_pc_combat.py` deterministic living non-PC actor filtering for enemy-phase batches.
+  - `core/managers/combat_manager.py` integrity roster expanded to include active multi-PC roster so legal non-active PC targets are accepted.
+  - Invariant preserved: PCs remain forbidden as DM-controlled actors during ENEMY_PHASE but valid as damage/effect targets.
+- **C5 Regression and smoke coverage:**
+  - Added focused regression suite: `scripts/c5_regression_combat.py`.
+  - Extended guard/fail-closed coverage plus C4 integrity checks.
+  - Manual smoke checklist M1-M5 completed and marked done in tasks.
+
+**Verification:**
+- `python3 -m py_compile main.py core/ai/action_handler.py core/managers/combat_manager.py core/managers/multi_pc_combat.py` -> PASS
+- `python3 scripts/test_multi_pc_combat.py` -> PASS (43 tests)
+- `python3 scripts/c5_regression_combat.py` -> PASS (9 tests)
+- `openspec validate combat-state-init-and-batching-hardening` -> valid
+
+**Commits:**
+- `56ec86c` - `fix(combat): harden enemy-phase batching and PC target validation`
+- `48ac4aa` - `fix(combat): fail closed entry and add C5 regressions`
+
+**OpenSpec Status:**
+- Change implementation complete and validated.
+- Not archived yet (intentionally deferred pending full gameplay test pass).
+
 ### Streaming UX Reversion to Foundation-Only (COMPLETED - 2026-02-15)
 
 **Status:** COMPLETED  

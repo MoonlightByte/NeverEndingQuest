@@ -10,6 +10,51 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **Exit/Enter GUI Button Implementation Plan (PLANNED - 2026-02-15):**
+  - Created detailed plan at `/plans/exit-enter.md` with two phases
+  - **Phase 1 (Exit Only - Recommended):**
+    - GUI Exit button gracefully stops ALL Python processes
+    - Uses exit code 91 so launcher knows intentional shutdown
+    - Terminal prints "Shutting down NeverEndingQuest Web Interface..." without Ctrl+C
+    - User must manually restart with `python run_web.py`
+    - No watcher process required
+  - **Phase 2 (Full Exit/Enter - Future):**
+    - Requires persistent supervisor/controller process
+    - Allows Enter button to restart server without manual terminal command
+    - Deferred due to complexity/maintenance concerns
+  - **Technical approach:** Modify `handle_user_exit()` in web_interface.py for graceful shutdown, update run_web.py to detect exit code 91, update GUI button to show waiting message
+  - **Files to modify:** `web/web_interface.py`, `run_web.py`, `web/templates/game_interface.html`
+
+- **TTS Text Sync Browser-First Implementation (COMPLETED - 2026-02-15):**
+  - Implemented word-by-word text reveal synchronized with Browser TTS speech.
+  - Features:
+    - "Word Sync" toggle in DM Voice settings (browser-only visibility, localStorage persisted)
+    - Real boundary sync for Edge/MS TTS using `SpeechSynthesisUtterance.onboundary`
+    - Faux sync fallback (3x slowed) for browsers without boundary events
+    - Auto-scroll chat as reveal text grows
+    - Manual replay uses audio-only (no text reveal rerun)
+  - Architecture:
+    - Per-item `syncStrategy` metadata in queue (`browser_boundary`, `none`, `estimated_timeline`)
+    - Lazy-init reveal mode (preserves normal block text until sync actually starts)
+    - Explicit queue completion signaling for Browser TTS (`notifyTTSPlaybackEnded`)
+  - Files: `model_config.py` (+7), `web/web_interface.py` (+6), `web/templates/game_interface.html` (+~300), `web/static/js/tts_queue_manager.js` (+~80)
+  - Verification: Python compile PASS, Edge real sync confirmed, Chrome faux fallback confirmed, stop/replay behaviors correct.
+
+- **Combat State Init and Batching Hardening (C1-C5) (COMPLETED - 2026-02-15):**
+  - Completed OpenSpec change `combat-state-init-and-batching-hardening` across C1-C5.
+  - C1-C3 shipped fail-closed combat entry, deterministic non-combat command guards, and Phase 1 initiative normalization/mirror sync.
+  - C4 shipped deterministic enemy/NPC batch actor filtering and integrity acceptance for legal non-active PC targets.
+  - C5 added focused regression suite `scripts/c5_regression_combat.py` and completed manual smoke checklist M1-M5.
+  - Validation:
+    - `python3 -m py_compile main.py core/ai/action_handler.py core/managers/combat_manager.py core/managers/multi_pc_combat.py` -> PASS
+    - `python3 scripts/test_multi_pc_combat.py` -> PASS (43 tests)
+    - `python3 scripts/c5_regression_combat.py` -> PASS (9 tests)
+    - `openspec validate combat-state-init-and-batching-hardening` -> valid
+  - Commits:
+    - `56ec86c` - `fix(combat): harden enemy-phase batching and PC target validation`
+    - `48ac4aa` - `fix(combat): fail closed entry and add C5 regressions`
+  - Status: implementation complete and validated; archive deferred until full gameplay testing.
+
 - **Streaming UX Reversion to Foundation-Only (COMPLETED - 2026-02-15):**
   - Reverted runtime streaming execution paths to restore canonical block narration UX.
   - Kept future-facing foundation stubs:

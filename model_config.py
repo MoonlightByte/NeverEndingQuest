@@ -56,6 +56,13 @@ ENABLE_CHAT_STREAMING = False                          # Reversion default: keep
 ENABLE_BROWSER_TTS_STREAM_SYNC = False                 # Reversion default: disable sentence-level stream TTS
 STREAM_SUPERSEDED_VISIBLE = False                      # Hide superseded draft attempts by default for cleaner UX
 
+# --- TTS Text Sync Settings ---
+# TABLETOP MODE: Browser word-boundary sync for progressive text reveal (OFF by default).
+# When enabled, narration text reveals word-by-word synchronized with Browser TTS speech.
+ENABLE_BROWSER_WORD_SYNC = False                       # Browser TTS word-boundary synchronized text reveal
+# Future: Non-browser TTS timing estimation (Phase 2 - scaffold only, not active)
+ENABLE_TTS_ESTIMATED_TIMING = False                    # Estimated timing sync for OpenAI TTS (future Phase 2)
+
 # --- Conversation Compression Settings ---
 # Enable/disable compression types before API calls
 COMPRESSION_ENABLED = True                              # Master switch for all compression

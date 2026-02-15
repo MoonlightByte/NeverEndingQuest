@@ -16,33 +16,62 @@ class TTSQueueManager {
         this.maxQueueSize = 3;
         this.currentAudio = null;
         this.playbackTimeout = null;
-        
+
+        // TABLETOP MODE: Sync strategy constants
+        this.SYNC_STRATEGY = {
+            BROWSER_BOUNDARY: 'browser_boundary',  // Precise word-boundary sync (Browser TTS)
+            NONE: 'none',                          // No sync, block rendering
+            ESTIMATED_TIMELINE: 'estimated_timeline'  // Future: OpenAI TTS timing estimation
+        };
+
         console.log('[TTS Queue Manager] Initialized');
     }
     
     /**
+     * Resolve sync strategy for a TTS request
+     * TABLETOP MODE: Determines sync strategy based on messageDiv and global settings
+     * @param {HTMLElement} messageDiv - The narration message element
+     * @returns {string} Sync strategy constant
+     */
+    resolveSyncStrategy(messageDiv) {
+        // If no messageDiv provided, use neutral strategy
+        if (!messageDiv) {
+            return this.SYNC_STRATEGY.NONE;
+        }
+
+        // Check if message has reveal-mode class (indicates word sync is enabled)
+        if (messageDiv.classList.contains('reveal-mode')) {
+            return this.SYNC_STRATEGY.BROWSER_BOUNDARY;
+        }
+
+        return this.SYNC_STRATEGY.NONE;
+    }
+
+    /**
      * Request TTS playback - queues if playing, plays immediately if not
      * @param {string} text - Text to speak
      * @param {HTMLElement} button - The TTS button element (for visual state)
+     * @param {HTMLElement} messageDiv - The narration message element (TABLETOP MODE: for word sync)
      */
-    playWhenReady(text, button) {
+    playWhenReady(text, button, messageDiv = null) {
         // Don't queue duplicates
         const isDuplicate = this.queue.some(item => item.text === text);
         if (isDuplicate) {
             console.log('[TTS Queue Manager] Skipping duplicate message');
             return;
         }
-        
+
         // Check queue limit
         if (this.queue.length >= this.maxQueueSize) {
             console.log('[TTS Queue Manager] Queue full, removing oldest item');
             this.queue.shift(); // Remove oldest
         }
-        
-        // Add to queue
-        this.queue.push({ text, button });
-        console.log('[TTS Queue Manager] Queued. Queue size: ' + this.queue.length);
-        
+
+        // TABLETOP MODE: Resolve sync strategy and include in queue item
+        const syncStrategy = this.resolveSyncStrategy(messageDiv);
+        this.queue.push({ text, button, messageDiv, syncStrategy });
+        console.log('[TTS Queue Manager] Queued with strategy:', syncStrategy, 'Queue size:', this.queue.length);
+
         // If not currently playing, start playback
         if (!this.isPlaying) {
             this.playNext();
@@ -64,13 +93,14 @@ class TTSQueueManager {
         
         const item = this.queue.shift();
         this.isPlaying = true;
-        
-        console.log('[TTS Queue Manager] Playing. Remaining in queue: ' + this.queue.length);
-        
-        // Call the upstream playTTS function
+
+        // TABLETOP MODE: Log sync strategy for traceability
+        console.log('[TTS Queue Manager] Playing with strategy:', item.syncStrategy || this.SYNC_STRATEGY.NONE, 'Remaining in queue:', this.queue.length);
+
+        // Call the upstream playTTS function (TABLETOP MODE: pass messageDiv and explicit syncStrategy)
         if (typeof playTTS === 'function') {
-            playTTS(item.text, item.button);
-            
+            playTTS(item.text, item.button, item.messageDiv, item.syncStrategy);
+
             // Set a safety timeout in case audio events don't fire
             this.playbackTimeout = setTimeout(() => {
                 console.log('[TTS Queue Manager] Safety timeout - assuming playback complete');
@@ -162,18 +192,30 @@ document.addEventListener('DOMContentLoaded', function() {
 /**
  * Wrapper function to integrate with upstream auto-play logic
  * Call this instead of playTTS directly for queue-managed playback
- * 
+ *
  * @param {string} text - Text to speak
  * @param {HTMLElement} button - The TTS button element
+ * @param {HTMLElement} messageDiv - The narration message element (TABLETOP MODE: for word sync)
  */
-function playTTSQueued(text, button) {
+function playTTSQueued(text, button, messageDiv = null) {
     if (ttsQueueManager) {
-        ttsQueueManager.playWhenReady(text, button);
+        ttsQueueManager.playWhenReady(text, button, messageDiv);
     } else {
         // Fallback to direct play if queue manager not initialized
         if (typeof playTTS === 'function') {
-            playTTS(text, button);
+            playTTS(text, button, messageDiv);
         }
+    }
+}
+
+/**
+ * TABLETOP MODE: Explicit playback completion signal for Browser TTS.
+ * Browser speechSynthesis does not create <audio> elements, so queue completion
+ * must be reported from utterance lifecycle handlers.
+ */
+function notifyTTSPlaybackEnded() {
+    if (ttsQueueManager) {
+        ttsQueueManager.onPlaybackEnded();
     }
 }
 
@@ -192,12 +234,12 @@ function wrapPlayTTS() {
     // Store original function
     const originalPlayTTS = window.playTTS;
     
-    // Replace with wrapper
-    window.playTTS = function(text, button) {
+    // Replace with wrapper (TABLETOP MODE: use rest params to forward all args including messageDiv)
+    window.playTTS = function(...args) {
         console.log('[TTS Queue Manager] playTTS called, hooking completion events');
-        
-        // Call original upstream function
-        const result = originalPlayTTS(text, button);
+
+        // Call original upstream function with all arguments
+        const result = originalPlayTTS(...args);
         
         // Hook into completion
         if (ttsQueueManager) {
@@ -206,6 +248,14 @@ function wrapPlayTTS() {
                 const audioElements = document.querySelectorAll('audio');
                 
                 if (audioElements.length === 0) {
+                    const isBrowserEngine = (typeof getSelectedTTSEngine === 'function') && (getSelectedTTSEngine() === 'browser');
+
+                    if (isBrowserEngine) {
+                        // Browser TTS has no <audio> element; completion is signaled from utterance handlers.
+                        console.log('[TTS Queue Manager] No audio element for Browser TTS, waiting for explicit completion callback');
+                        return;
+                    }
+
                     console.log('[TTS Queue Manager] No audio elements found, using fallback');
                     // Fallback: assume 30 seconds for API-based TTS
                     setTimeout(() => {

@@ -85,7 +85,7 @@ import utils.pc_manager as pc_manager
 from updates.update_character_info import normalize_character_name
 from core.managers.status_manager import set_status_callback, set_compression_callback
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
-from model_config import DM_MINI_MODEL, ENABLE_BROWSER_TTS_STREAM_SYNC, ENABLE_CHAT_STREAMING
+from model_config import DM_MINI_MODEL, ENABLE_BROWSER_TTS_STREAM_SYNC, ENABLE_CHAT_STREAMING, ENABLE_BROWSER_WORD_SYNC, ENABLE_TTS_ESTIMATED_TIMING
 from web.extensions.live_chat_monitor import setup_live_chat_monitor
 from web.extensions.streaming_events import configure_stream_transport
 from web.extensions.tabletop_socket_handlers import (
@@ -706,7 +706,9 @@ def index():
                          multiplayer_mode=MULTIPLAYER_MODE,
                          DEBUG_STATUS_SYNC=DEBUG_STATUS_SYNC,
                          ENABLE_CHAT_STREAMING=ENABLE_CHAT_STREAMING,
-                         ENABLE_BROWSER_TTS_STREAM_SYNC=ENABLE_BROWSER_TTS_STREAM_SYNC)
+                         ENABLE_BROWSER_TTS_STREAM_SYNC=ENABLE_BROWSER_TTS_STREAM_SYNC,
+                         ENABLE_BROWSER_WORD_SYNC=ENABLE_BROWSER_WORD_SYNC,
+                         ENABLE_TTS_ESTIMATED_TIMING=ENABLE_TTS_ESTIMATED_TIMING)
 
 @app.route('/static/media/videos/<path:filename>')
 def serve_video(filename):

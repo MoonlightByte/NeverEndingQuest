@@ -1,4 +1,10 @@
 ## Current Work Focus
+- **Exit/Enter GUI Button Plan (PLANNING - 2026-02-15):** Created detailed implementation plan at `/plans/exit-enter.md` for adding Exit/Enter functionality to GUI. **Phase 1 (Exit Only):** Gracefully stop all Python processes from browser button without Ctrl+C. Uses exit code 91 to signal intentional shutdown to launcher. User must manually restart with `python run_web.py`. **Phase 2 (Future):** Full Exit/Enter toggle requires persistent supervisor/watcher process - deferred due to complexity concerns. No watcher processes will be implemented in Phase 1.
+
+- **TTS Text Sync Browser-First Implementation (COMPLETED - 2026-02-15):** Implemented word-by-word text reveal synchronized with Browser TTS speech. **Features:** "Word Sync" toggle in DM Voice settings (browser-only, localStorage persisted), real boundary sync for Edge/MS TTS using `onboundary`, faux sync fallback (3x slowed) for browsers without boundaries, auto-scroll chat as text grows, manual replay audio-only. **Architecture:** Per-item `syncStrategy` in queue (`browser_boundary`, `none`, `estimated_timeline`), lazy-init reveal mode, explicit queue completion signaling. **Files:** `model_config.py`, `web/web_interface.py`, `web/templates/game_interface.html`, `web/static/js/tts_queue_manager.js`. **Verification:** Python compile PASS, Edge real sync works, Chrome faux fallback triggers correctly.
+
+- **Combat State Init and Batching Hardening (C1-C5) (COMPLETED - 2026-02-15):** OpenSpec change `combat-state-init-and-batching-hardening` is implemented and validated (C1-C5 complete, M1-M5 smoke complete). Immediate focus is full gameplay test pass before archive.
+
 - **Streaming UX Reversion to Foundation-Only (COMPLETED - 2026-02-15):** Runtime streaming execution is now rolled back to stable block-output narration while preserving future-facing foundations (flags OFF, backend stream helper, minimal host transport wiring). Current focus shifts to post-reversion test alignment and normal feature work.
 
 - **Memory Backfill Source Selection + DB Portability Tools (COMPLETED - 2026-02-13):** Follow-up tooling change is complete. Backfill now supports explicit source gating (`--sources journal,conversation,combat`) and memory DB portability workflows (export package, validate package, import package with safe non-destructive defaults). This establishes practical archive/restore groundwork while keeping runtime gameplay paths unchanged.
@@ -22,6 +28,20 @@
 - **TTS Auto-Play Fix & Queue Management (COMPLETED - 2026-02-06):** Implemented comprehensive TTS management system with queue control, message filtering, and [skipTTS] tagging. Fixed cacophony on page reload, parallel playback, and mechanical message narration. Only DM narration speaks now; combat results and system commands display but don't break immersion.
 
 ## Recent Changes
+- **Combat State Init and Batching Hardening (C1-C5) (COMPLETED - 2026-02-15):**
+    - C1-C3 completed and committed: fail-closed combat entry, deterministic combat-only command guards outside active combat, and Phase 1 startup normalization with compatibility mirror sync.
+    - C4 completed and committed: deterministic living non-PC enemy-phase actor filtering plus integrity roster expansion so legal non-active PC targets are accepted while PCs remain forbidden as DM-controlled actors.
+    - C5 completed: added focused regression file `scripts/c5_regression_combat.py`, expanded coverage in `main.py` helper pathways, and checked M1-M5 smoke gates.
+    - Verification:
+      - `python3 -m py_compile main.py core/ai/action_handler.py core/managers/combat_manager.py core/managers/multi_pc_combat.py` -> PASS
+      - `python3 scripts/test_multi_pc_combat.py` -> PASS (43 tests)
+      - `python3 scripts/c5_regression_combat.py` -> PASS (9 tests)
+      - `openspec validate combat-state-init-and-batching-hardening` -> valid
+    - Commits:
+      - `56ec86c` - `fix(combat): harden enemy-phase batching and PC target validation`
+      - `48ac4aa` - `fix(combat): fail closed entry and add C5 regressions`
+    - OpenSpec status: complete and validated; archive intentionally deferred until full gameplay test confirmation.
+
 - **Streaming UX Reversion to Foundation-Only (COMPLETED - 2026-02-15):**
     - Selective rollback applied:
       - Reverted execution integrations in `main.py`, `core/managers/combat_manager.py`, `web/templates/game_interface.html`, and `web/static/js/tts_queue_manager.js`.

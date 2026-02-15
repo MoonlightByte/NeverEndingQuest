@@ -1494,6 +1494,25 @@
             font-size: 17px;
         }
 
+        /* TABLETOP MODE: Narration reveal mode (word-sync) */
+        .message.narration.reveal-mode .message-text .revealed {
+            color: inherit;
+        }
+
+        .message.narration.reveal-mode .message-text .unrevealed {
+            display: none;
+        }
+
+        .message.narration.reveal-mode .message-text .speaking-cursor {
+            background-color: #ffb347;
+            animation: cursor-blink 0.8s infinite;
+        }
+
+        @keyframes cursor-blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
         /* --- FIX: Ensure consistent font in the main game panel --- */
         .game-panel .message-text {
             font-family: 'Courier New', Courier, monospace;
@@ -4468,6 +4487,13 @@
                                     <span class="settings-toggle-slider"></span>
                                 </label>
                             </div>
+                            <div class="settings-item" id="word-sync-toggle-item" style="display: none;">
+                                <label>Word Sync</label>
+                                <label class="settings-toggle">
+                                    <input type="checkbox" id="tts-word-sync-toggle">
+                                    <span class="settings-toggle-slider"></span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                     <div class="settings-section">
@@ -4656,6 +4682,9 @@
         let currentTTSButton = null;
         let currentBrowserUtterance = null;
         let currentTTSAudio = null;
+        let currentTTSMessageDiv = null;  // TABLETOP MODE: Track narration message for reveal state
+        let currentBoundaryFallbackTimer = null;  // TABLETOP MODE: Boundary watchdog timer
+        let currentEstimatedSyncInterval = null;  // TABLETOP MODE: Faux sync interval fallback
         const ttsCache = new Map();
 
         /**
@@ -5225,7 +5254,10 @@
         function addMessage(outputId, message, skipAutoplay = false) {
             const output = document.getElementById(outputId);
             const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${message.type}`;
+            
+            // TABLETOP MODE: Check if word sync is enabled for narration
+            const wordSyncEnabled = message.type === 'narration' && isWordSyncEnabled();
+            messageDiv.className = `message ${message.type}${wordSyncEnabled ? ' reveal-mode' : ''}`;
             
             // Extract author if provided (for multi-PC display)
             const authorName = message.author || 'You';
@@ -5252,6 +5284,7 @@
                 const text = document.createElement('div');
                 text.className = 'message-text';
                 text.textContent = message.content;
+                
                 header.appendChild(author);
                 header.appendChild(badge);
                 
@@ -5272,7 +5305,8 @@
                     }
 
                     ttsButton.onclick = function() {
-                        playTTS(message.content, ttsButton);
+                        // TABLETOP MODE: Manual replay should play audio only (no text reveal rerun)
+                        playTTS(message.content, ttsButton, messageDiv, 'none');
                     };
 
                     // Order: Dungeon Master [DM] [▶] [Generate Image]
@@ -5294,7 +5328,7 @@
                 contentDiv.appendChild(text);
                 messageDiv.appendChild(avatar);
                 messageDiv.appendChild(contentDiv);
-                
+
                 // TABLETOP MODE: Auto-play TTS if enabled (but skip for cached messages, system text, and Python-mechanical messages)
                 const isTTSEnabled = document.getElementById('tts-toggle').checked;
                 const isAutoplayEnabled = document.getElementById('tts-autoplay-toggle').checked;
@@ -5303,9 +5337,17 @@
                                        /^\s*\/\w+/.test(message.content);
                 const shouldSkipTTS = message.skipTTS || false;  // Python-mechanical messages have skipTTS flag
                 if (!skipAutoplay && !isSystemContent && !shouldSkipTTS && isTTSEnabled && isAutoplayEnabled && ttsButton) {
+                    // TABLETOP MODE: Avoid initial full-block flash before sync begins.
+                    // Pre-initialize reveal mode for Browser autoplay when word sync is enabled.
+                    if (wordSyncEnabled && getSelectedTTSEngine() === 'browser') {
+                        const preRevealState = initRevealMode(messageDiv, message.content);
+                        if (preRevealState) {
+                            messageDiv._revealState = preRevealState;
+                        }
+                    }
                     setTimeout(() => {
-                        playTTSQueued(message.content, ttsButton);
-                    }, 100);
+                        playTTSQueued(message.content, ttsButton, messageDiv);
+                    }, 0);
                 }
                 
                 // TABLETOP MODE: Auto-prefill input field for DM commands (e.g., /dmg after hit)
@@ -7194,6 +7236,23 @@
                 localStorage.setItem('ttsAutoplayEnabled', this.checked);
             });
 
+            // TABLETOP MODE: Initialize Browser word-sync toggle from localStorage/config default
+            const ttsWordSyncToggle = document.getElementById('tts-word-sync-toggle');
+            if (ttsWordSyncToggle) {
+                const savedWordSyncState = localStorage.getItem('ttsWordSyncEnabled');
+                const browserWordSyncDefault = {{ 'true' if ENABLE_BROWSER_WORD_SYNC else 'false' }};
+
+                if (savedWordSyncState !== null) {
+                    ttsWordSyncToggle.checked = savedWordSyncState === 'true';
+                } else {
+                    ttsWordSyncToggle.checked = browserWordSyncDefault;
+                }
+
+                ttsWordSyncToggle.addEventListener('change', function() {
+                    localStorage.setItem('ttsWordSyncEnabled', this.checked);
+                });
+            }
+
             // Initialize TTS engine and voice selection
             const engineSelect = document.getElementById('tts-engine-select');
             const voiceSelect = document.getElementById('tts-voice-select');
@@ -8524,31 +8583,52 @@
         });
 
         // TTS Functions
-        async function playTTS(text, button) {
+        // TABLETOP MODE: Added messageDiv and explicit syncStrategy for word-sync
+        async function playTTS(text, button, messageDiv = null, syncStrategy = null) {
             const isTTSEnabled = document.getElementById('tts-toggle').checked;
             if (!isTTSEnabled) {
                 addMessage('game-output', { type: 'system', content: 'Enable "DM Voice" toggle in Settings to use text-to-speech.' });
                 return;
             }
-            
+
             const selectedEngine = getSelectedTTSEngine();
             const selectedVoice = getSelectedTTSVoice();
-            
+
             if (currentTTSButton === button) {
                 stopCurrentTTS();
                 return;
             }
-            
+
             stopCurrentTTS();
-            
+
             if (selectedEngine === 'browser') {
-                playBrowserTTS(text, selectedVoice, button);
+                playBrowserTTS(text, selectedVoice, button, messageDiv, syncStrategy);
             } else {
-                await playOpenAITTS(text, selectedVoice, selectedEngine, button);
+                // OpenAI TTS always uses 'none' strategy regardless of what was requested
+                await playOpenAITTS(text, selectedVoice, selectedEngine, button, messageDiv, 'none');
+            }
+        }
+
+        // TABLETOP MODE: Clear Browser sync timers for boundary/faux-sync paths
+        function clearCurrentBrowserSyncTimers() {
+            if (currentBoundaryFallbackTimer) {
+                clearTimeout(currentBoundaryFallbackTimer);
+                currentBoundaryFallbackTimer = null;
+            }
+            if (currentEstimatedSyncInterval) {
+                clearInterval(currentEstimatedSyncInterval);
+                currentEstimatedSyncInterval = null;
             }
         }
         
         function stopCurrentTTS() {
+            // TABLETOP MODE: Preserve reveal state on stop - finalize current narration text
+            if (currentTTSMessageDiv && currentTTSMessageDiv._revealState) {
+                finalizeReveal(currentTTSMessageDiv._revealState);
+            }
+
+            clearCurrentBrowserSyncTimers();
+
             if (currentBrowserUtterance) {
                 speechSynthesis.cancel();
                 currentBrowserUtterance = null;
@@ -8564,33 +8644,188 @@
                 currentTTSButton.title = 'Play DM Voice';
                 currentTTSButton = null;
             }
+            currentTTSMessageDiv = null;  // Clear narration reference
         }
         
-        function playBrowserTTS(text, voiceName, button) {
+        // TABLETOP MODE: Browser TTS with optional word-sync boundary reveal
+        function playBrowserTTS(text, voiceName, button, messageDiv = null, syncStrategy = null) {
             if (!('speechSynthesis' in window)) {
+                // TABLETOP MODE: Restore readable text if reveal mode was pre-initialized.
+                if (messageDiv && messageDiv._revealState) {
+                    finalizeReveal(messageDiv._revealState);
+                }
                 addMessage('game-output', { type: 'error', content: 'Your browser does not support text-to-speech.' });
+                // TABLETOP MODE: Ensure queue can advance when Browser TTS is unavailable
+                if (typeof notifyTTSPlaybackEnded === 'function') {
+                    notifyTTSPlaybackEnded();
+                }
                 return;
             }
-            
+
             const utterance = new SpeechSynthesisUtterance(text);
             const voices = speechSynthesis.getVoices();
             const selectedVoice = voices.find(v => v.name === voiceName);
             if (selectedVoice) {
                 utterance.voice = selectedVoice;
             }
-            
+
             utterance.rate = 1.0;
             utterance.pitch = 1.0;
+
+            // TABLETOP MODE: Browser boundary-driven reveal sync for narration messages
+            // Use explicit syncStrategy if provided, otherwise fall back to checking messageDiv class + global toggle
+            const targetMessageDiv = messageDiv || (button ? button.closest('.message.narration') : null);
+            const effectiveStrategy = syncStrategy || (targetMessageDiv && isWordSyncEnabled() ? 'browser_boundary' : 'none');
+            const shouldUseBoundarySync = effectiveStrategy === 'browser_boundary' && Boolean(targetMessageDiv);
+            let revealState = null;
+            let hasBoundaryEvent = false;
+
+            // TABLETOP MODE: Estimated timeline fallback for browsers/voices that do not emit boundary events.
+            const startEstimatedTimelineFallback = () => {
+                if (!shouldUseBoundarySync || hasBoundaryEvent || currentBrowserUtterance !== utterance) {
+                    return;
+                }
+
+                if (!revealState) {
+                    revealState = initRevealMode(targetMessageDiv, text);
+                    if (revealState) {
+                        targetMessageDiv._revealState = revealState;
+                    }
+                }
+
+                if (!revealState || !text) {
+                    return;
+                }
+
+                const wordEndIndexes = [];
+                const wordRegex = /\S+\s*/g;
+                let match;
+                while ((match = wordRegex.exec(text)) !== null) {
+                    wordEndIndexes.push(match.index + match[0].length);
+                }
+
+                if (wordEndIndexes.length === 0) {
+                    wordEndIndexes.push(text.length);
+                }
+
+                const wordsPerMinute = 165 * Math.max(0.5, Math.min(2.0, utterance.rate || 1.0));
+                const baseDurationMs = Math.round((wordEndIndexes.length / wordsPerMinute) * 60000);
+                const fauxSyncSlowdownFactor = 3.0;  // TABLETOP MODE: Slower estimated reveal pacing
+                const estimatedDurationMs = Math.max(1200, Math.min(60000, Math.round(baseDurationMs * fauxSyncSlowdownFactor)));
+                const tickMs = Math.max(30, Math.round(estimatedDurationMs / wordEndIndexes.length));
+
+                // Reveal first word immediately to avoid blank start.
+                updateReveal(revealState, wordEndIndexes[0]);
+                let stepIndex = 1;
+
+                if (stepIndex >= wordEndIndexes.length) {
+                    return;
+                }
+
+                const intervalId = setInterval(() => {
+                    if (currentBrowserUtterance !== utterance || hasBoundaryEvent || !revealState) {
+                        clearInterval(intervalId);
+                        if (currentEstimatedSyncInterval === intervalId) {
+                            currentEstimatedSyncInterval = null;
+                        }
+                        return;
+                    }
+
+                    updateReveal(revealState, wordEndIndexes[stepIndex]);
+                    stepIndex += 1;
+
+                    if (stepIndex >= wordEndIndexes.length) {
+                        clearInterval(intervalId);
+                        if (currentEstimatedSyncInterval === intervalId) {
+                            currentEstimatedSyncInterval = null;
+                        }
+                    }
+                }, tickMs);
+
+                currentEstimatedSyncInterval = intervalId;
+            };
+
+            if (shouldUseBoundarySync) {
+                targetMessageDiv.classList.add('reveal-mode');
+
+                // Initialize reveal state immediately so text does not flash as full block.
+                revealState = initRevealMode(targetMessageDiv, text);
+                if (revealState) {
+                    targetMessageDiv._revealState = revealState;
+
+                    // Seed first token immediately so playback never starts from a blank block.
+                    const firstWordEnd = text.search(/\s/);
+                    const initialReveal = firstWordEnd > 0 ? firstWordEnd + 1 : Math.min(1, text.length);
+                    updateReveal(revealState, initialReveal);
+                }
+
+                // Watchdog: if no boundary events arrive quickly, switch to estimated timeline sync.
+                clearCurrentBrowserSyncTimers();
+                currentBoundaryFallbackTimer = setTimeout(() => {
+                    currentBoundaryFallbackTimer = null;
+                    if (!hasBoundaryEvent && currentBrowserUtterance === utterance) {
+                        console.log('[TTS] No boundary events detected, using estimated timeline fallback');
+                        startEstimatedTimelineFallback();
+                    }
+                }, 1000);
+            }
+
+            if (shouldUseBoundarySync && typeof utterance.onboundary !== 'undefined') {
+                utterance.onboundary = (event) => {
+                    // Ignore stale callbacks after stop/restart
+                    if (currentBrowserUtterance !== utterance) {
+                        return;
+                    }
+
+                    hasBoundaryEvent = true;
+                    if (currentBoundaryFallbackTimer) {
+                        clearTimeout(currentBoundaryFallbackTimer);
+                        currentBoundaryFallbackTimer = null;
+                    }
+                    if (currentEstimatedSyncInterval) {
+                        clearInterval(currentEstimatedSyncInterval);
+                        currentEstimatedSyncInterval = null;
+                    }
+
+                    if (!revealState || typeof event.charIndex !== 'number') {
+                        return;
+                    }
+
+                    const boundaryIndex = event.charIndex;
+                    if (boundaryIndex <= 0) {
+                        // Avoid momentary blank text if first boundary starts at index 0.
+                        const firstWordEnd = text.search(/\s/);
+                        const initialReveal = firstWordEnd > 0 ? firstWordEnd + 1 : Math.min(1, text.length);
+                        updateReveal(revealState, initialReveal);
+                    } else {
+                        updateReveal(revealState, boundaryIndex);
+                    }
+                };
+            }
             
             currentBrowserUtterance = utterance;
             currentTTSButton = button;
+            currentTTSMessageDiv = targetMessageDiv;  // TABLETOP MODE: Track for reveal state
             
             utterance.onend = () => {
                 button.classList.remove('playing-tts');
                 button.textContent = '▶';
                 button.title = 'Play DM Voice';
+                clearCurrentBrowserSyncTimers();
                 currentBrowserUtterance = null;
                 currentTTSButton = null;
+                currentTTSMessageDiv = null;  // Clear narration reference
+
+                // TABLETOP MODE: Finalize if reveal mode was activated.
+                // If no boundary fired, revealState remains null and block text is preserved.
+                if (shouldUseBoundarySync && revealState) {
+                    finalizeReveal(revealState);
+                }
+
+                // TABLETOP MODE: Browser TTS has no audio element; explicitly notify queue completion
+                if (typeof notifyTTSPlaybackEnded === 'function') {
+                    notifyTTSPlaybackEnded();
+                }
             };
             
             utterance.onerror = (event) => {
@@ -8598,8 +8833,20 @@
                 button.classList.remove('playing-tts');
                 button.textContent = '▶';
                 button.title = 'Play DM Voice';
+                clearCurrentBrowserSyncTimers();
                 currentBrowserUtterance = null;
                 currentTTSButton = null;
+                currentTTSMessageDiv = null;  // Clear narration reference
+
+                // TABLETOP MODE: Finalize reveal on error to ensure readable text remains
+                if (shouldUseBoundarySync && revealState) {
+                    finalizeReveal(revealState);
+                }
+
+                // TABLETOP MODE: Explicitly notify queue completion on browser TTS error
+                if (typeof notifyTTSPlaybackEnded === 'function') {
+                    notifyTTSPlaybackEnded();
+                }
             };
             
             button.classList.add('playing-tts');
@@ -8609,13 +8856,19 @@
             speechSynthesis.speak(utterance);
         }
         
-        async function playOpenAITTS(text, selectedVoice, engine, button) {
+        // TABLETOP MODE: OpenAI TTS (no boundary sync, always uses 'none' strategy)
+        async function playOpenAITTS(text, selectedVoice, engine, button, messageDiv = null, syncStrategy = 'none') {
             const model = engine === 'openai-hd' ? 'tts-1-hd' : 'tts-1';
             const cacheKey = `${engine}:${selectedVoice}:${text}`;
-            
+
+            // TABLETOP MODE: OpenAI TTS does not support boundary sync, ensure 'none' strategy
+            if (syncStrategy && syncStrategy !== 'none') {
+                console.log('[TTS] OpenAI TTS does not support sync strategy:', syncStrategy, 'using none');
+            }
+
             if (ttsCache.has(cacheKey)) {
                 const cachedUrl = ttsCache.get(cacheKey);
-                playAudioFromUrl(cachedUrl, button);
+                playAudioFromUrl(cachedUrl, button, messageDiv);
                 return;
             }
             
@@ -8646,7 +8899,7 @@
                 button.disabled = false;
                 button.classList.remove('loading-tts');
                 
-                playAudioFromUrl(audioUrl, button);
+                playAudioFromUrl(audioUrl, button, messageDiv);
                 
             } catch (error) {
                 console.error('OpenAI TTS Error:', error);
@@ -8658,9 +8911,10 @@
             }
         }
         
-        function playAudioFromUrl(audioUrl, button) {
+        function playAudioFromUrl(audioUrl, button, messageDiv = null) {
             currentTTSAudio = new Audio(audioUrl);
             currentTTSButton = button;
+            currentTTSMessageDiv = messageDiv;  // TABLETOP MODE: Track for consistency
             
             currentTTSAudio.onended = () => {
                 button.classList.remove('playing-tts');
@@ -8668,6 +8922,7 @@
                 button.title = 'Play DM Voice';
                 currentTTSAudio = null;
                 currentTTSButton = null;
+                currentTTSMessageDiv = null;  // Clear narration reference
             };
             
             currentTTSAudio.onerror = () => {
@@ -8676,6 +8931,7 @@
                 button.title = 'Play DM Voice';
                 currentTTSAudio = null;
                 currentTTSButton = null;
+                currentTTSMessageDiv = null;  // Clear narration reference
             };
             
             button.classList.add('playing-tts');
@@ -8717,12 +8973,85 @@
         // TABLETOP MODE: Show preferred browser setting only for Browser (Free) TTS engine
         function updateTTSBrowserPreferenceVisibility() {
             const settingItem = document.getElementById('tts-browser-setting-item');
+            const wordSyncItem = document.getElementById('word-sync-toggle-item');
             const engineSelect = document.getElementById('tts-engine-select');
             if (!settingItem || !engineSelect) {
                 return;
             }
 
             settingItem.style.display = engineSelect.value === 'browser' ? 'flex' : 'none';
+            // TABLETOP MODE: Word sync only applies to Browser TTS
+            if (wordSyncItem) {
+                wordSyncItem.style.display = engineSelect.value === 'browser' ? 'flex' : 'none';
+            }
+        }
+
+        // TABLETOP MODE: Narration reveal (word-sync) helper functions
+        function isWordSyncEnabled() {
+            const toggle = document.getElementById('tts-word-sync-toggle');
+            return toggle ? toggle.checked : false;
+        }
+
+        function initRevealMode(messageDiv, text) {
+            if (!messageDiv || !text) return null;
+
+            const textSpan = messageDiv.querySelector('.message-text');
+            if (!textSpan) return null;
+
+            // Wrap text in spans for reveal tracking
+            const revealedSpan = document.createElement('span');
+            revealedSpan.className = 'revealed';
+            revealedSpan.textContent = '';
+
+            const unrevealedSpan = document.createElement('span');
+            unrevealedSpan.className = 'unrevealed';
+            unrevealedSpan.textContent = text;
+
+            textSpan.innerHTML = '';
+            textSpan.appendChild(revealedSpan);
+            textSpan.appendChild(unrevealedSpan);
+
+            return {
+                revealed: revealedSpan,
+                unrevealed: unrevealedSpan,
+                fullText: text,
+                revealedLen: 0
+            };
+        }
+
+        function updateReveal(revealState, charIndex) {
+            if (!revealState || charIndex <= 0) return;
+
+            const newLen = Math.min(charIndex, revealState.fullText.length);
+            if (newLen === revealState.revealedLen) return;
+
+            revealState.revealed.textContent = revealState.fullText.substring(0, newLen);
+            revealState.unrevealed.textContent = revealState.fullText.substring(newLen);
+            revealState.revealedLen = newLen;
+
+            // TABLETOP MODE: Keep chat pinned to latest text as reveal grows
+            const gameOutput = document.getElementById('game-output');
+            if (gameOutput) {
+                gameOutput.scrollTop = gameOutput.scrollHeight;
+            }
+        }
+
+        function finalizeReveal(revealState) {
+            if (!revealState) return;
+
+            // Reveal all text
+            revealState.revealed.textContent = revealState.fullText;
+            revealState.unrevealed.textContent = '';
+        }
+
+        function clearRevealMode(messageDiv) {
+            if (!messageDiv) return;
+
+            const textSpan = messageDiv.querySelector('.message-text');
+            if (!textSpan) return;
+
+            // Restore plain text (already revealed)
+            textSpan.textContent = textSpan.textContent;
         }
 
         async function fetchPreferredBrowserSetting() {
