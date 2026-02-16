@@ -10,6 +10,53 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **PC Image Create and Allied NPC Auto-Generation Planning (PLANNED - 2026-02-16):**
+  - Created comprehensive UX enhancement plan at `/plans/pc-image-create.md` for Character Sheet portrait `Upload / Create` actions
+  - **Auto-Generation Policy:** Automatic generation enabled for allied NPC companions only; disabled for non-allied NPCs and monsters in MVP
+  - **Appearance Fields:** Added optional character schema fields (`age`, `height`, `weight`, `eyes`, `skin`, `hair`) for portrait prompt enrichment
+  - **Missing Media Warning Throttle:** Per-key warning throttling to reduce repeated log spam
+  - **Promotion Continuity:** NPC -> PC promotion preserves image linkage by name identity
+  - **OpenSpec Scaffolding:** Created change `pc-image-create-and-allied-npc-autogen` with complete artifact set:
+    - `proposal.md`, `design.md`, `tasks.md`, `executor_prompts.md`
+    - Four capability specs: `pc-sheet-upload-create-portrait`, `allied-npc-missing-media-autogen`, `missing-media-warning-throttle`, `appearance-fields-for-portrait-prompts`
+  - **New Modules Planned:**
+    - `core/toolkit/portrait_service.py` - prompt composition, generation calls, canonical file outputs
+    - `web/extensions/missing_media_autogen.py` - async worker with dedupe/cooldown, allied-only policy enforcement
+  - **Integration Points:**
+    - Character Sheet portrait controls in `web/templates/game_interface.html`
+    - Create endpoint `POST /api/portrait/create` in `web/web_interface.py`
+    - Missing media enqueue hook in `/media/<media_type>/<filename>` serving path
+  - **Step 1.1 Completed:** Added optional appearance fields to `schemas/char_schema.json` with backward compatibility preserved
+  - **Time Estimate:** 2-3 days for full implementation
+  - **Status:** Plan complete, OpenSpec validated, Step 1.1 complete, ready for builder execution
+
+- **PR3 Root Archive Export + Zip Import Restore (IN PROGRESS - 2026-02-16):**
+  - **Operational Requirement:** Library staff need repo-root archive folder for easy USB copy workflows
+  - **OpenSpec Change:** `archive-root-export-and-zip-import-restore` scaffolded with full artifact set
+  - **Artifacts Created:**
+    - `openspec/changes/archive-root-export-and-zip-import-restore/proposal.md` - Why, what changes, capabilities, impact
+    - `openspec/changes/archive-root-export-and-zip-import-restore/design.md` - Root export directory decision, deterministic naming, staged restore model, security checks
+    - `openspec/changes/archive-root-export-and-zip-import-restore/tasks.md` - 7 task groups (1.x-7.x) covering export, catalog, validation, restore, UI, validation
+    - `openspec/changes/archive-root-export-and-zip-import-restore/executor_prompts.md` - 6 staged builder prompts with verification gates
+    - `openspec/changes/archive-root-export-and-zip-import-restore/specs/campaign-archive-root-export/spec.md` - Export location and naming requirements
+    - `openspec/changes/archive-root-export-and-zip-import-restore/specs/campaign-zip-import-restore/spec.md` - Zip restore validation, traversal safety, fail-closed requirements
+  - **Step 1.1 Complete (2026-02-16):**
+    - Added `ARCHIVE_EXPORTS_DIR = "archive_exports"` constant in `updates/save_game_manager.py`
+    - Added `_get_archive_exports_directory()` helper method for root export path resolution
+    - Updated zip naming to include module + timestamp + save folder: `archive_<module>_<timestamp>_<save_folder>.zip`
+    - Archives now export to repo-root `archive_exports/` directory for USB portability
+    - **Verification:** Compile gate passed, smoke tests passed (5/5), directory created at `/Users/zeug/Projects/NeverEndingQuest/archive_exports`
+    - **Files Modified:** `updates/save_game_manager.py`
+  - **Key Architecture Decisions:**
+    - Root export directory: `archive_exports/` at repo root (not nested in modules)
+    - Deterministic naming: `archive_<module>_<timestamp>_<save_folder>.zip`
+    - Zip restore model: validate -> stage -> delegate to existing restore
+    - Security: Reject traversal entries, missing metadata, invalid module mapping
+  - **Remaining Work:**
+    - Step 1.2: Zip catalog listing support for `archive_exports/*.zip`
+    - Steps 2.x-7.x: Validation, extraction, restore pipeline, UI integration, regression tests
+  - **Status:** Step 1.1 complete, ready for Step 1.2 (Payload and Archive Catalog)
+
 - **PR1 Archive Global Save Index and Restore Routing (COMPLETED - 2026-02-16):**
   - OpenSpec change `archive-global-save-index-and-restore-routing` fully implemented and validated
   - **Step 1 Global Catalog:** `list_save_games_global()` scans all modules (`modules/*/saved_games/save_*`), deterministic sort by `save_timestamp` descending, additive metadata fields (`source_module`, `memory_package_present`)

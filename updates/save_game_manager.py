@@ -90,6 +90,10 @@ except ImportError:
 # Restore context file for fork-on-first-save-after-restore behavior
 RESTORE_CONTEXT_FILE = "modules/conversation_history/restore_context.json"
 
+# TABLETOP MODE: Root archive export directory for USB-portable campaign archives
+# Archives are exported here for easy external backup/transport
+ARCHIVE_EXPORTS_DIR = "archive_exports"
+
 # Set script name for logging
 set_script_name(__name__)
 
@@ -114,6 +118,27 @@ class SaveGameManager:
         except Exception as e:
             warning(f"INITIALIZATION: Could not initialize module context", category="save_game")
             self.path_manager = ModulePathManager()
+    
+    def _get_archive_exports_directory(self) -> str:
+        """Get the root archive exports directory path.
+        
+        TABLETOP MODE: Returns the path to the root archive_exports folder
+        for USB-portable campaign archive storage.
+        
+        Returns:
+            Absolute path to archive_exports/ directory
+        """
+        # Resolve from repository root (where the script is run from)
+        repo_root = os.path.abspath(".")
+        archive_dir = os.path.join(repo_root, ARCHIVE_EXPORTS_DIR)
+        
+        # Ensure directory exists (idempotent)
+        try:
+            os.makedirs(archive_dir, exist_ok=True)
+        except Exception as e:
+            warning(f"ARCHIVE_EXPORT: Could not create archive_exports directory: {e}", category="save_game")
+        
+        return archive_dir
     
     def get_essential_files(self) -> List[str]:
         """Get list of essential files that must be saved for game state"""
@@ -551,6 +576,251 @@ class SaveGameManager:
             error_msg = f"Failed to initialize clean memory DB: {e}"
             error(f"FAILURE: {error_msg}", exception=e, category="save_game")
             return False, error_msg
+    
+    def _get_archive_additional_paths(self, metadata: Dict[str, Any]) -> List[Tuple[str, str]]:
+        """Resolve campaign-wide archive inclusion policy for played modules.
+        
+        TABLETOP MODE: Returns list of (file_path, archive_path) tuples for additional
+        campaign artifacts required for cross-module recovery. Skips missing files safely.
+        
+        Determination of played modules:
+        - Check campaign_archives/ and campaign_summaries/ for module-name patterns
+        - Fallback to current module from metadata if no archives found
+        - Include campaign-global continuity files
+        
+        Args:
+            metadata: Save metadata with module info
+            
+        Returns:
+            List of (source_path, archive_entry_path) tuples sorted for determinism
+        """
+        additional_paths = []
+        
+        try:
+            # Determine played modules from campaign archives/summaries
+            played_modules = set()
+            
+            # Check campaign_archives for module patterns: [Module_Name]_conversation_*.json
+            archives_dir = "modules/campaign_archives"
+            if os.path.exists(archives_dir) and os.path.isdir(archives_dir):
+                for filename in os.listdir(archives_dir):
+                    if filename.endswith("_conversation.json") or "_conversation_" in filename:
+                        # Extract module name: Module_Name_conversation_*.json -> Module_Name
+                        parts = filename.replace(".json", "").split("_")
+                        if len(parts) >= 2:
+                            # Reconstruct module name (may contain underscores)
+                            module_name = "_".join(parts[:-1]) if parts[-1].isdigit() else "_".join(parts[:-2])
+                            if module_name and module_name != "conversation":
+                                played_modules.add(module_name)
+            
+            # Check campaign_summaries for module patterns: [Module_Name]_summary_*.json
+            summaries_dir = "modules/campaign_summaries"
+            if os.path.exists(summaries_dir) and os.path.isdir(summaries_dir):
+                for filename in os.listdir(summaries_dir):
+                    if filename.endswith("_summary.json") or "_summary_" in filename:
+                        # Extract module name: Module_Name_summary_*.json -> Module_Name
+                        parts = filename.replace(".json", "").split("_")
+                        if len(parts) >= 2:
+                            # Reconstruct module name (may contain underscores)
+                            module_name = "_".join(parts[:-1]) if parts[-1].isdigit() else "_".join(parts[:-2])
+                            if module_name and module_name != "summary":
+                                played_modules.add(module_name)
+            
+            # Fallback to current module if no archives found
+            if not played_modules:
+                current_module = metadata.get("module") or self.current_module
+                if current_module:
+                    played_modules.add(current_module.replace(" ", "_"))
+            
+            # Include campaign-global continuity files (already in essential list but ensure coverage)
+            campaign_global_files = [
+                "modules/campaign.json",
+                "modules/world_registry.json",
+                "modules/effects_tracker.json",
+                "modules/default/effects_tracker.json",
+            ]
+            
+            for file_path in campaign_global_files:
+                if os.path.exists(file_path) and os.path.isfile(file_path):
+                    additional_paths.append((file_path, file_path))
+            
+            # Include campaign_archives and campaign_summaries directories
+            for campaign_dir in ["modules/campaign_archives", "modules/campaign_summaries"]:
+                if os.path.exists(campaign_dir) and os.path.isdir(campaign_dir):
+                    for root, dirs, files in os.walk(campaign_dir):
+                        # Sort for deterministic ordering
+                        dirs.sort()
+                        files.sort()
+                        for filename in files:
+                            file_path = os.path.join(root, filename)
+                            arcname = os.path.relpath(file_path, ".")
+                            additional_paths.append((file_path, arcname))
+            
+            # Sort all paths for deterministic zip entry ordering
+            additional_paths.sort(key=lambda x: x[1])
+            
+            if played_modules:
+                debug(f"CAMPAIGN_ARCHIVE: Resolved played modules: {sorted(played_modules)}", category="save_game")
+            
+        except Exception as e:
+            # Log but don't fail - archive can proceed without additional paths
+            warning(f"CAMPAIGN_ARCHIVE: Could not resolve additional paths: {e}", category="save_game")
+        
+        return additional_paths
+    
+    def _generate_archive_zip(self, save_path: str, metadata: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
+        """Generate archive zip for save folder.
+        
+        TABLETOP MODE: Helper for deterministic zip generation from save folder.
+        Includes campaign-wide recovery artifacts for all played modules.
+        Returns structured result for success/failure reporting.
+        
+        Args:
+            save_path: Path to save folder directory
+            metadata: Save metadata dict with save_id, save_timestamp, etc.
+            
+        Returns:
+            Tuple of (success: bool, result: Dict)
+            - Success: {
+                "status": "success",
+                "zip_path": "...",
+                "zip_name": "...",
+                "bytes": <int>
+              }
+            - Failure: {
+                "status": "error",
+                "message": "..."
+              }
+        """
+        try:
+            # Validate save_path exists and is directory
+            if not os.path.exists(save_path):
+                return False, {"status": "error", "message": f"Save path does not exist: {save_path}"}
+            
+            if not os.path.isdir(save_path):
+                return False, {"status": "error", "message": f"Save path is not a directory: {save_path}"}
+            
+            # Create deterministic zip artifact name from metadata
+            save_timestamp = metadata.get("save_timestamp", "")
+            
+            # Use timestamp as primary identifier (safe for filenames)
+            if save_timestamp:
+                # Parse ISO timestamp and create safe filename
+                try:
+                    dt = datetime.fromisoformat(save_timestamp.replace('Z', '+00:00'))
+                    timestamp_safe = dt.strftime("%Y%m%d_%H%M%S")
+                except Exception:
+                    # Fallback: use raw timestamp with unsafe chars stripped
+                    timestamp_safe = "".join(c for c in save_timestamp if c.isalnum() or c in "_-.")[:20]
+            else:
+                timestamp_safe = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Get save folder name and module for envelope preservation and naming
+            save_folder_name = os.path.basename(save_path)
+            
+            # TABLETOP MODE: Build deterministic archive name with module/timestamp/save_folder
+            # Format: archive_<module>_<timestamp>_<save_folder>.zip
+            module_safe = (self.current_module or "unknown").replace(" ", "_")
+            zip_name = f"archive_{module_safe}_{timestamp_safe}_{save_folder_name}.zip"
+            
+            # TABLETOP MODE: Export to root archive_exports/ directory for USB portability
+            # This separates portable archives from module-specific save storage
+            archive_exports_dir = self._get_archive_exports_directory()
+            zip_path = os.path.join(archive_exports_dir, zip_name)
+            
+            # Preserve save_parent for envelope-relative path calculation
+            # This is the parent of the save folder (module's saved_games/ directory)
+            save_parent = os.path.dirname(os.path.abspath(save_path))
+            
+            # TABLETOP MODE: Resolve campaign-wide additional artifacts
+            additional_paths = self._get_archive_additional_paths(metadata)
+            
+            # Check for memory_db_package in save folder
+            memory_package_path = os.path.join(save_path, "memory_db_package")
+            memory_package_present = os.path.exists(memory_package_path) and os.path.isdir(memory_package_path)
+            
+            # Build zip from save folder contents with envelope preservation
+            try:
+                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    # First: add save folder contents with envelope preservation
+                    # Exclude memory_db_package from this pass - it will be added separately
+                    save_entries = []
+                    for root, dirs, files in os.walk(save_path):
+                        # Skip memory_db_package directory in save folder walk
+                        if "memory_db_package" in dirs:
+                            dirs.remove("memory_db_package")
+                        
+                        # Sort for deterministic ordering
+                        dirs.sort()
+                        files.sort()
+                        for filename in files:
+                            file_path = os.path.join(root, filename)
+                            # Calculate arcname preserving save folder envelope
+                            # arcname includes save_folder_name as top-level directory
+                            rel_path = os.path.relpath(file_path, save_parent)
+                            save_entries.append((file_path, rel_path))
+                    
+                    # Sort save entries for determinism
+                    save_entries.sort(key=lambda x: x[1])
+                    for file_path, arcname in save_entries:
+                        zf.write(file_path, arcname)
+                    
+                    # Second: add memory_db_package if present
+                    if memory_package_present:
+                        memory_entries = []
+                        for root, dirs, files in os.walk(memory_package_path):
+                            # Sort for deterministic ordering
+                            dirs.sort()
+                            files.sort()
+                            for filename in files:
+                                file_path = os.path.join(root, filename)
+                                # Arcname preserves full path: save_folder/memory_db_package/...
+                                rel_path = os.path.relpath(file_path, save_parent)
+                                memory_entries.append((file_path, rel_path))
+                        
+                        # Sort memory entries for determinism
+                        memory_entries.sort(key=lambda x: x[1])
+                        for file_path, arcname in memory_entries:
+                            try:
+                                zf.write(file_path, arcname)
+                            except Exception as e:
+                                # Fail-closed: memory package write failure is critical
+                                error_msg = f"Failed to add memory package file {file_path}: {e}"
+                                error(f"FAILURE: {error_msg}", exception=e, category="save_game")
+                                return False, {"status": "error", "message": error_msg}
+                        
+                        info(f"CAMPAIGN_ARCHIVE: Included memory_db_package in archive", category="save_game")
+                    
+                    # Third: add campaign-wide additional artifacts
+                    for file_path, arcname in additional_paths:
+                        if os.path.exists(file_path):
+                            try:
+                                zf.write(file_path, arcname)
+                            except Exception as e:
+                                # Log but continue - individual file failures shouldn't fail archive
+                                warning(f"CAMPAIGN_ARCHIVE: Could not add {file_path}: {e}", category="save_game")
+            except Exception as e:
+                # Fail-closed: any zip creation failure returns error
+                error_msg = f"Failed to create archive zip: {str(e)}"
+                error(f"FAILURE: {error_msg}", exception=e, category="save_game")
+                return False, {"status": "error", "message": error_msg}
+            
+            # Get actual zip file size
+            zip_bytes = os.path.getsize(zip_path)
+            
+            info(f"FILE_OP: Generated archive zip: {zip_path} ({zip_bytes} bytes)", category="save_game")
+            
+            return True, {
+                "status": "success",
+                "zip_path": zip_path,
+                "zip_name": zip_name,
+                "bytes": zip_bytes
+            }
+            
+        except Exception as e:
+            error_msg = f"Failed to generate archive zip: {str(e)}"
+            error(f"FAILURE: {error_msg}", exception=e, category="save_game")
+            return False, {"status": "error", "message": error_msg}
     
     def _setup_restore_context(self, metadata: Dict[str, Any]) -> None:
         """Set up restore context for fork-on-first-save behavior.
