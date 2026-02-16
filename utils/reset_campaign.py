@@ -93,8 +93,76 @@ def create_backup():
         print(f"Backing up debug_log_backups directory...")
         shutil.copytree("debug_log_backups", os.path.join(backup_dir, "debug_log_backups"))
     
-    print(f"{GREEN}✓ Backup complete: {backup_dir}{RESET}")
+    # TABLETOP MODE: Backup memory state artifact if present
+    memory_db_path = "data/memory.db"
+    memory_backed_up = False
+    if os.path.exists(memory_db_path):
+        print(f"  Backing up memory state artifact...")
+        memory_backup_dir = os.path.join(backup_dir, "data")
+        os.makedirs(memory_backup_dir, exist_ok=True)
+        shutil.copy2(memory_db_path, os.path.join(memory_backup_dir, "memory.db"))
+        print(f"  [OK] Memory state artifact backed up to {memory_backup_dir}/memory.db")
+        memory_backed_up = True
+    else:
+        # TABLETOP MODE: Non-fatal reporting when memory artifact absent
+        print(f"  [INFO] Memory state artifact not present; continuing backup")
+    
+    # TABLETOP MODE: Verify backup directory layout compatibility
+    _verify_backup_layout_compatibility(backup_dir, memory_backed_up)
+    
+    print(f"{GREEN}[OK] Backup complete: {backup_dir}{RESET}")
     return backup_dir
+
+def _verify_backup_layout_compatibility(backup_dir: str, memory_backed_up: bool) -> None:
+    """Verify backup directory layout remains compatible with reset/restore expectations.
+    
+    TABLETOP MODE: Lightweight layout verification for backward compatibility.
+    Checks that backup structure matches expectations without altering semantics.
+    
+    Args:
+        backup_dir: Path to the backup directory to verify
+        memory_backed_up: Whether memory artifact was backed up in this session
+    """
+    print(f"\n{CYAN}Verifying backup layout compatibility...{RESET}")
+    
+    # Check 1: modules/ directory exists when source modules/ exists
+    source_modules_exists = os.path.exists("modules")
+    backup_modules_path = os.path.join(backup_dir, "modules")
+    if source_modules_exists:
+        if os.path.exists(backup_modules_path):
+            print(f"  [OK] modules/ directory present in backup")
+        else:
+            print(f"  [WARNING] modules/ directory missing in backup but source exists")
+    
+    # Check 2: Root backup files remain at backup root
+    root_files_expected = ["party_tracker.json", "journal.json", "current_location.json"]
+    root_files_found = 0
+    for root_file in root_files_expected:
+        if os.path.exists(os.path.join(backup_dir, root_file)):
+            root_files_found += 1
+    
+    if root_files_found == len(root_files_expected):
+        print(f"  [OK] All {len(root_files_expected)} expected root files present")
+    elif root_files_found > 0:
+        print(f"  [WARNING] Only {root_files_found}/{len(root_files_expected)} root files present")
+    else:
+        print(f"  [WARNING] No expected root files found at backup root")
+    
+    # Check 3: Memory artifact at correct path if backed up
+    memory_backup_path = os.path.join(backup_dir, "data", "memory.db")
+    if memory_backed_up:
+        if os.path.exists(memory_backup_path):
+            print(f"  [OK] Memory artifact at expected path: data/memory.db")
+        else:
+            print(f"  [WARNING] Memory artifact should be at {memory_backup_path} but is missing")
+    else:
+        # Check 4: No memory file if source absent
+        if os.path.exists(memory_backup_path):
+            print(f"  [INFO] Memory artifact present in backup (source may have changed)")
+        else:
+            print(f"  [OK] No memory artifact in backup (as expected)")
+    
+    print(f"{GREEN}[OK] Backup layout verification complete{RESET}")
 
 def discover_modules():
     """Get list of all modules"""

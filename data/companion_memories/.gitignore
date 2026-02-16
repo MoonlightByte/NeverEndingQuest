@@ -1,5 +1,0 @@
-# Ignore all generated memory files
-*.json
-
-# But keep the .gitkeep file
-!.gitkeep

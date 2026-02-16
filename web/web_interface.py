@@ -2302,7 +2302,57 @@ def handle_action(data):
             save_mode = parameters.get("saveMode", "essential")
             success, message = manager.create_save_game(description, save_mode)
             if success:
-                emit('system_message', {'content': f"Game saved: {message}"})
+                # TABLETOP MODE: Archive auto-zip trigger for save_mode=full
+                archive_result = None
+                if save_mode == "full":
+                    try:
+                        # Get latest save entry for archive generation
+                        saves = manager.list_save_games()
+                        if saves and len(saves) > 0:
+                            latest_save = saves[0]
+                            save_path = latest_save.get("save_path")
+                            if save_path and os.path.exists(save_path):
+                                archive_success, archive_result = manager._generate_archive_zip(
+                                    save_path, latest_save
+                                )
+                                if not archive_success:
+                                    # Fail-closed: archive failure fails full save
+                                    emit('error', {
+                                        'message': f"Archive generation failed: {archive_result.get('message', 'unknown error')}"
+                                    })
+                                    return
+                            else:
+                                # Fail-closed: cannot locate save folder
+                                emit('error', {'message': "Archive generation failed: could not locate save folder"})
+                                return
+                        else:
+                            # Fail-closed: no saves found after successful save
+                            emit('error', {'message': "Archive generation failed: no save entries found"})
+                            return
+                    except Exception as archive_e:
+                        # Fail-closed: any archive exception fails full save
+                        emit('error', {'message': f"Archive generation failed: {str(archive_e)}"})
+                        return
+                
+                # TABLETOP MODE: Build success payload with archive info for full saves
+                if save_mode == "full" and archive_result:
+                    # Full save: include archive artifact info for operator guidance
+                    payload = {
+                        'content': f"Game saved: {message}\nArchive created: {archive_result.get('zip_name')} ({archive_result.get('bytes')} bytes)",
+                        'save_mode': 'full',
+                        'archive': {
+                            'status': archive_result.get('status'),
+                            'zip_path': archive_result.get('zip_path'),
+                            'zip_name': archive_result.get('zip_name'),
+                            'bytes': archive_result.get('bytes')
+                        }
+                    }
+                else:
+                    # Essential save: legacy payload shape (unchanged from before archive work)
+                    payload = {
+                        'content': f"Game saved: {message}"
+                    }
+                emit('system_message', payload)
             else:
                 emit('error', {'message': f"Save failed: {message}"})
         except Exception as e:

@@ -1053,6 +1053,97 @@ Implement a transparent diary system with dual-checkpoint model: Start Game refr
 
 ---
 
+### Archive Zip Portability and Memory Backup Parity (COMPLETED - 2026-02-16)
+
+**Status:** COMPLETED  
+**Priority:** High (Save/Restore Reliability)  
+**Effort:** Medium (~1 day)
+
+**Objective:**
+Complete PR2 archive portability and memory backup parity so Archive Edition full saves produce explicit zip artifacts and reset backups preserve `data/memory.db` state.
+
+**Implementation Highlights:**
+- **Full-save archive contract:** `web/web_interface.py` now fail-closes full saves when archive generation fails and returns archive artifact metadata on success (`archive.status`, `zip_path`, `zip_name`, `bytes`)
+- **Essential-save compatibility:** Essential saves keep legacy payload shape (`content` only) with no archive dependency
+- **Reset backup memory parity:** `utils/reset_campaign.py` now copies `data/memory.db` into backup snapshots when present and reports non-fatal absence when missing
+- **Backup layout verification:** Added `_verify_backup_layout_compatibility()` guard to confirm root files, modules path, and memory artifact placement without changing restore semantics
+
+**Validation Artifacts:**
+- Added report scripts: `scripts/step_4_2_smoke_report.py`, `scripts/step_4_3_negative_test_report.py`
+- Smoke coverage confirms archive artifact and payload fields for full saves
+- Negative coverage confirms fail-closed behavior on forced archive failure and no essential-save regression
+
+**Files Modified:**
+- `web/web_interface.py`
+- `utils/reset_campaign.py`
+- `scripts/step_4_2_smoke_report.py` (new)
+- `scripts/step_4_3_negative_test_report.py` (new)
+
+---
+
+### PC Leave/Return World Memory Planning (PLANNED - 2026-02-16)
+
+**Status:** PLANNED  
+**Priority:** High (Narrative Continuity)  
+**Effort:** Medium (~3-5 days)
+
+**Objective:**
+Add explicit PC retirement/rejoin lifecycle that records world-memory continuity in `data/memory.db` and uses those transition memories to drive leave/return narration.
+
+**OpenSpec Scaffolding:**
+- Change: `pc-leave-return-world-memory` (scaffolded)
+- Artifacts: `proposal.md`, `design.md`, `tasks.md`
+- Capability specs:
+  - `tt-pc-leave-return-lifecycle`
+  - `memory-role-transition-continuity`
+
+**Planned Architecture:**
+- New service: `core/memory/party_transition_memory.py` for `record_pc_retirement`, `record_pc_return`, and bounded return-memory retrieval packs
+- Route integration in `web/routes/tabletop_party_routes.py` with fail-open memory writes (party operations continue if memory persistence fails)
+- Optional departure text in retirement flow plus continuity-aware return narration context
+- Character identity continuity preserved via canonical entity IDs and `_tabletop_role_history` role transition events
+
+**Execution Contract:**
+- Phase-gated rollout with explicit verification checkpoints after each phase
+- Minimal host-file edits marked with `# TABLETOP MODE:` comments
+- No purge of prior memory links on retirement
+
+---
+
+### PC Image Create and Allied NPC Auto-Generation Planning (PLANNED - 2026-02-16)
+
+**Status:** PLANNED  
+**Priority:** Medium (User Experience Enhancement)  
+**Effort:** Medium (~2-3 days)
+
+**Objective:**
+Add Character Sheet portrait `Upload / Create` UX, auto-generate missing portraits for allied NPC companions, and reduce missing-media warning spam while preserving module-first media behavior.
+
+**User Decisions Locked:**
+- Auto-generation enabled for allied NPC companions only; disabled for non-allied NPCs and monsters in MVP
+- NPC -> PC promotion preserves image linkage by name identity
+- Module-first media lookup with fallback to static media (from activated graphic packs)
+
+**Key Features:**
+- **Character Sheet Upload/Create:** Portrait action provides both upload and AI-generated create options
+- **Appearance Fields:** Optional schema fields (`age`, `height`, `weight`, `eyes`, `skin`, `hair`) enrich portrait prompts
+- **Allied Auto-Heal:** Missing portrait for party companions triggers background generation with dedupe/cooldown
+- **Warning Throttle:** Per-key missing media log throttling prevents repeated warning floods
+- **Promotion Continuity:** Image resolution follows same name-based fallback chain after NPC -> PC promotion
+
+**OpenSpec Scaffolding:**
+- Change: `pc-image-create-and-allied-npc-autogen` (validated)
+- Artifacts: `proposal.md`, `design.md`, `tasks.md`, `executor_prompts.md`
+- Four capability specs: `pc-sheet-upload-create-portrait`, `allied-npc-missing-media-autogen`, `missing-media-warning-throttle`, `appearance-fields-for-portrait-prompts`
+
+**Step 1.1 Completed:**
+- Added optional appearance fields to `schemas/char_schema.json` (`age`, `height`, `weight`, `eyes`, `skin`, `hair`)
+- Backward compatible: existing character files remain valid
+- `additionalProperties: false` preserved with explicit field declarations
+
+**Plan Location:** `/plans/pc-image-create.md`  
+**OpenSpec Location:** `openspec/changes/pc-image-create-and-allied-npc-autogen/`
+
 ### Exit/Enter GUI Button Implementation Plan (PLANNED - 2026-02-15)
 
 **Status:** PLANNED  

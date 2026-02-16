@@ -57,6 +57,15 @@ Active development of Tabletop Mode features, focusing on party management and U
     - Steps 2.x-7.x: Validation, extraction, restore pipeline, UI integration, regression tests
   - **Status:** Step 1.1 complete, ready for Step 1.2 (Payload and Archive Catalog)
 
+- **PC Leave/Return World Memory Planning (PLANNED - 2026-02-16):**
+  - OpenSpec change `pc-leave-return-world-memory` scaffolded with full planning artifacts (`proposal.md`, `design.md`, `tasks.md`)
+  - Capability specs created: `tt-pc-leave-return-lifecycle` and `memory-role-transition-continuity`
+  - **Objective:** Add explicit retire/rejoin lifecycle with world-memory continuity writes in `data/memory.db`
+  - **Planned Service:** `core/memory/party_transition_memory.py` for `record_pc_retirement`, `record_pc_return`, and return-memory pack assembly
+  - **Route Integration Targets:** `web/routes/tabletop_party_routes.py` retirement/rejoin endpoints with fail-open memory persistence
+  - **Execution Model:** Phase-gated rollout with verification checkpoints per phase and merge-safe `# TABLETOP MODE:` host hooks
+  - **Status:** Scaffolding complete, ready for phased implementation
+
 - **PR1 Archive Global Save Index and Restore Routing (COMPLETED - 2026-02-16):**
   - OpenSpec change `archive-global-save-index-and-restore-routing` fully implemented and validated
   - **Step 1 Global Catalog:** `list_save_games_global()` scans all modules (`modules/*/saved_games/save_*`), deterministic sort by `save_timestamp` descending, additive metadata fields (`source_module`, `memory_package_present`)

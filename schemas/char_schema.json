@@ -465,6 +465,24 @@
     "challengeRating": {
       "type": "number"
     },
+    "age": {
+      "type": "string"
+    },
+    "height": {
+      "type": "string"
+    },
+    "weight": {
+      "type": "string"
+    },
+    "eyes": {
+      "type": "string"
+    },
+    "skin": {
+      "type": "string"
+    },
+    "hair": {
+      "type": "string"
+    },
     "personality_traits": {
       "type": "string"
     },

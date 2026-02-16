@@ -24,6 +24,10 @@ PR2 goals:
 - Keep `save_mode=essential` behavior unchanged
 - No new GUI zip buttons
 
+Operational note for next build:
+- Add a repo-root export folder for portable archives so library staff can easily find/copy zips to USB.
+- Planned restore-from-zip flow should look in that repo-root archive folder by default.
+
 ---
 
 ## PR2 Staged Execution Plan
@@ -115,3 +119,125 @@ Expected report format
 - No new GUI zip buttons in PR2.
 - Auto-generate portable zip only when Archive Edition (`save_mode=full`) runs.
 - Fail archive save if zip generation fails.
+
+---
+
+## PR3 (Planned) - Root Archive Folder + Zip Import Restore
+
+Change (planned): `archive-root-export-and-zip-import-restore`
+
+### Why
+
+Library staff need a predictable, easy-to-find archive location at repo root for USB copy workflows. The next step is to make full-save zips land in a dedicated root folder and add restore-from-zip that reads from the same folder.
+
+### Objectives
+
+1. Export location UX:
+   - Full-save zip artifacts written to a repo-root folder (proposed: `archive_exports/`).
+   - Deterministic filenames, easy manual copy to external media.
+2. Zip restore UX:
+   - Restore flow can import zip archives from that root folder.
+   - Reuse existing restore semantics after safe zip validation and staging.
+3. Safety:
+   - Strict zip validation and path traversal protection.
+   - Fail closed on invalid zip restore requests.
+4. Compatibility:
+   - Keep existing folder-based restore working.
+   - Keep `save_mode=essential` behavior unchanged.
+
+### Architecture Decisions
+
+1) Root export directory
+- Introduce repo-root folder: `archive_exports/`.
+- On full save, zip artifact is generated in `archive_exports/`.
+- Optional compatibility duplicate in `saved_games/` is not required for MVP; prefer single canonical export location.
+
+2) Deterministic archive naming
+- Proposed format: `archive_<module>_<timestamp>_<save_folder>.zip`.
+- ASCII-only, filesystem-safe, deterministic for supportability.
+
+3) Zip import restore model
+- Validate archive first (read-only): required metadata and expected save envelope.
+- Extract to temporary staging directory.
+- Stage extracted save folder into `modules/<source_module>/saved_games/`.
+- Delegate actual restore to existing validated restore path (`restore_save_game_global`).
+- Cleanup temp staging on success/failure.
+
+4) Trust boundaries and validation
+- Reject archives with path traversal entries (`..`, absolute paths).
+- Reject missing `save_metadata.json` or missing/invalid module mapping.
+- Reject malformed archive envelopes that cannot map to a canonical save folder.
+
+### Detailed Implementation Plan
+
+#### Phase A - Root archive export path
+1. Add `ARCHIVE_EXPORTS_DIR = "archive_exports"` constant in save manager layer.
+2. Ensure directory creation on full-save zip generation.
+3. Switch full-save zip output path from module `saved_games/` sibling to root export folder.
+4. Preserve success payload fields (`zip_path`, `zip_name`, `bytes`) and update path value accordingly.
+5. Keep fail-closed full-save behavior intact.
+
+#### Phase B - Archive catalog for zip restore
+1. Add zip catalog discovery in save manager:
+   - list `archive_exports/*.zip`
+   - derive metadata summary (filename, size, mtime)
+   - optional parsed metadata preview from archive `save_metadata.json`
+2. Add API action path(s) in web layer for listing zip archives.
+3. Keep existing `listSaves` and folder catalog unchanged.
+
+#### Phase C - Zip preflight validation + staging
+1. Add save manager helper for zip preflight:
+   - open zip
+   - validate entries and traversal safety
+   - locate and parse `save_metadata.json`
+   - resolve `source_module` and `save_folder`
+2. Add extraction helper to temp staging dir with strict arcname checks.
+3. Add staging helper to copy extracted save folder into canonical `modules/<module>/saved_games/<save_folder>`.
+
+#### Phase D - Restore integration
+1. Add web action `restoreArchiveZip` (or equivalent) to invoke zip restore pipeline.
+2. On successful staging, call existing folder restore route logic.
+3. Emit existing restore success/restart behavior.
+4. On failure, emit explicit restore error with no partial success messaging.
+
+#### Phase E - UI wiring (minimal)
+1. Add archive-zip list in existing Load dialog flow (no new top-level button).
+2. Provide clear operator labels: filename, size, modified time.
+3. Route selection to zip restore action while preserving current folder-restore UX.
+
+#### Phase F - Validation + operations
+1. Compile checks for touched files.
+2. Positive smoke: full save -> zip in `archive_exports/` -> reset -> restore from zip.
+3. Negative smoke: invalid zip, missing metadata, path traversal attempts.
+4. Regression smoke: essential save unchanged; folder restore unchanged.
+
+### Acceptance Criteria
+
+- Full save creates zip in `archive_exports/` with deterministic name.
+- Save success payload includes archive path under `archive_exports/`.
+- Zip restore from `archive_exports/` succeeds and reuses existing restore semantics.
+- Invalid zips fail with explicit operator-facing errors.
+- Essential save and folder-based restore remain backward-compatible.
+
+### Operations Notes
+
+- `archive_exports/` becomes the primary handoff folder for staff USB copy.
+- Zip import restore should default to this folder for discoverability.
+
+---
+
+## Builder Scaffold - PR3 (Plan-to-Builder)
+
+Use OpenSpec change `archive-root-export-and-zip-import-restore` with staged prompts:
+
+1. Step 1.x: Root export directory and deterministic zip naming.
+2. Step 2.x: Zip catalog listing and API wiring.
+3. Step 3.x: Zip validation, secure extraction, and save-folder staging.
+4. Step 4.x: Restore integration and UI load-dialog wiring.
+5. Step 5.x: Compile/smoke/negative/regression validation gates.
+
+Execution contract:
+- MUST preserve existing folder-based restore behavior.
+- MUST keep fail-closed semantics for invalid/failed zip restore.
+- MUST keep essential save behavior unchanged.
+- MUST keep host edits merge-safe and TABLETOP MODE marked.
