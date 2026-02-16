@@ -1012,6 +1012,47 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Journal Diary MVP Phase 1 Planning (PLANNED - 2026-02-16)
+
+**Status:** PLANNED - Ready for Kimi Builder execution  
+**Priority:** Medium (User Experience Enhancement)  
+**Effort:** Medium (~4-6 days)
+
+**Objective:**
+Implement a transparent diary system with dual-checkpoint model: Start Game refreshes draft diary entries while Save operations create confirmed canonical entries tied to save branches. Adds Diary tab to Journal modal with world-time ordering and user-triggered "Download the story so far..." PDF export from confirmed entries only.
+
+**Key Capabilities:**
+- **Dual-checkpoint diary state:** `draft` (unsaved session summary) + `confirmed` (save-bound canonical entry)
+- **Two update points:** Start Game (draft refresh if stale), Save (confirmed checkpoint generation)
+- **Failure isolation:** Diary generation failures never block Start Game or Save operations
+- **Journal UI tabs:** Quests (preserved behavior) + Diary (draft card + confirmed timeline)
+- **Story PDF export:** User-triggered download compiled from confirmed diary entries only (draft excluded)
+
+**Architecture Decisions:**
+- Additive memory DB tables: `session_diary_entries`, `session_diary_state`, `story_so_far_cache`
+- World-time ordering using normalized `world_sort_key` from `party_tracker.json`
+- Third-person anonymous narration style for all diary entries
+- Reuse existing LLM provider factory (`create_chat_client`, `get_model_config`)
+- Merge-safe host hooks with `# TABLETOP MODE:` comments
+
+**OpenSpec Artifacts:**
+- Change: `journal-diary-mvp-phase1`
+- Proposal, design, specs (3 capabilities), tasks, executor prompts all scaffolded
+- Specs: `journal-diary-dual-checkpoint`, `journal-diary-tabbed-ui`, `campaign-journal-story-pdf`
+
+**Implementation Plan:**
+1. Migration + diary service (`core/memory/session_diary.py`)
+2. Save/Start Game integration (`updates/save_game_manager.py`, `web/web_interface.py`)
+3. Story compiler + PDF endpoint (`core/memory/story_so_far_compiler.py`, `web/routes/memory_routes.py`)
+4. Journal UI tabs (`web/templates/game_interface.html`)
+5. Tests and validation
+
+**Time Estimate:** 4-6 days (MVP Phase 1)
+
+**Plan Location:** `/plans/journal.md`
+
+---
+
 ### Exit/Enter GUI Button Implementation Plan (PLANNED - 2026-02-15)
 
 **Status:** PLANNED  

@@ -4,6 +4,14 @@ context: |
   NeverEndingQuest is an AI-powered tabletop RPG DM system with TABLETOP MODE extensions.
   This repository is a merge-safe plugin/modification of upstream MoonlightByte/NeverEndingQuest.
 
+  Frontier-safe OpenSpec execution profile (all model tiers):
+  - Use a two-layer writing model in every artifact:
+    1) Contract Layer (MUST): normative, testable, and enforceable statements.
+    2) Guidance Layer (SHOULD): implementation preferences and execution hints.
+  - Conflict rule: if MUST and SHOULD guidance conflict, MUST always wins.
+  - Keep requirements machine-checkable and human-auditable; avoid ambiguous phrasing in MUST statements.
+  - Use concise guidance so high-capability models can optimize execution without losing contract fidelity.
+
   Core guardrails:
   - Preserve upstream behavior and structure whenever possible.
   - Use minimal hooks in host files and mark all required host edits with "# TABLETOP MODE:" comments.
@@ -25,21 +33,25 @@ rules:
     - Include rollout risk analysis and fallback strategy.
     - Include merge-safety impact and SP/MP compatibility impact.
     - If touching LLM plumbing, include provider outage/quota behavior and recovery path.
+    - Label mandatory constraints as MUST and optional preferences as SHOULD.
 
   specs:
     - Write requirements in testable terms with clear acceptance criteria.
     - Include invariants for backward compatibility and runtime behavior.
     - Explicitly specify error handling classes and expected outcomes.
     - For architecture work, include state truth-source constraints and no-regression expectations.
+    - Keep normative requirement/scenario text in MUST/SHALL terms; place non-normative advice in separate SHOULD guidance.
 
   design:
     - "Document architecture boundaries: facade vs factory vs config responsibilities."
     - Include thread-safety and observability requirements for shared state.
     - Include migration sequencing and rollback strategy.
     - Avoid model-specific lock-in; prefer profile/capability-based routing.
+    - Separate hard design constraints (MUST) from implementation heuristics (SHOULD).
 
   tasks:
     - Break into small, verifiable tasks with concrete file targets.
     - Every task should define verification (compile/test/smoke) before completion.
     - Sequence risky refactors behind prerequisite safety checks.
     - Do not include auto-commit, auto-push, or destructive git steps.
+    - Keep checklist items as MUST execution steps; add optional optimization notes as SHOULD outside checkbox items.
