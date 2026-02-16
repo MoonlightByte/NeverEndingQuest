@@ -7981,6 +7981,8 @@
 
     <script>
         let selectedSaveFolder = null;
+        // TABLETOP MODE: Track full save object for module-aware restore
+        let selectedSaveGame = null;
         function openSaveDialog() { document.getElementById('save-dialog-overlay').style.display = 'flex'; document.getElementById('save-description').focus(); }
         function closeSaveDialog() { 
             document.getElementById('save-dialog-overlay').style.display = 'none'; 
@@ -8003,9 +8005,9 @@
             }
         }
         function openLoadDialog() { document.getElementById('load-dialog-overlay').style.display = 'flex'; loadSaveGameList(); }
-        function closeLoadDialog() { document.getElementById('load-dialog-overlay').style.display = 'none'; selectedSaveFolder = null; updateLoadButtons(); }
+        function closeLoadDialog() { document.getElementById('load-dialog-overlay').style.display = 'none'; selectedSaveFolder = null; selectedSaveGame = null; updateLoadButtons(); }
         function loadSaveGameList() { const saveList = document.getElementById('save-list'); saveList.innerHTML = 'Loading...'; socket.emit('action', { action: 'listSaves', parameters: {} }); }
-        function selectSaveGame(saveFolder, element) { document.querySelectorAll('.save-item').forEach(item => { item.classList.remove('selected'); }); element.classList.add('selected'); selectedSaveFolder = saveFolder; updateLoadButtons(); }
+        function selectSaveGame(saveFolder, element) { document.querySelectorAll('.save-item').forEach(item => { item.classList.remove('selected'); }); element.classList.add('selected'); selectedSaveFolder = saveFolder; selectedSaveGame = element.dataset.save ? JSON.parse(element.dataset.save) : null; updateLoadButtons(); }
         function updateLoadButtons() {
             const disabled = !selectedSaveFolder;
             document.getElementById('load-save-button').disabled = disabled;
@@ -8020,7 +8022,12 @@
         function performLoad() {
             if (!selectedSaveFolder) return;
             if (confirm('This will restore the selected save and restart the server. Your current progress will be lost. Continue?')) {
-                socket.emit('action', { action: 'restoreGame', parameters: { saveFolder: selectedSaveFolder } });
+                // TABLETOP MODE: Module-aware restore payload with fallback for legacy entries
+                const payload = { saveFolder: selectedSaveFolder };
+                if (selectedSaveGame && selectedSaveGame.source_module) {
+                    payload.sourceModule = selectedSaveGame.source_module;
+                }
+                socket.emit('action', { action: 'restoreGame', parameters: payload });
                 closeLoadDialog();
             }
         }
@@ -8030,6 +8037,7 @@
                 socket.emit('action', { action: 'deleteSave', parameters: { saveFolder: selectedSaveFolder } });
                 setTimeout(() => loadSaveGameList(), 500);
                 selectedSaveFolder = null;
+                selectedSaveGame = null;
                 updateLoadButtons();
             }
         }
@@ -8043,11 +8051,16 @@
             saveGames.forEach(save => {
                 const modeClass = save.save_mode === 'full' ? 'full' : 'essential';
                 const modeBadge = save.save_mode ? `<span class="save-mode-badge ${modeClass}">${save.save_mode}</span>` : '';
+                // TABLETOP MODE: Source module and memory parity indicator
+                const sourceModule = save.source_module || save.module || 'Unknown Module';
+                const memoryIndicator = save.memory_package_present ?
+                    '<span class="memory-badge" title="Memory package present">[M]</span>' : '';
                 html += `
-                    <div class="save-item" onclick="selectSaveGame('${save.save_folder}', this)">
+                    <div class="save-item" onclick="selectSaveGame('${save.save_folder}', this)" data-save="${JSON.stringify(save).replace(/"/g, '&quot;')}">
                         <div class="save-item-header">
                             ${save.save_folder}
                             ${modeBadge}
+                            ${memoryIndicator}
                         </div>
                         <div class="save-item-details">
                             <div class="save-detail-row">
@@ -8055,8 +8068,8 @@
                                 <span class="save-detail-value date">${save.save_date_readable || 'Unknown'}</span>
                             </div>
                             <div class="save-detail-row">
-                                <span class="save-detail-label">Module:</span>
-                                <span class="save-detail-value module">${save.module || 'Unknown Module'}</span>
+                                <span class="save-detail-label">Source Module:</span>
+                                <span class="save-detail-value module">${sourceModule}</span>
                             </div>
                             <div class="save-detail-row">
                                 <span class="save-detail-label">Location:</span>

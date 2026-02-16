@@ -2287,7 +2287,8 @@ def handle_action(data):
         try:
             from updates.save_game_manager import SaveGameManager
             manager = SaveGameManager()
-            saves = manager.list_save_games()
+            # TABLETOP MODE: Use global save catalog for cross-module save discovery
+            saves = manager.list_save_games_global()
             emit('save_list_response', saves)
         except Exception as e:
             print(f"Error listing saves: {e}")
@@ -2312,7 +2313,16 @@ def handle_action(data):
             from updates.save_game_manager import SaveGameManager
             manager = SaveGameManager()
             save_folder = parameters.get("saveFolder")
-            success, message = manager.restore_save_game(save_folder)
+            # TABLETOP MODE: Module-aware restore routing for global save catalog
+            source_module = parameters.get("sourceModule") or parameters.get("module")
+
+            # TABLETOP MODE: Route to global restore when module is provided;
+            # otherwise preserve legacy saveFolder-only behavior.
+            if source_module:
+                success, message = manager.restore_save_game_global(source_module, save_folder)
+            else:
+                success, message = manager.restore_save_game(save_folder)
+
             if success:
                 emit('restore_complete', {'message': 'Game restored successfully. Server restarting...'})
                 socketio.sleep(1)

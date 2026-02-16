@@ -758,17 +758,165 @@ class SaveGameManager:
             preflight = self._preflight_validate_memory_package(save_path)
             if preflight.get("status") == "error":
                 return False, f"Restore preflight failed: {preflight.get('message')}"
-            
+
+            # Delegate to shared restore pipeline
+            success, message = self._execute_restore_core(save_path, metadata)
+
+            # Preserve legacy caller-facing success headline
+            if success:
+                parts = message.split("\n", 1)
+                tail = f"\n{parts[1]}" if len(parts) > 1 else ""
+                message = f"Save game restored successfully from: {save_folder}{tail}"
+
+            return success, message
+
+        except Exception as e:
+            error_msg = f"Failed to restore save game: {str(e)}"
+            error(f"FAILURE: {error_msg}", category="save_game")
+            return False, error_msg
+
+    # TABLETOP MODE: Global save catalog for cross-module save discovery
+    def list_save_games_global(self) -> List[Dict[str, Any]]:
+        """List all save games across all modules with global discovery.
+
+        Scans modules/*/saved_games/save_* for save folders and returns
+        normalized metadata including source module and memory parity status.
+        Entries sorted by save_timestamp descending (newest first).
+
+        Returns:
+            List of save metadata dictionaries with additive fields:
+            - source_module: Module containing the save folder
+            - save_folder: Folder name (e.g., save_20250216_143022)
+            - save_path: Full path to save folder
+            - memory_package_present: True if memory_db_package/ exists
+            - All standard save metadata fields
+        """
+        save_games = []
+        modules_base = "modules"
+
+        if not os.path.exists(modules_base):
+            return save_games
+
+        try:
+            for module_name in os.listdir(modules_base):
+                module_path = os.path.join(modules_base, module_name)
+                if not os.path.isdir(module_path):
+                    continue
+
+                save_dir = os.path.join(module_path, "saved_games")
+                if not os.path.exists(save_dir):
+                    continue
+
+                for item in os.listdir(save_dir):
+                    item_path = os.path.join(save_dir, item)
+                    if not os.path.isdir(item_path) or not item.startswith("save_"):
+                        continue
+
+                    metadata_path = os.path.join(item_path, "save_metadata.json")
+                    if not os.path.exists(metadata_path):
+                        continue
+
+                    metadata = safe_read_json(metadata_path)
+                    if not metadata:
+                        continue
+
+                    # Add additive fields for global catalog
+                    metadata["source_module"] = module_name
+                    metadata["save_folder"] = item
+                    metadata["save_path"] = item_path
+                    metadata["memory_package_present"] = os.path.exists(
+                        os.path.join(item_path, "memory_db_package")
+                    )
+                    save_games.append(metadata)
+
+        except Exception as e:
+            error(f"FAILURE: Error scanning global save games", exception=e, category="save_game")
+
+        # Deterministic sort by timestamp descending (newest first)
+        # Tie-break: source_module ascending, save_folder ascending for stability
+        # Use two-pass stable sort: secondary keys first (asc), then primary (desc)
+        save_games.sort(key=lambda x: (x.get("source_module", ""), x.get("save_folder", "")))
+        save_games.sort(key=lambda x: x.get("save_timestamp", ""), reverse=True)
+        return save_games
+
+    # Step 2/3/4 restore routing methods will be added in subsequent passes.
+    # See OpenSpec change: archive-global-save-index-and-restore-routing
+
+    def _validate_restore_target(self, module: str, save_folder: str) -> Tuple[bool, str]:
+        """Validate cross-module restore target and return canonical path.
+
+        Validates that module + save_folder resolve to an allowed save directory
+        under modules/<module>/saved_games/save_*. Rejects path traversal attempts
+        and malformed inputs.
+
+        Args:
+            module: Source module name (e.g., "Keep_of_Doom")
+            save_folder: Save folder name (e.g., "save_20260216_143022")
+
+        Returns:
+            Tuple of (is_valid: bool, result: str)
+            - On success: (True, canonical_save_path)
+            - On failure: (False, error_message)
+        """
+        # Reject empty inputs
+        if not module or not isinstance(module, str):
+            return False, "Invalid module: empty or not a string"
+
+        if not save_folder or not isinstance(save_folder, str):
+            return False, "Invalid save_folder: empty or not a string"
+
+        # Reject path traversal attempts
+        if ".." in module or "/" in module or "\\" in module:
+            return False, "Invalid module name: path traversal detected"
+
+        if ".." in save_folder or "/" in save_folder or "\\" in save_folder:
+            return False, "Invalid save folder name: path traversal detected"
+
+        # Reject non-canonical save folder prefix
+        if not save_folder.startswith("save_"):
+            return False, "Invalid save folder: must start with 'save_'"
+
+        # Construct canonical path
+        save_path = os.path.join("modules", module, "saved_games", save_folder)
+
+        # Verify path exists and is a directory
+        if not os.path.exists(save_path):
+            return False, f"Save folder not found: {save_path}"
+
+        if not os.path.isdir(save_path):
+            return False, f"Save path is not a directory: {save_path}"
+
+        # Verify save_metadata.json exists
+        metadata_path = os.path.join(save_path, "save_metadata.json")
+        if not os.path.exists(metadata_path):
+            return False, f"Save metadata not found: {metadata_path}"
+
+        return True, save_path
+
+    def _execute_restore_core(self, save_path: str, metadata: Dict[str, Any]) -> Tuple[bool, str]:
+        """Execute core restore operations (backup, cleanup, copy, memory import).
+
+        This is the shared restore implementation used by both legacy and global
+        entrypoints. Assumes validation and preflight have already passed.
+
+        Args:
+            save_path: Validated full path to save folder
+            metadata: Loaded save metadata dict
+
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        try:
             # Create backup of current state before restoring
             backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_dir = f"modules/backups/restore_backup_{backup_timestamp}"
-            
+
             info(f"FILE_OP: Creating backup before restore: {backup_dir}", category="save_game")
-            
+
             # Copy current essential files to backup
             essential_files = self.get_essential_files()
             backed_up_files = []
-            
+
             for essential in essential_files:
                 if essential.endswith("/"):
                     # Directory
@@ -793,14 +941,14 @@ class SaveGameManager:
                         os.makedirs(os.path.dirname(backup_dest), exist_ok=True)
                         shutil.copy2(essential, backup_dest)
                         backed_up_files.append(essential)
-            
+
             # IMPORTANT: Clean directories that need to be fully replaced
             # This prevents orphaned files from remaining after restore
             directories_to_clean = [
                 "modules/encounters/",  # Global encounters directory
                 "characters/",  # Player/NPC characters
             ]
-            
+
             # Add module-specific directories if we have a current module
             if self.current_module:
                 module_base = f"modules/{self.current_module}"
@@ -810,7 +958,7 @@ class SaveGameManager:
                     f"{module_base}/areas/",
                     f"{module_base}/monsters/",
                 ])
-            
+
             # Clean each directory
             for directory in directories_to_clean:
                 if os.path.exists(directory):
@@ -828,54 +976,54 @@ class SaveGameManager:
                                 debug(f"FILE_OP: Removed: {file_path}", category="save_game")
                     except Exception as e:
                         warning(f"FILE_OP: Could not fully clean {directory}", category="save_game")
-            
+
             # Now restore files from save
             restored_files = []
             failed_files = []
-            
+
             # Walk through save directory and copy files back
             for root, dirs, files in os.walk(save_path):
                 # TABLETOP MODE: Exclude memory_db_package from generic copy loop
                 # Package is handled exclusively via managed import path
                 if "memory_db_package" in dirs:
                     dirs.remove("memory_db_package")
-                
+
                 # Skip metadata file
                 if "save_metadata.json" in files:
                     files.remove("save_metadata.json")
-                
+
                 for file in files:
                     source_file = os.path.join(root, file)
                     # Calculate relative path from save directory
                     rel_path = os.path.relpath(source_file, save_path)
                     dest_file = rel_path.replace("\\", "/")
-                    
+
                     try:
                         # Ensure destination directory exists
                         dest_dir = os.path.dirname(dest_file)
                         if dest_dir:
                             os.makedirs(dest_dir, exist_ok=True)
-                        
+
                         shutil.copy2(source_file, dest_file)
                         restored_files.append(dest_file)
                         debug(f"FILE_OP: Restored: {dest_file}", category="save_game")
                     except Exception as e:
                         error(f"FAILURE: Failed to restore {dest_file}", exception=e, category="save_game")
                         failed_files.append(dest_file)
-            
+
             # TABLETOP MODE: Import memory package for Many Worlds support
             memory_result = self._import_memory_package(save_path, metadata)
             if memory_result.get("status") == "error":
                 # Memory package exists but failed - fail the restore
                 return False, f"Memory package restore failed: {memory_result.get('message')}"
-            
+
             # TABLETOP MODE: Set up restore context for fork-on-first-save behavior
             self._setup_restore_context(metadata)
-            
-            success_msg = f"Save game restored successfully from: {save_folder}"
+
+            success_msg = f"Save game restored successfully"
             success_msg += f"\nRestored {len(restored_files)} files"
             success_msg += f"\nBackup created: {backup_dir}"
-            
+
             # TABLETOP MODE: Add memory package status to success message
             if memory_result.get("status") == "success":
                 success_msg += f"\nMemory package: restored"
@@ -883,31 +1031,82 @@ class SaveGameManager:
                 success_msg += f"\nMemory package: legacy fallback (clean init)"
             elif memory_result.get("status") == "disabled":
                 success_msg += f"\nMemory package: parity disabled"
-            
+
             if failed_files:
                 success_msg += f"\nFailed to restore {len(failed_files)} files"
-            
+
             info(f"SUCCESS: {success_msg}", category="save_game")
             return True, success_msg
-            
+
         except Exception as e:
             error_msg = f"Failed to restore save game: {str(e)}"
-            error(f"FAILURE: {error_msg}", category="save_game")
+            error(f"FAILURE: {error_msg}", exception=e, category="save_game")
             return False, error_msg
-    
+
+    def restore_save_game_global(self, module: str, save_folder: str) -> Tuple[bool, str]:
+        """Restore a save game from any module with cross-module routing.
+
+        Validates the target via Step 2.1 validator, then delegates to the shared
+        restore pipeline to preserve safety invariants.
+
+        Args:
+            module: Source module containing the save
+            save_folder: Name of the save folder to restore
+
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        # Step 1: Validate target (Step 2.1 validator)
+        is_valid, result = self._validate_restore_target(module, save_folder)
+        if not is_valid:
+            return False, f"Restore validation failed: {result}"
+
+        save_path = result
+
+        # Step 2: Load metadata for preflight
+        metadata_path = os.path.join(save_path, "save_metadata.json")
+        metadata = safe_read_json(metadata_path)
+        if not metadata:
+            return False, "Could not read save game metadata"
+
+        # Step 3: Memory preflight (must pass before any mutation)
+        preflight = self._preflight_validate_memory_package(save_path)
+        if preflight.get("status") == "error":
+            return False, f"Restore preflight failed: {preflight.get('message')}"
+
+        # Step 4: Delegate to shared restore pipeline using selected module context
+        original_module = self.current_module
+        try:
+            self.current_module = module
+            self.path_manager = ModulePathManager(module)
+            success, message = self._execute_restore_core(save_path, metadata)
+        finally:
+            self.current_module = original_module
+            if original_module:
+                self.path_manager = ModulePathManager(original_module)
+            else:
+                self.path_manager = ModulePathManager()
+
+        # Append source info to success message
+        if success:
+            message += f"\nSource module: {module}"
+            message += f"\nSource folder: {save_folder}"
+
+        return success, message
+
     def delete_save_game(self, save_folder: str) -> Tuple[bool, str]:
         """Delete a save game"""
         try:
             save_dir = self.get_save_directory()
             save_path = f"{save_dir}/{save_folder}"
-            
+
             if not os.path.exists(save_path):
                 return False, f"Save game not found: {save_path}"
-            
+
             shutil.rmtree(save_path)
             info(f"SUCCESS: Deleted save game: {save_path}", category="save_game")
             return True, f"Save game deleted: {save_folder}"
-            
+
         except Exception as e:
             error_msg = f"Failed to delete save game: {str(e)}"
             error(f"FAILURE: {error_msg}", category="save_game")

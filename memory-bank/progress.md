@@ -10,6 +10,38 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **PR1 Archive Global Save Index and Restore Routing (COMPLETED - 2026-02-16):**
+  - OpenSpec change `archive-global-save-index-and-restore-routing` fully implemented and validated
+  - **Step 1 Global Catalog:** `list_save_games_global()` scans all modules (`modules/*/saved_games/save_*`), deterministic sort by `save_timestamp` descending, additive metadata fields (`source_module`, `memory_package_present`)
+  - **Step 2 Restore Routing:** Validator rejects invalid/non-canonical paths (path traversal, malformed), module-aware entrypoint `restore_save_game_global()` delegates to shared `_execute_restore_core()`, legacy `saveFolder`-only path preserved
+  - **Step 3 Web Integration:** `listSaves` returns global entries, `restoreGame` accepts module-aware payload with fallback routing, load dialog shows source module label + memory parity `[M]` indicator + module-aware payload on load
+  - **Step 4 Validation:** All 12 completion items PASS (compile, import, positive smoke, negative smoke)
+  - **Files Modified:** `updates/save_game_manager.py`, `web/web_interface.py`, `web/templates/game_interface.html`
+  - **PR2 Handoff Ready:** Archive zip portability work can begin (scaffolded in `/archiving.md`)
+
+- **Journal Diary MVP Phase 1 Planning (PLANNED - 2026-02-16):
+  - Created comprehensive MVP plan at `/plans/journal.md` for transparent diary system with dual-checkpoint model
+  - **Dual-Checkpoint Architecture:** Start Game triggers draft refresh (unsaved session summary), Save triggers confirmed checkpoint (save-bound canonical entry)
+  - **Key Design Decisions:**
+    - Draft entries excluded from "Story So Far" PDF export (confirmed-only canon)
+    - Failure isolation: diary generation never blocks Start Game or Save operations
+    - World-time ordering using normalized `world_sort_key` from `party_tracker.json`
+    - Third-person anonymous narration style for all diary entries
+  - **OpenSpec Scaffolding:** Created change `journal-diary-mvp-phase1` with complete artifact set:
+    - `proposal.md`, `design.md`, `tasks.md`, `executor_prompts.md`
+    - Three capability specs: `journal-diary-dual-checkpoint`, `journal-diary-tabbed-ui`, `campaign-journal-story-pdf`
+  - **Data Model:** Additive migration for `session_diary_entries`, `session_diary_state`, `story_so_far_cache`
+  - **New Modules Planned:**
+    - `core/memory/session_diary.py` - draft/confirmed logic, world-time normalization, checkpoint management
+    - `core/memory/story_so_far_compiler.py` - confirmed-only story compilation, PDF generation, caching
+  - **Integration Points:**
+    - Save pipeline hook in `updates/save_game_manager.py:create_save_game()`
+    - Start Game hook in `web/web_interface.py:handle_start_game()`
+    - Journal UI tabs in `web/templates/game_interface.html`
+    - API endpoints: `/api/journal/diary`, `/api/journal/story-so-far/pdf`
+  - **Time Estimate:** 4-6 days for MVP Phase 1
+  - **Status:** Plan complete, OpenSpec artifacts scaffolded, ready for Kimi Builder execution
+
 - **Exit/Enter GUI Button Implementation Plan (PLANNED - 2026-02-15):**
   - Created detailed plan at `/plans/exit-enter.md` with two phases
   - **Phase 1 (Exit Only - Recommended):**

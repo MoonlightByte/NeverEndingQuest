@@ -1,4 +1,8 @@
 ## Current Work Focus
+- **PR1 Archive Global Save Index and Restore Routing (COMPLETED - 2026-02-16):** OpenSpec change `archive-global-save-index-and-restore-routing` is fully implemented and validated. **Global Save Catalog:** `list_save_games_global()` scans all modules, deterministic timestamp sorting with tie-break, additive metadata fields (`source_module`, `memory_package_present`). **Cross-Module Restore Routing:** Target validator with path traversal rejection, module-aware entrypoint `restore_save_game_global()` that delegates to shared core pipeline, legacy `saveFolder`-only path preserved. **Web Integration:** `listSaves` action returns global entries, `restoreGame` accepts module-aware payload with fallback, load dialog shows source module + memory indicator `[M]`. **Files Modified:** `updates/save_game_manager.py`, `web/web_interface.py`, `web/templates/game_interface.html`. **All 12 completion items PASS.** Ready for PR2 zip portability work.
+
+- **Journal Diary MVP Phase 1 (PLANNING - 2026-02-16):** Completed detailed MVP plan at `/plans/journal.md` and scaffolded OpenSpec change `journal-diary-mvp-phase1` with full artifacts. **Dual-Checkpoint Model:** Start Game refreshes draft diary entries when source history is stale; Save operations create confirmed canonical entries bound to `save_id`. **Journal UI:** Tabbed interface with preserved Quests behavior and new Diary tab showing draft card + confirmed timeline ordered by game-world time. **PDF Export:** "Download the story so far..." button generates fan-fiction style chronicle from confirmed entries only (draft excluded by design). **Failure Isolation:** Diary generation failures are non-blocking for both Start Game and Save flows. **Data Model:** Additive migration for `session_diary_entries`, `session_diary_state`, `story_so_far_cache` tables. **New Modules:** `core/memory/session_diary.py` (checkpoint logic), `core/memory/story_so_far_compiler.py` (PDF generation with caching). **Integration Points:** Save hook in `updates/save_game_manager.py`, Start Game hook in `web/web_interface.py`, Journal tabs in `web/templates/game_interface.html`, API endpoints `/api/journal/diary` and `/api/journal/story-so-far/pdf`. **Time Estimate:** 4-6 days. Status: Plan complete, ready for Kimi Builder execution.
+
 - **Exit/Enter GUI Button Plan (PLANNING - 2026-02-15):** Created detailed implementation plan at `/plans/exit-enter.md` for adding Exit/Enter functionality to GUI. **Phase 1 (Exit Only):** Gracefully stop all Python processes from browser button without Ctrl+C. Uses exit code 91 to signal intentional shutdown to launcher. User must manually restart with `python run_web.py`. **Phase 2 (Future):** Full Exit/Enter toggle requires persistent supervisor/watcher process - deferred due to complexity concerns. No watcher processes will be implemented in Phase 1.
 
 - **TTS Text Sync Browser-First Implementation (COMPLETED - 2026-02-15):** Implemented word-by-word text reveal synchronized with Browser TTS speech. **Features:** "Word Sync" toggle in DM Voice settings (browser-only, localStorage persisted), real boundary sync for Edge/MS TTS using `onboundary`, faux sync fallback (3x slowed) for browsers without boundaries, auto-scroll chat as text grows, manual replay audio-only. **Architecture:** Per-item `syncStrategy` in queue (`browser_boundary`, `none`, `estimated_timeline`), lazy-init reveal mode, explicit queue completion signaling. **Files:** `model_config.py`, `web/web_interface.py`, `web/templates/game_interface.html`, `web/static/js/tts_queue_manager.js`. **Verification:** Python compile PASS, Edge real sync works, Chrome faux fallback triggers correctly.
@@ -28,6 +32,29 @@
 - **TTS Auto-Play Fix & Queue Management (COMPLETED - 2026-02-06):** Implemented comprehensive TTS management system with queue control, message filtering, and [skipTTS] tagging. Fixed cacophony on page reload, parallel playback, and mechanical message narration. Only DM narration speaks now; combat results and system commands display but don't break immersion.
 
 ## Recent Changes
+- **Journal Diary MVP Phase 1 Planning (COMPLETED - 2026-02-16):**
+    - Created comprehensive MVP plan at `/plans/journal.md` establishing two-point diary model (Start Game draft + Save confirmed)
+    - Scaffolded OpenSpec change `journal-diary-mvp-phase1` with complete artifact set:
+      - `proposal.md` - Why, what changes, capabilities, impact, rollout risk
+      - `design.md` - Dual-checkpoint state model, Start Game/Save integration decisions, confirmed-only PDF contract
+      - `tasks.md` - 8 task groups (M1-M8) covering migration, diary service, integrations, routes, UI, tests
+      - `executor_prompts.md` - 5 execution prompts for Kimi Builder with verification gates
+      - Three capability specs:
+        - `journal-diary-dual-checkpoint` - draft refresh, save confirmation, idempotency, failure isolation
+        - `journal-diary-tabbed-ui` - Quests/Diary tabs, draft vs confirmed rendering, world-time ordering
+        - `campaign-journal-story-pdf` - user-triggered export, confirmed-only source, cache reuse
+    - **Key Architectural Decisions:**
+      - Draft entries are "Current Session (Unsaved Draft)" visible in Diary but excluded from PDF
+      - Confirmed entries are save-bound canon with `save_id` idempotency
+      - World-time ordering via normalized `world_sort_key` from `party_tracker.json`
+      - Third-person anonymous narration style
+      - Failure isolation: diary generation never blocks Start Game or Save
+    - **Data Model:** Additive migration for 3 tables with proper indexes
+    - **New Modules:** `core/memory/session_diary.py`, `core/memory/story_so_far_compiler.py`
+    - **Integration Points:** Save manager hook, Start Game socket handler, memory routes, Journal UI tabs
+    - **Time Estimate:** 4-6 days for MVP Phase 1
+    - **Status:** Plan complete and validated, ready for builder execution
+
 - **Combat State Init and Batching Hardening (C1-C5) (COMPLETED - 2026-02-15):**
     - C1-C3 completed and committed: fail-closed combat entry, deterministic combat-only command guards outside active combat, and Phase 1 startup normalization with compatibility mirror sync.
     - C4 completed and committed: deterministic living non-PC enemy-phase actor filtering plus integrity roster expansion so legal non-active PC targets are accepted while PCs remain forbidden as DM-controlled actors.
