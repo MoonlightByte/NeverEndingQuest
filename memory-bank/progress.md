@@ -50,32 +50,38 @@ Active development of Tabletop Mode features, focusing on party management and U
   - **Time Estimate:** 2-3 days for full implementation
   - **Status:** Plan complete, OpenSpec validated, Step 1.1 complete, ready for builder execution
 
-- **PR3 Root Archive Export + Zip Import Restore (IN PROGRESS - 2026-02-16):**
-  - **Operational Requirement:** Library staff need repo-root archive folder for easy USB copy workflows
-  - **OpenSpec Change:** `archive-root-export-and-zip-import-restore` scaffolded with full artifact set
-  - **Artifacts Created:**
-    - `openspec/changes/archive-root-export-and-zip-import-restore/proposal.md` - Why, what changes, capabilities, impact
-    - `openspec/changes/archive-root-export-and-zip-import-restore/design.md` - Root export directory decision, deterministic naming, staged restore model, security checks
-    - `openspec/changes/archive-root-export-and-zip-import-restore/tasks.md` - 7 task groups (1.x-7.x) covering export, catalog, validation, restore, UI, validation
-    - `openspec/changes/archive-root-export-and-zip-import-restore/executor_prompts.md` - 6 staged builder prompts with verification gates
-    - `openspec/changes/archive-root-export-and-zip-import-restore/specs/campaign-archive-root-export/spec.md` - Export location and naming requirements
-    - `openspec/changes/archive-root-export-and-zip-import-restore/specs/campaign-zip-import-restore/spec.md` - Zip restore validation, traversal safety, fail-closed requirements
-  - **Step 1.1 Complete (2026-02-16):**
-    - Added `ARCHIVE_EXPORTS_DIR = "archive_exports"` constant in `updates/save_game_manager.py`
-    - Added `_get_archive_exports_directory()` helper method for root export path resolution
-    - Updated zip naming to include module + timestamp + save folder: `archive_<module>_<timestamp>_<save_folder>.zip`
-    - Archives now export to repo-root `archive_exports/` directory for USB portability
-    - **Verification:** Compile gate passed, smoke tests passed (5/5), directory created at `/Users/zeug/Projects/NeverEndingQuest/archive_exports`
-    - **Files Modified:** `updates/save_game_manager.py`
-  - **Key Architecture Decisions:**
-    - Root export directory: `archive_exports/` at repo root (not nested in modules)
-    - Deterministic naming: `archive_<module>_<timestamp>_<save_folder>.zip`
-    - Zip restore model: validate -> stage -> delegate to existing restore
-    - Security: Reject traversal entries, missing metadata, invalid module mapping
-  - **Remaining Work:**
-    - Step 1.2: Zip catalog listing support for `archive_exports/*.zip`
-    - Steps 2.x-7.x: Validation, extraction, restore pipeline, UI integration, regression tests
-  - **Status:** Step 1.1 complete, ready for Step 1.2 (Payload and Archive Catalog)
+- **PR3 Root Archive Export + Zip Import Restore (COMPLETED - 2026-02-17):**
+  - **OpenSpec Change:** `archive-root-export-and-zip-import-restore` fully implemented, validated, and ready for archival
+  - **Objective:** Enable repo-root archive exports for USB copy workflows and direct zip restore without manual unzip/staging
+  - **Implementation Summary:**
+    - **Step 1 Root Export Foundation:** `ARCHIVE_EXPORTS_DIR = "archive_exports"` constant, `_get_archive_exports_directory()` helper, deterministic naming `archive_<module>_<timestamp>_<save_folder>.zip`
+    - **Step 2 Payload + Archive Catalog:** Full-save payload includes archive metadata, essential save unchanged, `list_archive_exports()` for catalog discovery
+    - **Step 3 Zip Preflight Validation:** `_validate_archive_zip_preflight()` checks metadata, envelope, source module; rejects traversal, absolute paths, invalid entries
+    - **Step 4 Secure Extraction + Staging:** `_extract_archive_save_to_temp()` secure temp extraction with cleanup, `_stage_archive_save_folder()` canonical staging
+    - **Step 5 Zip Restore Pipeline:** `restore_save_game_archive()` validates -> extracts -> stages -> delegates to `restore_save_game_global()`
+    - **Step 6 Web + Load Dialog Integration:**
+      - Web actions: `listArchiveZips`, `restoreArchiveZip` with same emit semantics as existing restore
+      - Load dialog: renders both save folders and archive zips, archive rows show name/size/modified
+      - Delete disabled for archive entries, restore routes to appropriate handler based on selection
+    - **Step 7 Validation:**
+      - Compile gate: PASS (`updates/save_game_manager.py`, `web/web_interface.py`, `utils/reset_campaign.py`)
+      - Positive smoke: full save -> zip in `archive_exports/` -> restore delegation confirmed
+      - Negative smoke: traversal zip, missing metadata, unknown module -> all fail-closed
+      - Regression: essential save unchanged, folder restore unchanged
+      - New regression suite: `scripts/test_archive_zip_restore.py` (10 tests, all PASS)
+  - **Key Behaviors:**
+    - Archives export to repo-root `archive_exports/` for USB portability
+    - Zip restore uses validate -> stage -> delegate pattern (preserves proven restore semantics)
+    - Fail-closed: malformed archives rejected with explicit errors, no partial state mutation
+    - Security: traversal/absolute path rejection, canonical save folder enforcement, module validation
+    - ASCII-only: all user-facing messages use ASCII characters only
+    - Backward compatible: essential save and folder restore paths unchanged
+  - **Files Modified:**
+    - `updates/save_game_manager.py` (+~340 lines): archive helpers, validation, extraction, staging, restore entrypoint
+    - `web/web_interface.py` (+~40 lines): `listArchiveZips`, `restoreArchiveZip` socket handlers
+    - `web/templates/game_interface.html` (+~120 lines): dual list rendering, archive row display, selection routing
+    - `scripts/test_archive_zip_restore.py` (new, 10 regression tests)
+  - **Status:** COMPLETED, all 7.x tasks checked, regression suite passing, ready for archival
 
 - **PC Leave/Return World Memory (COMPLETED - 2026-02-17):**
   - **OpenSpec Change:** `pc-leave-return-world-memory` fully implemented, validated, and archived

@@ -62,6 +62,7 @@ Handles save and restore functionality for game state preservation.
 import json
 import os
 import shutil
+import tempfile
 import zipfile
 import time
 import uuid
@@ -1109,8 +1110,343 @@ class SaveGameManager:
         save_games.sort(key=lambda x: x.get("save_timestamp", ""), reverse=True)
         return save_games
 
-    # Step 2/3/4 restore routing methods will be added in subsequent passes.
-    # See OpenSpec change: archive-global-save-index-and-restore-routing
+    def list_archive_exports(self) -> List[Dict[str, Any]]:
+        """List archive zip artifacts from repo-root archive exports directory.
+
+        TABLETOP MODE: Returns archive catalog entries for `archive_exports/*.zip`
+        with deterministic sorting for load dialog integration.
+
+        Returns:
+            List of archive metadata dictionaries:
+            - zip_name: Archive filename
+            - zip_path: Absolute path to archive zip
+            - bytes: File size in bytes
+            - modified_timestamp: Last-modified time in ISO format
+        """
+        archive_entries = []
+        archive_dir = self._get_archive_exports_directory()
+
+        if not os.path.exists(archive_dir):
+            return archive_entries
+
+        try:
+            for item in os.listdir(archive_dir):
+                item_path = os.path.join(archive_dir, item)
+                if not os.path.isfile(item_path):
+                    continue
+
+                if not item.lower().endswith(".zip"):
+                    continue
+
+                try:
+                    modified_epoch = os.path.getmtime(item_path)
+                    archive_entries.append({
+                        "zip_name": item,
+                        "zip_path": item_path,
+                        "bytes": os.path.getsize(item_path),
+                        "modified_timestamp": datetime.fromtimestamp(modified_epoch).isoformat(),
+                        "_sort_epoch": modified_epoch,
+                    })
+                except OSError as file_error:
+                    warning(
+                        f"ARCHIVE_EXPORT: Could not inspect zip file {item}: {file_error}",
+                        category="save_game",
+                    )
+
+        except Exception as e:
+            error(f"FAILURE: Error listing archive exports", exception=e, category="save_game")
+
+        # Deterministic sort: newest first, then filename ascending for stable ties
+        archive_entries.sort(key=lambda x: x.get("zip_name", ""))
+        archive_entries.sort(key=lambda x: x.get("_sort_epoch", 0), reverse=True)
+
+        # Remove internal sort key from caller-facing payload
+        for entry in archive_entries:
+            entry.pop("_sort_epoch", None)
+
+        return archive_entries
+
+    def _resolve_archive_zip_path(self, zip_name: str) -> Tuple[bool, str]:
+        """Resolve archive zip name to canonical path in archive exports directory.
+
+        Args:
+            zip_name: Archive zip filename (not a full path)
+
+        Returns:
+            Tuple of (is_valid: bool, result: str)
+            - On success: (True, absolute_zip_path)
+            - On failure: (False, error_message)
+        """
+        if not zip_name or not isinstance(zip_name, str):
+            return False, "Invalid archive zip name: empty or not a string"
+
+        if ".." in zip_name or "/" in zip_name or "\\" in zip_name:
+            return False, "Invalid archive zip name: path traversal detected"
+
+        if not zip_name.lower().endswith(".zip"):
+            return False, "Invalid archive zip name: file must end with .zip"
+
+        archive_dir = self._get_archive_exports_directory()
+        zip_path = os.path.join(archive_dir, zip_name)
+
+        if not os.path.exists(zip_path):
+            return False, f"Archive zip not found: {zip_name}"
+
+        if not os.path.isfile(zip_path):
+            return False, f"Archive path is not a file: {zip_name}"
+
+        return True, zip_path
+
+    def _validate_archive_zip_preflight(self, zip_path: str) -> Tuple[bool, Dict[str, Any]]:
+        """Validate archive zip structure, metadata, and traversal safety.
+
+        Required checks:
+        - Zip is readable and non-empty
+        - No absolute/traversal entries
+        - Exactly one top-level save folder metadata envelope
+        - Source module resolves from metadata
+
+        Args:
+            zip_path: Absolute path to archive zip
+
+        Returns:
+            Tuple of (is_valid: bool, result: Dict)
+            - On success: {
+                "save_folder": str,
+                "source_module": str,
+                "metadata": Dict[str, Any],
+                "metadata_entry": str,
+              }
+            - On failure: {"message": str}
+        """
+        if not zipfile.is_zipfile(zip_path):
+            return False, {"message": "Invalid archive zip: not a zip file"}
+
+        try:
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                members = zf.infolist()
+                if not members:
+                    return False, {"message": "Invalid archive zip: archive is empty"}
+
+                metadata_entries: List[str] = []
+
+                for member in members:
+                    entry = member.filename.replace("\\", "/")
+
+                    # Reject absolute paths and Windows drive roots
+                    if entry.startswith("/") or entry.startswith("\\"):
+                        return False, {"message": f"Invalid archive zip: absolute path entry '{entry}'"}
+                    if len(entry) >= 2 and entry[1] == ":" and entry[0].isalpha():
+                        return False, {"message": f"Invalid archive zip: absolute drive entry '{entry}'"}
+
+                    # Reject traversal attempts
+                    path_parts = [p for p in entry.split("/") if p and p != "."]
+                    if any(part == ".." for part in path_parts):
+                        return False, {"message": f"Invalid archive zip: traversal entry '{entry}'"}
+
+                    # Envelope check: top-level save folder metadata only
+                    if entry.endswith("/save_metadata.json") and entry.count("/") == 1:
+                        metadata_entries.append(entry)
+
+                if len(metadata_entries) != 1:
+                    return False, {
+                        "message": "Invalid archive zip: expected exactly one top-level save_metadata.json envelope"
+                    }
+
+                metadata_entry = metadata_entries[0]
+                save_folder = metadata_entry.split("/", 1)[0]
+                if not save_folder.startswith("save_"):
+                    return False, {"message": f"Invalid archive zip: non-canonical save folder '{save_folder}'"}
+
+                try:
+                    metadata_raw = zf.read(metadata_entry)
+                    metadata = json.loads(metadata_raw.decode("utf-8"))
+                except Exception as metadata_error:
+                    return False, {"message": f"Invalid archive zip metadata: {metadata_error}"}
+
+                source_module = str(metadata.get("module", "")).strip()
+                if not source_module or source_module.lower() == "unknown":
+                    # Fallback to game_state.module for compatibility with older metadata variants
+                    source_module = str(metadata.get("game_state", {}).get("module", "")).strip()
+
+                source_module = source_module.replace(" ", "_")
+
+                if not source_module or source_module.lower() == "unknown":
+                    return False, {"message": "Invalid archive zip metadata: source module missing"}
+
+                if ".." in source_module or "/" in source_module or "\\" in source_module:
+                    return False, {"message": f"Invalid archive zip metadata: unsafe source module '{source_module}'"}
+
+                module_dir = os.path.join("modules", source_module)
+                if not os.path.isdir(module_dir):
+                    return False, {"message": f"Source module not found for restore: {source_module}"}
+
+                return True, {
+                    "save_folder": save_folder,
+                    "source_module": source_module,
+                    "metadata": metadata,
+                    "metadata_entry": metadata_entry,
+                }
+
+        except Exception as e:
+            return False, {"message": f"Failed archive zip preflight validation: {str(e)}"}
+
+    def _extract_archive_save_to_temp(self, zip_path: str, save_folder: str) -> Tuple[bool, Dict[str, Any]]:
+        """Securely extract save envelope from zip into temporary staging directory.
+
+        Args:
+            zip_path: Absolute archive zip path
+            save_folder: Envelope folder name to extract
+
+        Returns:
+            Tuple of (success: bool, result: Dict)
+            - On success: {
+                "temp_dir": str,
+                "extracted_save_path": str,
+              }
+            - On failure: {"message": str}
+        """
+        temp_dir = tempfile.mkdtemp(prefix="neq_zip_restore_")
+        extracted_save_path = os.path.join(temp_dir, save_folder)
+
+        try:
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                envelope_prefix = f"{save_folder}/"
+                extracted_any = False
+
+                for member in zf.infolist():
+                    entry = member.filename.replace("\\", "/")
+                    if not entry.startswith(envelope_prefix):
+                        continue
+
+                    relative_path = entry[len(envelope_prefix):]
+                    if not relative_path:
+                        continue
+
+                    # Defense-in-depth path check during extraction
+                    normalized_relative = os.path.normpath(relative_path)
+                    if normalized_relative.startswith("..") or os.path.isabs(normalized_relative):
+                        raise ValueError(f"Unsafe archive path during extraction: {entry}")
+
+                    target_path = os.path.join(extracted_save_path, normalized_relative)
+
+                    if member.is_dir() or entry.endswith("/"):
+                        os.makedirs(target_path, exist_ok=True)
+                        continue
+
+                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                    with zf.open(member, "r") as source_stream:
+                        with open(target_path, "wb") as target_stream:
+                            shutil.copyfileobj(source_stream, target_stream)
+                    extracted_any = True
+
+            if not extracted_any:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                return False, {"message": "Archive extraction failed: save envelope contains no files"}
+
+            metadata_path = os.path.join(extracted_save_path, "save_metadata.json")
+            if not os.path.exists(metadata_path):
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                return False, {"message": "Archive extraction failed: save_metadata.json missing after extraction"}
+
+            return True, {
+                "temp_dir": temp_dir,
+                "extracted_save_path": extracted_save_path,
+            }
+
+        except Exception as e:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return False, {"message": f"Archive extraction failed: {str(e)}"}
+
+    def _stage_archive_save_folder(self, extracted_save_path: str, source_module: str, save_folder: str) -> Tuple[bool, str]:
+        """Stage extracted save folder into canonical module save directory.
+
+        Args:
+            extracted_save_path: Path to extracted save folder in temp staging
+            source_module: Canonical source module name
+            save_folder: Save folder name
+
+        Returns:
+            Tuple of (success: bool, result: str)
+            - On success: (True, canonical_staged_path)
+            - On failure: (False, error_message)
+        """
+        try:
+            if not os.path.isdir(extracted_save_path):
+                return False, f"Staging failed: extracted save folder missing: {extracted_save_path}"
+
+            module_save_dir = os.path.join("modules", source_module, "saved_games")
+            os.makedirs(module_save_dir, exist_ok=True)
+
+            staged_save_path = os.path.join(module_save_dir, save_folder)
+            if os.path.exists(staged_save_path):
+                return False, f"Staging failed: target save folder already exists: {staged_save_path}"
+
+            shutil.copytree(extracted_save_path, staged_save_path)
+            return True, staged_save_path
+
+        except Exception as e:
+            return False, f"Staging failed: {str(e)}"
+
+    def restore_save_game_archive(self, zip_name: str) -> Tuple[bool, str]:
+        """Restore a campaign save directly from a validated archive zip.
+
+        Pipeline:
+        1. Resolve zip in archive_exports/
+        2. Preflight validate structure/metadata/safety
+        3. Secure extract save envelope to temp staging
+        4. Stage extracted save folder into canonical module save path
+        5. Delegate to existing global folder restore pipeline
+        """
+        # Step 1: Resolve zip path from archive exports catalog
+        zip_ok, zip_result = self._resolve_archive_zip_path(zip_name)
+        if not zip_ok:
+            return False, f"Archive restore validation failed: {zip_result}"
+
+        zip_path = zip_result
+
+        # Step 2: Preflight validation
+        preflight_ok, preflight_result = self._validate_archive_zip_preflight(zip_path)
+        if not preflight_ok:
+            return False, f"Archive restore preflight failed: {preflight_result.get('message', 'unknown error')}"
+
+        save_folder = preflight_result["save_folder"]
+        source_module = preflight_result["source_module"]
+
+        # Step 3: Secure extraction to temp staging
+        extract_ok, extract_result = self._extract_archive_save_to_temp(zip_path, save_folder)
+        if not extract_ok:
+            return False, f"Archive restore extraction failed: {extract_result.get('message', 'unknown error')}"
+
+        temp_dir = extract_result["temp_dir"]
+        extracted_save_path = extract_result["extracted_save_path"]
+
+        try:
+            # Step 4: Stage save folder into canonical module save path
+            stage_ok, stage_result = self._stage_archive_save_folder(
+                extracted_save_path,
+                source_module,
+                save_folder,
+            )
+            if not stage_ok:
+                return False, f"Archive restore staging failed: {stage_result}"
+
+            info(
+                f"ARCHIVE_EXPORT: Staged archive save '{save_folder}' for module '{source_module}'",
+                category="save_game",
+            )
+
+            # Step 5: Delegate to existing global restore pipeline
+            success, message = self.restore_save_game_global(source_module, save_folder)
+            if success:
+                message += f"\nArchive zip: {zip_name}"
+
+            return success, message
+
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    # TABLETOP MODE: Global restore routing and archive-zip restore helpers.
 
     def _validate_restore_target(self, module: str, save_folder: str) -> Tuple[bool, str]:
         """Validate cross-module restore target and return canonical path.

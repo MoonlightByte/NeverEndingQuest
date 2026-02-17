@@ -2294,6 +2294,17 @@ def handle_action(data):
             print(f"Error listing saves: {e}")
             emit('save_list_response', [])
 
+    elif action_type == 'listArchiveZips':
+        try:
+            from updates.save_game_manager import SaveGameManager
+            manager = SaveGameManager()
+            # TABLETOP MODE: List archive zip artifacts from root archive_exports directory
+            archives = manager.list_archive_exports()
+            emit('archive_zip_list_response', archives)
+        except Exception as e:
+            print(f"Error listing archive zips: {e}")
+            emit('archive_zip_list_response', [])
+
     elif action_type == 'saveGame':
         try:
             from updates.save_game_manager import SaveGameManager
@@ -2377,6 +2388,25 @@ def handle_action(data):
                 emit('restore_complete', {'message': 'Game restored successfully. Server restarting...'})
                 socketio.sleep(1)
                 print("INFO: Game restore successful. Server is shutting down for restart.")
+                os._exit(0)
+            else:
+                emit('error', {'message': f"Restore failed: {message}"})
+        except Exception as e:
+            emit('error', {'message': f"Restore failed: {str(e)}"})
+
+    elif action_type == 'restoreArchiveZip':
+        try:
+            from updates.save_game_manager import SaveGameManager
+            manager = SaveGameManager()
+            zip_name = parameters.get("zipName")
+
+            # TABLETOP MODE: Restore from validated archive zip path
+            success, message = manager.restore_save_game_archive(zip_name)
+
+            if success:
+                emit('restore_complete', {'message': 'Game restored successfully. Server restarting...'})
+                socketio.sleep(1)
+                print("INFO: Archive zip restore successful. Server is shutting down for restart.")
                 os._exit(0)
             else:
                 emit('error', {'message': f"Restore failed: {message}"})

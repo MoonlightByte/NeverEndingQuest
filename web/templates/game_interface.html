@@ -7981,8 +7981,10 @@
 
     <script>
         let selectedSaveFolder = null;
-        // TABLETOP MODE: Track full save object for module-aware restore
+        // TABLETOP MODE: Track selected load entry for module-aware and zip restores
         let selectedSaveGame = null;
+        let loadDialogSaveEntries = [];
+        let loadDialogArchiveEntries = [];
         function openSaveDialog() { document.getElementById('save-dialog-overlay').style.display = 'flex'; document.getElementById('save-description').focus(); }
         function closeSaveDialog() { 
             document.getElementById('save-dialog-overlay').style.display = 'none'; 
@@ -8005,50 +8007,93 @@
             }
         }
         function openLoadDialog() { document.getElementById('load-dialog-overlay').style.display = 'flex'; loadSaveGameList(); }
-        function closeLoadDialog() { document.getElementById('load-dialog-overlay').style.display = 'none'; selectedSaveFolder = null; selectedSaveGame = null; updateLoadButtons(); }
-        function loadSaveGameList() { const saveList = document.getElementById('save-list'); saveList.innerHTML = 'Loading...'; socket.emit('action', { action: 'listSaves', parameters: {} }); }
-        function selectSaveGame(saveFolder, element) { document.querySelectorAll('.save-item').forEach(item => { item.classList.remove('selected'); }); element.classList.add('selected'); selectedSaveFolder = saveFolder; selectedSaveGame = element.dataset.save ? JSON.parse(element.dataset.save) : null; updateLoadButtons(); }
-        function updateLoadButtons() {
-            const disabled = !selectedSaveFolder;
-            document.getElementById('load-save-button').disabled = disabled;
-            document.getElementById('delete-save-button').disabled = disabled;
+        function closeLoadDialog() {
+            document.getElementById('load-dialog-overlay').style.display = 'none';
+            selectedSaveFolder = null;
+            selectedSaveGame = null;
+            loadDialogSaveEntries = [];
+            loadDialogArchiveEntries = [];
+            updateLoadButtons();
         }
-        function performSave() {
-            const description = document.getElementById('save-description').value;
-            const saveMode = document.getElementById('save-mode').value;
-            socket.emit('action', { action: 'saveGame', parameters: { description: description, saveMode: saveMode } });
-            closeSaveDialog();
-        }
-        function performLoad() {
-            if (!selectedSaveFolder) return;
-            if (confirm('This will restore the selected save and restart the server. Your current progress will be lost. Continue?')) {
-                // TABLETOP MODE: Module-aware restore payload with fallback for legacy entries
-                const payload = { saveFolder: selectedSaveFolder };
-                if (selectedSaveGame && selectedSaveGame.source_module) {
-                    payload.sourceModule = selectedSaveGame.source_module;
-                }
-                socket.emit('action', { action: 'restoreGame', parameters: payload });
-                closeLoadDialog();
-            }
-        }
-        function deleteSelectedSave() {
-            if (!selectedSaveFolder) return;
-            if (confirm('Delete this save? This cannot be undone.')) {
-                socket.emit('action', { action: 'deleteSave', parameters: { saveFolder: selectedSaveFolder } });
-                setTimeout(() => loadSaveGameList(), 500);
-                selectedSaveFolder = null;
-                selectedSaveGame = null;
-                updateLoadButtons();
-            }
-        }
-        socket.on('save_list_response', (saveGames) => {
+        function loadSaveGameList() {
             const saveList = document.getElementById('save-list');
-            if (saveGames.length === 0) { 
-                saveList.innerHTML = '<div style="padding: 40px; text-align: center; color: #999; font-size: 16px;">No save games found.</div>'; 
-                return; 
+            selectedSaveFolder = null;
+            selectedSaveGame = null;
+            loadDialogSaveEntries = [];
+            loadDialogArchiveEntries = [];
+            updateLoadButtons();
+            saveList.innerHTML = 'Loading...';
+            socket.emit('action', { action: 'listSaves', parameters: {} });
+            socket.emit('action', { action: 'listArchiveZips', parameters: {} });
+        }
+        function selectSaveGame(saveFolder, element) {
+            document.querySelectorAll('.save-item').forEach(item => { item.classList.remove('selected'); });
+            element.classList.add('selected');
+            selectedSaveFolder = saveFolder;
+            selectedSaveGame = element.dataset.save ? JSON.parse(element.dataset.save) : null;
+            updateLoadButtons();
+        }
+        function selectArchiveZip(zipName, element) {
+            document.querySelectorAll('.save-item').forEach(item => { item.classList.remove('selected'); });
+            element.classList.add('selected');
+            selectedSaveFolder = null;
+            selectedSaveGame = element.dataset.save ? JSON.parse(element.dataset.save) : null;
+            if (selectedSaveGame) {
+                selectedSaveGame.entry_type = 'archive_zip';
+                selectedSaveGame.zip_name = zipName;
             }
+            updateLoadButtons();
+        }
+        function updateLoadButtons() {
+            const canLoad = !!selectedSaveGame;
+            const canDelete = !!selectedSaveFolder && !!selectedSaveGame && selectedSaveGame.entry_type !== 'archive_zip';
+            document.getElementById('load-save-button').disabled = !canLoad;
+            document.getElementById('delete-save-button').disabled = !canDelete;
+        }
+
+        function formatArchiveBytes(bytes) {
+            if (!bytes || bytes <= 0) {
+                return '0 B';
+            }
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let size = Number(bytes);
+            let unitIndex = 0;
+            while (size >= 1024 && unitIndex < units.length - 1) {
+                size /= 1024;
+                unitIndex += 1;
+            }
+            if (unitIndex === 0) {
+                return `${Math.round(size)} ${units[unitIndex]}`;
+            }
+            return `${size.toFixed(1)} ${units[unitIndex]}`;
+        }
+
+        function formatArchiveModified(isoTimestamp) {
+            if (!isoTimestamp) {
+                return 'Unknown';
+            }
+            try {
+                const dt = new Date(isoTimestamp);
+                if (Number.isNaN(dt.getTime())) {
+                    return 'Unknown';
+                }
+                return dt.toLocaleString();
+            } catch (err) {
+                return 'Unknown';
+            }
+        }
+
+        function renderLoadDialogEntries() {
+            const saveList = document.getElementById('save-list');
+
+            if (loadDialogSaveEntries.length === 0 && loadDialogArchiveEntries.length === 0) {
+                saveList.innerHTML = '<div style="padding: 40px; text-align: center; color: #999; font-size: 16px;">No save games or archive zips found.</div>';
+                return;
+            }
+
             let html = '';
-            saveGames.forEach(save => {
+
+            loadDialogSaveEntries.forEach(save => {
                 const modeClass = save.save_mode === 'full' ? 'full' : 'essential';
                 const modeBadge = save.save_mode ? `<span class="save-mode-badge ${modeClass}">${save.save_mode}</span>` : '';
                 // TABLETOP MODE: Source module and memory parity indicator
@@ -8084,7 +8129,84 @@
                     </div>
                 `;
             });
+
+            loadDialogArchiveEntries.forEach(archive => {
+                const archiveData = {
+                    entry_type: 'archive_zip',
+                    zip_name: archive.zip_name,
+                    zip_path: archive.zip_path,
+                    bytes: archive.bytes,
+                    modified_timestamp: archive.modified_timestamp,
+                };
+                html += `
+                    <div class="save-item" onclick="selectArchiveZip('${archive.zip_name}', this)" data-save="${JSON.stringify(archiveData).replace(/"/g, '&quot;')}">
+                        <div class="save-item-header">
+                            ${archive.zip_name}
+                            <span class="save-mode-badge full">archive zip</span>
+                        </div>
+                        <div class="save-item-details">
+                            <div class="save-detail-row">
+                                <span class="save-detail-label">Size:</span>
+                                <span class="save-detail-value">${formatArchiveBytes(archive.bytes)}</span>
+                            </div>
+                            <div class="save-detail-row">
+                                <span class="save-detail-label">Modified:</span>
+                                <span class="save-detail-value date">${formatArchiveModified(archive.modified_timestamp)}</span>
+                            </div>
+                            <div class="save-detail-row">
+                                <span class="save-detail-label">Source:</span>
+                                <span class="save-detail-value module">archive_exports</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
             saveList.innerHTML = html;
+        }
+
+        function performSave() {
+            const description = document.getElementById('save-description').value;
+            const saveMode = document.getElementById('save-mode').value;
+            socket.emit('action', { action: 'saveGame', parameters: { description: description, saveMode: saveMode } });
+            closeSaveDialog();
+        }
+        function performLoad() {
+            if (!selectedSaveGame) return;
+            if (confirm('This will restore the selected save and restart the server. Your current progress will be lost. Continue?')) {
+                if (selectedSaveGame.entry_type === 'archive_zip') {
+                    socket.emit('action', {
+                        action: 'restoreArchiveZip',
+                        parameters: { zipName: selectedSaveGame.zip_name }
+                    });
+                } else {
+                    // TABLETOP MODE: Module-aware restore payload with fallback for legacy entries
+                    const payload = { saveFolder: selectedSaveFolder };
+                    if (selectedSaveGame.source_module) {
+                        payload.sourceModule = selectedSaveGame.source_module;
+                    }
+                    socket.emit('action', { action: 'restoreGame', parameters: payload });
+                }
+                closeLoadDialog();
+            }
+        }
+        function deleteSelectedSave() {
+            if (!selectedSaveFolder || !selectedSaveGame || selectedSaveGame.entry_type === 'archive_zip') return;
+            if (confirm('Delete this save? This cannot be undone.')) {
+                socket.emit('action', { action: 'deleteSave', parameters: { saveFolder: selectedSaveFolder } });
+                setTimeout(() => loadSaveGameList(), 500);
+                selectedSaveFolder = null;
+                selectedSaveGame = null;
+                updateLoadButtons();
+            }
+        }
+        socket.on('save_list_response', (saveGames) => {
+            loadDialogSaveEntries = Array.isArray(saveGames) ? saveGames : [];
+            renderLoadDialogEntries();
+        });
+        socket.on('archive_zip_list_response', (archiveZips) => {
+            loadDialogArchiveEntries = Array.isArray(archiveZips) ? archiveZips : [];
+            renderLoadDialogEntries();
         });
 
         function switchCharacterDetailTab(containerId, tabName) {

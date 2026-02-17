@@ -22,26 +22,22 @@
   - **Evidence:** Archive zip generated at `modules/Keep_of_Doom/saved_games/archive_20260216_172143.zip` (26,499,753 bytes)
   - **Status:** All Steps 1.1-4.3 COMPLETE, validated, ready for PR3
 
-- **PR3 Root Archive Export + Zip Import Restore (IN PROGRESS - 2026-02-16):**
-  - **Operational Requirement:** Library staff need repo-root archive folder for easy USB copy workflows
-  - **OpenSpec Change:** `archive-root-export-and-zip-import-restore` scaffolded with full artifact set
-  - **Step 1.1 Complete - Root Export Foundation:**
-    - Added `ARCHIVE_EXPORTS_DIR = "archive_exports"` constant
-    - Added `_get_archive_exports_directory()` helper for root path resolution
-    - Updated zip naming: `archive_<module>_<timestamp>_<save_folder>.zip`
-    - Archives export to repo-root `archive_exports/` directory
-    - **Verification:** Compile gate passed, smoke tests passed (5/5)
-    - **Files Modified:** `updates/save_game_manager.py`
-  - **Step 1.2 Next - Payload and Archive Catalog:**
-    - Full save payload must return root export zip_path
-    - Add zip catalog listing support for `archive_exports/*.zip`
-    - Essential save payload remains unchanged
-  - **Key Architecture Decisions:**
-    - Root export directory: `archive_exports/` at repo root (not nested in modules)
-    - Deterministic naming: `archive_<module>_<timestamp>_<save_folder>.zip`
-    - Zip restore model: validate -> stage -> delegate to existing restore
-    - Security: Reject traversal entries, missing metadata, invalid module mapping
-  - **Status:** Step 1.1 complete, ready for Step 1.2 builder execution
+- **PR3 Root Archive Export + Zip Import Restore (COMPLETED - 2026-02-17):**
+  - **OpenSpec Change:** `archive-root-export-and-zip-import-restore` fully implemented, validated, and ready for archival
+  - **Objective:** Enable repo-root archive exports for USB copy workflows and direct zip restore without manual unzip/staging
+  - **Implementation Complete:**
+    - **Root Export Foundation:** `ARCHIVE_EXPORTS_DIR`, `_get_archive_exports_directory()`, deterministic naming
+    - **Archive Catalog:** `list_archive_exports()` for `archive_exports/*.zip` discovery
+    - **Zip Preflight:** `_validate_archive_zip_preflight()` rejects traversal, absolute paths, missing metadata, unknown modules
+    - **Secure Extraction:** `_extract_archive_save_to_temp()` with temp cleanup, defense-in-depth path validation
+    - **Canonical Staging:** `_stage_archive_save_folder()` into `modules/<module>/saved_games/`
+    - **Restore Pipeline:** `restore_save_game_archive()` validates -> extracts -> stages -> delegates to `restore_save_game_global()`
+    - **Web Integration:** `listArchiveZips` and `restoreArchiveZip` socket handlers with existing emit semantics
+    - **Load Dialog:** Dual rendering for save folders and archive zips, archive rows show name/size/modified, delete disabled for archives
+  - **Regression Suite:** `scripts/test_archive_zip_restore.py` (10 tests: traversal, absolute path, missing metadata, unknown module, preflight, resolve, extraction, staging, delegation, catalog sorting) - all PASS
+  - **Verification:** Compile gate PASS, positive smoke PASS, negative smoke PASS (all fail-closed), regression PASS (essential save and folder restore unchanged)
+  - **Files Modified:** `updates/save_game_manager.py` (+~340 lines), `web/web_interface.py` (+~40 lines), `web/templates/game_interface.html` (+~120 lines), `scripts/test_archive_zip_restore.py` (new)
+  - **Status:** COMPLETED, all 7.x tasks done, ready for archival
 
 - **PC Leave/Return World Memory (COMPLETED - 2026-02-17):** OpenSpec change `pc-leave-return-world-memory` fully implemented, validated, and archived. **Phase 1:** `core/memory/party_transition_memory.py` created with `record_pc_retirement()`, `record_pc_return()`, `build_return_memory_pack()` - uses canonical entity IDs, `role_transition` events with `importance=95`, fail-safe returns. **Phase 2:** Retirement flow in `web/routes/tabletop_party_routes.py:remove_party_character` - accepts `departure_text`, guards for active combat/final member, fail-open memory persistence, retirement narration with farewell/mysterious fallback, `_tabletop_role_history` append. **Phase 3:** Return flow in `web/routes/tabletop_party_routes.py:add_party_character` - true rejoin detection, return memory persistence, continuity pack for narration (bounded: max 3 snippets per source, max 12 combined), canonical identity preservation via `ensure_stable_character_id()`. **Phase 4:** UI flow `web/static/js/tabletop_mode.js:retireCharacter` collects optional farewell text, prompt templates created at `prompts/tabletop/retirement_narration.txt` and `prompts/tabletop/return_narration.txt` with narration-only instructions and required placeholders. **Phase 5:** Test suite `scripts/test_party_retirement_memory.py` created with 4 test functions (20+ assertions) covering persistence, no-purge guarantees, continuity retrieval, graceful degradation - all PASS with temp DB isolation. Structured degraded-mode logging implemented: `MEMORY_TRANSITION event=retirement|return character=<name> status=success|degraded ... fallback=enabled`. All verification commands PASS: Python compile, JS syntax, regression tests, lifecycle tests. **Status:** COMPLETE, archived to `openspec/changes/archive/2026-02-17-pc-leave-return-world-memory/`.
 
