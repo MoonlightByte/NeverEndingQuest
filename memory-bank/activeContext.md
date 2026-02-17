@@ -1,5 +1,28 @@
 ## Current Work Focus
 
+- **Load Dialog Unified Archive/Save Timeline (COMPLETED - 2026-02-17):**
+  - **OpenSpec Change:** `load-dialog-unified-archive-save-timeline` fully implemented, validated, and archived
+  - **Objective:** Merge save folders and archive zips into one recency-ordered timeline with entry-type filters
+  - **Implementation Complete:**
+    - **Unified Entry Model:** Client-side normalization helper `normalizeLoadEntries()` maps both `save_list_response` and `archive_zip_list_response` into shared structure with `entry_type` (`save_folder` or `archive_zip`), `display_name`, and `sort_timestamp`
+    - **Unified Sort and Render:** Merged render pipeline using `compareUnifiedEntries()` comparator for newest-first ordering with deterministic tie-break (timestamp -> type -> name)
+    - **Timestamp Parsing:** `parseSaveTimestamp()` with fallback chain (parsed date -> folder name YYYYMMDD_HHMMSS extraction -> 0), `parseArchiveTimestamp()` for ISO strings
+    - **Filter Controls:** Three chips (`all`, `save_folders`, `archive_zips`) with default `all`, visual `.active` state via `updateFilterChipVisuals()`
+    - **Selection Safety:** `isEntryVisibleUnderFilter()` checks visibility, `clearLoadDialogSelection()` resets state when filtered out, `updateLoadButtons()` reflects current availability
+    - **Filter Application:** `getFilteredUnifiedEntries()` applies active filter before render, per-filter empty messages ("No save folders found", "No archive zips found")
+  - **Action Compatibility Preserved:**
+    - `save_folder` selection -> `restoreGame` with `saveFolder` + optional `sourceModule`
+    - `archive_zip` selection -> `restoreArchiveZip` with `zipName`
+    - Delete disabled for archive entries (`entry_type !== 'archive_zip'` check in `updateLoadButtons()` and `deleteSelectedSave()`)
+  - **Verification:**
+    - Compile gate: PASS (`python3 -m py_compile web/web_interface.py`)
+    - JS syntax gate: PASS (load dialog block validated)
+    - `openspec validate`: PASS (Change is valid)
+    - Invariant checks: All 7 pass (unified model/sort, filters, selection safety, restore routing, delete restrictions)
+  - **Files Modified:** `web/templates/game_interface.html` (+364/-65 lines) - unified helpers, filter UI/CSS, merged render, preserved action routing
+  - **Archived:** `openspec/changes/archive/2026-02-17-load-dialog-unified-archive-save-timeline/`
+  - **Specs Updated:** `openspec/specs/load-dialog-action-compatibility/`, `openspec/specs/load-dialog-entry-filters/`, `openspec/specs/load-dialog-unified-timeline/`
+
 - **PR2 Archive Zip Portability and Memory Backup Parity (COMPLETED - 2026-02-16):**
   - **OpenSpec Change:** `archive-zip-portability-and-memory-backup-parity` fully implemented and validated (Steps 1.1-4.3 complete)
   - **Section 1 - Archive Auto-Zip Backend:**

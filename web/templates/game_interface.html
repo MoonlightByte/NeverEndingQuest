@@ -1072,7 +1072,42 @@
             background-color: #1a1a1a;
             padding: 8px;
         }
-        
+
+        /* TABLETOP MODE: Load dialog filter chips */
+        .load-dialog-filters {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            padding: 0 4px;
+        }
+
+        .filter-chip {
+            padding: 6px 12px;
+            border: 1px solid #555;
+            border-radius: 16px;
+            background-color: #2c2c2c;
+            color: #ccc;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .filter-chip:hover {
+            background-color: #3a3a3a;
+            border-color: #666;
+        }
+
+        .filter-chip.active {
+            background-color: #2d5a2d;
+            border-color: #4CAF50;
+            color: #4CAF50;
+        }
+
+        .filter-chip.active:hover {
+            background-color: #346834;
+        }
+
         .save-item {
             padding: 12px;
             margin-bottom: 8px;
@@ -6213,6 +6248,18 @@
                             </div>
                         </div>
                     </div>`;
+
+            // Appearance display (optional fields)
+            const appearanceParts = [];
+            if (data.age && String(data.age).trim()) appearanceParts.push(`Age: ${data.age}`);
+            if (data.height && String(data.height).trim()) appearanceParts.push(`Height: ${data.height}`);
+            if (data.weight && String(data.weight).trim()) appearanceParts.push(`Weight: ${data.weight}`);
+            if (data.eyes && String(data.eyes).trim()) appearanceParts.push(`Eyes: ${data.eyes}`);
+            if (data.skin && String(data.skin).trim()) appearanceParts.push(`Skin: ${data.skin}`);
+            if (data.hair && String(data.hair).trim()) appearanceParts.push(`Hair: ${data.hair}`);
+            if (appearanceParts.length > 0) {
+                html += `<div style="margin: 8px 0; padding: 6px 10px; background: rgba(0,0,0,0.3); border-radius: 4px; font-size: 13px; color: #ccc;">${appearanceParts.join(' | ')}</div>`;
+            }
             if (data.abilities) {
                 html += '<div class="abilities-row">';
                 ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'].forEach(ability => {
@@ -7884,6 +7931,12 @@
     <div id="load-dialog-overlay" class="save-dialog-overlay">
         <div class="save-dialog">
             <h3>Load Saved Game</h3>
+            <!-- TABLETOP MODE: Filter controls for unified timeline -->
+            <div class="load-dialog-filters" id="load-dialog-filters">
+                <button class="filter-chip active" data-filter="all" onclick="setLoadDialogFilter('all')">All</button>
+                <button class="filter-chip" data-filter="save_folders" onclick="setLoadDialogFilter('save_folders')">Save Folders</button>
+                <button class="filter-chip" data-filter="archive_zips" onclick="setLoadDialogFilter('archive_zips')">Archive Zips</button>
+            </div>
             <div id="save-list" class="save-list"></div>
             <div class="dialog-buttons">
                 <button class="dialog-button secondary" onclick="closeLoadDialog()">Cancel</button>
@@ -7985,6 +8038,92 @@
         let selectedSaveGame = null;
         let loadDialogSaveEntries = [];
         let loadDialogArchiveEntries = [];
+        // TABLETOP MODE: Unified load dialog entry model
+        let loadDialogUnifiedEntries = [];
+        // TABLETOP MODE: Active filter state (all, save_folders, archive_zips)
+        let loadDialogFilter = 'all';
+
+        // TABLETOP MODE: Load dialog filter helpers
+        /**
+         * Set the active filter and re-render the list.
+         * Clears selection if the selected entry is filtered out.
+         * @param {string} filter - One of: 'all', 'save_folders', 'archive_zips'
+         */
+        function setLoadDialogFilter(filter) {
+            const validFilters = ['all', 'save_folders', 'archive_zips'];
+            if (!validFilters.includes(filter)) {
+                return;
+            }
+            loadDialogFilter = filter;
+            updateFilterChipVisuals();
+            // Clear selection if filtered out
+            if (selectedSaveGame && !isEntryVisibleUnderFilter(selectedSaveGame, filter)) {
+                clearLoadDialogSelection();
+            }
+            renderLoadDialogEntries();
+        }
+
+        /**
+         * Update visual active state on filter chip buttons.
+         */
+        function updateFilterChipVisuals() {
+            document.querySelectorAll('.load-dialog-filters .filter-chip').forEach(chip => {
+                if (chip.dataset.filter === loadDialogFilter) {
+                    chip.classList.add('active');
+                } else {
+                    chip.classList.remove('active');
+                }
+            });
+        }
+
+        /**
+         * Determine if an entry is visible under the current filter.
+         * @param {Object} entry - The entry to check
+         * @param {string} filter - The filter to apply
+         * @returns {boolean} True if visible
+         */
+        function isEntryVisibleUnderFilter(entry, filter) {
+            if (filter === 'all') {
+                return true;
+            }
+            if (filter === 'save_folders') {
+                return entry.entry_type === 'save_folder';
+            }
+            if (filter === 'archive_zips') {
+                return entry.entry_type === 'archive_zip';
+            }
+            return true;
+        }
+
+        /**
+         * Clear current selection and update button states.
+         */
+        function clearLoadDialogSelection() {
+            selectedSaveFolder = null;
+            selectedSaveGame = null;
+            document.querySelectorAll('.save-item').forEach(item => { item.classList.remove('selected'); });
+            updateLoadButtons();
+        }
+
+        /**
+         * Filter unified entries by the current filter state.
+         * @returns {Array} Filtered entries for rendering
+         */
+        function getFilteredUnifiedEntries() {
+            if (loadDialogFilter === 'all') {
+                return loadDialogUnifiedEntries;
+            }
+            return loadDialogUnifiedEntries.filter(entry => {
+                if (loadDialogFilter === 'save_folders') {
+                    return entry.entry_type === 'save_folder';
+                }
+                if (loadDialogFilter === 'archive_zips') {
+                    return entry.entry_type === 'archive_zip';
+                }
+                return true;
+            });
+        }
+
         function openSaveDialog() { document.getElementById('save-dialog-overlay').style.display = 'flex'; document.getElementById('save-description').focus(); }
         function closeSaveDialog() { 
             document.getElementById('save-dialog-overlay').style.display = 'none'; 
@@ -8006,13 +8145,154 @@
                 fullDetails.style.display = 'block';
             }
         }
-        function openLoadDialog() { document.getElementById('load-dialog-overlay').style.display = 'flex'; loadSaveGameList(); }
+        // TABLETOP MODE: Unified load dialog helpers
+        /**
+         * Normalize save folder and archive zip payloads into one shared entry model.
+         * @param {Array} saveEntries - Raw save_list_response payload
+         * @param {Array} archiveEntries - Raw archive_zip_list_response payload
+         * @returns {Array} Unified entries with entry_type and sort key
+         */
+        function normalizeLoadEntries(saveEntries, archiveEntries) {
+            const unified = [];
+
+            // Normalize save folders
+            (saveEntries || []).forEach(save => {
+                unified.push({
+                    entry_type: 'save_folder',
+                    display_name: save.save_folder || 'Unnamed Save',
+                    sort_timestamp: parseSaveTimestamp(save.save_date_readable, save.save_folder),
+                    source_data: save,
+                    // Preserve key fields for rendering
+                    save_folder: save.save_folder,
+                    save_mode: save.save_mode,
+                    save_date_readable: save.save_date_readable,
+                    source_module: save.source_module || save.module,
+                    game_state: save.game_state,
+                    description: save.description,
+                    memory_package_present: save.memory_package_present
+                });
+            });
+
+            // Normalize archive zips
+            (archiveEntries || []).forEach(archive => {
+                unified.push({
+                    entry_type: 'archive_zip',
+                    display_name: archive.zip_name || 'Unnamed Archive',
+                    sort_timestamp: parseArchiveTimestamp(archive.modified_timestamp),
+                    source_data: archive,
+                    // Preserve key fields for rendering
+                    zip_name: archive.zip_name,
+                    zip_path: archive.zip_path,
+                    bytes: archive.bytes,
+                    modified_timestamp: archive.modified_timestamp
+                });
+            });
+
+            return unified;
+        }
+
+        /**
+         * Parse save folder timestamp from readable date or folder name.
+         * Fallback chain: parsed date -> folder name timestamp -> 0
+         */
+        function parseSaveTimestamp(dateReadable, folderName) {
+            if (dateReadable) {
+                try {
+                    const parsed = new Date(dateReadable);
+                    if (!Number.isNaN(parsed.getTime())) {
+                        return parsed.getTime();
+                    }
+                } catch (e) {
+                    // Fall through to fallback
+                }
+            }
+            // Fallback: try to extract timestamp from folder name (format: manual_save_YYYYMMDD_HHMMSS)
+            if (folderName) {
+                const match = folderName.match(/(\d{8})_(\d{6})/);
+                if (match) {
+                    const dateStr = match[1];
+                    const timeStr = match[2];
+                    const year = parseInt(dateStr.substring(0, 4), 10);
+                    const month = parseInt(dateStr.substring(4, 6), 10) - 1;
+                    const day = parseInt(dateStr.substring(6, 8), 10);
+                    const hour = parseInt(timeStr.substring(0, 2), 10);
+                    const minute = parseInt(timeStr.substring(2, 4), 10);
+                    const second = parseInt(timeStr.substring(4, 6), 10);
+                    const fallbackDate = new Date(year, month, day, hour, minute, second);
+                    if (!Number.isNaN(fallbackDate.getTime())) {
+                        return fallbackDate.getTime();
+                    }
+                }
+            }
+            return 0;
+        }
+
+        /**
+         * Parse archive zip timestamp from ISO string.
+         * Returns epoch milliseconds or 0 if invalid.
+         */
+        function parseArchiveTimestamp(isoTimestamp) {
+            if (!isoTimestamp) return 0;
+            try {
+                const parsed = new Date(isoTimestamp);
+                if (Number.isNaN(parsed.getTime())) {
+                    return 0;
+                }
+                return parsed.getTime();
+            } catch (e) {
+                return 0;
+            }
+        }
+
+        /**
+         * Get deterministic sort key for unified entries.
+         * Primary: timestamp descending (newest first)
+         * Tie-break 1: entry_type (archive_zip before save_folder for determinism)
+         * Tie-break 2: display_name ascending
+         */
+        function getEntrySortKey(entry) {
+            const ts = entry.sort_timestamp || 0;
+            const typeOrder = entry.entry_type === 'archive_zip' ? 'A' : 'B';
+            const name = entry.display_name || '';
+            // Return composite sort key for descending timestamp, then deterministic tie-break
+            // Using negative timestamp for descending order in ascending sort
+            return {
+                timestamp: -ts,
+                type_order: typeOrder,
+                name: name.toLowerCase()
+            };
+        }
+
+        /**
+         * Sort comparator for unified entries (newest first, deterministic ties).
+         */
+        function compareUnifiedEntries(a, b) {
+            const keyA = getEntrySortKey(a);
+            const keyB = getEntrySortKey(b);
+
+            if (keyA.timestamp !== keyB.timestamp) {
+                return keyA.timestamp < keyB.timestamp ? -1 : 1;
+            }
+            if (keyA.type_order !== keyB.type_order) {
+                return keyA.type_order < keyB.type_order ? -1 : 1;
+            }
+            return keyA.name < keyB.name ? -1 : (keyA.name > keyB.name ? 1 : 0);
+        }
+
+        function openLoadDialog() {
+            // TABLETOP MODE: Reset filter to default 'all' on open and sync visuals
+            loadDialogFilter = 'all';
+            updateFilterChipVisuals();
+            document.getElementById('load-dialog-overlay').style.display = 'flex';
+            loadSaveGameList();
+        }
         function closeLoadDialog() {
             document.getElementById('load-dialog-overlay').style.display = 'none';
             selectedSaveFolder = null;
             selectedSaveGame = null;
             loadDialogSaveEntries = [];
             loadDialogArchiveEntries = [];
+            loadDialogUnifiedEntries = [];
             updateLoadButtons();
         }
         function loadSaveGameList() {
@@ -8021,6 +8301,7 @@
             selectedSaveGame = null;
             loadDialogSaveEntries = [];
             loadDialogArchiveEntries = [];
+            loadDialogUnifiedEntries = [];
             updateLoadButtons();
             saveList.innerHTML = 'Loading...';
             socket.emit('action', { action: 'listSaves', parameters: {} });
@@ -8086,80 +8367,90 @@
         function renderLoadDialogEntries() {
             const saveList = document.getElementById('save-list');
 
-            if (loadDialogSaveEntries.length === 0 && loadDialogArchiveEntries.length === 0) {
-                saveList.innerHTML = '<div style="padding: 40px; text-align: center; color: #999; font-size: 16px;">No save games or archive zips found.</div>';
+            // TABLETOP MODE: Use filtered unified merged list sorted newest-first
+            const filteredEntries = getFilteredUnifiedEntries();
+            if (filteredEntries.length === 0) {
+                if (loadDialogFilter === 'all') {
+                    saveList.innerHTML = '<div style="padding: 40px; text-align: center; color: #999; font-size: 16px;">No save games or archive zips found.</div>';
+                } else if (loadDialogFilter === 'save_folders') {
+                    saveList.innerHTML = '<div style="padding: 40px; text-align: center; color: #999; font-size: 16px;">No save folders found.</div>';
+                } else if (loadDialogFilter === 'archive_zips') {
+                    saveList.innerHTML = '<div style="padding: 40px; text-align: center; color: #999; font-size: 16px;">No archive zips found.</div>';
+                }
                 return;
             }
 
             let html = '';
 
-            loadDialogSaveEntries.forEach(save => {
-                const modeClass = save.save_mode === 'full' ? 'full' : 'essential';
-                const modeBadge = save.save_mode ? `<span class="save-mode-badge ${modeClass}">${save.save_mode}</span>` : '';
-                // TABLETOP MODE: Source module and memory parity indicator
-                const sourceModule = save.source_module || save.module || 'Unknown Module';
-                const memoryIndicator = save.memory_package_present ?
-                    '<span class="memory-badge" title="Memory package present">[M]</span>' : '';
-                html += `
-                    <div class="save-item" onclick="selectSaveGame('${save.save_folder}', this)" data-save="${JSON.stringify(save).replace(/"/g, '&quot;')}">
-                        <div class="save-item-header">
-                            ${save.save_folder}
-                            ${modeBadge}
-                            ${memoryIndicator}
-                        </div>
-                        <div class="save-item-details">
-                            <div class="save-detail-row">
-                                <span class="save-detail-label">Date:</span>
-                                <span class="save-detail-value date">${save.save_date_readable || 'Unknown'}</span>
+            filteredEntries.forEach(entry => {
+                if (entry.entry_type === 'save_folder') {
+                    const save = entry.source_data;
+                    const modeClass = save.save_mode === 'full' ? 'full' : 'essential';
+                    const modeBadge = save.save_mode ? `<span class="save-mode-badge ${modeClass}">${save.save_mode}</span>` : '';
+                    // TABLETOP MODE: Source module and memory parity indicator
+                    const sourceModule = save.source_module || save.module || 'Unknown Module';
+                    const memoryIndicator = save.memory_package_present ?
+                        '<span class="memory-badge" title="Memory package present">[M]</span>' : '';
+                    html += `
+                        <div class="save-item" onclick="selectSaveGame('${save.save_folder}', this)" data-save="${JSON.stringify(save).replace(/"/g, '&quot;')}">
+                            <div class="save-item-header">
+                                ${save.save_folder}
+                                ${modeBadge}
+                                ${memoryIndicator}
                             </div>
-                            <div class="save-detail-row">
-                                <span class="save-detail-label">Source Module:</span>
-                                <span class="save-detail-value module">${sourceModule}</span>
-                            </div>
-                            <div class="save-detail-row">
-                                <span class="save-detail-label">Location:</span>
-                                <span class="save-detail-value location">${save.game_state?.current_location || 'Unknown Location'}</span>
-                            </div>
-                            ${save.description ? `
-                            <div class="save-detail-row">
-                                <span class="save-detail-label">Notes:</span>
-                                <span class="save-detail-value description">${save.description}</span>
-                            </div>` : ''}
-                        </div>
-                    </div>
-                `;
-            });
-
-            loadDialogArchiveEntries.forEach(archive => {
-                const archiveData = {
-                    entry_type: 'archive_zip',
-                    zip_name: archive.zip_name,
-                    zip_path: archive.zip_path,
-                    bytes: archive.bytes,
-                    modified_timestamp: archive.modified_timestamp,
-                };
-                html += `
-                    <div class="save-item" onclick="selectArchiveZip('${archive.zip_name}', this)" data-save="${JSON.stringify(archiveData).replace(/"/g, '&quot;')}">
-                        <div class="save-item-header">
-                            ${archive.zip_name}
-                            <span class="save-mode-badge full">archive zip</span>
-                        </div>
-                        <div class="save-item-details">
-                            <div class="save-detail-row">
-                                <span class="save-detail-label">Size:</span>
-                                <span class="save-detail-value">${formatArchiveBytes(archive.bytes)}</span>
-                            </div>
-                            <div class="save-detail-row">
-                                <span class="save-detail-label">Modified:</span>
-                                <span class="save-detail-value date">${formatArchiveModified(archive.modified_timestamp)}</span>
-                            </div>
-                            <div class="save-detail-row">
-                                <span class="save-detail-label">Source:</span>
-                                <span class="save-detail-value module">archive_exports</span>
+                            <div class="save-item-details">
+                                <div class="save-detail-row">
+                                    <span class="save-detail-label">Date:</span>
+                                    <span class="save-detail-value date">${save.save_date_readable || 'Unknown'}</span>
+                                </div>
+                                <div class="save-detail-row">
+                                    <span class="save-detail-label">Source Module:</span>
+                                    <span class="save-detail-value module">${sourceModule}</span>
+                                </div>
+                                <div class="save-detail-row">
+                                    <span class="save-detail-label">Location:</span>
+                                    <span class="save-detail-value location">${save.game_state?.current_location || 'Unknown Location'}</span>
+                                </div>
+                                ${save.description ? `
+                                <div class="save-detail-row">
+                                    <span class="save-detail-label">Notes:</span>
+                                    <span class="save-detail-value description">${save.description}</span>
+                                </div>` : ''}
                             </div>
                         </div>
-                    </div>
-                `;
+                    `;
+                } else if (entry.entry_type === 'archive_zip') {
+                    const archive = entry.source_data;
+                    const archiveData = {
+                        entry_type: 'archive_zip',
+                        zip_name: archive.zip_name,
+                        zip_path: archive.zip_path,
+                        bytes: archive.bytes,
+                        modified_timestamp: archive.modified_timestamp,
+                    };
+                    html += `
+                        <div class="save-item" onclick="selectArchiveZip('${archive.zip_name}', this)" data-save="${JSON.stringify(archiveData).replace(/"/g, '&quot;')}">
+                            <div class="save-item-header">
+                                ${archive.zip_name}
+                                <span class="save-mode-badge full">archive zip</span>
+                            </div>
+                            <div class="save-item-details">
+                                <div class="save-detail-row">
+                                    <span class="save-detail-label">Size:</span>
+                                    <span class="save-detail-value">${formatArchiveBytes(archive.bytes)}</span>
+                                </div>
+                                <div class="save-detail-row">
+                                    <span class="save-detail-label">Modified:</span>
+                                    <span class="save-detail-value date">${formatArchiveModified(archive.modified_timestamp)}</span>
+                                </div>
+                                <div class="save-detail-row">
+                                    <span class="save-detail-label">Source:</span>
+                                    <span class="save-detail-value module">archive_exports</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
             });
 
             saveList.innerHTML = html;
@@ -8202,10 +8493,18 @@
         }
         socket.on('save_list_response', (saveGames) => {
             loadDialogSaveEntries = Array.isArray(saveGames) ? saveGames : [];
+            // TABLETOP MODE: Build unified merged list from both sources
+            loadDialogUnifiedEntries = normalizeLoadEntries(loadDialogSaveEntries, loadDialogArchiveEntries);
+            // Sort newest-first with deterministic tie-break
+            loadDialogUnifiedEntries.sort(compareUnifiedEntries);
             renderLoadDialogEntries();
         });
         socket.on('archive_zip_list_response', (archiveZips) => {
             loadDialogArchiveEntries = Array.isArray(archiveZips) ? archiveZips : [];
+            // TABLETOP MODE: Build unified merged list from both sources
+            loadDialogUnifiedEntries = normalizeLoadEntries(loadDialogSaveEntries, loadDialogArchiveEntries);
+            // Sort newest-first with deterministic tie-break
+            loadDialogUnifiedEntries.sort(compareUnifiedEntries);
             renderLoadDialogEntries();
         });
 

@@ -10,6 +10,21 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **Load Dialog Unified Archive/Save Timeline (COMPLETED - 2026-02-17):**
+  - **OpenSpec Change:** `load-dialog-unified-archive-save-timeline` fully implemented, validated, archived, and spec-synced
+  - **Objective:** Present save folders and archive zips in one merged recency-ordered timeline with type filters
+  - **Key Implementation:**
+    - Unified entry normalization in `web/templates/game_interface.html` with `normalizeLoadEntries()`, `parseSaveTimestamp()`, `parseArchiveTimestamp()`
+    - Newest-first sorting via `compareUnifiedEntries()` with deterministic tie-break (timestamp desc -> type_order -> display_name)
+    - Filter chips (`all`, `save_folders`, `archive_zips`) with default `all`, active state styling via CSS
+    - Selection safety: automatic clear when selected entry filtered out, button state updates
+    - Preserved action routing: `restoreGame` for save folders, `restoreArchiveZip` for archives
+    - Delete restriction maintained: only enabled for save-folder selections
+  - **Files Modified:** `web/templates/game_interface.html` (unified model, filter UI, merged render, CSS)
+  - **Verification:** Compile PASS, JS syntax PASS, `openspec validate` PASS, all invariant checks PASS
+  - **Archived:** `openspec/changes/archive/2026-02-17-load-dialog-unified-archive-save-timeline/`
+  - **Main Specs Updated:** `load-dialog-action-compatibility/`, `load-dialog-entry-filters/`, `load-dialog-unified-timeline/`
+
 - **Exit/Enter GUI Button Implementation Phase 1 (COMPLETED - 2026-02-17):**
   - **OpenSpec Change:** `exit-only-gui-shutdown` fully implemented, validated, and archived
   - **Objective:** Enable graceful server shutdown from GUI Exit button without requiring terminal Ctrl+C
