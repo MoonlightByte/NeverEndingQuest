@@ -10,6 +10,26 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **Exit/Enter GUI Button Implementation Phase 1 (COMPLETED - 2026-02-17):**
+  - **OpenSpec Change:** `exit-only-gui-shutdown` fully implemented, validated, and archived
+  - **Objective:** Enable graceful server shutdown from GUI Exit button without requiring terminal Ctrl+C
+  - **Server Handler** (`web/web_interface.py`): Upgraded `handle_user_exit()` to emit `exit_acknowledged`, attempt graceful `socketio.stop()`, and force exit with code `91` (fail-closed on exceptions)
+  - **Launcher Contract** (`run_web.py`): Added explicit `elif result.returncode == 91` branch to print shutdown message and break loop without restart
+  - **GUI Flow** (`web/templates/game_interface.html`): Immediate "Shutting Down..." overlay on Exit confirm, input controls disabled, `user_exit` event emission
+  - **Ack Handler** (`web/templates/game_interface.html`): `exit_acknowledged` listener updates overlay text, no restart/reload logic
+  - **Key Behaviors:**
+    - Exit code `91` = intentional GUI shutdown (no restart)
+    - Exit code `0` = restart path preserved for reset/restore flows
+    - ASCII-only terminal output (`[Py]`, `[SHUTDOWN]`, `[ERROR]`)
+    - All changes marked with `# TABLETOP MODE:` comments
+  - **Verification:**
+    - Compile checks passed (`python3 -m py_compile web/web_interface.py run_web.py`)
+    - Smoke test passed (GUI Exit -> code 91 -> shutdown message -> no restart)
+    - Regression passed (reset/restore code `0` restart unchanged)
+    - Ctrl+C fallback works cleanly
+  - **Files Modified:** `web/web_interface.py`, `run_web.py`, `web/templates/game_interface.html`
+  - **Archived:** `openspec/changes/archive/2026-02-17-exit-only-gui-shutdown/`
+
 - **PC Image Create and Allied NPC Auto-Generation Planning (PLANNED - 2026-02-16):**
   - Created comprehensive UX enhancement plan at `/plans/pc-image-create.md` for Character Sheet portrait `Upload / Create` actions
   - **Auto-Generation Policy:** Automatic generation enabled for allied NPC companions only; disabled for non-allied NPCs and monsters in MVP

@@ -8455,6 +8455,19 @@
             }, 2000);
         });
 
+        // TABLETOP MODE: Exit acknowledged handler - no restart behavior
+        socket.on('exit_acknowledged', (data) => {
+            console.log('Exit acknowledged by server:', data.message);
+            // Update shutdown overlay if present (no restart/reload)
+            const overlay = document.getElementById('shutdown-overlay');
+            if (overlay) {
+                const heading = overlay.querySelector('h2');
+                if (heading) {
+                    heading.textContent = 'Shutdown acknowledged. Server is exiting...';
+                }
+            }
+        });
+
         // --- AUTO-UPDATE SOCKET HANDLERS ---
         socket.on('version_status', function(data) {
             console.log('[UPDATE] Version status received:', data);
@@ -8485,7 +8498,7 @@
             setTimeout(() => location.reload(), 2000);
         });
 
-        // Exit game functionality
+        // TABLETOP MODE: Exit game functionality with immediate shutdown state
         function exitGame() {
             // Show confirmation dialog
             const confirmExit = confirm('Are you sure you want to exit the game?');
@@ -8496,36 +8509,37 @@
                     socket.emit('user_exit');
                 }
                 
-                // Try to close the window/tab
-                const windowClosed = window.close();
+                // Show immediate shutdown waiting state
+                const exitMessage = document.createElement('div');
+                exitMessage.id = 'shutdown-overlay';
+                exitMessage.style.cssText = `
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    background-color: #2c2c2c;
+                    border: 2px solid #8B0000;
+                    padding: 30px;
+                    border-radius: 10px;
+                    text-align: center;
+                    z-index: 10000;
+                    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+                `;
+                exitMessage.innerHTML = `
+                    <h2 style="color: #FFA500; margin-bottom: 20px;">Shutting Down...</h2>
+                    <p>Server is stopping. Please wait.</p>
+                `;
+                document.body.appendChild(exitMessage);
                 
-                // If window.close() didn't work (common in modern browsers)
-                if (!windowClosed) {
-                    // Show a message to the user
-                    const exitMessage = document.createElement('div');
-                    exitMessage.style.cssText = `
-                        position: fixed;
-                        top: 50%;
-                        left: 50%;
-                        transform: translate(-50%, -50%);
-                        background-color: #2c2c2c;
-                        border: 2px solid #8B0000;
-                        padding: 30px;
-                        border-radius: 10px;
-                        text-align: center;
-                        z-index: 10000;
-                        box-shadow: 0 0 20px rgba(0,0,0,0.5);
-                    `;
-                    exitMessage.innerHTML = `
-                        <h2 style="color: #4CAF50; margin-bottom: 20px;">Thank you for playing!</h2>
-                        <p style="margin-bottom: 20px;">You can now safely close this browser tab.</p>
-                        <p style="color: #888; font-size: 14px;">Due to browser security, we cannot close this tab automatically.</p>
-                    `;
-                    document.body.appendChild(exitMessage);
-                    
-                    // Optionally disable the game interface
-                    document.getElementById('user-input').disabled = true;
-                    document.getElementById('send-button').disabled = true;
+                // Disable input controls immediately
+                document.getElementById('user-input').disabled = true;
+                document.getElementById('send-button').disabled = true;
+                
+                // Attempt to close window (may fail in modern browsers)
+                try {
+                    window.close();
+                } catch (e) {
+                    // Window close blocked by browser security
                 }
             }
         }

@@ -2715,15 +2715,30 @@ def handle_request_storage_data():
 
 @socketio.on('user_exit')
 def handle_user_exit():
-    """Handle intentional user exit - log and clean up"""
+    """Handle intentional user exit - graceful shutdown"""
     try:
-        print("INFO: User has initiated exit from the game")
+        # TABLETOP MODE: Exit intent logging and graceful shutdown
+        print("[Py] User has initiated exit from the game")
         emit('exit_acknowledged', {'message': 'Exit acknowledged'})
-        # Note: We do NOT shut down the server here
-        # Multiple users might be connected, and server shutdown is an admin function
-        # The disconnect event will handle any necessary cleanup when the socket closes
+        
+        # Brief delay to improve ack delivery chance
+        import time
+        time.sleep(0.5)
+        
+        # TABLETOP MODE: Attempt graceful server stop
+        try:
+            socketio.stop()
+        except Exception as stop_err:
+            print(f"[WARNING] Graceful stop failed: {stop_err}")
+        
+        # TABLETOP MODE: Intentional shutdown exit code
+        print("[Py] Server shutdown complete. Exiting process.")
+        os._exit(91)
+        
     except Exception as e:
-        print(f"ERROR handling user exit: {e}")
+        print(f"[ERROR] handling user exit: {e}")
+        # TABLETOP MODE: Fail-closed - force exit even on error
+        os._exit(91)
 
 @socketio.on('toggle_model')
 def handle_model_toggle(data):

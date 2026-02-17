@@ -116,6 +116,10 @@ def main():
                 time.sleep(2)
                 print("[RESTART] Starting server again...")
                 continue
+            elif result.returncode == 91:
+                # TABLETOP MODE: Intentional GUI shutdown
+                print("\n[SHUTDOWN] User initiated exit. Shutting down NeverEndingQuest Web Interface...")
+                break
             else:
                 # Non-zero exit code means an error occurred
                 print(f"\n[ERROR] Server exited with code {result.returncode}")

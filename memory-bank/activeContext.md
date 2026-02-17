@@ -51,7 +51,26 @@
 
 - **Journal Diary MVP Phase 1 (PLANNED - 2026-02-16):** Completed detailed MVP plan at `/plans/journal.md` and scaffolded OpenSpec change `journal-diary-mvp-phase1` with full artifacts. **Dual-Checkpoint Model:** Start Game refreshes draft diary entries when source history is stale; Save operations create confirmed canonical entries bound to `save_id`. **Journal UI:** Tabbed interface with preserved Quests behavior and new Diary tab showing draft card + confirmed timeline ordered by game-world time. **PDF Export:** "Download the story so far..." button generates fan-fiction style chronicle from confirmed entries only (draft excluded by design). **Failure Isolation:** Diary generation failures are non-blocking for both Start Game and Save flows. **Data Model:** Additive migration for `session_diary_entries`, `session_diary_state`, `story_so_far_cache` tables. **New Modules:** `core/memory/session_diary.py` (checkpoint logic), `core/memory/story_so_far_compiler.py` (PDF generation with caching). **Integration Points:** Save hook in `updates/save_game_manager.py`, Start Game hook in `web/web_interface.py`, Journal tabs in `web/templates/game_interface.html`, API endpoints `/api/journal/diary` and `/api/journal/story-so-far/pdf`. **Time Estimate:** 4-6 days. Status: Plan complete, ready for Kimi Builder execution.
 
-- **Exit/Enter GUI Button Plan (PLANNING - 2026-02-15):** Created detailed implementation plan at `/plans/exit-enter.md` for adding Exit/Enter functionality to GUI. **Phase 1 (Exit Only):** Gracefully stop all Python processes from browser button without Ctrl+C. Uses exit code 91 to signal intentional shutdown to launcher. User must manually restart with `python run_web.py`. **Phase 2 (Full Exit/Enter - Future):** Requires persistent supervisor/watcher process - deferred due to complexity/maintenance concerns.
+- **Exit/Enter GUI Button Implementation Phase 1 (COMPLETED - 2026-02-17):**
+  - **OpenSpec Change:** `exit-only-gui-shutdown` fully implemented, validated, and archived
+  - **Phase 1 (Exit Only - COMPLETED):** Graceful server shutdown from GUI Exit button using exit code 91 contract
+  - **Server Handler** (`web/web_interface.py:2717-2741`): Upgraded `handle_user_exit()` to emit `exit_acknowledged`, attempt graceful `socketio.stop()`, and force exit with code `91` (fail-closed on exceptions)
+  - **Launcher Contract** (`run_web.py:119-122`): Added explicit `elif result.returncode == 91` branch to print "[SHUTDOWN] User initiated exit..." and break loop without restart
+  - **GUI Flow** (`web/templates/game_interface.html:8501-8545`): Immediate "Shutting Down..." overlay on Exit confirm, input controls disabled (`user-input`, `send-button`), `user_exit` event emission
+  - **Ack Handler** (`web/templates/game_interface.html:8459-8469`): `exit_acknowledged` listener updates overlay heading text, no restart/reload/connect logic
+  - **Key Behaviors:**
+    - Exit code `91` = intentional GUI shutdown (no restart)
+    - Exit code `0` = restart path preserved for reset/restore flows
+    - ASCII-only terminal output (`[Py]`, `[SHUTDOWN]`, `[ERROR]`)
+    - All host edits marked with `# TABLETOP MODE:` comments
+  - **Verification:**
+    - Compile checks passed (`python3 -m py_compile web/web_interface.py run_web.py`)
+    - Smoke test passed (GUI Exit -> code 91 -> shutdown message -> no restart)
+    - Regression passed (reset/restore code `0` restart unchanged)
+    - Ctrl+C fallback works cleanly
+  - **Files Modified:** `web/web_interface.py`, `run_web.py`, `web/templates/game_interface.html`
+  - **Status:** COMPLETED, validated, archived to `openspec/changes/archive/2026-02-17-exit-only-gui-shutdown/`
+  - **Phase 2 (Full Exit/Enter - Future):** Deferred - requires persistent supervisor/watcher process
 
 - **TTS Text Sync Browser-First Implementation (COMPLETED - 2026-02-15):** Implemented word-by-word text reveal synchronized with Browser TTS speech. **Features:** "Word Sync" toggle in DM Voice settings (browser-only, localStorage persisted), real boundary sync for Edge/MS TTS using `onboundary`, faux sync fallback (3x slowed) for browsers without boundaries, auto-scroll chat as text grows, manual replay audio-only. **Architecture:** Per-item `syncStrategy` in queue (`browser_boundary`, `none`, `estimated_timeline`), lazy-init reveal mode, explicit queue completion signaling. **Files:** `model_config.py`, `web/web_interface.py`, `web/templates/game_interface.html`, `web/static/js/tts_queue_manager.js`. **Verification:** Python compile PASS, Edge real sync works, Chrome faux fallback triggers correctly.
 
@@ -91,6 +110,13 @@
 - **Job 3: Combat Commands:** `/att` and `/dmg` commands implemented with proper validation.
 
 ## Recent Changes
+- **Exit/Enter GUI Button Implementation Phase 1 (COMPLETED - 2026-02-17):**
+  - **OpenSpec Change:** `exit-only-gui-shutdown` fully implemented and archived
+  - **Implementation:** Server handler emits `exit_acknowledged` then graceful stop + force exit with code `91`; launcher handles code `91` as intentional shutdown (no restart); GUI shows immediate "Shutting Down..." state with disabled inputs
+  - **Verification:** Compile checks passed, smoke test confirmed server exits with code 91 and launcher prints "[SHUTDOWN] User initiated exit..." without restart, reset/restore restart regression passed, Ctrl+C fallback works
+  - **Files Modified:** `web/web_interface.py`, `run_web.py`, `web/templates/game_interface.html`
+  - **Archived:** `openspec/changes/archive/2026-02-17-exit-only-gui-shutdown/`
+
 - **PR2 Archive Zip Portability and Memory Backup Parity (COMPLETED - 2026-02-16):**
   - **OpenSpec Change:** `archive-zip-portability-and-memory-backup-parity` fully implemented
   - **Section 1:** Archive helper scaffolding (`_generate_archive_zip`, `_get_archive_additional_paths`) with campaign-wide inclusion and memory package support

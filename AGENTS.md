@@ -1012,6 +1012,43 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Exit/Enter GUI Button Implementation Phase 1 (COMPLETED - 2026-02-17)
+
+**Status:** COMPLETED - Archived to `openspec/changes/archive/2026-02-17-exit-only-gui-shutdown/`
+
+**Objective:**
+Implement Phase 1 Exit-only functionality allowing users to gracefully stop the Python server from the GUI Exit button without requiring terminal Ctrl+C.
+
+**Implementation Summary:**
+- **Server Handler** (`web/web_interface.py:2717-2741`): Upgraded `handle_user_exit()` to emit `exit_acknowledged`, attempt graceful `socketio.stop()`, and force exit with code `91` (fail-closed on exceptions)
+- **Launcher Contract** (`run_web.py:119-122`): Added explicit `elif result.returncode == 91` branch to print shutdown message and break loop without restart
+- **GUI Flow** (`web/templates/game_interface.html:8501-8545`): Immediate "Shutting Down..." overlay on Exit confirm, input controls disabled, `user_exit` event emission
+- **Ack Handler** (`web/templates/game_interface.html:8459-8469`): `exit_acknowledged` listener updates overlay text to "Shutdown acknowledged...", no restart/reload logic
+
+**Key Behaviors:**
+- Exit code `91` = intentional GUI shutdown (no restart)
+- Exit code `0` = restart path preserved for reset/restore flows
+- ASCII-only terminal output (`[Py]`, `[SHUTDOWN]`, `[ERROR]`)
+- All changes marked with `# TABLETOP MODE:` comments
+
+**Verification:**
+- Compile checks: `python3 -m py_compile web/web_interface.py run_web.py` -> PASS
+- Smoke test: GUI Exit -> server exits with code 91 -> launcher prints "[SHUTDOWN] User initiated exit..." -> no restart
+- Regression: reset/restore code `0` restart path unchanged
+- Ctrl+C fallback: terminal interrupt still works cleanly
+
+**Files Modified:**
+- `web/web_interface.py` (exit handler with graceful stop + fail-closed exit)
+- `run_web.py` (return-code 91 handling)
+- `web/templates/game_interface.html` (immediate shutdown UI + ack listener)
+
+**OpenSpec Artifacts:**
+- Change: `exit-only-gui-shutdown`
+- All artifacts created: proposal, design, spec, tasks, executor_prompts
+- Validated and archived to `openspec/changes/archive/2026-02-17-exit-only-gui-shutdown/`
+
+---
+
 ### Journal Diary MVP Phase 1 Planning (PLANNED - 2026-02-16)
 
 **Status:** PLANNED - Ready for Kimi Builder execution  
