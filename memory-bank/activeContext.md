@@ -129,6 +129,20 @@
 - **Job 3: Combat Commands:** `/att` and `/dmg` commands implemented with proper validation.
 
 ## Recent Changes
+- **PC Image Create and Allied NPC Auto-Generation (COMPLETED - 2026-02-17):**
+  - **OpenSpec Change:** `pc-image-create-and-allied-npc-autogen` fully implemented and verified (tasks 1.1-7.3)
+  - **Appearance Fields:** Added optional schema fields (`age`, `height`, `weight`, `eyes`, `skin`, `hair`) with safe defaults and UI wiring
+  - **Portrait Service:** New `core/toolkit/portrait_service.py` for prompt composition, image generation, and canonical file outputs
+  - **Create Endpoint:** `POST /api/portrait/create` with safe error handling and cache-busted refresh
+  - **Character Sheet UX:** Dual `Upload` + `Create` buttons with client-side create integration
+  - **Warning Throttle:** Per-key throttle (`MISSING_MEDIA_WARNING_THROTTLE_ENABLED/SECONDS`) to suppress repeated miss spam
+  - **Allied Auto-Gen:** New `web/extensions/missing_media_autogen.py` worker with dedupe, cooldown, and allied-only policy enforcement
+  - **Policy Gating:** NPC miss enqueue hook with `is_allied_companion_check()` blocks non-allied NPCs and monsters
+  - **Tests:** `scripts/test_pc_image_create_mvp.py` with 11 tests covering API, policy, throttle, and queue behavior
+  - **Verification:** Compile PASS, tests PASS (11 OK), ASCII-only verified
+  - **Files Created:** `core/toolkit/portrait_service.py`, `web/extensions/missing_media_autogen.py`, `scripts/test_pc_image_create_mvp.py`, `implementation_notes.md`
+  - **Files Modified:** `schemas/char_schema.json`, `utils/character_creation_audit.py`, `web/routes/tabletop_party_routes.py`, `web/templates/partials/character_tabs.html`, `web/templates/game_interface.html`, `web/web_interface.py`, `model_config.py`
+
 - **Exit/Enter GUI Button Implementation Phase 1 (COMPLETED - 2026-02-17):**
   - **OpenSpec Change:** `exit-only-gui-shutdown` fully implemented and archived
   - **Implementation:** Server handler emits `exit_acknowledged` then graceful stop + force exit with code `91`; launcher handles code `91` as intentional shutdown (no restart); GUI shows immediate "Shutting Down..." state with disabled inputs

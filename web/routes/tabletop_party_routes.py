@@ -446,8 +446,30 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
 
             party_tracker = pc_manager.get_party_tracker()
 
-            # TABLETOP MODE: Persist return transition for true rejoins (fail-open)
-            if not was_previously_member:
+            # TABLETOP MODE: Load character data early to detect return vs first-add
+            char_data = _load_character_data(character_name) or {}
+
+            # TABLETOP MODE: Helper to detect prior retirement for return classification
+            def _has_prior_retirement_history(character_data: Dict[str, Any]) -> bool:
+                """Check if character was previously retired (has retirement history)."""
+                history = character_data.get("_tabletop_role_history")
+                if not isinstance(history, list):
+                    return False
+                for event in history:
+                    if not isinstance(event, dict):
+                        continue
+                    # Retirement markers: action=retired_from_party OR to_role=retired_player
+                    if event.get("action") == "retired_from_party":
+                        return True
+                    if event.get("to_role") == "retired_player":
+                        return True
+                return False
+
+            # TABLETOP MODE: Determine if this is a true return (rejoin after retirement) or first-time add
+            is_true_return = (not was_previously_member) and _has_prior_retirement_history(char_data)
+
+            # TABLETOP MODE: Persist return transition for true rejoins only (fail-open)
+            if is_true_return:
                 try:
                     return_result = record_pc_return(
                         character_name=character_name,
@@ -469,8 +491,10 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
                         category="memory_ingest"
                     )
 
-                # TABLETOP MODE: Build return narration context from memory pack (fail-open)
-                return_narration_prompt = ""
+            # TABLETOP MODE: Build exactly ONE narration prompt (return OR entrance, never both)
+            narration_prompt = ""
+            if is_true_return:
+                # Return path: use memory pack with continuity
                 try:
                     memory_pack = build_return_memory_pack(
                         character_name=character_name,
@@ -486,19 +510,19 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
                                 if summary:
                                     continuity_lines.append(f"- {summary}")
                             continuity_text = "\n".join(continuity_lines) if continuity_lines else "No prior continuity available."
-                            return_narration_prompt = (
+                            narration_prompt = (
                                 f"[SYSTEM] {character_name} has returned to the party. "
                                 f"Prior continuity:\n{continuity_text}\n"
                                 f"Please narrate their rejoining with appropriate NPC reactions referencing this history."
                             )
                         else:
-                            return_narration_prompt = (
+                            narration_prompt = (
                                 f"[SYSTEM] {character_name} has returned to the party. "
                                 f"Please narrate their rejoining with appropriate NPC reactions."
                             )
                     else:
                         # Pack returned error status
-                        return_narration_prompt = (
+                        narration_prompt = (
                             f"[SYSTEM] {character_name} has returned to the party. "
                             f"Please narrate their rejoining with appropriate NPC reactions."
                         )
@@ -508,55 +532,47 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
                         category="memory_retrieval"
                     )
                     # Fallback when pack fails entirely
-                    return_narration_prompt = (
+                    narration_prompt = (
                         f"[SYSTEM] {character_name} has returned to the party. "
                         f"Please narrate their rejoining with appropriate NPC reactions."
                     )
+            elif not was_previously_member:
+                # First-time add path: use entrance prompt
+                narration_prompt = pc_manager.get_entrance_prompt(character_name, char_data, party_tracker)
 
-                # Enqueue return narration prompt for rejoin path
-                if return_narration_prompt:
-                    user_input_queue.put(return_narration_prompt)
+            # Enqueue exactly one narration prompt (if non-empty)
+            if narration_prompt:
+                user_input_queue.put(narration_prompt)
 
-                # TABLETOP MODE: Append return lifecycle metadata to character file (fail-open)
+            # TABLETOP MODE: Append return lifecycle metadata to character file for true returns only (fail-open)
+            if is_true_return:
                 try:
-                    character_data = _load_character_data(character_name)
-                    if character_data:
-                        # Preserve canonical identity
-                        pc_manager.ensure_stable_character_id(character_data)
-                        # Append role history event
-                        updated_data = pc_manager.append_role_history_event(
-                            character_data,
-                            action='returned_to_party',
-                            from_role='retired_player',
-                            to_role='player',
-                            source='manage_party_add_character',
-                            actor='dm',
+                    # Preserve canonical identity
+                    pc_manager.ensure_stable_character_id(char_data)
+                    # Append role history event
+                    updated_data = pc_manager.append_role_history_event(
+                        char_data,
+                        action='returned_to_party',
+                        from_role='retired_player',
+                        to_role='player',
+                        source='manage_party_add_character',
+                        actor='dm',
+                    )
+                    if _save_character_data(character_name, updated_data):
+                        info(
+                            f"TABLETOP: Return lifecycle metadata appended for '{character_name}'",
+                            category="tabletop_mode"
                         )
-                        if _save_character_data(character_name, updated_data):
-                            info(
-                                f"TABLETOP: Return lifecycle metadata appended for '{character_name}'",
-                                category="tabletop_mode"
-                            )
-                        else:
-                            warning(
-                                f"TABLETOP: Failed to save return lifecycle metadata for '{character_name}'",
-                                category="tabletop_mode"
-                            )
+                    else:
+                        warning(
+                            f"TABLETOP: Failed to save return lifecycle metadata for '{character_name}'",
+                            category="tabletop_mode"
+                        )
                 except Exception as lifecycle_error:
                     warning(
                         f"TABLETOP: Return lifecycle metadata append failed for '{character_name}' (proceeding anyway): {lifecycle_error}",
                         category="tabletop_mode"
                     )
-
-            try:
-                char_data = safe_read_json(os.path.join('characters', f"{character_name}.json"))
-                if not char_data:
-                    char_data = {}
-            except Exception:
-                char_data = {}
-
-            intro_prompt = pc_manager.get_entrance_prompt(character_name, char_data, party_tracker)
-            user_input_queue.put(intro_prompt)
 
             return jsonify({'success': True, 'partyMembers': party_tracker.get('partyMembers', [])})
         except Exception as route_error:
@@ -989,6 +1005,12 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
                 "ideals": data.get('ideals', ''),
                 "bonds": data.get('bonds', ''),
                 "flaws": data.get('flaws', ''),
+                "age": data.get('age', ''),
+                "height": data.get('height', ''),
+                "weight": data.get('weight', ''),
+                "eyes": data.get('eyes', ''),
+                "skin": data.get('skin', ''),
+                "hair": data.get('hair', ''),
             }
 
             audit_result = audit_character_creation(

@@ -2479,6 +2479,7 @@
             background-color: rgba(0, 0, 0, 0.7);
             color: white;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
             opacity: 0;
@@ -2487,10 +2488,29 @@
             font-size: 14px;
             font-weight: bold;
             z-index: 2; /* Above the image */
+            gap: 8px;
         }
 
         .character-portrait:hover .upload-overlay {
             opacity: 1;
+        }
+
+        .portrait-action-btn {
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s ease;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        .portrait-action-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
         }
 
         #portrait-upload-input {
@@ -4924,6 +4944,114 @@
         // Also keep as regular function for backwards compatibility
         const uploadPortrait = window.uploadPortrait;
         
+        // TABLETOP MODE: Create portrait action - Step 3.2/3.3 API integration with hardened error handling
+        // Generates AI portrait via backend service and refreshes display on success
+        // Step 3.3: All failure paths (HTTP error, JSON parse, network) surface safe UI messages
+        let createPortraitInFlight = false;
+        
+        window.createPortrait = function(characterName) {
+            if (createPortraitInFlight) {
+                addMessage('game-output', { 
+                    type: 'system', 
+                    content: 'Portrait generation already in progress, please wait...' 
+                });
+                return;
+            }
+            
+            createPortraitInFlight = true;
+            console.log('createPortrait triggered for:', characterName);
+            
+            addMessage('game-output', { 
+                type: 'system', 
+                content: `Generating AI portrait for ${characterName}...` 
+            });
+            
+            fetch('/api/portrait/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    character_name: characterName,
+                    characterName: characterName  // Dual naming for robustness
+                })
+            })
+            .then(async response => {
+                // Defensive JSON parsing: try to parse regardless of status for error messages
+                let data = null;
+                let parseError = null;
+                
+                try {
+                    const text = await response.text();
+                    if (text) {
+                        data = JSON.parse(text);
+                    }
+                } catch (e) {
+                    parseError = e;
+                    // Continue with data = null, will use fallback handling below
+                }
+                
+                // Handle non-OK HTTP status
+                if (!response.ok) {
+                    // Try to extract backend message, fallback to status-based message
+                    const backendMessage = data && data.message ? data.message : null;
+                    const statusMessage = `Server error ${response.status}`;
+                    throw new Error(backendMessage || statusMessage);
+                }
+                
+                // Handle OK response but invalid JSON
+                if (parseError) {
+                    throw new Error('Invalid response from server');
+                }
+                
+                // Handle OK response with unexpected shape
+                if (!data || typeof data !== 'object') {
+                    throw new Error('Unexpected response format');
+                }
+                
+                return data;
+            })
+            .then(data => {
+                if (data.success) {
+                    addMessage('game-output', { 
+                        type: 'system', 
+                        content: data.message || `Portrait created successfully for ${characterName}!` 
+                    });
+                    
+                    // Refresh portrait image with cache-bust to show new image immediately
+                    const portraitImg = document.getElementById('char-portrait-img');
+                    if (portraitImg) {
+                        const baseUrl = `/static/portraits/${characterName}.png`;
+                        portraitImg.src = `${baseUrl}?v=${Date.now()}`;
+                    }
+                } else {
+                    // Backend returned success: false
+                    addMessage('game-output', { 
+                        type: 'error', 
+                        content: data.message || `Portrait creation failed for ${characterName}` 
+                    });
+                }
+            })
+            .catch(error => {
+                // All error paths (HTTP, network, parse, logic) converge here
+                console.error('Error creating portrait:', error);
+                
+                // Safe fallback message for all failure classes
+                const safeMessage = error && error.message 
+                    ? String(error.message).substring(0, 200)  // Limit length for safety
+                    : 'Unknown error';
+                    
+                addMessage('game-output', { 
+                    type: 'error', 
+                    content: `Portrait creation failed: ${safeMessage}` 
+                });
+            })
+            .finally(() => {
+                // Always reset in-flight guard, regardless of success/failure
+                createPortraitInFlight = false;
+            });
+        };
+        
         // Function to request initiative data
         function requestInitiativeData() {
             socket.emit('request_initiative_data');
@@ -6229,8 +6357,9 @@
                         <!-- COLUMN 1: PORTRAIT -->
                         <div class="character-portrait" data-character="${normalizedName}">
                             <img id="char-portrait-img" src="/static/icons/default_portrait.png">
-                            <div class="upload-overlay" onclick="uploadPortrait('${normalizedName}')">
-                                <span>Upload Portrait</span>
+                            <div class="upload-overlay">
+                                <button class="portrait-action-btn" onclick="uploadPortrait('${normalizedName}')">Upload</button>
+                                <button class="portrait-action-btn" onclick="createPortrait('${normalizedName}')">Create</button>
                             </div>
                             <!-- Hidden input removed - using persistent input instead -->
                         </div>

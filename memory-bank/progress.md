@@ -45,25 +45,39 @@ Active development of Tabletop Mode features, focusing on party management and U
   - **Files Modified:** `web/web_interface.py`, `run_web.py`, `web/templates/game_interface.html`
   - **Archived:** `openspec/changes/archive/2026-02-17-exit-only-gui-shutdown/`
 
-- **PC Image Create and Allied NPC Auto-Generation Planning (PLANNED - 2026-02-16):**
-  - Created comprehensive UX enhancement plan at `/plans/pc-image-create.md` for Character Sheet portrait `Upload / Create` actions
-  - **Auto-Generation Policy:** Automatic generation enabled for allied NPC companions only; disabled for non-allied NPCs and monsters in MVP
-  - **Appearance Fields:** Added optional character schema fields (`age`, `height`, `weight`, `eyes`, `skin`, `hair`) for portrait prompt enrichment
-  - **Missing Media Warning Throttle:** Per-key warning throttling to reduce repeated log spam
-  - **Promotion Continuity:** NPC -> PC promotion preserves image linkage by name identity
-  - **OpenSpec Scaffolding:** Created change `pc-image-create-and-allied-npc-autogen` with complete artifact set:
-    - `proposal.md`, `design.md`, `tasks.md`, `executor_prompts.md`
-    - Four capability specs: `pc-sheet-upload-create-portrait`, `allied-npc-missing-media-autogen`, `missing-media-warning-throttle`, `appearance-fields-for-portrait-prompts`
-  - **New Modules Planned:**
-    - `core/toolkit/portrait_service.py` - prompt composition, generation calls, canonical file outputs
-    - `web/extensions/missing_media_autogen.py` - async worker with dedupe/cooldown, allied-only policy enforcement
-  - **Integration Points:**
-    - Character Sheet portrait controls in `web/templates/game_interface.html`
-    - Create endpoint `POST /api/portrait/create` in `web/web_interface.py`
-    - Missing media enqueue hook in `/media/<media_type>/<filename>` serving path
-  - **Step 1.1 Completed:** Added optional appearance fields to `schemas/char_schema.json` with backward compatibility preserved
-  - **Time Estimate:** 2-3 days for full implementation
-  - **Status:** Plan complete, OpenSpec validated, Step 1.1 complete, ready for builder execution
+- **PC Image Create and Allied NPC Auto-Generation (COMPLETED - 2026-02-17):**
+  - **OpenSpec Change:** `pc-image-create-and-allied-npc-autogen` fully implemented, validated, and documented (tasks 1.1-7.3)
+  - **Step 1 - Appearance Field Scaffolding:**
+    - `schemas/char_schema.json`: Added optional `age`, `height`, `weight`, `eyes`, `skin`, `hair` fields
+    - `utils/character_creation_audit.py`: Safe defaults (empty strings) in `_canonical_character_defaults()`
+    - `web/routes/tabletop_party_routes.py`: Manual creation payload includes appearance fields
+    - `web/templates/partials/character_tabs.html`: Quick-create UI inputs for all six fields
+    - `web/templates/game_interface.html`: Appearance display wiring in Character Sheet
+  - **Step 2 - Portrait Service and Create Endpoint:**
+    - `core/toolkit/portrait_service.py` (NEW): Prompt composition, normalization, generation calls, canonical outputs
+    - `web/web_interface.py`: `POST /api/portrait/create` endpoint with safe error handling
+    - Upload endpoint normalization aligned with Create output for consistent filenames
+  - **Step 3 - Character Sheet Upload/Create UX:**
+    - Dual `Upload` + `Create` buttons in portrait overlay
+    - Client-side create call with cache-busted image refresh on success
+    - Safe error handling for HTTP errors, JSON parse failures, network issues
+  - **Step 4 - Missing-Media Warning Throttle:**
+    - `model_config.py`: `MISSING_MEDIA_WARNING_THROTTLE_ENABLED` and `MISSING_MEDIA_WARNING_THROTTLE_SECONDS`
+    - Per-key throttle: first miss warns, repeats suppressed within window, re-emit after expiry
+  - **Step 5 - Allied-Only Auto-Generation Queue:**
+    - `web/extensions/missing_media_autogen.py` (NEW): Async worker with dedupe, cooldown, allied-only policy
+    - Enqueue hook wired from `/media/npcs/<filename>` miss path with `# TABLETOP MODE:` marker
+    - Policy gating: `is_allied_companion_check()` allows allied NPCs only; non-allied NPCs and monsters blocked
+  - **Step 6 - Validation and Regression:**
+    - `scripts/test_pc_image_create_mvp.py` (NEW): 11 tests covering API happy/error paths, allied gating, throttle behavior
+    - Compile checks: PASS for all modified files
+    - Test execution: PASS (11 tests OK)
+  - **Step 7 - Builder Handoff:**
+    - Host hooks minimal and marked `# TABLETOP MODE:`
+    - ASCII-only verified via non-ASCII scan
+    - Implementation notes: `openspec/changes/pc-image-create-and-allied-npc-autogen/implementation_notes.md`
+  - **Files Created:** `core/toolkit/portrait_service.py`, `web/extensions/missing_media_autogen.py`, `scripts/test_pc_image_create_mvp.py`, `implementation_notes.md`
+  - **Files Modified:** `schemas/char_schema.json`, `utils/character_creation_audit.py`, `web/routes/tabletop_party_routes.py`, `web/templates/partials/character_tabs.html`, `web/templates/game_interface.html`, `web/web_interface.py`, `model_config.py`
 
 - **PR3 Root Archive Export + Zip Import Restore (COMPLETED - 2026-02-17):**
   - **OpenSpec Change:** `archive-root-export-and-zip-import-restore` fully implemented, validated, and ready for archival

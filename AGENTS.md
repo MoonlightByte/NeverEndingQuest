@@ -1021,6 +1021,74 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### PC Image Create and Allied NPC Auto-Generation (COMPLETED - 2026-02-17)
+
+**Status:** COMPLETED - All tasks 1.1-7.3 finished and verified
+
+**Objective:**
+Implement Character Sheet portrait `Upload / Create` UX with appearance field support, allied NPC auto-generation, and missing-media warning throttle.
+
+**Implementation Summary:**
+
+**Step 1 - Appearance Field Scaffolding:**
+- `schemas/char_schema.json`: Added optional `age`, `height`, `weight`, `eyes`, `skin`, `hair` fields
+- `utils/character_creation_audit.py`: Added safe defaults (empty strings) for all six appearance fields in `_canonical_character_defaults()`
+- `web/routes/tabletop_party_routes.py`: Updated manual creation payload to include appearance fields
+- `web/templates/partials/character_tabs.html`: Added quick-create UI inputs for all six appearance fields
+- `web/templates/game_interface.html`: Added appearance display wiring in Character Sheet
+
+**Step 2 - Portrait Service and Create Endpoint:**
+- `core/toolkit/portrait_service.py` (NEW): Portrait service with prompt composition, normalization, generation calls, and canonical file outputs
+- `web/web_interface.py`: Added `POST /api/portrait/create` endpoint using portrait service
+- Upload endpoint normalization aligned with Create output for filename consistency
+
+**Step 3 - Character Sheet Upload/Create UX:**
+- Portrait overlay updated to show `Upload` + `Create` dual buttons
+- Client-side create call with success refresh using cache-busted image URL
+- Safe error handling with hardening for HTTP errors, JSON parse failures, and network issues
+
+**Step 4 - Missing-Media Warning Throttle:**
+- Per-key throttle in `web/web_interface.py` media miss path
+- `model_config.py`: Added `MISSING_MEDIA_WARNING_THROTTLE_ENABLED` and `MISSING_MEDIA_WARNING_THROTTLE_SECONDS` settings
+- First miss warns, repeated misses suppressed within window, re-emit after window expires
+
+**Step 5 - Allied-Only Auto-Generation Queue:**
+- `web/extensions/missing_media_autogen.py` (NEW): Async worker with dedupe, cooldown, and allied-only policy
+- Enqueue hook wired from `/media/npcs/<filename>` miss path
+- Policy gating: auto-gen enabled for allied companions only; non-allied NPCs and monsters disabled in MVP
+
+**Step 6 - Validation and Regression:**
+- `scripts/test_pc_image_create_mvp.py` (NEW): 11 tests covering create API happy/error paths, allied gating, and warning throttle behavior
+- Compile checks: PASS for all modified files
+- Test execution: PASS (11 tests OK)
+
+**Step 7 - Builder Handoff:**
+- Host hooks minimal and marked `# TABLETOP MODE:`
+- All new Python-visible text ASCII only (verified via non-ASCII scan)
+- Implementation notes documented in `openspec/changes/pc-image-create-and-allied-npc-autogen/implementation_notes.md`
+
+**Files Created:**
+- `core/toolkit/portrait_service.py`
+- `web/extensions/missing_media_autogen.py`
+- `scripts/test_pc_image_create_mvp.py`
+- `openspec/changes/pc-image-create-and-allied-npc-autogen/implementation_notes.md`
+
+**Files Modified:**
+- `schemas/char_schema.json`
+- `utils/character_creation_audit.py`
+- `web/routes/tabletop_party_routes.py`
+- `web/templates/partials/character_tabs.html`
+- `web/templates/game_interface.html`
+- `web/web_interface.py`
+- `model_config.py`
+
+**Verification:**
+- `python3 -m py_compile core/toolkit/portrait_service.py web/extensions/missing_media_autogen.py web/web_interface.py web/routes/tabletop_party_routes.py utils/character_creation_audit.py` -> PASS
+- `.venv/bin/python scripts/test_pc_image_create_mvp.py` -> PASS (11 tests, OK)
+- Non-ASCII scan: No violations in new/changed Python files
+
+---
+
 ### Exit/Enter GUI Button Implementation Phase 1 (COMPLETED - 2026-02-17)
 
 **Status:** COMPLETED - Archived to `openspec/changes/archive/2026-02-17-exit-only-gui-shutdown/`

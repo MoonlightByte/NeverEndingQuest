@@ -173,6 +173,12 @@ def _canonical_character_defaults() -> Dict[str, Any]:
         "ideals": "",
         "bonds": "",
         "flaws": "",
+        "age": "",
+        "height": "",
+        "weight": "",
+        "eyes": "",
+        "skin": "",
+        "hair": "",
     }
 
 

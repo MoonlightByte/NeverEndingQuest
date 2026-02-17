@@ -79,6 +79,9 @@ install_debug_interceptor()
 
 # Import the main game module and reset logic
 import main as dm_main
+
+# TABLETOP MODE: Import portrait service for AI-generated character portraits
+from core.toolkit.portrait_service import generate_and_save_portrait
 import utils.reset_campaign as reset_campaign
 import utils.pc_manager as pc_manager
 
@@ -94,6 +97,17 @@ from web.extensions.tabletop_socket_handlers import (
     handle_plot_data_request_impl,
     handle_storage_data_request_impl,
 )
+
+# TABLETOP MODE: Import missing media auto-generation worker for allied NPC portrait healing
+try:
+    from web.extensions.missing_media_autogen import (
+        enqueue_missing_media_autogen_task,
+        is_allied_companion_check,
+        start_missing_media_autogen_worker
+    )
+    MISSING_MEDIA_AUTOGEN_AVAILABLE = True
+except ImportError:
+    MISSING_MEDIA_AUTOGEN_AVAILABLE = False
 from web.output_markers import extract_output_markers
 from web.routes.browser_settings_routes import register_browser_settings_routes
 from web.routes.character_sheet_routes import (
@@ -114,6 +128,68 @@ try:
 except ImportError:
     TOOLKIT_AVAILABLE = False
     print("Module Toolkit not available - toolkit endpoints disabled")
+
+# TABLETOP MODE: Missing media warning throttle state
+# Per-key throttle to prevent warning spam for repeated misses
+import threading
+_missing_media_warning_lock = threading.Lock()
+_missing_media_warning_timestamps = {}
+
+# Load throttle settings from model_config (with safe fallback defaults)
+try:
+    from model_config import (
+        MISSING_MEDIA_WARNING_THROTTLE_ENABLED,
+        MISSING_MEDIA_WARNING_THROTTLE_SECONDS
+    )
+except ImportError:
+    MISSING_MEDIA_WARNING_THROTTLE_ENABLED = True
+    MISSING_MEDIA_WARNING_THROTTLE_SECONDS = 300  # 5 minute default
+
+_missing_media_throttle_enabled = MISSING_MEDIA_WARNING_THROTTLE_ENABLED
+_missing_media_throttle_seconds = MISSING_MEDIA_WARNING_THROTTLE_SECONDS
+
+def _should_emit_missing_media_warning(media_type: str, filename: str) -> bool:
+    """
+    Determine if a missing media warning should be emitted.
+    
+    Uses per-key throttling to prevent log spam while preserving
+    first-miss diagnostics. Thread-safe for web server context.
+    
+    Args:
+        media_type: Type of media ('monsters', 'npcs', 'environment')
+        filename: Name of the requested file
+        
+    Returns:
+        True if warning should be emitted, False if suppressed
+    """
+    import time
+    
+    # If throttle disabled, always emit warning (backward compatible)
+    if not _missing_media_throttle_enabled:
+        return True
+    
+    # Normalize key: lowercase, replace special chars with underscore
+    key = f"{media_type}/{filename}".lower()
+    key = key.replace(' ', '_').replace('-', '_')
+    
+    current_time = time.time()
+    
+    with _missing_media_warning_lock:
+        last_warning_time = _missing_media_warning_timestamps.get(key)
+        
+        if last_warning_time is None:
+            # First miss for this key - emit warning and record
+            _missing_media_warning_timestamps[key] = current_time
+            return True
+        
+        # Check if throttle window has elapsed (use configured throttle seconds)
+        if current_time - last_warning_time >= _missing_media_throttle_seconds:
+            # Window expired - emit warning and update timestamp
+            _missing_media_warning_timestamps[key] = current_time
+            return True
+        
+        # Still within throttle window - suppress
+        return False
 
 # Set script name for logging
 set_script_name("web_interface")
@@ -166,6 +242,23 @@ except Exception as memory_init_error:
     warning(
         f"MEMORY_DB: Startup init exception, continuing without DB: {memory_init_error}",
         category="web_interface",
+    )
+
+# TABLETOP MODE: Start missing media auto-generation worker with allied-only policy
+try:
+    if MISSING_MEDIA_AUTOGEN_AVAILABLE:
+        start_missing_media_autogen_worker(
+            policy_check=is_allied_companion_check,
+            cooldown_seconds=60.0
+        )
+        info(
+            "MISSING_MEDIA_AUTOGEN: Worker started with allied-only policy",
+            category="web_interface"
+        )
+except Exception as autogen_start_error:
+    warning(
+        f"MISSING_MEDIA_AUTOGEN: Failed to start worker: {autogen_start_error}",
+        category="web_interface"
     )
 
 # Add static route for graphic_packs to improve thumbnail loading performance
@@ -809,7 +902,60 @@ def serve_module_media(media_type, filename):
         info(f"Serving {media_type}/{filename} from static folder")
         return send_file(static_media_path, mimetype=mimetype)
     
-    warning(f"Media file not found in any location: {media_type}/{filename}")
+    # TABLETOP MODE: Apply per-key warning throttle to prevent log spam
+    if _should_emit_missing_media_warning(media_type, filename):
+        warning(f"Media file not found in any location: {media_type}/{filename}")
+    else:
+        debug(f"Media miss throttled (suppressed warning): {media_type}/{filename}", category="web_interface")
+    
+    # TABLETOP MODE: Enqueue auto-generation for allied NPC companion portraits (non-blocking)
+    # MVP policy: Only allied companions get auto-generated; non-allied NPCs and monsters skip
+    if MISSING_MEDIA_AUTOGEN_AVAILABLE and media_type == 'npcs':
+        try:
+            # Build minimal task data for policy check
+            from web.extensions.missing_media_autogen import MissingMediaTask
+            policy_task = MissingMediaTask(
+                missing_key=f"{media_type}/{filename}".lower().replace(" ", "_").replace("-", "_"),
+                media_type=media_type,
+                filename=filename,
+                metadata={"source": "media_miss", "timestamp": time.time()}
+            )
+            
+            # Check allied policy before enqueueing (MVP: allied companions only)
+            if not is_allied_companion_check(policy_task):
+                debug(
+                    f"MISSING_MEDIA_AUTOGEN: Skipped non-allied NPC {filename}",
+                    category="web_interface"
+                )
+            else:
+                # Allied companion - proceed with enqueue
+                result = enqueue_missing_media_autogen_task(
+                    media_type=media_type,
+                    filename=filename,
+                    metadata={"source": "media_miss", "timestamp": time.time()}
+                )
+                status = result.get("status", "unknown")
+                if status == "queued":
+                    debug(
+                        f"MISSING_MEDIA_AUTOGEN: Enqueued generation for {media_type}/{filename}",
+                        category="web_interface"
+                    )
+                elif status in ("suppressed_dedupe", "suppressed_cooldown"):
+                    debug(
+                        f"MISSING_MEDIA_AUTOGEN: Suppressed duplicate for {media_type}/{filename} ({status})",
+                        category="web_interface"
+                    )
+                elif status == "disabled":
+                    debug(
+                        f"MISSING_MEDIA_AUTOGEN: Worker not running for {media_type}/{filename}",
+                        category="web_interface"
+                    )
+        except Exception as enqueue_error:
+            debug(
+                f"MISSING_MEDIA_AUTOGEN: Failed to enqueue {media_type}/{filename}: {enqueue_error}",
+                category="web_interface"
+            )
+    
     return "Media not found", 404
 
 @app.route('/get_character_data')
@@ -877,8 +1023,13 @@ def upload_portrait():
             # Resize to a standard size (e.g., 256x256) for consistency
             img = img.resize((256, 256), Image.Resampling.LANCZOS)
 
+            # Normalize character name for filename to match Create endpoint semantics
+            # and align with frontend portrait lookup conventions
+            from updates.update_character_info import normalize_character_name
+            normalized_filename = normalize_character_name(character_name)
+            
             # Save the processed image as PNG in web static folder
-            save_filename = f"{character_name}.png"
+            save_filename = f"{normalized_filename}.png"
             save_path = os.path.join(portraits_dir, save_filename)
             img.save(save_path, 'PNG')
             
@@ -908,6 +1059,70 @@ def upload_portrait():
     except Exception as e:
         error(f"PORTRAIT: Upload failed", exception=e, category="web_interface")
         return jsonify({'success': False, 'message': str(e)})
+
+
+# TABLETOP MODE: Add AI portrait generation endpoint for Character Sheet Create action
+@app.route('/api/portrait/create', methods=['POST'])
+def create_portrait():
+    """Generate AI portrait for character using portrait service."""
+    try:
+        data = request.get_json(silent=True) or {}
+        
+        # Accept both naming conventions for robustness
+        character_name = data.get('character_name') or data.get('characterName')
+        if not character_name:
+            return jsonify({'success': False, 'message': 'Character name is required'}), 400
+        
+        # Normalize character name for file lookup
+        from updates.update_character_info import normalize_character_name
+        normalized_name = normalize_character_name(character_name)
+        
+        # Load character data from characters directory
+        from utils.file_operations import safe_read_json
+        char_path = f"characters/{normalized_name}.json"
+        character_data = safe_read_json(char_path)
+        
+        if not character_data:
+            return jsonify({
+                'success': False,
+                'message': f'Character {character_name} not found'
+            }), 404
+        
+        # Get optional generation parameters
+        model = data.get('model', 'dall-e-3')
+        size = data.get('size', '1024x1024')
+        quality = data.get('quality', 'standard')
+        
+        # Call portrait service
+        result = generate_and_save_portrait(
+            character_data=character_data,
+            model=model,
+            size=size,
+            quality=quality
+        )
+        
+        if result['success']:
+            return jsonify({
+                'success': True,
+                'message': result['message'],
+                'portrait_path': result.get('portrait_path'),
+                'module_portrait_path': result.get('module_portrait_path'),
+                'prompt': result.get('prompt')
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'message': result['message'],
+                'error': result.get('error')
+            }), 500
+            
+    except Exception as e:
+        error(f"PORTRAIT_CREATE: Unexpected error", exception=e, category="web_interface")
+        return jsonify({
+            'success': False,
+            'message': 'Portrait generation failed due to server error'
+        }), 500
+
 
 @app.route('/spell-data')
 def get_spell_data():

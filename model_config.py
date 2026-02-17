@@ -223,3 +223,15 @@ TASK_TEMPERATURES = {
 # No code changes needed - all routing happens in ai_client_factory.py
 
 # ============================================================================
+# TABLETOP MODE: Missing Media Warning Throttle Settings
+# ============================================================================
+# Per-key throttle to prevent warning log spam for repeated media misses.
+# 
+# Rationale:
+# - Preserves first-miss diagnostics while reducing noise for repeated requests
+# - Thread-safe for multi-threaded Flask web server
+# - Zero impact on media serving behavior (still returns 404 on miss)
+#
+MISSING_MEDIA_WARNING_THROTTLE_ENABLED = True  # Master switch for throttle
+MISSING_MEDIA_WARNING_THROTTLE_SECONDS = 300   # Window in seconds (5 minutes)
+# ============================================================================
