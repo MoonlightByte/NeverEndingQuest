@@ -425,10 +425,13 @@ development/
 exports/
 modules/validation_cache.json
 # Dynamic companion memory files (character-specific, generated during gameplay)
+data/companion_memories/
 data/companion_memories_compressed/*_memories_*.json
 data/companion_memories_backup/
 data/companion_memories_pre_enhanced/
 data/memory.db
+data/memory.db-shm
+data/memory.db-wal
 data/world_surveillance.db
 NeverEndingQuest.code-workspace
 modules/The_Thornwood_Watch/images/image_metadata.json
