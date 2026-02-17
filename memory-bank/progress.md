@@ -77,14 +77,31 @@ Active development of Tabletop Mode features, focusing on party management and U
     - Steps 2.x-7.x: Validation, extraction, restore pipeline, UI integration, regression tests
   - **Status:** Step 1.1 complete, ready for Step 1.2 (Payload and Archive Catalog)
 
-- **PC Leave/Return World Memory Planning (PLANNED - 2026-02-16):**
-  - OpenSpec change `pc-leave-return-world-memory` scaffolded with full planning artifacts (`proposal.md`, `design.md`, `tasks.md`)
-  - Capability specs created: `tt-pc-leave-return-lifecycle` and `memory-role-transition-continuity`
+- **PC Leave/Return World Memory (COMPLETED - 2026-02-17):**
+  - **OpenSpec Change:** `pc-leave-return-world-memory` fully implemented, validated, and archived
   - **Objective:** Add explicit retire/rejoin lifecycle with world-memory continuity writes in `data/memory.db`
-  - **Planned Service:** `core/memory/party_transition_memory.py` for `record_pc_retirement`, `record_pc_return`, and return-memory pack assembly
-  - **Route Integration Targets:** `web/routes/tabletop_party_routes.py` retirement/rejoin endpoints with fail-open memory persistence
-  - **Execution Model:** Phase-gated rollout with verification checkpoints per phase and merge-safe `# TABLETOP MODE:` host hooks
-  - **Status:** Scaffolding complete, ready for phased implementation
+  - **Phase 1 - Transition Memory Service Foundation:**
+    - `core/memory/party_transition_memory.py` created with `record_pc_retirement()`, `record_pc_return()`, and `build_return_memory_pack()` helpers
+    - Exports added to `core/memory/__init__.py`
+  - **Phase 2 - Retirement Flow Integration:**
+    - `web/routes/tabletop_party_routes.py` `remove_party_character` accepts optional `departure_text`
+    - Runtime guards block retirement during active combat and when retiring final party member
+    - Fail-open memory persistence with structured logging (`MEMORY_TRANSITION ... status=degraded ... fallback=enabled`)
+    - Retirement narration enqueued with explicit farewell vs mysterious departure fallback
+    - `_tabletop_role_history` lifecycle metadata appended via `pc_manager.append_role_history_event()`
+  - **Phase 3 - Return Flow Integration:**
+    - `web/routes/tabletop_party_routes.py` `add_party_character` persists return transition memory on rejoin
+    - Return narration context built from `build_return_memory_pack()` with bounded continuity snippets (max 12)
+    - Canonical identity preserved via `pc_manager.ensure_stable_character_id()`
+  - **Phase 4 - UI and Prompt Assets:**
+    - `web/static/js/tabletop_mode.js` `retireCharacter` collects optional farewell text via `prompt()`
+    - `prompts/tabletop/retirement_narration.txt` and `prompts/tabletop/return_narration.txt` created with narration-only instructions
+  - **Phase 5 - Resilience and Verification:**
+    - `scripts/test_party_retirement_memory.py` created with 4 test functions covering persistence, no-purge guarantees, continuity retrieval, and graceful degradation
+    - All tests PASS, temp DB isolation verified
+  - **Key Behaviors:** Canonical entity identity preserved, `role_transition` events with `importance=95`, actor/witness linking, bounded continuity, non-destructive guarantees, ASCII-only logs
+  - **Verification:** Python compile PASS, JS syntax PASS, regression tests PASS, lifecycle tests PASS
+  - **Status:** COMPLETED, validated, archived to `openspec/changes/archive/2026-02-17-pc-leave-return-world-memory/`
 
 - **PR1 Archive Global Save Index and Restore Routing (COMPLETED - 2026-02-16):**
   - OpenSpec change `archive-global-save-index-and-restore-routing` fully implemented and validated

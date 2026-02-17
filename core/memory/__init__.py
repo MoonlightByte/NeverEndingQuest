@@ -27,6 +27,11 @@ from core.memory.memory_portability import (
     import_memory_db_package,
     validate_memory_package,
 )
+from core.memory.party_transition_memory import (
+    build_return_memory_pack,
+    record_pc_retirement,
+    record_pc_return,
+)
 
 __all__ = [
     "DEFAULT_MEMORY_DB_PATH",
@@ -43,4 +48,7 @@ __all__ = [
     "export_memory_db_package",
     "validate_memory_package",
     "import_memory_db_package",
+    "record_pc_retirement",
+    "record_pc_return",
+    "build_return_memory_pack",
 ]

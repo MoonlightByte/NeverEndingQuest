@@ -41,6 +41,13 @@ from utils.enhanced_logger import error, info, warning
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.module_path_manager import ModulePathManager
 
+# TABLETOP MODE: Party transition memory for retirement/return lifecycle
+from core.memory.party_transition_memory import (
+    build_return_memory_pack,
+    record_pc_retirement,
+    record_pc_return,
+)
+
 
 def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
     """Register TABLETOP MODE party and character creation API routes."""
@@ -427,11 +434,119 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
             if not character_name:
                 return jsonify({'error': 'Character name required'}), 400
 
+            # TABLETOP MODE: Snapshot pre-add party membership to detect rejoins
+            party_tracker_pre = pc_manager.get_party_tracker()
+            normalized_target = _normalize_lookup_name(character_name)
+            pre_membership = {_normalize_lookup_name(name) for name in party_tracker_pre.get('partyMembers', [])}
+            was_previously_member = normalized_target in pre_membership
+
             success = pc_manager.add_pc(character_name)
             if not success:
                 return jsonify({'error': f"Failed to add '{character_name}' to party. Ensure the character file exists."}), 400
 
             party_tracker = pc_manager.get_party_tracker()
+
+            # TABLETOP MODE: Persist return transition for true rejoins (fail-open)
+            if not was_previously_member:
+                try:
+                    return_result = record_pc_return(
+                        character_name=character_name,
+                        party_tracker=party_tracker
+                    )
+                    if return_result.get('status') == 'success':
+                        info(
+                            f"MEMORY_TRANSITION event=return character={character_name} status=success event_id={return_result.get('event_id')}",
+                            category="memory_ingest"
+                        )
+                    else:
+                        warning(
+                            f"MEMORY_TRANSITION event=return character={character_name} status=degraded reason=persistence_error fallback=enabled message={return_result.get('message')}",
+                            category="memory_ingest"
+                        )
+                except Exception as memory_error:
+                    warning(
+                        f"MEMORY_TRANSITION event=return character={character_name} status=degraded reason=exception fallback=enabled error={memory_error}",
+                        category="memory_ingest"
+                    )
+
+                # TABLETOP MODE: Build return narration context from memory pack (fail-open)
+                return_narration_prompt = ""
+                try:
+                    memory_pack = build_return_memory_pack(
+                        character_name=character_name,
+                        party_tracker=party_tracker
+                    )
+                    if memory_pack.get('status') == 'success':
+                        snippets = memory_pack.get('continuity_snippets', [])
+                        if snippets:
+                            # Build bounded continuity summary (max 3 entries)
+                            continuity_lines = []
+                            for snippet in snippets[:3]:
+                                summary = snippet.get('summary', '')
+                                if summary:
+                                    continuity_lines.append(f"- {summary}")
+                            continuity_text = "\n".join(continuity_lines) if continuity_lines else "No prior continuity available."
+                            return_narration_prompt = (
+                                f"[SYSTEM] {character_name} has returned to the party. "
+                                f"Prior continuity:\n{continuity_text}\n"
+                                f"Please narrate their rejoining with appropriate NPC reactions referencing this history."
+                            )
+                        else:
+                            return_narration_prompt = (
+                                f"[SYSTEM] {character_name} has returned to the party. "
+                                f"Please narrate their rejoining with appropriate NPC reactions."
+                            )
+                    else:
+                        # Pack returned error status
+                        return_narration_prompt = (
+                            f"[SYSTEM] {character_name} has returned to the party. "
+                            f"Please narrate their rejoining with appropriate NPC reactions."
+                        )
+                except Exception as pack_error:
+                    warning(
+                        f"TABLETOP: Return memory pack build failed for '{character_name}' (using fallback): {pack_error}",
+                        category="memory_retrieval"
+                    )
+                    # Fallback when pack fails entirely
+                    return_narration_prompt = (
+                        f"[SYSTEM] {character_name} has returned to the party. "
+                        f"Please narrate their rejoining with appropriate NPC reactions."
+                    )
+
+                # Enqueue return narration prompt for rejoin path
+                if return_narration_prompt:
+                    user_input_queue.put(return_narration_prompt)
+
+                # TABLETOP MODE: Append return lifecycle metadata to character file (fail-open)
+                try:
+                    character_data = _load_character_data(character_name)
+                    if character_data:
+                        # Preserve canonical identity
+                        pc_manager.ensure_stable_character_id(character_data)
+                        # Append role history event
+                        updated_data = pc_manager.append_role_history_event(
+                            character_data,
+                            action='returned_to_party',
+                            from_role='retired_player',
+                            to_role='player',
+                            source='manage_party_add_character',
+                            actor='dm',
+                        )
+                        if _save_character_data(character_name, updated_data):
+                            info(
+                                f"TABLETOP: Return lifecycle metadata appended for '{character_name}'",
+                                category="tabletop_mode"
+                            )
+                        else:
+                            warning(
+                                f"TABLETOP: Failed to save return lifecycle metadata for '{character_name}'",
+                                category="tabletop_mode"
+                            )
+                except Exception as lifecycle_error:
+                    warning(
+                        f"TABLETOP: Return lifecycle metadata append failed for '{character_name}' (proceeding anyway): {lifecycle_error}",
+                        category="tabletop_mode"
+                    )
 
             try:
                 char_data = safe_read_json(os.path.join('characters', f"{character_name}.json"))
@@ -454,13 +569,107 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
         try:
             data = request.get_json(silent=True) or {}
             character_name = data.get('character')
+            departure_text = data.get('departure_text', '')
 
             if not character_name:
                 return jsonify({'error': 'Character name required'}), 400
 
+            # TABLETOP MODE: Load party state snapshot for guard checks
+            party_tracker = pc_manager.get_party_tracker()
+            world_conditions = party_tracker.get('worldConditions', {})
+
+            # TABLETOP MODE: Guard - block retirement during active combat
+            active_combat = world_conditions.get('activeCombatEncounter', '')
+            if active_combat:
+                return jsonify({'error': 'Cannot retire character during active combat'}), 400
+
+            # TABLETOP MODE: Guard - block retirement of final party member
+            party_members = party_tracker.get('partyMembers', [])
+            normalized_target = _normalize_lookup_name(character_name)
+            normalized_members = [_normalize_lookup_name(name) for name in party_members]
+
+            if normalized_target in normalized_members:
+                # Check if this is the last member
+                remaining_after_remove = [
+                    name for name in party_members
+                    if _normalize_lookup_name(name) != normalized_target
+                ]
+                if not remaining_after_remove:
+                    return jsonify({'error': 'Cannot retire the final party member'}), 400
+
+            # TABLETOP MODE: Snapshot pre-mutation party context for memory continuity
+            pre_mutation_tracker = deepcopy(party_tracker)
+
+            # TABLETOP MODE: Persist retirement transition to world memory (fail-open)
+            try:
+                retirement_result = record_pc_retirement(
+                    character_name=character_name,
+                    party_tracker=pre_mutation_tracker,
+                    departure_text=departure_text
+                )
+                if retirement_result.get('status') == 'success':
+                    info(
+                        f"MEMORY_TRANSITION event=retirement character={character_name} status=success event_id={retirement_result.get('event_id')}",
+                        category="memory_ingest"
+                    )
+                else:
+                    warning(
+                        f"MEMORY_TRANSITION event=retirement character={character_name} status=degraded reason=persistence_error fallback=enabled message={retirement_result.get('message')}",
+                        category="memory_ingest"
+                    )
+            except Exception as memory_error:
+                warning(
+                    f"MEMORY_TRANSITION event=retirement character={character_name} status=degraded reason=exception fallback=enabled error={memory_error}",
+                    category="memory_ingest"
+                )
+
+            # TABLETOP MODE: Append retirement lifecycle metadata to character file (fail-open)
+            try:
+                character_data = _load_character_data(character_name)
+                if character_data:
+                    updated_data = pc_manager.append_role_history_event(
+                        character_data,
+                        action='retired_from_party',
+                        from_role='player',
+                        to_role='retired_player',
+                        source='manage_party_remove_character',
+                        actor='dm',
+                    )
+                    if _save_character_data(character_name, updated_data):
+                        info(
+                            f"TABLETOP: Retirement lifecycle metadata appended for '{character_name}'",
+                            category="tabletop_mode"
+                        )
+                    else:
+                        warning(
+                            f"TABLETOP: Failed to save retirement lifecycle metadata for '{character_name}'",
+                            category="tabletop_mode"
+                        )
+            except Exception as lifecycle_error:
+                warning(
+                    f"TABLETOP: Retirement lifecycle metadata append failed for '{character_name}' (proceeding anyway): {lifecycle_error}",
+                    category="tabletop_mode"
+                )
+
             success = pc_manager.remove_pc(character_name)
             if not success:
                 return jsonify({'error': f"Failed to remove '{character_name}' from party."}), 400
+
+            # TABLETOP MODE: Enqueue retirement narration with farewell vs mysterious branch
+            if departure_text and str(departure_text).strip():
+                # Explicit farewell provided
+                farewell_narration = (
+                    f"[SYSTEM] {character_name} is retiring from the party. "
+                    f"Their parting words: '{str(departure_text).strip()}'. "
+                    f"Please narrate their graceful departure with appropriate NPC reactions."
+                )
+            else:
+                # Mysterious departure (no text provided)
+                farewell_narration = (
+                    f"[SYSTEM] {character_name} has mysteriously departed from the party. "
+                    f"Please narrate their sudden absence with appropriate NPC confusion or concern."
+                )
+            user_input_queue.put(farewell_narration)
 
             party_tracker = pc_manager.get_party_tracker()
             return jsonify({'success': True, 'partyMembers': party_tracker.get('partyMembers', [])})

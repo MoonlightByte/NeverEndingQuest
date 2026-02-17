@@ -292,16 +292,21 @@ function submitDMInterviewCreate() {
 
 /**
  * Removes a character from the party (retirement).
- * @param {string} characterName 
+ * @param {string} characterName
  */
 function retireCharacter(characterName) {
     if (confirm(`Are you sure you want to retire ${characterName} from the party? They will remain in the /characters folder and can rejoin later.`)) {
+        // TABLETOP MODE: Collect optional farewell text for retirement narration
+        const farewellText = prompt(`Enter optional farewell message for ${characterName} (or leave blank):`) || '';
+        const departureText = farewellText.trim();
+
         fetch('/api/party/remove_character', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ character: characterName }),
+            // TABLETOP MODE: Include departure_text in retirement payload
+            body: JSON.stringify({ character: characterName, departure_text: departureText }),
         })
         .then(response => response.json())
         .then(data => {

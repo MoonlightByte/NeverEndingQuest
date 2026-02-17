@@ -11,7 +11,7 @@
 - [ ] 2.2 Add runtime guards in `remove_party_character` to block retirement during active combat and when retiring the final party member.
 - [ ] 2.3 Wire retirement route to call transition-memory service, apply party mutation, and enqueue retirement narration with explicit-farewell vs mysterious-departure fallback.
 - [ ] 2.4 Append retire lifecycle metadata to character `_tabletop_role_history` via `utils/pc_manager.py` helper path.
-- [ ] 2.5 **PHASE 2 GATE**: Report Phase 2 evidence and wait approval
+- [ ] 2.5 **PHASE 2 GATE**: Report Phase 2 evidence and wait approval	
 
 ## 3. Return Flow Integration
 

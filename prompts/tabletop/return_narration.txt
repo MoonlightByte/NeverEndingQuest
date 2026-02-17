@@ -1,0 +1,45 @@
+# Return Narration Prompt
+# TABLETOP MODE: Continuity-focused return narration for rejoining PCs
+
+You are the Dungeon Master narrating a character's return to the party after absence.
+
+## Context
+- Character: {character_name}
+- Return Context: {return_context}
+- Witness Context: {witness_context}
+- Continuity Snippets: {continuity_snippets}
+
+## Narration Instructions
+
+Describe {character_name}'s return to the party with continuity-aware framing.
+
+### Continuity Focus
+- Acknowledge the passage of time since their departure
+- Reference 1-3 key shared memories from the continuity snippets (use top 3 maximum)
+- Show how the party dynamic has shifted in their absence
+- Weave their reappearance naturally into the current scene
+
+### Return Context Handling
+- If returning from mysterious absence: emphasize surprise, questions, emotional relief
+- If returning from planned departure: show intentional reconnection, changed circumstances
+- Maintain consistency with how they originally departed (farewell vs mysterious)
+
+### Witness Reactions
+Include reactions from:
+- Remaining player characters (PCs) who continued the journey
+- Party NPC companions who stayed with the group
+- Show emotional range: joy, skepticism, warmth, lingering questions
+- Reference specific shared history where continuity snippets provide it
+
+### Bounded Memory Usage
+Use at most the top 3 continuity snippets. If fewer are available, work with what is present. If continuity is sparse, focus on the present moment and general emotional tone rather than specific callbacks.
+
+## Output Expectation
+
+Provide 2-4 evocative paragraphs of narration. Focus on:
+- The moment of return (how they appear, where, under what circumstances)
+- Immediate witness reactions with emotional specificity
+- The tension between past departure and present reunion
+- Hints of what may have transpired during their absence (if mysterious)
+
+Respond with ONLY the narration, no metadata.

@@ -6,6 +6,15 @@ This file provides guidance for AI coding agents working in the NeverEndingQuest
 
 NeverEndingQuest is an AI-powered Dungeon Master system for running SRD 5.2.1 compatible tabletop RPG campaigns. It features token compression, a web interface with real-time updates, and a comprehensive module creation toolkit.
 
+## Documentation Source Hierarchy (Doc Contract)
+
+- `AGENTS.md` is the canonical repo guide for architecture, standards, and workflow.
+- `openspec/changes/*` is the source of truth for active change requirements and acceptance criteria.
+- `plans/` captures planning and draft thinking; once reflected in OpenSpec, plans are reference-oriented.
+- `memory-bank/` is optional legacy context (if present) and non-authoritative.
+- Conflict resolution: `AGENTS.md` governs repo-wide rules; active OpenSpec artifacts govern change-specific scope.
+- Repositories without `memory-bank/` are fully valid and follow the `AGENTS.md` + `openspec` + `plans` workflow.
+
 ### Tabletop Multiplayer Context
 
 **This repository is a merge-safe tabletop multiplayer plugin/modification** of the upstream [MoonlightByte/NeverEndingQuest](https://github.com/MoonlightByte/NeverEndingQuest) project.
@@ -1041,6 +1050,77 @@ Implement Phase 1 Exit-only functionality allowing users to gracefully stop the 
 - `web/web_interface.py` (exit handler with graceful stop + fail-closed exit)
 - `run_web.py` (return-code 91 handling)
 - `web/templates/game_interface.html` (immediate shutdown UI + ack listener)
+
+---
+
+### PC Leave/Return World Memory (COMPLETED - 2026-02-17)
+
+**Status:** COMPLETED - Archived to `openspec/changes/archive/2026-02-17-pc-leave-return-world-memory/`
+
+**Objective:**
+Implement explicit PC retirement/rejoin lifecycle with world-memory continuity persistence in `data/memory.db`, enabling narrative continuity when characters leave and return to the party.
+
+**Implementation Summary:**
+
+**Phase 1 - Transition Memory Service Foundation (Steps 1.1-1.3):**
+- **New Module** (`core/memory/party_transition_memory.py`): Write helpers `record_pc_retirement()` and `record_pc_return()` using canonical entity IDs and `role_transition` events
+- **Retrieval Helper** (`build_return_memory_pack()`): Composes bounded transition + social continuity snippets (max 12 combined) for narration context
+- **Package Exports** (`core/memory/__init__.py`): All transition functions exported and import-verified
+
+**Phase 2 - Retirement Flow Integration (Steps 2.1-2.5):**
+- **Route Extension** (`web/routes/tabletop_party_routes.py:remove_party_character`):
+  - Accepts optional `departure_text` parameter
+  - Runtime guards block retirement during active combat and when retiring final party member
+  - Pre-mutation party snapshot for witness continuity
+  - Calls `record_pc_retirement()` with fail-open error handling
+  - Enqueues retirement narration (explicit farewell vs mysterious departure fallback)
+  - Appends `_tabletop_role_history` lifecycle metadata via `pc_manager.append_role_history_event()`
+
+**Phase 3 - Return Flow Integration (Steps 3.1-3.4):**
+- **Route Extension** (`web/routes/tabletop_party_routes.py:add_party_character`):
+  - Detects true rejoins (character not previously in party)
+  - Calls `record_pc_return()` with fail-open error handling
+  - Builds return narration context via `build_return_memory_pack()`
+  - Enqueues return narration with continuity snippets
+  - Appends return lifecycle metadata preserving canonical identity
+
+**Phase 4 - UI and Prompt Assets (Steps 4.1-4.4):**
+- **UI Flow** (`web/static/js/tabletop_mode.js:retireCharacter`): Collects optional farewell text via `prompt()`, sends in `departure_text` payload
+- **Prompt Templates**:
+  - `prompts/tabletop/retirement_narration.txt`: Narration-only instructions with `{character_name}`, `{departure_mode}`, `{departure_text}`, `{witness_context}` placeholders
+  - `prompts/tabletop/return_narration.txt`: Continuity-focused framing with `{character_name}`, `{continuity_snippets}`, `{witness_context}`, `{return_context}` placeholders
+
+**Phase 5 - Resilience and Verification (Steps 5.1-5.5):**
+- **Structured Logging**: All memory persistence outcomes emit `MEMORY_TRANSITION event=retirement|return character=<name> status=success|degraded ... fallback=enabled`
+- **Fail-Open Guarantees**: If memory persistence fails, party add/remove still completes and fallback narration still queues
+- **Test Coverage** (`scripts/test_party_retirement_memory.py`):
+  - 4 test functions, 20+ assertions
+  - Validates persistence, no-purge guarantees, continuity retrieval, graceful degradation
+  - Uses temp DB isolation, restores `DEFAULT_MEMORY_DB_PATH` after each test
+  - All tests PASS
+
+**Key Behaviors:**
+- Canonical entity identity preserved across retire/return transitions (same `entity_id`)
+- `role_transition` events with `importance=95`, `persistence_class=identity_core`, `decay_profile=none`
+- Actor/witness linking: transitioning PC as `actor`, remaining party as `witness`
+- Bounded continuity: max 3 snippets per source, max 12 combined
+- Non-destructive: prior memory events/links never deleted
+- ASCII-only output and logs
+
+**Verification:**
+- Compile checks: `python3 -m py_compile web/routes/tabletop_party_routes.py core/memory/party_transition_memory.py` -> PASS
+- JS syntax: `node --check web/static/js/tabletop_mode.js` -> PASS
+- Regression tests: `python3 scripts/test_memory_regression_coverage.py` -> ALL PASSED
+- Lifecycle tests: `python3 scripts/test_party_retirement_memory.py` -> ALL TESTS PASSED
+
+**Files Modified/Created:**
+- `core/memory/party_transition_memory.py` (new - 394 lines)
+- `core/memory/__init__.py` (exports added)
+- `web/routes/tabletop_party_routes.py` (retirement/return flow integration)
+- `web/static/js/tabletop_mode.js` (farewell text collection)
+- `prompts/tabletop/retirement_narration.txt` (new)
+- `prompts/tabletop/return_narration.txt` (new)
+- `scripts/test_party_retirement_memory.py` (new - test suite)
 
 **OpenSpec Artifacts:**
 - Change: `exit-only-gui-shutdown`
