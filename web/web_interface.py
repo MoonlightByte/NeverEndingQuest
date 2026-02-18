@@ -910,51 +910,67 @@ def serve_module_media(media_type, filename):
     
     # TABLETOP MODE: Enqueue auto-generation for allied NPC companion portraits (non-blocking)
     # MVP policy: Only allied companions get auto-generated; non-allied NPCs and monsters skip
+    # Restrict to image files only (skip video and other media types)
     if MISSING_MEDIA_AUTOGEN_AVAILABLE and media_type == 'npcs':
-        try:
-            # Build minimal task data for policy check
-            from web.extensions.missing_media_autogen import MissingMediaTask
-            policy_task = MissingMediaTask(
-                missing_key=f"{media_type}/{filename}".lower().replace(" ", "_").replace("-", "_"),
-                media_type=media_type,
-                filename=filename,
-                metadata={"source": "media_miss", "timestamp": time.time()}
+        # Only process image file extensions; skip video and other media
+        filename_lower = filename.lower()
+        is_image_file = (
+            filename_lower.endswith('.jpg') or
+            filename_lower.endswith('.jpeg') or
+            filename_lower.endswith('.png') or
+            filename_lower.endswith('_thumb.jpg')
+        )
+        
+        if not is_image_file:
+            debug(
+                f"MISSING_MEDIA_AUTOGEN: Skipping non-image file type {filename}",
+                category="web_interface"
             )
-            
-            # Check allied policy before enqueueing (MVP: allied companions only)
-            if not is_allied_companion_check(policy_task):
-                debug(
-                    f"MISSING_MEDIA_AUTOGEN: Skipped non-allied NPC {filename}",
-                    category="web_interface"
-                )
-            else:
-                # Allied companion - proceed with enqueue
-                result = enqueue_missing_media_autogen_task(
+        else:
+            try:
+                # Build minimal task data for policy check
+                from web.extensions.missing_media_autogen import MissingMediaTask
+                policy_task = MissingMediaTask(
+                    missing_key=f"{media_type}/{filename}".lower().replace(" ", "_").replace("-", "_"),
                     media_type=media_type,
                     filename=filename,
                     metadata={"source": "media_miss", "timestamp": time.time()}
                 )
-                status = result.get("status", "unknown")
-                if status == "queued":
+
+                # Check allied policy before enqueueing (MVP: allied companions only)
+                if not is_allied_companion_check(policy_task):
                     debug(
-                        f"MISSING_MEDIA_AUTOGEN: Enqueued generation for {media_type}/{filename}",
+                        f"MISSING_MEDIA_AUTOGEN: Skipped non-allied NPC {filename}",
                         category="web_interface"
                     )
-                elif status in ("suppressed_dedupe", "suppressed_cooldown"):
-                    debug(
-                        f"MISSING_MEDIA_AUTOGEN: Suppressed duplicate for {media_type}/{filename} ({status})",
-                        category="web_interface"
+                else:
+                    # Allied companion - proceed with enqueue
+                    result = enqueue_missing_media_autogen_task(
+                        media_type=media_type,
+                        filename=filename,
+                        metadata={"source": "media_miss", "timestamp": time.time()}
                     )
-                elif status == "disabled":
-                    debug(
-                        f"MISSING_MEDIA_AUTOGEN: Worker not running for {media_type}/{filename}",
-                        category="web_interface"
-                    )
-        except Exception as enqueue_error:
-            debug(
-                f"MISSING_MEDIA_AUTOGEN: Failed to enqueue {media_type}/{filename}: {enqueue_error}",
-                category="web_interface"
-            )
+                    status = result.get("status", "unknown")
+                    if status == "queued":
+                        debug(
+                            f"MISSING_MEDIA_AUTOGEN: Enqueued generation for {media_type}/{filename}",
+                            category="web_interface"
+                        )
+                    elif status in ("suppressed_dedupe", "suppressed_cooldown"):
+                        debug(
+                            f"MISSING_MEDIA_AUTOGEN: Suppressed duplicate for {media_type}/{filename} ({status})",
+                            category="web_interface"
+                        )
+                    elif status == "disabled":
+                        debug(
+                            f"MISSING_MEDIA_AUTOGEN: Worker not running for {media_type}/{filename}",
+                            category="web_interface"
+                        )
+            except Exception as enqueue_error:
+                debug(
+                    f"MISSING_MEDIA_AUTOGEN: Failed to enqueue {media_type}/{filename}: {enqueue_error}",
+                    category="web_interface"
+                )
     
     return "Media not found", 404
 
@@ -1061,6 +1077,119 @@ def upload_portrait():
         return jsonify({'success': False, 'message': str(e)})
 
 
+# Required profile fields for portrait create (deterministic ordering)
+_REQUIRED_PORTRAIT_PROFILE_FIELDS = [
+    'age',
+    'height',
+    'weight',
+    'eyes',
+    'skin',
+    'hair',
+    'personality_traits',
+    'ideals',
+    'bonds',
+    'flaws',
+    'background_feature_name',
+    'background_feature_description'
+]
+
+
+def _build_profile_update_payload(profile_payload: dict, existing_data: dict) -> dict:
+    """Build character update payload from profile fields.
+    
+    Maps profile_payload keys to character JSON structure, preserving
+    existing backgroundFeature keys while updating name/description.
+    
+    Args:
+        profile_payload: Normalized profile from _extract_profile_payload
+        existing_data: Current character data for backgroundFeature merge
+        
+    Returns:
+        Dictionary ready for pc_manager.update_character_state
+    """
+    update = {
+        'age': profile_payload.get('age', ''),
+        'height': profile_payload.get('height', ''),
+        'weight': profile_payload.get('weight', ''),
+        'eyes': profile_payload.get('eyes', ''),
+        'skin': profile_payload.get('skin', ''),
+        'hair': profile_payload.get('hair', ''),
+        'personality_traits': profile_payload.get('personality_traits', ''),
+        'ideals': profile_payload.get('ideals', ''),
+        'bonds': profile_payload.get('bonds', ''),
+        'flaws': profile_payload.get('flaws', ''),
+    }
+    
+    # Build backgroundFeature preserving existing keys
+    bg_name = profile_payload.get('background_feature_name', '')
+    bg_desc = profile_payload.get('background_feature_description', '')
+    
+    existing_bg = existing_data.get('backgroundFeature', {}) if isinstance(existing_data.get('backgroundFeature'), dict) else {}
+    
+    update['backgroundFeature'] = {
+        **existing_bg,
+        'name': bg_name,
+        'description': bg_desc
+    }
+    
+    return update
+
+
+def _extract_profile_payload(data: dict) -> dict:
+    """Extract and normalize profile payload from portrait create request.
+    
+    Args:
+        data: Request JSON data
+        
+    Returns:
+        Normalized profile dictionary with keys:
+        - age, height, weight, eyes, skin, hair
+        - personality_traits, ideals, bonds, flaws
+        - background_feature_name, background_feature_description
+        All values are trimmed strings or empty strings.
+    """
+    profile = {
+        'age': '',
+        'height': '',
+        'weight': '',
+        'eyes': '',
+        'skin': '',
+        'hair': '',
+        'personality_traits': '',
+        'ideals': '',
+        'bonds': '',
+        'flaws': '',
+        'background_feature_name': '',
+        'background_feature_description': ''
+    }
+    
+    # Extract appearance fields
+    appearance = data.get('appearance', {})
+    if isinstance(appearance, dict):
+        profile['age'] = str(appearance.get('age', '')).strip()
+        profile['height'] = str(appearance.get('height', '')).strip()
+        profile['weight'] = str(appearance.get('weight', '')).strip()
+        profile['eyes'] = str(appearance.get('eyes', '')).strip()
+        profile['skin'] = str(appearance.get('skin', '')).strip()
+        profile['hair'] = str(appearance.get('hair', '')).strip()
+    
+    # Extract personality fields
+    personality = data.get('personality', {})
+    if isinstance(personality, dict):
+        profile['personality_traits'] = str(personality.get('personality_traits', '')).strip()
+        profile['ideals'] = str(personality.get('ideals', '')).strip()
+        profile['bonds'] = str(personality.get('bonds', '')).strip()
+        profile['flaws'] = str(personality.get('flaws', '')).strip()
+    
+    # Extract background feature fields
+    bg_feature = data.get('backgroundFeature', {})
+    if isinstance(bg_feature, dict):
+        profile['background_feature_name'] = str(bg_feature.get('name', '')).strip()
+        profile['background_feature_description'] = str(bg_feature.get('description', '')).strip()
+    
+    return profile
+
+
 # TABLETOP MODE: Add AI portrait generation endpoint for Character Sheet Create action
 @app.route('/api/portrait/create', methods=['POST'])
 def create_portrait():
@@ -1088,12 +1217,66 @@ def create_portrait():
                 'message': f'Character {character_name} not found'
             }), 404
         
+        # Extract profile payload
+        profile_payload = _extract_profile_payload(data)
+        
+        # Step 9.3: Fail-closed validation for required profile fields
+        missing_fields = [
+            field for field in _REQUIRED_PORTRAIT_PROFILE_FIELDS
+            if not profile_payload.get(field, '').strip()
+        ]
+        
+        if missing_fields:
+            return jsonify({
+                'success': False,
+                'message': 'Portrait creation requires complete profile information',
+                'requires_profile': True,
+                'missing_fields': missing_fields,
+                'profile_payload': profile_payload
+            }), 409
+        
+        # Step 9.4: Persist submitted profile fields before generation
+        try:
+            # Build update payload preserving existing backgroundFeature keys
+            update_payload = _build_profile_update_payload(profile_payload, character_data)
+            
+            # Persist using pc_manager abstraction
+            persist_success = pc_manager.update_character_state(character_name, update_payload)
+            
+            if not persist_success:
+                return jsonify({
+                    'success': False,
+                    'message': 'Failed to save profile before portrait creation',
+                    'error': 'profile_persist_failed'
+                }), 500
+            
+            # Reload character to get updated state for generation
+            updated_character_data = pc_manager.get_character_state(character_name)
+            
+            if not updated_character_data:
+                return jsonify({
+                    'success': False,
+                    'message': 'Failed to load updated character after save',
+                    'error': 'profile_reload_failed'
+                }), 500
+            
+            # Use updated character data for generation
+            character_data = updated_character_data
+            
+        except Exception as persist_error:
+            error(f"PORTRAIT_CREATE: Profile persistence failed", exception=persist_error, category="web_interface")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to save profile before portrait creation',
+                'error': 'profile_persist_failed'
+            }), 500
+        
         # Get optional generation parameters
         model = data.get('model', 'dall-e-3')
         size = data.get('size', '1024x1024')
         quality = data.get('quality', 'standard')
         
-        # Call portrait service
+        # Call portrait service with updated character data
         result = generate_and_save_portrait(
             character_data=character_data,
             model=model,

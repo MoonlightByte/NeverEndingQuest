@@ -91,12 +91,71 @@ Non-goals:
    Rationale:
    - Existing behavior already aligns with user expectation and requires no data migration.
 
+6. **Reuse-first recovery for allied NPC missing media**
+
+   Decision:
+   - On allied NPC image miss, attempt to materialize `/media/npcs` variants from existing portrait stores before any provider call.
+
+   Rationale:
+   - Eliminates unnecessary image-generation spend.
+   - Resolves current path contract mismatch between portrait outputs and media-serving inputs.
+
+7. **Canonical identity dedupe**
+
+   Decision:
+   - Dedupe by normalized NPC identity key, not by requested filename variant.
+
+   Rationale:
+   - Prevents duplicate generation caused by `_thumb` vs full-image misses for same NPC.
+
+8. **Frontend stale-miss cache expiry**
+
+   Decision:
+   - Make missing-image cache TTL-based instead of permanent negative cache.
+
+   Rationale:
+   - Allows UI to discover assets that appear shortly after async worker completion without requiring full reload.
+
+9. **Always-open full-profile modal for Character Sheet Create**
+
+   Decision:
+   - Character Sheet portrait `Create` SHALL always open a profile modal before submitting generation.
+   - Modal SHALL prefill current character values and allow player edits each time.
+
+   Rationale:
+   - Gives player direct agency to tune appearance and narrative profile at create time.
+   - Removes conditional client branching tied to missing-field checks.
+
+10. **Fail-closed required profile completeness for create**
+
+   Decision:
+   - Portrait create submissions SHALL require all of the following to be non-empty (trimmed):
+     - Appearance: `age`, `height`, `weight`, `eyes`, `skin`, `hair`
+     - Personality/Background: `personality_traits`, `ideals`, `bonds`, `flaws`, `backgroundFeature.name`, `backgroundFeature.description`
+   - Backend SHALL reject incomplete payloads with a safe structured validation response.
+
+   Rationale:
+   - Guarantees complete portrait-driving context for consistent image quality.
+   - Keeps API safe for non-UI callers and stale clients.
+
+11. **Persist-before-generate profile update contract**
+
+   Decision:
+   - `POST /api/portrait/create` SHALL persist modal profile edits to character JSON before image generation.
+   - Portrait generation SHALL consume updated persisted character state.
+
+   Rationale:
+   - Keeps Character Sheet and prompt source aligned.
+   - Ensures edits made in modal are not transient.
+
 ## Risks / Trade-offs
 
 - [Risk] API cost spikes from repeated misses -> Mitigation: dedupe, cooldown, allied-only policy.
 - [Risk] Worker failure leaves assets missing -> Mitigation: fail-open fallback chain, no hard user-path failure.
 - [Risk] Filename normalization mismatches -> Mitigation: centralize normalization in portrait service.
 - [Risk] Corrupt character JSON affects sheet stats path -> Mitigation: keep image fallback independent from stats payload where possible.
+- [Risk] Added required profile fields may block create if users leave fields blank -> Mitigation: always-open prefilled modal with clear required-field validation.
+- [Risk] Prompt bloat from long personality/background text -> Mitigation: sanitize and length-bound free-text fields before prompt composition.
 - [Trade-off] Additional worker state in web process -> Accepted for non-blocking behavior and low implementation complexity.
 
 ## Migration Plan
@@ -107,6 +166,7 @@ Non-goals:
 4. Add missing-media warning throttle.
 5. Add allied-only auto-heal worker and enqueue hook.
 6. Add regression tests and smoke validations.
+7. Add always-open full-profile modal and backend completeness enforcement.
 
 Rollback strategy:
 

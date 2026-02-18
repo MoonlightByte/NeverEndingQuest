@@ -25,6 +25,47 @@ Create action SHALL call a backend portrait generation path and save assets in e
 - **THEN** backend generates portrait output and writes canonical portrait assets
 - **AND** response returns a success payload usable for immediate UI refresh
 
+### Requirement: Create portrait SHALL always open full-profile modal before submission
+
+Character Sheet portrait `Create` action SHALL always open a modal that allows editing portrait-driving profile fields before generation.
+
+Modal fields SHALL include:
+- `age`
+- `height`
+- `weight`
+- `eyes`
+- `skin`
+- `hair`
+- `personality_traits`
+- `ideals`
+- `bonds`
+- `flaws`
+- `backgroundFeature.name`
+- `backgroundFeature.description`
+
+#### Scenario: Create clicked from Character Sheet
+- **WHEN** user clicks portrait `Create`
+- **THEN** full-profile modal opens every time
+- **AND** modal inputs are prefilled from current character data
+
+### Requirement: Create modal submission SHALL enforce complete profile fields
+
+Create modal SHALL block submission until all required profile fields are non-empty (trimmed).
+
+#### Scenario: Missing required field in modal
+- **WHEN** any required profile field is blank
+- **THEN** submit is blocked with safe validation feedback
+
+### Requirement: Create submission SHALL persist profile edits before generation
+
+Profile edits submitted through create modal SHALL be persisted to character state prior to portrait generation.
+
+#### Scenario: Modal submit with profile edits
+- **WHEN** user submits full-profile modal
+- **THEN** profile fields are saved to character JSON
+- **AND** portrait generation uses updated saved values
+- **AND** sheet refresh reflects updated fields after success
+
 ### Requirement: Create portrait failures SHALL be failure-isolated
 
 Portrait create failures SHALL return safe errors and SHALL NOT break gameplay/session flow.
@@ -33,3 +74,7 @@ Portrait create failures SHALL return safe errors and SHALL NOT break gameplay/s
 - **WHEN** generation fails due to provider or IO error
 - **THEN** API returns safe error response
 - **AND** existing portrait/fallback remains usable
+
+### SHOULD Guidance
+
+- Use a clear submit label such as `Save Profile + Create Portrait` to communicate persistence plus generation behavior.

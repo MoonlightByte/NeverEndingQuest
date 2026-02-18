@@ -31,3 +31,36 @@ Queueing logic MUST prevent repeated rapid enqueue for same missing asset key.
 #### Scenario: Repeated allied miss for same key
 - **WHEN** the same allied portrait key is requested repeatedly within cooldown window
 - **THEN** only one generation task is active/enqueued for that key
+
+### Requirement: Auto-generation MUST reuse existing portrait sources before provider calls
+
+When allied NPC media is missing, the system MUST attempt to reuse existing portrait assets before invoking image generation providers.
+
+#### Scenario: Existing portrait available for allied NPC
+- **WHEN** `/media/npcs/<name>_thumb.jpg` misses and `web/static/portraits/<name>.png` exists
+- **THEN** system materializes required NPC media variants from existing portrait
+- **AND** no provider image generation call is made
+
+### Requirement: Reuse/generated outputs MUST register into NPC media serving paths
+
+Recovered assets MUST be written to paths used by `/media/npcs/...` resolution.
+
+#### Scenario: Materialized NPC media serves on next request
+- **WHEN** allied NPC media miss is processed by worker
+- **THEN** subsequent request resolves from `modules/<module>/media/npcs` or `web/static/media/npcs`
+
+### Requirement: Queue dedupe MUST be identity-based across image variants
+
+Dedupe logic MUST treat `<name>.jpg`, `<name>.png`, and `<name>_thumb.jpg` as one NPC identity key.
+
+#### Scenario: Variant misses for same NPC within cooldown
+- **WHEN** repeated misses occur for `liri.jpg` and `liri_thumb.jpg`
+- **THEN** only one task is active/enqueued for canonical key `npcs/liri`
+
+### Requirement: Miss-triggered auto-generation SHALL apply to NPC image keys only
+
+Auto-generation enqueue SHALL ignore non-image NPC media keys.
+
+#### Scenario: NPC video miss
+- **WHEN** `/media/npcs/<name>_video.mp4` misses
+- **THEN** no portrait auto-generation task is enqueued

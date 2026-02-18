@@ -4,7 +4,7 @@ Use this file as the builder execution scaffold for `tasks.md`.
 
 ## Execution Contract
 
-- MUST execute in order: task groups 1 -> 7.
+- MUST execute in order: task groups 1 -> 10.
 - MUST keep host file edits minimal and mark required hooks with `# TABLETOP MODE:`.
 - MUST keep Python-visible text ASCII only.
 - MUST preserve existing upload portrait behavior.
@@ -135,3 +135,108 @@ Required final commands:
 4. Non-allied NPC and monster missing images do not trigger auto-generation in MVP.
 5. Repeated same-key misses do not flood warnings.
 6. NPC -> PC promotion preserves portrait continuity by fallback chain.
+
+---
+
+## Prompt 7 - Reuse-First NPC Media Registration
+
+Implement tasks 8.1-8.3 only.
+
+Scope:
+- `core/toolkit/portrait_service.py`
+- `web/extensions/missing_media_autogen.py`
+- `web/web_interface.py`
+
+MUST:
+- Reuse existing portrait files first; no provider call when reusable source exists.
+- Materialize NPC media outputs into `/media/npcs` serving paths.
+- Restrict enqueue to NPC image misses only.
+- Keep host hooks minimal and mark required host edits with `# TABLETOP MODE:`.
+
+SHOULD:
+- Keep helper functions small and testable.
+- Reuse existing normalization utilities.
+
+Verify before moving on:
+- `python3 -m py_compile core/toolkit/portrait_service.py web/extensions/missing_media_autogen.py web/web_interface.py`
+
+---
+
+## Prompt 8 - Canonical Dedupe, Policy Normalization, Frontend Cache TTL
+
+Implement tasks 8.4-8.6 only.
+
+Scope:
+- `web/extensions/missing_media_autogen.py`
+- `web/templates/game_interface.html`
+
+MUST:
+- Canonicalize dedupe key by NPC identity across image variants.
+- Normalize allied matching consistently with filename normalization.
+- Add TTL-based retry for missing-image cache.
+
+SHOULD:
+- Keep JS changes localized to image cache utility path.
+- Preserve existing fallback order.
+
+Verify before moving on:
+- Manual smoke: generated/reused image appears without full page reload after TTL window.
+- Manual smoke: repeated variant requests suppress duplicate generation.
+
+---
+
+## Prompt 9 - Regression Coverage and Final Validation
+
+Implement tasks 8.7-8.8 only.
+
+Scope:
+- `scripts/test_pc_image_create_mvp.py`
+- any touched files from Prompts 7-8
+
+MUST:
+- Add tests for reuse-first no-provider-call behavior.
+- Add tests for dedupe across variant filenames.
+- Add tests for image-only enqueue filtering and allied normalization.
+
+Required final commands:
+- `python3 -m py_compile core/toolkit/portrait_service.py web/extensions/missing_media_autogen.py web/web_interface.py`
+- `python3 core/validation/validate_module_files.py`
+- `python3 scripts/test_pc_image_create_mvp.py`
+
+---
+
+## Prompt 10 - Full Profile Modal + Portrait Create Enforcement
+
+Implement tasks 9.1-9.9 only.
+
+Scope:
+- `core/toolkit/portrait_service.py`
+- `web/web_interface.py`
+- `web/templates/game_interface.html`
+- `scripts/test_pc_image_create_mvp.py`
+
+MUST:
+- Character Sheet `Create` SHALL always open a full-profile modal.
+- Modal SHALL include and prefill all required fields:
+  - Appearance: `age`, `height`, `weight`, `eyes`, `skin`, `hair`
+  - Personality/Background: `personality_traits`, `ideals`, `bonds`, `flaws`, `backgroundFeature.name`, `backgroundFeature.description`
+- Create submit SHALL be blocked until all required fields are non-empty (trimmed).
+- `/api/portrait/create` SHALL fail closed for incomplete profile payloads.
+- Submitted profile values SHALL persist to character JSON before generation.
+- Portrait prompt composition SHALL include personality/background context and sanitize/length-bound free-text fields.
+- Upload portrait flow SHALL remain unchanged.
+
+SHOULD:
+- Use a clear submit label (for example `Save Profile + Create Portrait`).
+- Keep modal code localized and reuse existing modal styles/patterns.
+- Reuse `pc_manager` abstraction for character state updates.
+
+Verify before moving on:
+- `python3 -m py_compile core/toolkit/portrait_service.py web/web_interface.py`
+- `python3 core/validation/validate_module_files.py`
+- `python3 scripts/test_pc_image_create_mvp.py`
+- Manual smoke:
+  1. Click Create -> full-profile modal opens every time.
+  2. Blank required field -> submit blocked.
+  3. Submit valid fields -> portrait updates and stats reload shows saved edits.
+  4. Upload path unchanged.

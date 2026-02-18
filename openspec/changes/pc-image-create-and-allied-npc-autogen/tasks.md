@@ -44,9 +44,107 @@
 - [x] 7.2 Ensure all new Python-visible text remains ASCII only.
 - [x] 7.3 Document implementation notes and verification evidence in change discussion or follow-up logs.
 
+## 8. NPC media registration hardening (reuse-first, no extra provider calls)
+
+- [x] 8.1 Add reuse-first media materialization helper in `core/toolkit/portrait_service.py`:
+  - Input: NPC identity + optional module context.
+  - Reuse existing portrait sources first (`web/static/portraits/<name>.png`, `modules/<module>/portraits/<name>.png`).
+  - Output required NPC media variants:
+    - `modules/<module>/media/npcs/<name>.jpg`
+    - `modules/<module>/media/npcs/<name>_thumb.jpg`
+    - `web/static/media/npcs/<name>.jpg` (fallback mirror)
+    - `web/static/media/npcs/<name>_thumb.jpg` (fallback mirror)
+  - MUST NOT call provider when reusable source exists.
+
+- [x] 8.2 Update `web/extensions/missing_media_autogen.py` generation callback to:
+  - Attempt reuse-first materialization before any provider generation.
+  - Only call provider if no reusable source exists.
+  - Log reuse vs generate path with ASCII-only messages.
+
+- [x] 8.3 Restrict enqueue trigger in `web/web_interface.py` to NPC image misses only:
+  - Allow `.jpg`, `.jpeg`, `.png`, `_thumb.jpg`.
+  - Skip `_video.mp4` and non-image keys.
+
+- [x] 8.4 Canonicalize dedupe key in `web/extensions/missing_media_autogen.py`:
+  - Normalize to NPC identity key (`npcs/<normalized_name>`) across `.jpg/.png/_thumb` variants.
+
+- [x] 8.5 Normalize allied-policy matching with shared filename normalization logic:
+  - Ensure `party_tracker.json` names and requested media filenames map to same canonical key.
+
+- [x] 8.6 Add frontend stale-miss recovery in `web/templates/game_interface.html`:
+  - Replace permanent missing-image cache with TTL-based entries.
+  - Retry previously missing URLs after TTL expiration.
+
+- [x] 8.7 Add targeted regressions in `scripts/test_pc_image_create_mvp.py`:
+  - Reuse-first no-provider-call path.
+  - Canonical dedupe across `_thumb` and full variants.
+  - Allied name normalization consistency.
+  - Enqueue image-only filter behavior.
+
+- [x] 8.8 Run verification:
+  - `python3 -m py_compile core/toolkit/portrait_service.py web/extensions/missing_media_autogen.py web/web_interface.py` - PASS
+  - `python3 core/validation/validate_module_files.py` - PASS (ran with venv)
+  - `python3 scripts/test_pc_image_create_mvp.py` - PASS (20 tests OK with venv)
+
+## 9. Portrait Create full-profile modal and enforcement
+
+- [ ] 9.1 Expand portrait prompt composition in `core/toolkit/portrait_service.py` to include:
+  - `personality_traits`
+  - `ideals`
+  - `bonds`
+  - `flaws`
+  - `backgroundFeature.name`
+  - `backgroundFeature.description`
+  - MUST sanitize and length-bound free-text fields before adding to prompt.
+
+- [ ] 9.2 Update `POST /api/portrait/create` in `web/web_interface.py` to accept profile payload:
+  - `appearance`: `age`, `height`, `weight`, `eyes`, `skin`, `hair`
+  - `personality`: `personality_traits`, `ideals`, `bonds`, `flaws`
+  - `backgroundFeature`: `name`, `description`
+
+- [ ] 9.3 Add backend fail-closed validation in `web/web_interface.py` for portrait create:
+  - MUST require all twelve profile fields above to be non-empty (trimmed).
+  - MUST return safe structured error when any required field is empty.
+  - MUST preserve upload behavior unchanged.
+
+- [ ] 9.4 Persist submitted modal profile fields to character JSON before generation:
+  - Use existing character persistence utilities (`pc_manager` abstraction path) when possible.
+  - Preserve backward compatibility for existing character files.
+
+- [ ] 9.5 Implement always-open full-profile modal in `web/templates/game_interface.html` for `Create`:
+  - Modal opens every time player clicks Character Sheet portrait `Create`.
+  - Modal pre-fills all profile fields from current character data.
+  - Modal includes sections:
+    - `Appearance`
+    - `Personality and Background`
+
+- [ ] 9.6 Enforce modal submit behavior in `web/templates/game_interface.html`:
+  - MUST block submit until all required fields are non-empty.
+  - MUST submit full profile payload to `/api/portrait/create`.
+  - SHOULD label submit action clearly (for example, `Save Profile + Create Portrait`).
+
+- [ ] 9.7 Refresh UX after create success:
+  - Refresh portrait image with cache-busted URL.
+  - Reload character stats so saved profile fields render immediately.
+  - Keep safe error handling for provider/network failures.
+
+- [ ] 9.8 Add regressions in `scripts/test_pc_image_create_mvp.py`:
+  - Prompt includes personality/background fields when present.
+  - Create API rejects missing required profile fields.
+  - Create API persists profile fields before generation.
+  - Existing upload/create baseline behavior remains compatible.
+
+- [ ] 9.9 Run verification:
+  - `python3 -m py_compile core/toolkit/portrait_service.py web/web_interface.py`
+  - `python3 core/validation/validate_module_files.py`
+  - `python3 scripts/test_pc_image_create_mvp.py`
+
 ## Summary
 
-**Implementation Complete**: All tasks 1.1 through 7.3 have been completed and verified.
+**Implementation Status**:
+- Tasks 1.1 through 7.3: completed and verified.
+- Tasks 8.1 through 8.8: completed and verified (reuse-first NPC media registration hardening).
+- Tasks 9.1 through 9.9: pending (full-profile modal + enforcement for portrait create).
 
 **Key Deliverables**:
 - Appearance fields (age, height, weight, eyes, skin, hair) in schema, audit, creation, and display
@@ -55,10 +153,16 @@
 - Character Sheet Upload/Create dual-action UI with cache-busted refresh
 - Missing-media warning throttle (per-key, first-warn, suppress-repeats, re-emit after window)
 - Allied-only auto-generation worker with dedupe and cooldown
-- MVP test coverage (11 tests covering all major behaviors)
+- Reuse-first NPC media materialization (no provider call when portrait exists)
+- Canonical identity-based dedupe across filename variants
+- Shared normalization for allied companion matching
+- TTL-based frontend missing-image cache (30 second expiry)
+- Planned: always-open full-profile modal for portrait create with required profile completion
+- Test coverage (20 tests covering all major behaviors)
 
 **Verification**:
-- Compile checks: PASS
-- Test execution: PASS (11 tests OK)
+- Compile checks: PASS (all 3 files)
+- Test execution: PASS (20 tests OK with venv)
+- Schema validation: PASS (ran with venv)
 - ASCII-only: VERIFIED
 - Host hooks: Marked with `# TABLETOP MODE:`

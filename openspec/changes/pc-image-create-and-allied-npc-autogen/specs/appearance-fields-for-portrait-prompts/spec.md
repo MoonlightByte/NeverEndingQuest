@@ -31,3 +31,31 @@ Portrait generation prompt path SHALL include appearance fields when present and
 #### Scenario: Partial appearance metadata
 - **WHEN** only some appearance fields are available
 - **THEN** prompt composition uses available fields and does not fail on missing optional values
+
+### Requirement: Portrait prompt composition SHALL include personality and background context when available
+
+Portrait generation prompt path SHALL include personality/background context fields when present.
+
+Fields:
+- `personality_traits`
+- `ideals`
+- `bonds`
+- `flaws`
+- `backgroundFeature.name`
+- `backgroundFeature.description`
+
+#### Scenario: Personality/background context present
+- **WHEN** character data includes personality/background fields
+- **THEN** prompt composition includes those fields in a safe portrait-context section
+
+### Requirement: Portrait prompt free-text context SHALL be sanitized and bounded
+
+Portrait prompt composition SHALL sanitize and length-bound free-text profile inputs to prevent malformed or unbounded prompt payloads.
+
+#### Scenario: Very long personality text
+- **WHEN** a character has long free-text values in personality/background fields
+- **THEN** prompt composition trims and bounds those values without failing generation
+
+### SHOULD Guidance
+
+- Implement prompt-field sanitation in a small helper so unit tests can validate it directly.
