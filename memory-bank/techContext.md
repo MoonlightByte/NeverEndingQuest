@@ -29,6 +29,40 @@
 - `web/static/js/tabletop_mode.js`: Client-side logic for multiplayer UI.
 - `web/static/css/tabletop_mode.css`: Styles for multiplayer-specific components.
 
+## Portrait UX Locking (2026-02-19)
+Frontend-only state management to prevent duplicate portrait operations and provide clear async UX feedback.
+
+**State Variables:**
+- `portraitOperationInFlight` (boolean): Shared lock for Upload/Create operations
+- `portraitOperationMessage` (string): Current operation message for placeholder
+- `backendIsProcessing` (boolean): Backend processing state for coordination
+- `backendStatusMessage` (string): Backend status message
+
+**Core Functions:**
+- `setPortraitButtonsDisabled(disabled)`: Disables/enables all `.portrait-action-btn` elements
+- `syncInputAndPortraitUiState()`: Central coordinator for all UI state
+  - Disables input/send when: `!connected || !gameStarted || backendIsProcessing || portraitOperationInFlight`
+  - Sets placeholder priority: portrait message → backend message → default
+  - Updates portrait button states (disabled during portrait operations only)
+
+**Integration Points:**
+- `socket.on('status_update')` and `socket.on('status_response')`: Store backend state, call sync function
+- `window.uploadPortrait()`: Early return if lock active, set lock/message before fetch, clear in `.finally()`
+- `window.submitPortraitProfile()`: Same lock pattern for Create flow
+- `displayCharacterStats()`: Reapplies button disabled state after DOM refresh
+
+**CSS:**
+- `.portrait-action-btn:disabled`: `opacity: 0.4`, `cursor: not-allowed`
+- `.portrait-action-btn:disabled:hover`: No hover effect (prevents visual confusion)
+
+**Key Design Decisions:**
+- Portrait lock takes precedence over backend status for UX (shows portrait-specific message)
+- Input stays disabled until BOTH portrait operation AND backend processing complete
+- Portrait buttons only disabled during portrait operations (backend processing doesn't block them)
+- Removed redundant `createPortraitInFlight` variable in favor of shared state
+
+**File Modified:** `web/templates/game_interface.html`
+
 ## Memory Foundation Stack (2026-02-13)
 - `core/memory/memory_db.py`
   - Idempotent migration bootstrap and additive schema tables

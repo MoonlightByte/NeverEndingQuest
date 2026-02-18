@@ -10,7 +10,35 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
-- **Load Dialog Unified Archive/Save Timeline (COMPLETED - 2026-02-17):**
+- **Portrait Create/Upload UX Locking (COMPLETED - 2026-02-19):**
+  - **Objective:** Prevent duplicate portrait generation/upload requests and provide clear UX feedback during async operations
+  - **Problem:** Users could click Create or Upload multiple times, triggering duplicate requests with no visual indication of processing state
+  - **Solution:** Implemented shared portrait operation lock (`portraitOperationInFlight`) with centralized UI state synchronization (`syncInputAndPortraitUiState()`)
+  - **Implementation Details:**
+    - Added `portraitOperationInFlight` boolean and `portraitOperationMessage` string for shared lock state
+    - Added `backendIsProcessing` and `backendStatusMessage` for coordination with backend processing state
+    - Created `setPortraitButtonsDisabled(disabled)` helper to disable/enable all portrait action buttons
+    - Created `syncInputAndPortraitUiState()` as central coordinator managing:
+      - Input/send button disabled states based on connection, game state, backend processing, AND portrait operations
+      - Placeholder text priority: portrait message → backend message → default prompt
+      - Portrait button disabled states (only during portrait operations, not backend processing)
+    - Modified `socket.on('status_update')` and `socket.on('status_response')` to store backend state and call centralized sync function
+    - Upload flow: early return if lock active, set lock + message, sync UI, clear in `.finally()`
+    - Create flow: same lock pattern for profile submission submission, guards both entry points
+    - Character sheet re-render reapplies button disabled state after DOM refresh to maintain lock during periodic updates
+    - CSS: added `.portrait-action-btn:disabled` and `:disabled:hover` with reduced opacity and `not-allowed` cursor
+  - **Key Behaviors:**
+    - Clicking Create or Upload locks both buttons, disables chat input, shows progress message in placeholder
+    - Placeholder shows "Generating AI portrait for {name}..." or "Uploading portrait for {name}..."
+    - Input stays disabled until BOTH portrait operation AND backend processing are complete
+    - Portrait buttons only disabled during portrait operations (not backend processing)
+    - Duplicate click attempts show "already in progress" message and are blocked
+    - Lock clears automatically on success/error in `.finally()` blocks
+    - Removed redundant `createPortraitInFlight` variable (now uses shared state)
+  - **File Modified:** `web/templates/game_interface.html`
+  - **Verification:** 16 implementation checks passed (state variables, helpers, status handlers, lock patterns, CSS, cleanup)
+
+- **Load Dialog Unified Archive/Save Timeline (COMPLETED - 2026-02-17):
   - **OpenSpec Change:** `load-dialog-unified-archive-save-timeline` fully implemented, validated, archived, and spec-synced
   - **Objective:** Present save folders and archive zips in one merged recency-ordered timeline with type filters
   - **Key Implementation:**

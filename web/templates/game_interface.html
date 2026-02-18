@@ -2513,6 +2513,17 @@
             background: rgba(255, 255, 255, 0.25);
         }
 
+        .portrait-action-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .portrait-action-btn:disabled:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
         #portrait-upload-input {
             display: none;
         }
@@ -4729,10 +4740,16 @@
         let hoverTimer = null;    // For managing hover delay on video preview
         let isHoveringInitiative = false; // Track if we're hovering over an initiative item
         
-        // Cache for tracking images that are confirmed to be missing (avoid repetitive 404s)
-        const missingImageCache = new Set();
-        const existingImageCache = new Set();
+        // Portrait operation state management
+        let portraitOperationInFlight = false; // Shared lock for Upload and Create
+        let portraitOperationMessage = '';     // Current portrait operation message
         
+        // Cache for tracking images that are confirmed to be missing (avoid repetitive 404s)
+        // TTL-based: entries expire after MISS_CACHE_TTL_SECONDS to allow retry after async generation
+        const MISSING_IMAGE_CACHE_TTL_SECONDS = 30;  // Retry missing images after 30 seconds
+        const missingImageCache = new Map();  // url -> timestamp
+        const existingImageCache = new Set();
+
         // TTS state variables
         let currentTTSButton = null;
         let currentBrowserUtterance = null;
@@ -4743,15 +4760,73 @@
         const ttsCache = new Map();
 
         /**
+         * Sets disabled state on all portrait action buttons (Upload/Create)
+         * @param {boolean} disabled - Whether to disable the buttons
+         */
+        function setPortraitButtonsDisabled(disabled) {
+            document.querySelectorAll('.portrait-action-btn').forEach((btn) => {
+                btn.disabled = disabled;
+            });
+        }
+
+        /**
+         * Synchronizes input field and portrait buttons state based on all processing conditions.
+         * Ensures chat input and Send button stay disabled during portrait operations,
+         * while portrait buttons also remain disabled to prevent duplicate requests.
+         */
+        function syncInputAndPortraitUiState() {
+            const input = document.getElementById('user-input');
+            const sendButton = document.getElementById('send-button');
+            if (!input || !sendButton) return;
+
+            // Disable input/send if: not connected, game not started, backend processing, OR portrait operation active
+            const shouldDisable = !connected || !gameStarted || backendIsProcessing || portraitOperationInFlight;
+
+            // Set placeholder based on portrait operation, backend processing, or default
+            if (portraitOperationInFlight && portraitOperationMessage) {
+                input.placeholder = portraitOperationMessage;
+            } else if (!connected) {
+                input.placeholder = "Connecting...";
+            } else if (!gameStarted) {
+                input.placeholder = "Click 'Start Game' to begin...";
+            } else if (backendIsProcessing) {
+                input.placeholder = backendStatusMessage || "Processing...";
+            } else {
+                input.placeholder = "Enter your command...";
+            }
+
+            input.disabled = shouldDisable;
+            sendButton.disabled = shouldDisable;
+
+            // Always update portrait button states (disable during any portrait operation)
+            setPortraitButtonsDisabled(portraitOperationInFlight);
+
+            // Focus input only if enabled
+            if (!shouldDisable) {
+                setTimeout(() => input.focus(), 50);
+            }
+        }
+
+        /**
          * Attempts to load an image, checking the cache first.
+         * Uses TTL-based cache for missing images to allow retry after async generation.
          * @param {string} url - The URL of the image to load.
          * @param {function} onSuccess - Callback when image exists.
          * @param {function} onError - Callback when image is missing.
          */
         function tryLoadImage(url, onSuccess, onError) {
+            // Check missing image cache with TTL expiry
             if (missingImageCache.has(url)) {
-                if (onError) onError();
-                return;
+                const cachedTime = missingImageCache.get(url);
+                const elapsed = (Date.now() / 1000) - cachedTime;
+                if (elapsed < MISSING_IMAGE_CACHE_TTL_SECONDS) {
+                    // Still within TTL, use cached miss
+                    if (onError) onError();
+                    return;
+                } else {
+                    // TTL expired, remove from cache and retry
+                    missingImageCache.delete(url);
+                }
             }
             if (existingImageCache.has(url)) {
                 if (onSuccess) onSuccess();
@@ -4764,7 +4839,8 @@
                 if (onSuccess) onSuccess();
             };
             img.onerror = () => {
-                missingImageCache.add(url);
+                // Store timestamp for TTL-based expiry
+                missingImageCache.set(url, Date.now() / 1000);
                 if (onError) onError();
             };
             img.src = url;
@@ -4881,11 +4957,20 @@
         
         // Handle portrait upload - make global for inline event handlers
         window.uploadPortrait = function(characterName) {
+            // Block upload if a portrait operation is already in progress
+            if (portraitOperationInFlight) {
+                addMessage('game-output', {
+                    type: 'system',
+                    content: 'Portrait operation already in progress, please wait...'
+                });
+                return;
+            }
+
             console.log('uploadPortrait triggered for:', characterName);
-            
+
             // Use the persistent input instead
             const input = getOrCreatePortraitInput();
-            
+
             // Set up the change handler
             input.onchange = function() {
                 const file = input.files[0];
@@ -4895,15 +4980,19 @@
                 }
                 processPortraitUpload(file, characterName);
             };
-            
+
             // Trigger the file dialog
             input.click();
         }
-        
+
         function processPortraitUpload(file, characterName) {
+            // Set shared portrait operation lock before starting upload
+            portraitOperationInFlight = true;
+            portraitOperationMessage = `Uploading portrait for ${characterName}...`;
+            syncInputAndPortraitUiState();
 
             console.log(`Processing upload for ${characterName}: ${file.name}`);
-            
+
             const formData = new FormData();
             formData.append('portrait', file);
             formData.append('characterName', characterName);
@@ -4938,49 +5027,184 @@
             .catch(error => {
                 console.error('Error uploading portrait:', error);
                 addMessage('game-output', { type: 'error', content: 'An error occurred during upload.' });
+            })
+            .finally(() => {
+                // Always reset shared portrait operation lock and restore UI state
+                portraitOperationInFlight = false;
+                portraitOperationMessage = '';
+                syncInputAndPortraitUiState();
+
+                // Reset the persistent input
+                if (persistentPortraitInput) {
+                    persistentPortraitInput.value = '';
+                }
             });
         }
-        
+
         // Also keep as regular function for backwards compatibility
         const uploadPortrait = window.uploadPortrait;
         
-        // TABLETOP MODE: Create portrait action - Step 3.2/3.3 API integration with hardened error handling
-        // Generates AI portrait via backend service and refreshes display on success
-        // Step 3.3: All failure paths (HTTP error, JSON parse, network) surface safe UI messages
-        let createPortraitInFlight = false;
+        // TABLETOP MODE: Portrait Profile Modal state (Step 9.5)
+        let portraitProfileCharacterName = null;
+        let portraitProfileCharacterData = null;
         
-        window.createPortrait = function(characterName) {
-            if (createPortraitInFlight) {
-                addMessage('game-output', { 
-                    type: 'system', 
-                    content: 'Portrait generation already in progress, please wait...' 
+        // TABLETOP MODE: Open portrait profile modal for Create action (Step 9.5)
+        // Always opens modal to let player review/edit profile before generation
+        window.openPortraitProfileModal = function(characterName) {
+            portraitProfileCharacterName = characterName;
+            
+            // Get current character data from the displayed stats
+            // We use the global lastCharacterStats if available, or empty defaults
+            const currentData = portraitProfileCharacterData || {};
+            
+            // Prefill form fields from current character data
+            document.getElementById('profile-age').value = currentData.age || '';
+            document.getElementById('profile-height').value = currentData.height || '';
+            document.getElementById('profile-weight').value = currentData.weight || '';
+            document.getElementById('profile-eyes').value = currentData.eyes || '';
+            document.getElementById('profile-skin').value = currentData.skin || '';
+            document.getElementById('profile-hair').value = currentData.hair || '';
+            document.getElementById('profile-personality-traits').value = currentData.personality_traits || '';
+            document.getElementById('profile-ideals').value = currentData.ideals || '';
+            document.getElementById('profile-bonds').value = currentData.bonds || '';
+            document.getElementById('profile-flaws').value = currentData.flaws || '';
+            
+            // Handle backgroundFeature object
+            const bgFeature = currentData.backgroundFeature || {};
+            document.getElementById('profile-bg-feature-name').value = bgFeature.name || '';
+            document.getElementById('profile-bg-feature-description').value = bgFeature.description || '';
+            
+            // Show modal
+            const modal = document.getElementById('portrait-profile-modal');
+            if (modal) {
+                modal.style.display = 'block';
+                console.log('Portrait profile modal opened for:', characterName);
+            }
+        };
+        
+        // TABLETOP MODE: Close portrait profile modal (Step 9.5)
+        window.closePortraitProfileModal = function() {
+            const modal = document.getElementById('portrait-profile-modal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+            // Clear stored character name
+            portraitProfileCharacterName = null;
+        };
+        
+        // TABLETOP MODE: Required field definitions for portrait profile (Step 9.6)
+        const _REQUIRED_PROFILE_FIELDS = [
+            { id: 'profile-age', label: 'Age', path: 'appearance.age' },
+            { id: 'profile-height', label: 'Height', path: 'appearance.height' },
+            { id: 'profile-weight', label: 'Weight', path: 'appearance.weight' },
+            { id: 'profile-eyes', label: 'Eyes', path: 'appearance.eyes' },
+            { id: 'profile-skin', label: 'Skin', path: 'appearance.skin' },
+            { id: 'profile-hair', label: 'Hair', path: 'appearance.hair' },
+            { id: 'profile-personality-traits', label: 'Personality Traits', path: 'personality.personality_traits' },
+            { id: 'profile-ideals', label: 'Ideals', path: 'personality.ideals' },
+            { id: 'profile-bonds', label: 'Bonds', path: 'personality.bonds' },
+            { id: 'profile-flaws', label: 'Flaws', path: 'personality.flaws' },
+            { id: 'profile-bg-feature-name', label: 'Background Feature Name', path: 'backgroundFeature.name' },
+            { id: 'profile-bg-feature-description', label: 'Background Feature Description', path: 'backgroundFeature.description' }
+        ];
+
+        // TABLETOP MODE: Submit portrait profile with validation and API call (Step 9.6)
+        window.submitPortraitProfile = function() {
+            if (!portraitProfileCharacterName) {
+                addMessage('game-output', {
+                    type: 'error',
+                    content: 'No character selected for portrait creation'
                 });
                 return;
             }
-            
-            createPortraitInFlight = true;
-            console.log('createPortrait triggered for:', characterName);
-            
-            addMessage('game-output', { 
-                type: 'system', 
-                content: `Generating AI portrait for ${characterName}...` 
+
+            if (portraitOperationInFlight) {
+                addMessage('game-output', {
+                    type: 'system',
+                    content: 'Portrait generation already in progress, please wait...'
+                });
+                return;
+            }
+
+            // Step 1: Read and validate all fields
+            const fieldValues = {};
+            const missingFields = [];
+
+            _REQUIRED_PROFILE_FIELDS.forEach(field => {
+                const element = document.getElementById(field.id);
+                const value = element ? element.value.trim() : '';
+                fieldValues[field.path] = value;
+
+                if (!value) {
+                    missingFields.push(field.label);
+                }
             });
-            
+
+            // Step 2: Block submit if any field is missing
+            if (missingFields.length > 0) {
+                const missingList = missingFields.join(', ');
+                addMessage('game-output', {
+                    type: 'error',
+                    content: `Please complete all required fields. Missing: ${missingList}`
+                });
+                // Keep modal open so user can fill missing fields
+                return;
+            }
+
+            // Step 3: Set shared portrait operation lock and UI state
+            portraitOperationInFlight = true;
+            portraitOperationMessage = `Generating AI portrait for ${portraitProfileCharacterName}...`;
+            syncInputAndPortraitUiState();
+
+            // Disable submit button
+            const submitButton = document.getElementById('portrait-profile-submit');
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.textContent = 'Creating Portrait...';
+            }
+
+            // Step 4: Build request payload
+            const payload = {
+                character_name: portraitProfileCharacterName,
+                characterName: portraitProfileCharacterName,
+                appearance: {
+                    age: fieldValues['appearance.age'],
+                    height: fieldValues['appearance.height'],
+                    weight: fieldValues['appearance.weight'],
+                    eyes: fieldValues['appearance.eyes'],
+                    skin: fieldValues['appearance.skin'],
+                    hair: fieldValues['appearance.hair']
+                },
+                personality: {
+                    personality_traits: fieldValues['personality.personality_traits'],
+                    ideals: fieldValues['personality.ideals'],
+                    bonds: fieldValues['personality.bonds'],
+                    flaws: fieldValues['personality.flaws']
+                },
+                backgroundFeature: {
+                    name: fieldValues['backgroundFeature.name'],
+                    description: fieldValues['backgroundFeature.description']
+                }
+            };
+
+            addMessage('game-output', {
+                type: 'system',
+                content: `Generating AI portrait for ${portraitProfileCharacterName}...`
+            });
+
+            // Step 5: Submit to API
             fetch('/api/portrait/create', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    character_name: characterName,
-                    characterName: characterName  // Dual naming for robustness
-                })
+                body: JSON.stringify(payload)
             })
             .then(async response => {
-                // Defensive JSON parsing: try to parse regardless of status for error messages
+                // Defensive JSON parsing
                 let data = null;
                 let parseError = null;
-                
+
                 try {
                     const text = await response.text();
                     if (text) {
@@ -4988,68 +5212,104 @@
                     }
                 } catch (e) {
                     parseError = e;
-                    // Continue with data = null, will use fallback handling below
                 }
-                
-                // Handle non-OK HTTP status
+
+                return { response, data, parseError };
+            })
+            .then(({ response, data, parseError }) => {
+                // Handle 409 requires_profile - keep modal open
+                if (response.status === 409 && data && data.requires_profile) {
+                    const backendMissing = data.missing_fields ? data.missing_fields.join(', ') : 'some fields';
+                    addMessage('game-output', {
+                        type: 'error',
+                        content: `Profile incomplete: ${backendMissing}. Please fill all fields.`
+                    });
+                    // Keep modal open
+                    return;
+                }
+
+                // Handle non-OK responses (excluding 409 handled above)
                 if (!response.ok) {
-                    // Try to extract backend message, fallback to status-based message
                     const backendMessage = data && data.message ? data.message : null;
                     const statusMessage = `Server error ${response.status}`;
                     throw new Error(backendMessage || statusMessage);
                 }
-                
-                // Handle OK response but invalid JSON
+
+                // Handle parse error
                 if (parseError) {
                     throw new Error('Invalid response from server');
                 }
-                
-                // Handle OK response with unexpected shape
-                if (!data || typeof data !== 'object') {
-                    throw new Error('Unexpected response format');
-                }
-                
-                return data;
-            })
-            .then(data => {
-                if (data.success) {
-                    addMessage('game-output', { 
-                        type: 'system', 
-                        content: data.message || `Portrait created successfully for ${characterName}!` 
+
+                // Handle success
+                if (data && data.success) {
+                    addMessage('game-output', {
+                        type: 'system',
+                        content: data.message || `Portrait created successfully for ${portraitProfileCharacterName}!`
                     });
-                    
-                    // Refresh portrait image with cache-bust to show new image immediately
+
+                    // Close modal on success
+                    closePortraitProfileModal();
+
+                    // Step 9.7: Refresh portrait image with cache-bust
                     const portraitImg = document.getElementById('char-portrait-img');
-                    if (portraitImg) {
-                        const baseUrl = `/static/portraits/${characterName}.png`;
-                        portraitImg.src = `${baseUrl}?v=${Date.now()}`;
+                    if (portraitImg && portraitProfileCharacterName) {
+                        const normalizedName = portraitProfileCharacterName.toLowerCase().replace(/\s+/g, '_');
+                        portraitImg.src = `/static/portraits/${normalizedName}.png?v=${Date.now()}`;
                     }
+
+                    // Step 9.7: Reload character stats to show updated fields
+                    loadCharacterStats();
                 } else {
                     // Backend returned success: false
-                    addMessage('game-output', { 
-                        type: 'error', 
-                        content: data.message || `Portrait creation failed for ${characterName}` 
-                    });
+                    throw new Error(data && data.message ? data.message : 'Portrait creation failed');
                 }
             })
             .catch(error => {
-                // All error paths (HTTP, network, parse, logic) converge here
                 console.error('Error creating portrait:', error);
-                
-                // Safe fallback message for all failure classes
-                const safeMessage = error && error.message 
-                    ? String(error.message).substring(0, 200)  // Limit length for safety
+
+                const safeMessage = error && error.message
+                    ? String(error.message).substring(0, 200)
                     : 'Unknown error';
-                    
-                addMessage('game-output', { 
-                    type: 'error', 
-                    content: `Portrait creation failed: ${safeMessage}` 
+
+                addMessage('game-output', {
+                    type: 'error',
+                    content: `Portrait creation failed: ${safeMessage}`
                 });
             })
             .finally(() => {
-                // Always reset in-flight guard, regardless of success/failure
-                createPortraitInFlight = false;
+                // Always reset shared portrait operation lock and restore UI state
+                portraitOperationInFlight = false;
+                portraitOperationMessage = '';
+                syncInputAndPortraitUiState();
+
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'Save Profile + Create Portrait';
+                }
             });
+        };
+        
+        // TABLETOP MODE: Store character data when stats are displayed (for modal prefill)
+        // This is called by displayCharacterStats to make data available for the modal
+        let lastCharacterStats = null;
+        
+        // TABLETOP MODE: Create portrait action - Step 9.5 always opens profile modal first
+        // Modified from direct API call to modal-first flow
+        // Uses shared portraitOperationInFlight state for UX locking
+
+        window.createPortrait = function(characterName) {
+            if (portraitOperationInFlight) {
+                addMessage('game-output', { 
+                    type: 'system', 
+                    content: 'Portrait generation already in progress, please wait...' 
+                });
+                return;
+            }
+            
+            console.log('createPortrait triggered for:', characterName);
+            
+            // Step 9.5: Always open profile modal instead of direct API call
+            openPortraitProfileModal(characterName);
         };
         
         // Function to request initiative data
@@ -5815,25 +6075,30 @@
             addMessage('game-output', { type: 'error', content: data.message });
         });
         
+        // Backend processing state storage (for syncInputAndPortraitUiState coordination)
+        let backendIsProcessing = false;
+        let backendStatusMessage = 'Processing...';
+
         socket.on('status_update', (data) => {
             if (window.DEBUG_STATUS_SYNC) console.log('[DEBUG_STATUS] Received status_update:', data);
-            const input = document.getElementById('user-input');
-            const sendButton = document.getElementById('send-button');
-            if (data.is_processing) {
-                if (window.DEBUG_STATUS_SYNC) console.log('[DEBUG_STATUS] Disabling input (processing)');
-                input.placeholder = data.message;
-                input.disabled = true;
-                sendButton.disabled = true;
-            } else {
-                if (window.DEBUG_STATUS_SYNC) console.log('[DEBUG_STATUS] Enabling input (ready)');
-                input.placeholder = "Enter your command...";
-                input.disabled = false;
-                sendButton.disabled = false;
-                // Use a small delay to ensure focus works and isn't overridden
-                setTimeout(() => {
-                    input.focus();
-                    if (window.DEBUG_STATUS_SYNC) console.log('[DEBUG_STATUS] Input focused, disabled state:', input.disabled);
-                }, 50);
+            
+            // Store backend state for coordination with portrait operations
+            backendIsProcessing = !!data.is_processing;
+            backendStatusMessage = data.message || 'Processing...';
+            
+            // Use centralized sync function that respects portrait operation state
+            // Portrait operation takes precedence over backend status for UI state
+            syncInputAndPortraitUiState();
+            
+            // Handle focus separately if we're becoming ready (and no portrait operation)
+            if (!data.is_processing && !portraitOperationInFlight) {
+                const input = document.getElementById('user-input');
+                if (input && !input.disabled) {
+                    setTimeout(() => {
+                        input.focus();
+                        if (window.DEBUG_STATUS_SYNC) console.log('[DEBUG_STATUS] Input focused, disabled state:', input.disabled);
+                    }, 50);
+                }
             }
             // This single call now handles all highlighting logic.
             highlightCurrentTurn();
@@ -5858,25 +6123,13 @@
                 }
             }
 
-            // Reuse the status_update handler logic
-            const status_event = {
-                message: data.message || "Ready",
-                is_processing: data.is_processing
-            };
-            // Call the same logic
-            const input = document.getElementById('user-input');
-            const sendButton = document.getElementById('send-button');
-            if (status_event.is_processing) {
-                if (window.DEBUG_STATUS_SYNC) console.log('[DEBUG_STATUS] Response: Disabling input');
-                input.placeholder = status_event.message;
-                input.disabled = true;
-                sendButton.disabled = true;
-            } else {
-                if (window.DEBUG_STATUS_SYNC) console.log('[DEBUG_STATUS] Response: Enabling input');
-                input.placeholder = "Enter your command...";
-                input.disabled = false;
-                sendButton.disabled = false;
-            }
+            // Store backend state for coordination with portrait operations
+            backendIsProcessing = !!data.is_processing;
+            backendStatusMessage = data.message || 'Processing...';
+            
+            // Use centralized sync function that respects portrait operation state
+            syncInputAndPortraitUiState();
+            
             highlightCurrentTurn();
         });
         
@@ -6286,6 +6539,10 @@
                 container.innerHTML = '<div class="loading">No character data available</div>';
                 return;
             }
+            
+            // TABLETOP MODE: Store character data for portrait profile modal prefill (Step 9.5)
+            lastCharacterStats = data;
+            portraitProfileCharacterData = data;
 
             function getCharacterReadinessWarnings(characterData) {
                 const warnings = [];
@@ -6580,9 +6837,14 @@
             if (scrollableContainer) {
                 scrollableContainer.scrollTop = scrollPosition;
             }
+
+            // Reapply portrait button disabled state in case a portrait operation is in flight
+            // This prevents buttons from being re-enabled during periodic character sheet refreshes
+            setPortraitButtonsDisabled(portraitOperationInFlight);
+
             initializeAllTooltips();
         }
-        
+
         // Display spells and magic items
         function displaySpellsAndMagic(data) {
             // Save scroll position before updating
@@ -7064,18 +7326,18 @@
                     });
                 }
                 
-                // Add special handling for NPCs
+                // TABLETOP MODE: Add special handling for NPCs with robust media fallback
                 if (combatant.type === 'npc') {
-                    // Convert NPC name to filename format (e.g., "Scout Kira" -> "scout_kira")
-                    const npcFilename = combatant.name.toLowerCase().replace(/\s+/g, '_');
+                    // Canonical slug normalization: lowercase, non-alnum -> _, collapse, trim
+                    const npcFilename = combatant.name.toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
                     const nameLower = combatant.name.toLowerCase();
-                    
+
                     // First try NPC-specific thumbnail (static approach to avoid flicker)
                     // Assume if there's a thumbnail, there might be a video
                     // Use new smart media endpoint that checks module folder first
                     let portraitUrl = `/media/npcs/${npcFilename}_thumb.jpg`;
                     let fallbackPortrait = '/static/media/class_portraits/default_npc.png';
-                    
+
                     // Determine class-based fallback portrait
                     if (nameLower.includes('ranger')) {
                         fallbackPortrait = '/static/media/class_portraits/ranger.png';
@@ -7097,56 +7359,64 @@
                         fallbackPortrait = '/static/media/class_portraits/monk.png';
                     } else if (nameLower.includes('bard')) {
                         fallbackPortrait = '/static/media/class_portraits/bard.png';
-                    } else if (nameLower.includes('wizard') || nameLower.includes('sorcerer') || 
+                    } else if (nameLower.includes('wizard') || nameLower.includes('sorcerer') ||
                                nameLower.includes('warlock') || nameLower.includes('mage')) {
                         fallbackPortrait = '/static/media/class_portraits/wizard.png';
                     }
-                    
+
                     item.style.backgroundSize = 'cover';
                     item.style.backgroundPosition = 'center';
                     item.style.color = 'white';
                     item.style.textShadow = '1px 1px 2px black, -1px -1px 2px black';
-                    
-                    // Always try to add video hover for NPCs (will silently fail if no video)
                     item.style.cursor = 'pointer';
-                    const npcVideoUrl = `/media/npcs/${npcFilename}_video.mp4`;
-                    
+
                     // NEW: Always add stats tooltip on hover (using smart attachment)
                     attachTooltipListeners(item);
 
-                    tryLoadImage(portraitUrl, 
+                    // Load thumbnail with fallback
+                    tryLoadImage(portraitUrl,
                         () => { item.style.backgroundImage = `url('${portraitUrl}')`; },
                         () => { item.style.backgroundImage = `url('${fallbackPortrait}')`; }
                     );
-                    
-                    // Check if video exists by trying to load it
-                    const videoTest = document.createElement('video');
-                    videoTest.src = npcVideoUrl;
-                    videoTest.onloadedmetadata = () => {
-                        // Video exists, add click handler for video
-                        item.addEventListener('click', (event) => {
+
+                    // TABLETOP MODE: Always attach click handler unconditionally with robust media fallback
+                    const npcVideoUrl = `/media/npcs/${npcFilename}_video.mp4`;
+                    const npcFullJpg = `/media/npcs/${npcFilename}.jpg`;
+                    const npcFullPng = `/media/npcs/${npcFilename}.png`;
+
+                    item.addEventListener('click', (event) => {
+                        // Try video first
+                        const video = document.createElement('video');
+                        video.src = npcVideoUrl;
+                        video.onloadedmetadata = () => {
                             showVideoPopup(event.currentTarget, npcVideoUrl);
-                        });
-                    };
-                    videoTest.onerror = () => {
-                        // No video, try to show full-size image instead
-                        item.addEventListener('click', (event) => {
-                            // Try full-size NPC portrait
-                            const npcFullUrl = `/media/npcs/${npcFilename}.jpg`;
-                            const fullImg = new Image();
-                            fullImg.onload = () => {
-                                showImagePopup(event.currentTarget, npcFullUrl);
-                            };
-                            fullImg.onerror = () => {
-                                // No full image either, show enlarged thumbnail
-                                if (item.style.backgroundImage) {
-                                    const bgUrl = item.style.backgroundImage.slice(5, -2);
-                                    showImagePopup(event.currentTarget, bgUrl);
+                        };
+                        video.onerror = () => {
+                            // Video not available, try full image chain
+                            const tryFullImage = (urls, onFail) => {
+                                if (!urls.length) {
+                                    onFail();
+                                    return;
                                 }
+                                const [first, ...rest] = urls;
+                                const img = new Image();
+                                img.onload = () => showImagePopup(event.currentTarget, first);
+                                img.onerror = () => tryFullImage(rest, onFail);
+                                img.src = first;
                             };
-                            fullImg.src = npcFullUrl;
-                        });
-                    };
+
+                            tryFullImage([npcFullJpg, npcFullPng], () => {
+                                // Fallback to current background image (thumbnail)
+                                const bgStyle = item.style.backgroundImage;
+                                if (bgStyle) {
+                                    const match = bgStyle.match(/url\(["']?([^"')]+)["']?\)/);
+                                    if (match && match[1]) {
+                                        showImagePopup(event.currentTarget, match[1]);
+                                    }
+                                }
+                            });
+                        };
+                    });
                 }
                 
                 // Create text element with dynamic sizing
@@ -8160,6 +8430,88 @@
         </div>
     </div>
 
+    <!-- TABLETOP MODE: Portrait Profile Modal for Create action (Step 9.5) -->
+    <div id="portrait-profile-modal" class="npc-details-modal" style="display: none;">
+        <div class="npc-details-modal-content" style="max-width: 700px; max-height: 85vh;">
+            <div class="npc-details-header" style="border-bottom: 2px solid #8a6d3b;">
+                <div id="portrait-profile-title" class="npc-details-title" style="color: #f6d088;">Complete Character Profile</div>
+                <span class="npc-details-close" onclick="closePortraitProfileModal()">&times;</span>
+            </div>
+            <div id="portrait-profile-body" class="npc-details-body" style="padding: 16px; max-height: 60vh; overflow-y: auto;">
+                
+                <!-- Appearance Section -->
+                <div style="margin-bottom: 20px;">
+                    <h3 style="color: #f6d088; margin-bottom: 12px; font-size: 16px; border-bottom: 1px solid #555; padding-bottom: 6px;">Appearance</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div>
+                            <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Age</label>
+                            <input type="text" id="profile-age" placeholder="e.g. 25" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Height</label>
+                            <input type="text" id="profile-height" placeholder="e.g. 5'10&quot;" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Weight</label>
+                            <input type="text" id="profile-weight" placeholder="e.g. 160 lbs" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Eyes</label>
+                            <input type="text" id="profile-eyes" placeholder="e.g. Blue" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Skin</label>
+                            <input type="text" id="profile-skin" placeholder="e.g. Fair" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Hair</label>
+                            <input type="text" id="profile-hair" placeholder="e.g. Brown" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box;">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Personality and Background Section -->
+                <div style="margin-bottom: 20px;">
+                    <h3 style="color: #f6d088; margin-bottom: 12px; font-size: 16px; border-bottom: 1px solid #555; padding-bottom: 6px;">Personality and Background</h3>
+                    
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Personality Traits</label>
+                        <textarea id="profile-personality-traits" placeholder="How does this hero act?" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box; min-height: 60px; resize: vertical;"></textarea>
+                    </div>
+                    
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Ideals</label>
+                        <textarea id="profile-ideals" placeholder="What do they believe in?" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box; min-height: 60px; resize: vertical;"></textarea>
+                    </div>
+                    
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Bonds</label>
+                        <textarea id="profile-bonds" placeholder="Who or what matters most?" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box; min-height: 60px; resize: vertical;"></textarea>
+                    </div>
+                    
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Flaws</label>
+                        <textarea id="profile-flaws" placeholder="What complicates their life?" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box; min-height: 60px; resize: vertical;"></textarea>
+                    </div>
+                    
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Background Feature Name</label>
+                        <input type="text" id="profile-bg-feature-name" placeholder="Feature name" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box;">
+                    </div>
+                    
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Background Feature Description</label>
+                        <textarea id="profile-bg-feature-description" placeholder="What benefit does the feature provide?" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box; min-height: 80px; resize: vertical;"></textarea>
+                    </div>
+                </div>
+                
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end; padding: 0 16px 16px 16px; border-top: 1px solid #444; padding-top: 16px;">
+                <button id="portrait-profile-cancel" class="dialog-button secondary" onclick="closePortraitProfileModal()">Cancel</button>
+                <button id="portrait-profile-submit" class="dialog-button primary" onclick="submitPortraitProfile()">Save Profile + Create Portrait</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         let selectedSaveFolder = null;

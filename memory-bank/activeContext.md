@@ -1,6 +1,28 @@
 ## Current Work Focus
 
-- **Load Dialog Unified Archive/Save Timeline (COMPLETED - 2026-02-17):**
+- **Portrait Create/Upload UX Locking (COMPLETED - 2026-02-19):**
+  - **Objective:** Prevent duplicate portrait generation/upload requests and provide clear UX feedback during async operations
+  - **Problem:** Clicking Create or Upload multiple times could trigger duplicate requests; no visual indication of processing state
+  - **Solution:** Implemented shared portrait operation lock with centralized UI state synchronization
+  - **Implementation:**
+    - **Shared State Variables:** `portraitOperationInFlight` (boolean lock), `portraitOperationMessage` (progress text), `backendIsProcessing`/`backendStatusMessage` (backend coordination)
+    - **Helper Functions:**
+      - `setPortraitButtonsDisabled(disabled)` - Disables/enables all `.portrait-action-btn` elements
+      - `syncInputAndPortraitUiState()` - Central coordinator managing input/send button states and placeholder text based on all processing conditions
+    - **Status Handlers:** Modified `socket.on('status_update')` and `socket.on('status_response')` to store backend state and call centralized sync function
+    - **Upload Flow:** Early return if lock active, set lock + message before fetch, clear in `.finally()`, re-sync UI state
+    - **Create Flow:** Same lock pattern for profile submission, guards both submitPortraitProfile and createPortrait entry points
+    - **Character Sheet Re-render:** Reapplies button disabled state after DOM refresh to maintain lock during periodic updates
+    - **CSS:** Added `.portrait-action-btn:disabled` and `:disabled:hover` styles with reduced opacity and `not-allowed` cursor
+  - **Lock Coordination Logic:**
+    - Input/send disabled when: `!connected || !gameStarted || backendIsProcessing || portraitOperationInFlight`
+    - Placeholder priority: portrait message → backend message → default prompt
+    - Portrait buttons disabled only during portrait operations (not backend processing)
+  - **Cleanup:** Removed redundant `createPortraitInFlight` variable (now uses shared `portraitOperationInFlight`)
+  - **File Modified:** `web/templates/game_interface.html` (~75 lines changed: CSS, state vars, helpers, status handlers, upload/create flows, re-render hook)
+  - **Verification:** All 16 implementation checks passed (variables, functions, CSS, lock patterns, cleanup)
+
+- **Load Dialog Unified Archive/Save Timeline (COMPLETED - 2026-02-17):
   - **OpenSpec Change:** `load-dialog-unified-archive-save-timeline` fully implemented, validated, and archived
   - **Objective:** Merge save folders and archive zips into one recency-ordered timeline with entry-type filters
   - **Implementation Complete:**
@@ -129,7 +151,16 @@
 - **Job 3: Combat Commands:** `/att` and `/dmg` commands implemented with proper validation.
 
 ## Recent Changes
-- **PC Image Create and Allied NPC Auto-Generation (COMPLETED - 2026-02-17):**
+- **Portrait Create/Upload UX Locking (COMPLETED - 2026-02-19):**
+  - **Objective:** Prevent duplicate portrait generation/upload requests and provide clear UX feedback during async operations
+  - **Implementation:** Shared `portraitOperationInFlight` lock state with `syncInputAndPortraitUiState()` coordinator function, backend processing coordination via `backendIsProcessing`, early return guards in Upload/Create flows, CSS disabled states for portrait buttons, and re-apply on character sheet re-render
+  - **Lock Behavior:** Input/send disabled during portrait operations; placeholder shows `Generating AI portrait for {name}...` or `Uploading portrait for {name}...`; portrait buttons disabled to prevent duplicate clicks
+  - **Backend Coordination:** Portrait lock takes precedence over backend status for UX, input stays disabled until BOTH portrait operation AND backend processing complete
+  - **Cleanup:** Removed redundant `createPortraitInFlight` variable
+  - **File Modified:** `web/templates/game_interface.html`
+  - **Verification:** All 16 implementation checks passed
+
+- **PC Image Create and Allied NPC Auto-Generation (COMPLETED - 2026-02-17):
   - **OpenSpec Change:** `pc-image-create-and-allied-npc-autogen` fully implemented and verified (tasks 1.1-7.3)
   - **Appearance Fields:** Added optional schema fields (`age`, `height`, `weight`, `eyes`, `skin`, `hair`) with safe defaults and UI wiring
   - **Portrait Service:** New `core/toolkit/portrait_service.py` for prompt composition, image generation, and canonical file outputs
