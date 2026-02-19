@@ -64,3 +64,5 @@ COMPRESSION_MAX_WORKERS = 4                              # Number of parallel wo
 TTS_MODEL = "tts-1"                                       # OpenAI TTS model (tts-1 or tts-1-hd for higher quality)
 TTS_VOICE = "fable"                                       # Voice: alloy, echo, fable, onyx, nova, shimmer (fable is good for narration)
 TTS_SPEED = 1.0                                           # Speed: 0.25 to 4.0 (1.0 is normal)
+# --- Multi-Model Capture Settings ---
+MULTI_MODEL_CAPTURE = False  # Set True to enable parallel telemetry capture
