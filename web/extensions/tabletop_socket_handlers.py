@@ -15,7 +15,134 @@ See LICENSE file for full terms.
 
 import json
 import os
-from typing import Callable
+from typing import Callable, Dict, List, Any, Optional
+
+
+# TABLETOP MODE: Image version metadata helpers for deterministic portrait cache coherence
+# These helpers compute versioned asset metadata to enable consistent refresh across
+# Character Sheet, initiative queue, and party strip surfaces.
+
+
+def _normalize_character_slug(character_name: str) -> str:
+    """Normalize character name to safe filename/slug format.
+
+    Matches backend normalize_character_name semantics:
+    - Lowercase
+    - Spaces -> underscores
+    - Apostrophes -> underscores
+    - Other non-alphanumeric -> underscores
+    - Collapse consecutive underscores
+    - Strip leading/trailing underscores
+
+    Args:
+        character_name: Raw character name (e.g., "Mac'Davier")
+
+    Returns:
+        Normalized slug (e.g., "mac_davier")
+    """
+    import re
+    name = character_name.strip().lower()
+    name = name.replace(" ", "_")
+    name = name.replace("'", "_")
+    name = re.sub(r'[^a-z0-9_]', '_', name)
+    name = re.sub(r'_+', '_', name)
+    name = name.strip('_')
+    return name
+
+
+def _get_image_candidate_paths(slug: str, module_name: Optional[str] = None) -> List[str]:
+    """Build list of candidate portrait/media file paths for version detection.
+
+    Candidate chain (in priority order):
+    1. web/static/portraits/<slug>.png (PC portrait location)
+    2. modules/<module>/media/npcs/<slug>_thumb.jpg (module NPC thumbnail)
+    3. modules/<module>/media/npcs/<slug>.jpg (module NPC full)
+    4. modules/<module>/media/npcs/<slug>.png (module NPC PNG)
+    5. web/static/media/npcs/<slug>_thumb.jpg (static NPC thumbnail)
+    6. web/static/media/npcs/<slug>.jpg (static NPC full)
+    7. web/static/media/npcs/<slug>.png (static NPC PNG)
+
+    Args:
+        slug: Normalized character/entity slug
+        module_name: Optional current module name for module-specific paths
+
+    Returns:
+        List of candidate file paths (may include non-existent paths)
+    """
+    candidates: List[str] = []
+
+    # Primary PC portrait location
+    candidates.append(os.path.join("web", "static", "portraits", f"{slug}.png"))
+
+    # Module-specific NPC media paths (only if module context provided)
+    if module_name:
+        module_base = os.path.join("modules", module_name, "media", "npcs")
+        candidates.append(os.path.join(module_base, f"{slug}_thumb.jpg"))
+        candidates.append(os.path.join(module_base, f"{slug}.jpg"))
+        candidates.append(os.path.join(module_base, f"{slug}.png"))
+
+    # Static fallback NPC media paths
+    static_base = os.path.join("web", "static", "media", "npcs")
+    candidates.append(os.path.join(static_base, f"{slug}_thumb.jpg"))
+    candidates.append(os.path.join(static_base, f"{slug}.jpg"))
+    candidates.append(os.path.join(static_base, f"{slug}.png"))
+
+    return candidates
+
+
+def _compute_image_version_from_paths(paths: List[str]) -> Optional[str]:
+    """Compute deterministic image version from candidate file mtimes.
+
+    Returns the maximum mtime among existing files as a stable version string.
+    Fail-open: returns None if no files exist or stat errors occur.
+
+    Args:
+        paths: List of candidate file paths
+
+    Returns:
+        Version string (max mtime as integer string) or None if no files exist
+    """
+    max_mtime: Optional[float] = None
+
+    for path in paths:
+        try:
+            if os.path.exists(path):
+                mtime = os.path.getmtime(path)
+                if max_mtime is None or mtime > max_mtime:
+                    max_mtime = mtime
+        except Exception:
+            # Fail-open: ignore stat errors for individual candidates
+            continue
+
+    if max_mtime is None:
+        return None
+
+    # Return as integer string for deterministic URL versioning
+    return str(int(max_mtime))
+
+
+def _build_image_metadata(slug: str, module_name: Optional[str] = None) -> Dict[str, Any]:
+    """Build image metadata dict with slug and deterministic version.
+
+    This is the primary public helper for payload builders to get versioned
+    image metadata for entities.
+
+    Args:
+        slug: Normalized character/entity slug
+        module_name: Optional current module name for module-specific paths
+
+    Returns:
+        Dict with keys:
+        - image_slug: str (normalized identity)
+        - image_version: Optional[str] (max mtime version or None if no files)
+    """
+    candidates = _get_image_candidate_paths(slug, module_name)
+    version = _compute_image_version_from_paths(candidates)
+
+    return {
+        "image_slug": slug,
+        "image_version": version
+    }
 
 
 def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Callable[..., None]) -> None:
@@ -85,6 +212,10 @@ def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Calla
                                 'name': first_attack.get('name', 'Attack')
                             }
 
+                        # TABLETOP MODE: Add image metadata for portrait cache coherence
+                        player_slug = _normalize_character_slug(player_data.get('name', player_name))
+                        player_image_meta = _build_image_metadata(player_slug, current_module)
+
                         party_members.append({
                             'name': player_data.get('name', player_name),
                             'type': 'player',
@@ -99,12 +230,19 @@ def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Calla
                             'spellSlots': spellcasting.get('spellSlots', player_data.get('spellSlots', {})),
                             'spells': spells_by_level,
                             'conditions': player_data.get('conditions', []),
-                            'classFeatures': class_features
+                            'classFeatures': class_features,
+                            'image_slug': player_image_meta.get('image_slug'),
+                            'image_version': player_image_meta.get('image_version'),
                         })
             except Exception:
+                # TABLETOP MODE: Add image metadata for portrait cache coherence (minimal fallback)
+                player_slug = _normalize_character_slug(player_name)
+                player_image_meta = _build_image_metadata(player_slug, current_module)
                 party_members.append({
                     'name': player_name,
-                    'type': 'player'
+                    'type': 'player',
+                    'image_slug': player_image_meta.get('image_slug'),
+                    'image_version': player_image_meta.get('image_version'),
                 })
 
         for npc_info in party_tracker.get('partyNPCs', []):
@@ -164,6 +302,10 @@ def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Calla
                                         ammo_qty = ammo.get('quantity', 0)
                                         ammunition_info.append({'name': ammo_name, 'quantity': ammo_qty})
 
+                            # TABLETOP MODE: Add image metadata for portrait cache coherence
+                            npc_slug = _normalize_character_slug(npc_data.get('name', npc_name))
+                            npc_image_meta = _build_image_metadata(npc_slug, current_module)
+
                             party_members.append({
                                 'name': npc_data.get('name', npc_name),
                                 'type': 'npc',
@@ -179,15 +321,22 @@ def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Calla
                                 'spellSlots': spellcasting.get('spellSlots', npc_data.get('spellSlots', {})),
                                 'spells': spells_by_level,
                                 'conditions': npc_data.get('conditions', []),
-                                'classFeatures': class_features
+                                'classFeatures': class_features,
+                                'image_slug': npc_image_meta.get('image_slug'),
+                                'image_version': npc_image_meta.get('image_version'),
                             })
                             continue
             except Exception:
                 pass
 
+            # TABLETOP MODE: Add image metadata for portrait cache coherence (minimal fallback)
+            npc_slug = _normalize_character_slug(npc_name)
+            npc_image_meta = _build_image_metadata(npc_slug, current_module)
             party_members.append({
                 'name': npc_name,
-                'type': 'npc'
+                'type': 'npc',
+                'image_slug': npc_image_meta.get('image_slug'),
+                'image_version': npc_image_meta.get('image_version'),
             })
 
         location_npcs = []
@@ -224,6 +373,11 @@ def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Calla
                                                     npc_data_dict['maxHp'] = npc_data.get('maxHitPoints', npc_data.get('maxHp', 0))
                                     except Exception:
                                         pass
+                                    # TABLETOP MODE: Add image metadata for portrait cache coherence
+                                    location_npc_slug = _normalize_character_slug(npc_name)
+                                    location_npc_image_meta = _build_image_metadata(location_npc_slug, current_module)
+                                    npc_data_dict['image_slug'] = location_npc_image_meta.get('image_slug')
+                                    npc_data_dict['image_version'] = location_npc_image_meta.get('image_version')
                                     location_npcs.append(npc_data_dict)
 
         emit_fn('party_data_response', {'members': party_members, 'location_npcs': location_npcs})
@@ -363,11 +517,24 @@ def handle_initiative_data_request_impl(emit_fn: Callable[..., None], error_fn: 
                                 'classFeatures': class_features,
                                 'abilities': char_data.get('abilities', {}),
                             })
+
+                            # TABLETOP MODE: Add image metadata for portrait cache coherence
+                            combatant_slug = _normalize_character_slug(combatant.get("name", ""))
+                            combatant_image_meta = _build_image_metadata(combatant_slug, current_module)
+                            combatant_data['image_slug'] = combatant_image_meta.get('image_slug')
+                            combatant_data['image_version'] = combatant_image_meta.get('image_version')
                 except Exception as load_error:
                     error_fn(
                         f"Error loading character data for {combatant.get('name', 'unknown')}: {load_error}",
                         category="web_interface",
                     )
+
+            # TABLETOP MODE: Ensure image metadata for combatants even when char data load failed
+            if 'image_slug' not in combatant_data:
+                combatant_slug = _normalize_character_slug(combatant.get("name", ""))
+                combatant_image_meta = _build_image_metadata(combatant_slug, current_module)
+                combatant_data['image_slug'] = combatant_image_meta.get('image_slug')
+                combatant_data['image_version'] = combatant_image_meta.get('image_version')
 
             combatant_list.append(combatant_data)
 

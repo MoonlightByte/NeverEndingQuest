@@ -35,6 +35,8 @@ from utils.character_creation_audit import (
     AUDIT_RESULT_SUCCESS,
     audit_character_creation,
     audit_character_readiness,
+    audit_profile_readiness,
+    seed_missing_appearance_fields,
 )
 from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import error, info, warning
@@ -728,8 +730,16 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
             pc_manager.ensure_stable_character_id(preview_data)
             pc_manager.normalize_character_role_fields(preview_data, 'player')
 
+            # TABLETOP MODE: Profile readiness for promotion (non-blocking warnings)
+            profile_readiness = audit_profile_readiness(preview_data)
+            profile_warnings = profile_readiness.get('warnings', [])
+
+            # Legacy readiness for mechanical/schema issues
             readiness = audit_character_readiness(preview_data)
-            warnings = readiness.get('warnings', []) if isinstance(readiness, dict) else []
+            readiness_warnings = readiness.get('warnings', []) if isinstance(readiness, dict) else []
+            
+            # Combine warnings: profile first, then mechanical
+            warnings = profile_warnings + readiness_warnings
 
             expected_changes = {
                 'character_id': 'unchanged' if had_character_id else 'will_generate',
@@ -825,6 +835,9 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
                 actor='dm',
             )
 
+            # TABLETOP MODE: Seed missing appearance keys for low-baggage promotion (11.3)
+            updated_data = seed_missing_appearance_fields(updated_data)
+
             audit_result = audit_character_creation(
                 updated_data,
                 source='tabletop_npc_promotion_apply',
@@ -842,8 +855,16 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
                     'missing_paths': audit_result.missing_paths,
                 }), 400
 
+            # TABLETOP MODE: Profile readiness for promotion (non-blocking warnings) (11.2)
+            profile_readiness = audit_profile_readiness(updated_data)
+            profile_warnings = profile_readiness.get('warnings', [])
+
+            # Legacy readiness for mechanical/schema issues
             readiness = audit_character_readiness(updated_data)
-            warnings = readiness.get('warnings', []) if isinstance(readiness, dict) else []
+            readiness_warnings = readiness.get('warnings', []) if isinstance(readiness, dict) else []
+            
+            # Combine warnings: profile first, then mechanical
+            warnings = profile_warnings + readiness_warnings
 
             if not _save_character_data(character_name, updated_data):
                 error(

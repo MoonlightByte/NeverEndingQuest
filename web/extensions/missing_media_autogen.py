@@ -17,6 +17,7 @@ See LICENSE file for full terms.
 """
 
 import queue
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -67,7 +68,10 @@ _worker_stats: Dict[str, Any] = {
 
 def _generate_portrait_callback(task: MissingMediaTask) -> bool:
     """
-    Default generation callback using portrait service.
+    Default generation callback using portrait service (reuse-first).
+    
+    Attempts to materialize NPC media from existing portrait sources before
+    invoking image generation providers to avoid unnecessary API calls.
     
     Can be overridden via start call for custom behavior/policy hooks.
     
@@ -78,39 +82,82 @@ def _generate_portrait_callback(task: MissingMediaTask) -> bool:
         True if generation succeeded, False otherwise
     """
     try:
-        from core.toolkit.portrait_service import generate_and_save_portrait
+        from core.toolkit.portrait_service import (
+            generate_and_save_portrait,
+            materialize_npc_media_from_portrait
+        )
         
+        # Extract NPC name from filename (e.g., "liri_thumb.jpg" -> "liri")
+        npc_name = task.filename.replace("_thumb", "").replace(".jpg", "").replace(".png", "").replace(".jpeg", "")
+        
+        # STEP 1: Try reuse-first materialization (no provider call)
         info(
-            f"MISSING_MEDIA_AUTOGEN: Generating portrait for {task.missing_key}",
+            f"MISSING_MEDIA_AUTOGEN: Attempting reuse-first materialization for {task.missing_key}",
             category="missing_media_autogen"
         )
         
+        reuse_result = materialize_npc_media_from_portrait(npc_name=npc_name)
+        
+        if reuse_result.get("success") and reuse_result.get("reused"):
+            info(
+                f"MISSING_MEDIA_AUTOGEN: Successfully reused existing portrait for {task.missing_key} "
+                f"({len(reuse_result.get('paths_written', []))} files materialized)",
+                category="missing_media_autogen"
+            )
+            return True
+        
+        # STEP 2: No reusable source - proceed with provider generation
+        info(
+            f"MISSING_MEDIA_AUTOGEN: No reusable portrait found, generating via provider for {task.missing_key}",
+            category="missing_media_autogen"
+        )
+
         # Build minimal character data if not provided
         character_data = task.character_data or {
-            "name": task.filename.replace("_thumb", "").replace(".jpg", "").replace(".png", ""),
+            "name": npc_name,
             "race": "Unknown",
             "class": "NPC"
         }
-        
+
         result = generate_and_save_portrait(
             character_data=character_data,
             model="dall-e-3",
             size="1024x1024",
             quality="standard"
         )
-        
-        if result.get("success"):
-            info(
-                f"MISSING_MEDIA_AUTOGEN: Successfully generated {task.missing_key}",
-                category="missing_media_autogen"
-            )
-            return True
-        else:
+
+        if not result.get("success"):
             warning(
                 f"MISSING_MEDIA_AUTOGEN: Failed to generate {task.missing_key}: {result.get('error')}",
                 category="missing_media_autogen"
             )
             return False
+
+        # Provider generation succeeded - now materialize NPC media variants
+        info(
+            f"MISSING_MEDIA_AUTOGEN: Provider generation succeeded for {task.missing_key}, "
+            f"proceeding to materialize NPC media",
+            category="missing_media_autogen"
+        )
+
+        materialize_result = materialize_npc_media_from_portrait(npc_name=npc_name)
+
+        if materialize_result.get("success"):
+            info(
+                f"MISSING_MEDIA_AUTOGEN: Successfully generated and materialized {task.missing_key} "
+                f"({len(materialize_result.get('paths_written', []))} files written)",
+                category="missing_media_autogen"
+            )
+            return True
+        else:
+            # Provider generated but materialization failed - log as degraded success
+            warning(
+                f"MISSING_MEDIA_AUTOGEN: Generated {task.missing_key} but materialization failed: "
+                f"{materialize_result.get('error')}",
+                category="missing_media_autogen"
+            )
+            # Return True because generation succeeded; materialization is a best-effort enhancement
+            return True
             
     except Exception as e:
         error(
@@ -284,6 +331,51 @@ def stop_missing_media_autogen_worker(timeout: float = 5.0) -> bool:
             return False
 
 
+def _extract_npc_identity(filename: str) -> str:
+    """Extract canonical NPC identity from filename.
+    
+    Converts variant filenames like 'liri.jpg', 'liri.png', 'liri_thumb.jpg'
+    into canonical identity 'liri'.
+    
+    Args:
+        filename: The filename to process (e.g., 'liri_thumb.jpg')
+        
+    Returns:
+        Canonical NPC identity (e.g., 'liri')
+    """
+    # Remove common extensions and suffixes
+    identity = filename.lower()
+    identity = identity.replace("_thumb", "")
+    identity = identity.replace(".jpg", "")
+    identity = identity.replace(".jpeg", "")
+    identity = identity.replace(".png", "")
+    # Normalize whitespace and punctuation to underscores
+    identity = re.sub(r"[^a-z0-9_]+", "_", identity).strip("_")
+    return identity
+
+
+def _canonicalize_missing_key(media_type: str, filename: str) -> str:
+    """Create canonical dedupe key for missing media.
+    
+    For NPCs, creates identity-based key (e.g., 'npcs/liri' for all variants).
+    For other types, uses normalized filename.
+    
+    Args:
+        media_type: Type of media ('monsters', 'npcs', 'environment')
+        filename: Name of the missing file
+        
+    Returns:
+        Canonical dedupe key
+    """
+    if media_type == "npcs":
+        # Use identity-based key for NPCs to dedupe across variants
+        npc_identity = _extract_npc_identity(filename)
+        return f"{media_type}/{npc_identity}"
+    else:
+        # For non-NPCs, use normalized filename
+        return f"{media_type}/{filename}".lower().replace(" ", "_").replace("-", "_")
+
+
 def enqueue_missing_media_autogen_task(
     media_type: str,
     filename: str,
@@ -311,8 +403,8 @@ def enqueue_missing_media_autogen_task(
     """
     global _worker_stats
     
-    # Normalize key
-    missing_key = f"{media_type}/{filename}".lower().replace(" ", "_").replace("-", "_")
+    # Create canonical dedupe key (identity-based for NPCs)
+    missing_key = _canonicalize_missing_key(media_type, filename)
     
     with _state_lock:
         # Check if worker running
@@ -386,6 +478,29 @@ def enqueue_missing_media_autogen_task(
             }
 
 
+def _normalize_party_name(name: str) -> str:
+    """Normalize party member name for consistent matching.
+    
+    Handles case, spaces, hyphens, and apostrophes consistently.
+    Examples:
+        "Claris the Good" -> "claris_the_good"
+        "Temporarius" -> "temporarius"
+        "D'Artagnan" -> "d_artagnan"
+    
+    Args:
+        name: The name to normalize
+
+    Returns:
+        Normalized name suitable for comparison
+    """
+    normalized = str(name).strip().lower()
+    # Convert spaces, hyphens, apostrophes to underscores
+    normalized = re.sub(r"[\s\-'']+", "_", normalized)
+    # Collapse multiple underscores
+    normalized = re.sub(r"_+", "_", normalized)
+    return normalized.strip("_")
+
+
 def is_allied_companion_check(
     task: MissingMediaTask,
     party_tracker_data: Optional[Dict[str, Any]] = None
@@ -395,6 +510,9 @@ def is_allied_companion_check(
     
     MVP policy: Only allied NPC companions get auto-generated.
     Non-allied NPCs and monsters are skipped.
+    
+    Uses canonical identity extraction and shared normalization for consistent
+    matching across filename variants and party tracker names.
     
     Args:
         task: The media task to check
@@ -416,33 +534,32 @@ def is_allied_companion_check(
         if not party_tracker_data:
             return False
         
-        # Get list of allied companion names from partyNPCs
+        # Get list of allied companion names from partyNPCs using shared normalization
         allied_names: Set[str] = set()
         for npc_info in party_tracker_data.get("partyNPCs", []):
             npc_name = npc_info.get("name", "")
             if npc_name:
-                allied_names.add(npc_name.lower())
+                allied_names.add(_normalize_party_name(npc_name))
         
         # Also include active character
         active_character = party_tracker_data.get("active_character")
         if active_character:
-            allied_names.add(active_character.lower())
+            allied_names.add(_normalize_party_name(active_character))
         
-        # Normalize task filename to extract character name
-        # e.g., "grimjaw_thumb.jpg" -> "grimjaw"
-        char_name = task.filename.replace("_thumb", "").replace(".jpg", "").replace(".png", "").lower()
+        # Extract canonical identity from filename using same logic as dedupe
+        char_identity = _extract_npc_identity(task.filename)
         
         # Check if character is in allied set
-        is_allied = char_name in allied_names
+        is_allied = char_identity in allied_names
         
         if is_allied:
             debug(
-                f"MISSING_MEDIA_AUTOGEN: {char_name} is allied companion - allowing generation",
+                f"MISSING_MEDIA_AUTOGEN: {char_identity} is allied companion - allowing generation",
                 category="missing_media_autogen"
             )
         else:
             debug(
-                f"MISSING_MEDIA_AUTOGEN: {char_name} is not allied companion - skipping",
+                f"MISSING_MEDIA_AUTOGEN: {char_identity} is not allied companion - skipping",
                 category="missing_media_autogen"
             )
         

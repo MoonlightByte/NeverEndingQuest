@@ -534,6 +534,33 @@ def audit_character_creation(
     )
 
 
+# Portrait-driving profile fields for character sheet quality
+_PROFILE_READINESS_PATHS = [
+    "age",
+    "height",
+    "weight",
+    "eyes",
+    "skin",
+    "hair",
+    "personality_traits",
+    "ideals",
+    "bonds",
+    "flaws",
+    "backgroundFeature.name",
+    "backgroundFeature.description",
+]
+
+# Appearance fields specifically (used for portrait generation context)
+_APPEARANCE_PROFILE_FIELDS = [
+    "age",
+    "height",
+    "weight",
+    "eyes",
+    "skin",
+    "hair",
+]
+
+
 def audit_character_readiness(character_data: Dict[str, Any]) -> Dict[str, Any]:
     """Run non-fatal readiness checks for sheet/PDF consumers."""
     result = audit_character_creation(character_data, source="readiness_audit", enable_enrichment=False)
@@ -548,6 +575,70 @@ def audit_character_readiness(character_data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def audit_profile_readiness(character_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Check portrait-driving profile field completeness.
+    
+    This is separate from schema/completeness validation and does NOT
+    block operations. It surfaces warnings for optional fields that improve
+    character sheet quality and portrait generation context.
+    
+    Returns:
+        Dict with:
+        - profile_ready: bool (True if all profile fields present)
+        - missing_profile_fields: list of missing field paths
+        - missing_appearance_fields: list of missing appearance-only paths
+        - warnings: list of human-readable warning strings
+    """
+    missing_profile = []
+    missing_appearance = []
+    
+    for path in _PROFILE_READINESS_PATHS:
+        value = _get_nested_value(character_data, path)
+        is_blank = (value is None) or (isinstance(value, str) and not value.strip())
+        if is_blank:
+            missing_profile.append(path)
+            if path in _APPEARANCE_PROFILE_FIELDS:
+                missing_appearance.append(path)
+    
+    warnings = []
+    if missing_appearance:
+        warnings.append(f"Missing appearance metadata: {', '.join(missing_appearance)}")
+    if missing_profile:
+        remaining = [p for p in missing_profile if p not in missing_appearance]
+        if remaining:
+            warnings.append(f"Missing profile fields: {', '.join(remaining)}")
+    
+    return {
+        "profile_ready": len(missing_profile) == 0,
+        "missing_profile_fields": missing_profile,
+        "missing_appearance_fields": missing_appearance,
+        "warnings": warnings,
+    }
+
+
+def seed_missing_appearance_fields(character_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Ensure appearance field keys exist (as empty strings if missing).
+    
+    This is a non-destructive operation that ensures promoted NPCs have
+    the expected appearance keys present for future profile editing.
+    
+    Args:
+        character_data: Character dict to seed
+        
+    Returns:
+        Updated character_data with appearance keys guaranteed present
+    """
+    seeded = deepcopy(character_data)
+    
+    for field in _APPEARANCE_PROFILE_FIELDS:
+        if field not in seeded or seeded[field] is None:
+            seeded[field] = ""
+    
+    return seeded
+
+
 __all__ = [
     "AUDIT_RESULT_SCHEMA_ERROR",
     "AUDIT_RESULT_COMPLETENESS_ERROR",
@@ -555,6 +646,8 @@ __all__ = [
     "CharacterCreationAuditResult",
     "audit_character_creation",
     "audit_character_readiness",
+    "audit_profile_readiness",
+    "seed_missing_appearance_fields",
     "READINESS_REPAIR_WRITABLE_FIELDS",
     "build_readiness_repair_proposal",
     "sanitize_readiness_repair_patch",
