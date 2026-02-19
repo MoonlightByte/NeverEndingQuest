@@ -1,0 +1,3 @@
+# Keep this directory in git, but ignore exported archives.
+*
+!.gitignore
