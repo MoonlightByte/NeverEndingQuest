@@ -15,6 +15,18 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **Debug Sidebar Density + Cost Row Alignment (COMPLETED - 2026-02-19):**
+  - **Objective:** Improve readability in narrow debug sidebar and dense narration sessions without changing behavior.
+  - **Initial Fix:** Added compact UI density pass in `web/templates/game_interface.html` (smaller fonts, tighter spacing, two-row Session/Week rollup support).
+  - **Follow-up Refinement:** Removed unintended LED font spill into sidebar tabs and main chat body while keeping debug telemetry compact.
+  - **Cost Layout Hardening:** Reworked Session/Week rows into structured label/value columns to fix spacing artifacts (`$ 0.00 (0.00 NZD)`) and align labels right like table columns.
+  - **Implementation Details:**
+    - Added `cost-values`, `cost-divider`, `cost-currency`, `cost-paren`, `cost-text` span structure for deterministic spacing.
+    - Added right-aligned label column (`cost-label`) with fixed-width grid in `#debug-tab .cost-stat`.
+    - Preserved compact debug telemetry font while returning chat and tab typography to non-LED style.
+  - **File Modified:** `web/templates/game_interface.html`
+  - **Result:** Session/Week rows render as aligned table-like lines, compact sidebar remains readable, narration chat no longer looks like LED terminal text.
+
 - **Portrait Create/Upload UX Locking (COMPLETED - 2026-02-19):**
   - **Objective:** Prevent duplicate portrait generation/upload requests and provide clear UX feedback during async operations
   - **Problem:** Users could click Create or Upload multiple times, triggering duplicate requests with no visual indication of processing state

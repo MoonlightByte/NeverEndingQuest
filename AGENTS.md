@@ -1044,6 +1044,32 @@ Bundle current developer documentation into the tester-facing GitHub commit stre
 
 ---
 
+### Debug Sidebar Density and Cost Row Alignment (COMPLETED - 2026-02-19)
+
+**Status:** COMPLETED - UI density and cost-line alignment pass finalized
+
+**Objective:**
+Improve narrow-sidebar readability for Debug tab telemetry and long narrator output while preserving behavior.
+
+**Implementation Summary:**
+- `web/templates/game_interface.html`: Added compact spacing and typography scaling for Debug panel and narration message flow.
+- Converted Session/Week cost rows to structured token spans (`cost-values`, `cost-divider`, `cost-currency`, `cost-paren`, `cost-text`) to eliminate spacing artifacts around `$` and `(NZD)` values.
+- Added right-aligned table-style label column for `Session:` and `Week:` via grid layout in `#debug-tab .cost-stat`.
+- Refined typography scope after visual QA:
+  - Removed unintended LED font use from sidebar tabs.
+  - Removed unintended LED font use from main chat author/body text.
+  - Kept compact monospace emphasis on Debug telemetry surfaces only.
+
+**Result:**
+- Debug cost rows render as two aligned, table-like lines with stable spacing.
+- Sidebar remains compact and readable in narrow widths.
+- Main narration chat preserves compact spacing without terminal-style font spill.
+
+**Files Modified:**
+- `web/templates/game_interface.html`
+
+---
+
 ### Portrait Cache Coherence - Section 10 (COMPLETED - 2026-02-19)
 
 **Status:** COMPLETED - All Section 10 tasks 10.1-10.8 finished and verified

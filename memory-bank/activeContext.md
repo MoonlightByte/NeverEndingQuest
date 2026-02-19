@@ -6,6 +6,13 @@
   - Prior docs pass already committed `openspec/changes/toolkit-module-builder-rebuild-phase1-npc-alignment/` and memory-bank updates.
   - `.opencode` commit guardrail confirmed: stage only curated skills/command docs when needed; do not force-add dependency/package artifacts.
 
+- **Debug Sidebar Density + Cost Table Alignment (COMPLETED - 2026-02-19):**
+  - Implemented compact density tuning in `web/templates/game_interface.html` for narrow debug sidebar readability and long narration sessions.
+  - Finalized always-on compact spacing while removing LED font leak from sidebar tabs and narration chat.
+  - Reworked Session/Week rollup markup into structured value tokens to eliminate spacing artifacts around currency and NZD parentheses.
+  - Added right-aligned label column behavior (`Session:`, `Week:`) with grid-based row structure for stable table-like alignment.
+  - Kept LED-style monospace emphasis only on debug telemetry surfaces where it improves scanability.
+
 - **Portrait Create/Upload UX Locking (COMPLETED - 2026-02-19):**
   - **Objective:** Prevent duplicate portrait generation/upload requests and provide clear UX feedback during async operations
   - **Problem:** Clicking Create or Upload multiple times could trigger duplicate requests; no visual indication of processing state
