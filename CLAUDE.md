@@ -6,6 +6,76 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 NeverEndingQuest is an AI-powered Dungeon Master system for running SRD 5.2.1 compatible tabletop RPG campaigns. It features advanced token compression (70-90% reduction), a web interface with real-time updates, and a comprehensive module creation toolkit.
 
+## IMPORTANT: Active Refactor Context - Read Before Any AI/Model Work
+
+### Failed Plan Documents - DO NOT FOLLOW
+The following documents in `docs/plans/` represent **failed prior attempts** at this refactor. They were
+abandoned because the approach was overly complex and the models hallucinated during execution.
+**Do not use them as guidance:**
+- `docs/plans/2026-02-12-openai-refactor-callsite-task-matrix.md`
+- `docs/plans/2026-02-12-openai-refactor-restart-plan.md`
+- `docs/plans/2026-02-08-openai-model-migration-design.md`
+
+All documents in `docs/plans/` and `docs/audit/` are historical artifacts only.
+
+### Reference Documents (Gitignored - Local Only)
+Current model documentation lives here - read these before doing any model work:
+- `docs/reference/openai-models-reference.md` - GPT-5.2 family, API changes, migration mapping
+- `docs/reference/gemini-models-reference.md` - Gemini 3 family, API differences, parallel call patterns
+
+### API Callsite Inventory - Source of Truth
+**`docs/audit/2026-02-12-openai-api-call-inventory.json`** is the authoritative list of all 95 API
+callsites. Use this as the basis for tracking migration progress and designing the capture system.
+
+Fields per entry:
+- `task_id` - Unique ID (T001-T095)
+- `path` + `line` - Exact file location
+- `scope` - `runtime` (59, highest priority), `dev_misc` (35, low priority), `tests` (1)
+- `model_expr` - The variable or literal used at call time
+- `has_temperature`, `has_reasoning_effort`, `has_max_tokens` - Parameter flags
+- `escalation` - E0 (compliant), E1 (non-runtime), E2 (needs reasoning_effort="none"), E3 (fix needed)
+
+**IMPORTANT:** The `model_expr` values contain `=>gpt-5.2` / `=>gpt-5-mini` annotations (e.g.,
+`"config.DM_MAIN_MODEL=>gpt-5.2"`). These are **aspirational targets from the failed plan**, NOT
+the current model strings. The actual `model_config.py` still has all `gpt-4.1-2025-04-14` values.
+The `=>` suffix is annotation only - do not treat it as reflecting current code state.
+
+### Refactor Goal: Multi-Provider Model Support
+
+**What we are doing:**
+- Migrating runtime calls from `gpt-4.1-2025-04-14` to `gpt-5.2` (and mini -> `gpt-5-mini`)
+- Adding parallel Gemini 3 (`gemini-3-pro-preview` / `gemini-3-flash-preview`) as an alternate provider
+- The existing toggle system (`USE_GPT5_MODELS` in `model_config.py`) will be extended to support
+  provider selection (OpenAI vs Gemini)
+- gpt-4.1 is NOT being removed - it stays as a fallback. We are adding toggle options.
+
+**CRITICAL: DO NOT CHANGE PROMPTS**
+The system prompts are currently perfectly tuned to gpt-4.1 outputs. We are NOT modifying any
+prompts during this refactor. We are selecting comparable models, temperatures, and reasoning
+settings to match the existing output quality. Prompt changes are out of scope.
+
+**Development approach:**
+- Migrate one API callsite at a time (95 total runtime callsites, see audit inventory)
+- For each callsite, run all three models simultaneously (gpt-4.1, gpt-5.2, Gemini 3) and compare
+- Record and compare outputs using a new capture system (to be designed separately)
+- Existing A/B test data is in gitignored `development/` folders
+- Balance and tune temperature/reasoning per callsite after comparing outputs
+- Prefer smaller/faster models where output quality is equivalent (cost optimization)
+
+**Model equivalence targets:**
+- `gpt-4.1-2025-04-14` (full) -> `gpt-5.2` (none reasoning) OR `gemini-3-pro-preview` (low thinking)
+- `gpt-4.1-mini-2025-04-14` (mini) -> `gpt-5-mini` OR `gemini-3-flash-preview`
+- Temperature: OpenAI calls with temperature need `reasoning_effort="none"` for gpt-5.2; Gemini 3
+  defaults to 1.0 (do not set temperature for Gemini 3 coding/reasoning tasks; measured adjustment
+  is appropriate for specific non-reasoning use cases)
+- Cost: Aim to match or reduce current gpt-4.1 cost per callsite
+
+**What is NOT changing:**
+- System prompts and user-facing prompt content
+- Response format expectations (JSON schemas, output structure)
+- Game logic, validation rules, or D&D mechanics
+- The compression system architecture
+
 ## Commands and Development
 
 ### Running the Game
@@ -102,16 +172,21 @@ Direct static routes for performance:
 ### AI Integration Architecture
 
 #### Multi-Model Support
-```python
-# Model configuration in model_config.py
-DM_MAIN_MODEL = "gpt-4.1-2025-04-14"              # Main DM
-DM_VALIDATION_MODEL = "gpt-4.1-2025-04-14"        # Validation
-DM_MINI_MODEL = "gpt-4.1-mini-2025-04-14"         # Simple conversations
-NARRATIVE_COMPRESSION_MODEL = "gpt-4.1-mini-2025-04-14"  # Compression
 
-# Optional GPT-5 models (USE_GPT5_MODELS = True to enable)
-GPT5_MINI_MODEL = "gpt-5-mini-2025-08-07"         # GPT-5 mini
-GPT5_FULL_MODEL = "gpt-5-2025-08-07"              # GPT-5 full
+**Current production models** (all in `model_config.py`):
+- Full model: `gpt-4.1-2025-04-14` (being sunsetted by OpenAI, redirecting to gpt-5 series)
+- Mini model: `gpt-4.1-mini-2025-04-14`
+- 19 config variables, 95 runtime callsites total
+
+**Refactor targets** (see `docs/reference/` for full details):
+```python
+# OpenAI next-gen (toggle: USE_GPT5_MODELS)
+gpt-5.2          # replaces gpt-4.1 full - use reasoning_effort="none" for temp-using calls
+gpt-5-mini       # replaces gpt-4.1-mini
+
+# Gemini 3 (new parallel provider toggle - to be added)
+gemini-3-pro-preview    # parallel to gpt-5.2
+gemini-3-flash-preview  # parallel to gpt-5-mini
 
 # Intelligent routing based on action complexity
 ENABLE_INTELLIGENT_ROUTING = True                  # Action-based model selection
@@ -119,6 +194,8 @@ USE_COMPRESSED_COMBAT = True                       # Compressed combat prompts
 ```
 
 #### Gemini Integration
+
+**Current role (analysis tool only - gitignored `gemini_tool.py`):**
 
 Use Gemini for analyzing large files (>2000 lines) or entire codebases that exceed your context window.
 
@@ -135,7 +212,7 @@ plan = plan_feature("Add user authentication", files=["app.py", "models/"])
 result = query_gemini("How should I structure a REST API?")
 ```
 
-**When to Use:**
+**When to Use (analysis):**
 - User mentions "gemini" or "use gemini"
 - Files are over 2000 lines
 - Analyzing entire directories/projects
@@ -146,6 +223,13 @@ result = query_gemini("How should I structure a REST API?")
 - `files` parameter accepts single files, lists, or directories
 - Rate limited to 2 RPM (free tier) - tool handles delays automatically
 - Gemini excels at analysis, you excel at implementation
+
+**Future role (runtime parallel provider - in development):**
+Gemini 3 (`gemini-3-pro-preview` / `gemini-3-flash-preview`) is being added as a parallel runtime
+provider alongside OpenAI. Each API callsite will eventually have a Gemini code path behind a
+provider toggle. See `docs/reference/gemini-models-reference.md` for API differences and
+call pattern translation. Key note: do NOT set temperature for Gemini 3 in general - it defaults
+to 1.0 and is optimized for that; measured adjustment is appropriate for specific tasks.
 
 ### Critical File Paths and Conventions
 
@@ -306,6 +390,14 @@ Before committing code:
 - [ ] Root cause addressed (not workaround)
 - [ ] Import patterns match standards
 - [ ] Media files in correct locations
+
+### Additional Gates for Model Refactor Work
+- [ ] NO prompt text was modified (prompts are frozen - gpt-4.1 tuned)
+- [ ] Response format/JSON schema is unchanged at the callsite
+- [ ] New model call is behind a toggle (does not replace, adds alongside)
+- [ ] gpt-4.1 path still functional as fallback
+- [ ] Temperature/reasoning parameters are comparable equivalents, not arbitrary choices
+- [ ] Capture system records output for comparison before merging
 
 ## SRD 5.2.1 Compliance
 

@@ -185,6 +185,9 @@ testing/
 test_*.py
 *_test.py
 
+# Reference documents (local working docs, do not commit)
+docs/reference/
+
 # Documentation files (keep core docs, exclude development plans)
 *_plan.md
 *_analysis.md
