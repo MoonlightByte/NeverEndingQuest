@@ -1,5 +1,11 @@
 ## Current Work Focus
 
+- **Developer Documentation Packaging (COMPLETED - 2026-02-19):**
+  - Plans and OpenSpec developer docs are being bundled into the tester-facing commit stream.
+  - Committed docs pass includes `plans/` and `openspec/changes/debug-usage-session-week-nzd-rollup/`.
+  - Prior docs pass already committed `openspec/changes/toolkit-module-builder-rebuild-phase1-npc-alignment/` and memory-bank updates.
+  - `.opencode` commit guardrail confirmed: stage only curated skills/command docs when needed; do not force-add dependency/package artifacts.
+
 - **Portrait Create/Upload UX Locking (COMPLETED - 2026-02-19):**
   - **Objective:** Prevent duplicate portrait generation/upload requests and provide clear UX feedback during async operations
   - **Problem:** Clicking Create or Upload multiple times could trigger duplicate requests; no visual indication of processing state

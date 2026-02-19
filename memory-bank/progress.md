@@ -7,6 +7,11 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ### Documentation Maintenance
 - 2026-02-04: Memory Bank reviewed/updated on request (documentation-only pass; no code changes).
+- 2026-02-19: Developer documentation packaging pass completed for tester handoff commit stream.
+  - Committed plans set (`plans/`), including archived planning notes and current roadmap files.
+  - Committed OpenSpec scaffold: `openspec/changes/debug-usage-session-week-nzd-rollup/`.
+  - Previous doc commit already included `openspec/changes/toolkit-module-builder-rebuild-phase1-npc-alignment/` and memory-bank updates.
+  - `.opencode` policy clarified: only share curated skills/command docs paths; avoid force-adding package artifacts.
 
 ## 🚀 Recent Achievements
 
