@@ -15,6 +15,18 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **Background Feature UX Clarity (COMPLETED - 2026-02-19):**
+  - **Objective:** Improve player UX for filling `backgroundFeature.name` and `backgroundFeature.description` fields, normalize legacy placeholder values, and provide deterministic remediation tooling.
+  - **Shared Placeholder Contract:** Added centralized placeholder detection helpers (`is_generic_background_feature_name`, `is_generic_background_feature_description`) in `utils/character_creation_audit.py`. Extended completeness audit to flag generic placeholders as `completeness_error`.
+  - **Guided Entry UX:** Updated portrait profile modal and manual creation form labels/placeholders with concrete examples (e.g., "Criminal Contact, Researcher, Military Rank") and "1-3 sentences" guidance for descriptions.
+  - **Backend Prefill:** Added deterministic suggestion logic for known backgrounds (acolyte, criminal, folk hero, noble, sage, soldier) that only applies to blank/generic values.
+  - **Readiness and Repair:** Extended Character Sheet readiness warnings to detect generic placeholders. Added `backgroundFeature.name` to repair allowlist with non-generic fallback text. Updated warning banner to "Character sheet incomplete: fields missing or need meaningful values".
+  - **Legacy Remediation Tooling:** Created `scripts/remediate_background_feature_placeholders.py` with `--dry-run` and `--apply` modes. Fail-open per-file error handling with categorization. Created `scripts/test_remediate_background_feature_placeholders.py` with 5 comprehensive tests.
+  - **New Specs:** Created `openspec/specs/background-feature-guided-entry-ux/spec.md` and `openspec/specs/background-feature-placeholder-remediation/spec.md`.
+  - **Updated Specs:** Modified `openspec/specs/character-sheet-completeness-audit/spec.md` and `openspec/specs/tt-character-readiness-repair/spec.md` to include background feature placeholder scenarios.
+  - **Archived:** Change archived to `openspec/changes/archive/2026-02-19-background-feature-ux-clarity/`.
+  - **Testing:** All 7 test groups in `test_character_creation_audit.py` PASS. All 5 tests in `test_remediate_background_feature_placeholders.py` PASS. Dry-run on 19 production characters: 0 changes needed.
+
 - **Portrait Prompt Visual Brief Hardening (COMPLETED - 2026-02-19):**
   - **Objective:** Stop portrait generations from rendering fake character sheets/cards with text overlays and align PC/allied outputs with module-builder quality direction.
   - **Implementation:** `core/toolkit/portrait_service.py` now synthesizes a natural-language visual brief from character profile fields before final image prompt assembly.

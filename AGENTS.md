@@ -1021,6 +1021,68 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Background Feature UX Clarity (COMPLETED - 2026-02-19)
+
+**Status:** COMPLETED - All 15 tasks across Sections 1-5 finished, validated, and archived
+
+**OpenSpec Change:** `background-feature-ux-clarity` (archived to `openspec/changes/archive/2026-02-19-background-feature-ux-clarity/`)
+
+**Objective:**
+Improve player UX for filling `backgroundFeature.name` and `backgroundFeature.description` fields, normalize legacy placeholder values, and provide deterministic remediation tooling.
+
+**Implementation Summary:**
+
+**Section 1 - Shared Placeholder Contract:**
+- Added centralized placeholder detection helpers (`is_generic_background_feature_name`, `is_generic_background_feature_description`) in `utils/character_creation_audit.py`
+- Extended completeness audit to flag generic placeholders as `completeness_error`
+- Added deterministic suggestion helpers for known backgrounds (acolyte, criminal, folk hero, noble, sage, soldier)
+
+**Section 2 - Guided Entry UX:**
+- Updated portrait profile modal labels/placeholders with concrete examples (e.g., "Criminal Contact, Researcher, Military Rank")
+- Updated manual character creation form hints to match
+- Added backend prefill logic for known backgrounds with blank/generic values
+
+**Section 3 - Readiness and Repair Alignment:**
+- Extended Character Sheet readiness warnings to detect generic background-feature placeholders
+- Updated warning banner copy: "Character sheet incomplete: fields missing or need meaningful values"
+- Added `backgroundFeature.name` to repair allowlist with non-generic fallback text
+- Mechanical snapshot invariants preserved
+
+**Section 4 - Legacy Remediation Tooling:**
+- Created `scripts/remediate_background_feature_placeholders.py` with `--dry-run` and `--apply` modes
+- Fail-open per-file error handling with categorization (read/analysis/write)
+- Atomic writes via `safe_write_json`, structured summary with error subtypes
+- Created `scripts/test_remediate_background_feature_placeholders.py` with 5 test functions covering dry-run, apply, unknown backgrounds, error handling, and idempotency
+
+**Section 5 - Verification and Closure:**
+- Compile validation passed for all 6 modified Python files
+- Targeted tests passed (character creation audit + remediation script)
+- Character Sheet/PDF wiring verified, no regressions detected
+- OpenSpec validation: VALID
+
+**Files Created:**
+- `scripts/remediate_background_feature_placeholders.py` (~350 lines)
+- `scripts/test_remediate_background_feature_placeholders.py` (~280 lines)
+
+**Files Modified:**
+- `utils/character_creation_audit.py` (+~150 lines: helpers, suggestions, completeness detection, repair allowlist)
+- `web/templates/game_interface.html` (~+50 lines: guidance text, readiness detection, warning banner)
+- `web/templates/partials/character_tabs.html` (~+4 lines: guidance text)
+- `web/web_interface.py` (+~10 lines: suggestion prefill in portrait create)
+- `web/routes/tabletop_party_routes.py` (+~8 lines: suggestion prefill in manual create)
+- `scripts/test_character_creation_audit.py` (+~85 lines: helper tests, repair regression tests)
+- `openspec/specs/character-sheet-completeness-audit/spec.md` (updated with generic placeholder scenario)
+- `openspec/specs/tt-character-readiness-repair/spec.md` (updated with backgroundFeature.name and generic placeholder scenario)
+- `openspec/specs/background-feature-guided-entry-ux/spec.md` (NEW)
+- `openspec/specs/background-feature-placeholder-remediation/spec.md` (NEW)
+
+**Testing:**
+- All 7 test groups in `test_character_creation_audit.py` PASS
+- All 5 test functions in `test_remediate_background_feature_placeholders.py` PASS
+- Dry-run tested on 19 production character files: 0 changes needed (all already have proper values)
+
+---
+
 ### Developer Documentation Packaging for Tester Handoff (COMPLETED - 2026-02-19)
 
 **Status:** COMPLETED - Documentation-only commit stream updated

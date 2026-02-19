@@ -53,6 +53,7 @@ READINESS_REPAIR_WRITABLE_FIELDS = [
     "ideals",
     "bonds",
     "flaws",
+    "backgroundFeature.name",
     "backgroundFeature.description",
 ]
 
@@ -61,10 +62,176 @@ _READINESS_REPAIR_FALLBACK_TEXT = {
     "ideals": "I believe courage and steady judgment can turn the tide of any trial.",
     "bonds": "I owe my companions loyalty; their safety is my first duty.",
     "flaws": "I can be stubborn under pressure and slow to ask for help.",
+    "backgroundFeature.name": (
+        "A unique benefit tied to your background that provides social access or specialized knowledge."
+    ),
     "backgroundFeature.description": (
         "Your background grants trusted social footing among people who share your prior trade and culture."
     ),
 }
+
+# Generic placeholder strings for backgroundFeature narrative fields (normalized detection)
+# Used to flag narrative-incomplete placeholders during readiness checks and remediation.
+_BACKGROUNDFEATURE_NAME_PLACEHOLDERS = frozenset({
+    "",
+    "feature",
+    "background feature",
+    "unknown",
+})
+
+_BACKGROUNDFEATURE_DESCRIPTION_PLACEHOLDERS = frozenset({
+    "",
+    "a defining feature from your background.",
+    "background feature",
+    "standard background feature",
+})
+
+
+def _normalize_for_placeholder_matching(value: Any) -> str:
+    """Normalize input to lowercased, trimmed ASCII string for deterministic placeholder detection."""
+    if value is None:
+        return ""
+    return str(value).strip().lower()
+
+
+def is_generic_background_feature_name(value: Any) -> bool:
+    """Return True if the provided value matches known generic name placeholders.
+
+    Determines whether the background feature name is a placeholder that should
+    be flagged as narrative-incomplete. Normalizes the value for case/whitespace
+    agnostic comparison against the allowlist.
+
+    Args:
+        value: The backgroundFeature.name value (typically str or None)
+
+    Returns:
+        bool: True if value matches a generic placeholder pattern
+    """
+    normalized = _normalize_for_placeholder_matching(value)
+    return normalized in _BACKGROUNDFEATURE_NAME_PLACEHOLDERS
+
+
+def is_generic_background_feature_description(value: Any) -> bool:
+    """Return True if the provided value matches known generic description placeholders.
+
+    Determines whether the background feature description is a placeholder that
+    should be flagged as narrative-incomplete. Normalizes the value for
+    case/whitespace agnostic comparison against the allowlist.
+
+    Args:
+        value: The backgroundFeature.description value (typically str or None)
+
+    Returns:
+        bool: True if value matches a generic placeholder pattern
+    """
+    normalized = _normalize_for_placeholder_matching(value)
+    return normalized in _BACKGROUNDFEATURE_DESCRIPTION_PLACEHOLDERS
+
+
+def get_placeholder_patterns() -> Dict[str, frozenset]:
+    """Return mapping of field path to allowed placeholder patterns for remediation tooling.
+
+    Useful for scripts and migration tools that need to know which values are
+    considered placeholders without hardcoding patterns externally.
+
+    Returns:
+        Dict mapping 'backgroundFeature.name' and 'backgroundFeature.description'
+        to their respective placeholder frozensets.
+    """
+    return {
+        "backgroundFeature.name": _BACKGROUNDFEATURE_NAME_PLACEHOLDERS,
+        "backgroundFeature.description": _BACKGROUNDFEATURE_DESCRIPTION_PLACEHOLDERS,
+    }
+
+
+# Known background feature suggestions (SRD 5.2.1 style)
+# Used for deterministic prefill when background feature fields are blank or generic.
+_KNOWN_BACKGROUND_FEATURES: Dict[str, Dict[str, str]] = {
+    "acolyte": {
+        "name": "Shelter of the Faithful",
+        "description": "You command the respect of those who share your faith, and you can perform the religious ceremonies of your deity. You can expect to receive free healing and care at a temple, shrine, or other established presence of your faith.",
+    },
+    "criminal": {
+        "name": "Criminal Contact",
+        "description": "You have a reliable and trustworthy contact who acts as your liaison to a network of other criminals. You know how to get messages to and from your contact, even over great distances.",
+    },
+    "folk hero": {
+        "name": "Rustic Hospitality",
+        "description": "Since you come from the ranks of the common folk, you fit in among them with ease. You can find a place to hide, rest, or recuperate among other commoners, unless you have shown yourself to be a danger to them.",
+    },
+    "noble": {
+        "name": "Position of Privilege",
+        "description": "Thanks to your noble birth, people are inclined to think the best of you. You are welcome in high society, and people assume you have the right to be wherever you are.",
+    },
+    "sage": {
+        "name": "Researcher",
+        "description": "When you attempt to learn or recall a piece of lore, if you do not know that information, you often know where and from whom you can obtain it.",
+    },
+    "soldier": {
+        "name": "Military Rank",
+        "description": "Soldiers loyal to your former military organization still recognize your authority and military rank. They will defer to you if they are of a lower rank, and you can invoke your rank to exert influence over other soldiers.",
+    },
+}
+
+
+def get_known_background_feature_suggestion(background: Any) -> Optional[Dict[str, str]]:
+    """Return deterministic background feature suggestion for known backgrounds.
+
+    Provides SRD-style background feature entries for recognized backgrounds.
+    Returns None for unknown backgrounds to avoid forcing synthetic values.
+
+    Args:
+        background: The character background value (typically str)
+
+    Returns:
+        Dict with 'name' and 'description' keys for known backgrounds, None otherwise.
+    """
+    if background is None:
+        return None
+    normalized = str(background).strip().lower()
+    return _KNOWN_BACKGROUND_FEATURES.get(normalized)
+
+
+def apply_background_feature_suggestion_if_generic(
+    background: Any,
+    name_value: Any,
+    description_value: Any,
+) -> Dict[str, str]:
+    """Apply deterministic background feature suggestion only to generic/blank fields.
+
+    Returns name and description values, preferring authored non-generic values
+    and filling in with known background suggestions only where fields are
+    blank or match generic placeholder patterns.
+
+    Args:
+        background: The character background (e.g., 'criminal', 'sage')
+        name_value: Current backgroundFeature.name value
+        description_value: Current backgroundFeature.description value
+
+    Returns:
+        Dict with 'name' and 'description' keys. Authored non-generic values
+        are preserved; blank/generic values are filled from known background
+        suggestions if available; unknown backgrounds leave values unchanged.
+    """
+    result: Dict[str, str] = {
+        "name": str(name_value or "").strip(),
+        "description": str(description_value or "").strip(),
+    }
+
+    suggestion = get_known_background_feature_suggestion(background)
+    if suggestion is None:
+        # Unknown background - leave values unchanged
+        return result
+
+    # Apply suggestion only to blank or generic placeholder fields
+    if is_generic_background_feature_name(name_value):
+        result["name"] = suggestion["name"]
+
+    if is_generic_background_feature_description(description_value):
+        result["description"] = suggestion["description"]
+
+    return result
+
 
 READINESS_REPAIR_MECHANICAL_PATHS = [
     "hitPoints",
@@ -340,13 +507,8 @@ def _apply_optional_enrichment(normalized_data: Dict[str, Any]) -> Tuple[Dict[st
     enriched_fields: List[str] = []
 
     background_feature = enriched.get("backgroundFeature", {})
-    description = str(background_feature.get("description", "")).strip()
-    if description.lower() in {
-        "",
-        "background feature",
-        "standard background feature",
-        "a defining feature from your background.",
-    }:
+    description = background_feature.get("description")
+    if is_generic_background_feature_description(description):
         background_feature["description"] = (
             "Your background grants trusted social footing among people who share your prior trade and culture."
         )
@@ -504,7 +666,37 @@ def audit_character_creation(
             missing_paths=[entry["path"] for entry in schema_errors],
         )
 
-    completeness_missing = [path for path in _COMPLETENESS_PATHS if _is_blank(_get_nested_value(normalized_data, path))]
+    # Check for empty fields and generic placeholders in background feature
+    completeness_missing: List[str] = []
+    completeness_errors: List[Dict[str, str]] = []
+    
+    for path in _COMPLETENESS_PATHS:
+        value = _get_nested_value(normalized_data, path)
+        if _is_blank(value):
+            completeness_missing.append(path)
+            completeness_errors.append({"path": path, "message": "Field cannot be empty"})
+    
+    # Check background feature fields for generic placeholders
+    bg_feature = normalized_data.get("backgroundFeature", {})
+    bg_name = bg_feature.get("name")
+    bg_description = bg_feature.get("description")
+    
+    if is_generic_background_feature_name(bg_name):
+        if "backgroundFeature.name" not in completeness_missing:
+            completeness_missing.append("backgroundFeature.name")
+            completeness_errors.append({
+                "path": "backgroundFeature.name",
+                "message": "Background feature name is generic placeholder text",
+            })
+    
+    if is_generic_background_feature_description(bg_description):
+        if "backgroundFeature.description" not in completeness_missing:
+            completeness_missing.append("backgroundFeature.description")
+            completeness_errors.append({
+                "path": "backgroundFeature.description",
+                "message": "Background feature description is generic placeholder text",
+            })
+    
     if completeness_missing:
         warning(
             f"[AUDIT] completeness_error source={source} missing={len(completeness_missing)}",
@@ -514,7 +706,7 @@ def audit_character_creation(
             result_type=AUDIT_RESULT_COMPLETENESS_ERROR,
             normalized_data=normalized_data,
             source=source,
-            errors=[{"path": path, "message": "Field cannot be empty"} for path in completeness_missing],
+            errors=completeness_errors,
             missing_paths=completeness_missing,
         )
 
@@ -583,6 +775,9 @@ def audit_profile_readiness(character_data: Dict[str, Any]) -> Dict[str, Any]:
     block operations. It surfaces warnings for optional fields that improve
     character sheet quality and portrait generation context.
     
+    Generic placeholders in background feature fields are treated as
+    incomplete narrative quality signals, not just blank strings.
+    
     Returns:
         Dict with:
         - profile_ready: bool (True if all profile fields present)
@@ -590,18 +785,29 @@ def audit_profile_readiness(character_data: Dict[str, Any]) -> Dict[str, Any]:
         - missing_appearance_fields: list of missing appearance-only paths
         - warnings: list of human-readable warning strings
     """
-    missing_profile = []
-    missing_appearance = []
+    missing_profile: List[str] = []
+    missing_appearance: List[str] = []
     
     for path in _PROFILE_READINESS_PATHS:
         value = _get_nested_value(character_data, path)
         is_blank = (value is None) or (isinstance(value, str) and not value.strip())
+        
+        # Check for generic placeholders in background feature fields
+        if path == "backgroundFeature.name":
+            bg_name = character_data.get("backgroundFeature", {}).get("name")
+            if is_generic_background_feature_name(bg_name):
+                is_blank = True
+        elif path == "backgroundFeature.description":
+            bg_desc = character_data.get("backgroundFeature", {}).get("description")
+            if is_generic_background_feature_description(bg_desc):
+                is_blank = True
+        
         if is_blank:
             missing_profile.append(path)
             if path in _APPEARANCE_PROFILE_FIELDS:
                 missing_appearance.append(path)
     
-    warnings = []
+    warnings: List[str] = []
     if missing_appearance:
         warnings.append(f"Missing appearance metadata: {', '.join(missing_appearance)}")
     if missing_profile:
@@ -654,4 +860,9 @@ __all__ = [
     "apply_readiness_repair_patch",
     "get_mechanical_snapshot",
     "diff_mechanical_snapshot",
+    "is_generic_background_feature_name",
+    "is_generic_background_feature_description",
+    "get_placeholder_patterns",
+    "get_known_background_feature_suggestion",
+    "apply_background_feature_suggestion_if_generic",
 ]

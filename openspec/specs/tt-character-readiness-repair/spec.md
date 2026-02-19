@@ -16,7 +16,11 @@ The system SHALL apply repairs only after explicit DM confirmation and SHALL onl
 
 #### Scenario: Confirm applies only whitelisted fields
 - **WHEN** DM confirms a repair proposal
-- **THEN** only these fields may be updated: `personality_traits`, `ideals`, `bonds`, `flaws`, `backgroundFeature.description`
+- **THEN** only these fields may be updated: `personality_traits`, `ideals`, `bonds`, `flaws`, `backgroundFeature.name`, `backgroundFeature.description`
+
+#### Scenario: Generic placeholder replacement in repair apply
+- **WHEN** repair apply targets a generic placeholder value in `backgroundFeature.name` or `backgroundFeature.description`
+- **THEN** repair writes only approved narrative replacement text and preserves all non-targeted fields
 
 #### Scenario: Mechanical fields remain unchanged
 - **WHEN** a repair apply operation completes

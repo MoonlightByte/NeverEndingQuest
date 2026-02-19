@@ -17,6 +17,13 @@ from utils.character_creation_audit import (
     AUDIT_RESULT_SCHEMA_ERROR,
     AUDIT_RESULT_SUCCESS,
     audit_character_creation,
+    audit_profile_readiness,
+    is_generic_background_feature_name,
+    is_generic_background_feature_description,
+    sanitize_readiness_repair_patch,
+    apply_readiness_repair_patch,
+    get_mechanical_snapshot,
+    diff_mechanical_snapshot,
 )
 
 
@@ -38,6 +45,181 @@ def _base_payload() -> dict:
     }
 
 
+def test_helper_detection() -> None:
+    """Test placeholder helper detection functions."""
+    # True cases for name
+    assert is_generic_background_feature_name("") == True, "Empty string should be generic"
+    assert is_generic_background_feature_name("Feature") == True, "'Feature' should be generic"
+    assert is_generic_background_feature_name("  feature  ") == True, "Whitespace-padded 'feature' should be generic"
+    assert is_generic_background_feature_name("BACKGROUND FEATURE") == True, "Uppercase should be generic"
+    assert is_generic_background_feature_name("Unknown") == True, "'Unknown' should be generic"
+    assert is_generic_background_feature_name(None) == True, "None should be generic"
+    
+    # False cases for name
+    assert is_generic_background_feature_name("Researcher") == False, "'Researcher' should not be generic"
+    assert is_generic_background_feature_name("Criminal Contact") == False, "'Criminal Contact' should not be generic"
+    assert is_generic_background_feature_name("Military Rank") == False, "'Military Rank' should not be generic"
+    
+    # True cases for description
+    assert is_generic_background_feature_description("") == True, "Empty string desc should be generic"
+    assert is_generic_background_feature_description("Standard background feature") == True, "Standard text should be generic"
+    assert is_generic_background_feature_description("A defining feature from your background.") == True, "Defining text should be generic"
+    assert is_generic_background_feature_description("  STANDARD BACKGROUND FEATURE  ") == True, "Whitespace-padded uppercase should be generic"
+    
+    # False cases for description
+    assert is_generic_background_feature_description("You have a reliable contact in the criminal underworld.") == False, "Authored desc should not be generic"
+    assert is_generic_background_feature_description("I can invoke my rank to influence soldiers.") == False, "Authored military desc should not be generic"
+    
+    print("[PASS] placeholder helper detection validated")
+
+
+def test_completeness_error_on_generic_placeholders() -> None:
+    """Test that generic placeholders trigger completeness errors."""
+    payload = deepcopy(_base_payload())
+    payload["backgroundFeature"] = {
+        "name": "Feature",
+        "description": "Standard background feature",
+    }
+    
+    result = audit_character_creation(payload, source="test", enable_enrichment=False)
+    
+    assert result.result_type == AUDIT_RESULT_COMPLETENESS_ERROR, "Generic placeholders should trigger completeness_error"
+    assert "backgroundFeature.name" in result.missing_paths, "Generic name should be in missing_paths"
+    assert "backgroundFeature.description" in result.missing_paths, "Generic description should be in missing_paths"
+    
+    error_paths = {e["path"] for e in result.errors}
+    assert "backgroundFeature.name" in error_paths, "Generic name should have error entry"
+    assert "backgroundFeature.description" in error_paths, "Generic description should have error entry"
+    
+    print("[PASS] completeness error on generic placeholders validated")
+
+
+def test_authored_value_success_and_preservation() -> None:
+    """Test that authored non-placeholder values succeed and are preserved."""
+    payload = deepcopy(_base_payload())
+    payload["backgroundFeature"] = {
+        "name": "Criminal Contact",
+        "description": "You have a reliable contact who acts as your liaison to a network of other criminals.",
+    }
+    
+    result = audit_character_creation(payload, source="test", enable_enrichment=False)
+    
+    assert result.result_type == AUDIT_RESULT_SUCCESS, "Authored values should result in success"
+    
+    # Verify authored values are preserved in normalized_data
+    normalized_bg = result.normalized_data.get("backgroundFeature", {})
+    assert normalized_bg.get("name") == "Criminal Contact", "Authored name should be preserved"
+    assert normalized_bg.get("description") == "You have a reliable contact who acts as your liaison to a network of other criminals.", "Authored description should be preserved"
+    
+    print("[PASS] authored value success and preservation validated")
+
+
+def test_profile_readiness_placeholder_signaling() -> None:
+    """Test that profile readiness flags generic placeholders."""
+    # Test with generic placeholders
+    generic_payload = deepcopy(_base_payload())
+    generic_payload["backgroundFeature"] = {
+        "name": "Feature",
+        "description": "A defining feature from your background.",
+    }
+    
+    profile_result = audit_profile_readiness(generic_payload)
+    
+    assert profile_result["profile_ready"] == False, "Generic placeholders should result in profile not ready"
+    assert "backgroundFeature.name" in profile_result["missing_profile_fields"], "Generic name should be in missing_profile_fields"
+    assert "backgroundFeature.description" in profile_result["missing_profile_fields"], "Generic description should be in missing_profile_fields"
+    
+    # Test with authored values
+    authored_payload = deepcopy(_base_payload())
+    authored_payload["backgroundFeature"] = {
+        "name": "Researcher",
+        "description": "When you attempt to learn or recall a piece of lore, you often know where to obtain it.",
+    }
+    
+    # Add required appearance fields to get profile_ready=True
+    authored_payload["age"] = "25"
+    authored_payload["height"] = "5'10"
+    authored_payload["weight"] = "160 lbs"
+    authored_payload["eyes"] = "Blue"
+    authored_payload["skin"] = "Fair"
+    authored_payload["hair"] = "Brown"
+    
+    authored_result = audit_profile_readiness(authored_payload)
+    
+    # Note: profile_ready may still be False due to missing appearance fields in base_payload
+    # But background feature fields should NOT be flagged as missing
+    assert "backgroundFeature.name" not in authored_result["missing_profile_fields"], "Authored name should not be in missing_profile_fields"
+    assert "backgroundFeature.description" not in authored_result["missing_profile_fields"], "Authored description should not be in missing_profile_fields"
+    
+    print("[PASS] profile readiness placeholder signaling validated")
+
+
+def test_readiness_repair_regression() -> None:
+    """Regression test: repair apply replaces generic placeholders without changing mechanical fields."""
+    # 1. Whitelist + sanitize regression
+    patch = {
+        "updates": {
+            "backgroundFeature.name": "Criminal Contact",
+            "backgroundFeature.description": "You have a trusted liaison in criminal circles.",
+            "hitPoints": "9999",  # should be rejected - not in whitelist
+            "armorClass": "25",   # should be rejected - not in whitelist
+        }
+    }
+    sanitized = sanitize_readiness_repair_patch(patch)
+    
+    # Verify whitelist accepts narrative fields
+    assert "backgroundFeature.name" in sanitized, "Sanitize should accept backgroundFeature.name"
+    assert "backgroundFeature.description" in sanitized, "Sanitize should accept backgroundFeature.description"
+    
+    # Verify whitelist rejects mechanical fields
+    assert "hitPoints" not in sanitized, "Sanitize should reject hitPoints (mechanical field)"
+    assert "armorClass" not in sanitized, "Sanitize should reject armorClass (mechanical field)"
+    
+    print("[PASS] repair sanitize whitelist validated (accepts bg fields, rejects mechanical)")
+    
+    # 2. Apply patch regression (generic -> authored)
+    payload = deepcopy(_base_payload())
+    # Set generic placeholder values
+    payload["backgroundFeature"] = {
+        "name": "Feature",
+        "description": "Standard background feature",
+        "source": "SRD 5.2.1",
+    }
+    
+    # Pre-apply completeness check - should fail due to generic placeholders
+    pre_audit = audit_character_creation(payload, source="test", enable_enrichment=False)
+    assert pre_audit.result_type == AUDIT_RESULT_COMPLETENESS_ERROR, "Pre-apply should fail due to generic placeholders"
+    
+    repair_updates = {
+        "backgroundFeature.name": "Criminal Contact",
+        "backgroundFeature.description": "You have a trusted liaison in criminal circles.",
+    }
+    patched = apply_readiness_repair_patch(payload, repair_updates)
+    
+    # Verify patched payload has new authored values
+    assert patched["backgroundFeature"]["name"] == "Criminal Contact", "Patched name should be authored value"
+    assert "trusted liaison" in patched["backgroundFeature"]["description"].lower(), "Patched description should be authored value"
+    assert patched["backgroundFeature"]["source"] == "SRD 5.2.1", "Background feature source should be preserved"
+    
+    print("[PASS] repair apply replaces generic placeholders with authored values")
+    
+    # 3. Mechanical immutability regression
+    before_snapshot = get_mechanical_snapshot(payload)
+    after_snapshot = get_mechanical_snapshot(patched)
+    diff = diff_mechanical_snapshot(before_snapshot, after_snapshot)
+    
+    assert diff == [], f"Mechanical snapshot should be unchanged, but changes detected: {diff}"
+    
+    print("[PASS] mechanical fields unchanged after repair apply")
+    
+    # 4. End-to-end readiness regression
+    # Post-apply payload should pass completeness with authored replacements
+    post_audit = audit_character_creation(patched, source="test", enable_enrichment=False)
+    assert post_audit.result_type == AUDIT_RESULT_SUCCESS, "Post-apply should pass with authored replacements"
+    
+    print("[PASS] end-to-end readiness: generic placeholders replaced, completeness achieved")
+
+
 def main() -> None:
     good_payload = _base_payload()
     success_result = audit_character_creation(good_payload, source="test", enable_enrichment=False)
@@ -54,6 +236,15 @@ def main() -> None:
     assert completeness_result.result_type == AUDIT_RESULT_COMPLETENESS_ERROR, "Expected completeness_error result"
 
     print("[PASS] character_creation_audit deterministic result classes validated")
+    
+    # Run new placeholder detection tests
+    test_helper_detection()
+    test_completeness_error_on_generic_placeholders()
+    test_authored_value_success_and_preservation()
+    test_profile_readiness_placeholder_signaling()
+    
+    # Run readiness repair regression tests
+    test_readiness_repair_regression()
 
 
 if __name__ == "__main__":

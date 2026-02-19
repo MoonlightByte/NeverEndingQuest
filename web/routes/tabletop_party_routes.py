@@ -36,6 +36,7 @@ from utils.character_creation_audit import (
     audit_character_creation,
     audit_character_readiness,
     audit_profile_readiness,
+    apply_background_feature_suggestion_if_generic,
     seed_missing_appearance_fields,
 )
 from utils.encoding_utils import safe_json_load
@@ -959,11 +960,19 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
                 "conditionImmunities": [],
                 "classFeatures": [],
                 "racialTraits": [],
-                "backgroundFeature": {
-                    "name": data.get('background_feature_name', 'Background Feature'),
-                    "description": data.get('background_feature_description', ''),
-                    "source": "SRD 5.2.1",
-                },
+                # TABLETOP MODE: Apply deterministic background feature suggestions for known backgrounds
+                # Only fills blank/generic placeholder values, preserves authored input
+                "backgroundFeature": (
+                    lambda bg, name, desc: {
+                        "name": apply_background_feature_suggestion_if_generic(bg, name, desc)["name"],
+                        "description": apply_background_feature_suggestion_if_generic(bg, name, desc)["description"],
+                        "source": "SRD 5.2.1",
+                    }
+                )(
+                    data.get('background', 'Adventurer'),
+                    data.get('background_feature_name', ''),
+                    data.get('background_feature_description', '')
+                ),
                 "temporaryEffects": [],
                 "injuries": [],
                 "equipment_effects": [],

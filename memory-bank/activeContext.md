@@ -6,6 +6,16 @@
   - Prior docs pass already committed `openspec/changes/toolkit-module-builder-rebuild-phase1-npc-alignment/` and memory-bank updates.
   - `.opencode` commit guardrail confirmed: stage only curated skills/command docs when needed; do not force-add dependency/package artifacts.
 
+- **Background Feature UX Clarity (COMPLETED - 2026-02-19):**
+  - **OpenSpec Change:** `background-feature-ux-clarity` (archived to `openspec/changes/archive/2026-02-19-background-feature-ux-clarity/`)
+  - **Shared Placeholder Contract:** Added helper functions `is_generic_background_feature_name()` and `is_generic_background_feature_description()` to `utils/character_creation_audit.py` for deterministic placeholder detection. Extended completeness audit to flag generic placeholders as `completeness_error`.
+  - **Guided Entry UX:** Updated portrait profile modal and manual character creation form labels/placeholders with concrete examples ("Criminal Contact, Researcher, Military Rank") and "1-3 sentences" guidance for descriptions.
+  - **Backend Prefill:** Implemented `get_known_background_feature_suggestion()` and `apply_background_feature_suggestion_if_generic()` helpers. Integrated into portrait create flow (`web/web_interface.py`) and manual create flow (`web/routes/tabletop_party_routes.py`).
+  - **Readiness and Repair Alignment:** Extended `getCharacterReadinessWarnings()` in Character Sheet to detect generic placeholders. Added `backgroundFeature.name` to `READINESS_REPAIR_WRITABLE_FIELDS` and fallback text. Updated warning banner to "Character sheet incomplete: fields missing or need meaningful values".
+  - **Legacy Remediation Tooling:** Created `scripts/remediate_background_feature_placeholders.py` with `--dry-run` and `--apply` modes. Fail-open per-file error handling with read/analysis/write categorization. Atomic writes via `safe_write_json()`. Created comprehensive test suite `scripts/test_remediate_background_feature_placeholders.py` (5 tests, all PASS).
+  - **Spec Sync:** Created new capability specs `background-feature-guided-entry-ux` and `background-feature-placeholder-remediation`. Updated existing specs `character-sheet-completeness-audit` and `tt-character-readiness-repair` with background feature placeholder scenarios.
+  - **Testing:** All tests PASS - `test_character_creation_audit.py` (7 groups), `test_remediate_background_feature_placeholders.py` (5 functions). Dry-run on 19 production characters shows 0 changes needed (all already have proper values).
+
 - **Portrait Prompt Visual Brief Hardening (COMPLETED - 2026-02-19):**
   - Reworked PC/allied portrait prompt assembly in `core/toolkit/portrait_service.py` to use structured-to-prose visual brief synthesis instead of label-like stat formatting.
   - Added defensive parsing helpers for numeric extraction and age descriptor mapping to prevent prompt build failures on non-numeric values.

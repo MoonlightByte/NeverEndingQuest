@@ -88,6 +88,7 @@ import utils.pc_manager as pc_manager
 from updates.update_character_info import normalize_character_name
 from core.managers.status_manager import set_status_callback, set_compression_callback
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.character_creation_audit import apply_background_feature_suggestion_if_generic
 from model_config import DM_MINI_MODEL, ENABLE_BROWSER_TTS_STREAM_SYNC, ENABLE_CHAT_STREAMING, ENABLE_BROWSER_WORD_SYNC, ENABLE_TTS_ESTIMATED_TIMING
 from web.extensions.live_chat_monitor import setup_live_chat_monitor
 from web.extensions.streaming_events import configure_stream_transport
@@ -1219,6 +1220,18 @@ def create_portrait():
         
         # Extract profile payload
         profile_payload = _extract_profile_payload(data)
+        
+        # TABLETOP MODE: Apply deterministic background feature suggestions for known backgrounds
+        # Only fills blank/generic placeholder values, preserves authored input
+        char_background = character_data.get('background', '')
+        suggestion_result = apply_background_feature_suggestion_if_generic(
+            char_background,
+            profile_payload.get('background_feature_name', ''),
+            profile_payload.get('background_feature_description', '')
+        )
+        # Update profile payload with suggested values only where fields were generic/blank
+        profile_payload['background_feature_name'] = suggestion_result['name']
+        profile_payload['background_feature_description'] = suggestion_result['description']
         
         # Step 9.3: Fail-closed validation for required profile fields
         missing_fields = [

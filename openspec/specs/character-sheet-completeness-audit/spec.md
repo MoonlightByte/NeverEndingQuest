@@ -52,6 +52,10 @@ Character sheet UI and PDF export paths SHALL surface readiness audit warnings f
 - **WHEN** a pre-existing character fails readiness audit during sheet/PDF request
 - **THEN** the system surfaces non-fatal warning context and continues using current defensive defaults unless explicit repair is requested
 
+#### Scenario: Generic background-feature placeholder failure
+- **WHEN** schema passes but `backgroundFeature.name` or `backgroundFeature.description` matches configured generic placeholder values
+- **THEN** result is `completeness_error` and returned missing/invalid paths identify the generic placeholder field(s)
+
 ### Requirement: Backward compatibility invariants SHALL hold for SP and TT runtime behavior
 The implementation SHALL preserve single-player startup compatibility and tabletop runtime compatibility, including party-tracker semantics and existing route contracts.
 

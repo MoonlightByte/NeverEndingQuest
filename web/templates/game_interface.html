@@ -5434,8 +5434,8 @@
             { id: 'profile-ideals', label: 'Ideals', path: 'personality.ideals' },
             { id: 'profile-bonds', label: 'Bonds', path: 'personality.bonds' },
             { id: 'profile-flaws', label: 'Flaws', path: 'personality.flaws' },
-            { id: 'profile-bg-feature-name', label: 'Background Feature Name', path: 'backgroundFeature.name' },
-            { id: 'profile-bg-feature-description', label: 'Background Feature Description', path: 'backgroundFeature.description' }
+            { id: 'profile-bg-feature-name', label: 'Background Feature Name (e.g., Criminal Contact, Researcher, Military Rank)', path: 'backgroundFeature.name' },
+            { id: 'profile-bg-feature-description', label: 'Background Feature Description (1-3 sentences describing practical in-world access or benefit)', path: 'backgroundFeature.description' }
         ];
 
         // TABLETOP MODE: Submit portrait profile with validation and API call (Step 9.6)
@@ -5481,12 +5481,19 @@
                 return;
             }
 
+            // Capture character name before closing modal (modal close clears the global)
+            const targetCharacterName = portraitProfileCharacterName;
+            const targetSlug = targetCharacterName ? normalizePortraitSlug(targetCharacterName) : null;
+
+            // Close modal immediately after validation - generation happens in background
+            closePortraitProfileModal();
+
             // Step 3: Set shared portrait operation lock and UI state
             portraitOperationInFlight = true;
-            portraitOperationMessage = `Generating AI portrait for ${portraitProfileCharacterName}...`;
+            portraitOperationMessage = `Generating AI portrait for ${targetCharacterName}...`;
             syncInputAndPortraitUiState();
 
-            // Disable submit button
+            // Disable submit button (modal is closed, but keep for consistency)
             const submitButton = document.getElementById('portrait-profile-submit');
             if (submitButton) {
                 submitButton.disabled = true;
@@ -5495,8 +5502,8 @@
 
             // Step 4: Build request payload
             const payload = {
-                character_name: portraitProfileCharacterName,
-                characterName: portraitProfileCharacterName,
+                character_name: targetCharacterName,
+                characterName: targetCharacterName,
                 appearance: {
                     age: fieldValues['appearance.age'],
                     height: fieldValues['appearance.height'],
@@ -5519,7 +5526,7 @@
 
             addMessage('game-output', {
                 type: 'system',
-                content: `Generating AI portrait for ${portraitProfileCharacterName}...`
+                content: `Generating AI portrait for ${targetCharacterName}...`
             });
 
             // Step 5: Submit to API
@@ -5574,26 +5581,18 @@
                 if (data && data.success) {
                     addMessage('game-output', {
                         type: 'system',
-                        content: data.message || `Portrait created successfully for ${portraitProfileCharacterName}!`
+                        content: data.message || `Portrait created successfully for ${targetCharacterName}!`
                     });
 
-                    // TABLETOP MODE: Preserve character identity before modal close clears state (Step 10.5)
-                    // closePortraitProfileModal() sets portraitProfileCharacterName = null, so we must capture now
-                    const preservedCharacterName = portraitProfileCharacterName;
-                    const preservedSlug = preservedCharacterName ? normalizePortraitSlug(preservedCharacterName) : null;
-
-                    // TABLETOP MODE: Invalidate caches using preserved identity (Step 10.4 + 10.5)
-                    if (preservedSlug) {
-                        invalidateImageCachesForSlug(preservedSlug);
+                    // TABLETOP MODE: Invalidate caches using captured identity (Step 10.4)
+                    if (targetSlug) {
+                        invalidateImageCachesForSlug(targetSlug);
                     }
 
-                    // Close modal on success
-                    closePortraitProfileModal();
-
-                    // Step 9.7: Refresh portrait image with cache-bust using preserved identity
+                    // Step 9.7: Refresh portrait image with cache-bust using captured identity
                     const portraitImg = document.getElementById('char-portrait-img');
-                    if (portraitImg && preservedSlug) {
-                        portraitImg.src = `/static/portraits/${preservedSlug}.png?v=${Date.now()}`;
+                    if (portraitImg && targetSlug) {
+                        portraitImg.src = `/static/portraits/${targetSlug}.png?v=${Date.now()}`;
                     }
 
                     // Step 9.7: Reload character stats to show updated fields
@@ -6946,9 +6945,29 @@
 
             function getCharacterReadinessWarnings(characterData) {
                 const warnings = [];
-                if (!characterData.backgroundFeature || !characterData.backgroundFeature.description) {
+                
+                // Helper for deterministic placeholder detection (case/whitespace insensitive)
+                function _normalize(value) {
+                    if (value === null || value === undefined) return '';
+                    return String(value).trim().toLowerCase();
+                }
+                
+                // Generic placeholder sets aligned with backend audit logic
+                const _BG_NAME_PLACEHOLDERS = new Set(['', 'feature', 'background feature', 'unknown']);
+                const _BG_DESC_PLACEHOLDERS = new Set(['', 'a defining feature from your background.', 'background feature', 'standard background feature']);
+                
+                // Check background feature fields for blanks OR generic placeholders
+                const bgFeature = characterData.backgroundFeature || {};
+                const bgName = _normalize(bgFeature.name);
+                const bgDesc = _normalize(bgFeature.description);
+                
+                if (_BG_NAME_PLACEHOLDERS.has(bgName)) {
+                    warnings.push('backgroundFeature.name');
+                }
+                if (_BG_DESC_PLACEHOLDERS.has(bgDesc)) {
                     warnings.push('backgroundFeature.description');
                 }
+                
                 if (!characterData.personality_traits || !String(characterData.personality_traits).trim()) {
                     warnings.push('personality_traits');
                 }
@@ -7003,7 +7022,7 @@
             const readinessWarnings = getCharacterReadinessWarnings(data);
             if (readinessWarnings.length > 0) {
                 html += `<div style="margin-bottom: 8px; padding: 8px; border: 1px solid #8a6d3b; background: rgba(138, 109, 59, 0.2); color: #f6d088; border-radius: 6px;">
-                            <div style="margin-bottom: 8px;">Sheet readiness warning: missing ${readinessWarnings.join(', ')}</div>
+                            <div style="margin-bottom: 8px;">Character sheet incomplete: fields missing or need meaningful values (${readinessWarnings.join(', ')})</div>
                             <button class="pdf-button" style="padding: 6px 10px; font-size: 11px;" onclick="openReadinessRepairModal('${normalizedName}')">Repair</button>
                          </div>`;
             }
@@ -8904,13 +8923,13 @@
                     </div>
                     
                     <div style="margin-bottom: 12px;">
-                        <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Background Feature Name</label>
-                        <input type="text" id="profile-bg-feature-name" placeholder="Feature name" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box;">
+                        <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Background Feature Name (e.g., Criminal Contact, Researcher, Military Rank)</label>
+                        <input type="text" id="profile-bg-feature-name" placeholder="A short name for your background's special benefit" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box;">
                     </div>
                     
                     <div style="margin-bottom: 12px;">
-                        <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Background Feature Description</label>
-                        <textarea id="profile-bg-feature-description" placeholder="What benefit does the feature provide?" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box; min-height: 80px; resize: vertical;"></textarea>
+                        <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Background Feature Description (1-3 sentences describing practical in-world access or benefit)</label>
+                        <textarea id="profile-bg-feature-description" placeholder="What practical benefit does this feature provide in the game world? (e.g., contacts, hospitality, status, lore access)" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box; min-height: 80px; resize: vertical;"></textarea>
                     </div>
                 </div>
                 
