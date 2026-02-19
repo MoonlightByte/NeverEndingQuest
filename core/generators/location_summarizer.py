@@ -25,6 +25,8 @@ from utils.token_estimator import TokenEstimator
 from openai import OpenAI
 import config
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T027", "core/generators/location_summarizer.py", 530)
 
 # Set script name for logging
 set_script_name("location_summarizer")
@@ -527,15 +529,11 @@ CRITICAL: Your narrative must include all location names from the journey progre
 Your output should read like a published game codex, narrative recap, or campaign journal entry written by a bard who was intimate with the party's secrets. Never reference this prompt or the data format -- just write the immersive chronicle that shows both the party's journey through every listed location AND the evolution of their bonds."""
 
                 # Make API call to OpenAI - purely agentic, no artificial limits
-                response = self.client.chat.completions.create(
-                    model=self.ai_model,
-                    messages=[
+                response = capture_and_fanout("T027", self.client.chat.completions.create, messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
-                    ],
-                    temperature=0.6
+                    ], model=self.ai_model, temperature=0.6)
                     # No max_tokens limit - let AI decide optimal length
-                )
                 
                 # Extract the generated chronicle
                 chronicle = response.choices[0].message.content.strip()

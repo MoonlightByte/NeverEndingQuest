@@ -44,6 +44,8 @@ from jsonschema import validate, ValidationError
 from config import OPENAI_API_KEY, NPC_BUILDER_MODEL # Assuming API key might also be in config eventually
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T035", "core/generators/npc_builder.py", 126)
 
 # Token tracking import
 try:
@@ -123,11 +125,7 @@ Adhere strictly to 5e rules and the provided schema."""
     ]
 
     try:
-        response = client.chat.completions.create(
-            model=NPC_BUILDER_MODEL, # Use imported model name
-            temperature=0.7,
-            messages=prompt_messages
-        )
+        response = capture_and_fanout("T035", client.chat.completions.create, messages=prompt_messages, model=NPC_BUILDER_MODEL, temperature=0.7)
 
         ai_response = response.choices[0].message.content.strip()
         #print(f"{YELLOW}AI Response:{RESET}\n{ai_response}")

@@ -43,6 +43,9 @@ from dataclasses import dataclass, field
 from openai import OpenAI
 from config import OPENAI_API_KEY, DM_MAIN_MODEL
 import jsonschema
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T036", "core/generators/plot_generator.py", 347)
+register_callsite("T037", "core/generators/plot_generator.py", 414)
 
 # Initialize OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -344,26 +347,22 @@ For arrays, return just the array.
 For objects, return just the object.
 """
         
-        response = client.chat.completions.create(
-            model=DM_MAIN_MODEL,
-            temperature=0.7,
-            messages=[
+        response = capture_and_fanout("T036", client.chat.completions.create, messages=[
                 {"role": "system", "content": "You are an expert 5e adventure designer. Return only the requested data in the exact format needed."},
                 {"role": "user", "content": prompt}
-            ]
-        )
-        
+            ], model=DM_MAIN_MODEL, temperature=0.7)
+
         content = response.choices[0].message.content.strip()
-        
+
         # Try to parse as JSON if it looks like JSON
         if content.startswith(('[', '{')):
             try:
                 return json.loads(content)
             except json.JSONDecodeError:
                 pass
-        
+
         return content
-    
+
     def generate_plot_structure(self, num_plot_points: int, 
                                 context: Dict[str, Any],
                                 context_header: str = "") -> Dict[str, Any]:
@@ -411,16 +410,11 @@ Return a JSON object with this structure:
 IMPORTANT: Each plot point should have its sideQuests array (can be empty). Side quests are nested within plot points, not at the root level.
 """
         
-        response = client.chat.completions.create(
-            model=DM_MAIN_MODEL,
-            temperature=0.8,
-            messages=[
+        response = capture_and_fanout("T037", client.chat.completions.create, messages=[
                 {"role": "system", "content": "You are an expert 5e adventure designer."},
                 {"role": "user", "content": prompt}
-            ],
-            response_format={"type": "json_object"}
-        )
-        
+            ], model=DM_MAIN_MODEL, temperature=0.8, response_format={"type": "json_object"})
+
         return json.loads(response.choices[0].message.content)
     
     def generate_plot(self, module_data: Dict[str, Any], 

@@ -81,6 +81,8 @@ import jsonschema
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_write_json as save_json_safely
 from utils.enhanced_logger import debug, info, warning, error
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T031", "core/generators/module_generator.py", 513)
 
 # Initialize OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -510,14 +512,10 @@ If the field expects an object, return just the object.
         print(f"INFO: Calling OpenAI API for {field_path}... This may take 10-30 seconds.")
         start_time = time.time()
         try:
-            response = client.chat.completions.create(
-                model=DM_MAIN_MODEL,
-                temperature=0.7,
-                messages=[
+            response = capture_and_fanout("T031", client.chat.completions.create, messages=[
                     {"role": "system", "content": "You are an expert 5e module designer. Return only the requested data in the exact format needed."},
                     {"role": "user", "content": prompt}
-                ]
-            )
+                ], model=DM_MAIN_MODEL, temperature=0.7)
             elapsed = time.time() - start_time
             print(f"DEBUG: [ModuleGenerator] API call completed successfully in {elapsed:.1f} seconds")
         except Exception as e:

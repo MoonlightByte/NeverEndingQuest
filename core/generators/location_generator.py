@@ -18,6 +18,9 @@ from config import OPENAI_API_KEY, DM_MAIN_MODEL
 import jsonschema
 import random
 from utils.module_path_manager import ModulePathManager
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T025", "core/generators/location_generator.py", 419)
+register_callsite("T026", "core/generators/location_generator.py", 542)
 
 # Initialize OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -416,26 +419,22 @@ For arrays, return just the array.
 For objects, return just the object.
 """
         
-        response = client.chat.completions.create(
-            model=DM_MAIN_MODEL,
-            temperature=0.7,
-            messages=[
+        response = capture_and_fanout("T025", client.chat.completions.create, messages=[
                 {"role": "system", "content": "You are an expert 5e location designer. Return only the requested data in the exact format needed."},
                 {"role": "user", "content": prompt}
-            ]
-        )
-        
+            ], model=DM_MAIN_MODEL, temperature=0.7)
+
         content = response.choices[0].message.content.strip()
-        
+
         # Try to parse as JSON if it looks like JSON
         if content.startswith(('[', '{')):
             try:
                 return json.loads(content)
             except json.JSONDecodeError:
                 pass
-        
+
         return content
-    
+
     def generate_location_batch(self, 
                                area_data: Dict[str, Any],
                                plot_data: Dict[str, Any],
@@ -539,16 +538,11 @@ AREA CONNECTIVITY RULES:
 Check the location schema carefully for all required fields.
 """
         
-        response = client.chat.completions.create(
-            model=DM_MAIN_MODEL,
-            temperature=0.8,
-            messages=[
+        response = capture_and_fanout("T026", client.chat.completions.create, messages=[
                 {"role": "system", "content": "You are an expert 5e dungeon designer creating cohesive, interconnected locations."},
                 {"role": "user", "content": batch_prompt}
-            ],
-            response_format={"type": "json_object"}
-        )
-        
+            ], model=DM_MAIN_MODEL, temperature=0.8, response_format={"type": "json_object"})
+
         return json.loads(response.choices[0].message.content)
     
     def generate_locations(self,

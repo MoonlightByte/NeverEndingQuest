@@ -66,6 +66,8 @@ from jsonschema import validate, ValidationError
 import config
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T034", "core/generators/monster_builder.py", 181)
 
 # Set script name for logging
 set_script_name("monster_builder")
@@ -178,11 +180,7 @@ Schema: {json.dumps(schema)}"""
     ]
 
     try:
-        response = client.chat.completions.create(
-            model=config.MONSTER_BUILDER_MODEL, # Use imported model name
-            temperature=0.7,
-            messages=prompt
-        )
+        response = capture_and_fanout("T034", client.chat.completions.create, messages=prompt, model=config.MONSTER_BUILDER_MODEL, temperature=0.7)
 
         ai_response = response.choices[0].message.content.strip()
         print(f"{YELLOW}AI Response:{RESET}\n{ai_response}")

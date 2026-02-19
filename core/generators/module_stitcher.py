@@ -103,6 +103,9 @@ from typing import Dict, List, Any, Optional, Tuple
 from openai import OpenAI
 import config
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T032", "core/generators/module_stitcher.py", 411)
+register_callsite("T033", "core/generators/module_stitcher.py", 1069)
 
 # Set script name for logging
 set_script_name("module_stitcher")
@@ -408,15 +411,11 @@ FIRST AREA: {first_area_name} ({first_area_type})
 
 Create atmospheric travel narration that leads into this adventure."""
             
-            response = self.client.chat.completions.create(
-                model=config.DM_SUMMARIZATION_MODEL,
-                messages=[
+            response = capture_and_fanout("T032", self.client.chat.completions.create, messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.8
-            )
-            
+                ], model=config.DM_SUMMARIZATION_MODEL, temperature=0.8)
+
             # Parse AI response
             ai_response = response.choices[0].message.content
             try:
@@ -1066,15 +1065,11 @@ Check for:
 Respond with JSON:
 {{"safe": true/false, "reason": "explanation if unsafe"}}"""
             
-            response = self.client.chat.completions.create(
-                model=config.DM_SUMMARIZATION_MODEL,
-                messages=[
+            response = capture_and_fanout("T033", self.client.chat.completions.create, messages=[
                     {"role": "system", "content": "You are a content safety reviewer for family-friendly fantasy gaming content. Be strict but reasonable in your assessment."},
                     {"role": "user", "content": safety_prompt}
-                ],
-                temperature=0.1
-            )
-            
+                ], model=config.DM_SUMMARIZATION_MODEL, temperature=0.1)
+
             ai_response = response.choices[0].message.content
             try:
                 safety_result = json.loads(ai_response)

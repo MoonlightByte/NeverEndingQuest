@@ -43,6 +43,10 @@ from dataclasses import dataclass
 from openai import OpenAI
 from config import OPENAI_API_KEY, DM_MAIN_MODEL
 from utils.module_path_manager import ModulePathManager
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T022", "core/generators/area_generator.py", 126)
+register_callsite("T023", "core/generators/area_generator.py", 413)
+register_callsite("T024", "core/generators/area_generator.py", 558)
 
 # Initialize OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -123,14 +127,10 @@ Please respond with ONLY a JSON array of names in the exact order listed above:
 
 No explanations, just the JSON array of thematic location names."""
 
-            response = client.chat.completions.create(
-                model=DM_MAIN_MODEL,
-                messages=[
+            response = capture_and_fanout("T022", client.chat.completions.create, messages=[
                     {"role": "system", "content": "You are an expert at creating immersive 5th edition of the world's most popular roleplaying game location names that enhance storytelling and world-building."},
                     {"role": "user", "content": prompt}
-                ],
-                temperature=0.8
-            )
+                ], model=DM_MAIN_MODEL, temperature=0.8)
             
             response_text = response.choices[0].message.content.strip()
             
@@ -410,15 +410,10 @@ class AreaGenerator:
 """
 
         try:
-            response = self.client.chat.completions.create(
-                model=DM_MAIN_MODEL,
-                temperature=0.8,
-                messages=[
+            response = capture_and_fanout("T023", self.client.chat.completions.create, messages=[
                     {"role": "system", "content": "You are an expert fantasy world builder specializing in creating evocative names and descriptions for 5th edition of the world's most popular roleplaying game areas."},
                     {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"}
-            )
+                ], model=DM_MAIN_MODEL, temperature=0.8, response_format={"type": "json_object"})
             
             result = json.loads(response.choices[0].message.content)
             refined_name = result.get("refinedName", initial_name)
@@ -555,14 +550,10 @@ Requirements:
 Return ONLY the area description text, no additional formatting or labels."""
 
         try:
-            response = client.chat.completions.create(
-                model=DM_MAIN_MODEL,
-                temperature=0.8,  # Higher temperature for more creative variety
-                messages=[
+            response = capture_and_fanout("T024", client.chat.completions.create, messages=[
                     {"role": "system", "content": "You are an expert fantasy world builder. Create unique, atmospheric descriptions for 5th edition of the world's most popular roleplaying game areas that avoid cliches and generic phrases."},
                     {"role": "user", "content": prompt}
-                ]
-            )
+                ], model=DM_MAIN_MODEL, temperature=0.8)
             
             description = response.choices[0].message.content.strip()
             

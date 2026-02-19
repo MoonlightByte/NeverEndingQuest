@@ -47,6 +47,10 @@ except ImportError:
 from utils.module_context import ModuleContext
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.npc_reconciler import NpcReconciler
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T028", "core/generators/module_builder.py", 674)
+register_callsite("T029", "core/generators/module_builder.py", 926)
+register_callsite("T030", "core/generators/module_builder.py", 1423)
 
 # Set script name for logging
 set_script_name("module_builder")
@@ -671,16 +675,11 @@ IMPORTANT:
 - Maintain all existing content but improve flow and connections"""
 
         try:
-            response = client.chat.completions.create(
-                model=DM_MAIN_MODEL,
-                messages=[
+            response = capture_and_fanout("T028", client.chat.completions.create, messages=[
                     {"role": "system", "content": "You are an expert 5th edition module designer specializing in creating coherent, engaging adventure narratives."},
                     {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.7
-            )
-            
+                ], model=DM_MAIN_MODEL, response_format={"type": "json_object"}, temperature=0.7)
+
             unified_plot = json.loads(response.choices[0].message.content)
             
             # Add missing required fields if not present
@@ -923,16 +922,11 @@ IMPORTANT:
 - Make hooks more specific and actionable"""
 
         try:
-            response = client.chat.completions.create(
-                model=DM_MAIN_MODEL,
-                messages=[
+            response = capture_and_fanout("T029", client.chat.completions.create, messages=[
                     {"role": "system", "content": "You are an expert 5th edition module designer specializing in creating actionable plot hooks that reference specific plot elements."},
                     {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.6
-            )
-            
+                ], model=DM_MAIN_MODEL, response_format={"type": "json_object"}, temperature=0.6)
+
             result = json.loads(response.choices[0].message.content)
             return result.get("plotHookUpdates", [])
             
@@ -1420,14 +1414,10 @@ Return ONLY the JSON object, no explanations or additional text."""
     
     for attempt in range(max_retries):
         try:
-            response = client.chat.completions.create(
-                model=config.DM_SUMMARIZATION_MODEL,
-                temperature=0.3,
-                messages=[
+            response = capture_and_fanout("T030", client.chat.completions.create, messages=[
                     {"role": "system", "content": current_prompt},
                     {"role": "user", "content": f"Parse this module narrative:\n\n{narrative}"}
-                ]
-            )
+                ], model=config.DM_SUMMARIZATION_MODEL, temperature=0.3)
             
             result = response.choices[0].message.content.strip()
             # Clean up potential code blocks
