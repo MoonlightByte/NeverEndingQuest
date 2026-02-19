@@ -15,7 +15,30 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
-- **Background Feature UX Clarity (COMPLETED - 2026-02-19):**
+- **DALL-E 3 Image Cost Rollup for Debug Tab (COMPLETED - 2026-02-19):**
+  - **Objective:** Ensure DALL-E 3 image generation events contribute estimated costs to Debug tab session/week USD/NZD rollups without inflating token counters.
+  - **Pricing Config:** Added `DALLE3_PRICING_USD` table in `model_config.py` with size/quality matrix (1024x1024, 1024x1792, 1792x1024; standard/hd quality levels).
+  - **Tracker API:** Added `track_image_cost()` helper in `utils/llm_usage_tracker.py` for cost-only image event tracking with fail-open behavior.
+  - **Cost Lookup:** Added `get_dalle3_cost_usd()` helper for deterministic pricing lookup with safe fallback to 0.0.
+  - **Compatibility:** Re-exported new helpers via `utils/openai_usage_tracker.py` to preserve existing import paths.
+  - **Callsite Instrumentation:**
+    - `core/toolkit/portrait_service.py` - character portrait generation
+    - `core/toolkit/npc_generator.py` - NPC portrait generation
+    - `core/toolkit/monster_generator.py` - monster portrait generation
+    - `web/web_interface.py` - socket image generation endpoint
+  - **Context Metadata:** All tracking calls include endpoint, purpose, model, size, quality, and n parameters.
+  - **Regression Tests:** Extended `scripts/test_usage_rollups_debug_tab.py` with 6 new tests (Test 7.x series):
+    - Cost lookup validation for all size/quality combinations
+    - Cost-only event updates session/week USD/NZD without changing tokens
+    - Mixed session aggregation (chat tokens + image costs)
+    - Fail-open behavior verification
+    - Telemetry entry structure validation
+    - Multiple event aggregation correctness
+  - **Verification:** Compile checks PASS, 16/16 tests PASS, OpenSpec validation VALID.
+  - **Archived:** Change archived to `openspec/changes/archive/2026-02-19-dalle3-image-cost-rollup-debug-tab/`.
+  - **Spec Sync:** Updated main specs `debug-tab-usage-cost-rollup`, `provider-agnostic-usage-tracking`, `usage-cost-conversion-policy`.
+
+- **Background Feature UX Clarity (COMPLETED - 2026-02-19):
   - **Objective:** Improve player UX for filling `backgroundFeature.name` and `backgroundFeature.description` fields, normalize legacy placeholder values, and provide deterministic remediation tooling.
   - **Shared Placeholder Contract:** Added centralized placeholder detection helpers (`is_generic_background_feature_name`, `is_generic_background_feature_description`) in `utils/character_creation_audit.py`. Extended completeness audit to flag generic placeholders as `completeness_error`.
   - **Guided Entry UX:** Updated portrait profile modal and manual creation form labels/placeholders with concrete examples (e.g., "Criminal Contact, Researcher, Military Rank") and "1-3 sentences" guidance for descriptions.

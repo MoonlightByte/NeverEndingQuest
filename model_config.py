@@ -252,4 +252,21 @@ USAGE_WEEK_WINDOW_DAYS = 7
 # Used only when provider does not return per-call cost in usage metadata
 # Set to 0.0 to disable fallback estimation (cost will show as unavailable)
 USD_PER_1M_TOKENS_BLEND = 1.50  # Conservative blended estimate
+
+# DALL-E 3 per-image pricing (USD) - used when provider cost metadata is unavailable
+# Configured per size and quality to match OpenAI's published pricing
+DALLE3_PRICING_USD = {
+    "1024x1024": {
+        "standard": 0.040,
+        "hd": 0.080
+    },
+    "1024x1792": {
+        "standard": 0.080,
+        "hd": 0.120
+    },
+    "1792x1024": {
+        "standard": 0.080,
+        "hd": 0.120
+    }
+}
 # ============================================================================

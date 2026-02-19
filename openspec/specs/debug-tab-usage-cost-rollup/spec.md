@@ -6,13 +6,10 @@ TBD - created by archiving change debug-usage-session-week-nzd-rollup. Update Pu
 ### Requirement: Debug tab SHALL show session/week token and cost rollups above existing token stats
 The Debug tab SHALL render a compact rollup row above existing TPM/RPM/Total values, showing session and rolling-week tokens plus USD and NZD estimates.
 
-#### Scenario: Header order
-- **WHEN** the Debug tab is rendered
-- **THEN** the session/week rollup row SHALL appear above the existing TPM/RPM/Total stats row
-
-#### Scenario: Existing token row preserved
-- **WHEN** token updates are received
-- **THEN** existing TPM/RPM/Total fields SHALL continue to update as before
+#### Scenario: Image generation updates cost rollups
+- **WHEN** a successful DALL-E 3 image generation event is tracked
+- **THEN** session and rolling-week USD/NZD rollup values SHALL increase on subsequent `token_update` payloads
+- **AND** existing TPM/RPM/Total token values SHALL remain behaviorally unchanged for that image-cost event
 
 ### Requirement: Debug tab SHALL consume additive token_update payload fields
 The client SHALL bind new rollup fields from `token_update` payloads while remaining compatible with payloads that contain only legacy fields.

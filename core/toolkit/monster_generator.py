@@ -30,6 +30,12 @@ except ImportError:
     OPENAI_API_KEY = None
     print("Warning: Could not import OPENAI_API_KEY from config.py")
 
+try:
+    from utils.openai_usage_tracker import track_image_cost, get_dalle3_cost_usd
+except ImportError:
+    track_image_cost = None
+    get_dalle3_cost_usd = None
+
 class MonsterGenerator:
     """Service for generating monster images in various styles"""
     
@@ -220,6 +226,27 @@ class MonsterGenerator:
             
             # Generate thumbnail
             thumb_path = self._generate_thumbnail(img, monster_id, style, pack_name)
+            
+            # Track image cost (fail-open)
+            try:
+                if track_image_cost and get_dalle3_cost_usd:
+                    size = model_settings.get("size", "1024x1024")
+                    quality = model_settings.get("quality", "standard")
+                    cost_usd = get_dalle3_cost_usd(size, quality)
+                    track_image_cost(
+                        cost_usd=cost_usd,
+                        size=size,
+                        quality=quality,
+                        model=model,
+                        context={
+                            "endpoint": "monster_generator",
+                            "purpose": "monster_portrait",
+                            "monster_id": monster_id,
+                            "n": 1
+                        }
+                    )
+            except Exception:
+                pass  # Fail open
             
             return {
                 "success": True,

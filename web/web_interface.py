@@ -68,10 +68,12 @@ from openai import OpenAI
 
 # Token tracking import
 try:
-    from utils.openai_usage_tracker import track_response
+    from utils.openai_usage_tracker import track_response, track_image_cost, get_dalle3_cost_usd
     USAGE_TRACKING_AVAILABLE = True
 except ImportError:
     USAGE_TRACKING_AVAILABLE = False
+    track_image_cost = None
+    get_dalle3_cost_usd = None
 
 # Install debug interceptor before importing main
 from utils.redirect_debug_output import install_debug_interceptor, uninstall_debug_interceptor
@@ -3350,6 +3352,25 @@ def handle_generate_image(data):
         except Exception as save_error:
             # Don't fail the whole operation if saving fails
             print(f"Warning: Failed to save image locally: {save_error}")
+        
+        # Track image cost (fail-open, after successful generation)
+        try:
+            if track_image_cost and get_dalle3_cost_usd:
+                cost_usd = get_dalle3_cost_usd("1024x1024", "standard")
+                track_image_cost(
+                    cost_usd=cost_usd,
+                    size="1024x1024",
+                    quality="standard",
+                    model="dall-e-3",
+                    context={
+                        "endpoint": "web_interface",
+                        "purpose": "generate_image_socket",
+                        "prompt_preview": prompt[:100] if prompt else "",
+                        "n": 1
+                    }
+                )
+        except Exception:
+            pass  # Fail open
         
         # Emit the image URL back to the client
         emit('image_generated', {

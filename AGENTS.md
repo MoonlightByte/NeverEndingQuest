@@ -1021,6 +1021,65 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### DALL-E 3 Image Cost Rollup for Debug Tab (COMPLETED - 2026-02-19)
+
+**Status:** COMPLETED - All tasks finished, validated, archived, and committed
+
+**OpenSpec Change:** `dalle3-image-cost-rollup-debug-tab` (archived to `openspec/changes/archive/2026-02-19-dalle3-image-cost-rollup-debug-tab/`)
+
+**Objective:**
+Ensure DALL-E 3 image generation events (portrait create, NPC/monster portraits) contribute estimated costs to Debug tab session/week USD/NZD rollups, while keeping token counters unchanged for image-cost events.
+
+**Implementation Summary:**
+
+**Step 1 - Pricing and Tracker Foundation:**
+- Added `DALLE3_PRICING_USD` config table in `model_config.py` for size/quality combinations (1024x1024, 1024x1792, 1792x1024; standard/hd)
+- Added `track_image_cost()` helper in `utils/llm_usage_tracker.py` for cost-only image event tracking
+- Added `get_dalle3_cost_usd()` helper for pricing lookup with safe fallback to 0.0
+- Re-exported new helpers via `utils/openai_usage_tracker.py` for compatibility import path
+
+**Step 2 - Image Callsite Instrumentation:**
+- Instrumented `core/toolkit/portrait_service.py` successful generation path with fail-open tracking
+- Instrumented `core/toolkit/npc_generator.py` and `core/toolkit/monster_generator.py` with fail-open tracking
+- Instrumented `web/web_interface.py` `generate_image` socket flow with retry-safe single-count behavior
+- All tracking calls include context metadata: endpoint, purpose, model, size, quality, n
+
+**Step 3 - Regression Coverage:**
+- Extended `scripts/test_usage_rollups_debug_tab.py` with 6 new image-cost test functions (Test 7.x series)
+- Tests verify: cost lookup, cost-only event updates, mixed token+image sessions, fail-open behavior, telemetry structure, multi-event aggregation
+- All assertions verify token counters remain unchanged for image-only events
+
+**Step 4 - Final Verification:**
+- Compile validation passed for all 7 modified Python files
+- Regression tests: 16 passed, 0 failed
+- OpenSpec validation: VALID (archived successfully)
+
+**Files Created:**
+- None (all changes additive to existing files)
+
+**Files Modified:**
+- `model_config.py` (+17 lines: DALLE3_PRICING_USD config table)
+- `utils/llm_usage_tracker.py` (+112 lines: track_image_cost, get_dalle3_cost_usd helpers)
+- `utils/openai_usage_tracker.py` (+2 lines: re-export new helpers)
+- `core/toolkit/portrait_service.py` (+18 lines: tracking instrumentation)
+- `core/toolkit/npc_generator.py` (+22 lines: tracking instrumentation)
+- `core/toolkit/monster_generator.py` (+22 lines: tracking instrumentation)
+- `web/web_interface.py` (+19 lines: tracking instrumentation)
+- `scripts/test_usage_rollups_debug_tab.py` (+220 lines: 6 new test functions)
+
+**Testing:**
+- `python3 -m py_compile` on all 7 modified files: PASS
+- `python3 scripts/test_usage_rollups_debug_tab.py`: 16 tests PASS
+- OpenSpec validation: VALID
+
+**Architecture Notes:**
+- Fail-open design: tracking failures never block image generation success
+- Zero token inflation: image events contribute only cost, not tokens
+- Compatibility maintained: existing import paths preserved via re-export shim
+- Deterministic pricing: explicit config table, no runtime API calls for cost lookup
+
+---
+
 ### Background Feature UX Clarity (COMPLETED - 2026-02-19)
 
 **Status:** COMPLETED - All 15 tasks across Sections 1-5 finished, validated, and archived

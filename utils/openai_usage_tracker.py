@@ -14,8 +14,10 @@ from utils.llm_usage_tracker import (
     LLMUsageTracker as OpenAIUsageTracker,
     get_global_tracker,
     track_response,
-    get_usage_stats
+    get_usage_stats,
+    track_image_cost,
+    get_dalle3_cost_usd
 )
 
 # Re-export for backward compatibility
-__all__ = ['OpenAIUsageTracker', 'get_global_tracker', 'track_response', 'get_usage_stats']
+__all__ = ['OpenAIUsageTracker', 'get_global_tracker', 'track_response', 'get_usage_stats', 'track_image_cost', 'get_dalle3_cost_usd']

@@ -8,7 +8,15 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.llm_usage_tracker import LLMUsageTracker, get_usage_stats, track_response
+from utils.llm_usage_tracker import (
+    LLMUsageTracker,
+    get_usage_stats,
+    track_response,
+    track_image_cost,
+    get_dalle3_cost_usd,
+    get_global_tracker,
+)
+import utils.llm_usage_tracker as _tracker_module
 
 
 class MockUsage:
@@ -25,6 +33,13 @@ class MockResponse:
     """Mock LLM response for testing"""
     def __init__(self, prompt=0, completion=0, total=0, cost=None):
         self.usage = MockUsage(prompt, completion, total, cost)
+
+
+def reset_global_tracker():
+    """Reset global tracker to fresh state for isolated testing."""
+    with _tracker_module._global_tracker_lock:
+        _tracker_module._global_tracker = LLMUsageTracker(telemetry_log="/dev/null")
+        return _tracker_module._global_tracker
 
 
 def test_provider_reported_cost():
@@ -292,6 +307,220 @@ def test_week_bootstrap_only_explicit():
     return True
 
 
+def test_dalle3_cost_lookup():
+    """Test 7.1: DALL-E 3 cost lookup from pricing config"""
+    print("[TEST 7.1] DALL-E 3 cost lookup...")
+    
+    # Test known size/quality combinations
+    cost_1024_std = get_dalle3_cost_usd("1024x1024", "standard")
+    assert cost_1024_std == 0.040, f"Expected 0.040, got {cost_1024_std}"
+    
+    cost_1024_hd = get_dalle3_cost_usd("1024x1024", "hd")
+    assert cost_1024_hd == 0.080, f"Expected 0.080, got {cost_1024_hd}"
+    
+    cost_wide_std = get_dalle3_cost_usd("1792x1024", "standard")
+    assert cost_wide_std == 0.080, f"Expected 0.080, got {cost_wide_std}"
+    
+    # Test fallback behavior for invalid inputs
+    cost_invalid = get_dalle3_cost_usd("invalid_size", "standard")
+    assert cost_invalid == 0.0, f"Expected 0.0 for invalid size, got {cost_invalid}"
+    
+    print(f"  [PASS] Cost lookup correct (1024x1024 std: {cost_1024_std}, hd: {cost_1024_hd})")
+    return True
+
+
+def test_image_cost_only_event():
+    """Test 7.2: Image cost-only event updates cost rollups without changing tokens"""
+    print("[TEST 7.2] Image cost-only event...")
+    tracker = reset_global_tracker()
+    
+    # Get baseline
+    baseline_stats = tracker.get_current_stats()
+    baseline_tokens = baseline_stats['session_tokens']
+    baseline_cost = baseline_stats['session_cost_usd']
+    
+    # Track image cost event
+    track_image_cost(
+        cost_usd=0.040,
+        size="1024x1024",
+        quality="standard",
+        model="dall-e-3",
+        context={"endpoint": "test", "purpose": "portrait_create", "n": 1}
+    )
+    
+    stats = tracker.get_current_stats()
+    
+    # Assert cost increased
+    assert stats['session_cost_usd'] > baseline_cost, "Cost should increase after image event"
+    assert abs(stats['session_cost_usd'] - 0.040) < 0.001, f"Cost should be ~0.040, got {stats['session_cost_usd']}"
+    
+    # Assert NZD conversion happened
+    expected_nzd = 0.040 * 1.65
+    assert abs(stats['session_cost_nzd'] - expected_nzd) < 0.001, f"NZD should be ~{expected_nzd}, got {stats['session_cost_nzd']}"
+    
+    # Assert tokens remain unchanged
+    assert stats['session_tokens'] == baseline_tokens, f"Tokens should remain {baseline_tokens}, got {stats['session_tokens']}"
+    
+    # Assert week window also updated
+    assert stats['week_cost_usd'] > 0, "Week cost should be positive"
+    assert stats['week_tokens'] == 0, "Week tokens should remain 0 for image-only event"
+    
+    print(f"  [PASS] Cost-only event correct (USD: {stats['session_cost_usd']}, NZD: {stats['session_cost_nzd']}, tokens: {stats['session_tokens']})")
+    return True
+
+
+def test_mixed_session_token_and_image():
+    """Test 7.3: Mixed session with token-bearing event + image cost event"""
+    print("[TEST 7.3] Mixed session token + image...")
+    tracker = reset_global_tracker()
+    
+    # First: track a token-bearing chat event
+    tracker.track(MockResponse(prompt=1000, completion=500, total=1500, cost=0.015))
+    
+    # Then: track an image cost-only event
+    track_image_cost(
+        cost_usd=0.040,
+        size="1024x1024",
+        quality="standard",
+        model="dall-e-3",
+        context={"endpoint": "test", "purpose": "portrait_create", "n": 1}
+    )
+    
+    stats = tracker.get_current_stats()
+    
+    # Assert tokens reflect only the chat event
+    assert stats['session_tokens'] == 1500, f"Tokens should be 1500 (chat only), got {stats['session_tokens']}"
+    
+    # Assert cost reflects both events (0.015 + 0.040 = 0.055)
+    expected_cost = 0.015 + 0.040
+    assert abs(stats['session_cost_usd'] - expected_cost) < 0.001, \
+        f"Cost should be ~{expected_cost}, got {stats['session_cost_usd']}"
+    
+    # Assert cost source is estimated (because image event is estimated)
+    assert stats['session_cost_source'] == 'estimated', \
+        f"Session source should be 'estimated' (mixed), got {stats['session_cost_source']}"
+    
+    # Week should also reflect both
+    assert stats['week_tokens'] == 1500, f"Week tokens should be 1500, got {stats['week_tokens']}"
+    assert abs(stats['week_cost_usd'] - expected_cost) < 0.001, \
+        f"Week cost should be ~{expected_cost}, got {stats['week_cost_usd']}"
+    
+    print(f"  [PASS] Mixed session correct (tokens: {stats['session_tokens']}, cost: {stats['session_cost_usd']})")
+    return True
+
+
+def test_image_cost_fail_open():
+    """Test 7.4: Image cost tracking fails open (never raises)"""
+    print("[TEST 7.4] Image cost fail-open behavior...")
+    
+    # Test with valid inputs
+    result = track_image_cost(
+        cost_usd=0.040,
+        size="1024x1024",
+        quality="standard",
+        model="dall-e-3",
+        context={"endpoint": "test", "n": 1}
+    )
+    assert result == True, "Should return True on success"
+    
+    # Test with zero cost (should still succeed)
+    result = track_image_cost(cost_usd=0.0)
+    assert result == True, "Should return True even with zero cost"
+    
+    # Test with None cost (should still succeed via fail-open)
+    result = track_image_cost(cost_usd=None)  # type: ignore
+    assert result == True, "Should return True even with None cost"
+    
+    # Test with negative cost (should still succeed)
+    result = track_image_cost(cost_usd=-0.010)
+    assert result == True, "Should return True even with negative cost"
+    
+    print("  [PASS] Fail-open behavior verified")
+    return True
+
+
+def test_image_telemetry_entry():
+    """Test 7.5: Image events logged with correct telemetry structure"""
+    import json
+    import tempfile
+    import os
+    
+    print("[TEST 7.5] Image telemetry entry structure...")
+    
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
+        temp_log = f.name
+    
+    try:
+        with _tracker_module._global_tracker_lock:
+            _tracker_module._global_tracker = LLMUsageTracker(telemetry_log=temp_log)
+        tracker = _tracker_module._global_tracker
+        
+        # Track image event
+        track_image_cost(
+            cost_usd=0.080,
+            size="1024x1792",
+            quality="hd",
+            model="dall-e-3",
+            context={"endpoint": "test", "purpose": "monster_portrait", "n": 1}
+        )
+        
+        # Read telemetry log
+        with open(temp_log, 'r') as f:
+            lines = f.readlines()
+        
+        # Find image entry
+        image_entries = []
+        for line in lines:
+            entry = json.loads(line)
+            if 'image_metadata' in entry:
+                image_entries.append(entry)
+        
+        assert len(image_entries) == 1, f"Expected 1 image entry, found {len(image_entries)}"
+        
+        entry = image_entries[0]
+        assert entry['total_tokens'] == 0, "Image entry should have 0 tokens"
+        assert entry['prompt_tokens'] == 0, "Image entry should have 0 prompt tokens"
+        assert entry['completion_tokens'] == 0, "Image entry should have 0 completion tokens"
+        assert entry['cost_usd'] == 0.080, f"Cost should be 0.080, got {entry['cost_usd']}"
+        assert entry['cost_source'] == 'estimated', f"Source should be 'estimated', got {entry['cost_source']}"
+        assert entry['image_metadata']['size'] == '1024x1792', f"Size mismatch"
+        assert entry['image_metadata']['quality'] == 'hd', f"Quality mismatch"
+        assert entry['image_metadata']['model'] == 'dall-e-3', f"Model mismatch"
+        
+        print(f"  [PASS] Telemetry entry structure correct (cost: {entry['cost_usd']}, size: {entry['image_metadata']['size']})")
+    finally:
+        os.unlink(temp_log)
+    
+    return True
+
+
+def test_multiple_image_events_aggregation():
+    """Test 7.6: Multiple image events aggregate correctly"""
+    print("[TEST 7.6] Multiple image events aggregation...")
+    tracker = reset_global_tracker()
+    
+    # Track 3 image events
+    track_image_cost(cost_usd=0.040, context={"n": 1})
+    track_image_cost(cost_usd=0.040, context={"n": 1})
+    track_image_cost(cost_usd=0.080, size="1024x1792", quality="standard", context={"n": 1})
+    
+    stats = tracker.get_current_stats()
+    
+    # Expected: 0.040 + 0.040 + 0.080 = 0.160
+    expected_cost = 0.160
+    assert abs(stats['session_cost_usd'] - expected_cost) < 0.001, \
+        f"Cost should be ~{expected_cost}, got {stats['session_cost_usd']}"
+    
+    # Tokens should remain 0
+    assert stats['session_tokens'] == 0, f"Tokens should be 0, got {stats['session_tokens']}"
+    
+    # Should have 3 estimated events
+    assert tracker.session_estimated_count == 3, f"Expected 3 estimated events, got {tracker.session_estimated_count}"
+    
+    print(f"  [PASS] Multiple events aggregated correctly (cost: {stats['session_cost_usd']}, count: {tracker.session_estimated_count})")
+    return True
+
+
 def run_all_tests():
     """Run all regression tests"""
     print("=" * 60)
@@ -310,6 +539,12 @@ def run_all_tests():
         test_no_provider_branding,
         test_week_bootstrap_backfill,
         test_week_bootstrap_only_explicit,
+        test_dalle3_cost_lookup,
+        test_image_cost_only_event,
+        test_mixed_session_token_and_image,
+        test_image_cost_fail_open,
+        test_image_telemetry_entry,
+        test_multiple_image_events_aggregation,
     ]
     
     passed = 0

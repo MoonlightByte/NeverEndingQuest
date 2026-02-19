@@ -1,6 +1,27 @@
 ## Current Work Focus
 
-- **Developer Documentation Packaging (COMPLETED - 2026-02-19):**
+- **DALL-E 3 Image Cost Rollup for Debug Tab (COMPLETED - 2026-02-19):**
+  - **OpenSpec Change:** `dalle3-image-cost-rollup-debug-tab` (archived to `openspec/changes/archive/2026-02-19-dalle3-image-cost-rollup-debug-tab/`)
+  - **Pricing Foundation:** Added `DALLE3_PRICING_USD` config table in `model_config.py` with explicit per-image pricing for all size/quality combinations.
+  - **Tracker Foundation:** Implemented `track_image_cost()` helper in `utils/llm_usage_tracker.py` that updates session/week USD/NZD rollups while preserving token counters (cost-only events).
+  - **Compatibility:** New helpers re-exported via `utils/openai_usage_tracker.py` to maintain existing import path stability.
+  - **Callsite Instrumentation:**
+    - `core/toolkit/portrait_service.py` - tracks after successful character portrait save
+    - `core/toolkit/npc_generator.py` - tracks after successful NPC portrait generation (fail-open with None check)
+    - `core/toolkit/monster_generator.py` - tracks after successful monster portrait generation (fail-open with None check)
+    - `web/web_interface.py` - tracks after successful `generate_image` socket generation (post-retry block to ensure single-count)
+  - **Context Metadata:** All calls include structured context (endpoint, purpose, model, size, quality, n) for telemetry clarity.
+  - **Regression Tests:** Extended `scripts/test_usage_rollups_debug_tab.py` with comprehensive Test 7.x series:
+    - Test 7.1: DALL-E 3 cost lookup validation
+    - Test 7.2: Image cost-only event (cost increases, tokens unchanged)
+    - Test 7.3: Mixed session token + image aggregation
+    - Test 7.4: Fail-open behavior (zero/negative/None cost handling)
+    - Test 7.5: Telemetry entry structure with image_metadata
+    - Test 7.6: Multiple image events aggregation
+  - **Testing:** All 16 regression tests PASS, compile checks PASS, OpenSpec validation VALID.
+  - **Architecture:** Fail-open design ensures image generation never blocked by telemetry failures. Zero token inflation guarantee for image-only events. Compatibility maintained via re-export shim.
+
+- **Developer Documentation Packaging (COMPLETED - 2026-02-19):
   - Plans and OpenSpec developer docs are being bundled into the tester-facing commit stream.
   - Committed docs pass includes `plans/` and `openspec/changes/debug-usage-session-week-nzd-rollup/`.
   - Prior docs pass already committed `openspec/changes/toolkit-module-builder-rebuild-phase1-npc-alignment/` and memory-bank updates.

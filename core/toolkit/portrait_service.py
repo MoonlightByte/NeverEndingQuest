@@ -29,6 +29,7 @@ import requests
 
 from utils.ai_client_factory import create_image_client
 from utils.enhanced_logger import info, warning, error
+from utils.openai_usage_tracker import track_image_cost, get_dalle3_cost_usd
 
 
 def _normalize_character_name(name: str) -> str:
@@ -542,6 +543,24 @@ def generate_and_save_portrait(
         except Exception as module_error:
             # Fail-open: log but don't fail the whole operation
             warning(f"PORTRAIT_SERVICE: Could not save to module portraits for {name}: {module_error}", category="portrait_generation")
+        
+        # Track image cost (fail-open)
+        try:
+            cost_usd = get_dalle3_cost_usd(size, quality)
+            track_image_cost(
+                cost_usd=cost_usd,
+                size=size,
+                quality=quality,
+                model=model,
+                context={
+                    "endpoint": "portrait_service",
+                    "purpose": "character_portrait",
+                    "character_name": name,
+                    "n": 1
+                }
+            )
+        except Exception:
+            pass  # Fail open - don't block success on tracking failure
         
         # Success
         result["success"] = True

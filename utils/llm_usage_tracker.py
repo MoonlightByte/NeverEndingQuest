@@ -537,3 +537,113 @@ def get_usage_stats():
             'usd_to_nzd_rate': 1.65,
             'cost_estimate': True
         }
+
+
+def track_image_cost(cost_usd: float, size: str = "1024x1024", quality: str = "standard", model: str = "dall-e-3", context=None):
+    """
+    Track a cost-only image generation event (no tokens) into session/week rollups.
+    Safe fail-open: returns True on success, False on any error without raising.
+    
+    Args:
+        cost_usd: USD cost for the image generation (use 0.0 if unavailable)
+        size: Image size (e.g., "1024x1024", "1024x1792", "1792x1024")
+        quality: Image quality (e.g., "standard", "hd")
+        model: Model identifier (default "dall-e-3")
+        context: Optional dict with endpoint/purpose metadata
+    
+    Returns:
+        True if tracked successfully, False otherwise
+    """
+    try:
+        tracker = get_global_tracker()
+        with tracker._lock:
+            now = datetime.now()
+            
+            # Determine cost source
+            if cost_usd is not None and isinstance(cost_usd, (int, float)) and cost_usd > 0:
+                cost_source = "estimated"
+                is_estimate = True
+                actual_cost = float(cost_usd)
+            else:
+                cost_source = "unavailable"
+                is_estimate = True
+                actual_cost = 0.0
+            
+            # Update session cost totals (tokens remain unchanged)
+            tracker.session_cost_usd += actual_cost
+            tracker.session_cost_nzd = tracker.session_cost_usd * tracker.usd_to_nzd_rate
+            
+            # Track cost source for session-level source determination
+            if cost_source == "estimated":
+                tracker.session_estimated_count += 1
+            else:
+                tracker.session_unavailable_count += 1
+            
+            # Add to week window with zero tokens
+            tracker.week_window_events.append((now, 0, actual_cost, cost_source))
+            
+            # Clean old week entries
+            cutoff_week = now - timedelta(days=tracker.week_window_days)
+            while tracker.week_window_events and tracker.week_window_events[0][0] < cutoff_week:
+                tracker.week_window_events.popleft()
+            
+            # Log telemetry entry (image-specific)
+            entry = {
+                'timestamp': now.isoformat(),
+                'prompt_tokens': 0,
+                'completion_tokens': 0,
+                'total_tokens': 0,
+                'cost_usd': actual_cost,
+                'cost_source': cost_source,
+                'cost_estimate': is_estimate,
+                'context': context or {},
+                'image_metadata': {
+                    'model': model,
+                    'size': size,
+                    'quality': quality
+                },
+                'session_elapsed': str(now - tracker.session_start)
+            }
+            try:
+                with open(tracker.telemetry_log, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(entry) + '\n')
+            except Exception:
+                pass  # Fail open on log write
+            
+        return True
+    except Exception:
+        return False
+
+
+def get_dalle3_cost_usd(size: str = "1024x1024", quality: str = "standard") -> float:
+    """
+    Get estimated USD cost for a DALL-E 3 image generation.
+    Returns 0.0 if pricing config is unavailable or invalid.
+    
+    Args:
+        size: Image size (e.g., "1024x1024", "1024x1792", "1792x1024")
+        quality: Image quality ("standard" or "hd")
+    
+    Returns:
+        Estimated USD cost, or 0.0 if unavailable
+    """
+    try:
+        from model_config import DALLE3_PRICING_USD
+        
+        # Normalize inputs
+        size_key = str(size) if size else "1024x1024"
+        quality_key = str(quality) if quality else "standard"
+        
+        # Look up pricing
+        if size_key in DALLE3_PRICING_USD:
+            size_pricing = DALLE3_PRICING_USD[size_key]
+            if quality_key in size_pricing:
+                return float(size_pricing[quality_key])
+        
+        # Fallback to standard quality if hd not found
+        if size_key in DALLE3_PRICING_USD and "standard" in DALLE3_PRICING_USD[size_key]:
+            return float(DALLE3_PRICING_USD[size_key]["standard"])
+        
+        return 0.0
+    except Exception:
+        return 0.0
