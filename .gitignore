@@ -427,3 +427,6 @@ modules/validation_cache.json
 data/companion_memories_compressed/*_memories_*.json
 data/companion_memories_backup/
 data/companion_memories_pre_enhanced/
+
+# model_captures/ telemetry output folder
+model_captures/
