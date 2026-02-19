@@ -66,6 +66,11 @@ import hashlib
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T051", "core/validation/character_validator.py", 963)
+register_callsite("T052", "core/validation/character_validator.py", 1049)
+register_callsite("T053", "core/validation/character_validator.py", 1625)
+register_callsite("T054", "core/validation/character_validator.py", 2015)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -955,15 +960,11 @@ class AICharacterValidator:
         validation_prompt = self.build_ac_validation_prompt(ac_relevant_data)
         
         try:
-            response = self.client.chat.completions.create(
-                model=CHARACTER_VALIDATOR_MODEL,
-                temperature=0.1,  # Low temperature for consistent validation
-                messages=[
+            response = capture_and_fanout("T051", self.client.chat.completions.create, messages=[
                     {"role": "system", "content": self.get_validator_system_prompt()},
                     {"role": "user", "content": validation_prompt}
-                ]
-            )
-            
+                ], model=CHARACTER_VALIDATOR_MODEL, temperature=0.1)
+
             # Track usage if available
             if USAGE_TRACKING_AVAILABLE:
                 try:
@@ -972,9 +973,9 @@ class AICharacterValidator:
                     tracker.track(response, context={'endpoint': 'character_validation', 'purpose': 'validate_character_data'})
                 except:
                     pass
-            
+
             ai_response = response.choices[0].message.content.strip()
-            
+
             # Parse AI response to get corrected character data
             corrected_data = self.parse_ai_validation_response(ai_response, ac_relevant_data)
 
@@ -1045,15 +1046,10 @@ class AICharacterValidator:
                 # Build prompt with filtered inventory data
                 validation_prompt = self.build_inventory_validation_prompt(inventory_data)
                 
-                response = self.client.chat.completions.create(
-                    model=CHARACTER_VALIDATOR_MODEL,
-                    temperature=0.1,  # Low temperature for consistent validation
-                    messages=[
+                response = capture_and_fanout("T052", self.client.chat.completions.create, messages=[
                         {"role": "system", "content": self.get_inventory_validator_system_prompt()},
                         {"role": "user", "content": validation_prompt}
-                    ]
-                    # No max_tokens - let AI return full response
-                )
+                    ], model=CHARACTER_VALIDATOR_MODEL, temperature=0.1)
                 
                 # Track usage if available
                 if USAGE_TRACKING_AVAILABLE:
@@ -1626,15 +1622,11 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
         validation_prompt = self.build_combined_validation_prompt(character_data)
         
         try:
-            response = self.client.chat.completions.create(
-                model=CHARACTER_VALIDATOR_MODEL,
-                temperature=0.1,  # Low temperature for consistent validation
-                messages=[
+            response = capture_and_fanout("T053", self.client.chat.completions.create, messages=[
                     {"role": "system", "content": self.get_combined_validator_system_prompt()},
                     {"role": "user", "content": validation_prompt}
-                ]
-            )
-            
+                ], model=CHARACTER_VALIDATOR_MODEL, temperature=0.1)
+
             # Track usage if available
             if USAGE_TRACKING_AVAILABLE:
                 try:
@@ -1643,9 +1635,9 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
                     tracker.track(response, context={'endpoint': 'character_validation', 'purpose': 'validate_character_data'})
                 except:
                     pass
-            
+
             ai_response = response.choices[0].message.content.strip()
-            
+
             # Parse AI response to get all corrections
             corrected_data = self.parse_combined_validation_response(ai_response, character_data)
             
@@ -2020,14 +2012,10 @@ Remember to return a single JSON response with all four validation results."""
                 # Build prompt with filtered data
                 consolidation_prompt = self.build_inventory_consolidation_prompt(consolidation_data)
                 
-                response = self.client.chat.completions.create(
-                    model=CHARACTER_VALIDATOR_MODEL,
-                    temperature=0.1,  # Low temperature for consistent validation
-                    messages=[
+                response = capture_and_fanout("T054", self.client.chat.completions.create, messages=[
                         {"role": "system", "content": self.get_inventory_consolidation_system_prompt()},
                         {"role": "user", "content": consolidation_prompt}
-                    ]
-                )
+                    ], model=CHARACTER_VALIDATOR_MODEL, temperature=0.1)
                 
                 # Track usage if available
                 if USAGE_TRACKING_AVAILABLE:

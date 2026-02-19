@@ -49,6 +49,8 @@ import tempfile
 import shutil
 from datetime import datetime
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T059", "core/validation/npc_codex_generator.py", 258)
 import config
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import safe_json_load, safe_json_dump, sanitize_text
@@ -253,14 +255,10 @@ EXISTING CHARACTER FILES:
 
 Extract all legitimate NPC names now:"""
 
-        response = client.chat.completions.create(
-            model=config.DM_MAIN_MODEL,
-            messages=[
+        response = capture_and_fanout("T059", client.chat.completions.create, messages=[
                 {"role": "system", "content": "You are an expert at analyzing 5th edition of the world's most popular roleplaying game module content and extracting NPC names. You understand the difference between NPCs, locations, and monsters."},
                 {"role": "user", "content": extraction_prompt}
-            ],
-            temperature=0.1  # Low temperature for consistent extraction
-        )
+            ], model=config.DM_MAIN_MODEL, temperature=0.1)
         
         # Parse the response
         response_text = response.choices[0].message.content.strip()

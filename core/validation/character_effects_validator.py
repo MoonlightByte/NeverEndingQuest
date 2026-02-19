@@ -45,6 +45,8 @@ import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T050", "core/validation/character_effects_validator.py", 334)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -329,14 +331,10 @@ class AICharacterEffectsValidator:
         categorization_prompt = self.build_categorization_prompt(character_data, game_time)
         
         try:
-            response = self.client.chat.completions.create(
-                model=CHARACTER_VALIDATOR_MODEL,
-                temperature=0.1,
-                messages=[
+            response = capture_and_fanout("T050", self.client.chat.completions.create, messages=[
                     {"role": "system", "content": self.get_effects_system_prompt()},
                     {"role": "user", "content": categorization_prompt}
-                ]
-            )
+                ], model=CHARACTER_VALIDATOR_MODEL, temperature=0.1)
             
             # Track usage if available
             if USAGE_TRACKING_AVAILABLE:
