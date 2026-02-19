@@ -3,29 +3,33 @@
 Handles OpenAI->Gemini message format conversion and executes Gemini variant calls.
 """
 import os
+import threading
 import time
 
 _gemini_client = None
+_client_lock = threading.Lock()
 
 
 def _get_client():
     global _gemini_client
     if _gemini_client is None:
-        from google import genai
-        api_key_file = "google_api.pi"
-        if os.path.exists(api_key_file):
-            with open(api_key_file, 'r') as f:
-                content = f.read().strip()
-                if 'api_key=' in content:
-                    api_key = content.split('api_key=')[1].strip()
+        with _client_lock:
+            if _gemini_client is None:
+                from google import genai
+                api_key_file = "google_api.pi"
+                if os.path.exists(api_key_file):
+                    with open(api_key_file, 'r') as f:
+                        content = f.read().strip()
+                        if 'api_key=' in content:
+                            api_key = content.split('api_key=')[1].strip()
+                        else:
+                            api_key = content
                 else:
-                    api_key = content
-        else:
-            raise FileNotFoundError(
-                "google_api.pi not found - Gemini API key required for capture"
-            )
-        os.environ['GEMINI_API_KEY'] = api_key
-        _gemini_client = genai.Client()
+                    raise FileNotFoundError(
+                        "google_api.pi not found - Gemini API key required for capture"
+                    )
+                os.environ['GEMINI_API_KEY'] = api_key
+                _gemini_client = genai.Client()
     return _gemini_client
 
 

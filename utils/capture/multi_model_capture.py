@@ -22,25 +22,30 @@ _writer = None
 _config = None
 _config_lock = threading.Lock()
 _error_logger = None
+_init_lock = threading.Lock()
 
 
 def _get_error_logger():
     global _error_logger
     if _error_logger is None:
-        os.makedirs("model_captures", exist_ok=True)
-        _error_logger = logging.getLogger("capture_errors")
-        if not _error_logger.handlers:
-            handler = logging.FileHandler("model_captures/errors.log")
-            handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
-            _error_logger.addHandler(handler)
-            _error_logger.setLevel(logging.ERROR)
+        with _init_lock:
+            if _error_logger is None:
+                os.makedirs("model_captures", exist_ok=True)
+                _error_logger = logging.getLogger("capture_errors")
+                if not _error_logger.handlers:
+                    handler = logging.FileHandler("model_captures/errors.log")
+                    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+                    _error_logger.addHandler(handler)
+                    _error_logger.setLevel(logging.ERROR)
     return _error_logger
 
 
 def _get_writer():
     global _writer
     if _writer is None:
-        _writer = CaptureFileWriter("model_captures")
+        with _init_lock:
+            if _writer is None:
+                _writer = CaptureFileWriter("model_captures")
     return _writer
 
 
@@ -119,62 +124,70 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     response = primary_fn(messages=messages, **kwargs)
     primary_latency = round(time.time() - start, 3)
 
-    # If capture disabled, return immediately
+    # If capture disabled, return immediately - zero overhead
     if not getattr(model_config, "MULTI_MODEL_CAPTURE", False):
         return response
 
-    cfg = _load_config()
-    if not cfg.get("capture_enabled", False):
-        return response
+    # All capture logic is wrapped - errors never surface to the game
+    try:
+        cfg = _load_config()
+        if not cfg.get("capture_enabled", False):
+            return response
 
-    # Gather call metadata
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    model = kwargs.get("model", "unknown")
-    tier = _determine_tier(model)
-    caller_temperature = kwargs.get("temperature")
-    caller_kwargs = {k: v for k, v in kwargs.items() if k not in ("model", "messages")}
+        # Gather call metadata
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        model = kwargs.get("model", "unknown")
+        tier = _determine_tier(model)
+        caller_temperature = kwargs.get("temperature")
+        caller_kwargs = {k: v for k, v in kwargs.items() if k not in ("model", "messages")}
 
-    # Build input record
-    input_data = {"messages": messages}
-    if caller_temperature is not None:
-        input_data["temperature"] = caller_temperature
-    if "reasoning_effort" in kwargs:
-        input_data["reasoning_effort"] = kwargs["reasoning_effort"]
+        # Build input record
+        input_data = {"messages": messages}
+        if caller_temperature is not None:
+            input_data["temperature"] = caller_temperature
+        if "reasoning_effort" in kwargs:
+            input_data["reasoning_effort"] = kwargs["reasoning_effort"]
 
-    primary_content = response.choices[0].message.content
-    primary_label = f"{model}|baseline"
+        primary_content = response.choices[0].message.content
+        primary_label = f"{model}|baseline"
 
-    # Get variants (check task_overrides first)
-    variants = cfg.get("task_overrides", {}).get(task_id)
-    if variants is None:
-        variants = cfg.get(f"{tier}_tier_variants", [])
+        # Get variants (check task_overrides first)
+        variants = cfg.get("task_overrides", {}).get(task_id)
+        if variants is None:
+            variants = cfg.get(f"{tier}_tier_variants", [])
 
-    # Get source location from registered metadata
-    meta = _CALLSITE_META.get(task_id, {})
-    writer = _get_writer()
-    writer.write_primary(
-        task_id=task_id,
-        file_path=meta.get("file", "unknown"),
-        line=meta.get("line", 0),
-        tier=tier,
-        input_data=input_data,
-        label=primary_label,
-        content=primary_content,
-        latency_s=primary_latency,
-        timestamp=timestamp,
-    )
-
-    # Fire all non-baseline variants in background
-    for variant in variants:
-        # Skip re-firing the exact same model as the primary baseline
-        if (variant.get("model") == model
-                and variant.get("reasoning_effort") is None
-                and not variant.get("thinking_level")):
-            continue
-        _executor.submit(
-            _fire_background_variant,
-            variant, task_id, messages, timestamp, caller_temperature, caller_kwargs
+        # Get source location from registered metadata
+        meta = _CALLSITE_META.get(task_id, {})
+        writer = _get_writer()
+        writer.write_primary(
+            task_id=task_id,
+            file_path=meta.get("file", "unknown"),
+            line=meta.get("line", 0),
+            tier=tier,
+            input_data=input_data,
+            label=primary_label,
+            content=primary_content,
+            latency_s=primary_latency,
+            timestamp=timestamp,
         )
+
+        # Fire all non-baseline variants in background
+        for variant in variants:
+            # Skip re-firing the exact same model as the primary baseline
+            if (variant.get("model") == model
+                    and variant.get("reasoning_effort") is None
+                    and not variant.get("thinking_level")):
+                continue
+            _executor.submit(
+                _fire_background_variant,
+                variant, task_id, messages, timestamp, caller_temperature, caller_kwargs
+            )
+
+    except Exception as e:
+        try:
+            _get_error_logger().error(f"[{task_id}] capture_and_fanout error: {type(e).__name__}: {e}")
+        except Exception:
+            pass
 
     return response
 
