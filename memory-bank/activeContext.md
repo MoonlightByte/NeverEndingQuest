@@ -1,6 +1,21 @@
 ## Current Work Focus
 
-- **DALL-E 3 Image Cost Rollup for Debug Tab (COMPLETED - 2026-02-19):**
+- **PDF Export Portrait and Typography Improvements (COMPLETED - 2026-02-19):**
+  - **OpenSpec Change:** PDF export enhancements for character sheet downloads
+  - **Portrait Embedding:** PC portrait now appears in page 2 Character Appearance box
+    - Helper: `_resolve_character_portrait_path()` - multi-tier lookup (static portraits, module portraits, NPC media)
+    - Helper: `_get_character_image_rect()` - reads PDF template widget rectangle
+    - Helper: `_embed_character_portrait()` - stamps image into specified rectangle using pypdf/Pillow
+  - **Font Size Override:** 8pt font for text-heavy fields to prevent clipping
+    - Constant: `PDF_EXPORT_TEXT_FONT_SIZE = 8`
+    - Target list: 20 fields including personality, attacks/spellcasting (with weapon rows), equipment, features, backstory, treasure
+    - Helper: `_set_pdf_widget_font_size()` - sets widget `/DA` to `/Helvetica 8 Tf 0 g`
+  - **Physical Traits:** Age, Height, Weight, Eyes, Skin, Hair now populate on page 2
+  - **Debug Headers:** `X-Debug-Portrait-Source` and `X-Debug-Portrait-Status` in dev mode
+  - **File Modified:** `web/routes/character_sheet_routes.py`
+  - **Verification:** Compile PASS, font override applies to 20 widgets, portrait embeds correctly
+
+- **DALL-E 3 Image Cost Rollup for Debug Tab (COMPLETED - 2026-02-19):
   - **OpenSpec Change:** `dalle3-image-cost-rollup-debug-tab` (archived to `openspec/changes/archive/2026-02-19-dalle3-image-cost-rollup-debug-tab/`)
   - **Pricing Foundation:** Added `DALLE3_PRICING_USD` config table in `model_config.py` with explicit per-image pricing for all size/quality combinations.
   - **Tracker Foundation:** Implemented `track_image_cost()` helper in `utils/llm_usage_tracker.py` that updates session/week USD/NZD rollups while preserving token counters (cost-only events).

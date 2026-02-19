@@ -14,11 +14,12 @@ See LICENSE file for full terms.
 """
 
 import io
+import os
 import threading
 import time
 from typing import Any, Dict, Tuple
 
-from flask import jsonify, send_file
+from flask import current_app, jsonify, send_file
 
 from utils.character_creation_audit import (
     AUDIT_RESULT_SUCCESS,
@@ -38,6 +39,34 @@ from utils.saving_throw_utils import get_effective_saving_throw_proficiencies
 READINESS_REPAIR_COOLDOWN_SECONDS = 15
 _repair_cooldown_state: Dict[str, float] = {}
 _repair_cooldown_lock = threading.Lock()
+
+
+# TABLETOP MODE: Character appearance portrait target on page index 1.
+CHARACTER_APPEARANCE_PAGE_INDEX = 1
+DEFAULT_CHARACTER_IMAGE_RECT = (36.4791, 443.398, 199.172, 661.497)
+PDF_EXPORT_TEXT_FONT_SIZE = 8
+PDF_EXPORT_FONT10_FIELDS = (
+    "PersonalityTraits ",  # NOTE: trailing space is intentional (PDF field name)
+    "Ideals",
+    "Bonds",
+    "Flaws",
+    "AttacksSpellcasting",
+    "Wpn Name",
+    "Wpn1 AtkBonus",
+    "Wpn1 Damage",
+    "Wpn Name 2",
+    "Wpn2 AtkBonus ",  # NOTE: trailing space is intentional
+    "Wpn2 Damage ",  # NOTE: trailing space is intentional
+    "Wpn Name 3",
+    "Wpn3 AtkBonus  ",  # NOTE: two trailing spaces are intentional
+    "Wpn3 Damage ",  # NOTE: trailing space is intentional
+    "Equipment",
+    "Features and Traits",
+    "ProficienciesLang",
+    "Feat+Traits",  # Additional Features and Traits (page index 1)
+    "Backstory",
+    "Treasure",
+)
 
 
 def _normalize_requested_character(request: Any) -> Tuple[str, str]:
@@ -115,6 +144,172 @@ def _format_repair_preview(character_data: Dict[str, Any], updates: Dict[str, st
     }
 
 
+def _resolve_character_portrait_path(normalized_name: str, party_tracker: Dict[str, Any]) -> str:
+    """Resolve the best available portrait image path for a character."""
+    candidate_paths = []
+    image_exts = ("png", "jpg", "jpeg", "webp")
+
+    # Primary static portrait location.
+    for ext in image_exts:
+        candidate_paths.append(os.path.join("web", "static", "portraits", f"{normalized_name}.{ext}"))
+
+    # Module portrait location for save portability.
+    module_name = str((party_tracker or {}).get("module", "")).replace(" ", "_").strip()
+    if module_name:
+        module_portraits_dir = os.path.join("modules", module_name, "portraits")
+        for ext in image_exts:
+            candidate_paths.append(os.path.join(module_portraits_dir, f"{normalized_name}.{ext}"))
+
+        # TABLETOP MODE: NPC media fallback for promoted NPC->PC characters.
+        # Module media should win over static media.
+        module_npc_media_dir = os.path.join("modules", module_name, "media", "npcs")
+        candidate_paths.append(os.path.join(module_npc_media_dir, f"{normalized_name}_thumb.jpg"))
+        for ext in image_exts:
+            candidate_paths.append(os.path.join(module_npc_media_dir, f"{normalized_name}.{ext}"))
+
+    # Static NPC media fallback (for pack/global media).
+    static_npc_media_dir = os.path.join("web", "static", "media", "npcs")
+    candidate_paths.append(os.path.join(static_npc_media_dir, f"{normalized_name}_thumb.jpg"))
+    for ext in image_exts:
+        candidate_paths.append(os.path.join(static_npc_media_dir, f"{normalized_name}.{ext}"))
+
+    for path in candidate_paths:
+        if os.path.exists(path):
+            return path
+    return ""
+
+
+def _get_character_image_rect(reader: Any) -> Tuple[float, float, float, float]:
+    """Read the CHARACTER IMAGE widget rectangle from PDF template fields."""
+    try:
+        fields = reader.get_fields() or {}
+        image_field = fields.get("CHARACTER IMAGE", {})
+
+        kids = image_field.get("/Kids", []) if isinstance(image_field, dict) else []
+        if kids:
+            first_kid = kids[0].get_object() if hasattr(kids[0], "get_object") else kids[0]
+            rect = first_kid.get("/Rect") if isinstance(first_kid, dict) else None
+            if isinstance(rect, (list, tuple)) and len(rect) == 4:
+                return float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3])
+
+        rect = image_field.get("/Rect") if isinstance(image_field, dict) else None
+        if isinstance(rect, (list, tuple)) and len(rect) == 4:
+            return float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3])
+    except Exception:
+        pass
+
+    return DEFAULT_CHARACTER_IMAGE_RECT
+
+
+def _embed_character_portrait(
+    writer: Any,
+    portrait_path: str,
+    page_index: int,
+    image_rect: Tuple[float, float, float, float],
+) -> bool:
+    """Embed a portrait image into the specified rectangle on a PDF page."""
+    if not portrait_path or page_index < 0 or page_index >= len(writer.pages):
+        return False
+
+    try:
+        from PIL import Image, ImageOps
+        from pypdf import PdfReader, Transformation
+
+        x0, y0, x1, y1 = image_rect
+        width = max(1, int(round(abs(x1 - x0))))
+        height = max(1, int(round(abs(y1 - y0))))
+        min_x = min(float(x0), float(x1))
+        min_y = min(float(y0), float(y1))
+
+        with Image.open(portrait_path) as source_image:
+            fitted_image = ImageOps.fit(
+                source_image.convert("RGB"),
+                (width, height),
+                method=Image.Resampling.LANCZOS,
+                centering=(0.5, 0.5),
+            )
+
+            overlay_stream = io.BytesIO()
+            fitted_image.save(overlay_stream, format="PDF", resolution=72.0)
+
+        overlay_stream.seek(0)
+        overlay_reader = PdfReader(overlay_stream)
+        overlay_page = overlay_reader.pages[0]
+
+        target_page = writer.pages[page_index]
+        transform = Transformation().translate(tx=min_x, ty=min_y)
+        target_page.merge_transformed_page(overlay_page, transform, over=True)
+        return True
+    except Exception:
+        return False
+
+
+def _should_emit_pdf_debug_headers() -> bool:
+    """Return True when running in debug/testing mode."""
+    try:
+        return bool(current_app.debug or current_app.testing)
+    except Exception:
+        return False
+
+
+def _set_pdf_widget_font_size(
+    writer: Any,
+    target_field_names: Tuple[str, ...],
+    font_size: int = PDF_EXPORT_TEXT_FONT_SIZE,
+) -> int:
+    """Set widget /DA font size for selected text fields (fail-open)."""
+    try:
+        from pypdf.generic import NameObject, TextStringObject
+    except Exception:
+        return 0
+
+    updated_count = 0
+    target_names = set(target_field_names)
+    da_value = TextStringObject(f"/Helvetica {int(font_size)} Tf 0 g")
+
+    for page in writer.pages:
+        annotations = page.get("/Annots") or []
+        for annotation_ref in annotations:
+            try:
+                annotation = (
+                    annotation_ref.get_object()
+                    if hasattr(annotation_ref, "get_object")
+                    else annotation_ref
+                )
+                if not isinstance(annotation, dict):
+                    continue
+                if annotation.get("/Subtype") != "/Widget":
+                    continue
+
+                parent = None
+                parent_ref = annotation.get("/Parent")
+                if parent_ref and hasattr(parent_ref, "get_object"):
+                    parent_obj = parent_ref.get_object()
+                    if isinstance(parent_obj, dict):
+                        parent = parent_obj
+
+                field_name = annotation.get("/T")
+                if field_name is None and parent is not None:
+                    field_name = parent.get("/T")
+                if field_name not in target_names:
+                    continue
+
+                field_type = annotation.get("/FT")
+                if field_type is None and parent is not None:
+                    field_type = parent.get("/FT")
+                if field_type != "/Tx":
+                    continue
+
+                annotation[NameObject("/DA")] = da_value
+                if parent is not None:
+                    parent[NameObject("/DA")] = da_value
+                updated_count += 1
+            except Exception:
+                continue
+
+    return updated_count
+
+
 def export_character_pdf_impl(request):
     """Fill the official 5E Character Sheet PDF with active character data."""
     try:
@@ -124,7 +319,6 @@ def export_character_pdf_impl(request):
         from utils.module_path_manager import ModulePathManager
         from updates.update_character_info import normalize_character_name
         import glob
-        import os
 
         # 1. Determine character
         character_name = request.args.get('character')
@@ -169,6 +363,21 @@ def export_character_pdf_impl(request):
         reader = PdfReader(template_path)
         writer = PdfWriter()
         writer.append(reader)
+
+        # TABLETOP MODE: Reduce selected text field font size to prevent clipping.
+        font_updates = _set_pdf_widget_font_size(
+            writer=writer,
+            target_field_names=PDF_EXPORT_FONT10_FIELDS,
+            font_size=PDF_EXPORT_TEXT_FONT_SIZE,
+        )
+        info(
+            f"PDF_EXPORT: Applied {PDF_EXPORT_TEXT_FONT_SIZE}pt font to {font_updates} targeted fields",
+            category="character_creation",
+        )
+
+        portrait_path = _resolve_character_portrait_path(normalized_name, party_tracker)
+        portrait_embed_status = "not_attempted"
+        image_rect = _get_character_image_rect(reader)
 
         # 4. Map NEQ data to PDF field names (MVP: Text fields only)
         def get_mod(score):
@@ -437,9 +646,8 @@ def export_character_pdf_impl(request):
                 acroform = writer.root_object["/AcroForm"]
                 if hasattr(acroform, "get_object"):
                     acroform = acroform.get_object()
-                acroform.update({
-                    NameObject("/NeedAppearances"): BooleanObject(True)
-                })
+                if isinstance(acroform, dict):
+                    acroform[NameObject("/NeedAppearances")] = BooleanObject(True)
         except Exception as na_err:
             warning(f"PDF_EXPORT: Could not set NeedAppearances: {na_err}")
 
@@ -450,6 +658,14 @@ def export_character_pdf_impl(request):
             page2_fields = {
                 "CharacterName 2": char_data.get("name", "")
             }
+
+            # Physical traits (page 2 appearance box fields)
+            page2_fields["Age"] = str(char_data.get("age", "") or "").strip()
+            page2_fields["Height"] = str(char_data.get("height", "") or "").strip()
+            page2_fields["Weight"] = str(char_data.get("weight", "") or "").strip()
+            page2_fields["Eyes"] = str(char_data.get("eyes", "") or "").strip()
+            page2_fields["Skin"] = str(char_data.get("skin", "") or "").strip()
+            page2_fields["Hair"] = str(char_data.get("hair", "") or "").strip()
 
             # Feat+Traits: Combine racial traits, class features, and feats
             features_list = []
@@ -513,6 +729,31 @@ def export_character_pdf_impl(request):
                 page2_fields["Treasure"] = "\n".join(treasure_items)
 
             writer.update_page_form_field_values(writer.pages[1], page2_fields)
+
+            # TABLETOP MODE: Embed PC portrait in appearance box on page index 1.
+            if portrait_path:
+                embedded = _embed_character_portrait(
+                    writer=writer,
+                    portrait_path=portrait_path,
+                    page_index=CHARACTER_APPEARANCE_PAGE_INDEX,
+                    image_rect=image_rect,
+                )
+                if embedded:
+                    portrait_embed_status = "embedded"
+                    info(
+                        f"PDF_EXPORT: Embedded portrait for {normalized_name} from {portrait_path}",
+                        category="character_creation",
+                    )
+                else:
+                    portrait_embed_status = "embed_failed"
+                    warning(
+                        f"PDF_EXPORT: Portrait embedding failed for {normalized_name} ({portrait_path})",
+                        category="character_creation",
+                    )
+            else:
+                portrait_embed_status = "missing_source"
+        else:
+            portrait_embed_status = "missing_page"
 
         # Page 3: Spellcasting
         if len(writer.pages) > 2:
@@ -615,6 +856,9 @@ def export_character_pdf_impl(request):
             as_attachment=True,
             download_name=filename,
         )
+        if _should_emit_pdf_debug_headers():
+            response.headers["X-Debug-Portrait-Source"] = portrait_path or "none"
+            response.headers["X-Debug-Portrait-Status"] = portrait_embed_status
         if readiness_warnings:
             response.headers["X-Character-Readiness-Warnings"] = " | ".join(readiness_warnings[:3])
         return response

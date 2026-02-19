@@ -15,7 +15,20 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
-- **DALL-E 3 Image Cost Rollup for Debug Tab (COMPLETED - 2026-02-19):**
+- **PDF Export Portrait and Typography Improvements (COMPLETED - 2026-02-19):**
+  - **Portrait Embedding:** Character portrait now embeds in the page 2 "Character Appearance" image box of exported PDFs.
+  - **Portrait Resolution:** Multi-tier lookup - static portraits (`web/static/portraits/`), module portraits (`modules/<module>/portraits/`), module NPC media (`modules/<module>/media/npcs/`), static NPC media (`web/static/media/npcs/`).
+  - **Typography:** Reduced font size to 8pt for long-text fields to prevent clipping:
+    - Personality traits, Ideals, Bonds, Flaws
+    - Attacks & Spellcasting block (including weapon rows 1-3)
+    - Equipment, Features and Traits, ProficienciesLang, Feat+Traits
+    - Backstory, Treasure
+  - **Physical Traits:** Page 2 fields now populate: Age, Height, Weight, Eyes, Skin, Hair.
+  - **Dev Debug Headers:** Response includes `X-Debug-Portrait-Source` and `X-Debug-Portrait-Status` when running in debug/testing mode.
+  - **File Modified:** `web/routes/character_sheet_routes.py`
+  - **Verification:** All targeted PDF fields render at 8pt, portraits embed correctly, compile checks PASS.
+
+- **DALL-E 3 Image Cost Rollup for Debug Tab (COMPLETED - 2026-02-19):
   - **Objective:** Ensure DALL-E 3 image generation events contribute estimated costs to Debug tab session/week USD/NZD rollups without inflating token counters.
   - **Pricing Config:** Added `DALLE3_PRICING_USD` table in `model_config.py` with size/quality matrix (1024x1024, 1024x1792, 1792x1024; standard/hd quality levels).
   - **Tracker API:** Added `track_image_cost()` helper in `utils/llm_usage_tracker.py` for cost-only image event tracking with fail-open behavior.
