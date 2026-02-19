@@ -7054,17 +7054,8 @@
                         </div>
                     </div>`;
 
-            // Appearance display (optional fields)
-            const appearanceParts = [];
-            if (data.age && String(data.age).trim()) appearanceParts.push(`Age: ${data.age}`);
-            if (data.height && String(data.height).trim()) appearanceParts.push(`Height: ${data.height}`);
-            if (data.weight && String(data.weight).trim()) appearanceParts.push(`Weight: ${data.weight}`);
-            if (data.eyes && String(data.eyes).trim()) appearanceParts.push(`Eyes: ${data.eyes}`);
-            if (data.skin && String(data.skin).trim()) appearanceParts.push(`Skin: ${data.skin}`);
-            if (data.hair && String(data.hair).trim()) appearanceParts.push(`Hair: ${data.hair}`);
-            if (appearanceParts.length > 0) {
-                html += `<div style="margin: 8px 0; padding: 6px 10px; background: rgba(0,0,0,0.3); border-radius: 4px; font-size: 13px; color: #ccc;">${appearanceParts.join(' | ')}</div>`;
-            }
+            // Appearance display hidden - physical traits omitted from Character Sheet UI
+            // (Age, Height, Weight, Eyes, Skin, Hair still stored in character data for portrait generation)
             if (data.abilities) {
                 html += '<div class="abilities-row">';
                 ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'].forEach(ability => {
