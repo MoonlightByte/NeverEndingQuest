@@ -53,6 +53,9 @@ import json
 import os
 from datetime import datetime
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T018", "core/ai/cumulative_summary.py", 284)
+register_callsite("T019", "core/ai/cumulative_summary.py", 554)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -278,19 +281,15 @@ Use past tense and third person. Be vivid, specific, and emotional where appropr
     ]
     
     try:
-        response = client.chat.completions.create(
-            model=ADVENTURE_SUMMARY_MODEL,
-            temperature=TEMPERATURE,
-            messages=messages
-        )
-        
+        response = capture_and_fanout("T018", client.chat.completions.create, messages=messages, model=ADVENTURE_SUMMARY_MODEL, temperature=TEMPERATURE)
+
         # Track usage if available
         if USAGE_TRACKING_AVAILABLE:
             try:
                 track_response(response)
             except:
                 pass
-        
+
         summary = response.choices[0].message.content.strip()
         # Sanitize AI response to prevent encoding issues
         summary = sanitize_text(summary)
@@ -552,19 +551,15 @@ Keep the narrative engaging but factual."""},
         ]
         
         try:
-            response = client.chat.completions.create(
-                model=ADVENTURE_SUMMARY_MODEL,
-                temperature=TEMPERATURE,
-                messages=messages
-            )
-            
+            response = capture_and_fanout("T019", client.chat.completions.create, messages=messages, model=ADVENTURE_SUMMARY_MODEL, temperature=TEMPERATURE)
+
             # Track usage if available
             if USAGE_TRACKING_AVAILABLE:
                 try:
                     track_response(response)
                 except:
                     pass
-            
+
             enhanced_summary = response.choices[0].message.content.strip()
             # Sanitize AI response to prevent encoding issues
             enhanced_summary = sanitize_text(enhanced_summary)

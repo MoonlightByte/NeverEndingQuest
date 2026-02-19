@@ -10,6 +10,8 @@ import sys
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T020", "core/ai/incremental_compression.py", 188)
 import shutil
 
 # Add project root to path for standalone execution
@@ -183,11 +185,7 @@ Create a compressed narrative that:
 Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not meta-game mechanics."""
 
         try:
-            response = self.client.chat.completions.create(
-                messages=[{"role": "user", "content": compression_prompt}],
-                model=self.COMPRESSION_MODEL,
-                temperature=self.COMPRESSION_TEMP
-            ).choices[0].message.content
+            response = capture_and_fanout("T020", self.client.chat.completions.create, messages=[{"role": "user", "content": compression_prompt}], model=self.COMPRESSION_MODEL, temperature=self.COMPRESSION_TEMP).choices[0].message.content
             
             if response and response.strip():
                 location_id = location_info.get('id', 'Unknown')

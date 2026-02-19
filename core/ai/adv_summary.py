@@ -23,6 +23,9 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T015", "core/ai/adv_summary.py", 231)
+register_callsite("T016", "core/ai/adv_summary.py", 462)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -225,11 +228,7 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
     for attempt in range(max_retries):
         debug_print(f"Attempt {attempt + 1} to update location JSON")
         try:
-            response = client.chat.completions.create(
-                model=ADVENTURE_SUMMARY_MODEL,
-                temperature=TEMPERATURE,
-                messages=location_updater_prompt
-            )
+            response = capture_and_fanout("T015", client.chat.completions.create, messages=location_updater_prompt, model=ADVENTURE_SUMMARY_MODEL, temperature=TEMPERATURE)
             
             # Track usage if available
             if USAGE_TRACKING_AVAILABLE:
@@ -460,11 +459,7 @@ Your writing should feel immersive, literary, and grounded—like a historical e
 
 
     try:
-        response = client.chat.completions.create(
-            model=ADVENTURE_SUMMARY_MODEL,
-            temperature=TEMPERATURE,
-            messages=dialogue_data
-        )
+        response = capture_and_fanout("T016", client.chat.completions.create, messages=dialogue_data, model=ADVENTURE_SUMMARY_MODEL, temperature=TEMPERATURE)
         
         # Track usage if available
         if USAGE_TRACKING_AVAILABLE:

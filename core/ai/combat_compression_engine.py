@@ -12,6 +12,8 @@ import json
 import hashlib
 import re
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T017", "core/ai/combat_compression_engine.py", 169)
 from typing import Dict, Optional
 from pathlib import Path
 import sys
@@ -164,14 +166,10 @@ class CombatCompressor:
         try:
             # Call AI for compression
             print(f"[DEBUG] Calling AI compression with model: {self.model}")
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+            response = capture_and_fanout("T017", self.client.chat.completions.create, messages=[
                     {"role": "system", "content": COMBAT_COMPRESSION_PROMPT},
                     {"role": "user", "content": content}
-                ],
-                temperature=0.3
-            )
+                ], model=self.model, temperature=0.3)
             
             # Track usage
             if USAGE_TRACKING_AVAILABLE:

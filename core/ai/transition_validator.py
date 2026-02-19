@@ -9,6 +9,8 @@ import json
 import os
 from typing import Dict, List, Any, Optional
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T021", "core/ai/transition_validator.py", 153)
 from config import OPENAI_API_KEY
 from model_config import TRANSITION_VALIDATOR_MODEL, TRANSITION_VALIDATOR_TEMPERATURE
 from utils.enhanced_logger import debug, info, warning, error
@@ -148,14 +150,10 @@ at an intermediate location due to unexplored encounters. Respond with JSON only
         # Call AI agent
         debug("Sending request to transition validator AI", category="transition_validation")
 
-        response = client.chat.completions.create(
-            model=TRANSITION_VALIDATOR_MODEL,
-            temperature=TRANSITION_VALIDATOR_TEMPERATURE,
-            messages=[
+        response = capture_and_fanout("T021", client.chat.completions.create, messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
-            ]
-        )
+            ], model=TRANSITION_VALIDATOR_MODEL, temperature=TRANSITION_VALIDATOR_TEMPERATURE)
 
         # Log API call
         try:

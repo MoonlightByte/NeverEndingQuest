@@ -58,6 +58,8 @@ from datetime import datetime
 from openai import OpenAI
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T013", "core/ai/action_handler.py", 1005)
+register_callsite("T012", "core/ai/action_handler.py", 553)
+register_callsite("T014", "core/ai/action_handler.py", 2017)
 import config
 from core.managers.location_manager import get_location_data
 from utils.module_path_manager import ModulePathManager
@@ -548,14 +550,10 @@ MODULE DATA:
 
 Determine the most logical starting location based on adventure flow, area types, NPCs, and narrative logic."""
 
-        response = client.chat.completions.create(
-            model=config.DM_MINI_MODEL,
-            messages=[
+        response = capture_and_fanout("T012", client.chat.completions.create, messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.1
-        )
+            ], model=config.DM_MINI_MODEL, temperature=0.1)
         
         # Track token usage
         if USAGE_TRACKING_AVAILABLE:
@@ -2016,14 +2014,10 @@ Based on this narrative context, determine the most appropriate action for this 
 
 Remember: This is a background NPC management action, not party NPC management."""
 
-        response = client.chat.completions.create(
-            model=config.NPC_INFO_UPDATE_MODEL,  # Use claude-sonnet-4-20250514 as specified
-            messages=[
+        response = capture_and_fanout("T014", client.chat.completions.create, messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.7  # As specified by user
-        )
+            ], model=config.NPC_INFO_UPDATE_MODEL, temperature=0.7)
         
         # Track token usage
         if USAGE_TRACKING_AVAILABLE:
