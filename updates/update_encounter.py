@@ -7,6 +7,8 @@ import json
 import os
 from jsonschema import validate, ValidationError
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T081", "updates/update_encounter.py", 85)
 import time
 import re
 import copy
@@ -80,10 +82,10 @@ Remember to only update monster information and leave player and NPC data unchan
         ]
 
         # Get AI's response
-        response = client.chat.completions.create(
+        response = capture_and_fanout("T081", client.chat.completions.create,
+            messages=prompt,
             model=ENCOUNTER_UPDATE_MODEL,
-            temperature=TEMPERATURE,
-            messages=prompt
+            temperature=TEMPERATURE
         )
         
         # Track usage

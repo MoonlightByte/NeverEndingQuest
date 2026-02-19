@@ -26,6 +26,8 @@ from utils.enhanced_logger import debug, info, warning, error, set_script_name
 set_script_name("plot_update")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T077", "updates/plot_update.py", 151)
 
 # Constants
 TEMPERATURE = 0.7
@@ -146,10 +148,10 @@ Examples:
             {"role": "user", "content": f"Current plot info: {json.dumps(plot_info_data)}\n\nPlot point to update: {plot_point_id_param}\nNew status: {new_status_param}\nPlot impact: {plot_impact_param}"}
         ]
 
-        response = client.chat.completions.create(
+        response = capture_and_fanout("T077", client.chat.completions.create,
+            messages=prompt_messages,
             model=PLOT_UPDATE_MODEL, # Use imported model name
-            temperature=TEMPERATURE,
-            messages=prompt_messages
+            temperature=TEMPERATURE
         )
         
         # Track usage if available

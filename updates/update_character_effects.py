@@ -35,6 +35,8 @@ set_script_name(os.path.basename(__file__))
 
 # Initialize OpenAI client
 client = OpenAI(api_key=config.OPENAI_API_KEY)
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T078", "updates/update_character_effects.py", 201)
 
 EFFECTS_TRACKER_FILE = "modules/effects_tracker.json"
 
@@ -196,13 +198,13 @@ Set affects_max to true for effects like Aid that modify both current and maximu
 """
 
     try:
-        response = client.chat.completions.create(
-            model=config.DM_EFFECTS_MODEL if hasattr(config, 'DM_EFFECTS_MODEL') else config.DM_MAIN_MODEL,
-            temperature=0.3,  # Lower temperature for more consistent JSON
+        response = capture_and_fanout("T078", client.chat.completions.create,
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": f"Analyze this update: {change_description}"}
-            ]
+            ],
+            model=config.DM_EFFECTS_MODEL if hasattr(config, 'DM_EFFECTS_MODEL') else config.DM_MAIN_MODEL,
+            temperature=0.3  # Lower temperature for more consistent JSON
         )
         
         # Track usage if available

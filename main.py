@@ -77,6 +77,13 @@ import codecs
 import glob
 import time
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T063", "main.py", 316)
+register_callsite("T064", "main.py", 393)
+register_callsite("T065", "main.py", 1227)
+register_callsite("T066", "main.py", 1713)
+register_callsite("T067", "main.py", 2338)
+register_callsite("T068", "main.py", 2316)
 from datetime import datetime, timedelta
 from termcolor import colored
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -306,10 +313,10 @@ def generate_arrival_narration(departure_narration, party_tracker_data, conversa
     ]
 
     try:
-        response = client.chat.completions.create(
+        response = capture_and_fanout("T063", client.chat.completions.create,
+            messages=narration_request_messages,
             model=DM_MAIN_MODEL,  # Use the main model for high-quality narration
-            temperature=TEMPERATURE,
-            messages=narration_request_messages
+            temperature=TEMPERATURE
         )
 
         # Log API call to master log
@@ -383,13 +390,13 @@ Now, provide the rewritten, seamless narration.
 """
 
     try:
-        response = client.chat.completions.create(
-            model=DM_MAIN_MODEL,  # Use the main model for high-quality writing
-            temperature=TEMPERATURE,
+        response = capture_and_fanout("T064", client.chat.completions.create,
             messages=[
                 {"role": "system", "content": "You are a master storyteller and editor, skilled at weaving separate narrative fragments into a single, seamless, and immersive piece of prose."},
                 {"role": "user", "content": stitching_prompt}
-            ]
+            ],
+            model=DM_MAIN_MODEL,  # Use the main model for high-quality writing
+            temperature=TEMPERATURE
         )
 
         # Log API call to master log
@@ -1217,10 +1224,10 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
     
     max_validation_retries = 3
     for attempt in range(max_validation_retries):
-        validation_result = client.chat.completions.create(
+        validation_result = capture_and_fanout("T065", client.chat.completions.create,
+            messages=validation_messages_to_send,
             model=DM_VALIDATION_MODEL, # Use imported model name
-            temperature=0.1,  # Low temperature for consistent validation
-            messages=validation_messages_to_send
+            temperature=0.1  # Low temperature for consistent validation
         )
 
         # Log API call to master log
@@ -1703,12 +1710,12 @@ ACTUAL GAMEPLAY CONVERSATION:
 
 Write a compelling chronicle of these actual events:"""
 
-                response = client.chat.completions.create(
-                    model=config.DM_SUMMARIZATION_MODEL,
+                response = capture_and_fanout("T066", client.chat.completions.create,
                     messages=[
                         {"role": "system", "content": "You are an expert at creating beautiful adventure chronicles from 5th edition gameplay, focusing only on events that actually occurred."},
                         {"role": "user", "content": summary_prompt}
                     ],
+                    model=config.DM_SUMMARIZATION_MODEL,
                     temperature=0.7
                 )
 
@@ -2306,9 +2313,9 @@ def get_ai_response(conversation_history, validation_retry_count=0):
             print(f"DEBUG: GPT-5 - Switching to full model after {validation_retry_count} retries")
         
         print(f"DEBUG: [MAIN.PY] Using GPT-5 model: {selected_model}")
-        response = client.chat.completions.create(
-            model=selected_model,
-            messages=messages_to_send  # Use potentially compressed messages
+        response = capture_and_fanout("T068", client.chat.completions.create,
+            messages=messages_to_send,  # Use potentially compressed messages
+            model=selected_model
         )
 
         # Log API call to master log
@@ -2328,10 +2335,10 @@ def get_ai_response(conversation_history, validation_retry_count=0):
     else:
         # GPT-4.1: Use existing logic with temperature
         print(f"DEBUG: [MAIN.PY] Using GPT-4.1 model: {selected_model}")
-        response = client.chat.completions.create(
+        response = capture_and_fanout("T067", client.chat.completions.create,
+            messages=messages_to_send,  # Use potentially compressed messages
             model=selected_model,
-            temperature=TEMPERATURE,
-            messages=messages_to_send  # Use potentially compressed messages
+            temperature=TEMPERATURE
         )
 
         # Log API call to master log
