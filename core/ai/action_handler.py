@@ -56,6 +56,8 @@ import subprocess
 import os
 from datetime import datetime
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T013", "core/ai/action_handler.py", 1003)
 import config
 from core.managers.location_manager import get_location_data
 from utils.module_path_manager import ModulePathManager
@@ -1000,9 +1002,11 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                     {"role": "user", "content": transition_prompt}
                 ]
 
-                transition_response = client.chat.completions.create(
-                    model=config.DM_MAIN_MODEL,
+                transition_response = capture_and_fanout(
+                    "T013",
+                    client.chat.completions.create,
                     messages=transition_messages,
+                    model=config.DM_MAIN_MODEL,
                     temperature=0.7
                 )
 
