@@ -465,14 +465,14 @@ def generate_and_save_portrait(
             result["error"] = "client_init_failed"
             return result
         
-        # Generate image with natural style to avoid poster/card-like outputs
+        # Generate image with vivid style for hyper-realistic fantasy character portraiture
         try:
             response = client.images.generate(
                 model=model,
                 prompt=prompt[:4000],  # DALL-E has character limit
                 size=size,
                 quality=quality,
-                style="natural",
+                style="vivid",
                 n=1
             )
         except Exception as gen_error:
