@@ -23,6 +23,11 @@ We need a merge-safe UX enhancement that improves portrait reliability without c
   - Appearance: `age`, `height`, `weight`, `eyes`, `skin`, `hair`
   - Personality/Background: `personality_traits`, `ideals`, `bonds`, `flaws`, `backgroundFeature.name`, `backgroundFeature.description`
 - Expand portrait prompt composition to include personality and background context in addition to appearance metadata.
+- Add deterministic cache-coherence contract for portrait/thumbnails across Character Sheet, initiative queue, and party strip.
+- Add targeted client cache invalidation and immediate post-mutation refresh hooks to prevent stale/reverting portraits.
+- Realign NPC -> PC promotion readiness so missing profile traits surface as warnings, not promotion blockers.
+- Preserve NPC -> PC portrait continuity so role switches do not require immediate image replacement.
+- Add allied NPC context hydration so auto-generation prompts use role/class-consistent metadata when available.
 - Preserve module-first media lookup and existing fallback behavior.
 
 ### Non-goals
@@ -41,6 +46,7 @@ We need a merge-safe UX enhancement that improves portrait reliability without c
 - `allied-npc-missing-media-autogen`
 - `missing-media-warning-throttle`
 - `appearance-fields-for-portrait-prompts`
+- `portrait-cache-coherence-gui`
 
 ### Modified Capabilities
 
@@ -52,6 +58,7 @@ We need a merge-safe UX enhancement that improves portrait reliability without c
   - `web/web_interface.py`
   - `web/templates/game_interface.html`
   - `web/templates/partials/character_tabs.html`
+  - `web/extensions/tabletop_socket_handlers.py`
   - `schemas/char_schema.json`
   - `utils/character_creation_audit.py`
   - `web/routes/tabletop_party_routes.py`
@@ -62,6 +69,7 @@ We need a merge-safe UX enhancement that improves portrait reliability without c
 - APIs/system surfaces:
   - New endpoint: `POST /api/portrait/create`
   - `POST /api/portrait/create` accepts full profile payload and fail-closed validation for required portrait profile fields.
+  - Socket payloads gain portrait/image version metadata for deterministic GUI refresh (`player_data_response`, `initiative_data_response`, `party_data_response`).
   - Existing `/media/<media_type>/<filename>` behavior gains warning throttle and allied-only enqueue hook.
 - Dependencies:
   - Reuses existing image generation/toolkit infrastructure.

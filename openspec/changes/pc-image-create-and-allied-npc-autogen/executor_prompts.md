@@ -240,3 +240,102 @@ Verify before moving on:
   2. Blank required field -> submit blocked.
   3. Submit valid fields -> portrait updates and stats reload shows saved edits.
   4. Upload path unchanged.
+
+---
+
+## Prompt 11 - Portrait Cache Coherence Across GUI Surfaces
+
+Implement tasks 10.1-10.8 only.
+
+Scope:
+- `web/extensions/tabletop_socket_handlers.py`
+- `web/web_interface.py`
+- `web/templates/game_interface.html`
+- `scripts/test_pc_image_create_mvp.py`
+
+MUST:
+- Backend SHALL emit deterministic portrait/image metadata for all GUI refresh payloads:
+  - `player_data_response` (`dataType=stats`) -> `_portrait_slug`, `_portrait_version`
+  - `initiative_data_response.combatants[]` -> `image_slug`, `image_version` for player/npc entries
+  - `party_data_response.members[]` and `party_data_response.location_npcs[]` -> `image_slug`, `image_version`
+- Frontend SHALL use one canonical normalization helper for portrait slugs aligned with backend normalization semantics.
+- Frontend SHALL version portrait and thumbnail URLs using emitted version metadata.
+- Successful upload/create SHALL invalidate both local image caches (`existingImageCache`, `missingImageCache`) for the affected slug.
+- Successful upload/create SHALL immediately refresh Character Sheet, initiative, and party data without waiting for polling.
+- Host-file edits MUST stay minimal and be marked with `# TABLETOP MODE:` where required.
+
+SHOULD:
+- Keep version-lookup logic centralized in one backend helper and reuse across payload builders.
+- Keep frontend cache invalidation targeted per slug (avoid global cache clears).
+- Preserve existing fallback order and polling loop behavior as compatibility fallback.
+
+Verify before moving on:
+- `python3 -m py_compile web/extensions/tabletop_socket_handlers.py web/web_interface.py`
+- `python3 core/validation/validate_module_files.py`
+- `python3 scripts/test_pc_image_create_mvp.py`
+- Manual smoke:
+  1. Upload PC portrait -> Character Sheet, initiative, and party strip refresh and remain stable.
+  2. Create PC portrait -> no update-then-revert behavior across polling cycles.
+  3. Missing allied NPC thumbnail resolves after worker write without hard reload.
+  4. Apostrophe/hyphen name cases resolve to same portrait identity in all surfaces.
+
+---
+
+## Prompt 12 - Promotion Readiness Alignment (PC <-> NPC viability first)
+
+Implement tasks 11.1-11.6 only.
+
+Scope:
+- `utils/character_creation_audit.py`
+- `web/routes/tabletop_party_routes.py`
+- `scripts/test_pc_image_create_mvp.py` (or promotion-focused regression file)
+
+MUST:
+- Add a deterministic profile-readiness helper for portrait-driving fields:
+  - Appearance: `age`, `height`, `weight`, `eyes`, `skin`, `hair`
+  - Personality/background: `personality_traits`, `ideals`, `bonds`, `flaws`, `backgroundFeature.name`, `backgroundFeature.description`
+- Keep schema validation contract unchanged (do not make optional appearance fields globally required).
+- Promotion preview/apply SHALL surface profile-readiness warnings but SHALL NOT fail promotion due to missing optional profile fields.
+- Promotion apply SHALL seed missing appearance keys as empty strings for promoted records.
+- Preserve existing promotion invariants:
+  - same character file identity
+  - `character_id` continuity
+  - lifecycle role history append
+  - `active_character` unchanged
+
+SHOULD:
+- Keep role-switch logic centralized in existing `pc_manager` helpers.
+- Keep route responses additive and backward compatible.
+
+Verify before moving on:
+- `python3 -m py_compile utils/character_creation_audit.py web/routes/tabletop_party_routes.py`
+- `python3 scripts/test_pc_image_create_mvp.py`
+- Manual smoke: Manage Party -> Add Existing -> Promote for an NPC with missing appearance fields.
+
+---
+
+## Prompt 13 - NPC Prompt Enrichment After Readiness Alignment
+
+Implement tasks 12.1-12.6 only.
+
+Scope:
+- `web/extensions/missing_media_autogen.py`
+- `core/toolkit/portrait_service.py`
+- `web/web_interface.py` (only if minimal hook changes are required)
+- `scripts/test_pc_image_create_mvp.py`
+
+MUST:
+- Allied NPC auto-generation SHALL hydrate character context from canonical character state before provider generation.
+- If canonical character state is unavailable, fallback SHALL use party role/name hints.
+- Generation callback SHALL pass hydrated context to `generate_and_save_portrait(...)`.
+- Prompt composition SHALL include bounded role/class-consistent anchors when available.
+- Reuse-first flow, allied-only gating, dedupe/cooldown, and non-blocking miss path MUST remain intact.
+
+SHOULD:
+- Keep context hydration helper testable and isolated from request path logic.
+- Keep prompt additions concise and deterministic.
+
+Verify before moving on:
+- `python3 -m py_compile core/toolkit/portrait_service.py web/extensions/missing_media_autogen.py web/web_interface.py`
+- `python3 scripts/test_pc_image_create_mvp.py`
+- Manual smoke: allied NPC miss generation uses role/class-consistent portrait cues.

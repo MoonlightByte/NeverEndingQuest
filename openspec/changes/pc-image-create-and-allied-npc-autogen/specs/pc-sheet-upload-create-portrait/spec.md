@@ -78,3 +78,12 @@ Portrait create failures SHALL return safe errors and SHALL NOT break gameplay/s
 ### SHOULD Guidance
 
 - Use a clear submit label such as `Save Profile + Create Portrait` to communicate persistence plus generation behavior.
+
+### Requirement: NPC -> PC promotion SHALL remain viable without forced portrait replacement
+
+Promotion through Manage Party/Add Existing SHALL keep portrait continuity and SHALL NOT require immediate portrait recreation to complete the role transition.
+
+#### Scenario: Promote NPC companion with existing NPC media only
+- **WHEN** user promotes an NPC companion to player role
+- **THEN** promotion completes using the same character identity/file
+- **AND** Character Sheet portrait resolution remains functional through existing fallback chain without requiring image regeneration

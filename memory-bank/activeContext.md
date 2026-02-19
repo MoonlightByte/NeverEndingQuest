@@ -22,6 +22,19 @@
   - **File Modified:** `web/templates/game_interface.html` (~75 lines changed: CSS, state vars, helpers, status handlers, upload/create flows, re-render hook)
   - **Verification:** All 16 implementation checks passed (variables, functions, CSS, lock patterns, cleanup)
 
+- **Portrait Cache Coherence - Section 10 (COMPLETED - 2026-02-19):**
+  - **OpenSpec Change:** `pc-image-create-and-allied-npc-autogen` Section 10 extension
+  - **Objective:** Eliminate stale/reverting portrait behavior after upload/create mutations
+  - **Backend Metadata Helpers:** `_normalize_character_slug()`, `_get_image_candidate_paths()`, `_compute_image_version_from_paths()`, `_build_image_metadata()` in `tabletop_socket_handlers.py`
+  - **Payload Emission:** `image_slug` + `image_version` in initiative/party payloads; `_portrait_slug` + `_portrait_version` in stats payload
+  - **Frontend Helpers:** `normalizePortraitSlug()` + `withAssetVersion()` in `game_interface.html`; updated Character Sheet, initiative, party strip surfaces
+  - **Cache Invalidation:** `invalidateImageCachesForSlug()` removes targeted entries from `missingImageCache` and `existingImageCache` after mutations
+  - **Ordering Fix:** Captures `preservedSlug` before `closePortraitProfileModal()` clears state; uses preserved identity for refresh
+  - **Immediate Refresh:** Upload/create success paths call `loadCharacterStats()`, `requestInitiativeData()`, `requestPartyData()` without polling wait
+  - **Regression Tests:** 8 new tests added (`TestPortraitMetadataPayloadContracts`, `TestFrontendCacheInvalidationContracts`), all PASS
+  - **Files Modified:** `web/extensions/tabletop_socket_handlers.py` (+115 lines), `web/web_interface.py` (+14 lines), `web/templates/game_interface.html` (+102 lines), `scripts/test_pc_image_create_mvp.py` (+128 lines, 8 new tests)
+
+
 - **Load Dialog Unified Archive/Save Timeline (COMPLETED - 2026-02-17):
   - **OpenSpec Change:** `load-dialog-unified-archive-save-timeline` fully implemented, validated, and archived
   - **Objective:** Merge save folders and archive zips into one recency-ordered timeline with entry-type filters

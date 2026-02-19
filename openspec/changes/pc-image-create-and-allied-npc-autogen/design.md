@@ -144,9 +144,51 @@ Non-goals:
    - `POST /api/portrait/create` SHALL persist modal profile edits to character JSON before image generation.
    - Portrait generation SHALL consume updated persisted character state.
 
+    Rationale:
+    - Keeps Character Sheet and prompt source aligned.
+    - Ensures edits made in modal are not transient.
+
+12. **Deterministic portrait version contract across GUI surfaces**
+
+   Decision:
+   - Socket/data payload builders SHALL emit per-entity image metadata:
+     - canonical image slug
+     - deterministic image version (derived from latest mtime across portrait/media candidates)
+   - Character Sheet stats payload SHALL emit `_portrait_slug` and `_portrait_version`.
+
    Rationale:
-   - Keeps Character Sheet and prompt source aligned.
-   - Ensures edits made in modal are not transient.
+   - Removes ambiguity from browser/proxy cache behavior when files are replaced in place.
+   - Gives all frontend surfaces a shared, deterministic cache-busting key.
+
+13. **Targeted cache invalidation + immediate refresh after portrait mutation**
+
+   Decision:
+   - On successful upload/create, frontend SHALL invalidate local image caches for affected slug and refresh Character Sheet, initiative, and party data immediately.
+   - Polling loop remains as fallback only.
+
+    Rationale:
+    - Prevents stale-then-revert UX caused by mixed local caches and asynchronous polling updates.
+    - Preserves existing polling architecture while reducing visible inconsistency window.
+
+14. **Profile-readiness warnings for NPC -> PC promotion (non-blocking)**
+
+    Decision:
+    - Promotion preview/apply SHALL surface portrait-profile readiness warnings for missing optional appearance/profile fields.
+    - Promotion SHALL continue to hard-block only on schema-critical failures, not optional profile incompleteness.
+
+    Rationale:
+    - Keeps current NPC roster promotable without high-friction manual data cleanup.
+    - Aligns player sheet quality goals with low-baggage promotion workflow.
+
+15. **Hydrated NPC context before allied auto-generation provider calls**
+
+    Decision:
+    - Allied NPC auto-generation SHALL resolve canonical character context before provider generation when possible.
+    - If canonical character state is unavailable, fallback MAY use party role/name hints.
+
+    Rationale:
+    - Prevents generic portraits caused by `Unknown`/`NPC` placeholder context.
+    - Improves role/class alignment for companion portraits without changing miss-path latency contract.
 
 ## Risks / Trade-offs
 
@@ -156,6 +198,10 @@ Non-goals:
 - [Risk] Corrupt character JSON affects sheet stats path -> Mitigation: keep image fallback independent from stats payload where possible.
 - [Risk] Added required profile fields may block create if users leave fields blank -> Mitigation: always-open prefilled modal with clear required-field validation.
 - [Risk] Prompt bloat from long personality/background text -> Mitigation: sanitize and length-bound free-text fields before prompt composition.
+- [Risk] Inconsistent name normalization across surfaces can map to different portrait keys -> Mitigation: single shared frontend slug helper matching backend normalization semantics.
+- [Risk] Version metadata drift between payload builders can cause mixed refresh behavior -> Mitigation: centralize version helper in tabletop socket extension and reuse in all payload paths.
+- [Risk] Promotion warning payload changes could break older callers -> Mitigation: additive response fields only, preserve existing success/error keys.
+- [Risk] Hydration lookup misses due to name normalization drift -> Mitigation: reuse canonical normalization + fuzzy fallback with fail-open generation.
 - [Trade-off] Additional worker state in web process -> Accepted for non-blocking behavior and low implementation complexity.
 
 ## Migration Plan
@@ -167,6 +213,9 @@ Non-goals:
 5. Add allied-only auto-heal worker and enqueue hook.
 6. Add regression tests and smoke validations.
 7. Add always-open full-profile modal and backend completeness enforcement.
+8. Add portrait cache-coherence contract (version metadata + targeted invalidation + immediate refresh hooks).
+9. Add promotion-time profile-readiness warnings and appearance-key seeding.
+10. Add allied NPC context hydration prior to provider generation.
 
 Rollback strategy:
 

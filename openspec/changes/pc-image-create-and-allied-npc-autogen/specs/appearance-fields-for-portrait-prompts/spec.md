@@ -59,3 +59,12 @@ Portrait prompt composition SHALL sanitize and length-bound free-text profile in
 ### SHOULD Guidance
 
 - Implement prompt-field sanitation in a small helper so unit tests can validate it directly.
+
+### Requirement: NPC -> PC promotion flows SHALL expose profile-readiness warnings for optional appearance fields
+
+Promotion workflows SHALL surface missing optional appearance/profile fields as readiness warnings while preserving promotion viability.
+
+#### Scenario: Promote NPC with missing appearance metadata
+- **WHEN** an NPC companion is promoted and appearance fields are absent
+- **THEN** API responses include deterministic readiness warnings for missing profile fields
+- **AND** promotion does not fail solely due to missing optional appearance metadata

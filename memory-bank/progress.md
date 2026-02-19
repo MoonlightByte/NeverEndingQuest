@@ -107,6 +107,19 @@ Active development of Tabletop Mode features, focusing on party management and U
   - **Files Created:** `core/toolkit/portrait_service.py`, `web/extensions/missing_media_autogen.py`, `scripts/test_pc_image_create_mvp.py`, `implementation_notes.md`
   - **Files Modified:** `schemas/char_schema.json`, `utils/character_creation_audit.py`, `web/routes/tabletop_party_routes.py`, `web/templates/partials/character_tabs.html`, `web/templates/game_interface.html`, `web/web_interface.py`, `model_config.py`
 
+- **Portrait Cache Coherence - Section 10 (COMPLETED - 2026-02-19):**
+  - **OpenSpec Change:** `pc-image-create-and-allied-npc-autogen` Section 10 extension completed
+  - **Objective:** Eliminate stale/reverting portrait behavior across Character Sheet, initiative, and party strip
+  - **Step 10.1 Backend Metadata:** `_normalize_character_slug()`, `_get_image_candidate_paths()`, `_compute_image_version_from_paths()`, `_build_image_metadata()` in `tabletop_socket_handlers.py`
+  - **Step 10.2 Payload Emission:** `image_slug` + `image_version` in initiative/party payloads; `_portrait_slug` + `_portrait_version` in stats payload
+  - **Step 10.3 Frontend Helpers:** `normalizePortraitSlug()` + `withAssetVersion()` in `game_interface.html`; updated all three surfaces
+  - **Step 10.4 Cache Invalidation:** `invalidateImageCachesForSlug()` removes targeted entries from `missingImageCache` and `existingImageCache`
+  - **Step 10.5 Ordering Fix:** Captures `preservedCharacterName` + `preservedSlug` before `closePortraitProfileModal()` clears state
+  - **Step 10.6 Immediate Refresh:** Upload/create success paths call `loadCharacterStats()`, `requestInitiativeData()`, `requestPartyData()` without polling wait
+  - **Step 10.7 Regression Tests:** 8 new tests (`TestPortraitMetadataPayloadContracts`, `TestFrontendCacheInvalidationContracts`) all PASS
+  - **Step 10.8 Final Verification:** Compile PASS, schema validation PASS (venv fallback), tests PASS (8/8), manual smoke checklist PASS
+  - **Files Modified:** `web/extensions/tabletop_socket_handlers.py` (+115 lines), `web/web_interface.py` (+14 lines), `web/templates/game_interface.html` (+102 lines), `scripts/test_pc_image_create_mvp.py` (+128 lines)
+
 - **PR3 Root Archive Export + Zip Import Restore (COMPLETED - 2026-02-17):**
   - **OpenSpec Change:** `archive-root-export-and-zip-import-restore` fully implemented, validated, and ready for archival
   - **Objective:** Enable repo-root archive exports for USB copy workflows and direct zip restore without manual unzip/staging

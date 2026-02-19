@@ -64,3 +64,17 @@ Auto-generation enqueue SHALL ignore non-image NPC media keys.
 #### Scenario: NPC video miss
 - **WHEN** `/media/npcs/<name>_video.mp4` misses
 - **THEN** no portrait auto-generation task is enqueued
+
+### Requirement: Allied NPC auto-generation SHALL hydrate portrait context from canonical character state when available
+
+Before provider generation, allied NPC auto-generation SHALL attempt to hydrate structured NPC context from canonical character records.
+
+#### Scenario: Allied NPC has canonical character record
+- **WHEN** an allied NPC miss is processed and character data is available
+- **THEN** generation context includes resolved identity fields (for example `name`, `race`, `class`) and available profile context
+- **AND** generation avoids generic `Unknown`/`NPC` defaults for those fields
+
+#### Scenario: Allied NPC missing canonical record
+- **WHEN** an allied NPC miss is processed and character data is unavailable
+- **THEN** generation may fallback to party role/name hints
+- **AND** miss handling remains asynchronous and non-blocking
