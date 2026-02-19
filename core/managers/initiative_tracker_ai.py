@@ -13,6 +13,8 @@ import json
 import re
 import os
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T046", "core/managers/initiative_tracker_ai.py", 172)
 from config import OPENAI_API_KEY, DM_MAIN_MODEL
 import logging
 
@@ -167,11 +169,7 @@ def generate_live_initiative_tracker(encounter_data, conversation_history, curre
         
         # Query AI model
         client = OpenAI(api_key=OPENAI_API_KEY)
-        response = client.chat.completions.create(
-            model=DM_MAIN_MODEL,
-            messages=api_messages,
-            temperature=0.1
-        )
+        response = capture_and_fanout("T046", client.chat.completions.create, messages=api_messages, model=DM_MAIN_MODEL, temperature=0.1)
         
         # Extract the tracker from response
         tracker_text = response.choices[0].message.content

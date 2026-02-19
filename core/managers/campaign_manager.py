@@ -72,6 +72,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T038", "core/managers/campaign_manager.py", 539)
+register_callsite("T039", "core/managers/campaign_manager.py", 561)
 import config
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.module_path_manager import ModulePathManager
@@ -533,14 +536,10 @@ CONVERSATION CONTEXT:
 Focus on story outcomes, character development, and decisions that will matter in future adventures."""
         
         try:
-            response = self.client.chat.completions.create(
-                model=config.DM_SUMMARIZATION_MODEL,
-                messages=[
+            response = capture_and_fanout("T038", self.client.chat.completions.create, messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.6
-            )
+                ], model=config.DM_SUMMARIZATION_MODEL, temperature=0.6)
             
             summary_text = response.choices[0].message.content
             
@@ -559,14 +558,10 @@ Focus on story outcomes, character development, and decisions that will matter i
             Format as JSON with keys: relationships, artifacts, hubs, worldState, unlockedModules"""
             
             try:
-                export_response = self.client.chat.completions.create(
-                    model=config.DM_SUMMARY_MODEL,
-                    messages=[
+                export_response = capture_and_fanout("T039", self.client.chat.completions.create, messages=[
                         {"role": "system", "content": "Extract campaign-relevant data from module completion summary. Be concise and factual."},
                         {"role": "user", "content": export_prompt}
-                    ],
-                    temperature=0.3
-                )
+                    ], model=config.DM_SUMMARY_MODEL, temperature=0.3)
                 
                 exported_data = json.loads(export_response.choices[0].message.content)
             except:

@@ -53,6 +53,9 @@ import json
 import os
 import sys
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T047", "core/managers/level_up_manager.py", 204)
+register_callsite("T048", "core/managers/level_up_manager.py", 230)
 from config import OPENAI_API_KEY, LEVEL_UP_MODEL, DM_VALIDATION_MODEL
 from utils.file_operations import safe_read_json
 from updates.update_character_info import update_character_info, normalize_character_name
@@ -198,11 +201,7 @@ class LevelUpSession:
 
     def _get_ai_response(self):
         try:
-            response = client.chat.completions.create(
-                model=LEVEL_UP_MODEL,
-                messages=self.conversation,
-                temperature=0.7
-            )
+            response = capture_and_fanout("T047", client.chat.completions.create, messages=self.conversation, model=LEVEL_UP_MODEL, temperature=0.7)
             
             # Track token usage with context for telemetry
             if USAGE_TRACKING_AVAILABLE:
@@ -228,11 +227,7 @@ class LevelUpSession:
         ]
         # Use a separate call to the validation model
         try:
-            response = client.chat.completions.create(
-                model=DM_VALIDATION_MODEL,
-                messages=validation_messages,
-                temperature=0.2
-            )
+            response = capture_and_fanout("T048", client.chat.completions.create, messages=validation_messages, model=DM_VALIDATION_MODEL, temperature=0.2)
             
             # Track token usage with context for telemetry
             if USAGE_TRACKING_AVAILABLE:

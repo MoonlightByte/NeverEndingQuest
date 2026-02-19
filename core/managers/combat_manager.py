@@ -121,6 +121,13 @@ from model_config import USE_COMPRESSED_COMBAT
 from datetime import datetime
 from utils.xp import main as calculate_xp
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T040", "core/managers/combat_manager.py", 783)
+register_callsite("T041", "core/managers/combat_manager.py", 1010)
+register_callsite("T042", "core/managers/combat_manager.py", 1804)
+register_callsite("T043", "core/managers/combat_manager.py", 2199)
+register_callsite("T044", "core/managers/combat_manager.py", 2312)
+register_callsite("T045", "core/managers/combat_manager.py", 2860)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -773,11 +780,7 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
     max_validation_retries = 5
     for attempt in range(max_validation_retries):
         try:
-            validation_result = client.chat.completions.create(
-                model=DM_VALIDATION_MODEL,
-                temperature=0.3,  # Lower temperature for more consistent validation
-                messages=validation_conversation
-            )
+            validation_result = capture_and_fanout("T040", client.chat.completions.create, messages=validation_conversation, model=DM_VALIDATION_MODEL, temperature=0.3)
 
             # Log API call to master log
             try:
@@ -1004,11 +1007,7 @@ def summarize_dialogue(conversation_history_param, location_data, party_tracker_
     ]
 
     # Generate dialogue summary
-    response = client.chat.completions.create(
-        model=COMBAT_DIALOGUE_SUMMARY_MODEL, # Use imported model
-        temperature=TEMPERATURE,
-        messages=dialogue_summary_prompt
-    )
+    response = capture_and_fanout("T041", client.chat.completions.create, messages=dialogue_summary_prompt, model=COMBAT_DIALOGUE_SUMMARY_MODEL, temperature=TEMPERATURE)
 
     # Log API call to master log
     try:
@@ -1802,15 +1801,10 @@ Create a JSON summary with EXACTLY this structure:
 Focus on mechanical accuracy for the actions. For narrative_highlights, extract the most dramatic or memorable moments that happened this round - critical hits, character deaths, powerful spells, clutch saves, or impactful dialogue. Keep each highlight to one evocative sentence."""
 
         # Use the mini model for efficiency
-        response = client.chat.completions.create(
-            model=DM_MINI_MODEL,
-            messages=[
+        response = capture_and_fanout("T042", client.chat.completions.create, messages=[
                 {"role": "system", "content": "You are a combat log analyzer. Extract mechanical game information and key narrative moments. Always return valid JSON."},
                 {"role": "user", "content": prompt}
-            ],
-            temperature=0.1,
-            response_format={"type": "json_object"}
-        )
+            ], model=DM_MINI_MODEL, temperature=0.1, response_format={"type": "json_object"})
         
         # Track usage with context for telemetry
         if USAGE_TRACKING_AVAILABLE:
@@ -2202,10 +2196,7 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
                    json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
                print(f"DEBUG: [COMBAT] Exported compressed messages to debug/api_captures/combat_messages_to_api.json")
                
-               response = client.chat.completions.create(
-                   model=GPT5_MINI_MODEL,
-                   messages=messages_to_send
-               )
+               response = capture_and_fanout("T043", client.chat.completions.create, messages=messages_to_send, model=GPT5_MINI_MODEL)
 
                # Log API call to master log
                try:
@@ -2318,11 +2309,7 @@ Player: {initial_prompt_text}"""
                    json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
                print(f"DEBUG: [COMBAT] Exported compressed messages to debug/api_captures/combat_messages_to_api.json")
                
-               response = client.chat.completions.create(
-                   model=COMBAT_MAIN_MODEL, 
-                   temperature=temperature_used, 
-                   messages=messages_to_send
-               )
+               response = capture_and_fanout("T044", client.chat.completions.create, messages=messages_to_send, model=COMBAT_MAIN_MODEL, temperature=temperature_used)
                
                # Track usage
                if USAGE_TRACKING_AVAILABLE:
@@ -2870,11 +2857,7 @@ Rules:
                            json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
                        print(f"DEBUG: [COMBAT] Exported compressed messages to combat_messages_to_api.json")
                        
-                       response = client.chat.completions.create(
-                           model=combat_model,
-                           messages=messages_to_send,
-                           reasoning={"effort": "high"}
-                       )
+                       response = capture_and_fanout("T045", client.chat.completions.create, messages=messages_to_send, model=combat_model, reasoning={"effort": "high"})
                    else:
                        # Default is medium reasoning (no need to specify)
                        print(f"DEBUG: [COMBAT] Using GPT-5 model: {combat_model} (default medium reasoning)")

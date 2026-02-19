@@ -34,6 +34,8 @@ import os
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T049", "core/managers/storage_processor.py", 286)
 import config
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.module_path_manager import ModulePathManager
@@ -281,11 +283,7 @@ For "What's in our storage here?":
                 messages = self._create_processing_prompt(description, context)
                 
                 # Call AI model
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    temperature=0.1  # Low temperature for consistency
-                )
+                response = capture_and_fanout("T049", self.client.chat.completions.create, messages=messages, model=self.model, temperature=0.1)
                 
                 # Parse AI response
                 ai_response = response.choices[0].message.content.strip()
