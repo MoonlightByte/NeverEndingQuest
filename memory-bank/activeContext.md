@@ -6,6 +6,15 @@
   - Prior docs pass already committed `openspec/changes/toolkit-module-builder-rebuild-phase1-npc-alignment/` and memory-bank updates.
   - `.opencode` commit guardrail confirmed: stage only curated skills/command docs when needed; do not force-add dependency/package artifacts.
 
+- **Portrait Prompt Visual Brief Hardening (COMPLETED - 2026-02-19):**
+  - Reworked PC/allied portrait prompt assembly in `core/toolkit/portrait_service.py` to use structured-to-prose visual brief synthesis instead of label-like stat formatting.
+  - Added defensive parsing helpers for numeric extraction and age descriptor mapping to prevent prompt build failures on non-numeric values.
+  - Removed passport wording and reinforced anti-overlay exclusions to reduce character-sheet/card render artifacts.
+  - Added connector normalization for personality clauses to avoid awkward phrasing patterns (`guided by believes`, `deeply connected to loyal to`, repeated "sometimes").
+  - Added punctuation guard to prevent four-dot artifacts from bounded truncation.
+  - Expanded regression coverage in `scripts/test_pc_image_create_mvp.py` (prompt format, anti-document exclusions, non-numeric safety, connector normalization).
+  - Verification: `python3 -m py_compile core/toolkit/portrait_service.py` PASS, prompt test class PASS (19 tests).
+
 - **Debug Sidebar Density + Cost Table Alignment (COMPLETED - 2026-02-19):**
   - Implemented compact density tuning in `web/templates/game_interface.html` for narrow debug sidebar readability and long narration sessions.
   - Finalized always-on compact spacing while removing LED font leak from sidebar tabs and narration chat.

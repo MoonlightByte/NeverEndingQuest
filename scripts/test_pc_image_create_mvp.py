@@ -580,7 +580,7 @@ class TestPromptEnrichmentWithPersonalityBackground(unittest.TestCase):
     """Test suite for portrait prompt enrichment with personality/background fields (Step 9.1)."""
 
     def test_prompt_includes_personality_background_fields_when_present(self):
-        """Test 9.1.1: Prompt includes personality_traits, ideals, bonds, flaws when present."""
+        """Test 9.1.1: Prompt includes personality_traits, ideals, bonds, flaws as prose descriptors in visual brief."""
         from core.toolkit.portrait_service import build_character_portrait_prompt
 
         character_data = {
@@ -605,12 +605,12 @@ class TestPromptEnrichmentWithPersonalityBackground(unittest.TestCase):
 
         prompt = build_character_portrait_prompt(character_data)
 
-        # Verify personality/background context is included
-        self.assertIn("personality:", prompt.lower())
-        self.assertIn("ideals:", prompt.lower())
-        self.assertIn("bonds:", prompt.lower())
-        self.assertIn("flaws:", prompt.lower())
-        self.assertIn("background ability:", prompt.lower())
+        # Verify visual brief uses prose format, not label: format
+        # Visual brief should include personality/background as natural language
+        self.assertIn("their expression shows", prompt.lower())
+        self.assertIn("guided by", prompt.lower())
+        self.assertIn("deeply connected to", prompt.lower())
+        self.assertIn("and can be", prompt.lower())
         self.assertIn("known for", prompt.lower())
 
         # Verify actual content appears (sanitized/bounded)
@@ -618,6 +618,14 @@ class TestPromptEnrichmentWithPersonalityBackground(unittest.TestCase):
         self.assertIn("Justice", prompt)
         self.assertIn("comrades", prompt)
         self.assertIn("Military Rank", prompt)
+
+        # Should NOT use label: format that encourages card/sheet layout
+        self.assertNotIn("personality:", prompt.lower())
+        self.assertNotIn("ideals:", prompt.lower())
+        self.assertNotIn("bonds:", prompt.lower())
+        self.assertNotIn("flaws:", prompt.lower())
+        self.assertNotIn("background ability:", prompt.lower())
+        self.assertNotIn("character details:", prompt.lower())
 
     def test_prompt_handles_missing_personality_background_fields(self):
         """Test 9.1.2: Prompt works correctly when personality/background fields are missing."""
@@ -633,8 +641,8 @@ class TestPromptEnrichmentWithPersonalityBackground(unittest.TestCase):
 
         prompt = build_character_portrait_prompt(character_data)
 
-        # Should still generate valid prompt
-        self.assertIn("Epic fantasy character art portrait", prompt)
+        # Should still generate valid visual brief prompt
+        self.assertIn("testhero is", prompt.lower())
         self.assertIn("Elf", prompt)
         self.assertIn("Rogue", prompt)
 
@@ -657,6 +665,390 @@ class TestPromptEnrichmentWithPersonalityBackground(unittest.TestCase):
         # Should have collapsed whitespace
         self.assertNotIn("\n", result)
         self.assertNotIn("\t", result)
+
+    def test_prompt_includes_depth_of_field_background(self):
+        """Test: Prompt includes depth-of-field/soft-focus background direction."""
+        from core.toolkit.portrait_service import build_character_portrait_prompt
+
+        character_data = {
+            "name": "TestHero",
+            "race": "Human",
+            "class": "Fighter",
+            "age": "25"
+        }
+
+        prompt = build_character_portrait_prompt(character_data)
+
+        # Should include depth of field or soft-focus language
+        has_dof = (
+            "depth of field" in prompt.lower() or
+            "dof" in prompt.lower() or
+            "soft-focus" in prompt.lower() or
+            "shallow" in prompt.lower()
+        )
+        self.assertTrue(has_dof, "Prompt should include depth-of-field guidance")
+
+    def test_prompt_excludes_text_and_interface_elements(self):
+        """Test: Prompt explicitly forbids text, UI, and game interface elements."""
+        from core.toolkit.portrait_service import build_character_portrait_prompt
+
+        character_data = {
+            "name": "TestHero",
+            "race": "Human",
+            "class": "Fighter",
+            "age": "25"
+        }
+
+        prompt = build_character_portrait_prompt(character_data).lower()
+
+        # Should exclude text/letters/words
+        self.assertIn("no text", prompt, "Prompt should exclude text")
+        self.assertIn("no letters", prompt, "Prompt should exclude letters")
+        self.assertIn("no words", prompt, "Prompt should exclude words")
+
+        # Should exclude UI/HUD/game interface
+        self.assertIn("no ui", prompt, "Prompt should exclude UI")
+        self.assertIn("no hud", prompt, "Prompt should exclude HUD")
+
+        # Should exclude logos/watermarks
+        self.assertIn("no logos", prompt, "Prompt should exclude logos")
+        self.assertIn("no watermarks", prompt, "Prompt should exclude watermarks")
+
+        # Should exclude borders and frames
+        self.assertIn("no borders", prompt, "Prompt should exclude borders")
+        self.assertIn("no frames", prompt, "Prompt should exclude frames")
+
+    def test_prompt_uses_portrait_framing_not_full_body(self):
+        """Test: Prompt uses portrait framing (head-and-shoulders/upper torso), not full-body."""
+        from core.toolkit.portrait_service import build_character_portrait_prompt
+
+        character_data = {
+            "name": "TestHero",
+            "race": "Human",
+            "class": "Fighter",
+            "age": "25"
+        }
+
+        prompt = build_character_portrait_prompt(character_data).lower()
+
+        # Should specify portrait framing
+        has_portrait_framing = (
+            "head-and-shoulders" in prompt or
+            "upper torso" in prompt or
+            "portrait framing" in prompt
+        )
+        self.assertTrue(has_portrait_framing, "Prompt should specify portrait framing")
+
+        # Should NOT use full-body framing
+        self.assertNotIn("full-body", prompt, "Prompt should not use full-body framing")
+        self.assertNotIn("full body", prompt, "Prompt should not use full body framing")
+
+    def test_prompt_adds_alignment_atmosphere_once(self):
+        """Test: Alignment atmosphere appears in visual brief (not duplicated)."""
+        from core.toolkit.portrait_service import build_character_portrait_prompt
+
+        character_data = {
+            "name": "TestHero",
+            "race": "Human",
+            "class": "Fighter",
+            "alignment": "neutral"
+        }
+
+        prompt = build_character_portrait_prompt(character_data).lower()
+
+        # Alignment should appear in visual brief exactly once
+        self.assertEqual(prompt.count("balanced, neutral demeanor"), 1)
+
+    def test_prompt_has_visual_brief_format(self):
+        """Test: Prompt uses natural-language visual brief format (not passport/card semantics)."""
+        from core.toolkit.portrait_service import build_character_portrait_prompt
+
+        character_data = {
+            "name": "TestHero",
+            "race": "Human",
+            "class": "Fighter",
+            "age": "25"
+        }
+
+        prompt = build_character_portrait_prompt(character_data).lower()
+
+        # Should use visual brief prose format (X is a...)
+        self.assertIn("testhero is", prompt, "Prompt should use visual brief identity format")
+        self.assertIn("human fighter", prompt, "Prompt should include race/class")
+
+        # Should NOT use passport-style (removed to avoid document/card layouts)
+        self.assertNotIn("passport-style", prompt, "Prompt should NOT use passport-style (causes card layouts)")
+        self.assertNotIn("passport", prompt, "Prompt should NOT reference passports")
+
+    def test_prompt_excludes_character_sheet_elements(self):
+        """Test: Prompt explicitly forbids character sheet/card/panel overlays."""
+        from core.toolkit.portrait_service import build_character_portrait_prompt
+
+        character_data = {
+            "name": "TestHero",
+            "race": "Human",
+            "class": "Fighter",
+            "age": "25"
+        }
+
+        prompt = build_character_portrait_prompt(character_data).lower()
+
+        # Should exclude card/sheet/panel elements
+        self.assertIn("no character sheet", prompt, "Prompt should exclude character sheet")
+        self.assertIn("no stat card", prompt, "Prompt should exclude stat card")
+        self.assertIn("no status panel", prompt, "Prompt should exclude status panel")
+        self.assertIn("no info box", prompt, "Prompt should exclude info box")
+        self.assertIn("no captions", prompt, "Prompt should exclude captions")
+
+    def test_prompt_uses_face_centric_composition(self):
+        """Test: Prompt emphasizes face-centered, close crop composition."""
+        from core.toolkit.portrait_service import build_character_portrait_prompt
+
+        character_data = {
+            "name": "TestHero",
+            "race": "Human",
+            "class": "Fighter",
+            "age": "25"
+        }
+
+        prompt = build_character_portrait_prompt(character_data).lower()
+
+        # Should emphasize face is focal subject
+        self.assertIn("face is the clear focal subject", prompt, "Prompt should make face focal")
+        self.assertIn("close head-and-shoulders portrait", prompt, "Prompt should specify close head-and-shoulders")
+        self.assertIn("face centered", prompt, "Prompt should specify face centered")
+
+    def test_prompt_excludes_document_paper_parchment_terms(self):
+        """Test: Prompt explicitly forbids document/paper/parchment to prevent sheet-like outputs."""
+        from core.toolkit.portrait_service import build_character_portrait_prompt
+
+        character_data = {
+            "name": "TestHero",
+            "race": "Human",
+            "class": "Fighter",
+            "age": "25"
+        }
+
+        prompt = build_character_portrait_prompt(character_data).lower()
+
+        # Should exclude document/page/paper/parchment terms
+        self.assertIn("no document", prompt, "Prompt should exclude document")
+        self.assertIn("no page", prompt, "Prompt should exclude page")
+        self.assertIn("no paper", prompt, "Prompt should exclude paper")
+        self.assertIn("no parchment", prompt, "Prompt should exclude parchment")
+        self.assertIn("no form", prompt, "Prompt should exclude form")
+
+    def test_visual_brief_helper_converts_stats_to_prose(self):
+        """Test: Visual brief helper converts structured stats into prose descriptors."""
+        from core.toolkit.portrait_service import _build_visual_brief, _convert_age_to_descriptor
+
+        character_data = {
+            "name": "ElderTest",
+            "race": "Human",
+            "class": "Wizard",
+            "age": "78",
+            "height": "4'",
+            "weight": "60 kg",
+            "eyes": "Blue",
+            "skin": "Fair",
+            "hair": "White"
+        }
+
+        visual_brief = _build_visual_brief(character_data)
+
+        # Age should be converted to descriptor, not raw number
+        self.assertIn("elderly", visual_brief.lower())
+
+        # Physical traits should be in prose, not label format
+        self.assertIn("blue eyes", visual_brief.lower())
+        self.assertIn("fair skin", visual_brief.lower())
+        self.assertIn("white hair", visual_brief.lower())
+
+        # Should not use label: value format
+        self.assertNotIn("eyes:", visual_brief.lower())
+        self.assertNotIn("skin:", visual_brief.lower())
+        self.assertNotIn("hair:", visual_brief.lower())
+
+    def test_prompt_uses_photorealistic_style_anchor(self):
+        """Test: Prompt uses photorealistic style anchor aligned with module-builder quality."""
+        from core.toolkit.portrait_service import build_character_portrait_prompt
+
+        character_data = {
+            "name": "TestHero",
+            "race": "Human",
+            "class": "Fighter",
+            "age": "25"
+        }
+
+        prompt = build_character_portrait_prompt(character_data).lower()
+
+        # Should include photorealistic/ultra-realistic style language
+        self.assertIn("ultra-realistic", prompt, "Prompt should specify ultra-realistic")
+        self.assertIn("photorealistic", prompt, "Prompt should specify photorealistic")
+        self.assertIn("cinematic quality", prompt, "Prompt should specify cinematic quality")
+        self.assertIn("detailed textures", prompt, "Prompt should specify detailed textures")
+
+    def test_defensive_parsing_handles_non_numeric_values(self):
+        """Test: Visual brief handles non-numeric age/height/weight gracefully."""
+        from core.toolkit.portrait_service import build_character_portrait_prompt, _extract_first_int
+
+        # Test helper function
+        self.assertIsNone(_extract_first_int(""))
+        self.assertIsNone(_extract_first_int("slight"))
+        self.assertIsNone(_extract_first_int("unknown"))
+        self.assertEqual(_extract_first_int("78"), 78)
+        self.assertEqual(_extract_first_int("60 kg"), 60)
+
+        # Test with weird character data
+        weird_character = {
+            "name": "WeirdTest",
+            "race": "Human",
+            "class": "Fighter",
+            "age": "old-ish",  # Non-numeric
+            "height": "tall",  # Non-numeric
+            "weight": "heavy",  # Non-numeric
+            "eyes": "Blue",
+        }
+
+        # Should not crash
+        prompt = build_character_portrait_prompt(weird_character)
+        self.assertIn("WeirdTest is", prompt)
+        self.assertIn("human fighter", prompt.lower())
+
+    def test_article_helper_uses_correct_article(self):
+        """Test: Article helper chooses 'a' or 'an' correctly."""
+        from core.toolkit.portrait_service import _get_article, _build_visual_brief
+
+        # Test helper directly
+        self.assertEqual(_get_article("elderly"), "an")
+        self.assertEqual(_get_article("human"), "a")
+        self.assertEqual(_get_article("adult"), "an")
+        self.assertEqual(_get_article("young"), "a")
+
+        # Test in visual brief context
+        elderly_gnome = {
+            "name": "OldGnome",
+            "race": "Gnome",
+            "class": "Wizard",
+            "age": "78",
+        }
+        brief = _build_visual_brief(elderly_gnome).lower()
+        # Should use "an" before elderly
+        self.assertIn("is an elderly", brief)
+
+        adult_human = {
+            "name": "TestAdult",
+            "race": "Human",
+            "class": "Fighter",
+            "age": "30",
+        }
+        brief = _build_visual_brief(adult_human).lower()
+        # Should use "an" before adult (adult starts with vowel sound)
+        self.assertIn("is an adult", brief)
+
+    def test_personality_normalization_avoids_duplication(self):
+        """Test: Personality phrase normalization prevents awkward duplication."""
+        from core.toolkit.portrait_service import _normalize_personality_phrase
+
+        # Should strip redundant leading phrases
+        self.assertEqual(
+            _normalize_personality_phrase("Believes that justice matters"),
+            "justice matters"
+        )
+        self.assertEqual(
+            _normalize_personality_phrase("Sometimes acts rashly"),
+            "acts rashly"
+        )
+        self.assertEqual(
+            _normalize_personality_phrase("Always helps others"),
+            "helps others"
+        )
+        self.assertEqual(
+            _normalize_personality_phrase("Loyal to the town guard"),
+            "the town guard"
+        )
+        self.assertEqual(
+            _normalize_personality_phrase("Devoted to my family"),
+            "my family"
+        )
+        self.assertEqual(
+            _normalize_personality_phrase("Sworn to defend the weak"),
+            "defend the weak"
+        )
+        self.assertEqual(
+            _normalize_personality_phrase("Committed to truth"),
+            "truth"
+        )
+        self.assertEqual(
+            _normalize_personality_phrase("Bound to an old oath"),
+            "an old oath"
+        )
+
+        # Should preserve normal text
+        self.assertEqual(
+            _normalize_personality_phrase("Just and honorable"),
+            "Just and honorable"
+        )
+
+    def test_prompt_avoids_awkward_connector_duplication(self):
+        """Test: Prompt avoids repeated connector phrases in personality clauses."""
+        from core.toolkit.portrait_service import build_character_portrait_prompt
+
+        character_data = {
+            "name": "DupCheck",
+            "race": "Human",
+            "class": "Rogue",
+            "ideals": "Believes that rules should bend to protect innocents",
+            "bonds": "Loyal to the old guild that raised me",
+            "flaws": "Sometimes acts before thinking"
+        }
+
+        prompt = build_character_portrait_prompt(character_data).lower()
+
+        self.assertNotIn("guided by a belief that believes", prompt)
+        self.assertNotIn("deeply connected to loyal to", prompt)
+        self.assertNotIn("yet sometimes showing sometimes", prompt)
+
+    def test_prompt_has_no_ellipsis_punctuation_artifacts(self):
+        """Test: Prompt should not contain four-dot punctuation artifacts."""
+        from core.toolkit.portrait_service import build_character_portrait_prompt
+
+        character_data = {
+            "name": "PunctCheck",
+            "race": "Human",
+            "class": "Wizard",
+            "flaws": "Sometimes lets ambition cloud judgment, leading to risky choices that endanger themselves and others in tense situations that escalate quickly"
+        }
+
+        prompt = build_character_portrait_prompt(character_data)
+        self.assertNotIn("....", prompt)
+
+    def test_visual_brief_preserves_core_identity(self):
+        """Test: Visual brief preserves essential character identity fields."""
+        from core.toolkit.portrait_service import _build_visual_brief
+
+        character_data = {
+            "name": "TestIdentity",
+            "race": "Elf",
+            "class": "Rogue",
+            "alignment": "chaotic good",
+            "age": "25",
+            "eyes": "Green",
+            "hair": "Silver"
+        }
+
+        brief = _build_visual_brief(character_data)
+
+        # Core identity preserved
+        self.assertIn("TestIdentity is", brief)
+        self.assertIn("Elf", brief)
+        self.assertIn("Rogue", brief)
+        self.assertIn("Green eyes", brief)
+        self.assertIn("Silver hair", brief)
+
+        # No label formatting
+        self.assertNotIn("race:", brief.lower())
+        self.assertNotIn("class:", brief.lower())
 
 
 class TestCreateAPIProfileValidation(unittest.TestCase):

@@ -227,3 +227,14 @@ The system maintains two formats for LLM prompts to support both development and
   - frontend draft rendering and stream sentence TTS (`game_interface.html`, `tts_queue_manager.js`)
 - Preserve baseline canonical narration path (`WebOutputCapture` -> `game_output`) with no stream suppression coupling.
 - This pattern keeps merge-safe future runway while eliminating immediate UX/token-cost risk.
+
+### 16. Structured-to-Prose Portrait Prompt Pattern (2026-02-19)
+- Portrait generation quality improves when structured profile fields are translated into one natural-language visual brief before style instructions.
+- Prompt assembly order:
+  - visual brief paragraph (identity + appearance + personality cues)
+  - composition instructions (head-and-shoulders, face focal)
+  - strict negatives (no text/UI/sheet/document overlays)
+- Avoid positive terms that imply documents/cards (for example, passport/card/profile sheet wording).
+- Use defensive parsing for optional appearance fields (`age`, `height`, `weight`) so non-numeric values do not break prompt composition.
+- Normalize leading personality/bond phrasing (`believes that`, `loyal to`, `sometimes`, `can be`) before connector composition to prevent duplicated phrase artifacts.
+- Add punctuation guards after composition (`....` -> `...`) for bounded free-text truncation paths.

@@ -15,6 +15,15 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **Portrait Prompt Visual Brief Hardening (COMPLETED - 2026-02-19):**
+  - **Objective:** Stop portrait generations from rendering fake character sheets/cards with text overlays and align PC/allied outputs with module-builder quality direction.
+  - **Implementation:** `core/toolkit/portrait_service.py` now synthesizes a natural-language visual brief from character profile fields before final image prompt assembly.
+  - **Prompt Safety:** Removed passport semantics, added explicit anti-document exclusions (`no document/page/form/paper/parchment`) in addition to text/UI/HUD bans.
+  - **Resilience:** Added safe parsing helpers (`_extract_first_int`, age descriptor mapping) so non-numeric appearance values do not crash prompt composition.
+  - **Prose Quality:** Added personality phrase normalization and flaw clause formatting to reduce awkward connector duplication and punctuation artifacts.
+  - **Tests:** Expanded `scripts/test_pc_image_create_mvp.py` prompt suite with regression checks for non-numeric parsing, no-passport behavior, anti-document exclusions, connector duplication prevention, and punctuation cleanup.
+  - **Verification:** `python3 -m py_compile core/toolkit/portrait_service.py` PASS; `.venv/bin/python scripts/test_pc_image_create_mvp.py TestPromptEnrichmentWithPersonalityBackground` PASS (19 tests).
+
 - **Debug Sidebar Density + Cost Row Alignment (COMPLETED - 2026-02-19):**
   - **Objective:** Improve readability in narrow debug sidebar and dense narration sessions without changing behavior.
   - **Initial Fix:** Added compact UI density pass in `web/templates/game_interface.html` (smaller fonts, tighter spacing, two-row Session/Week rollup support).

@@ -66,12 +66,275 @@ def _sanitize_prompt_text(text: str, max_length: int = 200) -> str:
     return cleaned
 
 
+def _extract_first_int(text: str) -> Optional[int]:
+    """Safely extract first integer from text.
+    
+    Args:
+        text: Input text that may contain numbers
+        
+    Returns:
+        First integer found, or None if no valid number
+    """
+    if not text:
+        return None
+    try:
+        match = re.search(r'\d+', str(text))
+        if match:
+            return int(match.group())
+    except (AttributeError, ValueError):
+        pass
+    return None
+
+
+def _convert_age_to_descriptor(age: str) -> str:
+    """Convert age value to visual descriptor.
+    
+    Args:
+        age: Age value (string or numeric)
+        
+    Returns:
+        Visual descriptor for age (for example, elderly, middle-aged, young)
+    """
+    if not age:
+        return ""
+    age_num = _extract_first_int(age)
+    if age_num is None:
+        # Return original if not parseable
+        return str(age).strip()
+    if age_num >= 60:
+        return "elderly"
+    elif age_num >= 40:
+        return "middle-aged"
+    elif age_num >= 25:
+        return "adult"
+    elif age_num >= 13:
+        return "young"
+    else:
+        return "youthful"
+
+
+def _get_article(word: str) -> str:
+    """Return appropriate article ('a' or 'an') for a word.
+    
+    Args:
+        word: The word to get article for
+        
+    Returns:
+        'an' if word starts with vowel, 'a' otherwise
+    """
+    if not word:
+        return "a"
+    first_letter = str(word)[0].lower()
+    if first_letter in 'aeiou':
+        return "an"
+    return "a"
+
+
+def _normalize_personality_phrase(phrase: str) -> str:
+    """Normalize personality phrase to avoid awkward duplication.
+    
+    Removes leading phrases like "Believes that...", "Sometimes..." to avoid
+    output like "guided by Believes that..." or "yet sometimes Sometimes..."
+    
+    Args:
+        phrase: Raw personality/ideals/bonds/flaws text
+        
+    Returns:
+        Normalized phrase without redundant leading words
+    """
+    if not phrase:
+        return ""
+    
+    phrase = phrase.strip()
+    
+    # Remove redundant leading phrases that would duplicate connector words
+    redundant_starts = [
+        "believes that ",
+        "believes ",
+        "belief that ",
+        "loyal to ",
+        "devoted to ",
+        "sworn to ",
+        "committed to ",
+        "bound to ",
+        "can be ",
+        "sometimes ",
+        "often ",
+        "always ",
+        "never ",
+    ]
+    
+    lower_phrase = phrase.lower()
+    for pattern in redundant_starts:
+        if lower_phrase.startswith(pattern):
+            phrase = phrase[len(pattern):].strip()
+            break
+
+    # Trim trailing punctuation so clause composition controls sentence endings.
+    # Preserve ellipsis because it may come from bounded truncation.
+    phrase = re.sub(r"[;,]\s*$", "", phrase)
+    if phrase.endswith(".") and not phrase.endswith("..."):
+        phrase = phrase[:-1].rstrip()
+    
+    return phrase
+
+
+def _format_flaw_clause(flaws: str) -> str:
+    """Format flaw phrase into natural prose.
+
+    Args:
+        flaws: Normalized flaw phrase
+
+    Returns:
+        Flaw clause suitable for sentence composition
+    """
+    if not flaws:
+        return ""
+
+    lower_flaws = flaws.lower()
+    if lower_flaws.startswith("lets "):
+        return f"and can let {flaws[5:]}"
+    if lower_flaws.startswith("let "):
+        return f"and can {flaws}"
+    if lower_flaws.startswith("be "):
+        return f"and can be {flaws[3:]}"
+    return f"and can be {flaws}"
+
+
+def _build_visual_brief(character_data: Dict[str, Any]) -> str:
+    """Build a natural-language visual brief from structured character data.
+    
+    Converts structured profile fields into a concise prose paragraph
+    without label-style formatting that could trigger card/sheet layouts.
+    
+    Args:
+        character_data: Dictionary with character fields
+        
+    Returns:
+        Visual brief paragraph (prose only, no field labels)
+    """
+    # Extract fields
+    name = character_data.get("name", "Character")
+    race = character_data.get("race", "Human")
+    char_class = character_data.get("class", "Adventurer")
+    background = character_data.get("background", "")
+    alignment = character_data.get("alignment", "neutral")
+    
+    # Appearance fields
+    age_raw = str(character_data.get("age", "")).strip()
+    height = str(character_data.get("height", "")).strip()
+    weight = str(character_data.get("weight", "")).strip()
+    eyes = str(character_data.get("eyes", "")).strip()
+    skin = str(character_data.get("skin", "")).strip()
+    hair = str(character_data.get("hair", "")).strip()
+    
+    # Convert age to visual descriptor
+    age_desc = _convert_age_to_descriptor(age_raw)
+    
+    # Build physical description as prose
+    physical_parts = []
+    if age_desc:
+        physical_parts.append(age_desc)
+    if height:
+        # Extract numeric for stature hint (safely)
+        height_num = _extract_first_int(height)
+        if height_num and height_num <= 5:
+            physical_parts.append("short-statured")
+    if weight:
+        # Extract numeric for build hint (safely)
+        weight_num = _extract_first_int(weight)
+        if weight_num and weight_num < 70 and "kg" in weight.lower():
+            physical_parts.append("compact build")
+    if eyes:
+        physical_parts.append(f"{eyes} eyes")
+    if skin:
+        physical_parts.append(f"{skin} skin")
+    if hair:
+        physical_parts.append(f"{hair} hair")
+    
+    # Filter empty and join
+    physical_parts = [p for p in physical_parts if p]
+    
+    # Build race/class clause with physical traits
+    if physical_parts:
+        identity_desc = f"{', '.join(physical_parts)} {race} {char_class}"
+    else:
+        identity_desc = f"{race} {char_class}"
+    
+    # Add background if present
+    if background:
+        identity_desc += f" with {background} roots"
+    
+    # Get appropriate article for the identity description
+    article = _get_article(identity_desc.split()[0] if identity_desc else "a")
+    identity_clause = f"{article} {identity_desc}"
+    
+    # Sanitize and normalize personality fields
+    personality_traits = _normalize_personality_phrase(
+        _sanitize_prompt_text(character_data.get("personality_traits", ""), max_length=120)
+    )
+    ideals = _normalize_personality_phrase(
+        _sanitize_prompt_text(character_data.get("ideals", ""), max_length=100)
+    )
+    bonds = _normalize_personality_phrase(
+        _sanitize_prompt_text(character_data.get("bonds", ""), max_length=120)
+    )
+    flaws = _normalize_personality_phrase(
+        _sanitize_prompt_text(character_data.get("flaws", ""), max_length=100)
+    )
+    
+    # Build demeanor as prose
+    demeanor_parts = []
+    if personality_traits:
+        demeanor_parts.append(personality_traits)
+    if ideals:
+        demeanor_parts.append(f"guided by the idea that {ideals}")
+    if bonds:
+        demeanor_parts.append(f"deeply connected to {bonds}")
+    if flaws:
+        demeanor_parts.append(_format_flaw_clause(flaws))
+    
+    demeanor_clause = ""
+    if demeanor_parts:
+        demeanor_text = "; ".join(demeanor_parts)
+        if demeanor_text.endswith("..."):
+            demeanor_clause = f"Their expression shows {demeanor_text} "
+        else:
+            demeanor_clause = f"Their expression shows {demeanor_text}. "
+    
+    # Add background feature context
+    bg_feature = character_data.get("backgroundFeature", {})
+    bg_clause = ""
+    if isinstance(bg_feature, dict):
+        bg_name = _sanitize_prompt_text(bg_feature.get("name", ""), max_length=80)
+        if bg_name:
+            bg_clause = f"Known for {bg_name}. "
+    
+    # Add alignment atmosphere
+    alignment_lower = str(alignment).lower()
+    if "evil" in alignment_lower:
+        alignment_clause = "They carry a dark, menacing presence."
+    elif "good" in alignment_lower:
+        alignment_clause = "They radiate noble, heroic bearing."
+    else:
+        alignment_clause = "They maintain a balanced, neutral demeanor."
+    
+    # Combine into complete sentence
+    brief = f"{name} is {identity_clause}. {demeanor_clause}{bg_clause}{alignment_clause}"
+    
+    # Clean up any double spaces or leading/trailing issues
+    brief = re.sub(r'\s+', ' ', brief).strip()
+    # Guard against punctuation artifacts from truncated fields.
+    brief = re.sub(r"\.{4,}", "...", brief)
+
+    return brief
+
+
 def build_character_portrait_prompt(character_data: Dict[str, Any]) -> str:
     """Build a portrait generation prompt from character data.
     
-    Uses identity/core fields, optional appearance metadata, and
-    personality/background context when available.
-    Handles missing fields safely without errors.
+    Uses visual brief synthesis to convert structured data into natural-language
+    prose, avoiding card/sheet layout triggers while preserving character identity.
     
     Args:
         character_data: Dictionary with character fields
@@ -79,99 +342,26 @@ def build_character_portrait_prompt(character_data: Dict[str, Any]) -> str:
     Returns:
         Formatted prompt string ready for image generation
     """
-    name = character_data.get("name", "Character")
-    race = character_data.get("race", "Human")
-    char_class = character_data.get("class", "Adventurer")
-    background = character_data.get("background", "")
-    alignment = character_data.get("alignment", "neutral")
+    # Build natural-language visual brief from structured data
+    visual_brief = _build_visual_brief(character_data)
     
-    # Optional appearance fields with defensive handling
-    age = str(character_data.get("age", "")).strip()
-    height = str(character_data.get("height", "")).strip()
-    weight = str(character_data.get("weight", "")).strip()
-    eyes = str(character_data.get("eyes", "")).strip()
-    skin = str(character_data.get("skin", "")).strip()
-    hair = str(character_data.get("hair", "")).strip()
-    
-    # Build appearance description from available fields
-    appearance_parts = []
-    if age:
-        appearance_parts.append(f"{age} years old")
-    if height:
-        appearance_parts.append(f"height {height}")
-    if weight:
-        appearance_parts.append(f"build {weight}")
-    if eyes:
-        appearance_parts.append(f"{eyes} eyes")
-    if skin:
-        appearance_parts.append(f"{skin} skin")
-    if hair:
-        appearance_parts.append(f"{hair} hair")
-    
-    appearance_text = ", ".join(appearance_parts) if appearance_parts else "distinctive features"
-    
-    # Extract and sanitize personality/background context fields
-    personality_traits = _sanitize_prompt_text(character_data.get("personality_traits", ""), max_length=200)
-    ideals = _sanitize_prompt_text(character_data.get("ideals", ""), max_length=150)
-    bonds = _sanitize_prompt_text(character_data.get("bonds", ""), max_length=200)
-    flaws = _sanitize_prompt_text(character_data.get("flaws", ""), max_length=150)
-    
-    # Handle backgroundFeature object structure
-    bg_feature = character_data.get("backgroundFeature", {})
-    if isinstance(bg_feature, dict):
-        bg_feature_name = _sanitize_prompt_text(bg_feature.get("name", ""), max_length=100)
-        bg_feature_desc = _sanitize_prompt_text(bg_feature.get("description", ""), max_length=250)
-    else:
-        bg_feature_name = ""
-        bg_feature_desc = ""
-    
-    # Build personality/background context block from available fields
-    context_parts = []
-    if personality_traits:
-        context_parts.append(f"personality: {personality_traits}")
-    if ideals:
-        context_parts.append(f"ideals: {ideals}")
-    if bonds:
-        context_parts.append(f"bonds: {bonds}")
-    if flaws:
-        context_parts.append(f"flaws: {flaws}")
-    if bg_feature_name:
-        context_parts.append(f"background ability: {bg_feature_name}")
-    if bg_feature_desc:
-        context_parts.append(f"known for {bg_feature_desc}")
-    
-    context_text = "; ".join(context_parts) if context_parts else ""
-    
-    # Compose full prompt
+    # Compose final prompt using visual brief paragraph
+    # visual_brief already ends with a period, so we don't add another
     prompt = (
-        f"Epic fantasy character art portrait of {name}, "
-        f"a {race} {char_class}"
+        f"{visual_brief} "
+        "Close head-and-shoulders portrait, face centered and clearly visible, "
+        "soft natural lighting on face, eye-level camera angle. "
+        "Ultra-realistic fantasy character art, photorealistic style with cinematic quality, "
+        "detailed textures, natural skin tones and fabric rendering. "
+        "Soft in-world environmental background with shallow depth of field, gentle bokeh, "
+        "background elements blurred and atmospheric. "
+        "Face is the clear focal subject. Simple upper-body clothing detail, no props. "
+        "STRICT EXCLUSIONS: no text, no letters, no words, no captions, no typography, "
+        "no runes, no glyphs, no logos, no watermarks, no UI, no HUD, no game interface, "
+        "no character sheet, no stat card, no status panel, no info box, no document, "
+        "no page, no form, no paper, no parchment, no borders, no frames."
     )
-    
-    if background:
-        prompt += f" with {background} background"
-    
-    prompt += f". {appearance_text}. "
-    
-    # Add personality/background context when available
-    if context_text:
-        prompt += f"Character details: {context_text}. "
-    
-    # Add alignment-inspired atmosphere
-    alignment_lower = str(alignment).lower()
-    if "evil" in alignment_lower:
-        prompt += "Dark and menacing presence. "
-    elif "good" in alignment_lower:
-        prompt += "Noble and heroic bearing. "
-    else:
-        prompt += "Neutral balanced demeanor. "
-    
-    # Style guidance
-    prompt += (
-        "Digital fantasy painting style, half-body or full-body portrait, "
-        "cinematic lighting, detailed fantasy character art. "
-    )
-    
+
     return prompt
 
 
@@ -274,13 +464,14 @@ def generate_and_save_portrait(
             result["error"] = "client_init_failed"
             return result
         
-        # Generate image
+        # Generate image with natural style to avoid poster/card-like outputs
         try:
             response = client.images.generate(
                 model=model,
                 prompt=prompt[:4000],  # DALL-E has character limit
                 size=size,
                 quality=quality,
+                style="natural",
                 n=1
             )
         except Exception as gen_error:
