@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NeverEndingQuest</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Share+Tech+Mono&display=swap" rel="stylesheet">
     {% if multiplayer_mode or party_members|length > 1 %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tabletop_mode.css') }}">
     {% endif %}
@@ -24,7 +24,16 @@
             display: flex;
             flex-direction: column;
         }
-        
+
+        /* TABLETOP MODE: Compact LED Density Mode variables */
+        :root {
+            --ui-led-font: "Share Tech Mono", "Courier New", monospace;
+            --ui-compact-xxs: 9px;
+            --ui-compact-xs: 10px;
+            --ui-compact-sm: 11px;
+            --ui-compact-md: 12px;
+        }
+
         .header {
             background-color: #2c2c2c;
             padding: 10px 20px;
@@ -790,6 +799,62 @@
             color: #555;
         }
         
+        /* TABLETOP MODE: Cost rollup row styles */
+        .cost-rollup-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #e0e0e0;
+            padding-bottom: 6px;
+            margin-bottom: 6px;
+            border-bottom: 1px solid #333;
+        }
+        
+        .cost-stat {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .cost-label {
+            color: #888;
+            font-weight: bold;
+        }
+        
+        .cost-separator {
+            color: #555;
+        }
+        
+        .cost-indicator {
+            font-size: 10px;
+            color: #ff9800;
+            margin-left: 4px;
+        }
+        
+        #session-tokens, #week-tokens {
+            color: #4CAF50;
+            font-weight: bold;
+            min-width: 50px;
+            text-align: right;
+        }
+        
+        #session-cost-usd, #week-cost-usd {
+            color: #2196F3;
+            font-weight: bold;
+            min-width: 50px;
+            text-align: right;
+        }
+        
+        #session-cost-nzd, #week-cost-nzd {
+            color: #9C27B0;
+            font-weight: bold;
+            min-width: 50px;
+            text-align: right;
+        }
+        
         /* Make debug output scrollable below the header */
         .debug-scrollable {
             flex: 1;
@@ -799,7 +864,7 @@
             white-space: pre-wrap;
             word-wrap: break-word;
             width: 100%;
-            height: calc(100% - 50px); /* Account for header height */
+            height: calc(100% - 75px); /* Account for two-row header height */
         }
         
         #debug-tab {
@@ -4464,6 +4529,157 @@
             color: #1a1a1a;
         }
 
+        /* TABLETOP MODE: Always-on LED density styles for sidebar + narration chat */
+        /* Sidebar tabs */
+        .debug-panel .tabs {
+            height: 30px;
+        }
+
+        .debug-panel .tab-button {
+            font-size: var(--ui-compact-xs);
+            padding: 4px 5px;
+            letter-spacing: 0.04em;
+            font-weight: 600;
+            line-height: 1;
+        }
+
+        /* Debug tab token/cost header */
+        #debug-tab .token-usage-header {
+            padding: 4px 6px;
+            border-bottom: 1px solid #333;
+        }
+
+        #debug-tab .cost-rollup-row {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 4px;
+            font-size: var(--ui-compact-xs);
+            line-height: 1.15;
+            padding-bottom: 4px;
+            margin-bottom: 4px;
+            justify-items: start;
+        }
+
+        #debug-tab .cost-separator {
+            display: none;
+        }
+
+        #debug-tab .cost-stat {
+            display: grid;
+            grid-template-columns: 8ch minmax(0, 1fr);
+            align-items: center;
+            column-gap: 8px;
+            width: 100%;
+            gap: 2px;
+            white-space: nowrap;
+            font-family: var(--ui-led-font);
+            font-variant-numeric: tabular-nums;
+        }
+
+        #debug-tab .cost-label {
+            display: inline-block;
+            width: 100%;
+            text-align: right;
+            padding-right: 2px;
+        }
+
+        #debug-tab .cost-values {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        #debug-tab .cost-divider,
+        #debug-tab .cost-currency,
+        #debug-tab .cost-text,
+        #debug-tab .cost-paren {
+            color: #888;
+        }
+
+        #debug-tab #session-tokens,
+        #debug-tab #week-tokens,
+        #debug-tab #session-cost-usd,
+        #debug-tab #week-cost-usd,
+        #debug-tab #session-cost-nzd,
+        #debug-tab #week-cost-nzd {
+            min-width: 4.5ch;
+        }
+
+        #debug-tab .token-stats {
+            justify-content: flex-start;
+            gap: 8px;
+            font-size: var(--ui-compact-xs);
+            line-height: 1.15;
+            font-family: var(--ui-led-font);
+        }
+
+        /* Debug scrollable area */
+        .debug-scrollable {
+            padding: 5px 6px;
+            font-family: var(--ui-led-font);
+        }
+
+        #debug-output .message.debug {
+            margin: 2px 0;
+            font-size: var(--ui-compact-xs);
+        }
+
+        #debug-output .message.debug .message-content {
+            padding: 2px 5px;
+            border-radius: 2px;
+        }
+
+        #debug-output .message.debug .message-text {
+            font-size: var(--ui-compact-xs);
+            line-height: 1.2;
+        }
+
+        #debug-output .timestamp {
+            font-size: var(--ui-compact-xxs);
+            margin-right: 6px;
+        }
+
+        /* Main chat compaction for long narrator essays */
+        #game-output {
+            padding: 6px 8px;
+        }
+
+        #game-output .message {
+            margin: 10px 0;
+        }
+
+        #game-output .message-avatar {
+            width: 28px;
+            height: 28px;
+            margin-right: 8px;
+            font-size: 14px;
+        }
+
+        #game-output .message-header {
+            margin-bottom: 3px;
+        }
+
+        #game-output .message-author {
+            font-size: var(--ui-compact-md);
+        }
+
+        #game-output .message-badge {
+            font-size: var(--ui-compact-xxs);
+            padding: 1px 4px;
+        }
+
+        #game-output .message-text {
+            font-size: 13px;
+            line-height: 1.28;
+            letter-spacing: 0.01em;
+        }
+
+        #game-output .message.system .message-text,
+        #game-output .message.error .message-text {
+            font-size: var(--ui-compact-sm);
+        }
+
     </style>
 </head>
 <body>
@@ -4676,6 +4892,31 @@
             <div class="tab-content-wrapper">
             <div class="tab-content" id="debug-tab" style="display: none;">
                 <div class="token-usage-header" id="token-usage">
+                    <!-- TABLETOP MODE: Session/Week cost rollup row (new) -->
+                    <div class="cost-rollup-row" id="cost-rollup">
+                        <div class="cost-stat">
+                            <span class="cost-label">Session:</span>
+                            <span class="cost-values">
+                                <span id="session-tokens">0</span><span class="cost-text">tokens</span>
+                                <span class="cost-divider">|</span>
+                                <span class="cost-currency">$</span><span id="session-cost-usd">0.00</span>
+                                <span class="cost-paren">(</span><span id="session-cost-nzd">0.00</span><span class="cost-text">NZD)</span>
+                                <span class="cost-indicator" id="session-cost-indicator"></span>
+                            </span>
+                        </div>
+                        <div class="cost-separator">|</div>
+                        <div class="cost-stat">
+                            <span class="cost-label">Week:</span>
+                            <span class="cost-values">
+                                <span id="week-tokens">0</span><span class="cost-text">tokens</span>
+                                <span class="cost-divider">|</span>
+                                <span class="cost-currency">$</span><span id="week-cost-usd">0.00</span>
+                                <span class="cost-paren">(</span><span id="week-cost-nzd">0.00</span><span class="cost-text">NZD)</span>
+                                <span class="cost-indicator" id="week-cost-indicator"></span>
+                            </span>
+                        </div>
+                    </div>
+                    <!-- Existing token stats row -->
                     <div class="token-stats">
                         <span class="token-label">TPM:</span> <span id="tpm-value">0</span>
                         <span class="token-separator">|</span>
@@ -4749,6 +4990,85 @@
         const MISSING_IMAGE_CACHE_TTL_SECONDS = 30;  // Retry missing images after 30 seconds
         const missingImageCache = new Map();  // url -> timestamp
         const existingImageCache = new Set();
+
+        // TABLETOP MODE: Portrait cache coherence helpers (Step 10.3)
+        // These helpers standardize portrait identity normalization and versioned URL construction
+
+        /**
+         * Normalize character name to safe filename/slug format.
+         * Matches backend _normalize_character_slug semantics.
+         * @param {string} name - Raw character name (e.g., "Mac'Davier")
+         * @returns {string} Normalized slug (e.g., "mac_davier")
+         */
+        function normalizePortraitSlug(name) {
+            if (!name) return '';
+            let slug = String(name).trim().toLowerCase();
+            slug = slug.replace(/\s+/g, '_');
+            slug = slug.replace(/'/g, '_');
+            slug = slug.replace(/[^a-z0-9_]/g, '_');
+            slug = slug.replace(/_+/g, '_');
+            slug = slug.replace(/^_+|_+$/g, '');
+            return slug;
+        }
+
+        /**
+         * Append version query to asset URL for deterministic cache refresh.
+         * @param {string} url - Base asset URL
+         * @param {string|null} version - Version string (e.g., timestamp)
+         * @returns {string} URL with version query if version provided
+         */
+        function withAssetVersion(url, version) {
+            if (!version) return url;
+            const separator = url.includes('?') ? '&' : '?';
+            return `${url}${separator}v=${version}`;
+        }
+
+        // TABLETOP MODE: Portrait cache coherence helpers (Step 10.4)
+        // Targeted cache invalidation to prevent stale portrait renders after mutations
+
+        /**
+         * Generate URL patterns for a given slug that should be invalidated from caches.
+         * @param {string} slug - Normalized character/entity slug
+         * @returns {Array<string>} Array of URL path patterns to match
+         */
+        function _getCacheInvalidationPatterns(slug) {
+            return [
+                `/static/portraits/${slug}.png`,
+                `/media/npcs/${slug}_thumb.jpg`,
+                `/media/npcs/${slug}.jpg`,
+                `/media/npcs/${slug}.png`,
+            ];
+        }
+
+        /**
+         * Invalidate image cache entries for a specific slug.
+         * Removes matching URLs from both missingImageCache and existingImageCache.
+         * @param {string} slug - Normalized character/entity slug
+         */
+        function invalidateImageCachesForSlug(slug) {
+            if (!slug) return;
+            const patterns = _getCacheInvalidationPatterns(slug);
+
+            // Invalidate missingImageCache (Map with url -> timestamp)
+            for (const url of missingImageCache.keys()) {
+                for (const pattern of patterns) {
+                    if (url.includes(pattern)) {
+                        missingImageCache.delete(url);
+                        break;
+                    }
+                }
+            }
+
+            // Invalidate existingImageCache (Set of urls)
+            for (const url of existingImageCache) {
+                for (const pattern of patterns) {
+                    if (url.includes(pattern)) {
+                        existingImageCache.delete(url);
+                        break;
+                    }
+                }
+            }
+        }
 
         // TTS state variables
         let currentTTSButton = null;
@@ -5007,7 +5327,11 @@
             .then(data => {
                 if (data.success) {
                     addMessage('game-output', { type: 'system', content: 'Portrait updated successfully!' });
-                    
+
+                    // TABLETOP MODE: Invalidate caches for this character to prevent stale renders (Step 10.4)
+                    const invalidationSlug = normalizePortraitSlug(characterName);
+                    invalidateImageCachesForSlug(invalidationSlug);
+
                     // Force the image to update by adding a unique timestamp to its URL.
                     const portraitImg = document.getElementById('char-portrait-img');
                     if (portraitImg) {
@@ -5015,7 +5339,13 @@
                         // Add timestamp only for the upload, not regular refreshes
                         portraitImg.src = `${baseUrl}?v=${Date.now()}`;
                     }
-                    
+
+                    // TABLETOP MODE: Immediate refresh of all portrait surfaces (Step 10.6)
+                    // Call refresh functions without waiting for polling loop
+                    loadCharacterStats();
+                    requestInitiativeData();
+                    requestPartyData();
+
                     // Reset the persistent input
                     if (persistentPortraitInput) {
                         persistentPortraitInput.value = '';
@@ -5247,18 +5577,32 @@
                         content: data.message || `Portrait created successfully for ${portraitProfileCharacterName}!`
                     });
 
+                    // TABLETOP MODE: Preserve character identity before modal close clears state (Step 10.5)
+                    // closePortraitProfileModal() sets portraitProfileCharacterName = null, so we must capture now
+                    const preservedCharacterName = portraitProfileCharacterName;
+                    const preservedSlug = preservedCharacterName ? normalizePortraitSlug(preservedCharacterName) : null;
+
+                    // TABLETOP MODE: Invalidate caches using preserved identity (Step 10.4 + 10.5)
+                    if (preservedSlug) {
+                        invalidateImageCachesForSlug(preservedSlug);
+                    }
+
                     // Close modal on success
                     closePortraitProfileModal();
 
-                    // Step 9.7: Refresh portrait image with cache-bust
+                    // Step 9.7: Refresh portrait image with cache-bust using preserved identity
                     const portraitImg = document.getElementById('char-portrait-img');
-                    if (portraitImg && portraitProfileCharacterName) {
-                        const normalizedName = portraitProfileCharacterName.toLowerCase().replace(/\s+/g, '_');
-                        portraitImg.src = `/static/portraits/${normalizedName}.png?v=${Date.now()}`;
+                    if (portraitImg && preservedSlug) {
+                        portraitImg.src = `/static/portraits/${preservedSlug}.png?v=${Date.now()}`;
                     }
 
                     // Step 9.7: Reload character stats to show updated fields
                     loadCharacterStats();
+
+                    // TABLETOP MODE: Immediate refresh of all portrait surfaces (Step 10.6)
+                    // Call refresh functions without waiting for polling loop
+                    requestInitiativeData();
+                    requestPartyData();
                 } else {
                     // Backend returned success: false
                     throw new Error(data && data.message ? data.message : 'Portrait creation failed');
@@ -5967,10 +6311,66 @@
         socket.on('error', (error) => { addMessage('game-output', { type: 'error', content: error.message }); });
         
         // Token usage updates
+        // TABLETOP MODE: Extended with session/week cost rollups (hardened for regression safety)
         socket.on('token_update', (data) => {
-            if (data.tpm !== undefined) document.getElementById('tpm-value').textContent = data.tpm.toLocaleString();
-            if (data.rpm !== undefined) document.getElementById('rpm-value').textContent = data.rpm;
-            if (data.total_tokens !== undefined) document.getElementById('total-tokens').textContent = data.total_tokens.toLocaleString();
+            // Helper: safely coerce to number with default
+            function toNum(val, def) {
+                if (val === undefined || val === null) return def;
+                const n = Number(val);
+                return isNaN(n) ? def : n;
+            }
+            // Helper: safely format integer with locale
+            function fmtInt(val) {
+                const n = toNum(val, 0);
+                try { return Math.floor(n).toLocaleString(); } catch (e) { return String(Math.floor(n)); }
+            }
+            // Helper: safely format cost to 2 decimals
+            function fmtCost(val) {
+                const n = toNum(val, 0);
+                try { return n.toFixed(2); } catch (e) { return String(Number(n).toFixed(2)); }
+            }
+
+            // Legacy fields (preserved)
+            const tpmEl = document.getElementById('tpm-value');
+            if (tpmEl) tpmEl.textContent = fmtInt(data.tpm);
+            const rpmEl = document.getElementById('rpm-value');
+            if (rpmEl) rpmEl.textContent = fmtInt(data.rpm);
+            const totalEl = document.getElementById('total-tokens');
+            if (totalEl) totalEl.textContent = fmtInt(data.total_tokens);
+
+            // Session rollup fields (new - with safe defaults and hardened parsing)
+            const sessionTokensEl = document.getElementById('session-tokens');
+            if (sessionTokensEl) sessionTokensEl.textContent = fmtInt(data.session_tokens);
+
+            const sessionUsdEl = document.getElementById('session-cost-usd');
+            if (sessionUsdEl) sessionUsdEl.textContent = fmtCost(data.session_cost_usd);
+
+            const sessionNzdEl = document.getElementById('session-cost-nzd');
+            if (sessionNzdEl) sessionNzdEl.textContent = fmtCost(data.session_cost_nzd);
+
+            // Session cost indicator (show "Est" if estimated or unavailable)
+            const sessionIndicator = document.getElementById('session-cost-indicator');
+            if (sessionIndicator) {
+                const src = (data.session_cost_source !== undefined) ? String(data.session_cost_source) : 'unavailable';
+                sessionIndicator.textContent = (src === 'estimated' || src === 'unavailable') ? 'Est' : '';
+            }
+
+            // Week rollup fields (new - with safe defaults and hardened parsing)
+            const weekTokensEl = document.getElementById('week-tokens');
+            if (weekTokensEl) weekTokensEl.textContent = fmtInt(data.week_tokens);
+
+            const weekUsdEl = document.getElementById('week-cost-usd');
+            if (weekUsdEl) weekUsdEl.textContent = fmtCost(data.week_cost_usd);
+
+            const weekNzdEl = document.getElementById('week-cost-nzd');
+            if (weekNzdEl) weekNzdEl.textContent = fmtCost(data.week_cost_nzd);
+
+            // Week cost indicator (show "Est" if estimated or unavailable)
+            const weekIndicator = document.getElementById('week-cost-indicator');
+            if (weekIndicator) {
+                const src = (data.week_cost_source !== undefined) ? String(data.week_cost_source) : 'unavailable';
+                weekIndicator.textContent = (src === 'estimated' || src === 'unavailable') ? 'Est' : '';
+            }
         });
         
         // Compression progress updates
@@ -6800,13 +7200,17 @@
             container.innerHTML = html;
 
             // Load portrait with caching
-            // TABLETOP MODE: Promoted NPCs may rely on module NPC media when no static portrait exists.
-            const portraitUrl = `/static/portraits/${normalizedName}.png`;
-            const npcPortraitJpg = `/media/npcs/${normalizedName}.jpg`;
-            const npcPortraitPng = `/media/npcs/${normalizedName}.png`;
+            // TABLETOP MODE: Use versioned portrait metadata when available (Step 10.3)
+            // Falls back to legacy path construction with normalizePortraitSlug for compatibility
+            const slugFromMeta = data._portrait_slug || normalizePortraitSlug(data.name || '');
+            const versionFromMeta = data._portrait_version || null;
+
+            const portraitUrl = withAssetVersion(`/static/portraits/${slugFromMeta}.png`, versionFromMeta);
+            const npcPortraitJpg = withAssetVersion(`/media/npcs/${slugFromMeta}.jpg`, versionFromMeta);
+            const npcPortraitPng = withAssetVersion(`/media/npcs/${slugFromMeta}.png`, versionFromMeta);
             const portraitImg = document.getElementById('char-portrait-img');
             if (portraitImg) {
-                tryLoadImage(portraitUrl, 
+                tryLoadImage(portraitUrl,
                     () => { portraitImg.src = portraitUrl; },
                     () => {
                         tryLoadImage(
@@ -7281,20 +7685,22 @@
                 
                 // Add special handling for player characters - set portrait image directly
                 if (combatant.type === 'player') {
-                    // Clean the character name for the filename
-                    const cleanName = combatant.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-                    const portraitUrl = `/static/portraits/${cleanName}.png`;
-                    const npcThumbUrl = `/media/npcs/${cleanName}_thumb.jpg`;
-                    const npcVideoUrl = `/media/npcs/${cleanName}_video.mp4`;
-                    const npcImageJpg = `/media/npcs/${cleanName}.jpg`;
-                    const npcImagePng = `/media/npcs/${cleanName}.png`;
+                    // TABLETOP MODE: Use versioned portrait metadata when available (Step 10.3)
+                    const slugFromMeta = combatant.image_slug || normalizePortraitSlug(combatant.name || '');
+                    const versionFromMeta = combatant.image_version || null;
+
+                    const portraitUrl = withAssetVersion(`/static/portraits/${slugFromMeta}.png`, versionFromMeta);
+                    const npcThumbUrl = withAssetVersion(`/media/npcs/${slugFromMeta}_thumb.jpg`, versionFromMeta);
+                    const npcVideoUrl = `/media/npcs/${slugFromMeta}_video.mp4`;
+                    const npcImageJpg = withAssetVersion(`/media/npcs/${slugFromMeta}.jpg`, versionFromMeta);
+                    const npcImagePng = withAssetVersion(`/media/npcs/${slugFromMeta}.png`, versionFromMeta);
 
                     item.style.backgroundSize = 'cover';
                     item.style.backgroundPosition = 'center';
                     item.style.color = 'white';
                     item.style.textShadow = '1px 1px 2px black, -1px -1px 2px black';
 
-                    tryLoadImage(portraitUrl, 
+                    tryLoadImage(portraitUrl,
                         () => { item.style.backgroundImage = `url('${portraitUrl}')`; },
                         () => {
                             tryLoadImage(
@@ -7328,14 +7734,14 @@
                 
                 // TABLETOP MODE: Add special handling for NPCs with robust media fallback
                 if (combatant.type === 'npc') {
-                    // Canonical slug normalization: lowercase, non-alnum -> _, collapse, trim
-                    const npcFilename = combatant.name.toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+                    // TABLETOP MODE: Use versioned portrait metadata when available (Step 10.3)
+                    const slugFromMeta = combatant.image_slug || normalizePortraitSlug(combatant.name || '');
+                    const versionFromMeta = combatant.image_version || null;
                     const nameLower = combatant.name.toLowerCase();
 
                     // First try NPC-specific thumbnail (static approach to avoid flicker)
-                    // Assume if there's a thumbnail, there might be a video
-                    // Use new smart media endpoint that checks module folder first
-                    let portraitUrl = `/media/npcs/${npcFilename}_thumb.jpg`;
+                    // Use versioned URL for deterministic cache refresh
+                    let portraitUrl = withAssetVersion(`/media/npcs/${slugFromMeta}_thumb.jpg`, versionFromMeta);
                     let fallbackPortrait = '/static/media/class_portraits/default_npc.png';
 
                     // Determine class-based fallback portrait
@@ -7380,9 +7786,9 @@
                     );
 
                     // TABLETOP MODE: Always attach click handler unconditionally with robust media fallback
-                    const npcVideoUrl = `/media/npcs/${npcFilename}_video.mp4`;
-                    const npcFullJpg = `/media/npcs/${npcFilename}.jpg`;
-                    const npcFullPng = `/media/npcs/${npcFilename}.png`;
+                    const npcVideoUrl = `/media/npcs/${slugFromMeta}_video.mp4`;
+                    const npcFullJpg = withAssetVersion(`/media/npcs/${slugFromMeta}.jpg`, versionFromMeta);
+                    const npcFullPng = withAssetVersion(`/media/npcs/${slugFromMeta}.png`, versionFromMeta);
 
                     item.addEventListener('click', (event) => {
                         // Try video first
@@ -7503,23 +7909,26 @@
                         }, 10);
                     }
                     
-                    const cleanName = member.name.toLowerCase().replace(/\s+/g, '_').replace(/'/g, "");
-                    const playerPortraitUrl = `/static/portraits/${cleanName}.png`;
-                    const npcBasePath = `/media/npcs/${cleanName}`;
+                    // TABLETOP MODE: Use versioned portrait metadata when available (Step 10.3)
+                    const slugFromMeta = member.image_slug || normalizePortraitSlug(member.name || '');
+                    const versionFromMeta = member.image_version || null;
+
+                    const playerPortraitUrl = withAssetVersion(`/static/portraits/${slugFromMeta}.png`, versionFromMeta);
+                    const npcBasePath = `/media/npcs/${slugFromMeta}`;
                     const videoCandidates = member.type === 'player'
                         ? [`${npcBasePath}_video.mp4`]
                         : [`${npcBasePath}_video.mp4`];
                     const imageCandidates = member.type === 'player'
                         ? [
                             playerPortraitUrl,
-                            `${npcBasePath}_thumb.jpg`,
-                            `${npcBasePath}.jpg`,
-                            `${npcBasePath}.png`,
+                            withAssetVersion(`${npcBasePath}_thumb.jpg`, versionFromMeta),
+                            withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta),
+                            withAssetVersion(`${npcBasePath}.png`, versionFromMeta),
                         ]
                         : [
-                            `${npcBasePath}_thumb.jpg`,
-                            `${npcBasePath}.jpg`,
-                            `${npcBasePath}.png`,
+                            withAssetVersion(`${npcBasePath}_thumb.jpg`, versionFromMeta),
+                            withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta),
+                            withAssetVersion(`${npcBasePath}.png`, versionFromMeta),
                         ];
 
                     item.style.backgroundSize = 'cover';

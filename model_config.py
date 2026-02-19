@@ -235,3 +235,21 @@ TASK_TEMPERATURES = {
 MISSING_MEDIA_WARNING_THROTTLE_ENABLED = True  # Master switch for throttle
 MISSING_MEDIA_WARNING_THROTTLE_SECONDS = 300   # Window in seconds (5 minutes)
 # ============================================================================
+
+# ============================================================================
+# TABLETOP MODE: LLM Usage Tracking and Cost Estimation
+# ============================================================================
+# Provider-agnostic usage tracking with session/week rollups and cost estimation.
+# Works with OpenAI, OpenRouter, and any OpenAI-compatible API.
+
+# USD to NZD conversion rate for cost display
+USD_TO_NZD_RATE = 1.65  # Default rate; update as needed
+
+# Rolling week window size in days
+USAGE_WEEK_WINDOW_DAYS = 7
+
+# Blended fallback USD cost per 1M tokens (prompt + completion combined)
+# Used only when provider does not return per-call cost in usage metadata
+# Set to 0.0 to disable fallback estimation (cost will show as unavailable)
+USD_PER_1M_TOKENS_BLEND = 1.50  # Conservative blended estimate
+# ============================================================================

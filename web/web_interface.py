@@ -2929,6 +2929,17 @@ def handle_player_data_request(data):
             
             response_data = npcs
         
+        # TABLETOP MODE: Add portrait metadata for portrait cache coherence (stats only)
+        if dataType == 'stats' and isinstance(response_data, dict):
+            from web.extensions.tabletop_socket_handlers import (
+                _normalize_character_slug,
+                _build_image_metadata
+            )
+            portrait_slug = _normalize_character_slug(response_data.get('name', ''))
+            portrait_image_meta = _build_image_metadata(portrait_slug, current_module)
+            response_data['_portrait_slug'] = portrait_image_meta.get('image_slug')
+            response_data['_portrait_version'] = portrait_image_meta.get('image_version')
+        
         emit('player_data_response', {'dataType': dataType, 'data': response_data})
     
     except Exception as e:
@@ -3689,18 +3700,50 @@ def send_output_to_clients():
                     from utils.openai_usage_tracker import get_usage_stats
                     stats = get_usage_stats()
                     # Send to UI silently
+                    # TABLETOP MODE: Extended token_update with session/week cost rollups
                     socketio.emit('token_update', {
+                        # Existing keys (preserved)
                         'tpm': stats.get('tpm', 0),
                         'rpm': stats.get('rpm', 0),
-                        'total_tokens': stats.get('total_tokens', 0)
+                        'total_tokens': stats.get('total_tokens', 0),
+                        # Session rollups with cost (new)
+                        'session_tokens': stats.get('session_tokens', 0),
+                        'session_cost_usd': stats.get('session_cost_usd', 0.0),
+                        'session_cost_nzd': stats.get('session_cost_nzd', 0.0),
+                        'session_cost_source': stats.get('session_cost_source', 'unavailable'),
+                        'session_cost_estimate': stats.get('session_cost_estimate', True),
+                        # Week rollups with cost (new)
+                        'week_tokens': stats.get('week_tokens', 0),
+                        'week_cost_usd': stats.get('week_cost_usd', 0.0),
+                        'week_cost_nzd': stats.get('week_cost_nzd', 0.0),
+                        'week_cost_source': stats.get('week_cost_source', 'unavailable'),
+                        # Cost metadata (new)
+                        'usd_to_nzd_rate': stats.get('usd_to_nzd_rate', 1.65),
+                        'cost_estimate': stats.get('cost_estimate', True)
                     })
                 except:
-                    # If anything fails, just send zeros (but don't spam)
+                    # If anything fails, just send zeros with new fields (but don't spam)
                     try:
+                        # TABLETOP MODE: Fallback emit with safe defaults for all fields
                         socketio.emit('token_update', {
+                            # Existing keys (preserved)
                             'tpm': 0,
                             'rpm': 0,
-                            'total_tokens': 0
+                            'total_tokens': 0,
+                            # Session rollups with cost (new - safe defaults)
+                            'session_tokens': 0,
+                            'session_cost_usd': 0.0,
+                            'session_cost_nzd': 0.0,
+                            'session_cost_source': 'unavailable',
+                            'session_cost_estimate': True,
+                            # Week rollups with cost (new - safe defaults)
+                            'week_tokens': 0,
+                            'week_cost_usd': 0.0,
+                            'week_cost_nzd': 0.0,
+                            'week_cost_source': 'unavailable',
+                            # Cost metadata (new - safe defaults)
+                            'usd_to_nzd_rate': 1.65,
+                            'cost_estimate': True
                         })
                     except:
                         pass  # Even sending zeros failed, just skip
