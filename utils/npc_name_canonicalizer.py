@@ -17,6 +17,8 @@ import os
 from pathlib import Path
 from typing import Dict, Optional
 import openai
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T087", "utils/npc_name_canonicalizer.py", 119)
 
 from model_config import DM_MINI_MODEL
 from utils.encoding_utils import safe_json_load, safe_json_dump
@@ -116,12 +118,10 @@ Examples:
 Return ONLY the first name, nothing else. No quotes, no explanation."""
 
     try:
-        response = client.chat.completions.create(
-            model=DM_MINI_MODEL,
-            messages=[
+        response = capture_and_fanout("T087", client.chat.completions.create, messages=[
                 {"role": "system", "content": "You are a name extraction assistant. Extract only the person's actual first name from character names."},
                 {"role": "user", "content": prompt}
-            ],
+            ], model=DM_MINI_MODEL,
             temperature=0.0,
             max_tokens=20
         )

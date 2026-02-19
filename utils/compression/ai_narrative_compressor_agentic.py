@@ -14,6 +14,8 @@ import re
 from typing import Dict, Any, List
 from pathlib import Path
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T084", "utils/compression/ai_narrative_compressor_agentic.py", 230)
 
 # Load API configuration
 try:
@@ -227,9 +229,7 @@ def compress_with_ai(narrative: str, canon: Dict[str, Any] = None, mode: str = "
                     "instruction": "Re-emit fixing the format issue. Ensure exactly one EVT block."
                 })})
             
-            response = client.chat.completions.create(
-                model=NARRATIVE_COMPRESSION_MODEL,
-                messages=messages,
+            response = capture_and_fanout("T084", client.chat.completions.create, messages=messages, model=NARRATIVE_COMPRESSION_MODEL,
                 temperature=0.1,
                 top_p=1
             )

@@ -58,6 +58,9 @@ import io
 import zipfile
 from contextlib import redirect_stdout, redirect_stderr
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T094", "web/web_interface.py", 1592)
+register_callsite("T095", "web/web_interface.py", 3705)
 from PIL import Image
 
 # Add parent directory to path so we can import from utils, core, etc.
@@ -1589,15 +1592,13 @@ def promote_to_bestiary():
         from config import OPENAI_API_KEY
         client = OpenAI(api_key=OPENAI_API_KEY)
         
-        response = client.chat.completions.create(
-            model=DM_MINI_MODEL,
-            messages=[
+        response = capture_and_fanout("T094", client.chat.completions.create, messages=[
                 {"role": "system", "content": "You are a creative writer for a fantasy role-playing game, specializing in monster lore."},
                 {"role": "user", "content": prompt}
-            ],
+            ], model=DM_MINI_MODEL,
             temperature=0.7
         )
-        
+
         # Track token usage with context for telemetry
         if USAGE_TRACKING_AVAILABLE:
             try:
@@ -3702,12 +3703,10 @@ Example Output Format:
 
                 try:
                     # Call OpenAI API with the new system message and prompt
-                    response = client.chat.completions.create(
-                        model=DM_MINI_MODEL,
-                        messages=[
+                    response = capture_and_fanout("T095", client.chat.completions.create, messages=[
                             {"role": "system", "content": "You are an expert AI prompt engineer specializing in fantasy character art. Your task is to write image generation prompts, not narrative descriptions. The prompts you write will be used to create digital paintings."},
                             {"role": "user", "content": prompt}
-                        ],
+                        ], model=DM_MINI_MODEL,
                         temperature=0.8
                     )
                     

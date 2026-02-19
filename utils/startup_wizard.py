@@ -20,6 +20,9 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T092", "utils/startup_wizard.py", 1624)
+register_callsite("T093", "utils/startup_wizard.py", 1723)
 from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
 
@@ -1621,10 +1624,8 @@ def get_ai_response(conversation):
     """Get AI response for character creation"""
     try:
         status_processing_ai()
-        response = client.chat.completions.create(
-            model=config.DM_MAIN_MODEL,
-            temperature=0.7,
-            messages=conversation
+        response = capture_and_fanout("T092", client.chat.completions.create, messages=conversation, model=config.DM_MAIN_MODEL,
+            temperature=0.7
         )
         
         content = response.choices[0].message.content.strip()
@@ -1719,9 +1720,7 @@ Respond with ONLY a JSON object in this exact format:
 }}"""
 
         client = OpenAI(api_key=config.OPENAI_API_KEY)
-        response = client.chat.completions.create(
-            model=config.DM_MINI_MODEL,
-            messages=[{"role": "user", "content": prompt}],
+        response = capture_and_fanout("T093", client.chat.completions.create, messages=[{"role": "user", "content": prompt}], model=config.DM_MINI_MODEL,
             temperature=0.7
         )
         

@@ -6,6 +6,8 @@ Only used after a failure - no pre-processing.
 
 from openai import OpenAI
 import config
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T089", "utils/prompt_sanitizer.py", 33)
 import re
 from model_config import DM_MINI_MODEL
 
@@ -30,12 +32,10 @@ Original prompt: """ + prompt + """
 
 Return ONLY the sanitized prompt, no explanations."""
 
-    response = client.chat.completions.create(
-        model=DM_MINI_MODEL,
-        messages=[
+    response = capture_and_fanout("T089", client.chat.completions.create, messages=[
             {"role": "system", "content": "You are a prompt sanitizer. Return only the cleaned prompt text."},
             {"role": "user", "content": sanitization_request}
-        ],
+        ], model=DM_MINI_MODEL,
         temperature=0.3
     )
     

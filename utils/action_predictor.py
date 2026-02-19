@@ -41,6 +41,8 @@
 import json
 from openai import OpenAI
 from config import OPENAI_API_KEY, ACTION_PREDICTION_MODEL
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T082", "utils/action_predictor.py", 152)
 
 # Initialize OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -149,14 +151,11 @@ def predict_actions_required(user_input):
     """
     try:
         # Call action prediction model
-        response = client.chat.completions.create(
-            model=ACTION_PREDICTION_MODEL,
-            temperature=0.1,  # Low temperature for consistent predictions
-            messages=[
+        response = capture_and_fanout("T082", client.chat.completions.create, messages=[
                 {"role": "system", "content": ACTION_PREDICTION_PROMPT},
                 {"role": "user", "content": f"Analyze this user input: '{user_input}'"}
-            ]
-        )
+            ], model=ACTION_PREDICTION_MODEL,
+            temperature=0.1)
         
         # Parse the prediction response
         prediction_text = response.choices[0].message.content.strip()

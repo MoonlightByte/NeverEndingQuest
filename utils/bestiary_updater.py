@@ -19,6 +19,8 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
     print("Warning: OpenAI library not available")
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T083", "utils/bestiary_updater.py", 214)
 
 # Import safe file operations
 from utils.file_operations import safe_read_json, safe_write_json
@@ -211,12 +213,10 @@ image-generation-ready description that would fit this adventure."""
             try:
                 info(f"Generating description for: {monster_name} (attempt {attempt + 1}/{max_retries})")
                 
-                response = self.client.chat.completions.create(
-                    model=DM_MINI_MODEL,
-                    messages=[
+                response = capture_and_fanout("T083", self.client.chat.completions.create, messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
-                    ],
+                    ], model=DM_MINI_MODEL,
                     temperature=0.7,
                     response_format={"type": "json_object"}
                 )

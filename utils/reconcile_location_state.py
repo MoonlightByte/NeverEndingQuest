@@ -11,6 +11,8 @@ import shutil
 import re
 from datetime import datetime
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T091", "utils/reconcile_location_state.py", 133)
 
 # Import project-specific modules
 from config import OPENAI_API_KEY, NPC_INFO_UPDATE_MODEL # Using a smaller, faster model is fine
@@ -130,10 +132,8 @@ Based on the conversation, what is the final list of active, hostile monsters re
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            response = client.chat.completions.create(
-                model=NPC_INFO_UPDATE_MODEL, # A smaller model is sufficient and faster
-                messages=messages,
-                temperature=0.2 # Low temperature for deterministic results
+            response = capture_and_fanout("T091", client.chat.completions.create, messages=messages, model=NPC_INFO_UPDATE_MODEL,
+                temperature=0.2
             )
             raw_response = response.choices[0].message.content.strip()
 

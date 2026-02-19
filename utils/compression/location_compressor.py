@@ -11,6 +11,8 @@ import json
 import re
 from typing import Dict, Any, List, Optional
 from openai import OpenAI
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T085", "utils/compression/location_compressor.py", 138)
 
 # Load configuration
 try:
@@ -135,13 +137,11 @@ Remove ALL role prefixes: "Kira" not "Scout_Kira", "Dorun" not "Elder_Dorun", "T
 """
             user_message = f"{example_format}This is a LOCATION MODULE requiring all location tables. Compress this location data:\n\n{location_json_str}"
             
-            response = client.chat.completions.create(
-                model=LOCATION_COMPRESSION_MODEL,
-                messages=[
+            response = capture_and_fanout("T085", client.chat.completions.create, messages=[
                     {"role": "system", "content": LOCATION_SYSTEM_PROMPT},
                     {"role": "user", "content": user_message}
-                ],
-                temperature=0.1  # Lower temperature for more deterministic output
+                ], model=LOCATION_COMPRESSION_MODEL,
+                temperature=0.1
             )
             
             # Track token usage

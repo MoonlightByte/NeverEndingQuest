@@ -14,6 +14,8 @@ import os
 from datetime import datetime
 from openai import OpenAI
 from config import OPENAI_API_KEY
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T090", "utils/quest_player_formatter.py", 83)
 from model_config import DM_MINI_MODEL
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_read_json, safe_write_json
@@ -80,13 +82,11 @@ def format_quest_batch(quests_to_format):
         
         debug(f"AI_REQUEST: Sending {len(quest_input)} quests for reformatting", category="quest_formatting")
         
-        response = client.chat.completions.create(
-            model=DM_MINI_MODEL,
-            temperature=TEMPERATURE,
-            messages=[
+        response = capture_and_fanout("T090", client.chat.completions.create, messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
-            ]
+            ], model=DM_MINI_MODEL,
+            temperature=TEMPERATURE
         )
         
         ai_response = response.choices[0].message.content.strip()

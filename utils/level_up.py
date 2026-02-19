@@ -8,6 +8,8 @@
 import json
 from openai import OpenAI
 from config import OPENAI_API_KEY, LEVEL_UP_MODEL
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T086", "utils/level_up.py", 99)
 from .file_operations import safe_read_json
 
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -96,13 +98,11 @@ Example response format:
 
     try:
         # Get AI response
-        response = client.chat.completions.create(
-            model=LEVEL_UP_MODEL,
-            messages=[
+        response = capture_and_fanout("T086", client.chat.completions.create, messages=[
                 {"role": "system", "content": "You are a 5th edition of the world's most popular roleplaying game rules expert. Provide only valid JSON responses."},
                 {"role": "user", "content": prompt}
-            ],
-            temperature=0.3  # Low temperature for consistency
+            ], model=LEVEL_UP_MODEL,
+            temperature=0.3
         )
         
         ai_response = response.choices[0].message.content.strip()

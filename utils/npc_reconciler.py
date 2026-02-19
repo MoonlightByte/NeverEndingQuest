@@ -8,6 +8,8 @@ from utils.file_operations import safe_read_json, safe_write_json
 from utils.module_context import ModuleContext
 from openai import OpenAI
 from config import OPENAI_API_KEY, DM_MINI_MODEL
+from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+register_callsite("T088", "utils/npc_reconciler.py", 68)
 
 class NpcReconciler:
     """
@@ -65,9 +67,7 @@ class NpcReconciler:
 
 Answer with only the word "true" or "false"."""
         try:
-            response = self.client.chat.completions.create(
-                model=DM_MINI_MODEL, # Use the mini model for fast, cheap inference
-                messages=[{"role": "user", "content": prompt}],
+            response = capture_and_fanout("T088", self.client.chat.completions.create, messages=[{"role": "user", "content": prompt}], model=DM_MINI_MODEL,
                 max_tokens=1,
                 temperature=0.0
             )
