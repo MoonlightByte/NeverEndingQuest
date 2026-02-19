@@ -1006,3 +1006,4 @@ Active development of Tabletop Mode features, focusing on party management and U
 - **Narrative Mode Head-JSON Optimization**: Refactor `conversation_utils.py` to use a consolidated JSON "Head" for the entire party (mirroring the combat architecture) to save tokens and improve multi-PC continuity.
 - Advanced filtering for character list in "Add Existing".
 - "dm_quick_create" improvements for more detailed character templates.
+- **Module Builder Rebuild - Phase 1 NPC Alignment (PLANNED)**: Align module-authored NPC intent with runtime NPC materialization. See `plans/module-builder-enhancements.md` and OpenSpec change `toolkit-module-builder-rebuild-phase1-npc-alignment/`. Current gameplay is functional; Phase 1 improves data contracts for better NPC quality and promotion readiness.
