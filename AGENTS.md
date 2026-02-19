@@ -1021,6 +1021,29 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Developer Documentation Packaging for Tester Handoff (COMPLETED - 2026-02-19)
+
+**Status:** COMPLETED - Documentation-only commit stream updated
+
+**Objective:**
+Bundle current developer documentation into the tester-facing GitHub commit stream while keeping gameplay/runtime files unchanged.
+
+**Included in Commit Stream:**
+- `plans/` (current and archived planning docs)
+- `openspec/changes/debug-usage-session-week-nzd-rollup/` scaffold artifacts
+- `openspec/changes/toolkit-module-builder-rebuild-phase1-npc-alignment/` scaffold artifacts
+- `memory-bank/` updates tracking documentation packaging state
+
+**Guardrail Clarification (`.opencode`):**
+- Commit only curated `.opencode` docs paths when explicitly needed (for example `.opencode/skills/*`, `.opencode/command/*`).
+- Do not force-add dependency/package artifacts (`node_modules`, lockfiles, package metadata) into documentation commits.
+
+**Commits:**
+- `a9cfee7` - Added plans and debug-usage OpenSpec artifacts
+- `ebfbcc9` - Updated memory-bank packaging notes
+
+---
+
 ### Portrait Cache Coherence - Section 10 (COMPLETED - 2026-02-19)
 
 **Status:** COMPLETED - All Section 10 tasks 10.1-10.8 finished and verified
