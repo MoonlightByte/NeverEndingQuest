@@ -57,7 +57,7 @@ import os
 from datetime import datetime
 from openai import OpenAI
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T013", "core/ai/action_handler.py", 1003)
+register_callsite("T013", "core/ai/action_handler.py", 1005)
 import config
 from core.managers.location_manager import get_location_data
 from utils.module_path_manager import ModulePathManager

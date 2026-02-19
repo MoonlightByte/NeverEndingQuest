@@ -139,9 +139,10 @@ Location: `utils/capture/multi_model_capture.py`
 
 **Signature:**
 ```python
-def capture_and_fanout(task_id, messages, **kwargs):
+def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     """
     Drop-in replacement for client.chat.completions.create at instrumented callsites.
+    primary_fn is the callable to use for the primary call (e.g. client.chat.completions.create).
     Returns the primary gpt-4.1 response synchronously. Fires all other variants in
     background threads. No token limits in any call.
     """
@@ -153,7 +154,8 @@ def capture_and_fanout(task_id, messages, **kwargs):
 response = client.chat.completions.create(model=..., messages=messages, temperature=0.7)
 
 # After:
-response = capture_and_fanout("T013", messages, model=..., temperature=0.7)
+response = capture_and_fanout("T013", client.chat.completions.create,
+                               messages=messages, model=..., temperature=0.7)
 ```
 
 **Execution flow:**
