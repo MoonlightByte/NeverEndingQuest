@@ -78,6 +78,28 @@ settings to match the existing output quality. Prompt changes are out of scope.
   is appropriate for specific non-reasoning use cases)
 - Cost: Aim to match or reduce current gpt-4.1 cost per callsite
 
+**Web UI Settings Integration (TODO - Final Phase):**
+After capture testing is complete and model winners are selected, add model provider selection to the
+existing web interface settings dropdown (game_interface.html lines ~4363-4400):
+
+```html
+<div class="settings-section">
+    <div class="settings-section-title">AI Model Provider</div>
+    <div class="settings-item">
+        <label for="model-provider-select">Provider</label>
+        <select class="settings-select" id="model-provider-select">
+            <option value="openai-gpt41">OpenAI GPT-4.1 (Current)</option>
+            <option value="openai-gpt52">OpenAI GPT-5.2 (Next-Gen)</option>
+            <option value="gemini3">Google Gemini 3 (Alternative)</option>
+            <option value="lmstudio">LM Studio (Local - Zero Cost)</option>
+        </select>
+    </div>
+</div>
+```
+
+Backend SocketIO handler should update `model_config.py` or user-specific settings database.
+Players can switch providers without editing code. This is the production UX after testing is complete.
+
 **What is NOT changing:**
 - System prompts and user-facing prompt content
 - Response format expectations (JSON schemas, output structure)
