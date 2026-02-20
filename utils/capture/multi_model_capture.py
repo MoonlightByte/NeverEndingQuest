@@ -119,6 +119,10 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         response = capture_and_fanout("T013", client.chat.completions.create,
                                       messages=messages, model=..., temperature=0.7)
     """
+    # If using LM Studio, bypass capture entirely - LM Studio is a production runtime, not for testing
+    if getattr(model_config, "USE_LM_STUDIO", False):
+        return primary_fn(messages=messages, **kwargs)
+
     # Always fire primary call synchronously
     start = time.time()
     response = primary_fn(messages=messages, **kwargs)

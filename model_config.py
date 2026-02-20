@@ -39,6 +39,13 @@ DM_FULL_MODEL = "gpt-4.1-2025-04-14"                   # Used for complex action
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures
 
+# --- Model Provider Selection ---
+# Choose between cloud APIs (OpenAI/Gemini) or local LM Studio
+USE_LM_STUDIO = False                                   # Use local LM Studio on localhost:1234 (zero API costs)
+                                                        # When True, all cloud model settings are ignored
+                                                        # Requires LM Studio running with server started
+                                                        # Direct connection - no proxy needed
+
 # --- GPT-5 Model Configuration ---
 GPT5_MINI_MODEL = "gpt-5-mini-2025-08-07"              # GPT-5 mini model for testing
 GPT5_FULL_MODEL = "gpt-5-2025-08-07"                   # GPT-5 full model (kept for compatibility, not used)
@@ -65,4 +72,6 @@ TTS_MODEL = "tts-1"                                       # OpenAI TTS model (tt
 TTS_VOICE = "fable"                                       # Voice: alloy, echo, fable, onyx, nova, shimmer (fable is good for narration)
 TTS_SPEED = 1.0                                           # Speed: 0.25 to 4.0 (1.0 is normal)
 # --- Multi-Model Capture Settings ---
-MULTI_MODEL_CAPTURE = False  # Set True to enable parallel telemetry capture
+MULTI_MODEL_CAPTURE = False  # Set True to enable parallel cloud model testing (gpt-4.1, gpt-5.2, Gemini 3)
+                             # Captures outputs to model_captures/ for comparison
+                             # Note: Ignored when USE_LM_STUDIO = True (LM Studio is production runtime, not for testing)
