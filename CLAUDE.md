@@ -45,9 +45,16 @@ The `=>` suffix is annotation only - do not treat it as reflecting current code 
 **What we are doing:**
 - Migrating runtime calls from `gpt-4.1-2025-04-14` to `gpt-5.2` (and mini -> `gpt-5-mini`)
 - Adding parallel Gemini 3 (`gemini-3-pro-preview` / `gemini-3-flash-preview`) as an alternate provider
+- Adding LM Studio support for local model execution (zero API costs, offline play)
 - The existing toggle system (`USE_GPT5_MODELS` in `model_config.py`) will be extended to support
-  provider selection (OpenAI vs Gemini)
+  provider selection (OpenAI vs Gemini vs LM Studio)
 - gpt-4.1 is NOT being removed - it stays as a fallback. We are adding toggle options.
+
+**Provider Options:**
+1. **OpenAI GPT-4.1** - Current production (baseline)
+2. **OpenAI GPT-5.2** - Next-gen cloud (testing via capture)
+3. **Gemini 3** - Alternative cloud provider (testing via capture)
+4. **LM Studio** - Local models (production runtime, no capture) - USE_LM_STUDIO toggle
 
 **CRITICAL: DO NOT CHANGE PROMPTS**
 The system prompts are currently perfectly tuned to gpt-4.1 outputs. We are NOT modifying any
@@ -56,8 +63,9 @@ settings to match the existing output quality. Prompt changes are out of scope.
 
 **Development approach:**
 - Migrate one API callsite at a time (95 total runtime callsites, see audit inventory)
-- For each callsite, run all three models simultaneously (gpt-4.1, gpt-5.2, Gemini 3) and compare
-- Record and compare outputs using a new capture system (to be designed separately)
+- For each callsite, run all three **cloud models** simultaneously (gpt-4.1, gpt-5.2, Gemini 3) and compare
+- Record and compare outputs using the capture system (`MULTI_MODEL_CAPTURE = True`)
+- **LM Studio is NOT part of capture testing** - it's a production runtime option for cost savings
 - Existing A/B test data is in gitignored `development/` folders
 - Balance and tune temperature/reasoning per callsite after comparing outputs
 - Prefer smaller/faster models where output quality is equivalent (cost optimization)
