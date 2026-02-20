@@ -43,10 +43,14 @@ with separate panels for game output and debug information.
 import logging
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-from flask import Flask, render_template, request, jsonify, Response
-from flask_socketio import SocketIO, emit
 import os
 import sys
+
+# Add parent directory to path FIRST so we can import from utils, core, etc.
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from flask import Flask, render_template, request, jsonify, Response
+from flask_socketio import SocketIO, emit
 import json
 import threading
 import queue
@@ -62,9 +66,6 @@ from utils.capture.multi_model_capture import capture_and_fanout, register_calls
 register_callsite("T094", "web/web_interface.py", 1592)
 register_callsite("T095", "web/web_interface.py", 3705)
 from PIL import Image
-
-# Add parent directory to path so we can import from utils, core, etc.
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Token tracking import
 try:
