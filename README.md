@@ -507,8 +507,14 @@ This integration is **experimental** and has known limitations:
    - Server address: `http://127.0.0.1:1234`
    - Model loaded and active
    - Context length set to maximum (32K+)
-5. **Install proxy**: `pip install mitmproxy` (included in requirements.txt)
-6. **Launch**: Double-click `launch_lmstudio_mode.bat`
+5. **Launch**: Double-click `run_with_lmstudio_direct.bat` ✨ **RECOMMENDED - Simple & Fast**
+
+**Alternative: Advanced Launch with Request Logging**:
+
+For debugging or request/response logging, use the mitmproxy-based launcher:
+1. **Install proxy**: `pip install mitmproxy`
+2. **Launch**: Double-click `launch_lmstudio_mode.bat` (opens two terminals)
+3. Logs saved to `lmstudio_logs/` for troubleshooting
 
 **Configuration Verification**:
 
@@ -519,9 +525,11 @@ Model Identifier: <your-loaded-model>
 Context Length: 32768 or higher
 ```
 
-The proxy system in `lmstudio_forwarder.py` will automatically redirect all OpenAI API calls to your local LM Studio instance on port 1234.
+**Direct Connection** (`run_with_lmstudio_direct.bat`): Connects directly to LM Studio on port 1234 with no proxy overhead. This is the simplest and fastest method.
 
-**Temperature Settings Note**: The game controls temperature settings through the proxy. If you experience JSON formatting errors or poor prompt adherence, you can lower the temperature in LM Studio's server settings to improve accuracy, though this may reduce narrative creativity and storytelling immersion.
+**Proxy Connection** (`launch_lmstudio_mode.bat`): Routes requests through mitmproxy for advanced logging and debugging. Use this if you need to troubleshoot API calls or capture request/response data.
+
+**Temperature Settings Note**: If you experience JSON formatting errors or poor prompt adherence, you can lower the temperature in LM Studio's server settings to improve accuracy, though this may reduce narrative creativity and storytelling immersion.
 
 **Known Issues**:
 - JSON parsing errors during complex combat

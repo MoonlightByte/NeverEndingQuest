@@ -4,15 +4,23 @@ Run NeverEndingQuest using your local LM Studio instead of OpenAI's API. This el
 
 ## Overview
 
-This setup uses a proxy system to redirect all OpenAI API calls from the game to your local LM Studio server:
+NeverEndingQuest supports two connection methods:
 
+### Method 1: Direct Connection (Recommended - Simple & Fast)
 ```
-NeverEndingQuest → openai_patcher.py → localhost:8080 → lmstudio_forwarder.py → LM Studio (port 1234)
+NeverEndingQuest → LM Studio (port 1234)
 ```
+Direct connection with zero overhead. This is the easiest and fastest method.
+
+### Method 2: Proxy Connection (Advanced - For Debugging)
+```
+NeverEndingQuest → mitmproxy (port 8080) → LM Studio (port 1234)
+```
+Routes through a proxy for request/response logging. Use this for troubleshooting.
 
 ## Quick Start (Windows)
 
-### Option 1: One-Click Launch (Recommended)
+### ✨ Method 1: Direct Connection (RECOMMENDED)
 
 1. **Setup LM Studio:**
    - Download and install [LM Studio](https://lmstudio.ai/)
@@ -20,33 +28,44 @@ NeverEndingQuest → openai_patcher.py → localhost:8080 → lmstudio_forwarder
    - Click "Start Server" in the Local Server tab (bottom-right)
    - Verify it says "Server running on port 1234"
 
+2. **Launch the game:**
+   - Double-click `run_with_lmstudio_direct.bat`
+   - Start playing!
+
+**That's it!** No proxy setup, no mitmproxy installation. Just LM Studio + the game.
+
+---
+
+### Method 2: Proxy Connection (Advanced)
+
+**Use this method if you need to:**
+- Debug API calls
+- Log requests and responses
+- Troubleshoot model compatibility issues
+
+**Setup:**
+
+1. **Setup LM Studio** (same as Method 1 above)
+
 2. **Install mitmproxy:**
    ```bash
    pip install mitmproxy
    ```
 
-3. **Launch Everything:**
+3. **Choose your launch style:**
+
+   **Option A: One-Click Launch**
    - Double-click `launch_lmstudio_mode.bat`
    - Two windows will open automatically
-   - Start playing!
+   - Logs saved to `lmstudio_logs/`
 
-### Option 2: Manual Launch
-
-If you prefer to launch each component separately:
-
-**Terminal 1 - Start the forwarder proxy:**
-```bash
-start_lmstudio_proxy.bat
-```
-
-**Terminal 2 - Run the game:**
-```bash
-run_with_lmstudio.bat
-```
+   **Option B: Manual Launch**
+   - Terminal 1: Run `start_lmstudio_proxy.bat` (starts proxy)
+   - Terminal 2: Run `run_with_lmstudio.bat` (starts game)
 
 ## Prerequisites
 
-### Required Software
+### Method 1 (Direct) - Required Software
 
 1. **LM Studio** - [Download here](https://lmstudio.ai/)
    - Free local LLM runtime
@@ -54,10 +73,13 @@ run_with_lmstudio.bat
 
 2. **Python 3.8+** - Already installed if you can run NeverEndingQuest
 
+### Method 2 (Proxy) - Additional Requirements
+
 3. **mitmproxy** - Install via:
    ```bash
    pip install mitmproxy
    ```
+   Only needed for the advanced proxy method.
 
 ### Recommended Models for NeverEndingQuest
 
