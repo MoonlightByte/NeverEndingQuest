@@ -28,7 +28,18 @@ Core intent:
 
 - World-Brain
   - SQLite authority for surveillance, prompt surfaces, and evolution history.
-  - Proposed path: `data/world_brain.db`.
+  - Runtime implementation should align with `data/memory.db` narrative tables.
+  - Optional compatibility layer/view may be named "world_brain" without separate raw-source storage.
+
+## Copyright and Upload Boundary (Sync Requirement)
+
+This EGO/RATIO plan must remain aligned with world-narrative copyright policy:
+
+1. Raw uploaded books/files are local-only under `/user_uploads/text/` (gitignored).
+2. EGO and RATIO never read raw source files directly in normal operation.
+3. EGO/RATIO consume only source-anonymous atoms and interpreted world model state.
+4. No title/author/source metadata is stored in committable DB rows used by EGO/RATIO.
+5. Tester distributions may include baseline source-anonymous seed DB only, never local uploads.
 
 ## Prerequisite
 

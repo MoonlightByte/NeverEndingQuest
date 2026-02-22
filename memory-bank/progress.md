@@ -15,6 +15,15 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **World-Narrative Ingestion Foundation + Meta Assignment Planning (IN PROGRESS - 2026-02-22):**
+  - Added OpenSpec change `world-narrative-seed-bootstrap-and-toolkit-ingestion` with proposal/design/specs/tasks/executor prompts.
+  - Enforced hard cutover to `/user_uploads/text/` in planning and route/test contracts (`pdf` upload only, legacy root rejected).
+  - Added governance docs in change folder:
+    - `meta_source_rubric.md` for layered priors and interpretation boundaries.
+    - `profile_assignment_list.md` for ingest-wave ordering (meta priors first, fantasy batches second).
+  - Implemented/verified route guard updates in `web/routes/world_narrative_routes.py` and verification tests.
+  - Validation: `openspec validate world-narrative-seed-bootstrap-and-toolkit-ingestion` PASS, route tests PASS (8), bootstrap tests PASS (2).
+
 - **PDF Export Portrait and Typography Improvements (COMPLETED - 2026-02-19):**
   - **Portrait Embedding:** Character portrait now embeds in the page 2 "Character Appearance" image box of exported PDFs.
   - **Portrait Resolution:** Multi-tier lookup - static portraits (`web/static/portraits/`), module portraits (`modules/<module>/portraits/`), module NPC media (`modules/<module>/media/npcs/`), static NPC media (`web/static/media/npcs/`).

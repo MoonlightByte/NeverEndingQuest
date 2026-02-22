@@ -120,7 +120,13 @@ from web.routes.character_sheet_routes import (
 )
 from web.routes.memory_routes import register_memory_routes
 from web.routes.tabletop_party_routes import register_tabletop_party_routes
-from core.memory.memory_db import init_memory_db, DEFAULT_MEMORY_DB_PATH
+from web.routes.world_narrative_routes import register_world_narrative_routes
+from core.memory.memory_db import (
+    DEFAULT_MEMORY_DB_PATH,
+    DEFAULT_WORLD_NARRATIVE_SEED_DB_PATH,
+    bootstrap_memory_db_from_seed,
+    init_memory_db,
+)
 
 # Import toolkit components for API support
 try:
@@ -237,8 +243,17 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 # TABLETOP MODE: Initialize memory DB foundation as optional startup hook.
 try:
+    bootstrap_result = bootstrap_memory_db_from_seed(
+        runtime_db_path=DEFAULT_MEMORY_DB_PATH,
+        seed_db_path=DEFAULT_WORLD_NARRATIVE_SEED_DB_PATH,
+    )
     if init_memory_db(DEFAULT_MEMORY_DB_PATH):
         info(f"MEMORY_DB: Ready at {DEFAULT_MEMORY_DB_PATH}", category="web_interface")
+        if bootstrap_result.get("status") == "success":
+            info(
+                f"MEMORY_DB: Runtime DB bootstrapped from seed {DEFAULT_WORLD_NARRATIVE_SEED_DB_PATH}",
+                category="web_interface",
+            )
     else:
         warning("MEMORY_DB: Initialization failed, using legacy JSON paths", category="web_interface")
 except Exception as memory_init_error:
@@ -2321,6 +2336,8 @@ register_browser_settings_routes(
 )
 # TABLETOP MODE: Read-only memory timeline inspection route.
 register_memory_routes(app)
+# TABLETOP MODE: World narrative source upload/extract/build/ingest routes.
+register_world_narrative_routes(app)
 
 @app.route('/api/toolkit/modules')
 def get_available_modules_api():

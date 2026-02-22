@@ -44,6 +44,8 @@ This roadmap formalizes a safe, phased rebuild so we can improve quality without
 3. Improve deterministic data contracts before UI polish.
 4. Keep lazy runtime materialization unless there is a measured need for eager generation.
 5. Preserve SP and TABLETOP MODE compatibility.
+6. Keep player-uploaded source content local-only under `/user_uploads/text/`.
+7. Feed Module Builder with source-anonymous narrative atoms, not raw book text.
 
 ---
 
@@ -85,6 +87,29 @@ Exit criteria:
 
 ---
 
+## Phase 1.5: Toolkit world-source upload integration (narrative feed)
+
+Objective: add a safe player-facing ingestion path in Toolkit that enriches module narratives without copyright leakage.
+
+Core outcomes:
+1. Add Toolkit panel for world-source ingestion (`/toolkit`).
+2. Accept player uploads (`pdf` only) to `/user_uploads/text/` only.
+3. Run extraction -> source-anonymous atom build -> runtime DB ingest.
+4. Expose resulting narrative seed packs to Module Builder generation paths.
+
+Constraints:
+- No raw uploaded content in committable repo paths.
+- No title/author/source metadata in committable DB outputs.
+- One-book-at-a-time processing to avoid context overflow.
+- Hard cutover to `/user_uploads/text/` (reject legacy `/user_uploads/` paths).
+
+Exit criteria:
+- User can upload one file and complete ingestion from Toolkit UI.
+- Module Builder sees richer continuity seeds from newly ingested atoms.
+- Git status remains clean for `/user_uploads/text/` and runtime DB content.
+
+---
+
 ## Phase 2: Module authoring quality controls
 
 Objective: improve first-pass module output consistency and lower NPC/plot cleanup overhead.
@@ -123,6 +148,7 @@ Candidate scope:
 - Clear preflight checks and warnings.
 - Better progress detail and actionable error messages.
 - Optional post-build quality report in toolkit UI.
+- Copyright warning/attestation UX for player upload ingestion.
 
 Exit criteria:
 - End-to-end builder flow understandable without log spelunking.
@@ -161,6 +187,11 @@ For each phase:
 2. Targeted regression tests for touched flows.
 3. One manual smoke for primary facilitator workflow.
 4. Fail-open behavior confirmed for non-critical enhancement paths.
+
+Additional checks for upload integration phases:
+5. Upload files are written only to `/user_uploads/text/`.
+6. Generated atoms/seeds are source-anonymous.
+7. No raw-source files or runtime DB artifacts are included in distribution commits.
 
 ---
 

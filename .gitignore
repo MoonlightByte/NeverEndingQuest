@@ -113,6 +113,9 @@ temp/
 clear_output.txt
 test_objectives.json
 
+# Local player/source uploads (copyright-sensitive, never commit)
+/user_uploads/
+
 # Uncompressed video files (keep only compressed versions)
 web/static/media/videos/dwarf_smith.mp4
 web/static/media/videos/skeleton.mp4

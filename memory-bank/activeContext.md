@@ -1,5 +1,13 @@
 ## Current Work Focus
 
+- **World-Narrative Ingestion Foundation + Meta Assignment Planning (IN PROGRESS - 2026-02-22):**
+  - **OpenSpec Change:** `world-narrative-seed-bootstrap-and-toolkit-ingestion` (new, valid)
+  - **Copyright Firewall:** Hard cutover path is now `/user_uploads/text/` only (legacy `/user_uploads/` paths are rejected in route/test contracts).
+  - **Ingestion Tooling Basis:** Local PDF chunk extractor + source-anonymous atom builder scripts are staged for one-book-at-a-time seed compilation.
+  - **Bootstrap + Schema:** Runtime seed bootstrap contract and world-narrative additive tables are wired in memory foundation planning/implementation.
+  - **Meta Governance:** Added `meta_source_rubric.md` and `profile_assignment_list.md` to OpenSpec for layered priors (strategy/cosmology/horror -> fantasy specifics).
+  - **Verification:** `openspec validate world-narrative-seed-bootstrap-and-toolkit-ingestion` PASS; route/bootstrap verification scripts pass in `.venv`.
+
 - **PDF Export Portrait and Typography Improvements (COMPLETED - 2026-02-19):**
   - **OpenSpec Change:** PDF export enhancements for character sheet downloads
   - **Portrait Embedding:** PC portrait now appears in page 2 Character Appearance box

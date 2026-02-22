@@ -13,6 +13,7 @@ long-term memory foundation.
 """
 
 import os
+import shutil
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -21,6 +22,7 @@ from utils.enhanced_logger import debug, error, info, warning
 
 
 DEFAULT_MEMORY_DB_PATH = "data/memory.db"
+DEFAULT_WORLD_NARRATIVE_SEED_DB_PATH = "data/world_narrative_seed.db"
 
 
 def _utc_now_iso() -> str:
@@ -42,6 +44,65 @@ def _connect(db_path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA synchronous = NORMAL")
     return conn
+
+
+def bootstrap_memory_db_from_seed(
+    runtime_db_path: str = DEFAULT_MEMORY_DB_PATH,
+    seed_db_path: str = DEFAULT_WORLD_NARRATIVE_SEED_DB_PATH,
+) -> Dict[str, Any]:
+    """Copy source-anonymous seed DB to runtime DB on first run."""
+    try:
+        if os.path.exists(runtime_db_path):
+            return {
+                "status": "skipped",
+                "reason": "runtime_exists",
+                "runtime_db_path": runtime_db_path,
+                "seed_db_path": seed_db_path,
+            }
+
+        if not os.path.exists(seed_db_path):
+            return {
+                "status": "skipped",
+                "reason": "seed_missing",
+                "runtime_db_path": runtime_db_path,
+                "seed_db_path": seed_db_path,
+            }
+
+        _ensure_parent_dir(runtime_db_path)
+        shutil.copy2(seed_db_path, runtime_db_path)
+
+        # Ensure copied file is valid SQLite and readable.
+        conn = None
+        try:
+            conn = sqlite3.connect(runtime_db_path)
+            conn.execute("SELECT name FROM sqlite_master LIMIT 1").fetchone()
+        finally:
+            if conn is not None:
+                conn.close()
+
+        info(
+            f"MEMORY_DB: Bootstrapped runtime DB from seed ({seed_db_path} -> {runtime_db_path})",
+            category="memory_db",
+        )
+        return {
+            "status": "success",
+            "reason": "bootstrapped_from_seed",
+            "runtime_db_path": runtime_db_path,
+            "seed_db_path": seed_db_path,
+        }
+    except Exception as bootstrap_error:
+        error(
+            f"MEMORY_DB: Seed bootstrap failed ({seed_db_path} -> {runtime_db_path}): {bootstrap_error}",
+            exception=bootstrap_error,
+            category="memory_db",
+        )
+        return {
+            "status": "error",
+            "reason": "bootstrap_failed",
+            "runtime_db_path": runtime_db_path,
+            "seed_db_path": seed_db_path,
+            "message": str(bootstrap_error),
+        }
 
 
 def _create_schema_migrations_table(conn: sqlite3.Connection) -> None:
@@ -275,6 +336,86 @@ CREATE TABLE IF NOT EXISTS memory_event_provenance (
 """
 
 
+MIGRATION_003_WORLD_NARRATIVE_TABLES = """
+CREATE TABLE IF NOT EXISTS inspiration_profiles (
+    profile_id TEXT PRIMARY KEY,
+    profile_kind TEXT NOT NULL,
+    weights_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_inspiration_profiles_kind
+    ON inspiration_profiles(profile_kind);
+
+CREATE TABLE IF NOT EXISTS inspiration_atoms (
+    atom_id TEXT PRIMARY KEY,
+    profile_id TEXT NOT NULL,
+    atom_type TEXT NOT NULL,
+    label TEXT NOT NULL,
+    description TEXT NOT NULL,
+    weight REAL NOT NULL DEFAULT 0.5,
+    srd_compatibility TEXT NOT NULL DEFAULT 'unknown',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(profile_id) REFERENCES inspiration_profiles(profile_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_inspiration_atoms_profile
+    ON inspiration_atoms(profile_id, atom_type);
+
+CREATE TABLE IF NOT EXISTS atom_relations (
+    relation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    left_atom_id TEXT NOT NULL,
+    right_atom_id TEXT NOT NULL,
+    relation_type TEXT NOT NULL,
+    weight REAL NOT NULL DEFAULT 0.5,
+    updated_at TEXT NOT NULL,
+    UNIQUE(left_atom_id, right_atom_id, relation_type),
+    FOREIGN KEY(left_atom_id) REFERENCES inspiration_atoms(atom_id) ON DELETE CASCADE,
+    FOREIGN KEY(right_atom_id) REFERENCES inspiration_atoms(atom_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_atom_relations_left
+    ON atom_relations(left_atom_id, relation_type);
+
+CREATE INDEX IF NOT EXISTS idx_atom_relations_right
+    ON atom_relations(right_atom_id, relation_type);
+
+CREATE TABLE IF NOT EXISTS atom_statistics (
+    atom_id TEXT PRIMARY KEY,
+    support_count INTEGER NOT NULL DEFAULT 0,
+    avg_weight REAL NOT NULL DEFAULT 0.5,
+    variance REAL NOT NULL DEFAULT 0.0,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(atom_id) REFERENCES inspiration_atoms(atom_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS campaign_world_model (
+    campaign_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    summary_json TEXT NOT NULL,
+    generated_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(campaign_id, version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_campaign_world_model_latest
+    ON campaign_world_model(campaign_id, version DESC);
+
+CREATE TABLE IF NOT EXISTS campaign_world_delta (
+    delta_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id TEXT NOT NULL,
+    base_version INTEGER NOT NULL,
+    proposal_json TEXT NOT NULL,
+    applied INTEGER NOT NULL DEFAULT 0,
+    applied_at TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_campaign_world_delta_campaign
+    ON campaign_world_delta(campaign_id, created_at DESC);
+"""
+
+
 def run_memory_migrations(db_path: str = DEFAULT_MEMORY_DB_PATH) -> Dict[str, Any]:
     """Run all pending memory DB migrations and return summary."""
     _ensure_parent_dir(db_path)
@@ -282,6 +423,7 @@ def run_memory_migrations(db_path: str = DEFAULT_MEMORY_DB_PATH) -> Dict[str, An
     migrations = [
         ("001_initial_schema", MIGRATION_001_INITIAL_SCHEMA),
         ("002_readiness_tables", MIGRATION_002_READINESS_TABLES),
+        ("003_world_narrative_tables", MIGRATION_003_WORLD_NARRATIVE_TABLES),
     ]
 
     applied_count = 0

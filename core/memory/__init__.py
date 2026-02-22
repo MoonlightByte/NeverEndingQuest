@@ -11,6 +11,8 @@ Licensed under Fair Source License 1.0
 
 from core.memory.memory_db import (
     DEFAULT_MEMORY_DB_PATH,
+    DEFAULT_WORLD_NARRATIVE_SEED_DB_PATH,
+    bootstrap_memory_db_from_seed,
     create_memory_event,
     create_memory_link,
     init_memory_db,
@@ -35,6 +37,8 @@ from core.memory.party_transition_memory import (
 
 __all__ = [
     "DEFAULT_MEMORY_DB_PATH",
+    "DEFAULT_WORLD_NARRATIVE_SEED_DB_PATH",
+    "bootstrap_memory_db_from_seed",
     "init_memory_db",
     "run_memory_migrations",
     "create_memory_event",
