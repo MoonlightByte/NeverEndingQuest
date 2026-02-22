@@ -429,6 +429,23 @@ Before committing code:
 - [ ] Temperature/reasoning parameters are comparable equivalents, not arbitrary choices
 - [ ] Capture system records output for comparison before merging
 
+### Capture Output Analysis Requirements
+When analyzing model captures in `model_captures/*.json`, you MUST:
+1. **Read only the LAST entry** - files contain many old captures, only analyze the most recent
+2. **Show actual field values** - not summaries like "Excellent" or "matches"
+3. **Create detailed comparison tables** with these columns:
+   - Latency (seconds)
+   - Tokens (input/output)
+   - Cost (USD)
+   - JSON Valid (Yes/No)
+   - Each field from baseline schema with ACTUAL values (e.g., `stat: ""` vs `stat: "other"`)
+   - Extra Fields (list any fields not in baseline)
+   - Missing Fields (list any baseline fields not present)
+   - For narration: word count, same scene described, character names match
+   - For actions: count, types match, parameters match, extra/missing actions
+4. **Note specific differences** - e.g., "baseline uses 'Removed' vs variant uses 'Decrease'"
+5. **DO NOT use Python scripts** - read JSON directly with Read tool
+
 ## SRD 5.2.1 Compliance
 
 When implementing game mechanics:
