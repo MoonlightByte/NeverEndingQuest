@@ -177,6 +177,9 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
 
         # Fire all non-baseline variants in background
         for variant in variants:
+            # Skip disabled variants (enabled defaults to True if not specified)
+            if not variant.get("enabled", True):
+                continue
             # Skip re-firing the exact same model as the primary baseline
             if (variant.get("model") == model
                     and variant.get("reasoning_effort") is None
