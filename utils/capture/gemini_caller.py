@@ -92,6 +92,15 @@ def convert_messages_to_gemini(messages):
 
     # Join all system messages with double newlines
     system_instruction = "\n\n".join(system_parts) if system_parts else None
+
+    # Gemini requires at least one content item. If only system messages were provided,
+    # inject a minimal user message to trigger execution.
+    if not contents and system_instruction:
+        contents.append({
+            "role": "user",
+            "parts": [{"text": "Execute the above instructions."}]
+        })
+
     return system_instruction, contents
 
 
