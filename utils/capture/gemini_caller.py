@@ -16,7 +16,10 @@ def _get_client():
         with _client_lock:
             if _gemini_client is None:
                 from google import genai
-                api_key_file = "google_api.pi"
+                # Look for API key file in project root (where run_web.py runs)
+                import sys
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                api_key_file = os.path.join(project_root, "google_api.pi")
                 if os.path.exists(api_key_file):
                     with open(api_key_file, 'r') as f:
                         content = f.read().strip()
@@ -26,7 +29,7 @@ def _get_client():
                             api_key = content
                 else:
                     raise FileNotFoundError(
-                        "google_api.pi not found - Gemini API key required for capture"
+                        f"google_api.pi not found at {api_key_file} - Gemini API key required for capture"
                     )
                 os.environ['GEMINI_API_KEY'] = api_key
                 _gemini_client = genai.Client()

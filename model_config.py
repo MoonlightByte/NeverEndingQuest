@@ -72,6 +72,6 @@ TTS_MODEL = "tts-1"                                       # OpenAI TTS model (tt
 TTS_VOICE = "fable"                                       # Voice: alloy, echo, fable, onyx, nova, shimmer (fable is good for narration)
 TTS_SPEED = 1.0                                           # Speed: 0.25 to 4.0 (1.0 is normal)
 # --- Multi-Model Capture Settings ---
-MULTI_MODEL_CAPTURE = False  # Set True to enable parallel cloud model testing (gpt-4.1, gpt-5.2, Gemini 3)
+MULTI_MODEL_CAPTURE = True  # Set True to enable parallel cloud model testing (gpt-4.1, gpt-5.2, Gemini 3)
                              # Captures outputs to model_captures/ for comparison
                              # Note: Ignored when USE_LM_STUDIO = True (LM Studio is production runtime, not for testing)
