@@ -1,0 +1,695 @@
+{
+  "task_id": "T054",
+  "captures": [
+    {
+      "task_id": "T054",
+      "timestamp": "2026-02-22T07:44:59Z",
+      "input": {
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are an expert inventory manager for the 5th edition of the world's most popular role playing game. Your job is to consolidate loose currency items and ammunition into their proper sections while preserving player agency over containers and valuables.\n\n## PRIMARY TASKS: CURRENCY AND AMMUNITION CONSOLIDATION\n\nYou must:\n1. Identify loose currency that should be added to the character's currency totals and remove those items from inventory\n2. Identify ammunition items in equipment that should be moved to the ammunition section\n\n### CONSOLIDATION RULES:\n\n**DO CONSOLIDATE (add to currency and remove from inventory):**\n- Loose coins: \"5 gold pieces\", \"10 silver\", \"handful of copper\"\n- Emptied coin bags: \"bag of 50 gold\", \"pouch with 100 silver\"\n- Clearly available currency: \"20 gold from the table\", \"coins from defeated bandit\"\n- Currency with clear amounts: \"15 gp\", \"stack of 30 silver coins\"\n\n**DO NOT CONSOLIDATE (preserve as inventory items):**\n- Gems/jewelry: \"ruby worth 150 gold\", \"diamond (500gp value)\", \"golden necklace\"\n- Containers with contents: \"chest containing 1000 gold\", \"locked strongbox with coins\"\n- Trapped/locked items: \"trapped chest\", \"locked coffer\", \"sealed vault\"\n- Art objects: \"golden statue worth 250gp\", \"ornate painting valued at 100gp\"\n- Trade goods: \"silk worth 100gp\", \"rare spices (50gp value)\"\n- Ambiguous containers: Items where it's unclear if the player has opened them\n\n### AMMUNITION CONSOLIDATION RULES:\n\n**DO CONSOLIDATE (move to ammunition section and remove from equipment):**\n- Clear ammunition items: \"Arrows x 20\", \"Crossbow bolts x 10\", \"20 arrows\"\n- Ammunition with quantities: \"Quiver with 30 arrows\", \"Bundle of 15 bolts\"\n- Loose ammunition: \"handful of arrows\", \"some crossbow bolts\"\n\n**DO NOT CONSOLIDATE (keep in equipment):**\n- Magical ammunition: \"+1 arrows\", \"flaming arrows\", \"arrows of slaying\"\n- Special ammunition: \"silvered arrows\", \"adamantine bolts\"\n- Ammunition containers without clear count: \"empty quiver\", \"bolt case\"\n- Non-standard ammunition: \"ballista bolts\", \"special ammunition\"\n\n### AMMUNITION CONTAINER STANDARDIZATION:\n**ALWAYS standardize container names:**\n- \"full quiver\", \"empty quiver\", \"quiver full of arrows\" \u2192 \"Quiver\"\n- \"full bolt case\", \"empty bolt case\", \"case of bolts\" \u2192 \"Bolt case\"\n\n**If container is described as \"full\" or contains ammo:**\n- Rename to standard name (\"Quiver\" or \"Bolt case\")\n- Add appropriate ammunition to ammunition section:\n  - \"full quiver\" \u2192 Add 20 arrows to ammunition\n  - \"quiver with 30 arrows\" \u2192 Add 30 arrows to ammunition\n  - \"full bolt case\" \u2192 Add 20 crossbow bolts to ammunition\n  \n**If container is \"empty\" or just a container:**\n- Rename to standard name but don't add ammunition\n\n### CURRENCY TYPES:\n- platinum (pp) = 10 gold\n- gold (gp) = 1 gold\n- electrum (ep) = 0.5 gold\n- silver (sp) = 0.1 gold  \n- copper (cp) = 0.01 gold\n\n### OUTPUT FORMAT:\nReturn a JSON object with ONLY the changes needed:\n{\n  \"inventory\": {\n    \"currency\": {\n      \"platinum\": 0,\n      \"gold\": 125,      // New total after consolidation\n      \"electrum\": 0,\n      \"silver\": 50,     // New total after consolidation\n      \"copper\": 200     // New total after consolidation\n    }\n  },\n  \"ammunition\": [\n    {\n      \"name\": \"Arrows\",\n      \"quantity\": 20,     // Added from \"full quiver\"\n      \"description\": \"Standard arrows for use with a longbow or shortbow\"\n    },\n    {\n      \"name\": \"Crossbow bolt\",\n      \"quantity\": 50,     // New total after consolidation\n      \"description\": \"Ammunition for crossbows.\"\n    }\n  ],\n  \"equipment\": [\n    {\"item_name\": \"full quiver\", \"item_name\": \"Quiver\", \"_update\": true},  // Rename container\n    {\"item_name\": \"Crossbow bolts x 10\", \"_remove\": true},  // Remove loose ammo from equipment\n    {\"item_name\": \"5 gold pieces\", \"_remove\": true}  // Remove loose coins\n  ],\n  \"consolidations_made\": [\n    \"Consolidated X gold pieces into currency\",\n    \"Emptied bag of Y gold into currency\",\n    \"Total gold increased from A to B\",\n    \"Renamed 'full quiver' to 'Quiver' and added 20 arrows\",\n    \"Moved 'Crossbow bolts x 10' to ammunition section\",\n    \"Ammunition 'Crossbow bolt' increased from 40 to 50\"\n  ]\n}\n\nCRITICAL: \n- Only return currency fields that changed\n- Only return ammunition entries that changed\n- Only list items that should be removed\n- Calculate new totals by adding consolidated amounts to existing currency/ammunition\n- For ammunition, maintain the same name format (e.g., \"Crossbow bolt\" not \"crossbow bolts\")\n- Preserve player agency - when in doubt, don't consolidate"
+          },
+          {
+            "role": "user",
+            "content": "Please consolidate loose currency and ammunition for this character:\n\nCHARACTER NAME: Tarin Underbough\n\nCURRENT CURRENCY:\n- Platinum: 0\n- Gold: 0\n- Electrum: 0\n- Silver: 0\n- Copper: 0\n\nCURRENT AMMUNITION:\n- Arrows: 20\n\nCURRENT INVENTORY:\n\nItem #1:\n- Name: Arrows\n- Type: ammunition\n- Description: Ammunition for shortbow.\n- Quantity: 20\n\n\nIdentify loose currency items AND ammunition that should be consolidated. Remember:\n- Consolidate loose coins and emptied bags into currency\n- Move ammunition items (arrows, bolts) to the ammunition section\n- Standardize container names (e.g., \"full quiver\" \u2192 \"Quiver\")\n- If a container is \"full\", add ammo and rename container\n- Preserve gems, containers, and valuables\n- Calculate new totals after consolidation\n- Return only the changes needed for both currency and ammunition"
+          }
+        ],
+        "temperature": 0.1
+      },
+      "baseline": {
+        "label": "gpt-4.1-2025-04-14|baseline",
+        "output": "```json\n{\n  \"ammunition\": [\n    {\n      \"name\": \"Arrows\",\n      \"quantity\": 40,\n      \"description\": \"Ammunition for shortbow.\"\n    }\n  ],\n  \"equipment\": [\n    {\"item_name\": \"Arrows\", \"_remove\": true}\n  ],\n  \"consolidations_made\": [\n    \"Moved 'Arrows' (20) from equipment to ammunition section\",\n    \"Ammunition 'Arrows' increased from 20 to 40\"\n  ]\n}\n```",
+        "latency_s": 1.029,
+        "validation": {
+          "valid": true,
+          "errors": [],
+          "warnings": [
+            "Extracted JSON from markdown code block"
+          ],
+          "checks": {
+            "json_valid": true,
+            "schema_compliant": true,
+            "business_rules_pass": true,
+            "matches_baseline": null
+          },
+          "details": {
+            "parsed_json": {
+              "ammunition": [
+                {
+                  "name": "Arrows",
+                  "quantity": 40,
+                  "description": "Ammunition for shortbow."
+                }
+              ],
+              "equipment": [
+                {
+                  "item_name": "Arrows",
+                  "_remove": true
+                }
+              ],
+              "consolidations_made": [
+                "Moved 'Arrows' (20) from equipment to ammunition section",
+                "Ammunition 'Arrows' increased from 20 to 40"
+              ]
+            }
+          }
+        }
+      },
+      "variants": {
+        "gpt-5.2|none": {
+          "output": "{\n  \"ammunition\": [\n    {\n      \"name\": \"Arrows\",\n      \"quantity\": 40,\n      \"description\": \"Ammunition for shortbow.\"\n    }\n  ],\n  \"equipment\": [\n    {\n      \"item_name\": \"Arrows\",\n      \"_remove\": true\n    }\n  ],\n  \"consolidations_made\": [\n    \"Moved 'Arrows x 20' from equipment to ammunition section\",\n    \"Ammunition 'Arrows' increased from 20 to 40\"\n  ]\n}",
+          "latency_s": 1.682,
+          "validation": {
+            "valid": true,
+            "errors": [],
+            "warnings": [
+              "Baseline difference: Value mismatch for 'consolidations_made'"
+            ],
+            "checks": {
+              "json_valid": true,
+              "schema_compliant": true,
+              "business_rules_pass": true,
+              "matches_baseline": false
+            },
+            "details": {
+              "parsed_json": {
+                "ammunition": [
+                  {
+                    "name": "Arrows",
+                    "quantity": 40,
+                    "description": "Ammunition for shortbow."
+                  }
+                ],
+                "equipment": [
+                  {
+                    "item_name": "Arrows",
+                    "_remove": true
+                  }
+                ],
+                "consolidations_made": [
+                  "Moved 'Arrows x 20' from equipment to ammunition section",
+                  "Ammunition 'Arrows' increased from 20 to 40"
+                ]
+              },
+              "baseline_differences": [
+                "Value mismatch for 'consolidations_made'"
+              ]
+            }
+          }
+        },
+        "gpt-5.2|low": {
+          "output": "```json\n{\n  \"ammunition\": [\n    {\n      \"name\": \"Arrows\",\n      \"quantity\": 40,\n      \"description\": \"Standard arrows for use with a longbow or shortbow\"\n    }\n  ],\n  \"equipment\": [\n    {\n      \"item_name\": \"Arrows\",\n      \"_remove\": true\n    }\n  ],\n  \"consolidations_made\": [\n    \"Moved 'Arrows' (20) from equipment to ammunition section\",\n    \"Ammunition 'Arrows' increased from 20 to 40\"\n  ]\n}\n```",
+          "latency_s": 2.671,
+          "validation": {
+            "valid": true,
+            "errors": [],
+            "warnings": [
+              "Extracted JSON from markdown code block",
+              "Baseline difference: Value mismatch for 'ammunition'"
+            ],
+            "checks": {
+              "json_valid": true,
+              "schema_compliant": true,
+              "business_rules_pass": true,
+              "matches_baseline": false
+            },
+            "details": {
+              "parsed_json": {
+                "ammunition": [
+                  {
+                    "name": "Arrows",
+                    "quantity": 40,
+                    "description": "Standard arrows for use with a longbow or shortbow"
+                  }
+                ],
+                "equipment": [
+                  {
+                    "item_name": "Arrows",
+                    "_remove": true
+                  }
+                ],
+                "consolidations_made": [
+                  "Moved 'Arrows' (20) from equipment to ammunition section",
+                  "Ammunition 'Arrows' increased from 20 to 40"
+                ]
+              },
+              "baseline_differences": [
+                "Value mismatch for 'ammunition'"
+              ]
+            }
+          }
+        },
+        "gpt-5.2|medium": {
+          "output": "```json\n{\n  \"ammunition\": [\n    {\n      \"name\": \"Arrows\",\n      \"quantity\": 40,\n      \"description\": \"Ammunition for shortbow.\"\n    }\n  ],\n  \"equipment\": [\n    { \"item_name\": \"Arrows\", \"_remove\": true }\n  ],\n  \"consolidations_made\": [\n    \"Moved inventory item 'Arrows' (20) to ammunition section\",\n    \"Ammunition 'Arrows' increased from 20 to 40\"\n  ]\n}\n```",
+          "latency_s": 5.496,
+          "validation": {
+            "valid": true,
+            "errors": [],
+            "warnings": [
+              "Extracted JSON from markdown code block",
+              "Baseline difference: Value mismatch for 'consolidations_made'"
+            ],
+            "checks": {
+              "json_valid": true,
+              "schema_compliant": true,
+              "business_rules_pass": true,
+              "matches_baseline": false
+            },
+            "details": {
+              "parsed_json": {
+                "ammunition": [
+                  {
+                    "name": "Arrows",
+                    "quantity": 40,
+                    "description": "Ammunition for shortbow."
+                  }
+                ],
+                "equipment": [
+                  {
+                    "item_name": "Arrows",
+                    "_remove": true
+                  }
+                ],
+                "consolidations_made": [
+                  "Moved inventory item 'Arrows' (20) to ammunition section",
+                  "Ammunition 'Arrows' increased from 20 to 40"
+                ]
+              },
+              "baseline_differences": [
+                "Value mismatch for 'consolidations_made'"
+              ]
+            }
+          }
+        },
+        "gemini-3-pro|low": {
+          "output": "{\n  \"inventory\": {\n    \"currency\": {\n      \"platinum\": 0,\n      \"gold\": 0,\n      \"electrum\": 0,\n      \"silver\": 0,\n      \"copper\": 0\n    }\n  },\n  \"ammunition\": [\n    {\n      \"name\": \"Arrows\",\n      \"quantity\": 40,\n      \"description\": \"Ammunition for shortbow.\"\n    }\n  ],\n  \"equipment\": [\n    {\n      \"item_name\": \"Arrows\",\n      \"_remove\": true\n    }\n  ],\n  \"consolidations_made\": [\n    \"Moved 'Arrows' (Quantity: 20) to ammunition section\",\n    \"Ammunition 'Arrows' increased from 20 to 40\"\n  ]\n}",
+          "latency_s": 4.359,
+          "validation": {
+            "valid": true,
+            "errors": [],
+            "warnings": [
+              "Baseline difference: Extra keys: {'inventory'}",
+              "Baseline difference: Value mismatch for 'consolidations_made'"
+            ],
+            "checks": {
+              "json_valid": true,
+              "schema_compliant": true,
+              "business_rules_pass": true,
+              "matches_baseline": false
+            },
+            "details": {
+              "parsed_json": {
+                "inventory": {
+                  "currency": {
+                    "platinum": 0,
+                    "gold": 0,
+                    "electrum": 0,
+                    "silver": 0,
+                    "copper": 0
+                  }
+                },
+                "ammunition": [
+                  {
+                    "name": "Arrows",
+                    "quantity": 40,
+                    "description": "Ammunition for shortbow."
+                  }
+                ],
+                "equipment": [
+                  {
+                    "item_name": "Arrows",
+                    "_remove": true
+                  }
+                ],
+                "consolidations_made": [
+                  "Moved 'Arrows' (Quantity: 20) to ammunition section",
+                  "Ammunition 'Arrows' increased from 20 to 40"
+                ]
+              },
+              "baseline_differences": [
+                "Extra keys: {'inventory'}",
+                "Value mismatch for 'consolidations_made'"
+              ]
+            }
+          }
+        },
+        "gpt-5.2|high": {
+          "output": "```json\n{\n  \"ammunition\": [\n    {\n      \"name\": \"Arrows\",\n      \"quantity\": 40,\n      \"description\": \"Ammunition for shortbow.\"\n    }\n  ],\n  \"equipment\": [\n    {\n      \"item_name\": \"Arrows\",\n      \"_remove\": true\n    }\n  ],\n  \"consolidations_made\": [\n    \"Moved 'Arrows' (20) from equipment to ammunition section\",\n    \"Ammunition 'Arrows' increased from 20 to 40\"\n  ]\n}\n```",
+          "latency_s": 6.167,
+          "validation": {
+            "valid": true,
+            "errors": [],
+            "warnings": [
+              "Extracted JSON from markdown code block"
+            ],
+            "checks": {
+              "json_valid": true,
+              "schema_compliant": true,
+              "business_rules_pass": true,
+              "matches_baseline": true
+            },
+            "details": {
+              "parsed_json": {
+                "ammunition": [
+                  {
+                    "name": "Arrows",
+                    "quantity": 40,
+                    "description": "Ammunition for shortbow."
+                  }
+                ],
+                "equipment": [
+                  {
+                    "item_name": "Arrows",
+                    "_remove": true
+                  }
+                ],
+                "consolidations_made": [
+                  "Moved 'Arrows' (20) from equipment to ammunition section",
+                  "Ammunition 'Arrows' increased from 20 to 40"
+                ]
+              },
+              "baseline_differences": []
+            }
+          }
+        },
+        "gpt-5-mini|minimal": {
+          "output": "{\n  \"ammunition\": [\n    {\n      \"name\": \"Arrows\",\n      \"quantity\": 40,\n      \"description\": \"Ammunition for shortbow.\"\n    }\n  ],\n  \"equipment\": [\n    {\n      \"item_name\": \"Arrows\",\n      \"_remove\": true\n    }\n  ],\n  \"consolidations_made\": [\n    \"Moved 'Arrows' (quantity 20) from equipment to ammunition\",\n    \"Ammunition 'Arrows' increased from 20 to 40\"\n  ]\n}",
+          "latency_s": 2.275,
+          "validation": {
+            "valid": true,
+            "errors": [],
+            "warnings": [
+              "Baseline difference: Value mismatch for 'consolidations_made'"
+            ],
+            "checks": {
+              "json_valid": true,
+              "schema_compliant": true,
+              "business_rules_pass": true,
+              "matches_baseline": false
+            },
+            "details": {
+              "parsed_json": {
+                "ammunition": [
+                  {
+                    "name": "Arrows",
+                    "quantity": 40,
+                    "description": "Ammunition for shortbow."
+                  }
+                ],
+                "equipment": [
+                  {
+                    "item_name": "Arrows",
+                    "_remove": true
+                  }
+                ],
+                "consolidations_made": [
+                  "Moved 'Arrows' (quantity 20) from equipment to ammunition",
+                  "Ammunition 'Arrows' increased from 20 to 40"
+                ]
+              },
+              "baseline_differences": [
+                "Value mismatch for 'consolidations_made'"
+              ]
+            }
+          }
+        },
+        "gemini-3-flash|minimal": {
+          "output": "```json\n{\n  \"inventory\": {\n    \"currency\": {\n      \"platinum\": 0,\n      \"gold\": 0,\n      \"electrum\": 0,\n      \"silver\": 0,\n      \"copper\": 0\n    }\n  },\n  \"ammunition\": [\n    {\n      \"name\": \"Arrows\",\n      \"quantity\": 40,\n      \"description\": \"Standard arrows for use with a longbow or shortbow\"\n    }\n  ],\n  \"equipment\": [\n    {\n      \"item_name\": \"Arrows\",\n      \"_remove\": true\n    }\n  ],\n  \"consolidations_made\": [\n    \"Moved 'Arrows' (Quantity: 20) from equipment to ammunition section\",\n    \"Ammunition 'Arrows' increased from 20 to 40\"\n  ]\n}\n```",
+          "latency_s": 1.775,
+          "validation": {
+            "valid": true,
+            "errors": [],
+            "warnings": [
+              "Extracted JSON from markdown code block",
+              "Baseline difference: Extra keys: {'inventory'}",
+              "Baseline difference: Value mismatch for 'ammunition'",
+              "Baseline difference: Value mismatch for 'consolidations_made'"
+            ],
+            "checks": {
+              "json_valid": true,
+              "schema_compliant": true,
+              "business_rules_pass": true,
+              "matches_baseline": false
+            },
+            "details": {
+              "parsed_json": {
+                "inventory": {
+                  "currency": {
+                    "platinum": 0,
+                    "gold": 0,
+                    "electrum": 0,
+                    "silver": 0,
+                    "copper": 0
+                  }
+                },
+                "ammunition": [
+                  {
+                    "name": "Arrows",
+                    "quantity": 40,
+                    "description": "Standard arrows for use with a longbow or shortbow"
+                  }
+                ],
+                "equipment": [
+                  {
+                    "item_name": "Arrows",
+                    "_remove": true
+                  }
+                ],
+                "consolidations_made": [
+                  "Moved 'Arrows' (Quantity: 20) from equipment to ammunition section",
+                  "Ammunition 'Arrows' increased from 20 to 40"
+                ]
+              },
+              "baseline_differences": [
+                "Extra keys: {'inventory'}",
+                "Value mismatch for 'ammunition'",
+                "Value mismatch for 'consolidations_made'"
+              ]
+            }
+          }
+        },
+        "gpt-5-mini|low": {
+          "output": "{\n  \"ammunition\": [\n    {\n      \"name\": \"Arrows\",\n      \"quantity\": 40,\n      \"description\": \"Ammunition for shortbow.\"\n    }\n  ],\n  \"equipment\": [\n    {\n      \"item_name\": \"Arrows\",\n      \"_remove\": true\n    }\n  ],\n  \"consolidations_made\": [\n    \"Moved 'Arrows' (quantity 20) from inventory to ammunition\",\n    \"Ammunition 'Arrows' increased from 20 to 40\"\n  ]\n}",
+          "latency_s": 6.482,
+          "validation": {
+            "valid": true,
+            "errors": [],
+            "warnings": [
+              "Baseline difference: Value mismatch for 'consolidations_made'"
+            ],
+            "checks": {
+              "json_valid": true,
+              "schema_compliant": true,
+              "business_rules_pass": true,
+              "matches_baseline": false
+            },
+            "details": {
+              "parsed_json": {
+                "ammunition": [
+                  {
+                    "name": "Arrows",
+                    "quantity": 40,
+                    "description": "Ammunition for shortbow."
+                  }
+                ],
+                "equipment": [
+                  {
+                    "item_name": "Arrows",
+                    "_remove": true
+                  }
+                ],
+                "consolidations_made": [
+                  "Moved 'Arrows' (quantity 20) from inventory to ammunition",
+                  "Ammunition 'Arrows' increased from 20 to 40"
+                ]
+              },
+              "baseline_differences": [
+                "Value mismatch for 'consolidations_made'"
+              ]
+            }
+          }
+        },
+        "gemini-3-pro|high": {
+          "output": "```json\n{\n  \"inventory\": {},\n  \"ammunition\": [\n    {\n      \"name\": \"Arrows\",\n      \"quantity\": 40,\n      \"description\": \"Ammunition for shortbow.\"\n    }\n  ],\n  \"equipment\": [\n    {\n      \"item_name\": \"Arrows\",\n      \"_remove\": true\n    }\n  ],\n  \"consolidations_made\": [\n    \"Moved 'Arrows' (x20) to ammunition section\",\n    \"Ammunition 'Arrows' increased from 20 to 40\"\n  ]\n}\n```",
+          "latency_s": 11.062,
+          "validation": {
+            "valid": true,
+            "errors": [],
+            "warnings": [
+              "Extracted JSON from markdown code block",
+              "Baseline difference: Extra keys: {'inventory'}",
+              "Baseline difference: Value mismatch for 'consolidations_made'"
+            ],
+            "checks": {
+              "json_valid": true,
+              "schema_compliant": true,
+              "business_rules_pass": true,
+              "matches_baseline": false
+            },
+            "details": {
+              "parsed_json": {
+                "inventory": {},
+                "ammunition": [
+                  {
+                    "name": "Arrows",
+                    "quantity": 40,
+                    "description": "Ammunition for shortbow."
+                  }
+                ],
+                "equipment": [
+                  {
+                    "item_name": "Arrows",
+                    "_remove": true
+                  }
+                ],
+                "consolidations_made": [
+                  "Moved 'Arrows' (x20) to ammunition section",
+                  "Ammunition 'Arrows' increased from 20 to 40"
+                ]
+              },
+              "baseline_differences": [
+                "Extra keys: {'inventory'}",
+                "Value mismatch for 'consolidations_made'"
+              ]
+            }
+          }
+        },
+        "gemini-3-flash|low": {
+          "output": "```json\n{\n  \"inventory\": {\n    \"currency\": {\n      \"platinum\": 0,\n      \"gold\": 0,\n      \"electrum\": 0,\n      \"silver\": 0,\n      \"copper\": 0\n    }\n  },\n  \"ammunition\": [\n    {\n      \"name\": \"Arrows\",\n      \"quantity\": 40,\n      \"description\": \"Standard arrows for use with a longbow or shortbow\"\n    }\n  ],\n  \"equipment\": [\n    {\n      \"item_name\": \"Arrows\",\n      \"_remove\": true\n    }\n  ],\n  \"consolidations_made\": [\n    \"Moved 'Arrows' (20) from equipment to ammunition section\",\n    \"Ammunition 'Arrows' increased from 20 to 40\"\n  ]\n}\n```",
+          "latency_s": 4.009,
+          "validation": {
+            "valid": true,
+            "errors": [],
+            "warnings": [
+              "Extracted JSON from markdown code block",
+              "Baseline difference: Extra keys: {'inventory'}",
+              "Baseline difference: Value mismatch for 'ammunition'"
+            ],
+            "checks": {
+              "json_valid": true,
+              "schema_compliant": true,
+              "business_rules_pass": true,
+              "matches_baseline": false
+            },
+            "details": {
+              "parsed_json": {
+                "inventory": {
+                  "currency": {
+                    "platinum": 0,
+                    "gold": 0,
+                    "electrum": 0,
+                    "silver": 0,
+                    "copper": 0
+                  }
+                },
+                "ammunition": [
+                  {
+                    "name": "Arrows",
+                    "quantity": 40,
+                    "description": "Standard arrows for use with a longbow or shortbow"
+                  }
+                ],
+                "equipment": [
+                  {
+                    "item_name": "Arrows",
+                    "_remove": true
+                  }
+                ],
+                "consolidations_made": [
+                  "Moved 'Arrows' (20) from equipment to ammunition section",
+                  "Ammunition 'Arrows' increased from 20 to 40"
+                ]
+              },
+              "baseline_differences": [
+                "Extra keys: {'inventory'}",
+                "Value mismatch for 'ammunition'"
+              ]
+            }
+          }
+        },
+        "gpt-5-mini|medium": {
+          "output": "{\n  \"ammunition\": [\n    {\n      \"name\": \"Arrows\",\n      \"quantity\": 40,\n      \"description\": \"Ammunition for shortbow.\"\n    }\n  ],\n  \"equipment\": [\n    {\n      \"item_name\": \"Arrows\",\n      \"_remove\": true\n    }\n  ],\n  \"consolidations_made\": [\n    \"Moved 'Arrows' (20) from equipment to ammunition\",\n    \"Ammunition 'Arrows' increased from 20 to 40\",\n    \"Removed 'Arrows' from inventory\"\n  ]\n}",
+          "latency_s": 11.066,
+          "validation": {
+            "valid": true,
+            "errors": [],
+            "warnings": [
+              "Baseline difference: Value mismatch for 'consolidations_made'"
+            ],
+            "checks": {
+              "json_valid": true,
+              "schema_compliant": true,
+              "business_rules_pass": true,
+              "matches_baseline": false
+            },
+            "details": {
+              "parsed_json": {
+                "ammunition": [
+                  {
+                    "name": "Arrows",
+                    "quantity": 40,
+                    "description": "Ammunition for shortbow."
+                  }
+                ],
+                "equipment": [
+                  {
+                    "item_name": "Arrows",
+                    "_remove": true
+                  }
+                ],
+                "consolidations_made": [
+                  "Moved 'Arrows' (20) from equipment to ammunition",
+                  "Ammunition 'Arrows' increased from 20 to 40",
+                  "Removed 'Arrows' from inventory"
+                ]
+              },
+              "baseline_differences": [
+                "Value mismatch for 'consolidations_made'"
+              ]
+            }
+          }
+        },
+        "gemini-3-flash|medium": {
+          "output": "```json\n{\n  \"inventory\": {\n    \"currency\": {}\n  },\n  \"ammunition\": [\n    {\n      \"name\": \"Arrows\",\n      \"quantity\": 40,\n      \"description\": \"Standard arrows for use with a longbow or shortbow\"\n    }\n  ],\n  \"equipment\": [\n    {\n      \"item_name\": \"Arrows\",\n      \"_remove\": true\n    }\n  ],\n  \"consolidations_made\": [\n    \"Moved 'Arrows' (20) from equipment to ammunition section\",\n    \"Ammunition 'Arrows' increased from 20 to 40\"\n  ]\n}\n```",
+          "latency_s": 10.099,
+          "validation": {
+            "valid": true,
+            "errors": [],
+            "warnings": [
+              "Extracted JSON from markdown code block",
+              "Baseline difference: Extra keys: {'inventory'}",
+              "Baseline difference: Value mismatch for 'ammunition'"
+            ],
+            "checks": {
+              "json_valid": true,
+              "schema_compliant": true,
+              "business_rules_pass": true,
+              "matches_baseline": false
+            },
+            "details": {
+              "parsed_json": {
+                "inventory": {
+                  "currency": {}
+                },
+                "ammunition": [
+                  {
+                    "name": "Arrows",
+                    "quantity": 40,
+                    "description": "Standard arrows for use with a longbow or shortbow"
+                  }
+                ],
+                "equipment": [
+                  {
+                    "item_name": "Arrows",
+                    "_remove": true
+                  }
+                ],
+                "consolidations_made": [
+                  "Moved 'Arrows' (20) from equipment to ammunition section",
+                  "Ammunition 'Arrows' increased from 20 to 40"
+                ]
+              },
+              "baseline_differences": [
+                "Extra keys: {'inventory'}",
+                "Value mismatch for 'ammunition'"
+              ]
+            }
+          }
+        },
+        "gemini-3-flash|high": {
+          "output": "```json\n{\n  \"ammunition\": [\n    {\n      \"name\": \"Arrows\",\n      \"quantity\": 40,\n      \"description\": \"Standard arrows for use with a longbow or shortbow\"\n    }\n  ],\n  \"equipment\": [\n    {\n      \"item_name\": \"Arrows\",\n      \"_remove\": true\n    }\n  ],\n  \"consolidations_made\": [\n    \"Moved 'Arrows' (20) from equipment to ammunition section\",\n    \"Ammunition 'Arrows' increased from 20 to 40\"\n  ]\n}\n```",
+          "latency_s": 24.203,
+          "validation": {
+            "valid": true,
+            "errors": [],
+            "warnings": [
+              "Extracted JSON from markdown code block",
+              "Baseline difference: Value mismatch for 'ammunition'"
+            ],
+            "checks": {
+              "json_valid": true,
+              "schema_compliant": true,
+              "business_rules_pass": true,
+              "matches_baseline": false
+            },
+            "details": {
+              "parsed_json": {
+                "ammunition": [
+                  {
+                    "name": "Arrows",
+                    "quantity": 40,
+                    "description": "Standard arrows for use with a longbow or shortbow"
+                  }
+                ],
+                "equipment": [
+                  {
+                    "item_name": "Arrows",
+                    "_remove": true
+                  }
+                ],
+                "consolidations_made": [
+                  "Moved 'Arrows' (20) from equipment to ammunition section",
+                  "Ammunition 'Arrows' increased from 20 to 40"
+                ]
+              },
+              "baseline_differences": [
+                "Value mismatch for 'ammunition'"
+              ]
+            }
+          }
+        },
+        "gpt-5-mini|high": {
+          "output": "{\n  \"ammunition\": [\n    {\n      \"name\": \"Arrows\",\n      \"quantity\": 40,\n      \"description\": \"Ammunition for shortbow.\"\n    }\n  ],\n  \"equipment\": [\n    {\n      \"item_name\": \"Arrows x 20\",\n      \"_remove\": true\n    }\n  ],\n  \"consolidations_made\": [\n    \"Moved 'Arrows x 20' from inventory to ammunition\",\n    \"Ammunition 'Arrows' increased from 20 to 40\"\n  ]\n}",
+          "latency_s": 31.368,
+          "validation": {
+            "valid": true,
+            "errors": [],
+            "warnings": [
+              "Baseline difference: Value mismatch for 'equipment'",
+              "Baseline difference: Value mismatch for 'consolidations_made'"
+            ],
+            "checks": {
+              "json_valid": true,
+              "schema_compliant": true,
+              "business_rules_pass": true,
+              "matches_baseline": false
+            },
+            "details": {
+              "parsed_json": {
+                "ammunition": [
+                  {
+                    "name": "Arrows",
+                    "quantity": 40,
+                    "description": "Ammunition for shortbow."
+                  }
+                ],
+                "equipment": [
+                  {
+                    "item_name": "Arrows x 20",
+                    "_remove": true
+                  }
+                ],
+                "consolidations_made": [
+                  "Moved 'Arrows x 20' from inventory to ammunition",
+                  "Ammunition 'Arrows' increased from 20 to 40"
+                ]
+              },
+              "baseline_differences": [
+                "Value mismatch for 'equipment'",
+                "Value mismatch for 'consolidations_made'"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "summary": {
+    "total_captures": 1,
+    "total_variants": 14,
+    "variants_passed": 14,
+    "variants_failed": 0,
+    "api_errors": 0
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "task_id": "T090",
+  "captures": [
+    {
+      "task_id": "T090",
+      "timestamp": "2026-02-20T07:22:42Z",
+      "input": {
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a quest journal formatter for a fantasy RPG. Your task is to convert DM-oriented quest descriptions into immersive, player-friendly journal entries.\n\nCRITICAL RULES:\n1. Remove ALL location IDs in parentheses (e.g., MRV001, ARL001, DC001)\n2. Remove ALL meta-game language like \"introduces NPCs\", \"sets the stage\", \"this quest\", \"plot point\"\n3. Write from the player's perspective using \"you\" instead of \"the party\"\n4. Focus on what the player needs to DO, not module structure\n5. Keep the mystery, atmosphere, and fantasy feel\n6. Make it sound like a quest journal entry, not a module description\n7. Preserve important details like NPC names, locations, and objectives\n8. Keep descriptions concise but flavorful (1-3 sentences ideal)\n\nFORMATTING GUIDELINES:\n- Main quests: Clear objective + atmospheric context\n- Side quests: Brief, intriguing hooks\n- Completed quests: Past tense summary of what was accomplished\n- In-progress quests: Present tense, current situation\n\nOUTPUT FORMAT:\nReturn ONLY a JSON object with quest IDs as keys and reformatted descriptions as values.\nDo not include any markdown formatting or code blocks.\n\nExample input: \"The party arrives at Marrow's Rest Village (MRV001), shrouded in dense mist. This sets the stage for the adventure.\"\nExample output: {\"description\": \"You find yourself in the mist-shrouded village of Marrow's Rest, where an unsettling quiet hangs in the air.\"}"
+          },
+          {
+            "role": "user",
+            "content": "Reformat these quest descriptions into player-friendly journal entries:\n\n{\n  \"PP001\": {\n    \"title\": \"Desperate Defense\",\n    \"description\": \"The party arrives at Rangers' Outpost to find it in crisis. Three caravans have been massacred in five days with unnatural precision. Ranger Elen, the outpost's commander, recruits the party. Her prime lead is the captured Bandit Leader, Rusk, a man now terrified of his new master. The party must interrogate Rusk to learn the location of the main bandit camp and the identity of the sorcerer, Malarok, who now commands them. IMPORTANT: This plot point should be marked COMPLETED immediately after Rusk reveals the bandit camp location (old watchtower in Thornwood) and Malarok's identity - do not wait for expedition planning or other preparations.\",\n    \"status\": \"completed\"\n  }\n}"
+          }
+        ],
+        "temperature": 0.3
+      },
+      "baseline": {
+        "label": "gpt-4.1-mini-2025-04-14|baseline",
+        "output": "{\"PP001\": \"You arrived at the Rangers' Outpost amid crisis\u2014three caravans have been slaughtered with eerie precision in just five days. Ranger Elen, the outpost commander, enlisted your aid. After interrogating the captured bandit leader Rusk, you uncovered the location of the main bandit camp at the old watchtower in Thornwood and learned that a sorcerer named Malarok now commands them.\"}",
+        "latency_s": 1.959,
+        "validation": {
+          "valid": true,
+          "errors": [],
+          "warnings": [],
+          "checks": {
+            "json_valid": true,
+            "schema_compliant": true,
+            "business_rules_pass": true,
+            "matches_baseline": null
+          },
+          "details": {
+            "parsed_json": {
+              "PP001": "You arrived at the Rangers' Outpost amid crisis\u2014three caravans have been slaughtered with eerie precision in just five days. Ranger Elen, the outpost commander, enlisted your aid. After interrogating the captured bandit leader Rusk, you uncovered the location of the main bandit camp at the old watchtower in Thornwood and learned that a sorcerer named Malarok now commands them."
+            }
+          }
+        }
+      },
+      "variants": {
+        "gpt-5-mini": {
+          "output": "{\n  \"PP001\": \"You arrived at the Rangers' Outpost amid panic and, at Ranger Elen's request, interrogated the captured bandit Rusk; he revealed the bandit camp in the old watchtower in Thornwood and that the sorcerer Malarok now commands them.\"\n}",
+          "latency_s": 8.284,
+          "validation": {
+            "valid": true,
+            "errors": [],
+            "warnings": [
+              "Baseline difference: Value mismatch for 'PP001'"
+            ],
+            "checks": {
+              "json_valid": true,
+              "schema_compliant": true,
+              "business_rules_pass": true,
+              "matches_baseline": false
+            },
+            "details": {
+              "parsed_json": {
+                "PP001": "You arrived at the Rangers' Outpost amid panic and, at Ranger Elen's request, interrogated the captured bandit Rusk; he revealed the bandit camp in the old watchtower in Thornwood and that the sorcerer Malarok now commands them."
+              },
+              "baseline_differences": [
+                "Value mismatch for 'PP001'"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "summary": {
+    "total_captures": 1,
+    "total_variants": 1,
+    "variants_passed": 1,
+    "variants_failed": 0,
+    "api_errors": 0
+  }
+}

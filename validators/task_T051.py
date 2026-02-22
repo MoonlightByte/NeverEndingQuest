@@ -1,21 +1,21 @@
 """
-Validator for T082: utils/action_predictor.py:152
+Validator for T051: core/validation/character_validator.py:958
 Regenerated with correct schema from audit 2026-02-22
 
-Purpose: Action prediction response
+Purpose: Character AC validation response with corrections
 Expected output: See EXPECTED_SCHEMA below
 """
 import json
 import re
 from typing import Dict, List, Tuple, Optional, Any
 
-TASK_ID = "T082"
-SOURCE_FILE = "utils/action_predictor.py"
-SOURCE_LINE = 152
-MODEL_EXPR = "ACTION_PREDICTION_MODEL=>gpt-5.2"
+TASK_ID = "T051"
+SOURCE_FILE = "core/validation/character_validator.py"
+SOURCE_LINE = 958
+MODEL_EXPR = "CHARACTER_VALIDATOR_MODEL=>gpt-5.2"
 SCOPE = "runtime"
 
-EXPECTED_SCHEMA = {'description': 'Action prediction response', 'type': 'object', 'required': ['requires_actions', 'reason'], 'properties': {'requires_actions': {'type': 'boolean'}, 'reason': {'type': 'string'}}}
+EXPECTED_SCHEMA = {'description': 'Character AC validation response with corrections', 'type': 'object', 'required': ['validated_character_data', 'corrections_made', 'ac_calculation_breakdown'], 'properties': {'validated_character_data': {'type': 'object'}, 'corrections_made': {'type': 'array', 'items': {'type': 'string'}}, 'ac_calculation_breakdown': {'type': 'object', 'required': ['base_armor', 'dex_modifier', 'shield_bonus', 'fighting_style_bonus', 'total_ac'], 'properties': {'base_armor': {'type': 'string'}, 'dex_modifier': {'type': 'string'}, 'shield_bonus': {'type': 'string'}, 'fighting_style_bonus': {'type': 'string'}, 'total_ac': {'type': ['integer', 'number', 'string']}}}}}
 
 
 def validate_json_structure(output_text: str) -> Tuple[bool, List[str]]:

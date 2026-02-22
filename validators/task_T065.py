@@ -1,21 +1,21 @@
 """
-Validator for T082: utils/action_predictor.py:152
+Validator for T065: main.py:1222
 Regenerated with correct schema from audit 2026-02-22
 
-Purpose: Action prediction response
+Purpose: DM validation response - checks AI DM compliance
 Expected output: See EXPECTED_SCHEMA below
 """
 import json
 import re
 from typing import Dict, List, Tuple, Optional, Any
 
-TASK_ID = "T082"
-SOURCE_FILE = "utils/action_predictor.py"
-SOURCE_LINE = 152
-MODEL_EXPR = "ACTION_PREDICTION_MODEL=>gpt-5.2"
+TASK_ID = "T065"
+SOURCE_FILE = "main.py"
+SOURCE_LINE = 1222
+MODEL_EXPR = "DM_VALIDATION_MODEL=>gpt-5.2"
 SCOPE = "runtime"
 
-EXPECTED_SCHEMA = {'description': 'Action prediction response', 'type': 'object', 'required': ['requires_actions', 'reason'], 'properties': {'requires_actions': {'type': 'boolean'}, 'reason': {'type': 'string'}}}
+EXPECTED_SCHEMA = {'description': 'DM validation response - checks AI DM compliance', 'type': 'object', 'required': ['valid', 'reason'], 'properties': {'valid': {'type': 'boolean'}, 'reason': {'type': 'string'}}}
 
 
 def validate_json_structure(output_text: str) -> Tuple[bool, List[str]]:

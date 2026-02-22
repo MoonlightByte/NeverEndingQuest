@@ -1,21 +1,21 @@
 """
-Validator for T082: utils/action_predictor.py:152
+Validator for T090: utils/quest_player_formatter.py:83
 Regenerated with correct schema from audit 2026-02-22
 
-Purpose: Action prediction response
+Purpose: Quest reformatting response - dynamic quest IDs to descriptions
 Expected output: See EXPECTED_SCHEMA below
 """
 import json
 import re
 from typing import Dict, List, Tuple, Optional, Any
 
-TASK_ID = "T082"
-SOURCE_FILE = "utils/action_predictor.py"
-SOURCE_LINE = 152
-MODEL_EXPR = "ACTION_PREDICTION_MODEL=>gpt-5.2"
+TASK_ID = "T090"
+SOURCE_FILE = "utils/quest_player_formatter.py"
+SOURCE_LINE = 83
+MODEL_EXPR = "DM_MINI_MODEL=>gpt-5-mini"
 SCOPE = "runtime"
 
-EXPECTED_SCHEMA = {'description': 'Action prediction response', 'type': 'object', 'required': ['requires_actions', 'reason'], 'properties': {'requires_actions': {'type': 'boolean'}, 'reason': {'type': 'string'}}}
+EXPECTED_SCHEMA = {'description': 'Quest reformatting response - dynamic quest IDs to descriptions', 'type': 'object', 'patternProperties': {'^[A-Z]{2,3}\\d{3}$': {'type': 'string'}}, 'additionalProperties': False, 'minProperties': 1}
 
 
 def validate_json_structure(output_text: str) -> Tuple[bool, List[str]]:

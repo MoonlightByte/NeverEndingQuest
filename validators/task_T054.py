@@ -1,21 +1,21 @@
 """
-Validator for T082: utils/action_predictor.py:152
+Validator for T054: core/validation/character_validator.py:2026
 Regenerated with correct schema from audit 2026-02-22
 
-Purpose: Action prediction response
+Purpose: Inventory consolidation response
 Expected output: See EXPECTED_SCHEMA below
 """
 import json
 import re
 from typing import Dict, List, Tuple, Optional, Any
 
-TASK_ID = "T082"
-SOURCE_FILE = "utils/action_predictor.py"
-SOURCE_LINE = 152
-MODEL_EXPR = "ACTION_PREDICTION_MODEL=>gpt-5.2"
+TASK_ID = "T054"
+SOURCE_FILE = "core/validation/character_validator.py"
+SOURCE_LINE = 2026
+MODEL_EXPR = "CHARACTER_VALIDATOR_MODEL=>gpt-5.2"
 SCOPE = "runtime"
 
-EXPECTED_SCHEMA = {'description': 'Action prediction response', 'type': 'object', 'required': ['requires_actions', 'reason'], 'properties': {'requires_actions': {'type': 'boolean'}, 'reason': {'type': 'string'}}}
+EXPECTED_SCHEMA = {'description': 'Inventory consolidation response', 'type': 'object', 'required': ['ammunition', 'equipment', 'consolidations_made'], 'properties': {'inventory': {'type': 'object', 'properties': {'currency': {'type': 'object', 'properties': {'platinum': {'type': 'number'}, 'gold': {'type': 'number'}, 'electrum': {'type': 'number'}, 'silver': {'type': 'number'}, 'copper': {'type': 'number'}}}}}, 'ammunition': {'type': 'array', 'items': {'type': 'object', 'required': ['name', 'quantity', 'description'], 'properties': {'name': {'type': 'string'}, 'quantity': {'type': 'number'}, 'description': {'type': 'string'}}}}, 'equipment': {'type': 'array', 'items': {'type': 'object', 'required': ['item_name'], 'properties': {'item_name': {'type': 'string'}, '_remove': {'type': 'boolean'}, '_update': {'type': 'boolean'}}}}, 'consolidations_made': {'type': 'array', 'items': {'type': 'string'}}}}
 
 
 def validate_json_structure(output_text: str) -> Tuple[bool, List[str]]:

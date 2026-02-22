@@ -1,0 +1,12 @@
+{
+  "task_id": "T999",
+  "captures": [],
+  "summary": {
+    "total_captures": 0,
+    "total_variants": 0,
+    "variants_passed": 0,
+    "variants_failed": 0,
+    "api_errors": 0
+  },
+  "error": "No validator found for T999"
+}

@@ -1,21 +1,21 @@
 """
-Validator for T082: utils/action_predictor.py:152
+Validator for T078: updates/update_character_effects.py:199
 Regenerated with correct schema from audit 2026-02-22
 
-Purpose: Action prediction response
+Purpose: Character effect tracking response
 Expected output: See EXPECTED_SCHEMA below
 """
 import json
 import re
 from typing import Dict, List, Tuple, Optional, Any
 
-TASK_ID = "T082"
-SOURCE_FILE = "utils/action_predictor.py"
-SOURCE_LINE = 152
-MODEL_EXPR = "ACTION_PREDICTION_MODEL=>gpt-5.2"
+TASK_ID = "T078"
+SOURCE_FILE = "updates/update_character_effects.py"
+SOURCE_LINE = 199
+MODEL_EXPR = "config.DM_EFFECTS_MODEL=>gpt-5.2"
 SCOPE = "runtime"
 
-EXPECTED_SCHEMA = {'description': 'Action prediction response', 'type': 'object', 'required': ['requires_actions', 'reason'], 'properties': {'requires_actions': {'type': 'boolean'}, 'reason': {'type': 'string'}}}
+EXPECTED_SCHEMA = {'description': 'Character effect tracking response', 'type': 'object', 'required': ['should_track', 'effect'], 'properties': {'should_track': {'type': 'boolean'}, 'effect': {'type': 'object', 'required': ['stat', 'value', 'source', 'duration_type', 'duration_value', 'description', 'affects_max'], 'properties': {'stat': {'type': 'string'}, 'value': {'type': ['number', 'string']}, 'source': {'type': 'string'}, 'duration_type': {'type': 'string'}, 'duration_value': {'type': ['number', 'string']}, 'description': {'type': 'string'}, 'affects_max': {'type': 'boolean'}}}}}
 
 
 def validate_json_structure(output_text: str) -> Tuple[bool, List[str]]:

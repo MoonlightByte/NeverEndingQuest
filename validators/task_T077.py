@@ -1,21 +1,21 @@
 """
-Validator for T082: utils/action_predictor.py:152
+Validator for T077: updates/plot_update.py:149
 Regenerated with correct schema from audit 2026-02-22
 
-Purpose: Action prediction response
+Purpose: Plot update response - plot point status changes
 Expected output: See EXPECTED_SCHEMA below
 """
 import json
 import re
 from typing import Dict, List, Tuple, Optional, Any
 
-TASK_ID = "T082"
-SOURCE_FILE = "utils/action_predictor.py"
-SOURCE_LINE = 152
-MODEL_EXPR = "ACTION_PREDICTION_MODEL=>gpt-5.2"
+TASK_ID = "T077"
+SOURCE_FILE = "updates/plot_update.py"
+SOURCE_LINE = 149
+MODEL_EXPR = "PLOT_UPDATE_MODEL=>gpt-5-mini"
 SCOPE = "runtime"
 
-EXPECTED_SCHEMA = {'description': 'Action prediction response', 'type': 'object', 'required': ['requires_actions', 'reason'], 'properties': {'requires_actions': {'type': 'boolean'}, 'reason': {'type': 'string'}}}
+EXPECTED_SCHEMA = {'description': 'Plot update response - plot point status changes', 'type': 'object', 'patternProperties': {'^(PP|SQ)\\d{3}$': {'oneOf': [{'type': 'object', 'required': ['status', 'plotImpact'], 'properties': {'status': {'type': 'string', 'enum': ['not started', 'in progress', 'completed']}, 'plotImpact': {'type': 'string'}}}, {'type': 'object', 'required': ['sideQuests'], 'properties': {'sideQuests': {'type': 'array', 'items': {'type': 'object', 'required': ['id', 'status', 'plotImpact'], 'properties': {'id': {'type': 'string', 'pattern': '^SQ\\d{3}$'}, 'status': {'type': 'string', 'enum': ['not started', 'in progress', 'completed']}, 'plotImpact': {'type': 'string'}}}}}}]}}}
 
 
 def validate_json_structure(output_text: str) -> Tuple[bool, List[str]]:

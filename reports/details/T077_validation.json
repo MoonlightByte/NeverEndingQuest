@@ -1,0 +1,79 @@
+{
+  "task_id": "T077",
+  "captures": [
+    {
+      "task_id": "T077",
+      "timestamp": "2026-02-20T07:22:39Z",
+      "input": {
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are an assistant that updates plot information for a role playing game. Given the current plot information and a plot point ID with its new status and plot impact, return only the updated sections of the JSON. Ensure that the updates adhere to the provided schema. Pay close attention to enum values and required fields. Be sure to update both the 'status' and 'plotImpact' fields for the specified plot point. Return the updated sections as a JSON object with the plot point ID as the key.\n\nExamples:\n1. Input: Plot point to update: PP001, New status: in progress, Plot impact: The party has entered the mines and met Old Miner Gregor.\n   Output: {\"PP001\": {\"status\": \"in progress\", \"plotImpact\": \"The party has entered the mines and met Old Miner Gregor.\"}}\n\n2. Input: Plot point to update: PP003, New status: completed, Plot impact: The party successfully navigated the collapsed passage and found signs of recent excavation.\n   Output: {\"PP003\": {\"status\": \"completed\", \"plotImpact\": \"The party successfully navigated the collapsed passage and found signs of recent excavation.\"}}\n\n3. Input: Plot point to update: PP005, New status: in progress, Plot impact: The party is currently battling the Fire Beetles and investigating the strange energy source.\n   Output: {\"PP005\": {\"status\": \"in progress\", \"plotImpact\": \"The party is currently battling the Fire Beetles and investigating the strange energy source.\"}}\n\n4. Input: Plot point to update: SQ001, New status: completed, Plot impact: The party found Old Miner Gregor's lost tools in the Equipment Storage.\n   Output: {\"PP001\": {\"sideQuests\": [{\"id\": \"SQ001\", \"status\": \"completed\", \"plotImpact\": \"The party found Old Miner Gregor's lost tools in the Equipment Storage.\"}]}}\n\n5. Input: Plot point to update: PP011, New status: in progress, Plot impact: The party is exploring the Crystal Cavern and deciphering hidden messages left by the dwarves.\n   Output: {\"PP011\": {\"status\": \"in progress\", \"plotImpact\": \"The party is exploring the Crystal Cavern and deciphering hidden messages left by the dwarves.\"}}"
+          },
+          {
+            "role": "user",
+            "content": "Current plot info: {\"plotTitle\": \"Crisis Beyond the Frontier\", \"mainObjective\": \"Investigate the escalating bandit attacks on the Rangers' Outpost and stop the sorcerer who is corrupting the northern wilderness.\", \"plotPoints\": [{\"id\": \"PP001\", \"title\": \"Desperate Defense\", \"description\": \"The party arrives at Rangers' Outpost to find it in crisis. Three caravans have been massacred in five days with unnatural precision. Ranger Elen, the outpost's commander, recruits the party. Her prime lead is the captured Bandit Leader, Rusk, a man now terrified of his new master. The party must interrogate Rusk to learn the location of the main bandit camp and the identity of the sorcerer, Malarok, who now commands them. IMPORTANT: This plot point should be marked COMPLETED immediately after Rusk reveals the bandit camp location (old watchtower in Thornwood) and Malarok's identity - do not wait for expedition planning or other preparations.\", \"location\": \"RO001\", \"nextPoints\": [\"PP002\"], \"status\": \"not started\", \"plotImpact\": \"\", \"sideQuests\": [{\"id\": \"SQ001\", \"title\": \"Restore the Silver Bell Network\", \"description\": \"The outpost's three silver bell towers, a magical long-range communication system, have been sabotaged by Malarok's agents. The North Tower's bell clapper was stolen. The East Tower is overgrown with magically enhanced, thorny vines. The West Tower's harmonic crystal has been shattered.\", \"involvedLocations\": [\"RO04\", \"RO05\", \"RO06\"], \"status\": \"not started\", \"plotImpact\": \"Restored bells allow the Rangers to send for reinforcements (arriving after the main plot) and provide the party with a one-time 'Early Warning' ability, letting them avoid a planned ambush in the Thornwood.\"}, {\"id\": \"SQ002\", \"title\": \"Merchant's Dilemma\", \"description\": \"Trader Sila, the outpost's primary goods supplier, is packing to leave. Her cart of rare alchemical supplies was stolen in a raid. She asks the party to retrieve a specific iron-banded chest from a small bandit cache a few miles away. If they succeed, she'll stay.\", \"involvedLocations\": [\"RO001\"], \"status\": \"not started\", \"plotImpact\": \"\"}]}, {\"id\": \"PP002\", \"title\": \"Into the Thornwood\", \"description\": \"Following leads from Rusk, the party ventures into the Thornwood Wilds to find the main bandit camp, located in an old, crumbling watchtower. They must overcome unnaturally aggressive wildlife and bandit patrols to reach the camp, rescue any surviving captives, and find clues about Malarok's ultimate goal.\", \"location\": \"TW001\", \"nextPoints\": [\"PP003\"], \"status\": \"not started\", \"plotImpact\": \"\", \"sideQuests\": [{\"id\": \"SQ003\", \"title\": \"The Hermit's Warning\", \"description\": \"The party can find a hidden cabin belonging to Maelo, a hermit who studies the forest's energies. He will only help if the party first cleanses a nearby spring he uses for scrying, which has been tainted by Malarok's magic. He can then perform a ritual to learn more about the threat. Reward: Maelo's Iron Charm (grows cold in the presence of dark magic, can potentially break enchantments).\", \"involvedLocations\": [\"TW001\"], \"status\": \"not started\", \"plotImpact\": \"\"}, {\"id\": \"SQ004\", \"title\": \"Rescue the Lost\", \"description\": \"The party follows tracks from the Ambush Site north to the Wolf's Den Cave where Wounded Ranger Gareth and Merchant Kael are making a desperate stand against corrupted wolves. Gareth has a partially completed map of the bandit camp's patrols. Kael overheard the bandits talking about 'gathering tributes for the master's ritual' at some 'forgotten altar'. Both survivors reveal they were being held as captives for a terrible sacrifice.\", \"involvedLocations\": [\"TW001\", \"TW06\"], \"status\": \"not started\", \"plotImpact\": \"\"}]}, {\"id\": \"PP003\", \"title\": \"The Corrupted Grove\", \"description\": \"The trail leads north to a blighted part of the forest where the trees are twisted and the air hums with dark energy. The party must navigate this dangerous grove to find the source of the sorcerer's power, following the increasing cold of the iron charm from Maelo.\", \"location\": \"NCW001\", \"nextPoints\": [\"PP004\"], \"status\": \"not started\", \"plotImpact\": \"\", \"sideQuests\": [{\"id\": \"SQ005\", \"title\": \"The Withered Hart\", \"description\": \"A magnificent, ancient hart, once a guardian of the forest, has been captured and twisted by Malarok's magic, serving as a powerful guard for the ruins. The party can either defeat it in combat or, if they learned about the iron's properties from Maelo, use it to try and break the spell controlling the beast.\", \"involvedLocations\": [\"NCW001\"], \"status\": \"not started\", \"plotImpact\": \"\"}]}, {\"id\": \"PP004\", \"title\": \"Confronting the Corruptor\", \"description\": \"Deep within the ruins, the party finds Malarok the Corruptor. He is performing a dark ritual to absorb the power of a large, pulsating Voidstone Shard set upon an altar. He is a formidable spellcaster, protected by elite bodyguards and the stone's foul energy. The party must defeat Malarok and destroy the Voidstone to end his threat. The purified water in the Rune-etched Ritual Vial from Maelo may be crucial for cleansing the Voidstone's corruption. SPECIAL DM INSTRUCTION: When completing this plot point after Malarok's defeat, have Scout Elen suddenly receive an urgent magical message. She should refuse to join the party back to the outpost, explaining she must leave immediately for Harrow's Hollow where Scout Elen has gone missing. Have her say she'll meet Eirik there if he follows. Remove Elen from all location NPCs in this module.\", \"location\": \"NCW001\", \"nextPoints\": [\"PP005\"], \"status\": \"not started\", \"plotImpact\": \"\", \"sideQuests\": []}, {\"id\": \"PP005\", \"title\": \"Report to Commander Elen (but she's gone!)\", \"description\": \"When the party returns to Rangers' Outpost to report their success, they discover Commander Elen has vanished! Ranger Marcus explains that Elen received an urgent message about Scout Elen's disappearance in Harrow's Hollow and departed immediately, leaving only a hastily scrawled note: 'Scout Elen missing in Harrow's Hollow - same signs as here. Must go now. Tell Eirik to follow if he can. -E'. Ranger Marcus gives the party their rewards but is clearly worried about Elen. DM NOTE: This is a plot hook to the Keep of Doom module. After giving rewards and wrapping up this module's storylines, inform players that they can travel to Harrow's Hollow to find Elen and investigate the mysterious disappearances.\", \"location\": \"RO001\", \"nextPoints\": [], \"prerequisites\": [\"PP001\", \"PP002\", \"PP003\", \"PP004\"], \"status\": \"not started\", \"plotImpact\": \"\", \"sideQuests\": []}]}\n\nPlot point to update: PP001\nNew status: completed\nPlot impact: Rusk revealed the location of the bandit camp (old watchtower in Thornwood Wilds) and identified Malarok as the corrupting sorcerer. The party has key intelligence for the next mission."
+          }
+        ],
+        "temperature": 0.7
+      },
+      "baseline": {
+        "label": "gpt-4.1-mini-2025-04-14|baseline",
+        "output": "{\"PP001\": {\"status\": \"completed\", \"plotImpact\": \"Rusk revealed the location of the bandit camp (old watchtower in Thornwood Wilds) and identified Malarok as the corrupting sorcerer. The party has key intelligence for the next mission.\"}}",
+        "latency_s": 1.012,
+        "validation": {
+          "valid": true,
+          "errors": [],
+          "warnings": [],
+          "checks": {
+            "json_valid": true,
+            "schema_compliant": true,
+            "business_rules_pass": true,
+            "matches_baseline": null
+          },
+          "details": {
+            "parsed_json": {
+              "PP001": {
+                "status": "completed",
+                "plotImpact": "Rusk revealed the location of the bandit camp (old watchtower in Thornwood Wilds) and identified Malarok as the corrupting sorcerer. The party has key intelligence for the next mission."
+              }
+            }
+          }
+        }
+      },
+      "variants": {
+        "gpt-5-mini": {
+          "output": "{\"PP001\": {\"status\": \"completed\", \"plotImpact\": \"Rusk revealed the location of the bandit camp (old watchtower in Thornwood Wilds) and identified Malarok as the corrupting sorcerer. The party has key intelligence for the next mission.\"}}",
+          "latency_s": 7.401,
+          "validation": {
+            "valid": true,
+            "errors": [],
+            "warnings": [],
+            "checks": {
+              "json_valid": true,
+              "schema_compliant": true,
+              "business_rules_pass": true,
+              "matches_baseline": true
+            },
+            "details": {
+              "parsed_json": {
+                "PP001": {
+                  "status": "completed",
+                  "plotImpact": "Rusk revealed the location of the bandit camp (old watchtower in Thornwood Wilds) and identified Malarok as the corrupting sorcerer. The party has key intelligence for the next mission."
+                }
+              },
+              "baseline_differences": []
+            }
+          }
+        }
+      }
+    }
+  ],
+  "summary": {
+    "total_captures": 1,
+    "total_variants": 1,
+    "variants_passed": 1,
+    "variants_failed": 0,
+    "api_errors": 0
+  }
+}
