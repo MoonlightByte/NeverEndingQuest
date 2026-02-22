@@ -239,4 +239,12 @@ def call_gemini_variant(variant, messages, caller_temperature=None, caller_kwarg
     )
     latency_s = round(time.time() - start, 3)
 
-    return response.text, latency_s
+    # Extract token usage from response.usage_metadata
+    usage = getattr(response, 'usage_metadata', None)
+    token_usage = {
+        "prompt_tokens": getattr(usage, 'prompt_token_count', 0) if usage else 0,
+        "completion_tokens": getattr(usage, 'candidates_token_count', 0) if usage else 0,
+        "total_tokens": getattr(usage, 'total_token_count', 0) if usage else 0,
+    }
+
+    return response.text, latency_s, token_usage

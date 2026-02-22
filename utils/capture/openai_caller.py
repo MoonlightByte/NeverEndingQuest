@@ -44,7 +44,7 @@ def build_openai_params(variant, messages, caller_temperature=None):
 
 
 def call_openai_variant(variant, messages, caller_temperature=None, caller_kwargs=None):
-    """Execute one OpenAI variant call and return (content, latency_s).
+    """Execute one OpenAI variant call and return (content, latency_s, token_usage).
 
     Args:
         variant: variant config dict
@@ -53,7 +53,8 @@ def call_openai_variant(variant, messages, caller_temperature=None, caller_kwarg
         caller_kwargs: other kwargs from original call (response_format etc)
 
     Returns:
-        tuple of (content_str, latency_seconds)
+        tuple of (content_str, latency_seconds, token_usage_dict)
+        token_usage_dict has keys: prompt_tokens, completion_tokens, total_tokens
 
     Raises:
         Exception: any API error - caller should catch
@@ -70,4 +71,13 @@ def call_openai_variant(variant, messages, caller_temperature=None, caller_kwarg
     latency_s = round(time.time() - start, 3)
 
     content = response.choices[0].message.content
-    return content, latency_s
+
+    # Extract token usage from response
+    usage = response.usage
+    token_usage = {
+        "prompt_tokens": usage.prompt_tokens if usage else 0,
+        "completion_tokens": usage.completion_tokens if usage else 0,
+        "total_tokens": usage.total_tokens if usage else 0,
+    }
+
+    return content, latency_s, token_usage

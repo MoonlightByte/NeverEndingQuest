@@ -43,10 +43,17 @@ class CaptureFileWriter:
             json.dump(records, f, indent=2, ensure_ascii=False)
 
     def write_primary(self, task_id, file_path, line, tier, input_data,
-                      label, content, latency_s, timestamp=None):
+                      label, content, latency_s, timestamp=None,
+                      token_usage=None, cost_usd=None):
         """Write the initial record for a callsite invocation (primary model output)."""
         if timestamp is None:
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        output_entry = {"content": content, "latency_s": latency_s}
+        if token_usage:
+            output_entry["tokens"] = token_usage
+        if cost_usd is not None:
+            output_entry["cost_usd"] = cost_usd
 
         record = {
             "timestamp": timestamp,
@@ -56,7 +63,7 @@ class CaptureFileWriter:
             "tier": tier,
             "input": input_data,
             "outputs": {
-                label: {"content": content, "latency_s": latency_s}
+                label: output_entry
             },
             "errors": {}
         }
@@ -67,17 +74,20 @@ class CaptureFileWriter:
             records.append(record)
             self._write(task_id, records)
 
-    def merge_background_output(self, task_id, timestamp, label, content, latency_s):
+    def merge_background_output(self, task_id, timestamp, label, content, latency_s,
+                                token_usage=None, cost_usd=None):
         """Merge a background variant result into an existing record."""
         lock = self._get_lock(task_id)
         with lock:
             records = self._read(task_id)
             for record in reversed(records):
                 if record["task_id"] == task_id and record["timestamp"] == timestamp:
-                    record["outputs"][label] = {
-                        "content": content,
-                        "latency_s": latency_s
-                    }
+                    output_entry = {"content": content, "latency_s": latency_s}
+                    if token_usage:
+                        output_entry["tokens"] = token_usage
+                    if cost_usd is not None:
+                        output_entry["cost_usd"] = cost_usd
+                    record["outputs"][label] = output_entry
                     self._write(task_id, records)
                     return
 

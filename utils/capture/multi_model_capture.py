@@ -81,21 +81,47 @@ def _determine_tier(model_string):
     return "full"
 
 
+def _calculate_cost(model_name, token_usage, cfg):
+    """Calculate USD cost based on model pricing and token usage.
+
+    Args:
+        model_name: The model identifier (e.g., "gpt-5.2", "gemini-3-flash-preview")
+        token_usage: dict with prompt_tokens and completion_tokens
+        cfg: loaded config with model_pricing section
+
+    Returns:
+        float: cost in USD, or None if pricing not available
+    """
+    pricing = cfg.get("model_pricing", {}).get(model_name)
+    if not pricing or not token_usage:
+        return None
+
+    input_cost = (token_usage.get("prompt_tokens", 0) / 1_000_000) * pricing.get("input", 0)
+    output_cost = (token_usage.get("completion_tokens", 0) / 1_000_000) * pricing.get("output", 0)
+    return round(input_cost + output_cost, 6)
+
+
 def _fire_background_variant(variant, task_id, messages, timestamp,
                               caller_temperature, caller_kwargs):
     """Execute one variant call and write result. Runs in thread pool."""
     label = variant["label"]
+    model_name = variant.get("model", "unknown")
     writer = _get_writer()
+    cfg = _load_config()
     try:
         if variant["provider"] == "openai":
-            content, latency_s = call_openai_variant(
+            content, latency_s, token_usage = call_openai_variant(
                 variant, messages, caller_temperature, caller_kwargs
             )
         else:
-            content, latency_s = call_gemini_variant(
+            content, latency_s, token_usage = call_gemini_variant(
                 variant, messages, caller_temperature, caller_kwargs
             )
-        writer.merge_background_output(task_id, timestamp, label, content, latency_s)
+        cost_usd = _calculate_cost(model_name, token_usage, cfg)
+        writer.merge_background_output(
+            task_id, timestamp, label, content, latency_s,
+            token_usage=token_usage, cost_usd=cost_usd
+        )
     except Exception as e:
         error_str = f"{type(e).__name__}: {e}"
         writer.merge_background_error(task_id, timestamp, label, error_str)
@@ -155,6 +181,15 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         primary_content = response.choices[0].message.content
         primary_label = f"{model}|baseline"
 
+        # Extract token usage from primary response
+        usage = getattr(response, 'usage', None)
+        primary_token_usage = {
+            "prompt_tokens": usage.prompt_tokens if usage else 0,
+            "completion_tokens": usage.completion_tokens if usage else 0,
+            "total_tokens": usage.total_tokens if usage else 0,
+        }
+        primary_cost = _calculate_cost(model, primary_token_usage, cfg)
+
         # Get variants (check task_overrides first)
         variants = cfg.get("task_overrides", {}).get(task_id)
         if variants is None:
@@ -173,6 +208,8 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
             content=primary_content,
             latency_s=primary_latency,
             timestamp=timestamp,
+            token_usage=primary_token_usage,
+            cost_usd=primary_cost,
         )
 
         # Fire all non-baseline variants in background
