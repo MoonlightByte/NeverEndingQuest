@@ -2,9 +2,52 @@
 
 Builds call parameters and executes a single OpenAI variant call.
 Never sets max_tokens or max_completion_tokens.
+
+Key addition (2026-02-22): Auto-detect JSON-expecting calls and add
+response_format={"type": "json_object"} to improve output consistency.
 """
+import re
 import time
 from openai import OpenAI
+
+# Patterns that indicate the call expects JSON output (shared with gemini_caller)
+JSON_INDICATOR_PATTERNS = [
+    r'@FMT\s*=',           # Compressed prompt format marker
+    r'"narration"',         # DM response schema
+    r'"actions"\s*:',       # Action array in schema
+    r'respond.*JSON',       # "respond with JSON"
+    r'output.*JSON',        # "output JSON"
+    r'return.*JSON',        # "return JSON"
+    r'JSON\s+object',       # "JSON object"
+    r'valid\s+JSON',        # "valid JSON"
+    r'\{["\'].*["\']:',     # JSON object literal in prompt
+]
+
+
+def expects_json_output(messages, caller_kwargs=None):
+    """Detect if this call expects JSON output based on prompt content.
+
+    Args:
+        messages: the messages list from the callsite
+        caller_kwargs: Original call kwargs (may contain response_format)
+
+    Returns:
+        True if JSON output is expected
+    """
+    # Explicit response_format from original call
+    if (caller_kwargs is not None
+            and caller_kwargs.get("response_format", {}).get("type") == "json_object"):
+        return True
+
+    # Check system prompt for JSON indicators
+    for msg in messages:
+        if msg.get("role") == "system":
+            content = msg.get("content", "")
+            for pattern in JSON_INDICATOR_PATTERNS:
+                if re.search(pattern, content, re.IGNORECASE):
+                    return True
+
+    return False
 
 _client = None
 
@@ -64,6 +107,9 @@ def call_openai_variant(variant, messages, caller_temperature=None, caller_kwarg
     # Pass through response_format if original call used it
     if caller_kwargs and "response_format" in caller_kwargs:
         params["response_format"] = caller_kwargs["response_format"]
+    # Otherwise, auto-detect JSON-expecting calls and force JSON mode
+    elif expects_json_output(messages, caller_kwargs):
+        params["response_format"] = {"type": "json_object"}
 
     client = _get_client()
     start = time.time()
