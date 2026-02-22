@@ -1,0 +1,106 @@
+{
+  "capture_enabled": true,
+  "full_tier_variants": [
+    {
+      "label": "gpt-5.2|none",
+      "provider": "openai",
+      "model": "gpt-5.2",
+      "reasoning_effort": "none",
+      "use_caller_temp": true
+    },
+    {
+      "label": "gpt-5.2|low",
+      "provider": "openai",
+      "model": "gpt-5.2",
+      "reasoning_effort": "low",
+      "use_caller_temp": false
+    },
+    {
+      "label": "gpt-5.2|medium",
+      "provider": "openai",
+      "model": "gpt-5.2",
+      "reasoning_effort": "medium",
+      "use_caller_temp": false
+    },
+    {
+      "label": "gpt-5.2|high",
+      "provider": "openai",
+      "model": "gpt-5.2",
+      "reasoning_effort": "high",
+      "use_caller_temp": false
+    },
+    {
+      "label": "gemini-3-pro|low",
+      "provider": "gemini",
+      "model": "gemini-3-pro-preview",
+      "thinking_level": "low",
+      "use_caller_temp": true
+    },
+    {
+      "label": "gemini-3-pro|high",
+      "provider": "gemini",
+      "model": "gemini-3-pro-preview",
+      "thinking_level": "high",
+      "use_caller_temp": true
+    }
+  ],
+  "mini_tier_variants": [
+    {
+      "label": "gpt-5-mini|minimal",
+      "provider": "openai",
+      "model": "gpt-5-mini",
+      "reasoning_effort": "minimal",
+      "use_caller_temp": false
+    },
+    {
+      "label": "gpt-5-mini|low",
+      "provider": "openai",
+      "model": "gpt-5-mini",
+      "reasoning_effort": "low",
+      "use_caller_temp": false
+    },
+    {
+      "label": "gpt-5-mini|medium",
+      "provider": "openai",
+      "model": "gpt-5-mini",
+      "reasoning_effort": "medium",
+      "use_caller_temp": false
+    },
+    {
+      "label": "gpt-5-mini|high",
+      "provider": "openai",
+      "model": "gpt-5-mini",
+      "reasoning_effort": "high",
+      "use_caller_temp": false
+    },
+    {
+      "label": "gemini-3-flash|minimal",
+      "provider": "gemini",
+      "model": "gemini-3-flash-preview",
+      "thinking_level": "minimal",
+      "use_caller_temp": true
+    },
+    {
+      "label": "gemini-3-flash|low",
+      "provider": "gemini",
+      "model": "gemini-3-flash-preview",
+      "thinking_level": "low",
+      "use_caller_temp": true
+    },
+    {
+      "label": "gemini-3-flash|medium",
+      "provider": "gemini",
+      "model": "gemini-3-flash-preview",
+      "thinking_level": "medium",
+      "use_caller_temp": true
+    },
+    {
+      "label": "gemini-3-flash|high",
+      "provider": "gemini",
+      "model": "gemini-3-flash-preview",
+      "thinking_level": "high",
+      "use_caller_temp": true
+    }
+  ],
+  "task_overrides": {}
+}
