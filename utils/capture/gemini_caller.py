@@ -1,13 +1,38 @@
 """Gemini variant caller for multi-model capture system.
 
 Handles OpenAI->Gemini message format conversion and executes Gemini variant calls.
+
+Key fix (2026-02-22): Always set response_mime_type="application/json" for calls
+that expect JSON output. This prevents Gemini from returning plain prose or
+markdown-wrapped JSON, which was causing validation failures.
 """
 import os
+import re
 import threading
 import time
 
 _gemini_client = None
 _client_lock = threading.Lock()
+
+# Patterns that indicate the call expects JSON output
+JSON_INDICATOR_PATTERNS = [
+    r'@FMT\s*=',           # Compressed prompt format marker
+    r'"narration"',         # DM response schema
+    r'"actions"\s*:',       # Action array in schema
+    r'respond.*JSON',       # "respond with JSON"
+    r'output.*JSON',        # "output JSON"
+    r'return.*JSON',        # "return JSON"
+    r'JSON\s+object',       # "JSON object"
+    r'valid\s+JSON',        # "valid JSON"
+    r'\{["\'].*["\']:',     # JSON object literal in prompt
+]
+
+# Models that support thinking_config
+THINKING_SUPPORTED_MODELS = [
+    "gemini-2.0-flash-thinking",
+    "gemini-3-flash",
+    "gemini-3-pro",
+]
 
 
 def _get_client():
@@ -46,7 +71,7 @@ def convert_messages_to_gemini(messages):
         tuple of (system_instruction_str_or_None, contents_list)
         where contents_list items are {"role": "user"|"model", "parts": [{"text": "..."}]}
     """
-    system_instruction = None
+    system_parts = []
     contents = []
 
     for msg in messages:
@@ -54,7 +79,8 @@ def convert_messages_to_gemini(messages):
         content = msg.get("content", "")
 
         if role == "system":
-            system_instruction = content
+            # Concatenate all system messages (don't overwrite)
+            system_parts.append(content)
             continue
 
         # Map OpenAI roles to Gemini roles
@@ -64,7 +90,49 @@ def convert_messages_to_gemini(messages):
             "parts": [{"text": content}]
         })
 
+    # Join all system messages with double newlines
+    system_instruction = "\n\n".join(system_parts) if system_parts else None
     return system_instruction, contents
+
+
+def expects_json_output(system_instruction, caller_kwargs=None):
+    """Detect if this call expects JSON output based on prompt content.
+
+    Args:
+        system_instruction: The concatenated system prompt
+        caller_kwargs: Original call kwargs (may contain response_format)
+
+    Returns:
+        True if JSON output is expected
+    """
+    # Explicit response_format from original call
+    if (caller_kwargs is not None
+            and caller_kwargs.get("response_format", {}).get("type") == "json_object"):
+        return True
+
+    # Check system prompt for JSON indicators
+    if system_instruction:
+        for pattern in JSON_INDICATOR_PATTERNS:
+            if re.search(pattern, system_instruction, re.IGNORECASE):
+                return True
+
+    return False
+
+
+def model_supports_thinking(model_name):
+    """Check if the model supports thinking_config.
+
+    Args:
+        model_name: The Gemini model identifier
+
+    Returns:
+        True if thinking_config is supported
+    """
+    model_lower = model_name.lower()
+    for supported in THINKING_SUPPORTED_MODELS:
+        if supported in model_lower:
+            return True
+    return False
 
 
 def build_gemini_config(variant, caller_temperature=None, use_json=False):
@@ -73,18 +141,23 @@ def build_gemini_config(variant, caller_temperature=None, use_json=False):
     Args:
         variant: variant config dict with thinking_level and use_caller_temp
         caller_temperature: temperature from original callsite, or None
-        use_json: True if original call used response_format json_object
+        use_json: True if JSON output is expected (detected or explicit)
 
     Returns:
         dict of config values (not yet a types.GenerateContentConfig object)
     """
-    config = {
-        "thinking_level": variant.get("thinking_level", "low")
-    }
+    config = {}
+
+    # Only include thinking_level for models that support it
+    # (will be checked again in call_gemini_variant with actual model name)
+    if "thinking_level" in variant:
+        config["thinking_level"] = variant["thinking_level"]
 
     if variant.get("use_caller_temp") and caller_temperature is not None:
         config["temperature"] = caller_temperature
 
+    # CRITICAL FIX: Always set response_mime_type when JSON is expected
+    # This prevents Gemini from returning plain prose or markdown-wrapped JSON
     if use_json:
         config["response_mime_type"] = "application/json"
 
@@ -108,22 +181,32 @@ def call_gemini_variant(variant, messages, caller_temperature=None, caller_kwarg
     """
     from google.genai import types
 
-    use_json = (
-        caller_kwargs is not None
-        and caller_kwargs.get("response_format", {}).get("type") == "json_object"
-    )
-
+    # Convert messages and extract system instruction
     system_instruction, contents = convert_messages_to_gemini(messages)
+
+    # Detect if JSON output is expected (IMPROVED: checks prompt content too)
+    use_json = expects_json_output(system_instruction, caller_kwargs)
+
+    # Build config
     cfg = build_gemini_config(variant, caller_temperature, use_json)
 
     # Build GenerateContentConfig
-    config_kwargs = {
-        "thinking_config": types.ThinkingConfig(thinking_level=cfg["thinking_level"])
-    }
+    config_kwargs = {}
+
+    # Only add thinking_config for models that support it
+    model_name = variant.get("model", "")
+    if model_supports_thinking(model_name) and "thinking_level" in cfg:
+        config_kwargs["thinking_config"] = types.ThinkingConfig(
+            thinking_level=cfg["thinking_level"]
+        )
+
     if "temperature" in cfg:
         config_kwargs["temperature"] = cfg["temperature"]
+
+    # CRITICAL: Set response_mime_type for JSON-expecting calls
     if "response_mime_type" in cfg:
         config_kwargs["response_mime_type"] = cfg["response_mime_type"]
+
     if system_instruction:
         config_kwargs["system_instruction"] = system_instruction
 
@@ -141,7 +224,7 @@ def call_gemini_variant(variant, messages, caller_temperature=None, caller_kwarg
     client = _get_client()
     start = time.time()
     response = client.models.generate_content(
-        model=variant["model"],
+        model=model_name,
         contents=gemini_contents,
         config=gen_config,
     )
