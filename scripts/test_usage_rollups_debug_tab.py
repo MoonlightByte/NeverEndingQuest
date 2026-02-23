@@ -133,13 +133,14 @@ def test_cost_calculation_accuracy():
     
     stats = tracker.get_current_stats()
     
-    # Verify USD->NZD conversion
-    expected_nzd = 0.015 * 1.65
+    # Verify USD->NZD conversion using actual tracker rate (may be live or fallback)
+    usd_to_nzd_rate = stats.get('usd_to_nzd_rate', 1.65)
+    expected_nzd = 0.015 * usd_to_nzd_rate
     actual_nzd = stats['session_cost_nzd']
     
     assert abs(actual_nzd - expected_nzd) < 0.001, f"NZD conversion incorrect: {actual_nzd} vs {expected_nzd}"
     
-    print(f"  [PASS] Cost calculation accurate (USD: {stats['session_cost_usd']}, NZD: {actual_nzd})")
+    print(f"  [PASS] Cost calculation accurate (USD: {stats['session_cost_usd']}, NZD: {actual_nzd}, rate: {usd_to_nzd_rate})")
     return True
 
 
@@ -354,8 +355,9 @@ def test_image_cost_only_event():
     assert stats['session_cost_usd'] > baseline_cost, "Cost should increase after image event"
     assert abs(stats['session_cost_usd'] - 0.040) < 0.001, f"Cost should be ~0.040, got {stats['session_cost_usd']}"
     
-    # Assert NZD conversion happened
-    expected_nzd = 0.040 * 1.65
+    # Assert NZD conversion happened using actual tracker rate
+    usd_to_nzd_rate = stats.get('usd_to_nzd_rate', 1.65)
+    expected_nzd = 0.040 * usd_to_nzd_rate
     assert abs(stats['session_cost_nzd'] - expected_nzd) < 0.001, f"NZD should be ~{expected_nzd}, got {stats['session_cost_nzd']}"
     
     # Assert tokens remain unchanged
@@ -521,6 +523,190 @@ def test_multiple_image_events_aggregation():
     return True
 
 
+def test_exchange_rate_source_in_stats():
+    """Test 8.1: Exchange rate source is reported in stats"""
+    print("[TEST 8.1] Exchange rate source tracking...")
+    tracker = LLMUsageTracker(telemetry_log="/dev/null")
+    
+    stats = tracker.get_current_stats()
+    
+    # Verify usd_to_nzd_source is present
+    assert 'usd_to_nzd_source' in stats, "usd_to_nzd_source should be in stats"
+    
+    # Source should be a string
+    source = stats['usd_to_nzd_source']
+    assert isinstance(source, str), f"usd_to_nzd_source should be string, got {type(source)}"
+    
+    # With empty config (no URL), should be fallback_no_url or fallback_disabled
+    assert source.startswith('fallback') or source == 'live_api', \
+        f"Source should indicate fallback or live: {source}"
+    
+    # Rate should be positive
+    assert stats['usd_to_nzd_rate'] > 0, "Rate should be positive"
+    
+    print(f"  [PASS] Rate source tracked: {source} (rate: {stats['usd_to_nzd_rate']})")
+    return True
+
+
+def test_exchange_rate_fallback_behavior():
+    """Test 8.2: Exchange rate falls back on API failure (fail-open)"""
+    print("[TEST 8.2] Exchange rate fail-open behavior...")
+    
+    # Create tracker - if live API fails, it should not crash
+    try:
+        tracker = LLMUsageTracker(telemetry_log="/dev/null")
+        stats = tracker.get_current_stats()
+        
+        # Should have a valid rate regardless of API success
+        assert stats['usd_to_nzd_rate'] > 0, "Should have positive rate even if API fails"
+        assert 'usd_to_nzd_source' in stats, "Should report rate source"
+        
+        print(f"  [PASS] Fail-open verified (rate: {stats['usd_to_nzd_rate']}, source: {stats['usd_to_nzd_source']})")
+        return True
+    except Exception as e:
+        print(f"  [FAIL] Tracker initialization failed: {e}")
+        return False
+
+
+def test_nzd_conversion_with_dynamic_rate():
+    """Test 8.3: NZD conversion uses dynamic rate from stats"""
+    print("[TEST 8.3] Dynamic NZD conversion...")
+    tracker = LLMUsageTracker(telemetry_log="/dev/null")
+    
+    # Track a cost event
+    tracker.track(MockResponse(prompt=1000, completion=500, total=1500, cost=0.015))
+    
+    stats = tracker.get_current_stats()
+    
+    # Get the rate that was actually used
+    rate = stats.get('usd_to_nzd_rate', 1.65)
+    usd_cost = stats['session_cost_usd']
+    expected_nzd = usd_cost * rate
+    actual_nzd = stats['session_cost_nzd']
+    
+    # Verify math matches
+    assert abs(actual_nzd - expected_nzd) < 0.001, \
+        f"NZD conversion mismatch: {actual_nzd} vs expected {expected_nzd} (rate: {rate})"
+    
+    print(f"  [PASS] Dynamic rate conversion correct (USD: {usd_cost}, NZD: {actual_nzd}, rate: {rate})")
+    return True
+
+
+def test_currency_fields_in_stats():
+    """Test 8.4: Currency configuration and effective currency reported in stats"""
+    print("[TEST 8.4] Currency fields in stats...")
+    tracker = LLMUsageTracker(telemetry_log="/dev/null")
+    
+    stats = tracker.get_current_stats()
+    
+    # Verify currency fields are present
+    assert 'exchange_configured_currency' in stats, "exchange_configured_currency should be in stats"
+    assert 'exchange_effective_currency' in stats, "exchange_effective_currency should be in stats"
+    
+    # Both should be strings
+    configured = stats['exchange_configured_currency']
+    effective = stats['exchange_effective_currency']
+    assert isinstance(configured, str), f"configured currency should be string, got {type(configured)}"
+    assert isinstance(effective, str), f"effective currency should be string, got {type(effective)}"
+    
+    # Both should be 3-letter codes (or USD for fallback)
+    assert len(configured) == 3, f"configured currency should be 3 chars, got '{configured}'"
+    assert len(effective) == 3, f"effective currency should be 3 chars, got '{effective}'"
+    
+    print(f"  [PASS] Currency fields present (configured: {configured}, effective: {effective})")
+    return True
+
+
+def test_nzd_specific_fallback_preserved():
+    """Test 8.5: NZD target preserves static USD_TO_NZD_RATE fallback on API failure"""
+    print("[TEST 8.5] NZD-specific fallback preserved...")
+    
+    # With default config (NZD target, no API URL), should use static NZD fallback
+    tracker = LLMUsageTracker(telemetry_log="/dev/null")
+    
+    stats = tracker.get_current_stats()
+    
+    # Should be NZD target
+    assert stats['exchange_configured_currency'] == 'NZD', "Default target should be NZD"
+    
+    # Effective should also be NZD (static fallback used)
+    assert stats['exchange_effective_currency'] == 'NZD', "Effective should be NZD when using static fallback"
+    
+    # Rate should be positive (from model_config USD_TO_NZD_RATE)
+    assert stats['usd_to_nzd_rate'] > 0, "NZD rate should be positive"
+    
+    # Source should indicate fallback
+    source = stats['usd_to_nzd_source']
+    assert 'fallback' in source, f"Should use fallback for NZD without API: {source}"
+    
+    print(f"  [PASS] NZD fallback preserved (rate: {stats['usd_to_nzd_rate']}, source: {source})")
+    return True
+
+
+def test_invalid_currency_code_fallback():
+    """Test 8.6: Invalid currency code falls back to USD (rate 1.0) via config validation"""
+    print("[TEST 8.6] Invalid currency code fallback via config validation...")
+    
+    # Monkeypatch config to simulate invalid currency code
+    import sys
+    import types
+    
+    # Create a mock config module with invalid currency
+    mock_config = types.ModuleType('config')
+    setattr(mock_config, 'EXCHANGE_RATE_API_URL', "")  # Empty to skip API fetch
+    setattr(mock_config, 'EXCHANGE_RATE_TARGET_CURRENCY', "INVALID")  # Invalid 7-letter code
+    setattr(mock_config, 'EXCHANGE_RATE_TIMEOUT_SECONDS', 5)
+    setattr(mock_config, 'ENABLE_LIVE_EXCHANGE_RATE', True)
+    
+    # Store original config if present
+    original_config = sys.modules.get('config')
+    
+    try:
+        # Install mock config
+        sys.modules['config'] = mock_config
+        
+        # Create new tracker - will use mock config and exercise actual validation logic
+        tracker = LLMUsageTracker(telemetry_log="/dev/null")
+        stats = tracker.get_current_stats()
+        
+        # Verify fallback behavior through actual config-driven validation
+        assert stats['exchange_configured_currency'] == 'INVALID', "Configured should reflect invalid code from config"
+        assert stats['exchange_effective_currency'] == 'USD', "Invalid code should fall back to USD via validation"
+        assert stats['usd_to_nzd_rate'] == 1.0, "USD->USD rate should be 1.0"
+        assert stats['usd_to_nzd_source'] == 'fallback_invalid_currency_code', f"Source should indicate validation failure: {stats['usd_to_nzd_source']}"
+        
+        print(f"  [PASS] Invalid code fallback verified via config (configured: {stats['exchange_configured_currency']}, effective: {stats['exchange_effective_currency']}, rate: {stats['usd_to_nzd_rate']})")
+        return True
+    finally:
+        # Restore original config
+        if original_config is not None:
+            sys.modules['config'] = original_config
+        elif 'config' in sys.modules:
+            del sys.modules['config']
+
+
+def test_configured_vs_effective_currency():
+    """Test 8.7: Configured and effective currency can differ (fallback scenario)"""
+    print("[TEST 8.7] Configured vs effective currency tracking...")
+    
+    tracker = LLMUsageTracker(telemetry_log="/dev/null")
+    stats = tracker.get_current_stats()
+    
+    # Both should be 3-letter codes
+    configured = stats.get('exchange_configured_currency', '')
+    effective = stats.get('exchange_effective_currency', '')
+    
+    assert len(configured) == 3, f"Configured currency should be 3 chars: '{configured}'"
+    assert len(effective) == 3, f"Effective currency should be 3 chars: '{effective}'"
+    
+    # If they differ, effective should be USD (fallback)
+    if configured != effective:
+        assert effective == 'USD', f"Fallback currency should be USD, got '{effective}'"
+    
+    print(f"  [PASS] Currency tracking correct (configured: {configured}, effective: {effective})")
+    return True
+
+
 def run_all_tests():
     """Run all regression tests"""
     print("=" * 60)
@@ -545,6 +731,15 @@ def run_all_tests():
         test_image_cost_fail_open,
         test_image_telemetry_entry,
         test_multiple_image_events_aggregation,
+        # Exchange rate tests
+        test_exchange_rate_source_in_stats,
+        test_exchange_rate_fallback_behavior,
+        test_nzd_conversion_with_dynamic_rate,
+        # Currency configuration tests (new)
+        test_currency_fields_in_stats,
+        test_nzd_specific_fallback_preserved,
+        test_invalid_currency_code_fallback,
+        test_configured_vs_effective_currency,
     ]
     
     passed = 0

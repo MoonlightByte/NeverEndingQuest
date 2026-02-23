@@ -1021,6 +1021,75 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Multi-Currency Debug Tab Cost Conversion (COMPLETED - 2026-02-24)
+
+**Status:** COMPLETED - Live exchange rate fetching with multi-currency support and robust fallback behavior
+
+**Objective:**
+Enable configurable target currency for Debug tab cost estimates (NZD, AUD, CAD, EUR, GBP, JPY, etc.) with live exchange rate fetching at game startup and safe fallback chains.
+
+**Implementation Summary:**
+
+**Step 1 - Configuration Contract:**
+- Removed `EXCHANGE_RATE_CACHE_MINUTES` (not needed - one-time fetch at startup)
+- Added clear currency code examples in `config_template.py` and `config.py`
+- Documented ISO 4217 3-letter codes: NZD, AUD, CAD, EUR, GBP, JPY
+- Clarified one-time fetch behavior (no periodic refresh)
+
+**Step 2 - Tracker Currency Support (`utils/llm_usage_tracker.py`):**
+- Added `exchange_configured_currency` and `exchange_effective_currency` tracking
+- Implemented 3-letter alphabetic code validation (`len == 3` and `isalpha()`)
+- Enhanced `_resolve_exchange_rate()` with multi-currency fallback logic:
+  - Invalid code → USD (rate 1.0) with `fallback_invalid_currency_code` marker
+  - NZD target + API failure → static `USD_TO_NZD_RATE` from config
+  - Non-NZD target + API failure → USD (rate 1.0)
+- Added comprehensive source markers for debugging (`fallback_*_non_nzd` variants)
+
+**Step 3 - Stats Metadata Exposure:**
+- Exposed `exchange_configured_currency`, `exchange_effective_currency`, `usd_to_nzd_source` in `get_current_stats()`
+- Updated error/fallback return payloads with currency fields
+- Maintained backward compatibility with existing `session_cost_nzd`/`week_cost_nzd` keys
+
+**Step 4 - Frontend Dynamic Labels (`web/templates/game_interface.html`):**
+- Changed hardcoded "NZD" labels to dynamic elements with IDs: `session-currency-label`, `week-currency-label`
+- Updated `token_update` handler to read `exchange_effective_currency` from payload
+- Labels now automatically reflect effective currency (NZD, AUD, etc.) based on backend configuration
+
+**Step 5 - Backend Payload Wiring (`web/web_interface.py`):**
+- Added currency metadata to `token_update` emit: `exchange_configured_currency`, `exchange_effective_currency`, `usd_to_nzd_source`
+- Updated both success path and fallback emit paths
+
+**Step 6 - Regression Test Coverage:**
+- Extended `scripts/test_usage_rollups_debug_tab.py` with 4 new tests:
+  - Test 8.4: Currency fields present in stats
+  - Test 8.5: NZD-specific fallback preserved on API failure
+  - Test 8.6: Invalid currency code falls back to USD via config validation (end-to-end)
+  - Test 8.7: Configured vs effective currency tracking
+- Fixed Test 8.6 to use config monkeypatching instead of direct field manipulation
+- Updated existing tests to remove hardcoded 1.65 assumptions
+
+**Verification:**
+- `python3 -m py_compile` on modified files: PASS
+- `python3 scripts/test_usage_rollups_debug_tab.py`: 23/23 tests PASS
+- All fallback scenarios verified: invalid code, API failure, missing requests module
+
+**Files Modified:**
+- `config_template.py` (+25 lines: currency config with examples, no cache minutes)
+- `config.py` (+10 lines: live API URL, currency examples, no cache minutes)
+- `utils/llm_usage_tracker.py` (+170 lines: currency validation, multi-currency fallback, metadata exposure)
+- `web/web_interface.py` (+9 lines: currency fields in token_update payload)
+- `web/templates/game_interface.html` (+7 lines: dynamic currency labels, JS handler update)
+- `scripts/test_usage_rollups_debug_tab.py` (+180 lines: 4 new tests, test 8.6 fixed for config-driven validation)
+
+**Architecture Notes:**
+- Fail-open: Invalid/missing codes always fall back to USD (1.0), never crash
+- One-time fetch: Rate fetched once at game startup, no background refresh
+- NZD legacy support: Preserves static `USD_TO_NZD_RATE` fallback for existing users
+- Clear audit trail: `usd_to_nzd_source` tracks exact fallback reason (14 distinct markers)
+- Configurable target: Any ISO 4217 3-letter code supported via `EXCHANGE_RATE_TARGET_CURRENCY`
+
+---
+
 ### DALL-E 3 Image Cost Rollup for Debug Tab (COMPLETED - 2026-02-19)
 
 **Status:** COMPLETED - All tasks finished, validated, archived, and committed

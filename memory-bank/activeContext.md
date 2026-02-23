@@ -1,5 +1,14 @@
 ## Current Work Focus
 
+- **Multi-Currency Debug Tab Cost Conversion (COMPLETED - 2026-02-24):**
+  - **Status:** Live exchange rate fetching with multi-currency support implemented and tested.
+  - **Config:** `EXCHANGE_RATE_TARGET_CURRENCY` supports any ISO 4217 3-letter code (NZD, AUD, CAD, EUR, GBP, JPY).
+  - **Validation:** Currency codes validated as 3-letter alphabetic; invalid codes fall back to USD (1.0).
+  - **Fallback Chain:** Live API → static NZD rate → USD (1.0) for non-NZD targets.
+  - **Frontend:** Debug tab currency labels are dynamic based on `exchange_effective_currency` from backend.
+  - **Testing:** 23/23 regression tests PASS, including end-to-end config validation test.
+  - **Files:** `config_template.py`, `config.py`, `utils/llm_usage_tracker.py`, `web/web_interface.py`, `web/templates/game_interface.html`, `scripts/test_usage_rollups_debug_tab.py`.
+
 - **World-Narrative Ingestion Foundation + Meta Assignment Planning (IN PROGRESS - 2026-02-22):**
   - **OpenSpec Change:** `world-narrative-seed-bootstrap-and-toolkit-ingestion` (new, valid)
   - **Copyright Firewall:** Hard cutover path is now `/user_uploads/text/` only (legacy `/user_uploads/` paths are rejected in route/test contracts).

@@ -4900,7 +4900,7 @@
                                 <span id="session-tokens">0</span><span class="cost-text">tokens</span>
                                 <span class="cost-divider">|</span>
                                 <span class="cost-currency">$</span><span id="session-cost-usd">0.00</span>
-                                <span class="cost-paren">(</span><span id="session-cost-nzd">0.00</span><span class="cost-text">NZD)</span>
+                                <span class="cost-paren">(</span><span id="session-cost-nzd">0.00</span><span class="cost-text" id="session-currency-label">NZD</span><span class="cost-paren">)</span>
                                 <span class="cost-indicator" id="session-cost-indicator"></span>
                             </span>
                         </div>
@@ -4911,7 +4911,7 @@
                                 <span id="week-tokens">0</span><span class="cost-text">tokens</span>
                                 <span class="cost-divider">|</span>
                                 <span class="cost-currency">$</span><span id="week-cost-usd">0.00</span>
-                                <span class="cost-paren">(</span><span id="week-cost-nzd">0.00</span><span class="cost-text">NZD)</span>
+                                <span class="cost-paren">(</span><span id="week-cost-nzd">0.00</span><span class="cost-text" id="week-currency-label">NZD</span><span class="cost-paren">)</span>
                                 <span class="cost-indicator" id="week-cost-indicator"></span>
                             </span>
                         </div>
@@ -5456,10 +5456,8 @@
             document.getElementById('profile-bonds').value = currentData.bonds || '';
             document.getElementById('profile-flaws').value = currentData.flaws || '';
             
-            // Handle backgroundFeature object
-            const bgFeature = currentData.backgroundFeature || {};
-            document.getElementById('profile-bg-feature-name').value = bgFeature.name || '';
-            document.getElementById('profile-bg-feature-description').value = bgFeature.description || '';
+            // Handle backstory
+            document.getElementById('profile-backstory').value = currentData.backstory || '';
             
             // Show modal
             const modal = document.getElementById('portrait-profile-modal');
@@ -5491,8 +5489,7 @@
             { id: 'profile-ideals', label: 'Ideals', path: 'personality.ideals' },
             { id: 'profile-bonds', label: 'Bonds', path: 'personality.bonds' },
             { id: 'profile-flaws', label: 'Flaws', path: 'personality.flaws' },
-            { id: 'profile-bg-feature-name', label: 'Background Feature Name (e.g., Criminal Contact, Researcher, Military Rank)', path: 'backgroundFeature.name' },
-            { id: 'profile-bg-feature-description', label: 'Background Feature Description (1-3 sentences describing practical in-world access or benefit)', path: 'backgroundFeature.description' }
+            { id: 'profile-backstory', label: 'Backstory', path: 'backstory' }
         ];
 
         // TABLETOP MODE: Submit portrait profile with validation and API call (Step 9.6)
@@ -5575,10 +5572,7 @@
                     bonds: fieldValues['personality.bonds'],
                     flaws: fieldValues['personality.flaws']
                 },
-                backgroundFeature: {
-                    name: fieldValues['backgroundFeature.name'],
-                    description: fieldValues['backgroundFeature.description']
-                }
+                backstory: fieldValues['backstory']
             };
 
             addMessage('game-output', {
@@ -6427,6 +6421,13 @@
                 const src = (data.week_cost_source !== undefined) ? String(data.week_cost_source) : 'unavailable';
                 weekIndicator.textContent = (src === 'estimated' || src === 'unavailable') ? 'Est' : '';
             }
+
+            // Currency labels (dynamic based on effective currency from backend)
+            const effectiveCurrency = (data.exchange_effective_currency !== undefined) ? String(data.exchange_effective_currency) : 'NZD';
+            const sessionCurrencyLabel = document.getElementById('session-currency-label');
+            if (sessionCurrencyLabel) sessionCurrencyLabel.textContent = effectiveCurrency;
+            const weekCurrencyLabel = document.getElementById('week-currency-label');
+            if (weekCurrencyLabel) weekCurrencyLabel.textContent = effectiveCurrency;
         });
         
         // Compression progress updates
@@ -8972,13 +8973,8 @@
                     </div>
                     
                     <div style="margin-bottom: 12px;">
-                        <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Background Feature Name (e.g., Criminal Contact, Researcher, Military Rank)</label>
-                        <input type="text" id="profile-bg-feature-name" placeholder="A short name for your background's special benefit" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box;">
-                    </div>
-                    
-                    <div style="margin-bottom: 12px;">
-                        <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Background Feature Description (1-3 sentences describing practical in-world access or benefit)</label>
-                        <textarea id="profile-bg-feature-description" placeholder="What practical benefit does this feature provide in the game world? (e.g., contacts, hospitality, status, lore access)" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box; min-height: 80px; resize: vertical;"></textarea>
+                        <label style="display: block; color: #aaa; font-size: 12px; margin-bottom: 4px;">Backstory (1-3+ sentences about your character's history)</label>
+                        <textarea id="profile-backstory" placeholder="What events shaped your character's past and led them to adventure?" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box; min-height: 80px; resize: vertical;"></textarea>
                     </div>
                 </div>
                 

@@ -1107,8 +1107,7 @@ _REQUIRED_PORTRAIT_PROFILE_FIELDS = [
     'ideals',
     'bonds',
     'flaws',
-    'background_feature_name',
-    'background_feature_description'
+    'backstory'
 ]
 
 
@@ -1139,16 +1138,11 @@ def _build_profile_update_payload(profile_payload: dict, existing_data: dict) ->
     }
     
     # Build backgroundFeature preserving existing keys
-    bg_name = profile_payload.get('background_feature_name', '')
-    bg_desc = profile_payload.get('background_feature_description', '')
-    
+    # NOTE: backgroundFeature is NOT updated via portrait modal flow anymore
+    # It is maintained via character sheet and creation workflows
     existing_bg = existing_data.get('backgroundFeature', {}) if isinstance(existing_data.get('backgroundFeature'), dict) else {}
     
-    update['backgroundFeature'] = {
-        **existing_bg,
-        'name': bg_name,
-        'description': bg_desc
-    }
+    update['backgroundFeature'] = existing_bg
     
     return update
 
@@ -1163,7 +1157,7 @@ def _extract_profile_payload(data: dict) -> dict:
         Normalized profile dictionary with keys:
         - age, height, weight, eyes, skin, hair
         - personality_traits, ideals, bonds, flaws
-        - background_feature_name, background_feature_description
+        - backstory
         All values are trimmed strings or empty strings.
     """
     profile = {
@@ -1177,8 +1171,7 @@ def _extract_profile_payload(data: dict) -> dict:
         'ideals': '',
         'bonds': '',
         'flaws': '',
-        'background_feature_name': '',
-        'background_feature_description': ''
+        'backstory': ''
     }
     
     # Extract appearance fields
@@ -1199,11 +1192,9 @@ def _extract_profile_payload(data: dict) -> dict:
         profile['bonds'] = str(personality.get('bonds', '')).strip()
         profile['flaws'] = str(personality.get('flaws', '')).strip()
     
-    # Extract background feature fields
-    bg_feature = data.get('backgroundFeature', {})
-    if isinstance(bg_feature, dict):
-        profile['background_feature_name'] = str(bg_feature.get('name', '')).strip()
-        profile['background_feature_description'] = str(bg_feature.get('description', '')).strip()
+    # Extract backstory
+    if isinstance(data.get('backstory'), str):
+        profile['backstory'] = str(data.get('backstory', '')).strip()
     
     return profile
 
@@ -1237,18 +1228,6 @@ def create_portrait():
         
         # Extract profile payload
         profile_payload = _extract_profile_payload(data)
-        
-        # TABLETOP MODE: Apply deterministic background feature suggestions for known backgrounds
-        # Only fills blank/generic placeholder values, preserves authored input
-        char_background = character_data.get('background', '')
-        suggestion_result = apply_background_feature_suggestion_if_generic(
-            char_background,
-            profile_payload.get('background_feature_name', ''),
-            profile_payload.get('background_feature_description', '')
-        )
-        # Update profile payload with suggested values only where fields were generic/blank
-        profile_payload['background_feature_name'] = suggestion_result['name']
-        profile_payload['background_feature_description'] = suggestion_result['description']
         
         # Step 9.3: Fail-closed validation for required profile fields
         missing_fields = [
@@ -3768,10 +3747,13 @@ def send_output_to_clients():
                         'week_cost_usd': stats.get('week_cost_usd', 0.0),
                         'week_cost_nzd': stats.get('week_cost_nzd', 0.0),
                         'week_cost_source': stats.get('week_cost_source', 'unavailable'),
-                        # Cost metadata (new)
-                        'usd_to_nzd_rate': stats.get('usd_to_nzd_rate', 1.65),
-                        'cost_estimate': stats.get('cost_estimate', True)
-                    })
+                    # Cost metadata (new)
+                    'usd_to_nzd_rate': stats.get('usd_to_nzd_rate', 1.65),
+                    'usd_to_nzd_source': stats.get('usd_to_nzd_source', 'fallback'),
+                    'exchange_configured_currency': stats.get('exchange_configured_currency', 'NZD'),
+                    'exchange_effective_currency': stats.get('exchange_effective_currency', 'NZD'),
+                    'cost_estimate': stats.get('cost_estimate', True)
+                })
                 except:
                     # If anything fails, just send zeros with new fields (but don't spam)
                     try:
@@ -3794,6 +3776,9 @@ def send_output_to_clients():
                             'week_cost_source': 'unavailable',
                             # Cost metadata (new - safe defaults)
                             'usd_to_nzd_rate': 1.65,
+                            'usd_to_nzd_source': 'fallback',
+                            'exchange_configured_currency': 'NZD',
+                            'exchange_effective_currency': 'NZD',
                             'cost_estimate': True
                         })
                     except:

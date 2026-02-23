@@ -15,6 +15,15 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **Multi-Currency Debug Tab Cost Conversion (COMPLETED - 2026-02-24):**
+  - **Objective:** Enable configurable target currency for Debug tab cost estimates (NZD, AUD, CAD, EUR, GBP, JPY) with live exchange rate fetching.
+  - **Config Contract:** Removed `EXCHANGE_RATE_CACHE_MINUTES`, added currency code examples (ISO 4217 3-letter codes).
+  - **Tracker Enhancement:** Added currency validation, multi-currency fallback logic, and comprehensive source markers.
+  - **Fallback Behavior:** Invalid code → USD (1.0), NZD + API failure → static rate, non-NZD + API failure → USD (1.0).
+  - **Frontend:** Dynamic currency labels in Debug tab (no longer hardcoded "NZD").
+  - **Tests:** 23/23 tests PASS including 4 new currency-specific tests.
+  - **Files Modified:** `config_template.py`, `config.py`, `utils/llm_usage_tracker.py`, `web/web_interface.py`, `web/templates/game_interface.html`, `scripts/test_usage_rollups_debug_tab.py`.
+
 - **World-Narrative Ingestion Foundation + Meta Assignment Planning (IN PROGRESS - 2026-02-22):**
   - Added OpenSpec change `world-narrative-seed-bootstrap-and-toolkit-ingestion` with proposal/design/specs/tasks/executor prompts.
   - Enforced hard cutover to `/user_uploads/text/` in planning and route/test contracts (`pdf` upload only, legacy root rejected).

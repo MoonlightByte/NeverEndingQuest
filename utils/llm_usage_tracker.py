@@ -15,7 +15,7 @@ from collections import deque
 import threading
 from pathlib import Path
 import traceback
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 
 
 class LLMUsageTracker:
@@ -89,6 +89,168 @@ class LLMUsageTracker:
             self.usd_to_nzd_rate = 1.65
             self.week_window_days = 7
             self.fallback_rate = 1.50
+            self.usd_to_nzd_source = "fallback"  # Track rate source for debugging
+
+        # Exchange rate currency configuration (added for multi-currency support)
+        self.exchange_configured_currency = "NZD"  # User-configured target
+        self.exchange_effective_currency = "NZD"   # Actual currency used after validation
+        self.exchange_fallback_rate = 1.0          # USD->USD default
+
+        # Try to fetch live exchange rate (fail-open)
+        self._resolve_exchange_rate()
+
+    def _resolve_exchange_rate(self):
+        """
+        Fetch live USD to target currency exchange rate from API with validation and fallback.
+        
+        Resolution order:
+        1. Validate configured currency code (3-letter alphabetic)
+        2. If invalid code -> fallback to USD (rate 1.0)
+        3. If live rate disabled/no URL -> use static fallback
+        4. If enabled, try API fetch with short timeout
+        5. On API failure: NZD -> static rate, others -> USD (1.0)
+        
+        Fail-open: never raises, never blocks initialization.
+        """
+        try:
+            from config import (
+                EXCHANGE_RATE_API_URL,
+                EXCHANGE_RATE_TARGET_CURRENCY,
+                EXCHANGE_RATE_TIMEOUT_SECONDS,
+                ENABLE_LIVE_EXCHANGE_RATE
+            )
+            
+            # Store configured currency (normalize to uppercase)
+            configured_currency = str(EXCHANGE_RATE_TARGET_CURRENCY).strip().upper() if EXCHANGE_RATE_TARGET_CURRENCY else "NZD"
+            self.exchange_configured_currency = configured_currency
+            
+            # Validate currency code: exactly 3 alphabetic characters
+            is_valid_code = (
+                len(configured_currency) == 3 and 
+                configured_currency.isalpha()
+            )
+            
+            if not is_valid_code:
+                # Invalid currency code - fallback to USD
+                self.exchange_effective_currency = "USD"
+                self.usd_to_nzd_rate = 1.0
+                self.usd_to_nzd_source = "fallback_invalid_currency_code"
+                print(f"[RATE] Invalid currency code '{configured_currency}', using USD->USD (1.0)")
+                return
+            
+            # Valid code - set as effective (may change if API fails)
+            self.exchange_effective_currency = configured_currency
+            
+            # Skip live fetch if disabled
+            if not ENABLE_LIVE_EXCHANGE_RATE:
+                # Use static fallback for NZD, USD for others
+                if configured_currency == "NZD":
+                    self.usd_to_nzd_source = "fallback_disabled"
+                    # Keep self.usd_to_nzd_rate as already set from config
+                else:
+                    self.exchange_effective_currency = "USD"
+                    self.usd_to_nzd_rate = 1.0
+                    self.usd_to_nzd_source = "fallback_disabled_non_nzd"
+                return
+            
+            # Skip if no URL configured
+            if not EXCHANGE_RATE_API_URL:
+                if configured_currency == "NZD":
+                    self.usd_to_nzd_source = "fallback_no_url"
+                else:
+                    self.exchange_effective_currency = "USD"
+                    self.usd_to_nzd_rate = 1.0
+                    self.usd_to_nzd_source = "fallback_no_url_non_nzd"
+                return
+            
+            # Import requests here (fail-open if not available)
+            try:
+                import requests as _requests  # type: ignore
+            except ImportError:
+                if configured_currency == "NZD":
+                    print(f"[RATE] requests module not available, using fallback: {self.usd_to_nzd_rate}")
+                    self.usd_to_nzd_source = "fallback_no_requests"
+                else:
+                    print(f"[RATE] requests module not available, using USD for {configured_currency}")
+                    self.exchange_effective_currency = "USD"
+                    self.usd_to_nzd_rate = 1.0
+                    self.usd_to_nzd_source = "fallback_no_requests_non_nzd"
+                return
+            
+            # Perform API fetch with timeout
+            response = _requests.get(
+                EXCHANGE_RATE_API_URL,
+                timeout=EXCHANGE_RATE_TIMEOUT_SECONDS
+            )
+            
+            # Parse response
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Try multiple API response formats for compatibility
+                rate = None
+                
+                # Format 1: conversion_rates[CODE] (exchangerate-api.com)
+                if "conversion_rates" in data and isinstance(data["conversion_rates"], dict):
+                    rate = data["conversion_rates"].get(configured_currency)
+                
+                # Format 2: rates[CODE] (alternative APIs)
+                if rate is None and "rates" in data and isinstance(data["rates"], dict):
+                    rate = data["rates"].get(configured_currency)
+                
+                # Validate and apply
+                if rate is not None and isinstance(rate, (int, float)) and rate > 0:
+                    self.usd_to_nzd_rate = float(rate)
+                    self.usd_to_nzd_source = "live_api"
+                    print(f"[RATE] Live rate applied: {self.usd_to_nzd_rate} {configured_currency}/USD")
+                    return
+                else:
+                    # Rate not found in API response for this currency
+                    if configured_currency == "NZD":
+                        print(f"[RATE] NZD not found in API response, using fallback: {self.usd_to_nzd_rate}")
+                        self.usd_to_nzd_source = "fallback_rate_not_in_response"
+                    else:
+                        print(f"[RATE] {configured_currency} not found in API response, using USD")
+                        self.exchange_effective_currency = "USD"
+                        self.usd_to_nzd_rate = 1.0
+                        self.usd_to_nzd_source = "fallback_rate_not_in_response_non_nzd"
+                    return
+            else:
+                # Non-200 response
+                if configured_currency == "NZD":
+                    print(f"[RATE] API returned {response.status_code}, using fallback: {self.usd_to_nzd_rate}")
+                    self.usd_to_nzd_source = f"fallback_api_error_{response.status_code}"
+                else:
+                    print(f"[RATE] API returned {response.status_code}, using USD for {configured_currency}")
+                    self.exchange_effective_currency = "USD"
+                    self.usd_to_nzd_rate = 1.0
+                    self.usd_to_nzd_source = f"fallback_api_error_{response.status_code}_non_nzd"
+                return
+                
+        except Exception as e:
+            # Catch timeout, connection errors, import failures, parsing errors
+            error_type = type(e).__name__
+            configured_currency = getattr(self, 'exchange_configured_currency', 'NZD')
+            
+            if "timeout" in error_type.lower():
+                if configured_currency == "NZD":
+                    print(f"[RATE] API timeout, using fallback: {self.usd_to_nzd_rate}")
+                    self.usd_to_nzd_source = "fallback_timeout"
+                else:
+                    print(f"[RATE] API timeout, using USD for {configured_currency}")
+                    self.exchange_effective_currency = "USD"
+                    self.usd_to_nzd_rate = 1.0
+                    self.usd_to_nzd_source = "fallback_timeout_non_nzd"
+            else:
+                if configured_currency == "NZD":
+                    print(f"[RATE] Failed to fetch live rate: {error_type}, using fallback: {self.usd_to_nzd_rate}")
+                    self.usd_to_nzd_source = "fallback_error"
+                else:
+                    print(f"[RATE] Failed to fetch live rate: {error_type}, using USD for {configured_currency}")
+                    self.exchange_effective_currency = "USD"
+                    self.usd_to_nzd_rate = 1.0
+                    self.usd_to_nzd_source = "fallback_error_non_nzd"
+            return
 
     def _calculate_cost(self, total_tokens: int, provider_cost = None) -> Tuple[float, str, bool]:
         """
@@ -443,6 +605,9 @@ class LLMUsageTracker:
 
                     # Cost metadata (new)
                     'usd_to_nzd_rate': self.usd_to_nzd_rate,
+                    'usd_to_nzd_source': getattr(self, 'usd_to_nzd_source', 'fallback'),
+                    'exchange_configured_currency': getattr(self, 'exchange_configured_currency', 'NZD'),
+                    'exchange_effective_currency': getattr(self, 'exchange_effective_currency', 'NZD'),
                     'cost_estimate': session_cost_estimate or week_cost_source in ('estimated', 'unavailable'),
 
                     # Spike tracking
@@ -485,6 +650,9 @@ class LLMUsageTracker:
                 'week_cost_usd': 0.0,
                 'week_cost_nzd': 0.0,
                 'usd_to_nzd_rate': 1.65,
+                'usd_to_nzd_source': 'fallback',
+                'exchange_configured_currency': 'NZD',
+                'exchange_effective_currency': 'NZD',
                 'cost_estimate': True,
                 'error': str(e)
             }
@@ -535,6 +703,9 @@ def get_usage_stats():
             'week_cost_usd': 0.0,
             'week_cost_nzd': 0.0,
             'usd_to_nzd_rate': 1.65,
+            'usd_to_nzd_source': 'fallback',
+            'exchange_configured_currency': 'NZD',
+            'exchange_effective_currency': 'NZD',
             'cost_estimate': True
         }
 
