@@ -2553,7 +2553,7 @@
             font-size: 14px;
             font-weight: bold;
             z-index: 2; /* Above the image */
-            gap: 8px;
+            gap: 4px;
         }
 
         .character-portrait:hover .upload-overlay {
@@ -2564,13 +2564,13 @@
             background: rgba(255, 255, 255, 0.15);
             border: 1px solid rgba(255, 255, 255, 0.3);
             color: white;
-            padding: 6px 12px;
+            padding: 4px 8px;
             border-radius: 4px;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: bold;
             cursor: pointer;
             transition: background 0.2s ease;
-            min-width: 80px;
+            min-width: 65px;
             text-align: center;
         }
 
@@ -5304,6 +5304,63 @@
             // Trigger the file dialog
             input.click();
         }
+        
+        // TABLETOP MODE: Download portrait action - allows players to save their current portrait
+        window.downloadPortrait = function(characterName) {
+            const portraitImg = document.getElementById('char-portrait-img');
+            if (!portraitImg) {
+                addMessage('game-output', { 
+                    type: 'system', 
+                    content: 'Portrait element not found.' 
+                });
+                return;
+            }
+            
+            // Check if it's the default portrait
+            if (portraitImg.src.includes('default_portrait.png')) {
+                addMessage('game-output', { 
+                    type: 'system', 
+                    content: 'No custom portrait to download. Please upload or create a portrait first.' 
+                });
+                return;
+            }
+            
+            // Fetch the image and trigger download
+            fetch(portraitImg.src)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch portrait image');
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    const safeName = String(characterName || 'character')
+                        .trim()
+                        .replace(/[^a-zA-Z0-9_-]+/g, '_')
+                        .replace(/^_+|_+$/g, '') || 'character';
+                    const filename = `${safeName}_portrait.png`;
+                    link.href = url;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(url);
+                    
+                    addMessage('game-output', { 
+                        type: 'system', 
+                        content: `Portrait downloaded as ${filename}` 
+                    });
+                })
+                .catch(err => {
+                    console.error('Download portrait error:', err);
+                    addMessage('game-output', { 
+                        type: 'system', 
+                        content: 'Failed to download portrait. Please try again.' 
+                    });
+                });
+        }
 
         function processPortraitUpload(file, characterName) {
             // Set shared portrait operation lock before starting upload
@@ -7036,6 +7093,7 @@
                             <div class="upload-overlay">
                                 <button class="portrait-action-btn" onclick="uploadPortrait('${normalizedName}')">Upload</button>
                                 <button class="portrait-action-btn" onclick="createPortrait('${normalizedName}')">Create</button>
+                                <button class="portrait-action-btn" onclick="downloadPortrait('${normalizedName}')">Download</button>
                             </div>
                             <!-- Hidden input removed - using persistent input instead -->
                         </div>

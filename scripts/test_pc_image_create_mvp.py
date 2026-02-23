@@ -1824,6 +1824,91 @@ class TestPromotionProfileWarnings(unittest.TestCase):
         self.assertIn("height", updated)
 
 
+class TestNpcPromptEnrichmentHydrationContracts(unittest.TestCase):
+    """Test suite for NPC prompt enrichment hydration contracts (Section 12)."""
+
+    def test_hydration_helper_canonical_path(self):
+        """Test 12.5.1: Hydration helper produces canonical context when character data exists."""
+        from web.extensions.missing_media_autogen import _hydrate_allied_npc_context
+        
+        # Patch the actual import location inside the helper
+        with patch("utils.pc_manager.get_character_state") as mock_get_state:
+            # Arrange: Canonical character record
+            mock_get_state.return_value = {
+                "name": "Claris the Good",
+                "race": "Human",
+                "class": "Paladin",
+                "personality_traits": "Brave and compassionate",
+                "ideals": "Justice for all",
+                "backgroundFeature": {"name": "Military Rank"}
+            }
+            
+            from web.extensions.missing_media_autogen import MissingMediaTask
+            task = MissingMediaTask(
+                missing_key="npcs/claris_the_good",
+                media_type="npcs",
+                filename="claris_the_good.jpg"
+            )
+            
+            # Act
+            result = _hydrate_allied_npc_context(task)
+            
+            # Assert: Canonical source
+            self.assertEqual(result.get("context_source"), "canonical")
+            self.assertEqual(result.get("name"), "Claris the Good")
+            self.assertEqual(result.get("race"), "Human")
+            self.assertEqual(result.get("class"), "Paladin")
+            self.assertIn("personality_traits", result)
+            self.assertIn("backgroundFeature", result)
+
+    def test_hydration_helper_fallback_path(self):
+        """Test 12.5.2: Hydration helper falls back to party hints when no character file."""
+        from web.extensions.missing_media_autogen import _hydrate_allied_npc_context
+        
+        # Patch the actual import locations
+        with patch("utils.pc_manager.get_character_state") as mock_get_state, \
+             patch("utils.file_operations.safe_read_json") as mock_read_json:
+            
+            # Arrange: No character file, but party tracker with role hint
+            mock_get_state.return_value = None
+            mock_read_json.return_value = {
+                "partyNPCs": [{"name": "Liri", "role": "Rogue"}],
+                "active_character": "Acheron"
+            }
+            
+            from web.extensions.missing_media_autogen import MissingMediaTask
+            task = MissingMediaTask(
+                missing_key="npcs/liri",
+                media_type="npcs",
+                filename="liri.jpg"
+            )
+            
+            # Act
+            result = _hydrate_allied_npc_context(task)
+            
+            # Assert: Fallback source
+            self.assertEqual(result.get("context_source"), "fallback")
+            # Assert: Uses role hint from party
+            self.assertEqual(result.get("class"), "Rogue")
+            # Assert: Generation-ready shape
+            self.assertEqual(result.get("name"), "Liri")
+            self.assertEqual(result.get("race"), "Unknown")
+            self.assertIn("class", result)
+
+    def test_hydration_helper_exports_for_callback_use(self):
+        """Test 12.5.3: Hydration helper is exported and available for callback use."""
+        from web.extensions.missing_media_autogen import _hydrate_allied_npc_context
+        
+        # Verify the helper is importable and callable
+        self.assertTrue(callable(_hydrate_allied_npc_context),
+                        "Hydration helper must be callable")
+        
+        # Verify it's in the module exports
+        from web.extensions.missing_media_autogen import __all__
+        self.assertIn("_hydrate_allied_npc_context", __all__,
+                      "Hydration helper must be exported in __all__")
+
+
 if __name__ == "__main__":
     # Run tests with verbose output
     unittest.main(verbosity=2)

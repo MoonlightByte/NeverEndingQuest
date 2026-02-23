@@ -121,6 +121,45 @@ Active development of Tabletop Mode features, focusing on party management and U
   - **File Modified:** `web/templates/game_interface.html`
   - **Verification:** 16 implementation checks passed (state variables, helpers, status handlers, lock patterns, CSS, cleanup)
 
+- **NPC Prompt Enrichment - Section 12 (COMPLETED - 2026-02-24):**
+  - **Objective:** Complete allied NPC portrait prompt enrichment with hydrated character context and bounded archetype anchors
+  - **Context Hydration:** Added `_hydrate_allied_npc_context()` helper in `web/extensions/missing_media_autogen.py`:
+    - Canonical-first lookup using `utils.pc_manager.get_character_state()`
+    - Fallback to party tracker role hints when character file unavailable
+    - Returns generation-ready context with `context_source` marker (`canonical` or `fallback`)
+    - Propagates profile fields: personality_traits, ideals, bonds, flaws, backgroundFeature
+  - **Callback Integration:** Updated `_generate_portrait_callback()` to:
+    - Call hydration helper before provider generation
+    - Merge hydrated baseline with supplemental `task.character_data`
+    - Pass merged context to `generate_and_save_portrait()`
+    - Maintain fail-open behavior (fallback to minimal context on hydration errors)
+  - **Archetype Anchors:** Added `_build_archetype_anchor()` in `core/toolkit/portrait_service.py`:
+    - 14-class deterministic mapping (fighter, barbarian, monk, paladin, ranger, wizard, sorcerer, warlock, cleric, druid, rogue, bard, companion, ally)
+    - Bounded output: ≤60 characters per anchor phrase
+    - ASCII-only enforcement with safe fallback for non-ASCII detection
+    - Class precedence, role fallback when class unavailable
+    - Integrated into `_build_visual_brief()` identity clause
+  - **Contract Preservation:** Verified all miss-path contracts remain intact:
+    - Reuse-first behavior primary (materialize before provider generation)
+    - Allied-only policy gating unchanged
+    - Dedupe/cooldown behavior unchanged
+    - Non-blocking 404 response unchanged
+  - **Regression Coverage:** Added `TestNpcPromptEnrichmentHydrationContracts` test class in `scripts/test_pc_image_create_mvp.py`:
+    - `test_hydration_helper_canonical_path`: Verifies canonical character data propagation
+    - `test_hydration_helper_fallback_path`: Verifies party role hint fallback behavior  
+    - `test_hydration_helper_exports_for_callback_use`: Verifies helper callable and exported
+  - **OpenSpec Archive:** Change `pc-image-create-and-allied-npc-autogen` fully archived to `openspec/changes/archive/2025-02-24-pc-image-create-and-allied-npc-autogen/`
+  - **Files Modified:**
+    - `web/extensions/missing_media_autogen.py` (+120 lines: hydration helper, callback wiring)
+    - `core/toolkit/portrait_service.py` (+79 lines: archetype anchor helper, visual brief integration)
+    - `scripts/test_pc_image_create_mvp.py` (+85 lines: 3 new Section 12 tests)
+    - `openspec/changes/pc-image-create-and-allied-npc-autogen/tasks.md` (updated completion status)
+  - **Verification:**
+    - `python3 -m py_compile` on all modified files: PASS
+    - Section 12 tests: 3/3 PASS
+    - OpenSpec validation: VALID
+    - Non-ASCII scan: No violations
+
 - **Load Dialog Unified Archive/Save Timeline (COMPLETED - 2026-02-17):
   - **OpenSpec Change:** `load-dialog-unified-archive-save-timeline` fully implemented, validated, archived, and spec-synced
   - **Objective:** Present save folders and archive zips in one merged recency-ordered timeline with type filters

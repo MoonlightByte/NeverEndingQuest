@@ -202,6 +202,80 @@ def _format_flaw_clause(flaws: str) -> str:
     return f"and can be {flaws}"
 
 
+def _build_archetype_anchor(character_data: Dict[str, Any]) -> str:
+    """Build a bounded, deterministic archetype anchor from class/role context.
+    
+    Returns a short, visually descriptive clause consistent with the character's
+    class or role when available. If no class/role context exists, returns empty
+    string so prompt composition continues unchanged.
+    
+    Mapping is deterministic (fixed phrase per class) and bounded (short clauses
+    only) to improve portrait quality without prompt sprawl.
+    
+    Args:
+        character_data: Dictionary with character fields
+        
+    Returns:
+        Short archetype clause or empty string if context unavailable
+    """
+    # Determine effective class/role (class takes precedence, role as fallback)
+    char_class = character_data.get("class", "")
+    char_role = character_data.get("character_role", "")
+    
+    # Use class if present and meaningful; fall back to role
+    effective = ""
+    if char_class and str(char_class).strip().lower() not in ("", "npc", "unknown", "adventurer"):
+        effective = str(char_class).strip().lower()
+    elif char_role and str(char_role).strip().lower() not in ("", "npc", "unknown"):
+        effective = str(char_role).strip().lower()
+    
+    if not effective:
+        return ""
+    
+    # Deterministic, bounded mapping: short visual/style anchors only
+    # Phrases kept concise to avoid prompt sprawl while improving consistency
+    ARCHETYPE_MAP = {
+        # Martial classes
+        "fighter": "with martial discipline and battle-hardened bearing",
+        "barbarian": "with fierce wild strength and untamed presence",
+        "monk": "with calm disciplined focus and controlled poise",
+        "paladin": "with noble resolve and radiant dedication",
+        "ranger": "with keen alertness and wilderness-hardened edge",
+        # Arcane classes
+        "wizard": "with studious arcane focus and scholarly intensity",
+        "sorcerer": "with innate magical presence and otherworldly spark",
+        "warlock": "with eldritch composure and pact-bound mystery",
+        # Divine/Primal classes
+        "cleric": "with sacred composure and devoted serenity",
+        "druid": "with natural harmony and primal connection",
+        # Skill classes
+        "rogue": "with sharp cunning and shadow-wary alertness",
+        "bard": "with charismatic flair and artistic vitality",
+        # Common NPC roles
+        "companion": "with loyal readiness and steadfast bearing",
+        "ally": "with supportive resolve and allied determination",
+        "npc": "",
+    }
+    
+    # Lookup with safe fallback to empty (no anchor if unknown class/role)
+    anchor = ARCHETYPE_MAP.get(effective, "")
+    
+    # Additional sanitization: ensure ASCII-only and bounded length
+    if anchor:
+        # Verify bounded length (max 60 chars to keep prompt concise)
+        if len(anchor) > 60:
+            anchor = anchor[:60].rsplit(" ", 1)[0]  # Trim to last complete word
+        
+        # Verify ASCII-only for Windows compatibility
+        try:
+            anchor.encode("ascii")
+        except UnicodeEncodeError:
+            # If non-ASCII detected, strip to safe fallback
+            anchor = "with distinctive presence"
+    
+    return anchor
+
+
 def _build_visual_brief(character_data: Dict[str, Any]) -> str:
     """Build a natural-language visual brief from structured character data.
     
@@ -269,6 +343,11 @@ def _build_visual_brief(character_data: Dict[str, Any]) -> str:
     # Get appropriate article for the identity description
     article = _get_article(identity_desc.split()[0] if identity_desc else "a")
     identity_clause = f"{article} {identity_desc}"
+    
+    # Add archetype anchor if class/role context available
+    archetype_anchor = _build_archetype_anchor(character_data)
+    if archetype_anchor:
+        identity_clause = f"{identity_clause}, {archetype_anchor}"
     
     # Sanitize and normalize personality fields
     personality_traits = _normalize_personality_phrase(

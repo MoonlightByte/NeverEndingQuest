@@ -112,12 +112,47 @@ def _generate_portrait_callback(task: MissingMediaTask) -> bool:
             category="missing_media_autogen"
         )
 
-        # Build minimal character data if not provided
-        character_data = task.character_data or {
-            "name": npc_name,
-            "race": "Unknown",
-            "class": "NPC"
-        }
+        # Hydrate context from canonical character data or fallback hints
+        try:
+            hydrated_context = _hydrate_allied_npc_context(task)
+            context_source = hydrated_context.get("context_source", "fallback")
+            debug(
+                f"MISSING_MEDIA_AUTOGEN: Hydrated context source={context_source} for {task.missing_key}",
+                category="missing_media_autogen"
+            )
+        except Exception as hydration_error:
+            debug(
+                f"MISSING_MEDIA_AUTOGEN: Hydration failed, using minimal fallback: {hydration_error}",
+                category="missing_media_autogen"
+            )
+            # Ultimate minimal fallback
+            hydrated_context = {
+                "name": npc_name,
+                "race": "Unknown",
+                "class": "NPC",
+                "context_source": "fallback",
+            }
+            context_source = "fallback"
+
+        # Merge hydrated baseline with any supplemental task-provided context
+        # Precedence: hydrated identity fields are authoritative; task.character_data supplements
+        character_data = dict(hydrated_context)  # Start with hydrated baseline
+        if task.character_data:
+            # Task data supplements but does not override core identity fields from hydration
+            supplemental_fields = [
+                "personality_traits", "ideals", "bonds", "flaws",
+                "background", "alignment", "age", "height", "weight",
+                "eyes", "skin", "hair", "backgroundFeature"
+            ]
+            for field in supplemental_fields:
+                if field in task.character_data and field not in character_data:
+                    character_data[field] = task.character_data[field]
+            # Allow task to override appearance fields even if hydrated has them
+            # (task may have fresher edits from UI)
+            appearance_fields = ["age", "height", "weight", "eyes", "skin", "hair"]
+            for field in appearance_fields:
+                if field in task.character_data and task.character_data[field]:
+                    character_data[field] = task.character_data[field]
 
         result = generate_and_save_portrait(
             character_data=character_data,
@@ -501,6 +536,121 @@ def _normalize_party_name(name: str) -> str:
     return normalized.strip("_")
 
 
+def _hydrate_allied_npc_context(
+    task: MissingMediaTask,
+    party_tracker_data: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Hydrate generation context for allied NPC from canonical character data.
+    
+    Attempts canonical character lookup first; falls back to party role/name
+    hints if no character file exists. Returns generation-ready structured
+    context with source marker for diagnostics.
+    
+    Args:
+        task: The media task to hydrate context for
+        party_tracker_data: Optional pre-loaded party tracker (efficiency)
+        
+    Returns:
+        Dict with hydrated context including:
+        - name: NPC identity name
+        - race: Best available race hint
+        - class: Best available class/role hint  
+        - context_source: 'canonical' or 'fallback'
+        - Optional profile fields when available (personality_traits, etc.)
+    """
+    # Extract canonical NPC identity from filename
+    npc_identity = _extract_npc_identity(task.filename)
+    
+    # Attempt 1: Canonical character lookup
+    try:
+        from utils.pc_manager import get_character_state
+        char_data = get_character_state(npc_identity)
+        
+        if char_data:
+            # Found canonical character record
+            result = {
+                "name": char_data.get("name", npc_identity),
+                "race": char_data.get("race", "Unknown"),
+                "class": char_data.get("class", "NPC"),
+                "context_source": "canonical",
+            }
+            
+            # Include optional profile fields when present
+            optional_fields = [
+                "personality_traits", "ideals", "bonds", "flaws",
+                "background", "alignment", "age", "height", "weight",
+                "eyes", "skin", "hair"
+            ]
+            for field in optional_fields:
+                if field in char_data:
+                    result[field] = char_data[field]
+            
+            # Include backgroundFeature if present
+            bg_feature = char_data.get("backgroundFeature")
+            if bg_feature:
+                result["backgroundFeature"] = bg_feature
+            
+            debug(
+                f"MISSING_MEDIA_AUTOGEN: Hydrated canonical context for {npc_identity}",
+                category="missing_media_autogen"
+            )
+            return result
+            
+    except Exception as e:
+        debug(
+            f"MISSING_MEDIA_AUTOGEN: Canonical lookup failed for {npc_identity}: {e}",
+            category="missing_media_autogen"
+        )
+    
+    # Attempt 2: Fallback to party role/name hints
+    try:
+        # Load party tracker if not provided
+        if party_tracker_data is None:
+            from utils.file_operations import safe_read_json
+            party_tracker_data = safe_read_json("party_tracker.json")
+        
+        # Build minimal fallback context from party hints
+        fallback_role = "Companion"
+        
+        # Try to find role hint in partyNPCs
+        if party_tracker_data:
+            for npc_info in party_tracker_data.get("partyNPCs", []):
+                npc_name = npc_info.get("name", "")
+                if _normalize_party_name(npc_name) == npc_identity:
+                    # Found matching party NPC entry
+                    role_hint = npc_info.get("role", "")
+                    if role_hint:
+                        fallback_role = role_hint
+                    break
+        
+        result = {
+            "name": npc_identity.replace("_", " ").title(),
+            "race": "Unknown",
+            "class": fallback_role,
+            "context_source": "fallback",
+        }
+        
+        debug(
+            f"MISSING_MEDIA_AUTOGEN: Using fallback context for {npc_identity}",
+            category="missing_media_autogen"
+        )
+        return result
+        
+    except Exception as e:
+        debug(
+            f"MISSING_MEDIA_AUTOGEN: Fallback hints failed for {npc_identity}: {e}",
+            category="missing_media_autogen"
+        )
+    
+    # Ultimate fallback: minimal safe context
+    return {
+        "name": npc_identity.replace("_", " ").title(),
+        "race": "Unknown", 
+        "class": "NPC",
+        "context_source": "fallback",
+    }
+
+
 def is_allied_companion_check(
     task: MissingMediaTask,
     party_tracker_data: Optional[Dict[str, Any]] = None
@@ -631,4 +781,5 @@ __all__ = [
     "is_allied_companion_check",
     "get_missing_media_autogen_stats",
     "clear_missing_media_autogen_state",
+    "_hydrate_allied_npc_context",
 ]
