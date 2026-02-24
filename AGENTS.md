@@ -1570,6 +1570,89 @@ Implement Character Sheet portrait `Upload / Create` UX with appearance field su
 
 ---
 
+### Portrait Download Best-Resolution and Popup Quality Fixes (COMPLETED - 2026-02-24)
+
+**Status:** COMPLETED
+
+**Objective:**
+Fix low-resolution portrait downloads and blurry popup modals by implementing best-source priority chains and full-resolution sidecar persistence.
+
+**Problems Addressed:**
+
+1. **Portrait Download Resolution:** Sidebar "Download" button was downloading only 256x256 web portraits, even when higher resolution originals existed from AI generation (1024x1024) or uploads.
+
+2. **AI Portrait Generation:** `generate_and_save_portrait()` was resizing to 256x256 before saving, losing the original DALL-E resolution.
+
+3. **Upload Portrait Ordering Bug:** `/upload-portrait` referenced `normalized_filename`, `current_module`, and `module_portraits_dir` before they were defined, causing runtime errors.
+
+4. **Popup Quality:** Narration strip NPC popups were opening thumbnails (128x128) instead of full images because `imageCandidates` was thumb-first for both tiles and popups.
+
+**Implementation Summary:**
+
+**Portrait Service (`core/toolkit/portrait_service.py:596-660`):**
+- Preserve full-resolution copy before resize: `full_res_image = img.convert('RGBA')...`
+- Save `<normalized>_full.png` sidecar to static portraits AND module portraits
+- Create 256x256 compatibility image separately: `compat_image = full_res_image.resize(...)`
+- Full-res saved first, then compatibility resized version
+
+**Upload Portrait (`web/web_interface.py:1066-1115`):**
+- Fixed ordering: normalize character name BEFORE using it
+- Fixed ordering: resolve module directory BEFORE save attempts
+- Save hi-res `_full.png` from cropped image before 256x256 resize
+- Fail-open module saves (warnings only, don't block success)
+
+**Download Logic (`web/templates/game_interface.html:5328-5391`):**
+- New priority chain (5 levels):
+  1. `/static/portraits/<slug>_full.png` (hi-res sidecar)
+  2. `/media/npcs/<slug>.jpg` (NPC full-res)
+  3. `/media/npcs/<slug>.png` (NPC fallback)
+  4. `/static/portraits/<slug>.png` (legacy 256x256)
+  5. Current `char-portrait-img.src` (last resort)
+- Recursive `tryDownloadCandidate()` attempts each URL in order
+- Preserves existing user feedback and filename sanitization
+
+**Popup Quality (`web/templates/game_interface.html:8016-8040`):**
+- Split single `imageCandidates` into two separate arrays:
+  - `tileImageCandidates`: thumb-first for fast strip rendering
+  - `popupImageCandidates`: full-image-first for quality modals
+- Video-first behavior preserved for characters with `_video.mp4`
+
+**Testing:**
+
+**Regression Tests Added (`scripts/test_pc_image_create_mvp.py`):**
+- `TestPortraitDownloadBestResolutionContracts` (6 tests):
+  - `test_download_candidates_priority`: Verifies priority chain ordering
+  - `test_portrait_create_saves_hi_res_sidecar`: Confirms `_full.png` creation in AI path
+  - `test_portrait_service_preserves_full_res_before_resize`: Validates copy-before-resize
+  - `test_upload_portrait_normalizes_before_full_save`: Checks init ordering
+  - `test_upload_portrait_saves_hi_res_sidecar`: Confirms upload path hi-res save
+  - `test_legacy_256_save_paths_remain_present`: Backward compatibility check
+  - `test_party_render_uses_separate_tile_and_popup_candidate_lists`: Split arrays
+  - `test_popup_candidates_prioritize_full_images_before_thumb`: Full > thumb ordering
+  - `test_tile_candidates_use_thumb_first`: Thumb > full for tiles
+  - `test_video_candidates_remain_first_in_popup_flow`: Video priority preserved
+
+All 10 tests pass: `Ran 10 tests in 0.002s OK`
+
+**Files Modified:**
+- `web/templates/game_interface.html` - Download priority chain, split candidate arrays
+- `core/toolkit/portrait_service.py` - Full-res sidecar persistence before resize
+- `web/web_interface.py` - Fixed upload ordering and hi-res save
+- `scripts/test_pc_image_create_mvp.py` - 10 new regression tests
+
+**Backward Compatibility:**
+- Legacy `<name>.png` (256x256) still generated and used for UI
+- New `<name>_full.png` is additive, not replacement
+- Download falls through gracefully if `_full.png` missing
+- NPC media fallback chain unchanged for promoted characters
+
+**Performance:**
+- Hi-res images only saved once (generation or upload time)
+- Download attempts URLs sequentially (fast path: `_full.png` usually exists)
+- No additional runtime overhead for display paths
+
+---
+
 ### Exit/Enter GUI Button Implementation Phase 1 (COMPLETED - 2026-02-17)
 
 **Status:** COMPLETED - Archived to `openspec/changes/archive/2026-02-17-exit-only-gui-shutdown/`
