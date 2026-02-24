@@ -1,15 +1,13 @@
-<div class="character-tabs-container" id="character-tabs-container" 
-     style="display: {{ 'flex' if multiplayer_mode or party_members|length > 1 else 'none' }};">
+<div class="character-tabs-container" id="character-tabs-container" {% if not (multiplayer_mode or party_members|length > 1) %}style="display: none;"{% endif %}>
     <div class="character-tabs-scroll" id="character-tabs-list" style="display: flex; gap: 5px;">
         {% for member in party_members %}
             <div class="character-tab-wrapper" style="position: relative; display: inline-block;">
                 <button class="character-tab {{ 'active' if member == active_character else '' }}" 
-                        data-character="{{ member }}"
-                        onclick="setActiveCharacter('{{ member }}')">
+                        data-character="{{ member }}">
                     {{ member }}
                 </button>
                 <span class="retire-character-btn" 
-                      onclick="retireCharacter('{{ member }}')" 
+                      data-character="{{ member }}"
                       title="Retire from Party"
                       style="position: absolute; top: -5px; right: -5px; background: #f44336; color: white; border-radius: 50%; width: 15px; height: 15px; font-size: 10px; line-height: 15px; text-align: center; cursor: pointer; display: none; z-index: 10;">&times;</span>
             </div>
@@ -57,7 +55,7 @@
                 <p style="margin-bottom: 15px; color: #aaa;">The Dungeon Master will guide you through character creation in the game chat. All choices (Race, Class, Stats) will be updated on the character sheet automatically.</p>
                 <form id="dm-interview-form" class="save-form">
                     <div style="margin-bottom: 15px;">
-                        <label>Character Name</label>
+                        <label for="interview-char-name">Character Name</label>
                         <input type="text" id="interview-char-name" required placeholder="e.g. Valerius">
                     </div>
                     <button type="button" class="dialog-button primary" style="width: 100%;" onclick="submitDMInterviewCreate()">
@@ -72,193 +70,193 @@
                     <h4 style="margin: 0 0 8px 0; color: #ddd;">Identity</h4>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                         <div>
-                            <label>Name</label>
-                            <input type="text" name="name" required placeholder="e.g. Valerius">
+                            <label for="quick-create-name">Name</label>
+                            <input type="text" id="quick-create-name" name="name" required placeholder="e.g. Valerius">
                         </div>
                         <div>
-                            <label>Race</label>
-                            <input type="text" name="race" required placeholder="e.g. Elf">
+                            <label for="quick-create-race">Race</label>
+                            <input type="text" id="quick-create-race" name="race" required placeholder="e.g. Elf">
                         </div>
                         <div>
-                            <label>Class</label>
-                            <input type="text" name="class" required placeholder="e.g. Wizard">
+                            <label for="quick-create-class">Class</label>
+                            <input type="text" id="quick-create-class" name="class" required placeholder="e.g. Wizard">
                         </div>
                         <div>
-                            <label>Level</label>
-                            <input type="number" name="level" value="1" min="1">
+                            <label for="quick-create-level">Level</label>
+                            <input type="number" id="quick-create-level" name="level" value="1" min="1">
                         </div>
                         <div>
-                            <label>Alignment</label>
-                            <input type="text" name="alignment" placeholder="e.g. neutral good">
+                            <label for="quick-create-alignment">Alignment</label>
+                            <input type="text" id="quick-create-alignment" name="alignment" placeholder="e.g. neutral good">
                         </div>
                         <div>
-                            <label>Background</label>
-                            <input type="text" name="background" placeholder="e.g. Folk Hero">
+                            <label for="quick-create-background">Background</label>
+                            <input type="text" id="quick-create-background" name="background" placeholder="e.g. Folk Hero">
                         </div>
                     </div>
 
                     <h4 style="margin: 15px 0 8px 0; color: #ddd;">Appearance</h4>
                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
                         <div>
-                            <label>Age</label>
-                            <input type="text" name="age" placeholder="e.g. 25">
+                            <label for="quick-create-age">Age</label>
+                            <input type="text" id="quick-create-age" name="age" placeholder="e.g. 25">
                         </div>
                         <div>
-                            <label>Height</label>
-                            <input type="text" name="height" placeholder="e.g. 5'10\">
+                            <label for="quick-create-height">Height</label>
+                            <input type="text" id="quick-create-height" name="height" placeholder="e.g. 5'10&quot;">
                         </div>
                         <div>
-                            <label>Weight</label>
-                            <input type="text" name="weight" placeholder="e.g. 160 lbs">
+                            <label for="quick-create-weight">Weight</label>
+                            <input type="text" id="quick-create-weight" name="weight" placeholder="e.g. 160 lbs">
                         </div>
                         <div>
-                            <label>Eyes</label>
-                            <input type="text" name="eyes" placeholder="e.g. Blue">
+                            <label for="quick-create-eyes">Eyes</label>
+                            <input type="text" id="quick-create-eyes" name="eyes" placeholder="e.g. Blue">
                         </div>
                         <div>
-                            <label>Skin</label>
-                            <input type="text" name="skin" placeholder="e.g. Fair">
+                            <label for="quick-create-skin">Skin</label>
+                            <input type="text" id="quick-create-skin" name="skin" placeholder="e.g. Fair">
                         </div>
                         <div>
-                            <label>Hair</label>
-                            <input type="text" name="hair" placeholder="e.g. Brown">
+                            <label for="quick-create-hair">Hair</label>
+                            <input type="text" id="quick-create-hair" name="hair" placeholder="e.g. Brown">
                         </div>
                     </div>
 
                     <div style="margin-top: 15px;">
                         <label>Ability Scores</label>
                         <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px;">
-                            <div><label style="font-size: 10px;">STR</label><input type="number" name="str" value="10"></div>
-                            <div><label style="font-size: 10px;">DEX</label><input type="number" name="dex" value="10"></div>
-                            <div><label style="font-size: 10px;">CON</label><input type="number" name="con" value="10"></div>
-                            <div><label style="font-size: 10px;">INT</label><input type="number" name="int" value="10"></div>
-                            <div><label style="font-size: 10px;">WIS</label><input type="number" name="wis" value="10"></div>
-                            <div><label style="font-size: 10px;">CHA</label><input type="number" name="cha" value="10"></div>
+                            <div><label for="quick-create-str" style="font-size: 10px;">STR</label><input type="number" id="quick-create-str" name="str" value="10"></div>
+                            <div><label for="quick-create-dex" style="font-size: 10px;">DEX</label><input type="number" id="quick-create-dex" name="dex" value="10"></div>
+                            <div><label for="quick-create-con" style="font-size: 10px;">CON</label><input type="number" id="quick-create-con" name="con" value="10"></div>
+                            <div><label for="quick-create-int" style="font-size: 10px;">INT</label><input type="number" id="quick-create-int" name="int" value="10"></div>
+                            <div><label for="quick-create-wis" style="font-size: 10px;">WIS</label><input type="number" id="quick-create-wis" name="wis" value="10"></div>
+                            <div><label for="quick-create-cha" style="font-size: 10px;">CHA</label><input type="number" id="quick-create-cha" name="cha" value="10"></div>
                         </div>
                     </div>
 
-                    <h4 style="margin: 15px 0 8px 0; color: #ddd;">Combat</h4>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
-                        <div>
-                            <label>AC</label>
-                            <input type="number" name="ac" value="10">
-                        </div>
-                        <div>
-                            <label>HP</label>
-                            <input type="number" name="hp" value="10">
-                        </div>
-                        <div>
-                            <label>Initiative</label>
-                            <input type="number" name="initiative" value="0">
-                        </div>
-                        <div>
-                            <label>Speed</label>
-                            <input type="number" name="speed" value="30">
-                        </div>
+                <h4 style="margin: 15px 0 8px 0; color: #ddd;">Combat</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                    <div>
+                        <label for="quick-create-ac">AC</label>
+                        <input type="number" id="quick-create-ac" name="ac" value="10">
                     </div>
+                    <div>
+                        <label for="quick-create-hp">HP</label>
+                        <input type="number" id="quick-create-hp" name="hp" value="10">
+                    </div>
+                    <div>
+                        <label for="quick-create-initiative">Initiative</label>
+                        <input type="number" id="quick-create-initiative" name="initiative" value="0">
+                    </div>
+                    <div>
+                        <label for="quick-create-speed">Speed</label>
+                        <input type="number" id="quick-create-speed" name="speed" value="30">
+                    </div>
+                </div>
 
-                    <h4 style="margin: 15px 0 8px 0; color: #ddd;">Saves and Skills</h4>
-                    <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
-                        <div>
-                            <label>Saving Throws (comma-separated)</label>
-                            <input type="text" name="saving_throws" placeholder="Strength, Constitution">
-                        </div>
-                        <div>
-                            <label>Skills (comma-separated)</label>
-                            <input type="text" name="skills" placeholder="Athletics, Perception">
-                        </div>
+                <h4 style="margin: 15px 0 8px 0; color: #ddd;">Saves and Skills</h4>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
+                    <div>
+                        <label for="quick-create-saving-throws">Saving Throws (comma-separated)</label>
+                        <input type="text" id="quick-create-saving-throws" name="saving_throws" placeholder="Strength, Constitution">
                     </div>
+                    <div>
+                        <label for="quick-create-skills">Skills (comma-separated)</label>
+                        <input type="text" id="quick-create-skills" name="skills" placeholder="Athletics, Perception">
+                    </div>
+                </div>
 
-                    <h4 style="margin: 15px 0 8px 0; color: #ddd;">Proficiencies and Languages</h4>
-                    <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
-                        <div>
-                            <label>Languages (comma-separated)</label>
-                            <input type="text" name="languages" value="Common">
-                        </div>
-                        <div>
-                            <label>Armor Proficiencies</label>
-                            <input type="text" name="prof_armor" placeholder="Light, Medium, Shields">
-                        </div>
-                        <div>
-                            <label>Weapon Proficiencies</label>
-                            <input type="text" name="prof_weapons" placeholder="Simple, Martial">
-                        </div>
-                        <div>
-                            <label>Tool Proficiencies</label>
-                            <input type="text" name="prof_tools" placeholder="Thieves' Tools">
-                        </div>
+                <h4 style="margin: 15px 0 8px 0; color: #ddd;">Proficiencies and Languages</h4>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
+                    <div>
+                        <label for="quick-create-languages">Languages (comma-separated)</label>
+                        <input type="text" id="quick-create-languages" name="languages" value="Common">
                     </div>
+                    <div>
+                        <label for="quick-create-prof-armor">Armor Proficiencies</label>
+                        <input type="text" id="quick-create-prof-armor" name="prof_armor" placeholder="Light, Medium, Shields">
+                    </div>
+                    <div>
+                        <label for="quick-create-prof-weapons">Weapon Proficiencies</label>
+                        <input type="text" id="quick-create-prof-weapons" name="prof_weapons" placeholder="Simple, Martial">
+                    </div>
+                    <div>
+                        <label for="quick-create-prof-tools">Tool Proficiencies</label>
+                        <input type="text" id="quick-create-prof-tools" name="prof_tools" placeholder="Thieves' Tools">
+                    </div>
+                </div>
 
-                    <h4 style="margin: 15px 0 8px 0; color: #ddd;">Equipment and Attacks</h4>
-                    <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
-                        <div>
-                            <label>Equipment (comma-separated)</label>
-                            <input type="text" name="equipment" placeholder="Longsword, Shield, Rope">
-                        </div>
-                        <div>
-                            <label>Attacks (comma-separated)</label>
-                            <input type="text" name="attacks" placeholder="Longsword, Handaxe">
-                        </div>
+                <h4 style="margin: 15px 0 8px 0; color: #ddd;">Equipment and Attacks</h4>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
+                    <div>
+                        <label for="quick-create-equipment">Equipment (comma-separated)</label>
+                        <input type="text" id="quick-create-equipment" name="equipment" placeholder="Longsword, Shield, Rope">
                     </div>
+                    <div>
+                        <label for="quick-create-attacks">Attacks (comma-separated)</label>
+                        <input type="text" id="quick-create-attacks" name="attacks" placeholder="Longsword, Handaxe">
+                    </div>
+                </div>
 
-                    <h4 style="margin: 15px 0 8px 0; color: #ddd;">Spellcasting</h4>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <div>
-                            <label>Spellcasting Ability</label>
-                            <input type="text" name="spellcasting_ability" value="none">
-                        </div>
-                        <div>
-                            <label>Spell Save DC</label>
-                            <input type="number" name="spell_dc" value="8">
-                        </div>
-                        <div>
-                            <label>Spell Attack Bonus</label>
-                            <input type="number" name="spell_attack_bonus" value="0">
-                        </div>
-                        <div>
-                            <label>Cantrips (comma-separated)</label>
-                            <input type="text" name="cantrips" placeholder="Light, Guidance">
-                        </div>
-                        <div style="grid-column: span 2;">
-                            <label>1st-Level Spells (comma-separated)</label>
-                            <input type="text" name="level1_spells" placeholder="Cure Wounds, Shield of Faith">
-                        </div>
+                <h4 style="margin: 15px 0 8px 0; color: #ddd;">Spellcasting</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label for="quick-create-spellcasting-ability">Spellcasting Ability</label>
+                        <input type="text" id="quick-create-spellcasting-ability" name="spellcasting_ability" value="none">
                     </div>
+                    <div>
+                        <label for="quick-create-spell-dc">Spell Save DC</label>
+                        <input type="number" id="quick-create-spell-dc" name="spell_dc" value="8">
+                    </div>
+                    <div>
+                        <label for="quick-create-spell-attack-bonus">Spell Attack Bonus</label>
+                        <input type="number" id="quick-create-spell-attack-bonus" name="spell_attack_bonus" value="0">
+                    </div>
+                    <div>
+                        <label for="quick-create-cantrips">Cantrips (comma-separated)</label>
+                        <input type="text" id="quick-create-cantrips" name="cantrips" placeholder="Light, Guidance">
+                    </div>
+                    <div style="grid-column: span 2;">
+                        <label for="quick-create-level1-spells">1st-Level Spells (comma-separated)</label>
+                        <input type="text" id="quick-create-level1-spells" name="level1_spells" placeholder="Cure Wounds, Shield of Faith">
+                    </div>
+                </div>
 
-                    <h4 style="margin: 15px 0 8px 0; color: #ddd;">Personality and Background</h4>
-                    <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
-                        <div>
-                            <label>Personality Traits</label>
-                            <textarea name="personality_traits" rows="2" placeholder="How does this hero act?"></textarea>
-                        </div>
-                        <div>
-                            <label>Ideals</label>
-                            <textarea name="ideals" rows="2" placeholder="What do they believe in?"></textarea>
-                        </div>
-                        <div>
-                            <label>Bonds</label>
-                            <textarea name="bonds" rows="2" placeholder="Who or what matters most?"></textarea>
-                        </div>
-                        <div>
-                            <label>Flaws</label>
-                            <textarea name="flaws" rows="2" placeholder="What complicates their life?"></textarea>
-                        </div>
-                        <div>
-                            <label>Backstory (1-3 sentences about your character's history)</label>
-                            <textarea name="backstory" rows="3" placeholder="What events shaped your character's past and led them to adventure?"></textarea>
-                        </div>
-                        <div>
-                            <label>Background Feature Name (e.g., Criminal Contact, Researcher, Military Rank)</label>
-                            <input type="text" name="background_feature_name" placeholder="A short name for your background's special benefit">
-                        </div>
-                        <div>
-                            <label>Background Feature Description (1-3 sentences describing practical in-world access or benefit)</label>
-                            <textarea name="background_feature_description" rows="2" placeholder="What practical benefit does this feature provide in the game world? (e.g., contacts, hospitality, status, lore access)"></textarea>
-                        </div>
+                <h4 style="margin: 15px 0 8px 0; color: #ddd;">Personality and Background</h4>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
+                    <div>
+                        <label for="quick-create-personality-traits">Personality Traits</label>
+                        <textarea id="quick-create-personality-traits" name="personality_traits" rows="2" placeholder="How does this hero act?"></textarea>
                     </div>
+                    <div>
+                        <label for="quick-create-ideals">Ideals</label>
+                        <textarea id="quick-create-ideals" name="ideals" rows="2" placeholder="What do they believe in?"></textarea>
+                    </div>
+                    <div>
+                        <label for="quick-create-bonds">Bonds</label>
+                        <textarea id="quick-create-bonds" name="bonds" rows="2" placeholder="Who or what matters most?"></textarea>
+                    </div>
+                    <div>
+                        <label for="quick-create-flaws">Flaws</label>
+                        <textarea id="quick-create-flaws" name="flaws" rows="2" placeholder="What complicates their life?"></textarea>
+                    </div>
+                    <div>
+                        <label for="quick-create-backstory">Backstory (1-3 sentences about your character's history)</label>
+                        <textarea id="quick-create-backstory" name="backstory" rows="3" placeholder="What events shaped your character's past and led them to adventure?"></textarea>
+                    </div>
+                    <div>
+                        <label for="quick-create-background-feature-name">Background Feature Name (e.g., Criminal Contact, Researcher, Military Rank)</label>
+                        <input type="text" id="quick-create-background-feature-name" name="background_feature_name" placeholder="A short name for your background's special benefit">
+                    </div>
+                    <div>
+                        <label for="quick-create-background-feature-description">Background Feature Description (1-3 sentences describing practical in-world access or benefit)</label>
+                        <textarea id="quick-create-background-feature-description" name="background_feature_description" rows="2" placeholder="What practical benefit does this feature provide in the game world? (e.g., contacts, hospitality, status, lore access)"></textarea>
+                    </div>
+                </div>
 
                     <button type="button" class="dialog-button primary" style="width: 100%; margin-top: 15px;" onclick="submitQuickCreate()">
-                        Create & Add to Party
+                        Create &amp; Add to Party
                     </button>
                 </form>
             </div>
@@ -283,27 +281,27 @@
                 <h4 style="margin: 0 0 8px 0; color: #ddd;">Identity</h4>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                     <div>
-                        <label>Name</label>
+                        <label for="manage-pc-name">Name</label>
                         <input type="text" name="name" id="manage-pc-name" required placeholder="e.g. Valerius" readonly style="background: #333;">
                     </div>
                     <div>
-                        <label>Race</label>
+                        <label for="manage-pc-race">Race</label>
                         <input type="text" name="race" id="manage-pc-race" required placeholder="e.g. Elf">
                     </div>
                     <div>
-                        <label>Class</label>
+                        <label for="manage-pc-class">Class</label>
                         <input type="text" name="class" id="manage-pc-class" required placeholder="e.g. Wizard">
                     </div>
                     <div>
-                        <label>Level</label>
+                        <label for="manage-pc-level">Level</label>
                         <input type="number" name="level" id="manage-pc-level" value="1" min="1">
                     </div>
                     <div>
-                        <label>Alignment</label>
+                        <label for="manage-pc-alignment">Alignment</label>
                         <input type="text" name="alignment" id="manage-pc-alignment" placeholder="e.g. neutral good">
                     </div>
                     <div>
-                        <label>Background</label>
+                        <label for="manage-pc-background">Background</label>
                         <input type="text" name="background" id="manage-pc-background" placeholder="e.g. Folk Hero">
                     </div>
                 </div>
@@ -311,27 +309,27 @@
                 <h4 style="margin: 15px 0 8px 0; color: #ddd;">Appearance</h4>
                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
                     <div>
-                        <label>Age</label>
+                        <label for="manage-pc-age">Age</label>
                         <input type="text" name="age" id="manage-pc-age" placeholder="e.g. 25">
                     </div>
                     <div>
-                        <label>Height</label>
-                        <input type="text" name="height" id="manage-pc-height" placeholder="e.g. 5'10\">
+                        <label for="manage-pc-height">Height</label>
+                        <input type="text" name="height" id="manage-pc-height" placeholder="e.g. 5'10&quot;">
                     </div>
                     <div>
-                        <label>Weight</label>
+                        <label for="manage-pc-weight">Weight</label>
                         <input type="text" name="weight" id="manage-pc-weight" placeholder="e.g. 160 lbs">
                     </div>
                     <div>
-                        <label>Eyes</label>
+                        <label for="manage-pc-eyes">Eyes</label>
                         <input type="text" name="eyes" id="manage-pc-eyes" placeholder="e.g. Blue">
                     </div>
                     <div>
-                        <label>Skin</label>
+                        <label for="manage-pc-skin">Skin</label>
                         <input type="text" name="skin" id="manage-pc-skin" placeholder="e.g. Fair">
                     </div>
                     <div>
-                        <label>Hair</label>
+                        <label for="manage-pc-hair">Hair</label>
                         <input type="text" name="hair" id="manage-pc-hair" placeholder="e.g. Brown">
                     </div>
                 </div>
@@ -339,31 +337,31 @@
                 <div style="margin-top: 15px;">
                     <label>Ability Scores</label>
                     <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px;">
-                        <div><label style="font-size: 10px;">STR</label><input type="number" name="str" id="manage-pc-str" value="10"></div>
-                        <div><label style="font-size: 10px;">DEX</label><input type="number" name="dex" id="manage-pc-dex" value="10"></div>
-                        <div><label style="font-size: 10px;">CON</label><input type="number" name="con" id="manage-pc-con" value="10"></div>
-                        <div><label style="font-size: 10px;">INT</label><input type="number" name="int" id="manage-pc-int" value="10"></div>
-                        <div><label style="font-size: 10px;">WIS</label><input type="number" name="wis" id="manage-pc-wis" value="10"></div>
-                        <div><label style="font-size: 10px;">CHA</label><input type="number" name="cha" id="manage-pc-cha" value="10"></div>
+                        <div><label for="manage-pc-str" style="font-size: 10px;">STR</label><input type="number" name="str" id="manage-pc-str" value="10"></div>
+                        <div><label for="manage-pc-dex" style="font-size: 10px;">DEX</label><input type="number" name="dex" id="manage-pc-dex" value="10"></div>
+                        <div><label for="manage-pc-con" style="font-size: 10px;">CON</label><input type="number" name="con" id="manage-pc-con" value="10"></div>
+                        <div><label for="manage-pc-int" style="font-size: 10px;">INT</label><input type="number" name="int" id="manage-pc-int" value="10"></div>
+                        <div><label for="manage-pc-wis" style="font-size: 10px;">WIS</label><input type="number" name="wis" id="manage-pc-wis" value="10"></div>
+                        <div><label for="manage-pc-cha" style="font-size: 10px;">CHA</label><input type="number" name="cha" id="manage-pc-cha" value="10"></div>
                     </div>
                 </div>
 
                 <h4 style="margin: 15px 0 8px 0; color: #ddd;">Combat</h4>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
                     <div>
-                        <label>AC</label>
+                        <label for="manage-pc-ac">AC</label>
                         <input type="number" name="ac" id="manage-pc-ac" value="10">
                     </div>
                     <div>
-                        <label>HP</label>
+                        <label for="manage-pc-hp">HP</label>
                         <input type="number" name="hp" id="manage-pc-hp" value="10">
                     </div>
                     <div>
-                        <label>Initiative</label>
+                        <label for="manage-pc-initiative">Initiative</label>
                         <input type="number" name="initiative" id="manage-pc-initiative" value="0">
                     </div>
                     <div>
-                        <label>Speed</label>
+                        <label for="manage-pc-speed">Speed</label>
                         <input type="number" name="speed" id="manage-pc-speed" value="30">
                     </div>
                 </div>
@@ -371,11 +369,11 @@
                 <h4 style="margin: 15px 0 8px 0; color: #ddd;">Saves and Skills</h4>
                 <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
                     <div>
-                        <label>Saving Throws (comma-separated)</label>
+                        <label for="manage-pc-saving-throws">Saving Throws (comma-separated)</label>
                         <input type="text" name="saving_throws" id="manage-pc-saving-throws" placeholder="Strength, Constitution">
                     </div>
                     <div>
-                        <label>Skills (comma-separated)</label>
+                        <label for="manage-pc-skills">Skills (comma-separated)</label>
                         <input type="text" name="skills" id="manage-pc-skills" placeholder="Athletics, Perception">
                     </div>
                 </div>
@@ -383,19 +381,19 @@
                 <h4 style="margin: 15px 0 8px 0; color: #ddd;">Proficiencies and Languages</h4>
                 <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
                     <div>
-                        <label>Languages (comma-separated)</label>
+                        <label for="manage-pc-languages">Languages (comma-separated)</label>
                         <input type="text" name="languages" id="manage-pc-languages" value="Common">
                     </div>
                     <div>
-                        <label>Armor Proficiencies</label>
+                        <label for="manage-pc-prof-armor">Armor Proficiencies</label>
                         <input type="text" name="prof_armor" id="manage-pc-prof-armor" placeholder="Light, Medium, Shields">
                     </div>
                     <div>
-                        <label>Weapon Proficiencies</label>
+                        <label for="manage-pc-prof-weapons">Weapon Proficiencies</label>
                         <input type="text" name="prof_weapons" id="manage-pc-prof-weapons" placeholder="Simple, Martial">
                     </div>
                     <div>
-                        <label>Tool Proficiencies</label>
+                        <label for="manage-pc-prof-tools">Tool Proficiencies</label>
                         <input type="text" name="prof_tools" id="manage-pc-prof-tools" placeholder="Thieves' Tools">
                     </div>
                 </div>
@@ -403,11 +401,11 @@
                 <h4 style="margin: 15px 0 8px 0; color: #ddd;">Equipment and Attacks</h4>
                 <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
                     <div>
-                        <label>Equipment (comma-separated)</label>
+                        <label for="manage-pc-equipment">Equipment (comma-separated)</label>
                         <input type="text" name="equipment" id="manage-pc-equipment" placeholder="Longsword, Shield, Rope">
                     </div>
                     <div>
-                        <label>Attacks (comma-separated)</label>
+                        <label for="manage-pc-attacks">Attacks (comma-separated)</label>
                         <input type="text" name="attacks" id="manage-pc-attacks" placeholder="Longsword, Handaxe">
                     </div>
                 </div>
@@ -415,23 +413,23 @@
                 <h4 style="margin: 15px 0 8px 0; color: #ddd;">Spellcasting</h4>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                     <div>
-                        <label>Spellcasting Ability</label>
+                        <label for="manage-pc-spellcasting-ability">Spellcasting Ability</label>
                         <input type="text" name="spellcasting_ability" id="manage-pc-spellcasting-ability" value="none">
                     </div>
                     <div>
-                        <label>Spell Save DC</label>
+                        <label for="manage-pc-spell-dc">Spell Save DC</label>
                         <input type="number" name="spell_dc" id="manage-pc-spell-dc" value="8">
                     </div>
                     <div>
-                        <label>Spell Attack Bonus</label>
+                        <label for="manage-pc-spell-attack-bonus">Spell Attack Bonus</label>
                         <input type="number" name="spell_attack_bonus" id="manage-pc-spell-attack-bonus" value="0">
                     </div>
                     <div>
-                        <label>Cantrips (comma-separated)</label>
+                        <label for="manage-pc-cantrips">Cantrips (comma-separated)</label>
                         <input type="text" name="cantrips" id="manage-pc-cantrips" placeholder="Light, Guidance">
                     </div>
                     <div style="grid-column: span 2;">
-                        <label>1st-Level Spells (comma-separated)</label>
+                        <label for="manage-pc-level1-spells">1st-Level Spells (comma-separated)</label>
                         <input type="text" name="level1_spells" id="manage-pc-level1-spells" placeholder="Cure Wounds, Shield of Faith">
                     </div>
                 </div>
@@ -439,31 +437,31 @@
                 <h4 style="margin: 15px 0 8px 0; color: #ddd;">Personality and Background</h4>
                 <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
                     <div>
-                        <label>Personality Traits</label>
+                        <label for="manage-pc-personality-traits">Personality Traits</label>
                         <textarea name="personality_traits" id="manage-pc-personality-traits" rows="2" placeholder="How does this hero act?"></textarea>
                     </div>
                     <div>
-                        <label>Ideals</label>
+                        <label for="manage-pc-ideals">Ideals</label>
                         <textarea name="ideals" id="manage-pc-ideals" rows="2" placeholder="What do they believe in?"></textarea>
                     </div>
                     <div>
-                        <label>Bonds</label>
+                        <label for="manage-pc-bonds">Bonds</label>
                         <textarea name="bonds" id="manage-pc-bonds" rows="2" placeholder="Who or what matters most?"></textarea>
                     </div>
                     <div>
-                        <label>Flaws</label>
+                        <label for="manage-pc-flaws">Flaws</label>
                         <textarea name="flaws" id="manage-pc-flaws" rows="2" placeholder="What complicates their life?"></textarea>
                     </div>
                     <div>
-                        <label>Backstory (1-3 sentences about your character's history)</label>
+                        <label for="manage-pc-backstory">Backstory (1-3 sentences about your character's history)</label>
                         <textarea name="backstory" id="manage-pc-backstory" rows="3" placeholder="What events shaped your character's past and led them to adventure?"></textarea>
                     </div>
                     <div>
-                        <label>Background Feature Name (e.g., Criminal Contact, Researcher, Military Rank)</label>
+                        <label for="manage-pc-background-feature-name">Background Feature Name (e.g., Criminal Contact, Researcher, Military Rank)</label>
                         <input type="text" name="background_feature_name" id="manage-pc-background-feature-name" placeholder="A short name for your background's special benefit">
                     </div>
                     <div>
-                        <label>Background Feature Description (1-3 sentences describing practical in-world access or benefit)</label>
+                        <label for="manage-pc-background-feature-description">Background Feature Description (1-3 sentences describing practical in-world access or benefit)</label>
                         <textarea name="background_feature_description" id="manage-pc-background-feature-description" rows="2" placeholder="What practical benefit does this feature provide in the game world? (e.g., contacts, hospitality, status, lore access)"></textarea>
                     </div>
                 </div>

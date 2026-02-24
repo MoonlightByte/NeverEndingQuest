@@ -784,6 +784,32 @@ tabletopSocket.on('active_character_update', (data) => {
 
 // Initialize UI on load
 document.addEventListener('DOMContentLoaded', () => {
+    // TABLETOP MODE: Delegate character-tab click handlers to avoid inline JS in templates
+    const characterTabsList = document.getElementById('character-tabs-list');
+    if (characterTabsList) {
+        characterTabsList.addEventListener('click', (event) => {
+            const retireButton = event.target.closest('.retire-character-btn[data-character]');
+            if (retireButton) {
+                event.preventDefault();
+                event.stopPropagation();
+                const characterName = retireButton.getAttribute('data-character');
+                if (characterName) {
+                    retireCharacter(characterName);
+                }
+                return;
+            }
+
+            const characterTab = event.target.closest('.character-tab[data-character]');
+            if (characterTab) {
+                event.preventDefault();
+                const characterName = characterTab.getAttribute('data-character');
+                if (characterName) {
+                    setActiveCharacter(characterName);
+                }
+            }
+        });
+    }
+
     // Request initial data
     if (typeof requestPartyData === 'function') requestPartyData();
 });
