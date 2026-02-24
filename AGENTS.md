@@ -1890,7 +1890,7 @@ Implement word-by-word text reveal synchronized with Browser TTS speech, with fa
 - `model_config.py` - Added sync feature flags
 - `web/web_interface.py` - Template context wiring
 - `web/templates/game_interface.html` - Core implementation (~300 lines)
-- `web/static/js/tts_queue_manager.js` - Queue strategy and completion callbacks
+    - `web/static/js/tts_queue_manager.js` - Queue strategy and completion callbacks
 
 **Verification:**
 - `python3 -m py_compile model_config.py web/web_interface.py` -> PASS
@@ -1898,6 +1898,42 @@ Implement word-by-word text reveal synchronized with Browser TTS speech, with fa
 - Chrome/other: Faux sync fallback triggers after watchdog
 - Stop mid-playback: Text finalizes, queue advances
 - Manual replay: Audio only, no text reveal rerun
+
+---
+
+### TTS Boundary Sync Fallback Hardening (COMPLETED - 2026-02-24)
+
+**Status:** COMPLETED  
+**Priority:** High (UX Stability)  
+**Effort:** Small (1 implementation pass)
+
+**Objective:**
+Disable slow faux streaming fallback while preserving true boundary sync when available. Ensure text is never hidden until TTS finishes.
+
+**Problem Addressed:**
+Original implementation's faux streaming was too slow/annoying. After disabling it, text was only revealing first word and hiding remainder until TTS ended.
+
+**Implementation (game_interface.html:10234-10242):**
+- Watchdog timer (1s) now reveals FULL TEXT immediately if no boundary events arrive
+- `finalizeReveal(revealState)` called to show all text
+- `clearRevealMode(targetMessageDiv)` cleans up reveal spans
+- Removes `reveal-mode` class and clears state
+- `hasBoundaryEvent = true` blocks any late boundary events
+- Faux streaming function (`startEstimatedTimelineFallback`) remains intact but commented out for future toggling
+
+**Behavior:**
+- **Edge with MS voices:** Word-by-word sync works via real boundary events (immersive)
+- **Chrome/other browsers:** Full text appears after 1s watchdog (readable, never hidden)
+- **First word:** Shows immediately to avoid blank start
+- **No fake streaming:** Slow faux word-by-word animation completely disabled
+
+**Files Modified:**
+- `web/templates/game_interface.html` - Watchdog fallback block (lines 10234-10242)
+
+**Verification:**
+- JS syntax: valid
+- TTS auto-play: works with reveal semantics preserved
+- Boundary sync: real events honored, fallback shows full text
 
 ---
 
@@ -2043,8 +2079,53 @@ Stabilize and unify tabletop character creation, readiness repair, saving-throw 
 - `web/templates/game_interface.html`
 - `web/templates/partials/character_tabs.html`
 - `web/static/js/tabletop_mode.js`
-- `web/web_interface.py`
-- `schemas/char_schema.json`
+ - `web/web_interface.py`
+ - `schemas/char_schema.json`
+ 
+### Roll Your Own Creation Sanitization (COMPLETED - 2026-02-24)
+
+**Status:** COMPLETED  
+**Priority:** High (Tabletop UX / Data Integrity)  
+**Effort:** Small (surgical patch)
+
+**Objective:**
+Prevent stale field carryover from autofill and prior UI state in Manage Party -> Roll Your Own PC creation flow. Fixes bug where newly created PCs inherited unrelated inventory lists (e.g., Anselara inheriting Acheron's equipment).
+
+**Root Cause:**
+- Backend `create_manual` route is deterministic from form payload
+- Contamination occurred in frontend form state/autofill, not server merge
+- Browser autocomplete and form history cross-populated fields between PC creation sessions
+
+**Implementation:**
+1. **Force-reset on Manage Party open** (`tabletop_mode.js:openManagePartyModal`):
+   - Call `resetQuickCreateState()` before anything else
+   - Call `clearQuickCreateAutofillResidue()` to scrub stale values
+   - Force default tab to `'add-existing'` to avoid landing on Roll Your Own with stale values
+
+2. **New sanitization helper** (`tabletop_mode.js:clearQuickCreateAutofillResidue`):
+   - Clears 9 high-risk text fields: `equipment`, `attacks`, `personality_traits`, `ideals`, `bonds`, `flaws`, `backstory`, `background_feature_name`, `background_feature_description`
+   - Preserves numeric defaults (level/AC/HP/ability defaults)
+
+3. **Form-level autocomplete isolation** (`character_tabs.html`):
+   - Add `autocomplete="off"` to both forms: `quick-create-form`, `manage-pc-form`
+   - Add field-level `autocomplete="off"` to high-risk inputs: `equipment`, `attacks`
+
+4. **Regression tests** (`scripts/test_character_sheet_edit.py`):
+   - `test_clear_autofill_residue_function_exists` - helper exists and targets correct fields
+   - `test_open_manage_party_resets_and_sanitizes` - open modal calls sanitization before loading
+   - `test_forms_have_autocomplete_off` - forms have autocomplete disabled
+   - `test_high_risk_fields_have_autocomplete_off` - equipment/attacks inputs protected
+   - All 25 tests passing
+
+**Result:**
+- Roll Your Own creation always starts with clean slate
+- No PC can inherit another PC's inventory via stale form values
+- Endpoint separation preserved: `submitQuickCreate` → `create_manual`, `submitManagePcEdit` → `update_manual`
+
+**Files Modified:**
+- `web/static/js/tabletop_mode.js` - Reset and sanitization logic (35 lines)
+- `web/templates/partials/character_tabs.html` - Autocomplete attributes (8 lines)
+- `scripts/test_character_sheet_edit.py` - Regression tests (102 lines)
 
 ### Initiative Phase 1 Two-Group Start Gate (COMPLETED - 2026-02-12)
 
