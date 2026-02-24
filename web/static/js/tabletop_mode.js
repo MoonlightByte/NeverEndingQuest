@@ -93,6 +93,213 @@ function closeManagePartyModal() {
     }
 
     modal.style.display = 'none';
+    
+    // Reset quick-create state when closing modal
+    resetQuickCreateState();
+}
+
+// TABLETOP MODE: Manage PC Modal handlers (Edit Only - separate from Manage Party)
+// These handlers manage the dedicated character edit modal
+
+function openManagePcModal(characterName) {
+    const modal = document.getElementById('manage-pc-modal');
+    if (!modal) {
+        console.error('Manage PC Modal not found in DOM');
+        return;
+    }
+
+    // Prefill the form with character data
+    _prefillManagePcForm(characterName);
+    
+    modal.style.display = 'block';
+}
+
+function closeManagePcModal() {
+    const modal = document.getElementById('manage-pc-modal');
+    if (!modal) {
+        return;
+    }
+
+    modal.style.display = 'none';
+    
+    // Reset the form
+    const form = document.getElementById('manage-pc-form');
+    if (form) {
+        form.reset();
+    }
+}
+
+// TABLETOP MODE: Prefill Manage PC form with existing character data
+function _prefillManagePcForm(characterName) {
+    // Get character data from global lastCharacterStats or fetch fresh
+    const charData = window.lastCharacterStats || {};
+    
+    // If no data in cache, fetch it
+    if (!charData.name || charData.name.toLowerCase().replace(/\s+/g, '_') !== characterName) {
+        // Need to fetch - use existing character data from window if available
+        fetch(`/api/party/characters?source=players`)
+            .then(r => r.json())
+            .then(data => {
+                const characters = data.characters || [];
+                const found = characters.find(c => 
+                    c.name.toLowerCase().replace(/\s+/g, '_') === characterName
+                );
+                if (found) {
+                    _fillManagePcForm(found);
+                }
+            })
+            .catch(err => console.error('Error loading character for edit:', err));
+        return;
+    }
+    
+    _fillManagePcForm(charData);
+}
+
+// TABLETOP MODE: Fill Manage PC form fields with character data
+function _fillManagePcForm(data) {
+    // Set hidden character name field
+    const nameField = document.getElementById('manage-pc-character-name');
+    if (nameField) nameField.value = data.name || '';
+    
+    // Identity
+    document.getElementById('manage-pc-name').value = data.name || '';
+    document.getElementById('manage-pc-race').value = data.race || '';
+    document.getElementById('manage-pc-class').value = data.class || '';
+    document.getElementById('manage-pc-level').value = data.level || '1';
+    document.getElementById('manage-pc-alignment').value = data.alignment || '';
+    document.getElementById('manage-pc-background').value = data.background || '';
+    
+    // Appearance
+    document.getElementById('manage-pc-age').value = data.age || '';
+    document.getElementById('manage-pc-height').value = data.height || '';
+    document.getElementById('manage-pc-weight').value = data.weight || '';
+    document.getElementById('manage-pc-eyes').value = data.eyes || '';
+    document.getElementById('manage-pc-skin').value = data.skin || '';
+    document.getElementById('manage-pc-hair').value = data.hair || '';
+    
+    // Abilities
+    if (data.abilities) {
+        document.getElementById('manage-pc-str').value = data.abilities.strength || '10';
+        document.getElementById('manage-pc-dex').value = data.abilities.dexterity || '10';
+        document.getElementById('manage-pc-con').value = data.abilities.constitution || '10';
+        document.getElementById('manage-pc-int').value = data.abilities.intelligence || '10';
+        document.getElementById('manage-pc-wis').value = data.abilities.wisdom || '10';
+        document.getElementById('manage-pc-cha').value = data.abilities.charisma || '10';
+    }
+    
+    // Combat
+    document.getElementById('manage-pc-ac').value = data.armorClass || '10';
+    document.getElementById('manage-pc-hp').value = data.hitPoints || '10';
+    document.getElementById('manage-pc-initiative').value = data.initiative || '0';
+    document.getElementById('manage-pc-speed').value = data.speed || '30';
+    
+    // Saves and Skills (convert arrays to comma-separated)
+    if (data.savingThrows && Array.isArray(data.savingThrows)) {
+        document.getElementById('manage-pc-saving-throws').value = data.savingThrows.join(', ');
+    }
+    if (data.skills) {
+        if (Array.isArray(data.skills)) {
+            document.getElementById('manage-pc-skills').value = data.skills.join(', ');
+        }
+    }
+    
+    // Proficiencies
+    if (data.proficiencies) {
+        if (data.proficiencies.languages) {
+            document.getElementById('manage-pc-languages').value = 
+                Array.isArray(data.proficiencies.languages) ? data.proficiencies.languages.join(', ') : data.languages || 'Common';
+        }
+        if (data.proficiencies.armor) {
+            document.getElementById('manage-pc-prof-armor').value = 
+                Array.isArray(data.proficiencies.armor) ? data.proficiencies.armor.join(', ') : '';
+        }
+        if (data.proficiencies.weapons) {
+            document.getElementById('manage-pc-prof-weapons').value = 
+                Array.isArray(data.proficiencies.weapons) ? data.proficiencies.weapons.join(', ') : '';
+        }
+        if (data.proficiencies.tools) {
+            document.getElementById('manage-pc-prof-tools').value = 
+                Array.isArray(data.proficiencies.tools) ? data.proficiencies.tools.join(', ') : '';
+        }
+    }
+    
+    // Equipment (convert equipment objects to comma-separated names)
+    if (data.equipment && Array.isArray(data.equipment)) {
+        const equipmentNames = data.equipment.map(item => item.item_name).filter(Boolean);
+        document.getElementById('manage-pc-equipment').value = equipmentNames.join(', ');
+    }
+    
+    // Attacks (convert attacksAndSpellcasting objects to comma-separated names)
+    if (data.attacksAndSpellcasting && Array.isArray(data.attacksAndSpellcasting)) {
+        const attackNames = data.attacksAndSpellcasting.map(attack => attack.name).filter(Boolean);
+        document.getElementById('manage-pc-attacks').value = attackNames.join(', ');
+    }
+    
+    // Spellcasting
+    if (data.spellcasting) {
+        document.getElementById('manage-pc-spellcasting-ability').value = data.spellcasting.ability || 'none';
+        document.getElementById('manage-pc-spell-dc').value = data.spellcasting.spellSaveDC || '8';
+        document.getElementById('manage-pc-spell-attack-bonus').value = data.spellcasting.spellAttackBonus || '0';
+        if (data.spellcasting.spells) {
+            if (data.spellcasting.spells.cantrips) {
+                document.getElementById('manage-pc-cantrips').value = 
+                    Array.isArray(data.spellcasting.spells.cantrips) ? data.spellcasting.spells.cantrips.join(', ') : '';
+            }
+            if (data.spellcasting.spells.level1) {
+                document.getElementById('manage-pc-level1-spells').value = 
+                    Array.isArray(data.spellcasting.spells.level1) ? data.spellcasting.spells.level1.join(', ') : '';
+            }
+        }
+    }
+    
+    // Personality
+    document.getElementById('manage-pc-personality-traits').value = data.personality_traits || '';
+    document.getElementById('manage-pc-ideals').value = data.ideals || '';
+    document.getElementById('manage-pc-bonds').value = data.bonds || '';
+    document.getElementById('manage-pc-flaws').value = data.flaws || '';
+    document.getElementById('manage-pc-backstory').value = data.backstory || '';
+    
+    // Background Feature
+    if (data.backgroundFeature) {
+        document.getElementById('manage-pc-background-feature-name').value = data.backgroundFeature.name || '';
+        document.getElementById('manage-pc-background-feature-description').value = data.backgroundFeature.description || '';
+    }
+}
+
+// TABLETOP MODE: Submit Manage PC edit (always update_manual endpoint)
+function submitManagePcEdit() {
+    const form = document.getElementById('manage-pc-form');
+    const formData = new FormData(form);
+    const data = {};
+    formData.forEach((value, key) => data[key] = value);
+    
+    // Always use update_manual endpoint for Manage PC modal
+    fetch('/api/party/update_manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            // Close modal and refresh stats
+            closeManagePcModal();
+            
+            // Refresh character stats to show updates
+            if (typeof loadCharacterStats === 'function') {
+                loadCharacterStats();
+            }
+        } else {
+            if (result.missing_paths && result.missing_paths.length > 0) {
+                alert('Error: ' + result.error + '\nMissing or invalid: ' + result.missing_paths.join(', '));
+            } else {
+                alert('Error: ' + result.error);
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error in Manage PC edit:', error);
+    });
 }
 
 function switchManageTab(tabId) {
@@ -104,6 +311,11 @@ function switchManageTab(tabId) {
     
     document.querySelector(`#manage-party-modal .tab-button[onclick="switchManageTab('${tabId}')"]`).classList.add('active');
     document.getElementById(`tab-${tabId}`).style.display = 'block';
+    
+    // Reset quick-create state when switching away from quick-create tab
+    if (tabId !== 'quick-create') {
+        resetQuickCreateState();
+    }
 }
 
 function loadExistingCharacters() {
@@ -226,12 +438,191 @@ function applyPromotion(characterName) {
     });
 }
 
+// TABLETOP MODE: Quick Create form mode state ('create' or 'edit')
+let quickCreateMode = 'create';
+let quickCreateEditTarget = null;
+
+// TABLETOP MODE: Open character edit from character sheet
+// Opens dedicated Manage PC modal (separate from Manage Party)
+window.openCharacterEdit = function(characterName) {
+    // Open the dedicated Manage PC modal for editing
+    openManagePcModal(characterName);
+};
+
+// TABLETOP MODE: Prefill Roll Your Own form with existing character data (for Manage Party create flow)
+function _prefillQuickCreateForm(characterName) {
+    // Get character data from global lastCharacterStats or fetch fresh
+    const charData = window.lastCharacterStats || {};
+    
+    // If no data in cache, fetch it
+    if (!charData.name || charData.name.toLowerCase().replace(/\s+/g, '_') !== characterName) {
+        // Need to fetch - use existing character data from window if available
+        fetch(`/api/party/characters?source=players`)
+            .then(r => r.json())
+            .then(data => {
+                const characters = data.characters || [];
+                const found = characters.find(c => 
+                    c.name.toLowerCase().replace(/\s+/g, '_') === characterName
+                );
+                if (found) {
+                    _fillQuickCreateForm(found);
+                }
+            })
+            .catch(err => console.error('Error loading character for edit:', err));
+        return;
+    }
+    
+    _fillQuickCreateForm(charData);
+}
+
+// TABLETOP MODE: Fill form fields with character data (for Manage Party create flow)
+function _fillQuickCreateForm(data) {
+    const form = document.getElementById('quick-create-form');
+    if (!form) return;
+    
+    // Identity
+    form.querySelector('[name="name"]').value = data.name || '';
+    if (quickCreateMode === 'edit') {
+        // Make name read-only in edit mode
+        form.querySelector('[name="name"]').setAttribute('readonly', 'readonly');
+        form.querySelector('[name="name"]').style.background = '#333';
+    }
+    form.querySelector('[name="race"]').value = data.race || '';
+    form.querySelector('[name="class"]').value = data.class || '';
+    form.querySelector('[name="level"]').value = data.level || '1';
+    form.querySelector('[name="alignment"]').value = data.alignment || '';
+    form.querySelector('[name="background"]').value = data.background || '';
+    
+    // Appearance
+    form.querySelector('[name="age"]').value = data.age || '';
+    form.querySelector('[name="height"]').value = data.height || '';
+    form.querySelector('[name="weight"]').value = data.weight || '';
+    form.querySelector('[name="eyes"]').value = data.eyes || '';
+    form.querySelector('[name="skin"]').value = data.skin || '';
+    form.querySelector('[name="hair"]').value = data.hair || '';
+    
+    // Abilities
+    if (data.abilities) {
+        form.querySelector('[name="str"]').value = data.abilities.strength || '10';
+        form.querySelector('[name="dex"]').value = data.abilities.dexterity || '10';
+        form.querySelector('[name="con"]').value = data.abilities.constitution || '10';
+        form.querySelector('[name="int"]').value = data.abilities.intelligence || '10';
+        form.querySelector('[name="wis"]').value = data.abilities.wisdom || '10';
+        form.querySelector('[name="cha"]').value = data.abilities.charisma || '10';
+    }
+    
+    // Combat
+    form.querySelector('[name="ac"]').value = data.armorClass || '10';
+    form.querySelector('[name="hp"]').value = data.hitPoints || '10';
+    form.querySelector('[name="initiative"]').value = data.initiative || '0';
+    form.querySelector('[name="speed"]').value = data.speed || '30';
+    
+    // Saves and Skills (convert arrays to comma-separated)
+    if (data.savingThrows && Array.isArray(data.savingThrows)) {
+        form.querySelector('[name="saving_throws"]').value = data.savingThrows.join(', ');
+    }
+    if (data.skills) {
+        if (Array.isArray(data.skills)) {
+            form.querySelector('[name="skills"]').value = data.skills.join(', ');
+        }
+    }
+    
+    // Proficiencies
+    if (data.proficiencies) {
+        if (data.proficiencies.languages) {
+            form.querySelector('[name="languages"]').value = 
+                Array.isArray(data.proficiencies.languages) ? data.proficiencies.languages.join(', ') : data.languages || 'Common';
+        }
+        if (data.proficiencies.armor) {
+            form.querySelector('[name="prof_armor"]').value = 
+                Array.isArray(data.proficiencies.armor) ? data.proficiencies.armor.join(', ') : '';
+        }
+        if (data.proficiencies.weapons) {
+            form.querySelector('[name="prof_weapons"]').value = 
+                Array.isArray(data.proficiencies.weapons) ? data.proficiencies.weapons.join(', ') : '';
+        }
+        if (data.proficiencies.tools) {
+            form.querySelector('[name="prof_tools"]').value = 
+                Array.isArray(data.proficiencies.tools) ? data.proficiencies.tools.join(', ') : '';
+        }
+    }
+    
+    // Equipment (convert equipment objects to comma-separated names)
+    if (data.equipment && Array.isArray(data.equipment)) {
+        const equipmentNames = data.equipment.map(item => item.item_name).filter(Boolean);
+        form.querySelector('[name="equipment"]').value = equipmentNames.join(', ');
+    }
+    
+    // Attacks (convert attacksAndSpellcasting objects to comma-separated names)
+    if (data.attacksAndSpellcasting && Array.isArray(data.attacksAndSpellcasting)) {
+        const attackNames = data.attacksAndSpellcasting.map(attack => attack.name).filter(Boolean);
+        form.querySelector('[name="attacks"]').value = attackNames.join(', ');
+    }
+    
+    // Spellcasting
+    if (data.spellcasting) {
+        form.querySelector('[name="spellcasting_ability"]').value = data.spellcasting.ability || 'none';
+        form.querySelector('[name="spell_dc"]').value = data.spellcasting.spellSaveDC || '8';
+        form.querySelector('[name="spell_attack_bonus"]').value = data.spellcasting.spellAttackBonus || '0';
+        if (data.spellcasting.spells) {
+            if (data.spellcasting.spells.cantrips) {
+                form.querySelector('[name="cantrips"]').value = 
+                    Array.isArray(data.spellcasting.spells.cantrips) ? data.spellcasting.spells.cantrips.join(', ') : '';
+            }
+            if (data.spellcasting.spells.level1) {
+                form.querySelector('[name="level1_spells"]').value = 
+                    Array.isArray(data.spellcasting.spells.level1) ? data.spellcasting.spells.level1.join(', ') : '';
+            }
+        }
+    }
+    
+    // Personality
+    form.querySelector('[name="personality_traits"]').value = data.personality_traits || '';
+    form.querySelector('[name="ideals"]').value = data.ideals || '';
+    form.querySelector('[name="bonds"]').value = data.bonds || '';
+    form.querySelector('[name="flaws"]').value = data.flaws || '';
+    form.querySelector('[name="backstory"]').value = data.backstory || '';
+    
+    // Background Feature
+    if (data.backgroundFeature) {
+        form.querySelector('[name="background_feature_name"]').value = data.backgroundFeature.name || '';
+        form.querySelector('[name="background_feature_description"]').value = data.backgroundFeature.description || '';
+    }
+}
+
+// TABLETOP MODE: Reset quick-create form state when switching tabs or closing modal
+function resetQuickCreateState() {
+    quickCreateMode = 'create';
+    quickCreateEditTarget = null;
+    
+    const form = document.getElementById('quick-create-form');
+    if (form) {
+        form.reset();
+        
+        // Reset name field read-only state
+        const nameField = form.querySelector('[name="name"]');
+        if (nameField) {
+            nameField.removeAttribute('readonly');
+            nameField.style.background = '';
+        }
+    }
+    
+    // Reset submit button text
+    const submitBtn = document.querySelector('#quick-create-form button[onclick="submitQuickCreate()"]');
+    if (submitBtn) {
+        submitBtn.textContent = 'Create & Add to Party';
+    }
+}
+
+// TABLETOP MODE: Quick Create form submit (Manage Party create flow only)
+// NOTE: Edit flow now uses submitManagePcEdit() via dedicated Manage PC modal
 function submitQuickCreate() {
     const form = document.getElementById('quick-create-form');
     const formData = new FormData(form);
     const data = {};
     formData.forEach((value, key) => data[key] = value);
-
+    
+    // Always use create_manual endpoint for Manage Party create flow
     fetch('/api/party/create_manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -240,6 +631,11 @@ function submitQuickCreate() {
     .then(response => response.json())
     .then(result => {
         if (result.success) {
+            // Reset state after successful operation
+            resetQuickCreateState();
+            closeManagePartyModal();
+            
+            // Reload page for create flow
             window.location.reload();
         } else {
             if (result.missing_paths && result.missing_paths.length > 0) {

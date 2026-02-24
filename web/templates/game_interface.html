@@ -6998,7 +6998,9 @@
             }
             
             // TABLETOP MODE: Store character data for portrait profile modal prefill (Step 9.5)
+            // Also expose on window for edit prefill access
             lastCharacterStats = data;
+            window.lastCharacterStats = data;
             portraitProfileCharacterData = data;
 
             function getCharacterReadinessWarnings(characterData) {
@@ -7259,7 +7261,13 @@
             html += '</div>';
             
             // Download PDF button at the bottom of the character sheet
+            // TABLETOP MODE: Edit button shown only when tabletop features available
             html += `<div style="margin-top: 10px; text-align: left; white-space: normal;">
+                        {% if multiplayer_mode or party_members|length > 1 %}
+                        <button class="pdf-button" onclick="openCharacterEdit('${normalizedName}')" style="padding: 8px; font-size: 12px; margin-right: 8px;">
+                            Edit
+                        </button>
+                        {% endif %}
                         <button class="pdf-button" onclick="downloadCharacterSheetPDF(event, '${normalizedName}')" style="padding: 8px; font-size: 12px;">
                             Download PDF
                         </button>

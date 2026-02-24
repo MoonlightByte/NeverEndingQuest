@@ -1,5 +1,16 @@
 ## Current Work Focus
 
+- **Character Sheet Edit with Dedicated Manage PC Modal (COMPLETED - 2026-02-24):**
+  - **OpenSpec Change:** `character-sheet-roll-your-own-edit-entry` (new, valid)
+  - **Status:** 21 tests passing, full modal separation implemented
+  - **UI:** Dedicated `manage-pc-modal` separate from `manage-party-modal` - title "Manage PC", no tabs, readonly name field, "Save Changes" button
+  - **JavaScript:** Clean separation with `openManagePcModal()`, `_prefillManagePcForm()`, `submitManagePcEdit()` - all isolated from Manage Party flow
+  - **Backend:** `POST /api/party/update_manual` endpoint - loads existing character, merges updates, runs audit, no party mutation
+  - **Character Sheet:** Edit button appears before Download PDF (SP-guarded), calls `openCharacterEdit()` which opens dedicated modal
+  - **Endpoint Contract:** `submitQuickCreate()` → `/api/party/create_manual` (create only), `submitManagePcEdit()` → `/api/party/update_manual` (edit only)
+  - **Tests:** `scripts/test_character_sheet_edit.py` with 21 tests covering UI contracts, endpoint separation, backend validation, non-regression
+  - **Files:** `web/templates/partials/character_tabs.html` (+210 lines), `web/static/js/tabletop_mode.js` (+398 lines), `web/routes/tabletop_party_routes.py` (+186 lines), `web/templates/game_interface.html` (+8 lines), `scripts/test_character_sheet_edit.py` (new, 334 lines)
+
 - **One-Shot Browser Open Fix for Load/Restore (COMPLETED - 2026-02-24):**
   - **Problem:** After Load/Restore/Reset, Chrome opened a second tab while the existing tab reloaded, causing dual narration when TTS is enabled (especially confusing UX).
   - **Root Cause:** `web/web_interface.py` always launched browser on process start; after server restart the launcher restarted the web process which opened another browser instance.

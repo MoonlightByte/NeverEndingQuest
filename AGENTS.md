@@ -1090,6 +1090,75 @@ Enable configurable target currency for Debug tab cost estimates (NZD, AUD, CAD,
 
 ---
 
+### Character Sheet Edit with Dedicated Manage PC Modal (COMPLETED - 2026-02-24)
+
+**Status:** COMPLETED - Dedicated edit modal separation from Manage Party, 21 tests passing
+
+**OpenSpec Change:** `character-sheet-roll-your-own-edit-entry` (created with full artifacts)
+
+**Objective:**
+Add 'Edit' button to character sheet for direct PC editing via dedicated Manage PC modal, completely separate from Manage Party creation flow to avoid tab confusion and endpoint cross-contamination.
+
+**Implementation Summary:**
+
+**Step 1 - UI Separation (`web/templates/partials/character_tabs.html`):**
+- Added new `manage-pc-modal` (id="manage-pc-modal") completely separate from `manage-party-modal`
+- Title: "Manage PC" (not "Manage Party")
+- No tabs - single Roll Your Own form for editing only
+- Form ID: `manage-pc-form` with all fields having `manage-pc-*` prefixed IDs
+- Name field is readonly with `#333` background (identity preserved)
+- Hidden `character_name` field for tracking which PC is being edited
+- Submit button: "Save Changes" (not "Create & Add to Party")
+
+**Step 2 - JavaScript Separation (`web/static/js/tabletop_mode.js`):**
+- `openManagePcModal(characterName)` - opens dedicated edit modal, prefills via `_prefillManagePcForm()`
+- `closeManagePcModal()` - closes modal and resets form
+- `_prefillManagePcForm()` / `_fillManagePcForm()` - dedicated prefill logic for Manage PC form
+- `submitManagePcEdit()` - always POSTs to `/api/party/update_manual` (no branching)
+- `window.openCharacterEdit()` - entry point from character sheet, calls `openManagePcModal()` directly
+- Cleaned up duplicate function definitions to ensure single canonical behavior
+
+**Step 3 - Backend Edit Endpoint (`web/routes/tabletop_party_routes.py`):**
+- New route: `POST /api/party/update_manual`
+- Loads existing character via `pc_manager.get_character_state()`
+- Merges form fields onto existing payload, preserves non-targeted nested structures
+- Runs `audit_character_creation()` before write (fail-closed on audit failure)
+- No party membership mutation, no intro prompt enqueue
+- Returns structured error with `missing_paths` on validation failure
+
+**Step 4 - Character Sheet Integration (`web/templates/game_interface.html`):**
+- Added 'Edit' button before 'Download PDF' in action row
+- SP compatibility guard: `{% if multiplayer_mode or party_members|length > 1 %}`
+- Calls `openCharacterEdit('${normalizedName}')` on click
+
+**Step 5 - Test Coverage (`scripts/test_character_sheet_edit.py`):**
+- 21 comprehensive tests covering:
+  - UI contracts: button order, modal existence, title, no tabs
+  - Endpoint separation: `submitQuickCreate` uses `create_manual` only, `submitManagePcEdit` uses `update_manual` only
+  - Backend contracts: route existence, character loading, audit gating, no party mutation
+  - Non-regression: create flow unchanged, Manage Party tabs preserved
+
+**Verification:**
+- `python3 -m py_compile web/routes/tabletop_party_routes.py`: PASS
+- `node --check web/static/js/tabletop_mode.js`: PASS
+- `python3 scripts/test_character_sheet_edit.py`: 21/21 tests PASS
+- Zero cross-contamination: Each flow uses its dedicated endpoint exclusively
+
+**Files Modified:**
+- `web/templates/partials/character_tabs.html` (+210 lines: new Manage PC modal)
+- `web/static/js/tabletop_mode.js` (+398 lines: dedicated edit handlers, prefill logic, removed duplicates)
+- `web/routes/tabletop_party_routes.py` (+186 lines: `update_manual` endpoint)
+- `web/templates/game_interface.html` (+8 lines: Edit button with SP guard)
+- `scripts/test_character_sheet_edit.py` (new, 334 lines: 21 comprehensive tests)
+
+**Architecture Notes:**
+- Complete modal separation prevents tab confusion and state leakage
+- Dedicated endpoints prevent accidental create-vs-update operations
+- Deterministic form→JSON update without LLM involvement
+- Full backward compatibility: Manage Party create flow unchanged, single-player mode unaffected
+
+---
+
 ### PC Backstory Profile and Narrative Context (COMPLETED - 2026-02-24)
 
 **Status:** COMPLETED - OpenSpec change validated, all 5 prompts implemented, 40 tests passing

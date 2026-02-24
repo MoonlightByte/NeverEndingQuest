@@ -1083,3 +1083,189 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
         except Exception as route_error:
             error(f"TABLETOP: Failed to create manual character: {route_error}")
             return jsonify({'error': str(route_error)}), 500
+
+    @app.route('/api/party/update_manual', methods=['POST'])
+    def update_manual_character() -> Any:
+        """Update an existing character from form data (deterministic edit, no LLM)."""
+        try:
+            data = request.get_json(silent=True) or {}
+            character_name = data.get('character_name')
+            if not character_name:
+                return jsonify({'error': 'Character name is required'}), 400
+
+            # Load existing character
+            existing_char = pc_manager.get_character_state(character_name)
+            if not existing_char:
+                return jsonify({'error': f'Character {character_name} not found'}), 404
+
+            # Merge form fields onto existing payload
+            # Only update mapped Roll Your Own fields, preserve non-targeted nested structures
+            merged_char = deepcopy(existing_char)
+            
+            # Identity (except name - keep identity stable)
+            merged_char['race'] = data.get('race', merged_char.get('race', 'Human'))
+            merged_char['class'] = data.get('class', merged_char.get('class', 'Fighter'))
+            merged_char['level'] = _safe_int(data.get('level', merged_char.get('level', 1)), 1)
+            merged_char['alignment'] = str(data.get('alignment', merged_char.get('alignment', 'neutral'))).strip().lower()
+            merged_char['background'] = data.get('background', merged_char.get('background', 'Adventurer'))
+            
+            # Combat
+            merged_char['hitPoints'] = _safe_int(data.get('hp', merged_char.get('hitPoints', 10)), 10)
+            merged_char['maxHitPoints'] = _safe_int(
+                data.get('max_hp', data.get('hp', merged_char.get('maxHitPoints', 10))),
+                _safe_int(data.get('hp', merged_char.get('hitPoints', 10)), 10)
+            )
+            merged_char['armorClass'] = _safe_int(data.get('ac', merged_char.get('armorClass', 10)), 10)
+            merged_char['initiative'] = _safe_int(data.get('initiative', merged_char.get('initiative', 0)), 0)
+            merged_char['speed'] = _safe_int(data.get('speed', merged_char.get('speed', 30)), 30)
+            
+            # Abilities
+            if not isinstance(merged_char.get('abilities'), dict):
+                merged_char['abilities'] = {}
+            merged_char['abilities']['strength'] = _safe_int(data.get('str', merged_char['abilities'].get('strength', 10)), 10)
+            merged_char['abilities']['dexterity'] = _safe_int(data.get('dex', merged_char['abilities'].get('dexterity', 10)), 10)
+            merged_char['abilities']['constitution'] = _safe_int(data.get('con', merged_char['abilities'].get('constitution', 10)), 10)
+            merged_char['abilities']['intelligence'] = _safe_int(data.get('int', merged_char['abilities'].get('intelligence', 10)), 10)
+            merged_char['abilities']['wisdom'] = _safe_int(data.get('wis', merged_char['abilities'].get('wisdom', 10)), 10)
+            merged_char['abilities']['charisma'] = _safe_int(data.get('cha', merged_char['abilities'].get('charisma', 10)), 10)
+            
+            # Saves and Skills
+            merged_char['savingThrows'] = _split_csv(data.get('saving_throws', '')) if data.get('saving_throws') else merged_char.get('savingThrows', [])
+            merged_char['skills'] = _split_csv(data.get('skills', '')) if data.get('skills') else merged_char.get('skills', [])
+            
+            # Proficiencies
+            if not isinstance(merged_char.get('proficiencies'), dict):
+                merged_char['proficiencies'] = {}
+            if data.get('languages'):
+                merged_char['proficiencies']['languages'] = _split_csv(data.get('languages', ''))
+            if data.get('prof_armor'):
+                merged_char['proficiencies']['armor'] = _split_csv(data.get('prof_armor', ''))
+            if data.get('prof_weapons'):
+                merged_char['proficiencies']['weapons'] = _split_csv(data.get('prof_weapons', ''))
+            if data.get('prof_tools'):
+                merged_char['proficiencies']['tools'] = _split_csv(data.get('prof_tools', ''))
+            
+            # Equipment (convert CSV to structured format, preserving existing non-form details)
+            if data.get('equipment'):
+                new_equipment = []
+                for item_name in _split_csv(data.get('equipment', '')):
+                    # Check if item already exists to preserve details
+                    existing_item = next(
+                        (item for item in merged_char.get('equipment', []) if item.get('item_name') == item_name),
+                        None
+                    )
+                    if existing_item:
+                        new_equipment.append(existing_item)
+                    else:
+                        new_equipment.append({
+                            'item_name': item_name,
+                            'item_type': 'equipment',
+                            'item_subtype': 'other',
+                            'description': 'Manual entry',
+                            'quantity': 1,
+                        })
+                merged_char['equipment'] = new_equipment
+            
+            # Attacks (similar preservation logic)
+            if data.get('attacks'):
+                new_attacks = []
+                for attack_name in _split_csv(data.get('attacks', '')):
+                    existing_attack = next(
+                        (atk for atk in merged_char.get('attacksAndSpellcasting', []) if atk.get('name') == attack_name),
+                        None
+                    )
+                    if existing_attack:
+                        new_attacks.append(existing_attack)
+                    else:
+                        new_attacks.append({
+                            'name': attack_name,
+                            'attackBonus': 0,
+                            'damageDice': '1d4',
+                            'damageBonus': 0,
+                            'damageType': 'bludgeoning',
+                            'type': 'melee',
+                            'description': 'Manual attack entry',
+                        })
+                merged_char['attacksAndSpellcasting'] = new_attacks
+            
+            # Spellcasting
+            if not isinstance(merged_char.get('spellcasting'), dict):
+                merged_char['spellcasting'] = {
+                    'ability': 'none',
+                    'spellSaveDC': 8,
+                    'spellAttackBonus': 0,
+                    'spells': {'cantrips': [], 'level1': [], 'level2': [], 'level3': [], 'level4': [], 'level5': [], 'level6': [], 'level7': [], 'level8': [], 'level9': []},
+                    'spellSlots': {f'level{i}': {'current': 0, 'max': 0} for i in range(1, 10)},
+                    'preparedSpells': [],
+                }
+            
+            merged_char['spellcasting']['ability'] = data.get('spellcasting_ability', merged_char['spellcasting'].get('ability', 'none'))
+            merged_char['spellcasting']['spellSaveDC'] = _safe_int(data.get('spell_dc', merged_char['spellcasting'].get('spellSaveDC', 8)), 8)
+            merged_char['spellcasting']['spellAttackBonus'] = _safe_int(data.get('spell_attack_bonus', merged_char['spellcasting'].get('spellAttackBonus', 0)), 0)
+            
+            # Spells (preserve existing spell structure, only update provided levels)
+            if data.get('cantrips'):
+                merged_char['spellcasting']['spells']['cantrips'] = _split_csv(data.get('cantrips', ''))
+            if data.get('level1_spells'):
+                merged_char['spellcasting']['spells']['level1'] = _split_csv(data.get('level1_spells', ''))
+            
+            # Appearance
+            merged_char['age'] = data.get('age', merged_char.get('age', ''))
+            merged_char['height'] = data.get('height', merged_char.get('height', ''))
+            merged_char['weight'] = data.get('weight', merged_char.get('weight', ''))
+            merged_char['eyes'] = data.get('eyes', merged_char.get('eyes', ''))
+            merged_char['skin'] = data.get('skin', merged_char.get('skin', ''))
+            merged_char['hair'] = data.get('hair', merged_char.get('hair', ''))
+            
+            # Personality
+            merged_char['personality_traits'] = data.get('personality_traits', merged_char.get('personality_traits', ''))
+            merged_char['ideals'] = data.get('ideals', merged_char.get('ideals', ''))
+            merged_char['bonds'] = data.get('bonds', merged_char.get('bonds', ''))
+            merged_char['flaws'] = data.get('flaws', merged_char.get('flaws', ''))
+            merged_char['backstory'] = data.get('backstory', merged_char.get('backstory', ''))
+            
+            # Background Feature (apply deterministic suggestions if needed)
+            bg_name = data.get('background_feature_name', '')
+            bg_desc = data.get('background_feature_description', '')
+            if bg_name or bg_desc:
+                merged_char['backgroundFeature'] = {
+                    'name': apply_background_feature_suggestion_if_generic(
+                        data.get('background', merged_char.get('background', 'Adventurer')),
+                        bg_name,
+                        bg_desc
+                    )['name'],
+                    'description': apply_background_feature_suggestion_if_generic(
+                        data.get('background', merged_char.get('background', 'Adventurer')),
+                        bg_name,
+                        bg_desc
+                    )['description'],
+                    'source': 'SRD 5.2.1',
+                }
+
+            # Run audit on merged payload
+            audit_result = audit_character_creation(
+                merged_char,
+                source="tabletop_route_manual_edit",
+                enable_enrichment=True,
+            )
+            if audit_result.result_type != AUDIT_RESULT_SUCCESS:
+                return jsonify({
+                    'error': 'Manual character edit validation failed',
+                    'result_type': audit_result.result_type,
+                    'errors': audit_result.errors,
+                    'missing_paths': audit_result.missing_paths,
+                }), 400
+
+            final_char = audit_result.normalized_data
+
+            # Save updated character (no party mutation, no intro prompt)
+            char_path = pc_manager._get_character_path(character_name)
+            success = safe_write_json(char_path, final_char)
+            if not success:
+                return jsonify({'error': 'Failed to save character file'}), 500
+
+            info(f"TABLETOP: Manually updated character {character_name}")
+            return jsonify({'success': True, 'name': character_name})
+        except Exception as route_error:
+            error(f"TABLETOP: Failed to update manual character: {route_error}")
+            return jsonify({'error': str(route_error)}), 500

@@ -15,6 +15,17 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **Character Sheet Edit with Dedicated Manage PC Modal (COMPLETED - 2026-02-24):**
+  - **OpenSpec Change:** `character-sheet-roll-your-own-edit-entry` (created with full artifacts)
+  - **Objective:** Add 'Edit' button to character sheet for direct PC editing via dedicated Manage PC modal, separate from Manage Party creation flow
+  - **UI Separation:** New `manage-pc-modal` with title "Manage PC", no tabs, readonly name field, "Save Changes" submit button
+  - **JavaScript Handlers:** `openManagePcModal()`, `_prefillManagePcForm()`, `_fillManagePcForm()`, `submitManagePcEdit()` - all dedicated to edit flow only
+  - **Backend Endpoint:** `POST /api/party/update_manual` - deterministic edit with audit gating, no party mutation, no intro prompt
+  - **Character Sheet Integration:** Edit button positioned before Download PDF, guarded by tabletop mode conditional
+  - **Clean Separation:** Manage Party modal unchanged with 3 tabs (Add Existing, Create with DM, Roll Your Own) for facilitator creation
+  - **Testing:** 21/21 tests PASS in `scripts/test_character_sheet_edit.py` covering UI contracts, endpoint separation, backend validation
+  - **Files Modified:** `web/templates/partials/character_tabs.html`, `web/static/js/tabletop_mode.js`, `web/routes/tabletop_party_routes.py`, `web/templates/game_interface.html`, `scripts/test_character_sheet_edit.py`
+
 - **One-Shot Browser Open Fix for Load/Restore (COMPLETED - 2026-02-24):**
   - **Problem:** After Load/Restore/Reset operations, Chrome opened a second tab while the existing tab reloaded, causing dual narration when TTS was enabled (confusing UX).
   - **Solution:** Implemented one-shot browser-open gating per launcher session using `NEQ_OPEN_BROWSER` environment variable contract between launcher and web server.
