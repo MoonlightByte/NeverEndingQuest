@@ -15,6 +15,30 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **PC Creation Startup Fixes (COMPLETED - 2026-02-24):**
+  - **OpenSpec Change:** `pc-creation-startup-fixes` (archived to `openspec/changes/archive/2026-02-24-pc-creation-startup-fixes/`)
+  - **Objective:** Fix two failure modes in tabletop web startup: character sheet stall on null stats and premature single-PC onboarding due to blank input fallthrough.
+  - **Startup Multi-PC Reprompt Hardening (Steps 2.1-2.5):**
+    - Line-visible prompt emission before input capture (`print()` before `input()`)
+    - Strict yes/no parser for add-more flow - reprompts on blank/invalid input
+    - Secondary retry decision also uses strict parser with explicit exit contract
+    - Explicit-only loop termination (EXPLICIT EXIT 1 and 2 labels)
+    - No implicit fallthrough on timeout/blank web input
+  - **Character Sheet Stats Loading Resilience (Steps 3.1-3.4):**
+    - Null-guard order fixed in `displayCharacterStats()` - validates `!data` before any `data.*` access
+    - Deterministic waiting/error render states for null payloads
+    - Defensive try/catch wrapper around main render body to prevent transient exceptions from blocking recovery
+    - Polling refresh behavior preserved as recovery path (5s interval, Character-tab branch)
+  - **Regression Tests (Steps 4.1-4.3):**
+    - `scripts/test_startup_multipc_reprompt.py` - 3 tests for explicit yes/no enforcement, blank/invalid reprompt behavior
+    - `scripts/test_character_sheet_stats_resilience.py` - 5 tests for null-safe rendering, try/catch contracts
+    - All tests PASS, OpenSpec validation PASS
+  - **Files Modified:** `utils/startup_wizard.py`, `web/templates/game_interface.html`
+  - **Tests Created:** `scripts/test_startup_multipc_reprompt.py`, `scripts/test_character_sheet_stats_resilience.py`
+  - **Spec Sync:** Delta specs synced to main specs:
+    - Updated `openspec/specs/tt-pc-creation-workflows/spec.md` (added scenarios for add-more prompt visibility and reprompt behavior)
+    - Created `openspec/specs/tt-character-sheet-stats-loading-resilience/spec.md`
+
 - **Character Sheet Edit with Dedicated Manage PC Modal (COMPLETED - 2026-02-24):**
   - **OpenSpec Change:** `character-sheet-roll-your-own-edit-entry` (created with full artifacts)
   - **Objective:** Add 'Edit' button to character sheet for direct PC editing via dedicated Manage PC modal, separate from Manage Party creation flow

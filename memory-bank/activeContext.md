@@ -1,7 +1,16 @@
 ## Current Work Focus
 
+- **PC Creation Startup Fixes (COMPLETED - 2026-02-24):**
+  - **OpenSpec Change:** `pc-creation-startup-fixes` (archived)
+  - **Status:** 8 tests passing (3 startup reprompt + 5 stats resilience), implementation complete
+  - **Startup:** Line-visible prompts, strict yes/no parser with reprompt-on-blank, explicit-only loop exit
+  - **Stats:** Null-guard order fixed, waiting/error states for null payloads, defensive try/catch for render failures
+  - **Files:** `utils/startup_wizard.py` (multi-PC loop), `web/templates/game_interface.html` (displayCharacterStats)
+  - **Tests:** `scripts/test_startup_multipc_reprompt.py` (3 tests), `scripts/test_character_sheet_stats_resilience.py` (5 tests)
+  - **Verification:** All PASS, OpenSpec validation PASS, specs synced to main
+
 - **Character Sheet Edit with Dedicated Manage PC Modal (COMPLETED - 2026-02-24):**
-  - **OpenSpec Change:** `character-sheet-roll-your-own-edit-entry` (new, valid)
+  - **OpenSpec Change:** `character-sheet-roll-your-own-edit-entry` (**ARCHIVED** to `openspec/changes/archive/2026-02-24-character-sheet-roll-your-own-edit-entry/`)
   - **Status:** 21 tests passing, full modal separation implemented
   - **UI:** Dedicated `manage-pc-modal` separate from `manage-party-modal` - title "Manage PC", no tabs, readonly name field, "Save Changes" button
   - **JavaScript:** Clean separation with `openManagePcModal()`, `_prefillManagePcForm()`, `submitManagePcEdit()` - all isolated from Manage Party flow
