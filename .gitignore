@@ -191,6 +191,7 @@ test_*.py
 
 # Allow memory regression tests (not auto-generated)
 !scripts/test_memory_regression_coverage.py
+!scripts/test_character_sheet_edit.py
 
 # Documentation files (keep core docs, exclude development plans)
 *_plan.md

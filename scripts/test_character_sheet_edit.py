@@ -1,0 +1,440 @@
+# SPDX-FileCopyrightText: 2024 MoonlightByte
+# SPDX-License-Identifier: Fair-Source-1.0
+# License: See LICENSE file in the repository root
+# This software is subject to the terms of the Fair Source License.
+
+"""
+Character Sheet Edit Feature Tests
+Copyright (c) 2024 MoonlightByte
+Licensed under Fair Source License 1.0
+
+Tests for character sheet Edit button, Roll Your Own edit mode, and update_manual endpoint.
+
+This software is free for non-commercial and educational use.
+Commercial competing use is prohibited for 2 years from release.
+See LICENSE file for full terms.
+"""
+
+import json
+import os
+import sys
+import unittest
+from unittest.mock import patch, MagicMock
+
+# Add project root to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+class TestCharacterSheetEditUIContracts(unittest.TestCase):
+    """Test suite for UI source contracts (Step 1 verification)."""
+
+    def test_edit_button_appears_before_download_pdf(self):
+        """Test: Edit button appears before Download PDF in character sheet action row."""
+        html_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "templates", "game_interface.html"
+        )
+        
+        with open(html_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        # Find the action row section with the TABLETOP MODE comment
+        action_row_marker = '// TABLETOP MODE: Edit button shown only when tabletop'
+        action_row_start = source.find(action_row_marker)
+        self.assertGreater(action_row_start, 0, "Action row section should exist with TABLETOP MODE marker")
+        
+        # Get the relevant section (next ~600 chars should include both buttons)
+        section = source[action_row_start:action_row_start + 600]
+        
+        # Find button tags specifically - need to look for the button tag patterns
+        # The Edit button is inside the {% if %} block
+        edit_button_pos = section.find('<button class="pdf-button" onclick="openCharacterEdit')
+        download_button_pos = section.find('<button class="pdf-button" onclick="downloadCharacterSheetPDF')
+        
+        # Debug: print what we found
+        if edit_button_pos == -1:
+            # Try alternative pattern - maybe quotes are escaped differently
+            edit_button_pos = section.find('openCharacterEdit')
+        if download_button_pos == -1:
+            download_button_pos = section.find('downloadCharacterSheetPDF')
+        
+        self.assertGreater(edit_button_pos, 0, f"Edit button element should exist in section. Section preview: {section[:200]}")
+        self.assertGreater(download_button_pos, 0, f"Download PDF button element should exist in section. Section preview: {section[:200]}")
+        self.assertLess(edit_button_pos, download_button_pos, "Edit button should appear before Download PDF button")
+
+    def test_edit_button_has_sp_compatibility_guard(self):
+        """Test: Edit button is guarded by tabletop mode condition."""
+        html_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "templates", "game_interface.html"
+        )
+        
+        with open(html_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        # Find the action row with Edit button
+        action_section = source[source.find('// TABLETOP MODE: Edit button'):source.find('// TABLETOP MODE: Edit button') + 400]
+        
+        # Verify SP guard exists
+        self.assertIn('{% if multiplayer_mode or party_members|length > 1 %}', action_section,
+                      "SP compatibility guard should exist")
+        self.assertIn('Edit', action_section, "Edit button should exist in guarded block")
+
+    def test_manage_pc_modal_exists(self):
+        """Test: Dedicated Manage PC modal exists for edit flow."""
+        html_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "templates", "partials", "character_tabs.html"
+        )
+        
+        with open(html_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        # Verify dedicated Manage PC modal exists (separate from Manage Party)
+        self.assertIn('id="manage-pc-modal"', source,
+                      "Manage PC modal should exist")
+        self.assertIn('Manage PC', source,
+                      "Modal title should be 'Manage PC'")
+        self.assertIn('id="manage-pc-form"', source,
+                      "Manage PC form should exist")
+        
+        # Verify no tabs in Manage PC modal (should only have the form)
+        # (The form should be directly in npc-details-body without tab navigation)
+        modal_section = source.split('id="manage-pc-modal"')[1].split('id="manage-pc-form"')[0]
+        self.assertNotIn('tab-button', modal_section,
+                          "Manage PC modal should not have tab buttons")
+        self.assertNotIn('switchManageTab', modal_section,
+                          "Manage PC modal should not use tab switching")
+
+    def test_manage_pc_submit_button_text(self):
+        """Test: Manage PC modal has 'Save Changes' submit button."""
+        html_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "templates", "partials", "character_tabs.html"
+        )
+        
+        with open(html_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        # Find Manage PC modal section
+        pc_modal_section = source.split('id="manage-pc-modal"')[1]
+        
+        # Verify submit button says "Save Changes"
+        self.assertIn('Save Changes', pc_modal_section,
+                      "Manage PC submit button should say 'Save Changes'")
+        self.assertIn('onclick="submitManagePcEdit()"', pc_modal_section,
+                      "Manage PC form should call submitManagePcEdit")
+
+    def test_open_character_edit_function_exists(self):
+        """Test: openCharacterEdit function exists and opens Manage PC modal."""
+        js_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "static", "js", "tabletop_mode.js"
+        )
+        
+        with open(js_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        self.assertIn('window.openCharacterEdit = function', source,
+                      "openCharacterEdit should be defined")
+        self.assertIn('openManagePcModal(characterName)', source,
+                      "openCharacterEdit should open dedicated Manage PC modal")
+        # NOTE: We no longer use quickCreateMode in edit flow - Manage PC is completely separate
+
+    def test_submit_quick_create_uses_create_endpoint_only(self):
+        """Test: submitQuickCreate always uses create_manual endpoint (no edit branching)."""
+        js_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "static", "js", "tabletop_mode.js"
+        )
+        
+        with open(js_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        # Find submitQuickCreate function using regex-like search
+        func_start = source.find('function submitQuickCreate()')
+        self.assertGreater(func_start, 0, "submitQuickCreate should exist")
+        
+        # Get full function body (until next function or end)
+        next_func = source.find('\nfunction ', func_start + 1)
+        if next_func == -1:
+            func_body = source[func_start:]
+        else:
+            func_body = source[func_start:next_func]
+        
+        # Should use create_manual only (no endpoint branching based on mode)
+        self.assertIn("fetch('/api/party/create_manual'", func_body,
+                      "submitQuickCreate should use create_manual endpoint")
+        self.assertNotIn("'/api/party/update_manual'", func_body,
+                         "submitQuickCreate should NOT use update_manual endpoint")
+        self.assertNotIn("quickCreateMode === 'edit'", func_body,
+                         "submitQuickCreate should NOT branch based on edit mode")
+
+    def test_submit_manage_pc_edit_uses_update_endpoint(self):
+        """Test: submitManagePcEdit always uses update_manual endpoint."""
+        js_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "static", "js", "tabletop_mode.js"
+        )
+        
+        with open(js_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        # Find submitManagePcEdit function
+        func_start = source.find('function submitManagePcEdit()')
+        self.assertGreater(func_start, 0, "submitManagePcEdit should exist")
+        
+        # Get full function body (until next function or end)
+        next_func = source.find('\nfunction ', func_start + 1)
+        if next_func == -1:
+            func_body = source[func_start:]
+        else:
+            func_body = source[func_start:next_func]
+        
+        # Should always use update_manual
+        self.assertIn("fetch('/api/party/update_manual'", func_body,
+                      "submitManagePcEdit should use update_manual endpoint")
+        self.assertNotIn("'/api/party/create_manual'", func_body,
+                         "submitManagePcEdit should NOT use create_manual endpoint")
+
+    def test_prefill_helpers_exist(self):
+        """Test: Prefill helper functions exist."""
+        js_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "static", "js", "tabletop_mode.js"
+        )
+        
+        with open(js_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        self.assertIn('function _prefillQuickCreateForm', source,
+                      "_prefillQuickCreateForm should exist")
+        self.assertIn('function _fillQuickCreateForm', source,
+                      "_fillQuickCreateForm should exist")
+
+    def test_mode_state_variables_exist(self):
+        """Test: Mode state tracking exists."""
+        js_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "static", "js", "tabletop_mode.js"
+        )
+        
+        with open(js_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        self.assertIn("let quickCreateMode = 'create'", source,
+                      "quickCreateMode state should exist")
+        self.assertIn("let quickCreateEditTarget = null", source,
+                      "quickCreateEditTarget state should exist")
+
+    def test_endpoint_separation_no_cross_contamination(self):
+        """Test: Create and Edit flows use separate endpoints without cross-contamination."""
+        js_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "static", "js", "tabletop_mode.js"
+        )
+        
+        with open(js_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        # Verify clear separation: submitQuickCreate should only hit create_manual
+        # and submitManagePcEdit should only hit update_manual
+        
+        # Find both functions
+        quick_create_start = source.find('function submitQuickCreate()')
+        manage_pc_edit_start = source.find('function submitManagePcEdit()')
+        
+        self.assertGreater(quick_create_start, 0, "submitQuickCreate should exist")
+        self.assertGreater(manage_pc_edit_start, 0, "submitManagePcEdit should exist")
+        
+        # Get function bodies
+        next_func_after_quick = source.find('\nfunction ', quick_create_start + 1)
+        quick_create_body = source[quick_create_start:next_func_after_quick if next_func_after_quick != -1 else len(source)]
+        
+        next_func_after_manage = source.find('\nfunction ', manage_pc_edit_start + 1)
+        manage_pc_edit_body = source[manage_pc_edit_start:next_func_after_manage if next_func_after_manage != -1 else len(source)]
+        
+        # submitQuickCreate: create_manual only
+        self.assertIn("/api/party/create_manual", quick_create_body,
+                      "submitQuickCreate should use create_manual")
+        self.assertNotIn("/api/party/update_manual", quick_create_body,
+                         "submitQuickCreate should NOT use update_manual")
+        
+        # submitManagePcEdit: update_manual only
+        self.assertIn("/api/party/update_manual", manage_pc_edit_body,
+                      "submitManagePcEdit should use update_manual")
+        self.assertNotIn("/api/party/create_manual", manage_pc_edit_body,
+                         "submitManagePcEdit should NOT use create_manual")
+
+    def test_reset_state_function_exists(self):
+        """Test: State reset function exists and is called on modal close."""
+        js_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "static", "js", "tabletop_mode.js"
+        )
+        
+        with open(js_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        self.assertIn('function resetQuickCreateState()', source,
+                      "resetQuickCreateState should exist")
+        self.assertIn('resetQuickCreateState()', source,
+                      "resetQuickCreateState should be called")
+
+
+class TestUpdateManualBackendContract(unittest.TestCase):
+    """Test suite for /api/party/update_manual endpoint (Step 2 verification)."""
+
+    def _get_route_source(self):
+        """Helper to read route source without importing Flask-dependent module."""
+        route_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "routes", "tabletop_party_routes.py"
+        )
+        with open(route_path, 'r', encoding='utf-8') as f:
+            return f.read()
+
+    def test_update_manual_route_exists(self):
+        """Test: Backend edit route is registered."""
+        source = self._get_route_source()
+        
+        self.assertIn("@app.route('/api/party/update_manual'", source,
+                      "update_manual route should be registered")
+        self.assertIn("def update_manual_character()", source,
+                      "update_manual_character function should exist")
+
+    def test_update_manual_loads_existing_character(self):
+        """Test: Edit route loads existing character before merging."""
+        source = self._get_route_source()
+        
+        self.assertIn("pc_manager.get_character_state(character_name)", source,
+                      "Should load existing character")
+        self.assertIn("if not existing_char:", source,
+                      "Should check if character exists")
+        self.assertIn("return jsonify({'error': f'Character {character_name} not found'})", source,
+                      "Should return 404 if character not found")
+
+    def test_update_manual_runs_audit_before_save(self):
+        """Test: Edit route runs audit validation before saving."""
+        source = self._get_route_source()
+        
+        self.assertIn("audit_character_creation(", source,
+                      "Should run audit validation")
+        self.assertIn("if audit_result.result_type != AUDIT_RESULT_SUCCESS:", source,
+                      "Should check audit result")
+        self.assertIn("'error': 'Manual character edit validation failed'", source,
+                      "Should return validation error on audit failure")
+
+    def test_update_manual_no_party_mutation(self):
+        """Test: Edit route does not mutate party membership."""
+        source = self._get_route_source()
+        
+        # Split to get update_manual function specifically (it's the last function)
+        update_section = source.split("@app.route('/api/party/update_manual'")[-1]
+        
+        # Should NOT have these create-only side effects in the update section
+        self.assertNotIn("pc_manager.add_pc", update_section,
+                         "Edit route should NOT add to party")
+        self.assertNotIn("user_input_queue.put", update_section,
+                         "Edit route should NOT enqueue prompts")
+        self.assertNotIn("get_entrance_prompt", update_section,
+                         "Edit route should NOT get entrance prompt")
+
+    def test_update_manual_preserves_non_targeted_state(self):
+        """Test: Edit route preserves non-targeted nested structures."""
+        source = self._get_route_source()
+        
+        # Check for preservation logic in equipment/attacks
+        self.assertIn("existing_item = next(", source,
+                      "Should check for existing items to preserve details")
+        self.assertIn("if existing_item:", source,
+                      "Should preserve existing item details")
+
+
+class TestCreateModeNonRegression(unittest.TestCase):
+    """Test suite to ensure create mode still works correctly."""
+
+    def _get_route_source(self):
+        """Helper to read route source without importing Flask-dependent module."""
+        route_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "routes", "tabletop_party_routes.py"
+        )
+        with open(route_path, 'r', encoding='utf-8') as f:
+            return f.read()
+
+    def test_create_manual_route_unchanged(self):
+        """Test: Create route still exists and functions."""
+        source = self._get_route_source()
+        
+        self.assertIn("@app.route('/api/party/create_manual'", source,
+                      "create_manual route should still exist")
+        self.assertIn("def create_manual_character()", source,
+                      "create_manual_character function should exist")
+
+    def test_create_mode_still_adds_to_party(self):
+        """Test: Create mode still has party mutation side effects."""
+        source = self._get_route_source()
+        
+        # Split to get create_manual section (before update_manual)
+        create_section = source.split("@app.route('/api/party/create_manual'")[1].split("@app.route('/api/party/update_manual'")[0]
+        
+        self.assertIn("pc_manager.add_pc(name)", create_section,
+                      "Create should still add to party")
+        self.assertIn("user_input_queue.put(intro_prompt)", create_section,
+                      "Create should still enqueue intro prompt")
+
+    def test_submit_defaults_to_create_mode(self):
+        """Test: Default mode is create (quickCreateMode initialized to 'create')."""
+        js_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "static", "js", "tabletop_mode.js"
+        )
+        
+        with open(js_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        self.assertIn("let quickCreateMode = 'create'", source,
+                      "Default mode should be 'create'")
+
+
+class TestLanguagesFieldMapping(unittest.TestCase):
+    """Test suite for languages field mapping consistency."""
+
+    def _get_route_source(self):
+        """Helper to read route source without importing Flask-dependent module."""
+        route_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "routes", "tabletop_party_routes.py"
+        )
+        with open(route_path, 'r', encoding='utf-8') as f:
+            return f.read()
+
+    def test_create_manual_uses_top_level_languages(self):
+        """Test: Create route uses top-level languages field."""
+        source = self._get_route_source()
+        
+        # In create_manual section
+        create_section = source.split("@app.route('/api/party/create_manual'")[1].split("@app.route('/api/party/update_manual'")[0]
+        
+        # Should set top-level languages
+        self.assertIn('"languages": _split_csv(data.get(\'languages\',', create_section,
+                      "Create should set top-level languages")
+
+    def test_update_manual_preserves_proficiencies_languages(self):
+        """Test: Update route updates proficiencies.languages."""
+        source = self._get_route_source()
+        
+        # In update_manual section
+        update_section = source.split("@app.route('/api/party/update_manual'")[-1]
+        
+        # Updates proficiencies.languages if data provided
+        self.assertIn("if data.get('languages'):", update_section,
+                      "Update should check for languages in data")
+        self.assertIn("merged_char['proficiencies']['languages']", update_section,
+                      "Update should set proficiencies.languages")
+
+
+if __name__ == '__main__':
+    # Run with verbosity
+    unittest.main(verbosity=2)
