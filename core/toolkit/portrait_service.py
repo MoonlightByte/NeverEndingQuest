@@ -593,14 +593,10 @@ def generate_and_save_portrait(
             result["error"] = f"decode_error: {img_error}"
             return result
         
-        # Process image (resize and format)
+        # Process image (preserve full-res + create compatibility resize)
         try:
-            # Resize to standard portrait size
-            img = img.resize((256, 256), Image.Resampling.LANCZOS)
-            
-            # Convert to RGBA if needed
-            if img.mode != 'RGBA':
-                img = img.convert('RGBA')
+            full_res_image = img.convert('RGBA') if img.mode != 'RGBA' else img.copy()
+            compat_image = full_res_image.resize((256, 256), Image.Resampling.LANCZOS)
         except Exception as proc_error:
             error(f"PORTRAIT_SERVICE: Image processing failed for {name}: {proc_error}", category="portrait_generation")
             result["message"] = "Image processing failed"
@@ -609,30 +605,53 @@ def generate_and_save_portrait(
         
         # Ensure directories exist
         static_dir, get_module_dir = _ensure_portrait_directories()
-        
-        # Save to web static portraits
+
+        # --- NEW: Save hi-res full-size portrait sidecar ---
+        static_full_path = static_dir / f"{normalized_name}_full.png"
+        try:
+            full_res_image.save(static_full_path, 'PNG')
+            result["full_portrait_path"] = str(static_full_path)
+            info(f"PORTRAIT_SERVICE: Saved full-res portrait to {static_full_path}", category="portrait_generation")
+        except Exception as save_error:
+            error(f"PORTRAIT_SERVICE: Failed to save static full-res portrait for {name}: {save_error}", category="portrait_generation")
+            result["message"] = "Failed to save full-res portrait"
+            result["error"] = f"save_full_error: {save_error}"
+            # Non-blocking, continue with standard portrait if full fails
+
+        try:
+            module_dir = get_module_dir()
+            if module_dir:
+                module_full_path = module_dir / f"{normalized_name}_full.png"
+                full_res_image.save(module_full_path, 'PNG')
+                info(f"PORTRAIT_SERVICE: Saved full-res portrait to module {module_full_path}", category="portrait_generation")
+        except Exception as module_error:
+            warning(f"PORTRAIT_SERVICE: Could not save full-res to module portraits for {name}: {module_error}", category="portrait_generation")
+        # --- END NEW ---
+
+        # Save to web static portraits (256x256, for UI compatibility)
+        # This is the original behavior, kept for backward compatibility.
         static_path = static_dir / f"{normalized_name}.png"
         try:
-            img.save(static_path, 'PNG')
+            compat_image.save(static_path, 'PNG')
             result["portrait_path"] = str(static_path)
-            info(f"PORTRAIT_SERVICE: Saved portrait to {static_path}", category="portrait_generation")
+            info(f"PORTRAIT_SERVICE: Saved compatibility portrait to {static_path}", category="portrait_generation")
         except Exception as save_error:
             error(f"PORTRAIT_SERVICE: Failed to save static portrait for {name}: {save_error}", category="portrait_generation")
             result["message"] = "Failed to save portrait"
             result["error"] = f"save_error: {save_error}"
             return result
         
-        # Save to module portraits (fail-open)
+        # Save to module portraits (fail-open, 256x256 asset)
         try:
             module_dir = get_module_dir()
             if module_dir:
                 module_path = module_dir / f"{normalized_name}.png"
-                img.save(module_path, 'PNG')
+                compat_image.save(module_path, 'PNG')
                 result["module_portrait_path"] = str(module_path)
-                info(f"PORTRAIT_SERVICE: Saved portrait to module {module_path}", category="portrait_generation")
+                info(f"PORTRAIT_SERVICE: Saved compatibility portrait to module {module_path}", category="portrait_generation")
         except Exception as module_error:
             # Fail-open: log but don't fail the whole operation
-            warning(f"PORTRAIT_SERVICE: Could not save to module portraits for {name}: {module_error}", category="portrait_generation")
+            warning(f"PORTRAIT_SERVICE: Could not save compatibility portrait to module portraits for {name}: {module_error}", category="portrait_generation")
         
         # Track image cost (fail-open)
         try:

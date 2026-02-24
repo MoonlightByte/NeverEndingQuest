@@ -2947,6 +2947,32 @@ def get_validation_retry_exhaustion_message():
         "The game state may be inconsistent. Please try a different action or restart the session."
     )
 
+
+# TABLETOP MODE: TTS scope marker helpers for suppressing TTS in non-narrative flows
+def _should_emit_tts_markers():
+    """Check if stdout supports TTS scope markers (web mode only)."""
+    return getattr(sys.stdout, "supports_tts_scope_markers", False)
+
+
+def _emit_tts_scope(enable_block):
+    """Emit TTS scope control marker if in web mode."""
+    if _should_emit_tts_markers():
+        if enable_block:
+            print("[TTS_BLOCK_ON]")
+        else:
+            print("[TTS_BLOCK_OFF]")
+
+
+class _tts_block_scope:
+    """Context manager for TTS block scope markers."""
+    def __enter__(self):
+        _emit_tts_scope(True)
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        _emit_tts_scope(False)
+
+
 def main_game_loop():
     global needs_conversation_history_update, should_inject_creation_prompt
 
@@ -2977,7 +3003,9 @@ def main_game_loop():
             print("It looks like this is your first time, or you need to set up a character.")
             print("Let's get you ready for adventure!\n")
 
-            success = run_startup_sequence()
+            # TABLETOP MODE: Suppress TTS during startup/setup flow
+            with _tts_block_scope():
+                success = run_startup_sequence()
             if not success:
                 print("[ERROR] Setup was cancelled or failed. Cannot start game loop.")
                 return
@@ -3260,47 +3288,49 @@ def main_game_loop():
                 from core.managers.level_up_manager import LevelUpSession
                 level_up_session = LevelUpSession(char_name, current_level, new_level)
                 
-                # Start session
-                dm_response = level_up_session.start()
-                print(colored("Dungeon Master:", "blue"), colored(dm_response, "blue"))
-                conversation_history.append({"role": "assistant", "content": dm_response})
-                save_conversation_history(conversation_history)
-                
-                # Interactive loop
-                final_narration = ""
-                while not level_up_session.is_complete:
-                    try:
-                        player_name_display = f"{SOLID_GREEN}{char_name}{RESET_COLOR}"
-                        level_up_input = input(f"{player_name_display} (Leveling Up): ")
-                        
-                        if not level_up_input or not level_up_input.strip():
-                            continue
-                            
-                        # Handle input
-                        dm_response = level_up_session.handle_input(level_up_input)
-                        
-                        # Check response type
+                # TABLETOP MODE: Suppress TTS during level-up interview flow
+                with _tts_block_scope():
+                    # Start session
+                    dm_response = level_up_session.start()
+                    print(colored("Dungeon Master:", "blue"), colored(dm_response, "blue"))
+                    conversation_history.append({"role": "assistant", "content": dm_response})
+                    save_conversation_history(conversation_history)
+                    
+                    # Interactive loop
+                    final_narration = ""
+                    while not level_up_session.is_complete:
                         try:
-                            parsed_data = json.loads(dm_response)
-                            final_narration = parsed_data.get("narration", "Level up complete!")
-                            print(colored("Dungeon Master:", "blue"), colored(final_narration, "blue"))
-                        except (json.JSONDecodeError, TypeError):
-                            print(colored("Dungeon Master:", "blue"), colored(dm_response, "blue"))
+                            player_name_display = f"{SOLID_GREEN}{char_name}{RESET_COLOR}"
+                            level_up_input = input(f"{player_name_display} (Leveling Up): ")
                             
-                    except EOFError:
-                        break
-                
-                # Finalize
-                if level_up_session.success:
-                    conversation_history.append({"role": "assistant", "content": json.dumps({"narration": final_narration, "actions": []})})
-                    save_conversation_history(conversation_history)
-                    print(colored(f"Dungeon Master: [SYSTEM] {char_name} is now level {new_level}!", "green"))
-                else:
-                    print(colored("Dungeon Master: [SYSTEM] Level up cancelled or failed.", "red"))
-                    conversation_history.append({"role": "system", "content": level_up_session.summary})
-                    save_conversation_history(conversation_history)
-                
-                import sys; sys.stdout.flush()
+                            if not level_up_input or not level_up_input.strip():
+                                continue
+                                
+                            # Handle input
+                            dm_response = level_up_session.handle_input(level_up_input)
+                            
+                            # Check response type
+                            try:
+                                parsed_data = json.loads(dm_response)
+                                final_narration = parsed_data.get("narration", "Level up complete!")
+                                print(colored("Dungeon Master:", "blue"), colored(final_narration, "blue"))
+                            except (json.JSONDecodeError, TypeError):
+                                print(colored("Dungeon Master:", "blue"), colored(dm_response, "blue"))
+                                
+                        except EOFError:
+                            break
+                    
+                    # Finalize
+                    if level_up_session.success:
+                        conversation_history.append({"role": "assistant", "content": json.dumps({"narration": final_narration, "actions": []})})
+                        save_conversation_history(conversation_history)
+                        print(colored(f"Dungeon Master: [SYSTEM] {char_name} is now level {new_level}!", "green"))
+                    else:
+                        print(colored("Dungeon Master: [SYSTEM] Level up cancelled or failed.", "red"))
+                        conversation_history.append({"role": "system", "content": level_up_session.summary})
+                        save_conversation_history(conversation_history)
+                    
+                    import sys; sys.stdout.flush()
                 
             except Exception as e:
                 print(colored(f"Dungeon Master: [SYSTEM] Error during level up: {e}", "red"))
@@ -4242,49 +4272,51 @@ def main_game_loop():
                     level_up_session = final_result["session"]
                     final_narration = ""
 
-                    # Get the first message from the session
-                    dm_response = level_up_session.start()
-                
-                    # Display the first message and add to history
-                    print(colored("Dungeon Master:", "blue"), colored(dm_response, "blue"))
-                    conversation_history.append({"role": "assistant", "content": dm_response})
-                    save_conversation_history(conversation_history)
-
-                    # Loop until the session is complete
-                    while not level_up_session.is_complete:
-                        # Get player input
-                        player_name_display = f"{SOLID_GREEN}{player_name_actual}{RESET_COLOR}"
-                        level_up_input = input(f"{player_name_display} (Leveling Up): ")
-
-                        if not level_up_input or not level_up_input.strip():
-                            continue
+                    # TABLETOP MODE: Suppress TTS during level-up interview flow
+                    with _tts_block_scope():
+                        # Get the first message from the session
+                        dm_response = level_up_session.start()
                     
-                        # Handle the input and get the next AI response from the session
-                        dm_response = level_up_session.handle_input(level_up_input)
-
-                        # Check if the response is the final JSON or a conversational step
-                        try:
-                            # It's the final JSON response
-                            parsed_data = json.loads(dm_response)
-                            final_narration = parsed_data.get("narration", "Level up complete!")
-                            print(colored("Dungeon Master:", "blue"), colored(final_narration, "blue"))
-                            # The session is now complete, loop will exit
-                        except (json.JSONDecodeError, TypeError):
-                            # It's a normal conversational response
-                            print(colored("Dungeon Master:", "blue"), colored(dm_response, "blue"))
-
-                    # After the loop, the session is complete.
-                    if level_up_session.success:
-                        debug("SUCCESS: Level up successful. Using final narration for context.", category="level_up")
-                        # Add the final, high-quality narration to the history as the definitive AI response.
-                        # This provides perfect context for the next turn without an extra AI call.
-                        conversation_history.append({"role": "assistant", "content": json.dumps({"narration": final_narration, "actions": []})})
+                        # Display the first message and add to history
+                        print(colored("Dungeon Master:", "blue"), colored(dm_response, "blue"))
+                        conversation_history.append({"role": "assistant", "content": dm_response})
                         save_conversation_history(conversation_history)
-                    else:
-                        # If the level up failed, inform the player and log it.
-                        print(colored("Dungeon Master:", "red"), colored(level_up_session.summary, "red"))
-                        conversation_history.append({"role": "system", "content": level_up_session.summary})
-                        save_conversation_history(conversation_history)
+
+                        # Loop until the session is complete
+                        while not level_up_session.is_complete:
+                            # Get player input
+                            player_name_display = f"{SOLID_GREEN}{player_name_actual}{RESET_COLOR}"
+                            level_up_input = input(f"{player_name_display} (Leveling Up): ")
+
+                            if not level_up_input or not level_up_input.strip():
+                                continue
+                        
+                            # Handle the input and get the next AI response from the session
+                            dm_response = level_up_session.handle_input(level_up_input)
+
+                            # Check if the response is the final JSON or a conversational step
+                            try:
+                                # It's the final JSON response
+                                parsed_data = json.loads(dm_response)
+                                final_narration = parsed_data.get("narration", "Level up complete!")
+                                print(colored("Dungeon Master:", "blue"), colored(final_narration, "blue"))
+                                # The session is now complete, loop will exit
+                            except (json.JSONDecodeError, TypeError):
+                                # It's a normal conversational response
+                                print(colored("Dungeon Master:", "blue"), colored(dm_response, "blue"))
+
+                        # After the loop, the session is complete.
+                        if level_up_session.success:
+                            debug("SUCCESS: Level up successful. Using final narration for context.", category="level_up")
+                            # Add the final, high-quality narration to the history as the definitive AI response.
+                            # This provides perfect context for the next turn without an extra AI call.
+                            conversation_history.append({"role": "assistant", "content": json.dumps({"narration": final_narration, "actions": []})})
+                            save_conversation_history(conversation_history)
+                        else:
+                            # If the level up failed, inform the player and log it.
+                            print(colored("Dungeon Master:", "red"), colored(level_up_session.summary, "red"))
+                            conversation_history.append({"role": "system", "content": level_up_session.summary})
+                            save_conversation_history(conversation_history)
 
                     # Break the outer validation loop and proceed to the next turn.
                     break 

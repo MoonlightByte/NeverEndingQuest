@@ -82,6 +82,14 @@ function openManagePartyModal() {
         return;
     }
 
+    // TABLETOP MODE: Force reset and sanitize Roll Your Own state on every open
+    // Prevents stale field carryover from prior UI state/autofill
+    resetQuickCreateState();
+    clearQuickCreateAutofillResidue();
+    
+    // Force default tab to prevent landing on Roll Your Own with stale values
+    switchManageTab('add-existing');
+
     modal.style.display = 'block';
     loadExistingCharacters();
 }
@@ -612,6 +620,33 @@ function resetQuickCreateState() {
     if (submitBtn) {
         submitBtn.textContent = 'Create & Add to Party';
     }
+}
+
+// TABLETOP MODE: Clear residual autofill values from Roll Your Own form fields
+// Called on Manage Party open to prevent stale field carryover (e.g., equipment from prior characters)
+function clearQuickCreateAutofillResidue() {
+    const form = document.getElementById('quick-create-form');
+    if (!form) return;
+    
+    // Fields likely to carry stale autofill/narrative values
+    const fieldsToClear = [
+        'equipment',
+        'attacks',
+        'personality_traits',
+        'ideals',
+        'bonds',
+        'flaws',
+        'backstory',
+        'background_feature_name',
+        'background_feature_description'
+    ];
+    
+    fieldsToClear.forEach(fieldName => {
+        const field = form.querySelector(`[name="${fieldName}"]`);
+        if (field) {
+            field.value = '';
+        }
+    });
 }
 
 // TABLETOP MODE: Quick Create form submit (Manage Party create flow only)

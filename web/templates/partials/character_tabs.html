@@ -66,7 +66,7 @@
 
             <!-- Tab: Roll Your Own -->
             <div id="tab-quick-create" class="manage-tab-content" style="display: none;">
-                <form id="quick-create-form" class="save-form">
+                <form id="quick-create-form" class="save-form" autocomplete="off">
                     <h4 style="margin: 0 0 8px 0; color: #ddd;">Identity</h4>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                         <div>
@@ -191,11 +191,11 @@
                 <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
                     <div>
                         <label for="quick-create-equipment">Equipment (comma-separated)</label>
-                        <input type="text" id="quick-create-equipment" name="equipment" placeholder="Longsword, Shield, Rope">
+                        <input type="text" id="quick-create-equipment" name="equipment" placeholder="Longsword, Shield, Rope" autocomplete="off">
                     </div>
                     <div>
                         <label for="quick-create-attacks">Attacks (comma-separated)</label>
-                        <input type="text" id="quick-create-attacks" name="attacks" placeholder="Longsword, Handaxe">
+                        <input type="text" id="quick-create-attacks" name="attacks" placeholder="Longsword, Handaxe" autocomplete="off">
                     </div>
                 </div>
 
@@ -274,7 +274,7 @@
         
         <div class="npc-details-body">
             <!-- Roll Your Own Form for Edit Only -->
-            <form id="manage-pc-form" class="save-form">
+            <form id="manage-pc-form" class="save-form" autocomplete="off">
                 <!-- Hidden field to track which character we're editing -->
                 <input type="hidden" name="character_name" id="manage-pc-character-name">
                 

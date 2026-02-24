@@ -3158,15 +3158,15 @@ Player: {initial_prompt_text}"""
 
        if cmd in ["/help", "\\help"]:
            help_msg = (
-               "Dungeon Master: [SYSTEM] Available Combat Commands:\n"
+               "[skipTTS] Dungeon Master: [SYSTEM] Available Combat Commands:\n"
                "  /stats      - View full character stats\n"
-                "  /hp [val]   - Combat Heal (positive) or damage (negative)\n"
-                "  /att [target] [roll] [weapon] - Attack a target\n"
-                "  /dmg [val]  - Apply damage\n"
-                "  /init [1-20] - Set PC group initiative roll\n"
-                "  /end        - End PC combat turn\n"
-                "  /end_combat - Force end the current combat encounter\n"
-                "  /save       - Save current game state\n"
+               "  /hp [val]   - Combat Heal (positive) or damage (negative)\n"
+               "  /att [target] [roll] [weapon] - Attack a target\n"
+               "  /dmg [val]  - Apply damage\n"
+               "  /init [1-20] - Set PC group initiative roll\n"
+               "  /end        - End PC combat turn\n"
+               "  /end_combat - Force end the current combat encounter\n"
+               "  /save       - Save current game state\n"
                "  /quit       - Exit the game\n"
                "  /help       - Show this help message"
            )

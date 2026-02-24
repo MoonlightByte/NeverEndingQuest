@@ -2214,6 +2214,182 @@ class TestNpcPromptEnrichmentHydrationContracts(unittest.TestCase):
                       "Hydration helper must be exported in __all__")
 
 
+class TestPartyPopupQualityContracts(unittest.TestCase):
+    """Contracts for non-combat party strip popup media selection quality."""
+
+    def _read_game_interface_source(self) -> str:
+        html_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "templates", "game_interface.html"
+        )
+        with open(html_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def test_party_render_uses_separate_tile_and_popup_candidate_lists(self):
+        """Test: Party strip uses separate candidate lists for tile and popup."""
+        source = self._read_game_interface_source()
+        self.assertIn("const tileImageCandidates = member.type === 'player'", source)
+        self.assertIn("const popupImageCandidates = member.type === 'player'", source)
+        self.assertIn("applyFirstAvailableImage(tileImageCandidates", source)
+        self.assertIn("applyFirstAvailableImage(popupImageCandidates", source)
+
+    def test_popup_candidates_prioritize_full_images_before_thumb(self):
+        """Test: Popup candidates prioritize full images (.jpg/.png) before thumb."""
+        source = self._read_game_interface_source()
+        start = source.find("const popupImageCandidates = member.type === 'player'")
+        self.assertNotEqual(start, -1, "popupImageCandidates block must exist")
+        end = source.find("item.style.backgroundSize = 'cover';", start)
+        self.assertNotEqual(end, -1, "popupImageCandidates block end marker must exist")
+        block = source[start:end]
+
+        idx_jpg = block.find("withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta)")
+        idx_png = block.find("withAssetVersion(`${npcBasePath}.png`, versionFromMeta)")
+        idx_thumb = block.find("withAssetVersion(`${npcBasePath}_thumb.jpg`, versionFromMeta)")
+
+        self.assertTrue(idx_jpg != -1 and idx_png != -1 and idx_thumb != -1,
+                       "All three variants (.jpg, .png, _thumb.jpg) must be present in popup block")
+        self.assertLess(idx_jpg, idx_thumb, "Popup should prefer full JPG before thumb")
+        self.assertLess(idx_png, idx_thumb, "Popup should prefer full PNG before thumb")
+
+    def test_tile_candidates_use_thumb_first(self):
+        """Test: Tile rendering uses thumb-first ordering for fast loading."""
+        source = self._read_game_interface_source()
+        start = source.find("const tileImageCandidates = member.type === 'player'")
+        self.assertNotEqual(start, -1, "tileImageCandidates block must exist")
+        end = source.find("item.style.backgroundSize = 'cover';", start)
+        self.assertNotEqual(end, -1, "tileImageCandidates block end marker must exist")
+        block = source[start:end]
+
+        # For player type: playerPortraitUrl comes first (optimal for PCs)
+        # For NPC type: _thumb.jpg should come before full images
+        idx_thumb = block.find("withAssetVersion(`${npcBasePath}_thumb.jpg`, versionFromMeta)")
+        idx_jpg = block.find("withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta)")
+        idx_png = block.find("withAssetVersion(`${npcBasePath}.png`, versionFromMeta)")
+
+        # For NPC branch (which is the second branch), thumb should come first
+        npc_branch_start = block.find("[")
+        self.assertNotEqual(npc_branch_start, -1, "NPC branch should exist")
+        self.assertLess(idx_thumb, idx_jpg, "Tile should use thumb before full JPG for fast loading")
+        self.assertLess(idx_thumb, idx_png, "Tile should use thumb before full PNG for fast loading")
+
+    def test_video_candidates_remain_first_in_popup_flow(self):
+        """Test: Video candidates are still checked before popup image fallback."""
+        source = self._read_game_interface_source()
+        # Verify video candidates are defined before popup candidates
+        video_idx = source.find("const videoCandidates = member.type === 'player'")
+        popup_idx = source.find("const popupImageCandidates = member.type === 'player'")
+        self.assertNotEqual(video_idx, -1, "videoCandidates must exist")
+        self.assertNotEqual(popup_idx, -1, "popupImageCandidates must exist")
+        self.assertLess(video_idx, popup_idx, "Video candidates should be defined before popup candidates")
+        
+        # Verify video is tried first in click handler
+        click_handler_start = source.find("item.addEventListener('click', function() {")
+        self.assertNotEqual(click_handler_start, -1, "Click handler must exist")
+        try_video_idx = source.find("tryVideoAt(videoCandidates)", click_handler_start)
+        self.assertNotEqual(try_video_idx, -1, "tryVideoAt must be called with videoCandidates")
+
+
+class TestPortraitDownloadBestResolutionContracts(unittest.TestCase):
+    """Contracts for best-resolution PC portrait download via sidebar button."""
+
+    def _read_game_interface_source(self) -> str:
+        html_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "templates", "game_interface.html"
+        )
+        with open(html_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def _read_portrait_service_source(self) -> str:
+        py_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core",
+            "toolkit", "portrait_service.py"
+        )
+        with open(py_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def _read_web_interface_source(self) -> str:
+        py_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "web_interface.py"
+        )
+        with open(py_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def test_download_candidates_priority(self):
+        """Test: downloadPortrait() prioritizes hi-res and full NPC images."""
+        source = self._read_game_interface_source()
+        start_idx = source.find("const candidateDownloadUrls = [")
+        self.assertNotEqual(start_idx, -1, "candidateDownloadUrls definition not found")
+        end_idx = source.find("];", start_idx)
+        self.assertNotEqual(end_idx, -1, "candidateDownloadUrls end not found")
+        candidates_block = source[start_idx:end_idx]
+
+        self.assertLess(
+            candidates_block.find("`/static/portraits/${normalizedName}_full.png`"),
+            candidates_block.find("`/media/npcs/${normalizedName}.jpg`"),
+            "_full.png should be preferred over NPC .jpg"
+        )
+        self.assertLess(
+            candidates_block.find("`/media/npcs/${normalizedName}.jpg`"),
+            candidates_block.find("`/static/portraits/${normalizedName}.png`"),
+            "NPC .jpg should be preferred over legacy .png"
+        )
+        self.assertLess(
+            candidates_block.find("`/static/portraits/${normalizedName}.png`"),
+            candidates_block.find("portraitImg.src"),
+            "Legacy .png should be preferred over current img.src"
+        )
+
+    def test_portrait_create_saves_hi_res_sidecar(self):
+        """Test: generate_and_save_portrait() saves _full.png sidecar."""
+        source = self._read_portrait_service_source()
+        self.assertIn("static_full_path = static_dir / f\"{normalized_name}_full.png\"", source)
+        self.assertIn("module_full_path = module_dir / f\"{normalized_name}_full.png\"", source)
+        self.assertIn("full_res_image.save(static_full_path, 'PNG')", source)
+        self.assertIn("full_res_image.save(module_full_path, 'PNG')", source)
+
+    def test_upload_portrait_saves_hi_res_sidecar(self):
+        """Test: /upload-portrait saves _full.png sidecar after crop."""
+        source = self._read_web_interface_source()
+        self.assertIn("full_res_image.save(save_full_path, 'PNG')", source)
+        self.assertIn("full_res_image.save(module_full_path, 'PNG')", source)
+        self.assertIn("compat_image = full_res_image.resize((256, 256), Image.Resampling.LANCZOS)", source,
+                      "Should still resize for legacy compatibility")
+
+    def test_upload_portrait_normalizes_before_full_save(self):
+        """Test: normalization and module resolution occur before hi-res saves."""
+        source = self._read_web_interface_source()
+        norm_idx = source.find("normalized_filename = normalize_character_name")
+        save_full_idx = source.find("save_full_filename = f\"{normalized_filename}_full.png\"")
+        module_dir_idx = source.find("module_portraits_dir = os.path.join")
+        module_full_idx = source.find("module_full_path = os.path.join")
+        self.assertNotEqual(norm_idx, -1, "Normalization assignment missing")
+        self.assertNotEqual(save_full_idx, -1, "save_full_filename definition missing")
+        self.assertLess(norm_idx, save_full_idx, "Normalization must occur before hi-res save")
+        if module_full_idx != -1 and module_dir_idx != -1:
+            self.assertLess(module_dir_idx, module_full_idx,
+                            "Module directory resolution should occur before module full save")
+
+    def test_legacy_256_save_paths_remain_present(self):
+        """Test: Legacy 256x256 .png save paths are still present."""
+        ps_source = self._read_portrait_service_source()
+        wi_source = self._read_web_interface_source()
+
+        self.assertIn("compat_image.save(static_path, 'PNG')", ps_source)
+        self.assertIn("compat_image.save(module_path, 'PNG')", ps_source)
+        self.assertIn("compat_image.save(save_path, 'PNG')", wi_source)
+        self.assertIn("compat_image.save(module_save_path, 'PNG')", wi_source)
+
+    def test_portrait_service_preserves_full_res_before_resize(self):
+        """Test: portrait service preserves pre-resize image copies for _full.png."""
+        source = self._read_portrait_service_source()
+        self.assertIn("full_res_image = img.convert('RGBA')", source)
+        self.assertIn("compat_image = full_res_image.resize", source)
+        self.assertIn("full_res_image.save(static_full_path, 'PNG')", source)
+        self.assertIn("compat_image.save(static_path, 'PNG')", source)
+
+
 if __name__ == "__main__":
     # Run tests with verbose output
     unittest.main(verbosity=2)

@@ -111,7 +111,7 @@ try:
     MISSING_MEDIA_AUTOGEN_AVAILABLE = True
 except ImportError:
     MISSING_MEDIA_AUTOGEN_AVAILABLE = False
-from web.output_markers import extract_output_markers
+from web.output_markers import extract_output_markers, detect_tts_scope_marker
 from web.routes.browser_settings_routes import register_browser_settings_routes
 from web.routes.character_sheet_routes import (
     export_character_pdf_impl,
@@ -516,6 +516,9 @@ class WebOutputCapture:
         self.buffer = ""
         self.in_dm_section = False
         self.dm_buffer = []
+        # TABLETOP MODE: Track TTS scope markers for non-narrative flow suppression
+        self.tts_block_depth = 0
+        self.supports_tts_scope_markers = True
     
     def write(self, text):
         # Write to original stream for console visibility (with error handling)
@@ -543,6 +546,12 @@ class WebOutputCapture:
             for line in lines[:-1]:
                 # Clean the line of ANSI codes for checking content
                 clean_line = self.strip_ansi_codes(line)
+                
+                # TABLETOP MODE: Detect and apply TTS scope markers for non-narrative flow suppression
+                scope_delta = detect_tts_scope_marker(clean_line)
+                if scope_delta != 0:
+                    self.tts_block_depth = max(0, self.tts_block_depth + scope_delta)
+                    continue  # Do not emit marker lines to output
                 
                 # Check if this is a player status/prompt line
                 # TABLETOP MODE: Exclude [skipTTS] messages from player prompt filtering
@@ -596,7 +605,7 @@ class WebOutputCapture:
                                     message = {
                                         'type': 'narration',
                                         'content': combined_content,
-                                        'skipTTS': skip_tts,  # TABLETOP MODE: Flag for TTS filtering
+                                        'skipTTS': (skip_tts or self.tts_block_depth > 0),  # TABLETOP MODE: Flag for TTS filtering
                                         'prefillInput': prefill_input  # TABLETOP MODE: Auto-fill input field
                                     }
                                     game_output_queue.put(message)
@@ -650,7 +659,7 @@ class WebOutputCapture:
                                         message = {
                                             'type': 'narration',
                                             'content': combined_content,
-                                            'skipTTS': skip_tts,  # TABLETOP MODE: Flag for TTS filtering
+                                            'skipTTS': (skip_tts or self.tts_block_depth > 0),  # TABLETOP MODE: Flag for TTS filtering
                                             'prefillInput': prefill_input  # TABLETOP MODE: Auto-fill input field
                                         }
                                         game_output_queue.put(message)
@@ -704,7 +713,7 @@ class WebOutputCapture:
                 message = {
                     'type': 'narration',
                     'content': combined_content,
-                    'skipTTS': skip_tts,  # TABLETOP MODE: Flag for TTS filtering
+                    'skipTTS': (skip_tts or self.tts_block_depth > 0),  # TABLETOP MODE: Flag for TTS filtering
                     'prefillInput': prefill_input  # TABLETOP MODE: Auto-fill input field
                 }
                 game_output_queue.put(message)
@@ -1039,6 +1048,28 @@ def upload_portrait():
             portraits_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'portraits')
             os.makedirs(portraits_dir, exist_ok=True)
 
+            # Normalize character name for filename to match Create endpoint semantics
+            # and align with frontend portrait lookup conventions
+            from updates.update_character_info import normalize_character_name
+            normalized_filename = normalize_character_name(character_name)
+
+            # Resolve module portrait directory (fail-open)
+            current_module = ''
+            module_portraits_dir: Optional[str] = None
+            try:
+                party_tracker_path = 'party_tracker.json'
+                if os.path.exists(party_tracker_path):
+                    with open(party_tracker_path, 'r', encoding='utf-8') as f:
+                        party_tracker = json.load(f)
+                        current_module = party_tracker.get('module', '').replace(' ', '_')
+                        if current_module:
+                            from utils.module_path_manager import ModulePathManager
+                            manager = ModulePathManager(current_module)
+                            module_portraits_dir = os.path.join(manager.get_module_dir(), 'portraits')
+                            os.makedirs(module_portraits_dir, exist_ok=True)
+            except Exception as module_dir_error:
+                warning(f"PORTRAIT: Could not resolve module portrait directory: {module_dir_error}")
+
             # Open the image with Pillow
             img = Image.open(file.stream)
 
@@ -1053,40 +1084,39 @@ def upload_portrait():
                 right = (width + min_dim) / 2
                 bottom = (height + min_dim) / 2
                 img = img.crop((left, top, right, bottom))
-            
-            # Resize to a standard size (e.g., 256x256) for consistency
-            img = img.resize((256, 256), Image.Resampling.LANCZOS)
 
-            # Normalize character name for filename to match Create endpoint semantics
-            # and align with frontend portrait lookup conventions
-            from updates.update_character_info import normalize_character_name
-            normalized_filename = normalize_character_name(character_name)
-            
-            # Save the processed image as PNG in web static folder
+            # Save the original cropped image as _full.png (hi-res sidecar)
+            full_res_image = img.convert('RGBA') if img.mode != 'RGBA' else img.copy()
+            save_full_filename = f"{normalized_filename}_full.png"
+            save_full_path = os.path.join(portraits_dir, save_full_filename)
+            full_res_image.save(save_full_path, 'PNG')
+            info(f"PORTRAIT: Saved hi-res portrait sidecar for {character_name} to {save_full_path}")
+
+            if module_portraits_dir:
+                try:
+                    module_full_path = os.path.join(module_portraits_dir, save_full_filename)
+                    full_res_image.save(module_full_path, 'PNG')
+                    info(f"PORTRAIT: Also saved hi-res sidecar to module folder at {module_full_path}")
+                except Exception as module_full_error:
+                    warning(f"PORTRAIT: Could not save hi-res sidecar to module folder: {module_full_error}")
+
+            # Resize to a standard size (e.g., 256x256) for consistency and UI compatibility
+            compat_image = full_res_image.resize((256, 256), Image.Resampling.LANCZOS)
+
+            # Save the processed image as PNG in web static folder (256x256 asset)
             save_filename = f"{normalized_filename}.png"
             save_path = os.path.join(portraits_dir, save_filename)
-            img.save(save_path, 'PNG')
-            
+            compat_image.save(save_path, 'PNG')
+
             # Also save to the character's module folder for persistence
-            try:
-                # Get current module from party tracker
-                party_tracker_path = 'party_tracker.json'
-                if os.path.exists(party_tracker_path):
-                    with open(party_tracker_path, 'r', encoding='utf-8') as f:
-                        party_tracker = json.load(f)
-                        current_module = party_tracker.get('module', '').replace(' ', '_')
-                        
-                        if current_module:
-                            from utils.module_path_manager import ModulePathManager
-                            manager = ModulePathManager(current_module)
-                            module_portraits_dir = os.path.join(manager.get_module_dir(), 'portraits')
-                            os.makedirs(module_portraits_dir, exist_ok=True)
-                            module_save_path = os.path.join(module_portraits_dir, save_filename)
-                            img.save(module_save_path, 'PNG')
-                            info(f"PORTRAIT: Also saved to module folder at {module_save_path}")
-            except Exception as e:
-                warning(f"PORTRAIT: Could not save to module folder: {e}")
-            
+            if module_portraits_dir:
+                try:
+                    module_save_path = os.path.join(module_portraits_dir, save_filename)
+                    compat_image.save(module_save_path, 'PNG')
+                    info(f"PORTRAIT: Also saved compatibility portrait to module folder at {module_save_path}")
+                except Exception as module_error:
+                    warning(f"PORTRAIT: Could not save compatibility portrait to module folder: {module_error}")
+
             info(f"PORTRAIT: Saved new portrait for {character_name} to {save_path}")
             return jsonify({'success': True, 'message': 'Portrait uploaded successfully'})
 

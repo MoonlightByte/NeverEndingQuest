@@ -5325,41 +5325,70 @@
                 return;
             }
             
-            // Fetch the image and trigger download
-            fetch(portraitImg.src)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Failed to fetch portrait image');
-                    }
-                    return response.blob();
-                })
-                .then(blob => {
-                    const url = window.URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    const safeName = String(characterName || 'character')
-                        .trim()
-                        .replace(/[^a-zA-Z0-9_-]+/g, '_')
-                        .replace(/^_+|_+$/g, '') || 'character';
-                    const filename = `${safeName}_portrait.png`;
-                    link.href = url;
-                    link.download = filename;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    window.URL.revokeObjectURL(url);
-                    
+            // TABLETOP MODE: Resolve best available source for download (full-res preferred).
+            // Do not rely only on portraitImg.src, as it might be a lower-res version.
+            const normalizedName = normalizePortraitSlug(characterName || 'character');
+            const safeName = String(characterName || 'character')
+                .trim()
+                .replace(/[^a-zA-Z0-9_-]+/g, '_')
+                .replace(/^_+|_+$/g, '') || 'character';
+
+            const candidateDownloadUrls = [
+                // 1. New hi-res PC portrait sidecar
+                `/static/portraits/${normalizedName}_full.png`,
+                // 2. NPC full-res variants (for promoted NPCs)
+                `/media/npcs/${normalizedName}.jpg`,
+                `/media/npcs/${normalizedName}.png`,
+                // 3. Legacy 256x256 PC portrait
+                `/static/portraits/${normalizedName}.png`,
+                // 4. Current image source as last resort
+                portraitImg.src
+            ];
+
+            // Recursive function to try downloading from candidates
+            const tryDownloadCandidate = (urls) => {
+                if (!urls.length) {
                     addMessage('game-output', { 
                         type: 'system', 
-                        content: `Portrait downloaded as ${filename}` 
+                        content: 'Failed to find a suitable portrait image to download.' 
                     });
-                })
-                .catch(err => {
-                    console.error('Download portrait error:', err);
-                    addMessage('game-output', { 
-                        type: 'system', 
-                        content: 'Failed to download portrait. Please try again.' 
+                    console.error('Download portrait error: No suitable URL found in candidates.');
+                    return;
+                }
+
+                const [currentUrl, ...restUrls] = urls;
+                fetch(currentUrl)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`Failed to fetch ${currentUrl} (Status: ${response.status})`);
+                        }
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        const url = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        // Use original extension if available, otherwise default to png
+                        const extension = currentUrl.split('.').pop().split('?')[0];
+                        const filename = `${safeName}_portrait.${extension || 'png'}`;
+                        link.href = url;
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        window.URL.revokeObjectURL(url);
+                        
+                        addMessage('game-output', { 
+                            type: 'system', 
+                            content: `Portrait downloaded as ${filename}` 
+                        });
+                    })
+                    .catch(err => {
+                        console.warn(`Failed to download from ${currentUrl}: ${err.message}. Trying next candidate.`);
+                        tryDownloadCandidate(restUrls); // Try the next URL in the list
                     });
-                });
+            };
+
+            tryDownloadCandidate(candidateDownloadUrls);
         }
 
         function processPortraitUpload(file, characterName) {
@@ -6105,9 +6134,15 @@
                 header.appendChild(author);
                 header.appendChild(badge);
                 
+                // TABLETOP MODE: Hard gate for non-narrative/system TTS
+                const isSystemContent = message.content.includes('[SYSTEM]') ||
+                                       message.content.includes('---') ||
+                                       /^\s*\/\w+/.test(message.content);
+                const shouldSkipTTS = message.skipTTS || isSystemContent;
+                
                 // TABLETOP MODE: Only show TTS and Image buttons for narrative content (not mechanical messages)
                 let ttsButton = null;
-                if (!message.skipTTS) {
+                if (!shouldSkipTTS) {
                     // Create TTS button
                     ttsButton = document.createElement('button');
                     ttsButton.className = 'tts-button';
@@ -6149,11 +6184,8 @@
                 // TABLETOP MODE: Auto-play TTS if enabled (but skip for cached messages, system text, and Python-mechanical messages)
                 const isTTSEnabled = document.getElementById('tts-toggle').checked;
                 const isAutoplayEnabled = document.getElementById('tts-autoplay-toggle').checked;
-                const isSystemContent = message.content.includes('[SYSTEM]') ||
-                                       message.content.includes('---') ||
-                                       /^\s*\/\w+/.test(message.content);
-                const shouldSkipTTS = message.skipTTS || false;  // Python-mechanical messages have skipTTS flag
-                if (!skipAutoplay && !isSystemContent && !shouldSkipTTS && isTTSEnabled && isAutoplayEnabled && ttsButton) {
+                // shouldSkipTTS already includes system content check from above
+                if (!skipAutoplay && !shouldSkipTTS && isTTSEnabled && isAutoplayEnabled && ttsButton) {
                     // TABLETOP MODE: Avoid initial full-block flash before sync begins.
                     // Pre-initialize reveal mode for Browser autoplay when word sync is enabled.
                     if (wordSyncEnabled && getSelectedTTSEngine() === 'browser') {
@@ -8008,7 +8040,9 @@
                     const videoCandidates = member.type === 'player'
                         ? [`${npcBasePath}_video.mp4`]
                         : [`${npcBasePath}_video.mp4`];
-                    const imageCandidates = member.type === 'player'
+
+                    // TABLETOP MODE: Keep strip render fast (thumb-first) but popup quality high (full-first).
+                    const tileImageCandidates = member.type === 'player'
                         ? [
                             playerPortraitUrl,
                             withAssetVersion(`${npcBasePath}_thumb.jpg`, versionFromMeta),
@@ -8019,6 +8053,19 @@
                             withAssetVersion(`${npcBasePath}_thumb.jpg`, versionFromMeta),
                             withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta),
                             withAssetVersion(`${npcBasePath}.png`, versionFromMeta),
+                        ];
+
+                    const popupImageCandidates = member.type === 'player'
+                        ? [
+                            withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta),
+                            withAssetVersion(`${npcBasePath}.png`, versionFromMeta),
+                            playerPortraitUrl,
+                            withAssetVersion(`${npcBasePath}_thumb.jpg`, versionFromMeta),
+                        ]
+                        : [
+                            withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta),
+                            withAssetVersion(`${npcBasePath}.png`, versionFromMeta),
+                            withAssetVersion(`${npcBasePath}_thumb.jpg`, versionFromMeta),
                         ];
 
                     item.style.backgroundSize = 'cover';
@@ -8040,7 +8087,7 @@
                         );
                     };
 
-                    applyFirstAvailableImage(imageCandidates, (hasImage, selectedImage) => {
+                    applyFirstAvailableImage(tileImageCandidates, (hasImage, selectedImage) => {
                         item.style.backgroundImage = hasImage ? `url('${selectedImage}')` : '';
                     });
 
@@ -8070,7 +8117,7 @@
                         // If not, fall back to showing the full-size image.
                         const tryVideoAt = (urls) => {
                             if (!urls.length) {
-                                applyFirstAvailableImage(imageCandidates, (hasImage, selectedImage) => {
+                                applyFirstAvailableImage(popupImageCandidates, (hasImage, selectedImage) => {
                                     if (hasImage) {
                                         showImagePopup(item, selectedImage);
                                     }
@@ -10133,7 +10180,7 @@
 
                 const wordsPerMinute = 165 * Math.max(0.5, Math.min(2.0, utterance.rate || 1.0));
                 const baseDurationMs = Math.round((wordEndIndexes.length / wordsPerMinute) * 60000);
-                const fauxSyncSlowdownFactor = 3.0;  // TABLETOP MODE: Slower estimated reveal pacing
+                const fauxSyncSlowdownFactor = 3.1;  // TABLETOP MODE: Slower estimated reveal pacing
                 const estimatedDurationMs = Math.max(1200, Math.min(60000, Math.round(baseDurationMs * fauxSyncSlowdownFactor)));
                 const tickMs = Math.max(30, Math.round(estimatedDurationMs / wordEndIndexes.length));
 
@@ -10187,8 +10234,12 @@
                 currentBoundaryFallbackTimer = setTimeout(() => {
                     currentBoundaryFallbackTimer = null;
                     if (!hasBoundaryEvent && currentBrowserUtterance === utterance) {
-                        console.log('[TTS] No boundary events detected, using estimated timeline fallback');
-                        startEstimatedTimelineFallback();
+                        // TABLETOP MODE: Boundary sync not available - reveal full text immediately after 1s watchdog
+                        hasBoundaryEvent = true; // Block any late boundary events
+                        finalizeReveal(revealState); // Reveal all text immediately
+                        clearRevealMode(targetMessageDiv); // Clean up reveal spans
+                        targetMessageDiv.classList.remove('reveal-mode'); // Remove reveal mode class
+                        revealState = null; // Clear reveal state
                     }
                 }, 1000);
             }

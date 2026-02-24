@@ -281,6 +281,108 @@ class TestCharacterSheetEditUIContracts(unittest.TestCase):
         self.assertIn('resetQuickCreateState()', source,
                       "resetQuickCreateState should be called")
 
+    def test_clear_autofill_residue_function_exists(self):
+        """Test: Helper to clear autofill residue exists and targets risk fields."""
+        js_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "static", "js", "tabletop_mode.js"
+        )
+        
+        with open(js_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        self.assertIn('function clearQuickCreateAutofillResidue()', source,
+                      "clearQuickCreateAutofillResidue should exist")
+        
+        # Verify it targets high-risk fields for stale carryover
+        self.assertIn("'equipment'", source,
+                      "Should clear equipment field")
+        self.assertIn("'attacks'", source,
+                      "Should clear attacks field")
+        self.assertIn("'personality_traits'", source,
+                      "Should clear personality_traits field")
+        self.assertIn("'backstory'", source,
+                      "Should clear backstory field")
+
+    def test_open_manage_party_resets_and_sanitizes(self):
+        """Test: openManagePartyModal resets state and clears autofill before loading."""
+        js_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "static", "js", "tabletop_mode.js"
+        )
+        
+        with open(js_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        # Find openManagePartyModal function
+        func_start = source.find('function openManagePartyModal()')
+        self.assertGreater(func_start, 0, "openManagePartyModal should exist")
+        
+        # Get function body (until next function or modal display)
+        next_func = source.find('\nfunction ', func_start + 1)
+        func_body = source[func_start:next_func if next_func != -1 else len(source)]
+        
+        # Should call reset and sanitize before loadExistingCharacters
+        load_existing_pos = func_body.find('loadExistingCharacters()')
+        self.assertGreater(load_existing_pos, 0, "Should call loadExistingCharacters")
+        
+        reset_state_pos = func_body.find('resetQuickCreateState()')
+        clear_residue_pos = func_body.find('clearQuickCreateAutofillResidue()')
+        switch_tab_pos = func_body.find("switchManageTab('add-existing')")
+        
+        # All sanitization must happen before loading characters
+        self.assertLess(reset_state_pos, load_existing_pos,
+                       "resetQuickCreateState must be called before loadExistingCharacters")
+        self.assertLess(clear_residue_pos, load_existing_pos,
+                       "clearQuickCreateAutofillResidue must be called before loadExistingCharacters")
+        self.assertLess(switch_tab_pos, load_existing_pos,
+                       "switchManageTab must be called before loadExistingCharacters")
+
+    def test_forms_have_autocomplete_off(self):
+        """Test: Roll Your Own and Manage PC forms disable browser autofill."""
+        html_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "templates", "partials", "character_tabs.html"
+        )
+        
+        with open(html_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        # Both forms should have autocomplete="off"
+        self.assertIn('id="quick-create-form"', source,
+                      "quick-create-form should exist")
+        self.assertIn('id="manage-pc-form"', source,
+                      "manage-pc-form should exist")
+        
+        # Check for autocomplete="off" on forms
+        quick_create_form_section = source.split('id="quick-create-form"')[1].split('>')[0]
+        self.assertIn('autocomplete="off"', quick_create_form_section,
+                      "quick-create-form should have autocomplete=\"off\"")
+        
+        manage_pc_form_section = source.split('id="manage-pc-form"')[1].split('>')[0]
+        self.assertIn('autocomplete="off"', manage_pc_form_section,
+                      "manage-pc-form should have autocomplete=\"off\"")
+
+    def test_high_risk_fields_have_autocomplete_off(self):
+        """Test: Equipment and attacks inputs disable browser autofill."""
+        html_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "templates", "partials", "character_tabs.html"
+        )
+        
+        with open(html_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        # Equipment input should have autocomplete="off"
+        equipment_section = source.split('id="quick-create-equipment"')[1].split('>')[0]
+        self.assertIn('autocomplete="off"', equipment_section,
+                      "quick-create-equipment should have autocomplete=\"off\"")
+        
+        # Attacks input should have autocomplete="off"
+        attacks_section = source.split('id="quick-create-attacks"')[1].split('>')[0]
+        self.assertIn('autocomplete="off"', attacks_section,
+                      "quick-create-attacks should have autocomplete=\"off\"")
+
 
 class TestUpdateManualBackendContract(unittest.TestCase):
     """Test suite for /api/party/update_manual endpoint (Step 2 verification)."""

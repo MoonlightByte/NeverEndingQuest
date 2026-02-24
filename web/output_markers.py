@@ -11,6 +11,28 @@ from typing import Optional, Tuple
 
 PREFILL_PATTERN = re.compile(r'\[prefill:([^\]]+)\]')
 
+# TTS scope markers for non-narrative flow suppression
+TTS_BLOCK_ON_MARKER = "[TTS_BLOCK_ON]"
+TTS_BLOCK_OFF_MARKER = "[TTS_BLOCK_OFF]"
+
+
+def detect_tts_scope_marker(content: str) -> int:
+    """Detect TTS scope control markers.
+
+    Returns:
+        +1 if content contains [TTS_BLOCK_ON]
+        -1 if content contains [TTS_BLOCK_OFF]
+        0 if neither marker is present
+    """
+    if not isinstance(content, str):
+        return 0
+    stripped = content.strip()
+    if stripped == TTS_BLOCK_ON_MARKER:
+        return +1
+    if stripped == TTS_BLOCK_OFF_MARKER:
+        return -1
+    return 0
+
 
 def extract_output_markers(content: str) -> Tuple[str, bool, Optional[str]]:
     """Extract skipTTS and prefill markers from output content.
