@@ -5573,9 +5573,19 @@ if __name__ == '__main__':
     # Create templates directory if it doesn't exist
     os.makedirs('templates', exist_ok=True)
     
-    # Start browser opening in a separate thread
-    browser_thread = threading.Thread(target=open_browser, daemon=True)
-    browser_thread.start()
+    # TABLETOP MODE: One-shot browser open per launcher session
+    # Read env var from launcher; default to "1" for direct/manual runs
+    open_browser_flag = os.environ.get("NEQ_OPEN_BROWSER", "1").strip().lower()
+    should_open_browser = open_browser_flag not in ("0", "false", "no", "off")
+    
+    if should_open_browser:
+        # Set env var to "0" immediately to prevent os.execv restarts from reopening browser
+        os.environ["NEQ_OPEN_BROWSER"] = "0"
+        # Start browser opening in a separate thread
+        browser_thread = threading.Thread(target=open_browser, daemon=True)
+        browser_thread.start()
+    else:
+        info("Skipping auto-browser open on restart", category="web_interface")
     
     print("Starting NeverEndingQuest Web Interface...")
     try:

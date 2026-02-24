@@ -105,16 +105,24 @@ def main():
     print(f"The browser should open automatically. If not, navigate to http://localhost:{port}")
     
     # Run the web interface with restart capability
+    # TABLETOP MODE: One-shot browser open per launcher session to prevent duplicate tabs on restart
+    should_open_browser = True
     while True:
         try:
+            # Prepare environment for child process
+            # First spawn: open browser; subsequent restarts: skip browser open
+            child_env = os.environ.copy()
+            child_env["NEQ_OPEN_BROWSER"] = "1" if should_open_browser else "0"
+            
             # Run the web interface and capture the return code
-            result = subprocess.run([sys.executable, "web/web_interface.py"])
+            result = subprocess.run([sys.executable, "web/web_interface.py"], env=child_env)
             
             # Check if it was a planned restart (exit code 0)
             if result.returncode == 0:
                 print("\n[RESTART] Server shutdown detected. Restarting in 2 seconds...")
                 time.sleep(2)
                 print("[RESTART] Starting server again...")
+                should_open_browser = False  # Skip browser open on restart
                 continue
             elif result.returncode == 91:
                 # TABLETOP MODE: Intentional GUI shutdown

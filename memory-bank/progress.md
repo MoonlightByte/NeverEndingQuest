@@ -15,6 +15,17 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
+- **One-Shot Browser Open Fix for Load/Restore (COMPLETED - 2026-02-24):**
+  - **Problem:** After Load/Restore/Reset operations, Chrome opened a second tab while the existing tab reloaded, causing dual narration when TTS was enabled (confusing UX).
+  - **Solution:** Implemented one-shot browser-open gating per launcher session using `NEQ_OPEN_BROWSER` environment variable contract between launcher and web server.
+  - **Implementation Details:**
+    - `run_web.py`: Added `should_open_browser` tracker; passes `NEQ_OPEN_BROWSER=1` on first spawn, `0` on restarts; resets flag on planned restart (`returncode == 0`)
+    - `web/web_interface.py`: Reads `NEQ_OPEN_BROWSER` (defaults to "1" for direct runs); only starts browser thread when enabled; sets env var to "0" before spawning to protect `os.execv` restarts
+  - **Behavior:** First launch opens browser; Load/Restore/Reset/Update restarts do not open additional tabs; frontend `window.location.reload()` handles tab refresh
+  - **Cross-Browser:** Chrome now matches Edge/Safari behavior (no duplicate tabs on restart)
+  - **Files Modified:** `run_web.py` (+8 lines), `web/web_interface.py` (+10 lines)
+  - **Verification:** `python3 -m py_compile` PASS for both files
+
 - **Multi-Currency Debug Tab Cost Conversion (COMPLETED - 2026-02-24):**
   - **Objective:** Enable configurable target currency for Debug tab cost estimates (NZD, AUD, CAD, EUR, GBP, JPY) with live exchange rate fetching.
   - **Config Contract:** Removed `EXCHANGE_RATE_CACHE_MINUTES`, added currency code examples (ISO 4217 3-letter codes).

@@ -1,6 +1,25 @@
 ## Current Work Focus
 
-- **Multi-Currency Debug Tab Cost Conversion (COMPLETED - 2026-02-24):**
+- **One-Shot Browser Open Fix for Load/Restore (COMPLETED - 2026-02-24):**
+  - **Problem:** After Load/Restore/Reset, Chrome opened a second tab while the existing tab reloaded, causing dual narration when TTS is enabled (especially confusing UX).
+  - **Root Cause:** `web/web_interface.py` always launched browser on process start; after server restart the launcher restarted the web process which opened another browser instance.
+  - **Solution:** Implemented one-shot browser-open gating per launcher session using `NEQ_OPEN_BROWSER` environment variable contract.
+  - **Implementation:**
+    - `run_web.py:108`: Added `should_open_browser = True` tracker before restart loop
+    - `run_web.py:114-118`: Pass `NEQ_OPEN_BROWSER=1` on first spawn, `0` on restarts via `env=child_env`
+    - `run_web.py:125`: Set `should_open_browser = False` when handling planned restart (`returncode == 0`)
+    - `web/web_interface.py:5576-5589`: Read `NEQ_OPEN_BROWSER` env var (default "1" for direct runs), only start browser thread when enabled
+    - `web/web_interface.py:5583`: Set `os.environ["NEQ_OPEN_BROWSER"] = "0"` immediately before spawning thread to protect `os.execv` restarts
+    - `web/web_interface.py:5588`: Log skip message via `info()` when browser open is disabled
+  - **Behavior:**
+    - First `python run_web.py` launch → opens browser once
+    - Load/Restore/Reset restart → existing tab reloads, no second Chrome tab opens
+    - Direct `python web/web_interface.py` run → still opens once (default `NEQ_OPEN_BROWSER=1`)
+    - Edge/Safari behavior unchanged (already respected existing windows)
+  - **Files Modified:** `run_web.py`, `web/web_interface.py`
+  - **Verification:** Syntax validation PASS (`python3 -m py_compile`), diff review confirmed env contract and gating logic
+
+- **Multi-Currency Debug Tab Cost Conversion (COMPLETED - 2026-02-24):****
   - **Status:** Live exchange rate fetching with multi-currency support implemented and tested.
   - **Config:** `EXCHANGE_RATE_TARGET_CURRENCY` supports any ISO 4217 3-letter code (NZD, AUD, CAD, EUR, GBP, JPY).
   - **Validation:** Currency codes validated as 3-letter alphabetic; invalid codes fall back to USD (1.0).
