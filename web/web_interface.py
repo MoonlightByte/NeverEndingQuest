@@ -1135,6 +1135,7 @@ def _build_profile_update_payload(profile_payload: dict, existing_data: dict) ->
         'ideals': profile_payload.get('ideals', ''),
         'bonds': profile_payload.get('bonds', ''),
         'flaws': profile_payload.get('flaws', ''),
+        'backstory': profile_payload.get('backstory', ''),
     }
     
     # Build backgroundFeature preserving existing keys
@@ -1228,6 +1229,12 @@ def create_portrait():
         
         # Extract profile payload
         profile_payload = _extract_profile_payload(data)
+        
+        # Compatibility fallback: if submitted backstory is blank but character has one, use existing
+        if not profile_payload.get('backstory', '').strip():
+            existing_backstory = character_data.get('backstory', '')
+            if existing_backstory and isinstance(existing_backstory, str):
+                profile_payload['backstory'] = existing_backstory.strip()
         
         # Step 9.3: Fail-closed validation for required profile fields
         missing_fields = [

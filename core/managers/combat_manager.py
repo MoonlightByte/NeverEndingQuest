@@ -1603,6 +1603,12 @@ BONDS: {char_data['bonds']}"""
         formatted_data += f"""
 FLAWS: {char_data['flaws']}"""
     
+    # Add backstory context when present (bounded)
+    if char_data.get('backstory'):
+        backstory_display = str(char_data['backstory'])[:120]
+        formatted_data += f"""
+BACKSTORY: {backstory_display}"""
+    
     return formatted_data
 
 def format_npc_for_combat(npc_data, npc_role=None):
@@ -1733,6 +1739,12 @@ BONDS: {npc_data['bonds']}"""
     if npc_data.get('flaws'):
         formatted_data += f"""
 FLAWS: {npc_data['flaws']}"""
+    
+    # Add backstory context when present (bounded)
+    if npc_data.get('backstory'):
+        backstory_display = str(npc_data['backstory'])[:120]
+        formatted_data += f"""
+BACKSTORY: {backstory_display}"""
     
     return formatted_data
 

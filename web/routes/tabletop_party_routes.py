@@ -314,7 +314,7 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
                 creation_prompt = (
                     f"[SYSTEM] A new player '{name}' is joining the table at Level {target_level}! "
                     "Please guide them through 5e character creation. "
-                    "Ask for Race, Class, Background, Ability Scores, Skills, Equipment, and Personality. "
+                    "Ask for Race, Class, Background, Ability Scores, Skills, Equipment, Personality, and Backstory. "
                     "When complete, output the full character as JSON."
                 )
 
@@ -838,6 +838,10 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
 
             # TABLETOP MODE: Seed missing appearance keys for low-baggage promotion (11.3)
             updated_data = seed_missing_appearance_fields(updated_data)
+            
+            # Seed empty backstory key if missing for consistency
+            if 'backstory' not in updated_data:
+                updated_data['backstory'] = ''
 
             audit_result = audit_character_creation(
                 updated_data,
@@ -1035,6 +1039,7 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
                 "ideals": data.get('ideals', ''),
                 "bonds": data.get('bonds', ''),
                 "flaws": data.get('flaws', ''),
+                "backstory": data.get('backstory', ''),
                 "age": data.get('age', ''),
                 "height": data.get('height', ''),
                 "weight": data.get('weight', ''),

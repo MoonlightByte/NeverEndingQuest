@@ -274,6 +274,8 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     ideals = character.get('ideals') or ''
     bonds  = character.get('bonds') or ''
     flaws  = character.get('flaws') or ''
+    backstory_raw = character.get('backstory') or ''
+    backstory = backstory_raw[:100] if backstory_raw else ''  # Bounded for flat output
 
     out = []
     out.append(f"CHAR={name}; LVL={lvl}; RACE={race}; CLASS={cls}; ALIGN={align}; BG={bg}; AC={ac}; SPD={spd}; STATUS={status}; CONDITION={condition}; AFFECTED={affected};")
@@ -287,7 +289,7 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     out.append(f"SPELLCAST={spellcast_out};")
     out.append(f"SPELLS={spells_out};")
     out.append(f"CURRENCY={currency_out};")
-    out.append(f"TRAITS={traits}; IDEALS={ideals}; BONDS={bonds}; FLAWS={flaws};")
+    out.append(f"TRAITS={traits}; IDEALS={ideals}; BONDS={bonds}; FLAWS={flaws}; BACKSTORY={backstory};")
     return '\n'.join(out)
 
 def main():

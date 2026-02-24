@@ -64,6 +64,7 @@ PDF_EXPORT_FONT10_FIELDS = (
     "Features and Traits",
     "ProficienciesLang",
     "Feat+Traits",  # Additional Features and Traits (page index 1)
+    "Allies",  # Allies and Organizations (page index 1)
     "Backstory",
     "Treasure",
 )
@@ -667,19 +668,30 @@ def export_character_pdf_impl(request):
             page2_fields["Skin"] = str(char_data.get("skin", "") or "").strip()
             page2_fields["Hair"] = str(char_data.get("hair", "") or "").strip()
 
-            # Feat+Traits: Combine racial traits, class features, and feats
+            # Feat+Traits: Combine background feature, racial traits, class features, and feats
             features_list = []
 
+            # Background feature first
+            background_feature = char_data.get("backgroundFeature", {})
+            if isinstance(background_feature, dict):
+                bg_name = background_feature.get('name', '')
+                bg_desc = background_feature.get('description', '')
+                if bg_name or bg_desc:
+                    features_list.append(f"{bg_name}: {bg_desc}")
+
+            # Racial traits
             for trait in char_data.get("racialTraits", []):
                 if isinstance(trait, dict):
                     trait_text = f"{trait.get('name', '')}: {trait.get('description', '')}"
                     features_list.append(trait_text)
 
+            # Class features
             for feature in char_data.get("classFeatures", []):
                 if isinstance(feature, dict):
                     feature_text = f"{feature.get('name', '')}: {feature.get('description', '')}"
                     features_list.append(feature_text)
 
+            # Feats
             for feat in char_data.get("feats", []):
                 if isinstance(feat, dict):
                     feat_text = f"{feat.get('name', '')}: {feat.get('description', '')}"
@@ -688,23 +700,22 @@ def export_character_pdf_impl(request):
             if features_list:
                 page2_fields["Feat+Traits"] = "\n\n".join(features_list)
 
-            # Backstory from background feature + narrative chronicles
+            # Backstory from authored backstory + optional narrative chronicles
             backstory_parts = []
-
-            background_feature = char_data.get("backgroundFeature", {})
-            if isinstance(background_feature, dict):
-                bg_name = background_feature.get('name', '')
-                bg_desc = background_feature.get('description', '')
-                if bg_name or bg_desc:
-                    backstory_parts.append(f"{bg_name}\n{bg_desc}")
-
+            
+            # Primary: authored backstory
+            authored_backstory = char_data.get('backstory', '')
+            if authored_backstory and isinstance(authored_backstory, str):
+                backstory_parts.append(authored_backstory)
+            
+            # Optional: recent adventures from campaign summaries
             try:
                 summary_files = glob.glob("modules/campaign_summaries/*.json")
                 character_name = char_data.get('name', '')
-
+                
                 if summary_files and character_name:
                     summary_files.sort(key=os.path.getmtime, reverse=True)
-
+                    
                     for summary_file in summary_files[:3]:
                         try:
                             summary_data = safe_read_json(summary_file)
@@ -714,14 +725,14 @@ def export_character_pdf_impl(request):
                                     paragraphs = summary_text.split('\n\n')
                                     for para in paragraphs:
                                         if character_name.lower() in para.lower():
-                                            backstory_parts.append(f"\nRecent Adventures:\n{para}")
+                                            backstory_parts.append(f"Recent Adventures:\n{para}")
                                             break
                                     break
                         except Exception:
                             continue
             except Exception:
                 pass
-
+            
             if backstory_parts:
                 page2_fields["Backstory"] = "\n\n".join(backstory_parts)
 

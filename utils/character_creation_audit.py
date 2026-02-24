@@ -44,6 +44,7 @@ _COMPLETENESS_PATHS = [
     "ideals",
     "bonds",
     "flaws",
+    "backstory",
     "backgroundFeature.name",
     "backgroundFeature.description",
 ]
@@ -53,6 +54,7 @@ READINESS_REPAIR_WRITABLE_FIELDS = [
     "ideals",
     "bonds",
     "flaws",
+    "backstory",
     "backgroundFeature.name",
     "backgroundFeature.description",
 ]
@@ -62,6 +64,10 @@ _READINESS_REPAIR_FALLBACK_TEXT = {
     "ideals": "I believe courage and steady judgment can turn the tide of any trial.",
     "bonds": "I owe my companions loyalty; their safety is my first duty.",
     "flaws": "I can be stubborn under pressure and slow to ask for help.",
+    "backstory": (
+        "Your character has a history of trials and encounters that led them "
+        "to the path of adventure. This will be revealed through play."
+    ),
     "backgroundFeature.name": (
         "A unique benefit tied to your background that provides social access or specialized knowledge."
     ),
@@ -346,6 +352,7 @@ def _canonical_character_defaults() -> Dict[str, Any]:
         "eyes": "",
         "skin": "",
         "hair": "",
+        "backstory": "",
     }
 
 
@@ -738,6 +745,7 @@ _PROFILE_READINESS_PATHS = [
     "ideals",
     "bonds",
     "flaws",
+    "backstory",
     "backgroundFeature.name",
     "backgroundFeature.description",
 ]

@@ -494,6 +494,9 @@
     },
     "flaws": {
       "type": "string"
+    },
+    "backstory": {
+      "type": "string"
     }
   },
   "required": [

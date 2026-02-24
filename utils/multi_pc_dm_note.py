@@ -191,6 +191,15 @@ def format_pc_full_stats(pc_data: Dict[str, Any], pc_name: str, is_active: bool 
             notable = get_notable_items(pc_data)
             if notable:
                 parts.append(f"    Notable: {', '.join(notable[:5])}")
+        
+        # Backstory (bounded for DM note context)
+        backstory = pc_data.get('backstory', '')
+        if backstory:
+            # Truncate to first sentence or ~80 chars
+            first_sentence = backstory.split('.')[0].strip()
+            if first_sentence:
+                display = first_sentence[:80] + ('...' if len(first_sentence) > 80 else '')
+                parts.append(f"  Story: {display}")
     
     return '\n'.join(parts)
 
@@ -232,6 +241,14 @@ def format_pc_condensed(pc_data: Dict[str, Any], pc_name: str) -> str:
         conditions = [c for c in condition_affected if isinstance(c, str)]
         if conditions:
             parts.append(f"  Cond: {', '.join(conditions)}")
+    
+    # Backstory snippet (concise)
+    backstory = pc_data.get('backstory', '')
+    if backstory:
+        first_sentence = backstory.split('.')[0].strip()
+        if first_sentence:
+            display = first_sentence[:60] + ('...' if len(first_sentence) > 60 else '')
+            parts.append(f"  Story: {display}")
     
     # Notable items only
     notable = get_notable_items(pc_data)

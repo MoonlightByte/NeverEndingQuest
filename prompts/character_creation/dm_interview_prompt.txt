@@ -73,7 +73,8 @@ You MUST cover ALL of the following:
    - Ask for ideals (principles that drive them)
    - Ask for bonds (connections to people, places, things)
    - Ask for flaws (weaknesses, fears, vices)
-   - Note: personality_traits, ideals, bonds, flaws
+   - Ask for backstory (1-3 sentences about their history - what events shaped them and led them to adventure)
+   - Note: personality_traits, ideals, bonds, flaws, backstory
 
 8. **EQUIPMENT & WEALTH**
    - Present starting equipment based on class
@@ -162,6 +163,7 @@ The JSON MUST include ALL of these fields:
 - ideals: string
 - bonds: string
 - flaws: string
+- backstory: string
 
 === CRITICAL JSON FORMATTING ===
 - Use ONLY standard ASCII characters (no emojis, Unicode, or special symbols)
@@ -178,7 +180,7 @@ Before outputting the JSON, verify ALL of the following:
 [ ] armorClass calculated from equipped armor
 [ ] skills include background + class proficiencies
 [ ] savingThrows match class proficiencies
-[ ] personality_traits, ideals, bonds, flaws completed
+[ ] personality_traits, ideals, bonds, flaws, backstory completed
 [ ] equipment includes starting gear + level-appropriate items/gold
 [ ] attacksAndSpellcasting configured for weapons
 [ ] spellcasting configured for spellcasters (cantrips, spells, slots)

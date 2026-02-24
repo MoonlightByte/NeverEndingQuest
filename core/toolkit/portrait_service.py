@@ -382,6 +382,17 @@ def _build_visual_brief(character_data: Dict[str, Any]) -> str:
         else:
             demeanor_clause = f"Their expression shows {demeanor_text}. "
     
+    # Add backstory context (bounded and sanitized)
+    backstory = _sanitize_prompt_text(character_data.get("backstory", ""), max_length=150)
+    backstory_clause = ""
+    if backstory:
+        # Truncate to first sentence or ~100 chars for visual context
+        first_sentence = backstory.split('.')[0].strip()
+        if first_sentence and len(first_sentence) <= 120:
+            backstory_clause = f"From {first_sentence}. "
+        elif first_sentence:
+            backstory_clause = f"From {first_sentence[:117]}... "
+    
     # Add background feature context
     bg_feature = character_data.get("backgroundFeature", {})
     bg_clause = ""
@@ -400,7 +411,7 @@ def _build_visual_brief(character_data: Dict[str, Any]) -> str:
         alignment_clause = "They maintain a balanced, neutral demeanor."
     
     # Combine into complete sentence
-    brief = f"{name} is {identity_clause}. {demeanor_clause}{bg_clause}{alignment_clause}"
+    brief = f"{name} is {identity_clause}. {demeanor_clause}{backstory_clause}{bg_clause}{alignment_clause}"
     
     # Clean up any double spaces or leading/trailing issues
     brief = re.sub(r'\s+', ' ', brief).strip()

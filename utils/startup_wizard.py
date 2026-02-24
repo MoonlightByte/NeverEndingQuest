@@ -767,7 +767,8 @@ def create_fallback_character(module):
             "personality_traits": "A reliable and sturdy adventurer ready for action",
             "ideals": "Helping others and doing what's right",
             "bonds": "Loyal to friends and companions",
-            "flaws": "Sometimes too eager to rush into danger"
+            "flaws": "Sometimes too eager to rush into danger",
+            "backstory": "A former town guard who left their post to seek greater purpose and protect the realm"
         }
         
         # Validate the fallback character

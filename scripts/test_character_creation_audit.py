@@ -37,6 +37,7 @@ def _base_payload() -> dict:
         "ideals": "Duty.",
         "bonds": "My unit.",
         "flaws": "I overcommit.",
+        "backstory": "Former soldier seeking new purpose.",
         "backgroundFeature": {
             "name": "Military Rank",
             "description": "I can pull rank with soldiers.",
@@ -220,6 +221,26 @@ def test_readiness_repair_regression() -> None:
     print("[PASS] end-to-end readiness: generic placeholders replaced, completeness achieved")
 
 
+def test_backstory_completeness() -> None:
+    """Test that missing backstory triggers completeness_error."""
+    payload = deepcopy(_base_payload())
+    # Remove backstory to simulate incomplete character
+    payload["backstory"] = ""
+    
+    result = audit_character_creation(payload, source="test", enable_enrichment=False)
+    
+    assert result.result_type == AUDIT_RESULT_COMPLETENESS_ERROR, "Missing backstory should trigger completeness_error"
+    assert "backstory" in result.missing_paths, "backstory should be in missing_paths"
+    
+    # Verify authored backstory passes
+    authored_payload = deepcopy(_base_payload())
+    authored_payload["backstory"] = "A mysterious past full of secrets."
+    authored_result = audit_character_creation(authored_payload, source="test", enable_enrichment=False)
+    assert authored_result.result_type == AUDIT_RESULT_SUCCESS, "Authored backstory should result in success"
+    
+    print("[PASS] backstory completeness validation")
+
+
 def main() -> None:
     good_payload = _base_payload()
     success_result = audit_character_creation(good_payload, source="test", enable_enrichment=False)
@@ -242,6 +263,9 @@ def main() -> None:
     test_completeness_error_on_generic_placeholders()
     test_authored_value_success_and_preservation()
     test_profile_readiness_placeholder_signaling()
+    
+    # Run backstory completeness test
+    test_backstory_completeness()
     
     # Run readiness repair regression tests
     test_readiness_repair_regression()

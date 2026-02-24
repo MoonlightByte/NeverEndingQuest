@@ -818,6 +818,7 @@ TRAITS: {member_data['personality_traits']}
 IDEALS: {member_data['ideals']}
 BONDS: {member_data['bonds']}
 FLAWS: {member_data['flaws']}
+BACKSTORY: {member_data.get('backstory', 'N/A')[:120] if member_data.get('backstory') else 'N/A'}
 """
                     character_message = f"Here's the updated character data for {name}:\n{formatted_data}\n"
                     character_data.append({"role": "system", "content": character_message})
@@ -924,6 +925,7 @@ TRAITS: {npc_data['personality_traits']}
 IDEALS: {npc_data['ideals']}
 BONDS: {npc_data['bonds']}
 FLAWS: {npc_data['flaws']}
+BACKSTORY: {npc_data.get('backstory', 'N/A')[:120] if npc_data.get('backstory') else 'N/A'}
 """
                     npc_message = f"Here's the NPC data for {npc_data['name']}:\n{formatted_data}\n"
                     character_data.append({"role": "system", "content": npc_message})
