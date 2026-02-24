@@ -211,3 +211,88 @@ The exhaustion bug wasn't a rest automation failure—it was a **perception sync
 ---
 
 *The question isn't "Should the LLM follow Python?" but "How do we ensure the LLM can see what Python has done?"*
+
+## Entry 002 - 2026-02-24 - Portrait Download and Popup Quality Fixes
+
+**Context:** Addressing low-resolution issues in character portrait downloads and popup modals.
+
+### Problems Identified
+
+**1. Portrait Download Resolution**
+- Sidebar "Download" button was fetching only 256x256 web portraits
+- AI-generated portraits were being saved at 256x256 after resize, losing original DALL-E resolution (1024x1024)
+- Upload path had ordering bug: variables referenced before definition
+
+**2. Initiative/Party Strip Popup Quality**
+- NPC popups in narration strip were opening thumbnails (128x128) instead of full images
+- `imageCandidates` was thumb-first for both tile rendering AND popup fallback
+- Edda Ravenscroft appeared blurry in popup despite having 1024x1024 full image available
+
+### Fixes Implemented
+
+**Portrait Service (`core/toolkit/portrait_service.py`)**
+- Preserve full-resolution copy before resize: `full_res_image = img.convert('RGBA')...`
+- Save `_full.png` sidecar to static portraits AND module portraits
+- Create 256x256 compatibility image separately: `compat_image = full_res_image.resize(...)`
+- Maintains backward compatibility with existing `<name>.png` paths
+
+**Upload Portrait (`web/web_interface.py`)**
+- Fixed ordering: normalize character name BEFORE using it
+- Fixed ordering: resolve module directory BEFORE save attempts
+- Save hi-res `_full.png` from cropped image before 256x256 resize
+- Fail-open module saves (warnings only, don't block success)
+
+**Download Logic (`web/templates/game_interface.html`)**
+- New priority chain: `_full.png` → NPC `.jpg` → NPC `.png` → legacy `.png` → current `src`
+- Recursive `tryDownloadCandidate()` function attempts each URL in order
+- Uses `normalizePortraitSlug()` for consistent filename generation
+- Preserves existing user feedback and filename sanitization
+
+**Popup Quality (`web/templates/game_interface.html`)**
+- Split `imageCandidates` into two separate arrays:
+  - `tileImageCandidates`: thumb-first for fast strip rendering
+  - `popupImageCandidates`: full-image-first for quality modals
+- Video-first behavior preserved for characters with `_video.mp4`
+
+### Testing
+
+**Regression Tests Added (`scripts/test_pc_image_create_mvp.py`)**
+- `TestPortraitDownloadBestResolutionContracts` (6 tests):
+  - `test_download_candidates_priority`: Verifies priority chain ordering
+  - `test_portrait_create_saves_hi_res_sidecar`: Confirms `_full.png` creation
+  - `test_portrait_service_preserves_full_res_before_resize`: Validates copy-before-resize
+  - `test_upload_portrait_normalizes_before_full_save`: Checks init ordering
+  - `test_upload_portrait_saves_hi_res_sidecar`: Confirms upload path hi-res save
+  - `test_legacy_256_save_paths_remain_present`: Backward compatibility check
+  - `test_party_render_uses_separate_tile_and_popup_candidate_lists`: Split candidate arrays
+  - `test_popup_candidates_prioritize_full_images_before_thumb`: Full > thumb ordering
+  - `test_tile_candidates_use_thumb_first`: Thumb > full for tiles
+  - `test_video_candidates_remain_first_in_popup_flow`: Video priority preserved
+
+All tests pass: `Ran 6 tests in 0.002s OK`
+
+### Files Modified
+
+1. `web/templates/game_interface.html` - Download priority chain, split candidate arrays
+2. `core/toolkit/portrait_service.py` - Full-res sidecar persistence
+3. `web/web_interface.py` - Fixed upload ordering and hi-res save
+4. `scripts/test_pc_image_create_mvp.py` - 10 new regression tests
+
+### Architecture Notes
+
+**Backward Compatibility Strategy:**
+- Legacy `<name>.png` (256x256) still generated and used for UI
+- New `<name>_full.png` is additive, not replacement
+- Download falls through gracefully if `_full.png` missing
+- NPC media fallback chain unchanged for promoted characters
+
+**Performance Considerations:**
+- Hi-res images only saved once (generation or upload time)
+- Download attempts URLs sequentially (fast path: `_full.png` usually exists)
+- No additional runtime overhead for display paths
+
+**Future Work:**
+- Consider progressive download for `_full.png` (lazy load in modals)
+- Potential: Serve WebP variants alongside PNG for bandwidth
+- Potential: Expose resolution choice in download dialog
+
