@@ -20,6 +20,18 @@ The startup character-creation workflow SHALL support creating one or more playe
 - **WHEN** a secondary player-creation attempt fails validation
 - **THEN** the system reports the failure, preserves already-created party members, and allows retry or graceful exit without corrupting `partyMembers`
 
+#### Scenario: Add-more prompt is line-visible in web startup flow
+- **WHEN** first PC creation succeeds during startup in web mode
+- **THEN** the add-more question is emitted as line-visible output before input collection
+
+#### Scenario: Blank or invalid add-more decision reprompts
+- **WHEN** facilitator enters blank input (including timeout-injected blank) or non-yes/no text
+- **THEN** startup shows valid options and reprompts without advancing to gameplay
+
+#### Scenario: Startup exits additional-PC loop only on explicit no
+- **WHEN** facilitator enters `n` or `no` at add-more or retry decision points
+- **THEN** startup exits additional-PC loop and proceeds to party tracker finalization
+
 ### Requirement: Mid-campaign Add Existing SHALL exclude current party members
 
 The Add Existing character list API SHALL return only available player characters not currently present in `party_tracker.partyMembers`, and SHALL deduplicate entries found across scanned character locations.
@@ -51,6 +63,21 @@ The DM interview flow SHALL finalize character creation only after extracting a 
 #### Scenario: Code-fenced JSON final response
 - **WHEN** the LLM returns final JSON in a fenced code block
 - **THEN** the system extracts and validates the payload using the same finalization rules as raw JSON
+
+### Requirement: Roll Your Own SHALL support both create and edit entry points
+The Roll Your Own workflow SHALL support both create mode (existing Manage Party flow) and edit mode (new Character Sheet `Edit` entry) while preserving create semantics.
+
+#### Scenario: Create mode remains unchanged
+- **WHEN** Roll Your Own is opened from Manage Party for a new character
+- **THEN** submit continues to use the create path and create-only side effects remain as currently defined
+
+#### Scenario: Edit mode uses existing character context
+- **WHEN** Roll Your Own is opened from Character Sheet `Edit`
+- **THEN** form mode is edit, existing values are prefilled, and submit routes to the deterministic edit path
+
+#### Scenario: Name safety in MVP edit mode
+- **WHEN** Roll Your Own is opened in edit mode
+- **THEN** character name is treated as fixed identity input (read-only or equivalent guarded behavior)
 
 ### Requirement: Roll Your Own SHALL replace DM Quick-Create with sheet-aligned sections
 

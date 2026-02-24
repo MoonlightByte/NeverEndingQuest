@@ -151,10 +151,24 @@ def run_startup_sequence():
         created_characters = [character_name]
 
         # TABLETOP MODE: Optional multi-PC startup loop.
+        # Exit contract: loop terminates ONLY on explicit 'n'/'no' from either decision point.
+        # Blank/invalid inputs reprompt indefinitely; no implicit exit paths exist.
         while True:
-            add_more = input("Dungeon Master: Add another player character? (y/n): ").strip().lower()
-            if add_more not in ["y", "yes"]:
+            # Emit prompt line first for web visibility, then collect input
+            print("Dungeon Master: Add another player character? (y/n):")
+            add_more = input().strip().lower()
+            
+            # Strict yes/no parser: reprompt on blank or invalid input
+            if add_more in ["y", "yes"]:
+                # Continue to create next character
+                pass
+            elif add_more in ["n", "no"]:
+                # EXPLICIT EXIT 1: Facilitator declined additional players
                 break
+            else:
+                # Blank or invalid input: show guidance and reprompt
+                print("Dungeon Master: Please enter 'y' for yes or 'n' for no.")
+                continue
 
             next_character = create_new_character(conversation, selected_module)
             if next_character:
@@ -163,10 +177,20 @@ def run_startup_sequence():
                 continue
 
             print("Dungeon Master: Additional player creation failed.")
-            retry_secondary = input("Dungeon Master: Retry creating another player? (y/n): ").strip().lower()
+            # TABLETOP MODE: Secondary retry decision with explicit-exit contract
+            print("Dungeon Master: Retry creating another player? (y/n):")
+            retry_secondary = input().strip().lower()
+            
             if retry_secondary in ["y", "yes"]:
+                # Retry character creation
                 continue
-            break
+            elif retry_secondary in ["n", "no"]:
+                # EXPLICIT EXIT 2: Facilitator declined retry; end add-more loop
+                break
+            else:
+                # Blank or invalid: show guidance and reprompt for this decision
+                print("Dungeon Master: Please enter 'y' for yes or 'n' for no.")
+                continue
         
         # Step 3: Update party tracker
         update_party_tracker(selected_module['name'], created_characters)

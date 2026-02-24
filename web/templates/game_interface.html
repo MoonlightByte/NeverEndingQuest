@@ -6981,27 +6981,34 @@
             }
         }
 
-        function displayCharacterStats(data) {
-            // Save scroll position before updating
-            const scrollableContainer = document.getElementById('stats-tab');
-            const scrollPosition = scrollableContainer ? scrollableContainer.scrollTop : 0;
-            
-            // Preserve portrait to prevent flickering, but only if it's the SAME character
-            const existingPortrait = document.querySelector('.character-portrait');
-            const normalizedName = data.name.toLowerCase().replace(/\s+/g, '_');
-            let shouldPreservePortrait = existingPortrait && existingPortrait.dataset.character === normalizedName;
-            
+        function displayCharacterStats(data, error) {
+            // TABLETOP MODE: Null-guard first with deterministic waiting/error states
             const container = document.getElementById('stats-content');
             if (!data) {
-                container.innerHTML = '<div class="loading">No character data available</div>';
+                if (error) {
+                    container.innerHTML = '<div class="loading" style="color: #f6d088;">Error loading character stats: ' + escapeRepairHtml(error) + '</div>';
+                } else {
+                    container.innerHTML = '<div class="loading">Loading character stats... (waiting for data)</div>';
+                }
                 return;
             }
             
-            // TABLETOP MODE: Store character data for portrait profile modal prefill (Step 9.5)
-            // Also expose on window for edit prefill access
-            lastCharacterStats = data;
-            window.lastCharacterStats = data;
-            portraitProfileCharacterData = data;
+            // TABLETOP MODE: Defensive render - wrap main body to ensure later valid payloads can still render
+            try {
+                // Save scroll position before updating
+                const scrollableContainer = document.getElementById('stats-tab');
+                const scrollPosition = scrollableContainer ? scrollableContainer.scrollTop : 0;
+                
+                // Preserve portrait to prevent flickering, but only if it's the SAME character
+                const existingPortrait = document.querySelector('.character-portrait');
+                const normalizedName = data.name.toLowerCase().replace(/\s+/g, '_');
+                let shouldPreservePortrait = existingPortrait && existingPortrait.dataset.character === normalizedName;
+                
+                // TABLETOP MODE: Store character data for portrait profile modal prefill (Step 9.5)
+                // Also expose on window for edit prefill access
+                lastCharacterStats = data;
+                window.lastCharacterStats = data;
+                portraitProfileCharacterData = data;
 
             function getCharacterReadinessWarnings(characterData) {
                 const warnings = [];
@@ -7324,6 +7331,11 @@
             setPortraitButtonsDisabled(portraitOperationInFlight);
 
             initializeAllTooltips();
+            } catch (renderError) {
+                // Defensive fallback: ensure a transient exception does not block later renders
+                console.error('[displayCharacterStats] Render error:', renderError);
+                container.innerHTML = '<div class="loading" style="color: #f6d088;">Error displaying character stats. Retrying...</div>';
+            }
         }
 
         // Display spells and magic items
@@ -7584,7 +7596,8 @@
                 if (response.data && response.data.name) {
                     playerName = response.data.name;
                 }
-                displayCharacterStats(response.data);
+                // TABLETOP MODE: Pass error context for deterministic waiting/error states
+                displayCharacterStats(response.data, response.error);
             } else if (response.dataType === 'spells') {
                 displaySpellsAndMagic(response.data);
             } else if (response.dataType === 'npcs') {
