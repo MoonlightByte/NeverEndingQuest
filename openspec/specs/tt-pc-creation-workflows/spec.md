@@ -1,7 +1,12 @@
-## ADDED Requirements
+## Purpose
+
+Define deterministic tabletop-friendly PC creation workflows across startup, Create with DM, and Roll Your Own paths while preserving single-player compatibility.
+
+## Requirements
 
 ### Requirement: Campaign initiation SHALL support iterative multi-PC onboarding
-The startup character creation workflow SHALL support creating one or more player characters in sequence for tabletop sessions. After each successful character creation, the workflow SHALL prompt whether to create another player character and SHALL append each accepted character to `partyMembers` without overwriting previously created members.
+
+The startup character-creation workflow SHALL support creating one or more player characters in sequence for tabletop sessions. After each successful character creation, the workflow SHALL prompt whether to create another player and SHALL append each accepted character to `partyMembers` without overwriting previously created members.
 
 #### Scenario: DM creates multiple PCs at campaign start
 - **WHEN** startup character creation completes for the first player and the DM indicates another player is joining
@@ -12,10 +17,11 @@ The startup character creation workflow SHALL support creating one or more playe
 - **THEN** startup finalizes with one character and behavior remains backward-compatible with existing single-player flow
 
 #### Scenario: Loop recovery on failed secondary creation
-- **WHEN** a secondary player creation attempt fails validation
+- **WHEN** a secondary player-creation attempt fails validation
 - **THEN** the system reports the failure, preserves already-created party members, and allows retry or graceful exit without corrupting `partyMembers`
 
 ### Requirement: Mid-campaign Add Existing SHALL exclude current party members
+
 The Add Existing character list API SHALL return only available player characters not currently present in `party_tracker.partyMembers`, and SHALL deduplicate entries found across scanned character locations.
 
 #### Scenario: Existing party members are filtered out
@@ -31,30 +37,36 @@ The Add Existing character list API SHALL return only available player character
 - **THEN** the API returns an empty list and the UI displays a no-unused-characters state
 
 ### Requirement: Create with DM SHALL finalize only schema-valid complete characters
-The DM interview flow SHALL finalize character creation only after extracting a complete final JSON payload that passes schema validation and completeness audit. Partial, malformed, or mismatched payloads SHALL NOT be saved as character files.
+
+The DM interview flow SHALL finalize character creation only after extracting a complete final JSON payload that passes schema validation and completeness audit, including authored `backstory`.
 
 #### Scenario: Valid final JSON from interview
-- **WHEN** the LLM returns a final character JSON that satisfies schema and completeness requirements
+- **WHEN** the LLM returns a final character JSON that satisfies schema and completeness requirements including `backstory`
 - **THEN** the system saves the character, updates party state, and exits creation mode
 
 #### Scenario: Invalid or incomplete final JSON
-- **WHEN** the LLM returns malformed JSON or missing required fields
-- **THEN** the system keeps creation mode active, emits corrective guidance with missing/invalid fields, and requests corrected final output
+- **WHEN** the LLM returns malformed JSON or missing required completeness fields (including `backstory`)
+- **THEN** the system keeps creation mode active, emits corrective guidance with missing or invalid fields, and requests corrected final output
 
 #### Scenario: Code-fenced JSON final response
 - **WHEN** the LLM returns final JSON in a fenced code block
 - **THEN** the system extracts and validates the payload using the same finalization rules as raw JSON
 
 ### Requirement: Roll Your Own SHALL replace DM Quick-Create with sheet-aligned sections
+
 The manual creation tab SHALL be renamed to Roll Your Own and SHALL collect enough structured fields to map to major 5e character sheet sections before server-side normalization and validation.
 
-#### Scenario: Manual sheet-aligned creation
+#### Scenario: Manual sheet-aligned creation includes backstory
 - **WHEN** the DM completes Roll Your Own form and submits
-- **THEN** the backend normalizes the payload, validates schema/completeness, and only then persists and adds to party
+- **THEN** payload includes `backstory`, backend validates schema and completeness, and persistence proceeds only on success
 
 #### Scenario: Manual submission missing required sections
 - **WHEN** Roll Your Own submission omits required data
 - **THEN** the system rejects save with clear validation errors and does not create a partial character file
+
+#### Scenario: Manual submission missing backstory
+- **WHEN** Roll Your Own submission omits `backstory`
+- **THEN** save is blocked with completeness errors and no partial character file is created
 
 #### Scenario: Backward-compatible low-detail submission path
 - **WHEN** a minimal manual payload is submitted through legacy fields

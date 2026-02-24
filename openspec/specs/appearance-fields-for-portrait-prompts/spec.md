@@ -1,16 +1,12 @@
-## ADDED Requirements
+## Purpose
+
+Define additive appearance/profile metadata requirements and portrait prompt composition contracts for robust, context-aware portrait generation.
+
+## Requirements
 
 ### Requirement: Character schema SHALL support optional appearance metadata fields
 
 Character schema SHALL support optional appearance fields used by portrait prompt generation.
-
-Fields:
-- `age`
-- `height`
-- `weight`
-- `eyes`
-- `skin`
-- `hair`
 
 #### Scenario: Existing character files
 - **WHEN** pre-existing character files that do not contain appearance fields are loaded
@@ -18,7 +14,7 @@ Fields:
 
 ### Requirement: Creation paths SHALL accept and persist appearance fields
 
-Manual/quick-create paths SHALL accept appearance fields and persist them when provided.
+Manual and quick-create paths SHALL accept appearance fields and persist them when provided.
 
 #### Scenario: Manual create with appearance values
 - **WHEN** a user submits manual character creation form with appearance fields
@@ -34,15 +30,7 @@ Portrait generation prompt path SHALL include appearance fields when present and
 
 ### Requirement: Portrait prompt composition SHALL include personality and background context when available
 
-Portrait generation prompt path SHALL include personality/background context fields when present.
-
-Fields:
-- `personality_traits`
-- `ideals`
-- `bonds`
-- `flaws`
-- `backgroundFeature.name`
-- `backgroundFeature.description`
+Portrait generation prompt path SHALL include personality and background context fields when present.
 
 #### Scenario: Personality/background context present
 - **WHEN** character data includes personality/background fields
@@ -56,11 +44,7 @@ Portrait prompt composition SHALL sanitize and length-bound free-text profile in
 - **WHEN** a character has long free-text values in personality/background fields
 - **THEN** prompt composition trims and bounds those values without failing generation
 
-### SHOULD Guidance
-
-- Implement prompt-field sanitation in a small helper so unit tests can validate it directly.
-
-### Requirement: NPC -> PC promotion flows SHALL expose profile-readiness warnings for optional appearance fields
+### Requirement: NPC to PC promotion flows SHALL expose profile-readiness warnings for optional appearance fields
 
 Promotion workflows SHALL surface missing optional appearance/profile fields as readiness warnings while preserving promotion viability.
 

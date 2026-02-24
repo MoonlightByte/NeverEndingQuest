@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define deterministic throttling behavior for repeated missing-media warnings so logs preserve diagnostics without warning spam.
+
+## Requirements
 
 ### Requirement: Missing-media warnings MUST be throttled per unique missing key
 

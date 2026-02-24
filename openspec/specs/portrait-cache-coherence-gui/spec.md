@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define deterministic portrait cache coherence contracts across Character Sheet, initiative queue, and party strip surfaces.
+
+## Requirements
 
 ### Requirement: Portrait image identity and version metadata MUST be emitted for GUI refresh paths
 
@@ -10,7 +14,7 @@ Backend payloads used by Character Sheet, initiative queue, and party strip SHAL
 
 #### Scenario: Initiative payload includes image metadata
 - **WHEN** client requests `initiative_data_response` during active combat
-- **THEN** each player/NPC combatant entry includes `image_slug` and `image_version`
+- **THEN** each player or NPC combatant entry includes `image_slug` and `image_version`
 
 #### Scenario: Party payload includes image metadata
 - **WHEN** client requests `party_data_response`
@@ -48,8 +52,3 @@ On successful upload/create mutation, GUI SHALL refresh Character Sheet, initiat
 - **WHEN** user uploads a portrait
 - **THEN** Character Sheet portrait, initiative portrait, and party strip portrait all refresh in same interaction window
 - **AND** no update-then-revert behavior appears on subsequent poll cycles
-
-### SHOULD Guidance
-
-- Implement version metadata in a shared backend helper so all payload builders reuse identical logic.
-- Keep frontend cache invalidation targeted by slug rather than clearing global image cache maps.

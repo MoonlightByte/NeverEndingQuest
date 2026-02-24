@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define Character Sheet portrait management contracts for Upload/Create actions, profile-first create flow, and failure-isolated generation behavior.
+
+## Requirements
 
 ### Requirement: Character Sheet SHALL expose Upload and Create portrait actions
 
@@ -28,20 +32,6 @@ Create action SHALL call a backend portrait generation path and save assets in e
 ### Requirement: Create portrait SHALL always open full-profile modal before submission
 
 Character Sheet portrait `Create` action SHALL always open a modal that allows editing portrait-driving profile fields before generation.
-
-Modal fields SHALL include:
-- `age`
-- `height`
-- `weight`
-- `eyes`
-- `skin`
-- `hair`
-- `personality_traits`
-- `ideals`
-- `bonds`
-- `flaws`
-- `backgroundFeature.name`
-- `backgroundFeature.description`
 
 #### Scenario: Create clicked from Character Sheet
 - **WHEN** user clicks portrait `Create`
@@ -73,13 +63,9 @@ Portrait create failures SHALL return safe errors and SHALL NOT break gameplay/s
 #### Scenario: Create portrait provider failure
 - **WHEN** generation fails due to provider or IO error
 - **THEN** API returns safe error response
-- **AND** existing portrait/fallback remains usable
+- **AND** existing portrait or fallback remains usable
 
-### SHOULD Guidance
-
-- Use a clear submit label such as `Save Profile + Create Portrait` to communicate persistence plus generation behavior.
-
-### Requirement: NPC -> PC promotion SHALL remain viable without forced portrait replacement
+### Requirement: NPC to PC promotion SHALL remain viable without forced portrait replacement
 
 Promotion through Manage Party/Add Existing SHALL keep portrait continuity and SHALL NOT require immediate portrait recreation to complete the role transition.
 

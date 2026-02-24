@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define deterministic allied-only NPC portrait auto-generation behavior on media misses, including queueing, dedupe, reuse-first materialization, and safe fallback semantics.
+
+## Requirements
 
 ### Requirement: Missing portrait auto-generation MUST target allied NPC companions only in MVP
 
