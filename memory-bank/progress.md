@@ -24,6 +24,16 @@ Active development of Tabletop Mode features, focusing on party management and U
   - **Tests:** 23/23 tests PASS including 4 new currency-specific tests.
   - **Files Modified:** `config_template.py`, `config.py`, `utils/llm_usage_tracker.py`, `web/web_interface.py`, `web/templates/game_interface.html`, `scripts/test_usage_rollups_debug_tab.py`.
 
+- **PC Backstory Profile and Narrative Context (COMPLETED - 2026-02-24):**
+  - **Objective:** Add comprehensive backstory field for PC narrative development, replacing portrait Create modal background-feature fields with backstory field.
+  - **Schema & Audit:** Added `backstory` to `schemas/char_schema.json` (additive). Included in completeness checks, profile readiness, repair whitelist with deterministic fallback text.
+  - **Creation Workflows:** Roll Your Own form includes backstory textarea. Create with DM prompt collects and requires backstory. Startup fallback includes backstory.
+  - **Portrait Create Modal:** Replaced background-feature inputs with required backstory textarea. Updated API to require backstory (11 fields). Added compatibility fallback (uses existing char backstory if payload blank).
+  - **Narrative Integration:** Portrait prompt includes bounded backstory (first sentence, max 120 chars). Conversation utils adds BACKSTORY line to player/NPC blocks (120 char limit). Combat manager includes bounded backstory in formatting. Multi-PC DM notes show concise backstory snippets (60-80 chars). Character compressor adds BACKSTORY token (100 char limit).
+  - **Promotion & PDF:** NPC→PC promotion seeds empty backstory key, includes in warnings (non-blocking). PDF page 2 Backstory prefers authored value, optionally appends recent-adventures chronicles. Allies field added to font-size parity list.
+  - **Tests:** 40 total tests PASS - 30 in `test_pc_image_create_mvp.py` + 10 in `test_character_creation_audit.py`. New test suites: portrait compatibility fallback, promotion backstory warnings, PDF precedence.
+  - **Files Modified:** `schemas/char_schema.json`, `utils/character_creation_audit.py`, `web/templates/partials/character_tabs.html`, `web/routes/tabletop_party_routes.py`, `prompts/character_creation/dm_interview_prompt.txt`, `utils/startup_wizard.py`, `web/templates/game_interface.html`, `web/web_interface.py`, `core/toolkit/portrait_service.py`, `core/ai/conversation_utils.py`, `core/managers/combat_manager.py`, `utils/multi_pc_dm_note.py`, `core/ai/character_sheet_compressor.py`, `web/routes/character_sheet_routes.py`, `scripts/test_character_creation_audit.py`, `scripts/test_pc_image_create_mvp.py`.
+
 - **World-Narrative Ingestion Foundation + Meta Assignment Planning (IN PROGRESS - 2026-02-22):**
   - Added OpenSpec change `world-narrative-seed-bootstrap-and-toolkit-ingestion` with proposal/design/specs/tasks/executor prompts.
   - Enforced hard cutover to `/user_uploads/text/` in planning and route/test contracts (`pdf` upload only, legacy root rejected).

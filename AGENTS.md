@@ -1090,7 +1090,88 @@ Enable configurable target currency for Debug tab cost estimates (NZD, AUD, CAD,
 
 ---
 
-### DALL-E 3 Image Cost Rollup for Debug Tab (COMPLETED - 2026-02-19)
+### PC Backstory Profile and Narrative Context (COMPLETED - 2026-02-24)
+
+**Status:** COMPLETED - OpenSpec change validated, all 5 prompts implemented, 40 tests passing
+
+**OpenSpec Change:** `pc-backstory-profile-and-narrative-context` (created with full artifacts)
+
+**Objective:**
+Add comprehensive backstory field for PC narrative development, replacing portrait Create modal background-feature fields with backstory, and integrating backstory across creation workflows, portrait generation, and runtime narrative contexts.
+
+**Implementation Summary:**
+
+**Phase 1 - Schema and Audit Foundation:**
+- Added `backstory` property to `schemas/char_schema.json` (additive, not in required list for compatibility)
+- Extended `utils/character_creation_audit.py`:
+  - Added `backstory` to `_COMPLETENESS_PATHS` for PC creation validation
+  - Added `backstory` to `READINESS_REPAIR_WRITABLE_FIELDS`
+  - Added deterministic fallback text for missing backstory in `_READINESS_REPAIR_FALLBACK_TEXT`
+  - Added `backstory` to `_canonical_character_defaults()` and `_PROFILE_READINESS_PATHS`
+
+**Phase 2 - PC Creation Workflows:**
+- Roll Your Own: Added `backstory` textarea to manual creation form in `web/templates/partials/character_tabs.html`
+- Backend persistence: Updated `/api/party/create_manual` to include `backstory` in payload
+- Create with DM: Updated `prompts/character_creation/dm_interview_prompt.txt` to collect and require backstory
+- Startup fallback: Added backstory to `utils/startup_wizard.py` fallback character generation
+
+**Phase 3 - Portrait Create Modal Contract Swap:**
+- Replaced background-feature fields with required `backstory` textarea in portrait profile modal
+- Updated `_REQUIRED_PROFILE_FIELDS` in `web/templates/game_interface.html` to require `backstory`
+- Updated API payload to send `backstory` instead of `backgroundFeature`
+- Updated backend `_REQUIRED_PORTRAIT_PROFILE_FIELDS` in `web/web_interface.py` to 11 fields (removed 2 bg fields, added 1 backstory)
+- Added compatibility fallback: uses existing character backstory if payload omits it
+
+**Phase 4 - Narrative Influence Integration:**
+- Portrait prompt: Added bounded backstory clause in `core/toolkit/portrait_service.py` (first sentence, max 120 chars)
+- Conversation context: Added `BACKSTORY:` line to player/NPC context blocks in `core/ai/conversation_utils.py` (120 char limit)
+- Combat formatting: Added bounded backstory to player/NPC combat context in `core/managers/combat_manager.py`
+- Multi-PC DM notes: Added concise backstory snippets to full and condensed PC stats in `utils/multi_pc_dm_note.py` (60-80 char limits)
+- Character compressor: Added `BACKSTORY=` token to flat output in `core/ai/character_sheet_compressor.py` (100 char limit)
+
+**Phase 5 - Promotion and PDF Alignment:**
+- NPC→PC promotion: Seeds empty `backstory` key during promotion in `web/routes/tabletop_party_routes.py`
+- Profile readiness warnings include missing backstory (non-blocking)
+- PDF page 2: Prefers authored `char_data.backstory` with optional recent-adventures append in `web/routes/character_sheet_routes.py`
+- PDF Allies field: Added to `PDF_EXPORT_FONT10_FIELDS` for font-size parity with Feat+Traits
+
+**Test Coverage:**
+- `scripts/test_character_creation_audit.py`: 10/10 tests PASS
+  - Added `test_backstory_completeness()` for missing backstory validation
+- `scripts/test_pc_image_create_mvp.py`: 30/30 tests PASS
+  - Added `test_create_api_uses_existing_backstory_when_payload_blank` for compatibility fallback
+  - Added `TestPromotionBackstoryWarnings` suite (2 tests) for warning behavior
+  - Added `TestPdfBackstoryPrecedence` suite (2 tests) for PDF mapping
+  - Existing: portrait prompt enrichment tests including backstory integration
+
+**Files Modified:**
+- `schemas/char_schema.json`
+- `utils/character_creation_audit.py`
+- `web/templates/partials/character_tabs.html`
+- `web/routes/tabletop_party_routes.py`
+- `prompts/character_creation/dm_interview_prompt.txt`
+- `utils/startup_wizard.py`
+- `web/templates/game_interface.html`
+- `web/web_interface.py`
+- `core/toolkit/portrait_service.py`
+- `core/ai/conversation_utils.py`
+- `core/managers/combat_manager.py`
+- `utils/multi_pc_dm_note.py`
+- `core/ai/character_sheet_compressor.py`
+- `web/routes/character_sheet_routes.py`
+- `scripts/test_character_creation_audit.py`
+- `scripts/test_pc_image_create_mvp.py`
+
+**Verification:**
+- Compile check: PASS on all modified Python files
+- Character creation audit: 10/10 tests PASS
+- PC image create MVP: 30/30 tests PASS
+- Portrait API profile validation: PASS
+- Portrait API persistence: PASS
+- Promotion backstory warnings: PASS
+- PDF backstory precedence: PASS
+
+---
 
 **Status:** COMPLETED - All tasks finished, validated, archived, and committed
 

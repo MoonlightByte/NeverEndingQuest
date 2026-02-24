@@ -9,6 +9,19 @@
   - **Testing:** 23/23 regression tests PASS, including end-to-end config validation test.
   - **Files:** `config_template.py`, `config.py`, `utils/llm_usage_tracker.py`, `web/web_interface.py`, `web/templates/game_interface.html`, `scripts/test_usage_rollups_debug_tab.py`.
 
+- **PC Backstory Profile and Narrative Context (COMPLETED - 2026-02-24):**
+  - **OpenSpec Change:** `pc-backstory-profile-and-narrative-context` (new, valid)
+  - **Status:** All 5 implementation prompts completed, 40 tests passing.
+  - **Schema:** Added `backstory` to `schemas/char_schema.json` (additive, backward-compatible).
+  - **Audit:** `utils/character_creation_audit.py` includes backstory in completeness checks, profile readiness, repair whitelist with deterministic fallback text.
+  - **Creation:** Roll Your Own form + Create with DM prompt both collect and require backstory. Startup fallback includes backstory.
+  - **Portrait Modal:** Replaced background-feature fields with required backstory. API requires backstory (11 fields). Compatibility fallback uses existing character backstory when payload omits it.
+  - **Narrative Context:** Bounded backstory injection in portrait prompts (120 chars), conversation utils BACKSTORY line (120 chars), combat formatting (120 chars), multi-PC DM notes (60-80 chars), character compressor BACKSTORY token (100 chars).
+  - **Promotion:** Seeds empty backstory key, includes in warnings (non-blocking).
+  - **PDF:** Page 2 Backstory prefers authored value with optional recent-adventures chronicles append. Allies field added to font-size parity list.
+  - **Testing:** 30 tests in `test_pc_image_create_mvp.py` + 10 tests in `test_character_creation_audit.py` all PASS. New test suites for compatibility fallback, promotion warnings, PDF precedence.
+  - **Files:** `schemas/char_schema.json`, `utils/character_creation_audit.py`, `web/templates/partials/character_tabs.html`, `web/routes/tabletop_party_routes.py`, `prompts/character_creation/dm_interview_prompt.txt`, `utils/startup_wizard.py`, `web/templates/game_interface.html`, `web/web_interface.py`, `core/toolkit/portrait_service.py`, `core/ai/conversation_utils.py`, `core/managers/combat_manager.py`, `utils/multi_pc_dm_note.py`, `core/ai/character_sheet_compressor.py`, `web/routes/character_sheet_routes.py`, `scripts/test_character_creation_audit.py`, `scripts/test_pc_image_create_mvp.py`.
+
 - **World-Narrative Ingestion Foundation + Meta Assignment Planning (IN PROGRESS - 2026-02-22):**
   - **OpenSpec Change:** `world-narrative-seed-bootstrap-and-toolkit-ingestion` (new, valid)
   - **Copyright Firewall:** Hard cutover path is now `/user_uploads/text/` only (legacy `/user_uploads/` paths are rejected in route/test contracts).
