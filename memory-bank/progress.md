@@ -3,9 +3,10 @@
 ## Project: NeverEndingQuest - Tabletop Interface & Core Engine
 
 ## 🟢 Current Status
-Active development of Tabletop Mode features, focusing on party management and UI improvements.
+Active development of Tabletop Mode features, focusing on combat flow optimization, session stability, and UI polish.
 
 ### Documentation Maintenance
+- 2026-02-26: Memory Bank updated with recent combat initiation fast-lane, session recap cleanup, and chat auto-scroll fixes. Repository reorganized with plans moved to version-2/ structure. Commit `930b99a` includes all completed non-pending changes.
 - 2026-02-04: Memory Bank reviewed/updated on request (documentation-only pass; no code changes).
 - 2026-02-19: Developer documentation packaging pass completed for tester handoff commit stream.
   - Committed plans set (`plans/`), including archived planning notes and current roadmap files.
@@ -15,7 +16,55 @@ Active development of Tabletop Mode features, focusing on party management and U
 
 ## 🚀 Recent Achievements
 
-- **PC Creation Startup Fixes (COMPLETED - 2026-02-24):**
+- **Combat Initiation Fast-Lane (COMPLETED - 2026-02-26):**
+  - **OpenSpec Change:** `combat-initiation-fastlane-no-duplicate-opening` (completed Steps 1.1-1.4)
+  - **Objective:** Remove duplicate combat-start narration and eliminate extra LLM call at combat initiation in Multi-PC Phase 1.
+  - **Implementation:**
+    - Added fast-lane guard in `core/managers/combat_manager.py`: `is_fast_lane = multi_pc_manager is not None and encounter_data.get("awaitingPcGroupRoll", False) is True`
+    - Fast-lane branch skips initial-scene LLM generation, prints immediate system prompt: `[SYSTEM] Combat initiated. Initiative pending. Enter /init <1-20> to begin combat.`
+    - Non-fast-lane paths (single-player, resumed combat) perform full initial scene LLM generation unchanged
+  - **Regression Tests:** Added `TestFastLaneInitiationContract` class to `scripts/c5_regression_combat.py` with 4 contract tests:
+    - `test_fast_lane_guard_contract_exists` - verifies guard conditions present
+    - `test_immediate_initiative_prompt_exists` - verifies exact prompt string and flush
+    - `test_initial_scene_llm_in_non_fast_lane_path` - verifies AI call in else branch only
+    - `test_existing_init_gate_preserved` - verifies `/init` validation unchanged
+  - **Impact:** Saves ~2-5 seconds + ~$0.01-0.03 per Phase 1 combat initiation (1 LLM call instead of 2)
+  - **Verification:** 13/13 tests PASS, compile checks PASS, OpenSpec validation pending
+  - **Files Modified:** `core/managers/combat_manager.py` (+16 lines fast-lane logic), `scripts/c5_regression_combat.py` (+58 lines, 4 new tests)
+
+- **Session Resume Recap Cleanup (COMPLETED - 2026-02-26):**
+  - **Objective:** Fix combat initiation failure caused by accumulated "SESSION RESUME RECAP ONLY" prompts blocking gameplay actions.
+  - **Root Cause:** `main.py` injected recap prompt every server start; multiple restarts accumulated "do NOT emit gameplay actions" constraints.
+  - **Implementation:**
+    - Added stale recap filter in `main.py:check_and_inject_return_message()` (line ~248):
+      - `conversation_history[:] = [msg for msg in conversation_history if "SESSION RESUME RECAP ONLY" not in msg.get("content", "")]`
+      - Logs removal count: `STATE_CHANGE: Removed N stale recap messages`
+    - Created cleanup utility `scripts/cleanup_stale_recaps.py` for manual state sanitization
+  - **State Cleanup:** Removed 8 stale messages from active session (4 from conversation_history.json, 4 from chat_history.json)
+  - **Verification:** Syntax validation PASS (`python3 -m py_compile main.py`), cleanup script executed successfully
+  - **Files Modified:** `main.py` (+10 lines cleanup logic), `scripts/cleanup_stale_recaps.py` (new, 26 lines)
+
+- **Chat Auto-Scroll Fix for TTS Word-Sync (COMPLETED - 2026-02-26):**
+  - **Objective:** Restore reliable chat auto-scroll on new DM messages when word-sync/fallback reveal is active.
+  - **Root Cause:** Pre-init reveal mode collapsed message height before playback started, causing initial auto-scroll to target wrong height.
+  - **Implementation (3 surgical fixes in `web/templates/game_interface.html`):**
+    1. Removed early reveal pre-init from `addMessage()` autoplay path (~line 6190)
+    2. Added `requestAnimationFrame(() => scrollToBottom('game-output'))` in watchdog fallback after full-text reveal (~line 10257)
+    3. Added same scroll pin in `finalizeReveal()` for end/error/stop paths (~line 10533)
+  - **Behavior:** New messages arrive at full height → initial auto-scroll works → 1s watchdog reveals text → chat re-pins to bottom
+  - **Verification:** JavaScript syntax validation PASS, logic verified, TABLETOP MODE comments preserved
+  - **Files Modified:** `web/templates/game_interface.html` (~15 lines changed across 3 locations)
+
+- **Repository Reorganization (COMPLETED - 2026-02-26):**
+  - Migrated all planning documents to `plans/version-2/` structure for version 2.0 workflow
+  - Committed completed changes excluding pending OpenSpec changes:
+    - Excluded: `openspec/changes/multipc-initiative-phase-sync-and-roster-integrity/` (pending)
+    - Excluded: `openspec/changes/tt-npc-arrival-state-sync/` (pending)
+  - Commit: `930b99a` - "chore(workflow): migrate planning docs and harden startup UX"
+  - **Files:** 37 files changed, 1629 insertions(+), 73 deletions(-)
+  - **Included:** AGENTS.md, memory-bank/, openspec/changes/ (completed), plans/version-2/, scripts/, web/ updates
+
+- **PC Creation Startup Fixes (COMPLETED - 2026-02-24):
   - **OpenSpec Change:** `pc-creation-startup-fixes` (archived to `openspec/changes/archive/2026-02-24-pc-creation-startup-fixes/`)
   - **Objective:** Fix two failure modes in tabletop web startup: character sheet stall on null stats and premature single-PC onboarding due to blank input fallthrough.
   - **Startup Multi-PC Reprompt Hardening (Steps 2.1-2.5):**

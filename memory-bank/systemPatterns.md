@@ -238,3 +238,33 @@ The system maintains two formats for LLM prompts to support both development and
 - Use defensive parsing for optional appearance fields (`age`, `height`, `weight`) so non-numeric values do not break prompt composition.
 - Normalize leading personality/bond phrasing (`believes that`, `loyal to`, `sometimes`, `can be`) before connector composition to prevent duplicated phrase artifacts.
 - Add punctuation guards after composition (`....` -> `...`) for bounded free-text truncation paths.
+
+### 17. Fast-Lane Combat Initiation Pattern (2026-02-26)
+- Skip redundant LLM narration when the main DM response already described the encounter context.
+- **Guard Condition:** `multi_pc_manager is not None and encounter_data.get("awaitingPcGroupRoll", False) is True`
+- **Fast-Lane Behavior:**
+  - Skip initial-scene LLM generation block entirely
+  - Print immediate system prompt: `[SYSTEM] Combat initiated. Initiative pending. Enter /init <1-20> to begin combat.`
+  - Flush stdout immediately after print
+- **Non-Fast-Lane Behavior:** Perform full initial scene LLM generation (single-player, resumed combat, non-Phase-1)
+- **Cost/UX Impact:** Saves ~2-5 seconds + ~$0.01-0.03 per combat initiation by eliminating duplicate narration
+- **Regression Safety:** All existing `/init` validation and combat loop behavior preserved; only adds conditional branch at combat handoff
+
+### 18. Session State Poisoning Prevention Pattern (2026-02-26)
+- Accumulated system messages with restrictive constraints (e.g., "do NOT emit gameplay actions") can poison LLM context and block core functionality.
+- **Detection:** Filter messages containing known constraint markers: `"SESSION RESUME RECAP ONLY"`
+- **Cleanup Strategy:**
+  - Filter at session boundary (before injecting fresh recap)
+  - Log removal count for observability: `STATE_CHANGE: Removed N stale recap messages`
+  - Provide manual cleanup utility for active poisoned sessions
+- **Prevention:** Never allow identical constraint messages to accumulate; always dedupe/filter before context injection
+
+### 19. Deferred Reveal Auto-Scroll Pattern (2026-02-26)
+- Text reveal synchronization (word-by-word TTS) can break container auto-scroll if content height changes after initial append.
+- **Problem:** Pre-initializing reveal mode with `display: none` on unrevealed text causes collapsed height at append time.
+- **Solution:**
+  1. Let message append at full height (no pre-init reveal)
+  2. Initialize reveal only when playback actually starts
+  3. Re-pin scroll after reveal completion using `requestAnimationFrame(() => scrollToBottom(container))`
+- **Fallback Safety:** If boundary events don't arrive (1s watchdog), reveal full text immediately then re-pin scroll
+- **End-State Safety:** Always call scroll pin in `finalizeReveal()` to catch stop/error paths

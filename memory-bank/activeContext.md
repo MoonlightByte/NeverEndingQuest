@@ -1,6 +1,51 @@
 ## Current Work Focus
 
-- **PC Creation Startup Fixes (COMPLETED - 2026-02-24):**
+- **Combat Initiation Fast-Lane (COMPLETED - 2026-02-26):**
+  - **Problem:** Combat initiation had duplicate LLM narrations and delayed `/init` prompt, causing 3-step startup (DM narrates → Combat LLM narrates → `/init` prompt).
+  - **Solution:** Implemented fast-lane path in `core/managers/combat_manager.py` that skips redundant initial-scene LLM call when `awaitingPcGroupRoll=True`.
+  - **Implementation:**
+    - Added `is_fast_lane` guard: `multi_pc_manager is not None and encounter_data.get("awaitingPcGroupRoll", False) is True`
+    - Fast-lane prints immediate system prompt: `Dungeon Master: [SYSTEM] Combat initiated. Initiative pending. Enter /init <1-20> to begin combat.`
+    - Non-fast-lane (single-player, resumed combat) performs full initial scene LLM generation unchanged
+  - **Cost/UX Impact:** Saves ~2-5 seconds + ~$0.01-0.03 per combat initiation in Phase 1
+  - **Regression Tests:** Added `TestFastLaneInitiationContract` class to `scripts/c5_regression_combat.py` with 4 tests:
+    - `test_fast_lane_guard_contract_exists` - verifies guard conditions
+    - `test_immediate_initiative_prompt_exists` - verifies exact prompt string
+    - `test_initial_scene_llm_in_non_fast_lane_path` - verifies AI call in else branch
+    - `test_existing_init_gate_preserved` - verifies `/init` validation unchanged
+  - **Verification:** 13/13 tests PASS, syntax validation PASS, OpenSpec validation pending
+  - **Files Modified:** `core/managers/combat_manager.py`, `scripts/c5_regression_combat.py`
+
+- **Session Resume Recap Cleanup (COMPLETED - 2026-02-26):**
+  - **Problem:** Multiple server restarts caused accumulation of "SESSION RESUME RECAP ONLY" prompts in conversation history, poisoning context with "do NOT emit gameplay actions" constraints that blocked combat.
+  - **Solution:** Added stale recap message cleanup in `main.py:check_and_inject_return_message()` that filters out legacy recap messages before evaluating history.
+  - **Implementation:**
+    - Filter: `if "SESSION RESUME RECAP ONLY" not in msg.get("content", "")`
+    - Logs removal count: `STATE_CHANGE: Removed N stale recap messages`
+    - Cleanup script created: `scripts/cleanup_stale_recaps.py` for manual state sanitization
+  - **State Cleanup:** Removed 8 stale messages from active session (4 from conversation_history.json, 4 from chat_history.json)
+  - **Verification:** Syntax validation PASS, manual cleanup script executed successfully
+  - **Files Modified:** `main.py`, `scripts/cleanup_stale_recaps.py` (new)
+
+- **Chat Auto-Scroll Fix for TTS Word-Sync (COMPLETED - 2026-02-26):**
+  - **Problem:** Browser TTS word-sync text reveal broke chat auto-scroll on new comments due to height-collapsed content during reveal pre-init.
+  - **Solution:** Three surgical fixes in `web/templates/game_interface.html`:
+    1. Removed early reveal pre-init from `addMessage()` autoplay path (prevents collapsed height at append)
+    2. Added `requestAnimationFrame(() => scrollToBottom('game-output'))` in watchdog fallback after full-text reveal
+    3. Added same scroll pin in `finalizeReveal()` for end/error/stop paths
+  - **Behavior:** New messages arrive at full height → initial auto-scroll works → 1s watchdog reveals text → chat re-pins to bottom
+  - **Verification:** Syntax validation PASS, JavaScript logic verified, TABLETOP MODE comments preserved
+  - **Files Modified:** `web/templates/game_interface.html`
+
+- **Repository Reorganization (COMPLETED - 2026-02-26):**
+  - Migrated planning documents to `plans/version-2/` structure for version 2.0 workflow
+  - Committed completed changes excluding pending OpenSpec changes:
+    - `openspec/changes/multipc-initiative-phase-sync-and-roster-integrity/` (pending)
+    - `openspec/changes/tt-npc-arrival-state-sync/` (pending)
+  - Commit: `930b99a` - "chore(workflow): migrate planning docs and harden startup UX"
+  - **Files:** AGENTS.md, memory-bank/, openspec/changes/, plans/, scripts/, web/ updates
+
+- **PC Creation Startup Fixes (COMPLETED - 2026-02-24):
   - **OpenSpec Change:** `pc-creation-startup-fixes` (archived)
   - **Status:** 8 tests passing (3 startup reprompt + 5 stats resilience), implementation complete
   - **Startup:** Line-visible prompts, strict yes/no parser with reprompt-on-blank, explicit-only loop exit
