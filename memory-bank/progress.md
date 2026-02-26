@@ -16,7 +16,18 @@ Active development of Tabletop Mode features, focusing on combat flow optimizati
 
 ## 🚀 Recent Achievements
 
-- **Combat Initiation Fast-Lane (COMPLETED - 2026-02-26):**
+- **NPC Arrival State Sync (COMPLETED - 2026-02-27):**
+  - **OpenSpec Change:** `tt-npc-arrival-state-sync` (archived to `openspec/changes/archive/2025-02-27-tt-npc-arrival-state-sync/`)
+  - **Objective:** Enforce deterministic NPC arrival state synchronization to prevent narration/state divergence when off-location NPCs appear in scenes
+  - **Validation Guard (1.1-1.4):** Deterministic NPC mention/action pairing logic with fail-closed rejection reasons in `validate_ai_response()`
+  - **Prompt Contract Alignment (2.1-2.3):** Added `@NPC_ARRIVAL_STATE_SYNC` to system prompt, validation prompts (compressed + uncompressed) with MUST rules and examples
+  - **Party Strip Dedupe Hardening (3.1-3.2):** Replaced substring dedupe with canonical equality (lowercase, strip apostrophes, spaces→underscores) - fixes "Ansel" suppressed by "Anselara"
+  - **Regression Tests (4.1-4.5):** `scripts/test_npc_arrival_state_sync.py` with 10 tests covering valid/invalid/no-op/dedupe cases
+  - **Files Modified:** System prompt, validation prompts (2 files), `web/extensions/tabletop_socket_handlers.py`
+  - **Test Artifact:** New test file `scripts/test_npc_arrival_state_sync.py` (~280 lines)
+  - **Verification:** All 10 tests PASS, compile checks PASS, OpenSpec validation VALID
+
+- **Combat Initiation Fast-Lane (COMPLETED - 2026-02-26):
   - **OpenSpec Change:** `combat-initiation-fastlane-no-duplicate-opening` (completed Steps 1.1-1.4)
   - **Objective:** Remove duplicate combat-start narration and eliminate extra LLM call at combat initiation in Multi-PC Phase 1.
   - **Implementation:**

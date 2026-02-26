@@ -870,3 +870,59 @@ NPC immediately agrees without considering their critical leadership role.
 - Party composition changes without proper documentation
 
 The AI should make NPCs feel like real people with their own motivations, responsibilities, and decision-making processes when it comes to joining the party.
+
+
+## NPC ARRIVAL STATE SYNCHRONIZATION VALIDATION RULES
+
+When the AI DM narrates that an NPC has arrived from an off-location or joined the party, the narration MUST be paired with a corresponding state action in the SAME response.
+
+### Off-Location NPC Definition:
+An NPC is considered "off-location" if they are NOT currently in the party roster AND NOT listed in the current location's NPCs. These NPCs must have their arrival explicitly tracked via state actions.
+
+### Required State Actions for Arrival Claims:
+1. **moveBackgroundNPC**: Use when an NPC arrives at the current location from elsewhere (e.g., "Scout Elen arrives from the trail")
+   - Required parameters: npcName (exact NPC name), context (narrative explanation), currentLocation (current location ID)
+2. **updatePartyNPCs add**: Use when an NPC joins the party (e.g., "Kira volunteers to join you")
+   - Required parameters: operation="add", npc object with name, level, class
+
+### Validation Rules:
+- **VALID**: Narration claims off-location NPC arrived + matching moveBackgroundNPC action present
+- **VALID**: Narration claims NPC joined party + matching updatePartyNPCs add action present  
+- **VALID**: NPC already present at location or in party requires NO additional action
+- **INVALID**: Narration claims off-location NPC arrived/joined but NO matching state action present
+
+### Validation Examples:
+
+**VALID - NPC Arrival with State Action:**
+Narration: "Scout Elen emerges from the forest trail, having tracked you down."
+Actions include: moveBackgroundNPC with npcName="Scout Elen"
+Result: VALID - Arrival claim paired with state update
+
+**VALID - NPC Join with State Action:**
+Narration: "Kira shouldering her pack, 'I'll come with you. Someone needs to watch your back.'"
+Actions include: updatePartyNPCs with operation="add" and npc={name:"Kira",...}
+Result: VALID - Join claim paired with party composition update
+
+**VALID - Already Present NPC Mentioned:**
+Narration: "Ranger Thane nods to Elen, who is standing guard nearby."
+Elen is already in current location's NPC list.
+Result: VALID - No action required for already-present NPC
+
+**INVALID - Missing State Action for Arrival:**
+Narration: "Scout Elen emerges from the forest and greets you."
+No moveBackgroundNPC or updatePartyNPCs action present.
+Result: INVALID - Narration claims off-location arrival but missing required state action.
+Correction: Add moveBackgroundNPC with npcName="Scout Elen" or remove the arrival claim.
+
+**INVALID - Missing State Action for Party Join:**
+Narration: "'I can spare Scout Kira,' says the commander. 'She'll travel with you.' Kira steps forward."
+No updatePartyNPCs action present.
+Result: INVALID - NPC joining party but missing updatePartyNPCs add action.
+Correction: Add updatePartyNPCs with operation="add" and npc details.
+
+### Common Validation Failures:
+- Narrating NPC arrival from off-location without moveBackgroundNPC action
+- Describing NPC joining party without updatePartyNPCs add action
+- Assuming NPC presence without proper state tracking
+- Confusing already-present NPCs with off-location arrivals
+

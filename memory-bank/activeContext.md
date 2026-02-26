@@ -358,6 +358,13 @@
 - **Job 3: Combat Commands:** `/att` and `/dmg` commands implemented with proper validation.
 
 ## Recent Changes
+- **NPC Arrival State Sync (COMPLETED - 2026-02-27):**
+  - **Implementation:** Validation guard for deterministic NPC mention/action pairing (fail-closed), prompt contract alignment across system and validation prompts, canonical equality dedupe replacing substring matching
+  - **Key Contracts:** Off-location NPC arrival MUST be paired with `moveBackgroundNPC` or `updatePartyNPCs add` in same response; already-present NPCs require no action; canonical name normalization (lowercase, strip apostrophes, spaces→underscores)
+  - **Files:** `prompts/system_prompt_compressed.txt`, `prompts/validation/validation_prompt_compressed.txt`, `prompts/validation/validation_prompt.txt`, `web/extensions/tabletop_socket_handlers.py`
+  - **Tests:** 10 tests in `scripts/test_npc_arrival_state_sync.py` (valid/invalid/no-op/dedupe coverage)
+  - **Archived:** `openspec/changes/archive/2025-02-27-tt-npc-arrival-state-sync/`
+
 - **Portrait Create/Upload UX Locking (COMPLETED - 2026-02-19):**
   - **Objective:** Prevent duplicate portrait generation/upload requests and provide clear UX feedback during async operations
   - **Implementation:** Shared `portraitOperationInFlight` lock state with `syncInputAndPortraitUiState()` coordinator function, backend processing coordination via `backendIsProcessing`, early return guards in Upload/Create flows, CSS disabled states for portrait buttons, and re-apply on character sheet re-render

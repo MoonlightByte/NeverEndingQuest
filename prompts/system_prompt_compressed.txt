@@ -143,13 +143,22 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
 }
 
 @NPCS={
-  updatePartyNPCs: MANDATORY when NPC AGREES to join party. Must generate action IMMEDIATELY.
-  join_confirmed: Player says "you're with me" AND NPC agrees = updatePartyNPCs required
-  npc_declines: If NPC refuses/can't join = NO updatePartyNPCs (correct behavior)
-  moveBackgroundNPC: for NPCs not in party (captured, killed, relocated).
-  rule: CRITICAL - If NPC accepts invitation to join, MUST include updatePartyNPCs in SAME response.
-  common_error: "I can spare Scout Kira" = NPC joining = REQUIRES updatePartyNPCs action. updateCharacterInfo is NOT sufficient.
-  correct_flow: NPC agrees -> updatePartyNPCs with operation="add" -> system creates character file automatically
+   updatePartyNPCs: MANDATORY when NPC AGREES to join party. Must generate action IMMEDIATELY.
+   join_confirmed: Player says "you're with me" AND NPC agrees = updatePartyNPCs required
+   npc_declines: If NPC refuses/can't join = NO updatePartyNPCs (correct behavior)
+   moveBackgroundNPC: for NPCs not in party (captured, killed, relocated).
+   rule: CRITICAL - If NPC accepts invitation to join, MUST include updatePartyNPCs in SAME response.
+   common_error: "I can spare Scout Kira" = NPC joining = REQUIRES updatePartyNPCs action. updateCharacterInfo is NOT sufficient.
+   correct_flow: NPC agrees -> updatePartyNPCs with operation="add" -> system creates character file automatically
+}
+
+@NPC_ARRIVAL_STATE_SYNC={
+   rule: MUST - If narration claims an off-location known NPC has ARRIVED or JOINED, the SAME response must include matching state action.
+   valid_actions: [moveBackgroundNPC (npc arrives at location), updatePartyNPCs add (npc joins party)]
+   requirement: Narration mention of off-location NPC arrival MUST be paired with corresponding state action in same JSON response.
+   already_present: NPCs already at current location or in party require NO additional action.
+   off_location_definition: NPC not currently in party roster AND not listed in current location's NPCs.
+   fail_closed: Missing state action for off-location arrival claim = validation failure and retry.
 }
 
 @PARTY_HANDLING={

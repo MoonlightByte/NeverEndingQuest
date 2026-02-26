@@ -1021,6 +1021,61 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### NPC Arrival State Sync (COMPLETED - 2026-02-27)
+
+**Status:** COMPLETED - All tasks 1.1-5.4 implemented and archived
+
+**Objective:**
+Enforce deterministic NPC arrival state synchronization to prevent narration/state divergence when off-location NPCs appear in scenes.
+
+**Implementation Summary:**
+
+**Section 1 - Validation Guard Core (Steps 1.1-1.4):**
+- Deterministic NPC mention/action pairing logic in validation path
+- Integration into `validate_ai_response()` with fail-closed rejection reasons
+- Guard targets only non-present known NPC mentions
+- Action acceptance includes both `moveBackgroundNPC` (arrival) and `updatePartyNPCs add` (party join)
+
+**Section 2 - Prompt and Validator Contract Alignment (Steps 2.1-2.3):**
+- Added `@NPC_ARRIVAL_STATE_SYNC` block to `prompts/system_prompt_compressed.txt` with explicit MUST rule
+- Updated `prompts/validation/validation_prompt_compressed.txt` with validity/violation rules and JSON examples
+- Updated `prompts/validation/validation_prompt.txt` with full uncompressed section and detailed examples
+- Rule: Off-location NPC arrival claims MUST be paired with matching state action in same response
+- Exception: Already-present NPC mentions require no additional action
+
+**Section 3 - Party Strip Dedupe Hardening (Steps 3.1-3.2):**
+- Replaced substring-based dedupe with canonical equality matching in `web/extensions/tabletop_socket_handlers.py`
+- Canonical normalization: lowercase, strip apostrophes, replace spaces with underscores
+- Fixed false positive where "Ansel" was suppressed by "Anselara" (substring match)
+- Preserved correct suppression of true duplicates
+
+**Section 4 - Regression Coverage (Steps 4.1-4.5):**
+- Created `scripts/test_npc_arrival_state_sync.py` with 10 comprehensive tests
+- Test coverage:
+  - Valid: non-present NPC mention + matching action passes
+  - Invalid: non-present NPC mention without matching action fails (fail-closed)
+  - No-op: already-present NPC mention requires no additional action
+  - Dedupe: "Ansel" and "Anselara" remain distinct under equality matching
+  - Case-insensitive matching and space/apostrophe normalization
+
+**Section 5 - Verification (Steps 5.1-5.4):**
+- Compile validation: PASS for main.py and tabletop_socket_handlers.py
+- Test file compile: PASS
+- Test execution: 10/10 tests PASS
+- OpenSpec validation: VALID
+
+**Files Modified:**
+- `prompts/system_prompt_compressed.txt` (+10 lines: @NPC_ARRIVAL_STATE_SYNC block)
+- `prompts/validation/validation_prompt_compressed.txt` (+8 lines: validation rules and examples)
+- `prompts/validation/validation_prompt.txt` (+52 lines: uncompressed section with examples)
+- `web/extensions/tabletop_socket_handlers.py` (+9 lines: canonical equality dedupe)
+- `scripts/test_npc_arrival_state_sync.py` (new, ~280 lines)
+
+**Archived:**
+- OpenSpec change archived to `openspec/changes/archive/2025-02-27-tt-npc-arrival-state-sync/`
+
+---
+
 ### Combat Initiation Fast-Lane (COMPLETED - 2026-02-26)
 
 **Status:** COMPLETED - Steps 1.1-1.4 implemented, 13 tests passing

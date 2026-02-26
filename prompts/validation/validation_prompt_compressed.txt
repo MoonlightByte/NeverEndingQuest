@@ -115,13 +115,22 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 }
 
 @NPC_JOINING={
-  valid: Player accepts + NPC AGREES -> MUST have updatePartyNPCs in SAME response
-  invalid: NPC agrees to join but NO updatePartyNPCs action = ALWAYS INVALID
-  no_action_needed: NPC declines/refuses/can't join = NO updatePartyNPCs (correct)
-  mandatory: If narration shows NPC accepting and joining, updatePartyNPCs REQUIRED or invalid
-  common_failure: "I can spare Scout Kira" without updatePartyNPCs = INVALID (must add action)
-  wrong_action: Using updateCharacterInfo alone for joining = INVALID (must use updatePartyNPCs)
-  check: Look for phrases like "spare", "join you", "come with you", "volunteers" - all require updatePartyNPCs if NPC agrees
+   valid: Player accepts + NPC AGREES -> MUST have updatePartyNPCs in SAME response
+   invalid: NPC agrees to join but NO updatePartyNPCs action = ALWAYS INVALID
+   no_action_needed: NPC declines/refuses/can't join = NO updatePartyNPCs (correct)
+   mandatory: If narration shows NPC accepting and joining, updatePartyNPCs REQUIRED or invalid
+   common_failure: "I can spare Scout Kira" without updatePartyNPCs = INVALID (must add action)
+   wrong_action: Using updateCharacterInfo alone for joining = INVALID (must use updatePartyNPCs)
+   check: Look for phrases like "spare", "join you", "come with you", "volunteers" - all require updatePartyNPCs if NPC agrees
+}
+
+@NPC_ARRIVAL_VALIDATION={
+   rule: Off-location known NPC arrival claims in narration MUST have matching state action in SAME response.
+   valid: Narration says "Scout Elen arrives from the trail" + moveBackgroundNPC with npcName="Scout Elen" = VALID
+   valid: Narration says "Kira joins your party" + updatePartyNPCs add with npc.name="Kira" = VALID
+   invalid: Narration claims off-location NPC arrived/joined but NO moveBackgroundNPC or updatePartyNPCs action = INVALID
+   no_action_needed: NPC already present at location or in party requires NO additional action = VALID
+   fail_reason: "Narration claims [NPC] arrived/joined from off-location but missing required state action (moveBackgroundNPC or updatePartyNPCs add). Add matching action or remove arrival claim."
 }
 
 @VALIDATION_EXAMPLES={
@@ -139,7 +148,11 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   false_numbered_actions: {"valid":false,"reason":"Used updateCharacterInfo_2, updateCharacterInfo_3. Put multiple actions in actions array instead"}
   false_wrong_action_format: {"valid":false,"reason":"Action formatted as {'updatePlot':{...}} instead of {'action':'updatePlot','parameters':{...}}. All actions need 'action' and 'parameters' keys"}
   false_missing_party_update: {"valid":false,"reason":"NPC 'Scout Kira' agrees to join ('I can spare Scout Kira') but NO updatePartyNPCs action present. MUST use updatePartyNPCs with operation='add' when NPC joins party. Try again with correct action"}
-  false_wrong_join_action: {"valid":false,"reason":"Used updateCharacterInfo to document NPC joining but missing updatePartyNPCs. When NPC joins party, MUST use updatePartyNPCs action. updateCharacterInfo is for stat/inventory changes, NOT party composition"}
+   false_wrong_join_action: {"valid":false,"reason":"Used updateCharacterInfo to document NPC joining but missing updatePartyNPCs. When NPC joins party, MUST use updatePartyNPCs action. updateCharacterInfo is for stat/inventory changes, NOT party composition"}
+   true_npc_arrival_with_action: {"valid":true,"reason":"Narration claims Scout Elen arrived from the trail and includes matching moveBackgroundNPC action with npcName='Scout Elen'. State sync maintained."}
+   true_npc_join_with_action: {"valid":true,"reason":"Narration states Kira joins the party and includes matching updatePartyNPCs add action. Correct party composition update."}
+   false_npc_arrival_no_action: {"valid":false,"reason":"Narration claims 'Scout Elen emerges from the forest and greets you' but no moveBackgroundNPC or updatePartyNPCs action present. Off-location NPC arrival claims require matching state action. Add moveBackgroundNPC with npcName='Scout Elen' or remove arrival claim."}
+   true_already_present_npc: {"valid":true,"reason":"Narration mentions NPC already at current location requires no additional state action. Correct behavior."}
 }
 
 @CORRECT_ACTION_FORMAT={

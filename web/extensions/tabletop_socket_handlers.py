@@ -357,10 +357,18 @@ def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Calla
                     )
 
                     if current_location_data and 'npcs' in current_location_data:
+                        # TABLETOP MODE: Use canonical equality matching for dedupe to prevent substring false positives
+                        # (e.g., "Ansel" should not suppress "Anselara")
+                        def _canonical_name_for_dedupe(name: str) -> str:
+                            """Normalize name to canonical form for equality comparison."""
+                            return name.lower().strip().replace("'", "").replace(" ", "_")
+
+                        canonical_party_names = {_canonical_name_for_dedupe(member['name']) for member in party_members}
+
                         for npc in current_location_data['npcs']:
                             npc_name = npc.get('name') if isinstance(npc, dict) else npc
                             if npc_name:
-                                if not any(npc_name.lower() in member['name'].lower() for member in party_members):
+                                if _canonical_name_for_dedupe(npc_name) not in canonical_party_names:
                                     npc_data_dict = {'name': npc_name, 'type': 'location_npc'}
                                     try:
                                         matched_name = find_character_file_fuzzy(npc_name)
@@ -408,17 +416,28 @@ def handle_initiative_data_request_impl(emit_fn: Callable[..., None], error_fn: 
             emit_fn('initiative_data_response', {'active': False, 'combatants': []})
             return
 
-        living_combatants = [
-            creature for creature in encounter_data["creatures"]
-            if creature.get("status", "unknown").lower() == "alive"
-        ]
+        # TABLETOP MODE: Section 3.1 - Keep player combatants visible during active combat,
+        # including unconscious/incapacitated states, to avoid false missing-player UI.
+        visible_combatants = []
+        for creature in encounter_data["creatures"]:
+            creature_type = str(creature.get("type", "")).lower()
+            status = str(creature.get("status", "unknown")).lower()
 
-        if not living_combatants:
+            if creature_type == "player":
+                # Include all non-dead players so incapacitated/unconscious PCs remain in initiative UI.
+                if status != "dead":
+                    visible_combatants.append(creature)
+            else:
+                # Preserve existing behavior for non-player combatants.
+                if status == "alive":
+                    visible_combatants.append(creature)
+
+        if not visible_combatants:
             emit_fn('initiative_data_response', {'active': False, 'combatants': []})
             return
 
         sorted_combatants = sorted(
-            living_combatants,
+            visible_combatants,
             key=lambda item: item.get("initiative", 0),
             reverse=True,
         )
@@ -435,6 +454,7 @@ def handle_initiative_data_request_impl(emit_fn: Callable[..., None], error_fn: 
             combatant_data = {
                 "name": combatant.get("name"),
                 "type": combatant.get("type"),
+                "status": combatant.get("status"),
                 "initiative": combatant.get("initiative"),
                 "currentHp": combatant.get("currentHitPoints"),
                 "maxHp": combatant.get("maxHitPoints"),
