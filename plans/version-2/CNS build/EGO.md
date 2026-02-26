@@ -6,6 +6,13 @@
 - It is not an implementation commitment.
 - It defines a possible future build after current stabilization work.
 
+## Titan v2 Alignment Stub
+
+- Umbrella reference: `plans/version-2/titan-integration.md`
+- Retune status: Pending (not yet rewritten to Titan cycle architecture)
+- Last tagged: 2026-02-26
+- Retune focus: Titan identity scheduler, interpreted-only writes, and proposal/apply boundaries
+
 ## Purpose
 
 Define a bounded cybernetic control architecture for narrative quality in NeverEndingQuest.
@@ -45,7 +52,7 @@ This EGO/RATIO plan must remain aligned with world-narrative copyright policy:
 
 This plan depends on completion of the OpenRouter router facade work:
 
-- `plans/openrouter_llm_router_architecture.md`
+- `plans/version-2/openrouter_llm_router_architecture.md`
 
 Required capability:
 - Unified `llm.call(task=...)` entrypoint with role/task routing, usage stats, and fallback.

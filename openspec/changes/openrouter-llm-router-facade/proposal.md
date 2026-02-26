@@ -1,3 +1,10 @@
+## Titan v2 Alignment Stub
+
+- Umbrella reference: `plans/version-2/titan-integration.md`
+- Retune status: Pending (OpenSpec proposal not yet updated for Titan task profile)
+- Last tagged: 2026-02-26
+- Retune focus: dedicated Titan background task routing, free-thinking model policy, and fail-open background behavior
+
 ## Why
 
 NeverEndingQuest currently routes most LLM calls through mixed direct client usage, which makes provider switching, fallback behavior, and callsite migration error-prone. We need a single facade layer now so future OpenRouter rollout can be staged safely without breaking upstream-compatible single-player behavior.

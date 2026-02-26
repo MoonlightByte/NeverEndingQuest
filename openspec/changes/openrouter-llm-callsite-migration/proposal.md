@@ -1,3 +1,10 @@
+## Titan v2 Alignment Stub
+
+- Umbrella reference: `plans/version-2/titan-integration.md`
+- Retune status: Pending (OpenSpec proposal not yet updated for Titan worker callsites)
+- Last tagged: 2026-02-26
+- Retune focus: include Titan cycle callsites in migration tiers with non-blocking error contracts and segmented usage metrics
+
 ## Why
 
 The repository has mixed LLM call patterns (direct OpenAI clients, partial factory usage, and model constants) across high-impact gameplay paths, which increases outage risk and makes provider fallback behavior inconsistent. We need a structured migration now to complete OpenRouter-ready callsite routing without breaking single-player compatibility or upstream merge safety.

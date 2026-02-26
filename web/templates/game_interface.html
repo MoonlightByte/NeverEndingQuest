@@ -5033,6 +5033,7 @@
          */
         function _getCacheInvalidationPatterns(slug) {
             return [
+                `/static/portraits/${slug}_full.png`,
                 `/static/portraits/${slug}.png`,
                 `/media/npcs/${slug}_thumb.jpg`,
                 `/media/npcs/${slug}.jpg`,
@@ -6186,14 +6187,7 @@
                 const isAutoplayEnabled = document.getElementById('tts-autoplay-toggle').checked;
                 // shouldSkipTTS already includes system content check from above
                 if (!skipAutoplay && !shouldSkipTTS && isTTSEnabled && isAutoplayEnabled && ttsButton) {
-                    // TABLETOP MODE: Avoid initial full-block flash before sync begins.
-                    // Pre-initialize reveal mode for Browser autoplay when word sync is enabled.
-                    if (wordSyncEnabled && getSelectedTTSEngine() === 'browser') {
-                        const preRevealState = initRevealMode(messageDiv, message.content);
-                        if (preRevealState) {
-                            messageDiv._revealState = preRevealState;
-                        }
-                    }
+                    // TABLETOP MODE: Let reveal initialize only when playback starts to ensure proper message height for auto-scroll
                     setTimeout(() => {
                         playTTSQueued(message.content, ttsButton, messageDiv);
                     }, 0);
@@ -7811,6 +7805,7 @@
                     const slugFromMeta = combatant.image_slug || normalizePortraitSlug(combatant.name || '');
                     const versionFromMeta = combatant.image_version || null;
 
+                    const playerFullPortraitUrl = withAssetVersion(`/static/portraits/${slugFromMeta}_full.png`, versionFromMeta);
                     const portraitUrl = withAssetVersion(`/static/portraits/${slugFromMeta}.png`, versionFromMeta);
                     const npcThumbUrl = withAssetVersion(`/media/npcs/${slugFromMeta}_thumb.jpg`, versionFromMeta);
                     const npcVideoUrl = `/media/npcs/${slugFromMeta}_video.mp4`;
@@ -7837,19 +7832,33 @@
                     attachTooltipListeners(item);
 
                     // TABLETOP MODE: Keep module NPC video/image media available after NPC -> PC promotion.
+                    // Portrait priority: _full.png -> static .png -> NPC .png -> NPC .jpg (avoids stale JPG fallback)
                     item.addEventListener('click', function() {
                         const video = document.createElement('video');
                         video.src = npcVideoUrl;
                         video.onloadedmetadata = () => showVideoPopup(item, npcVideoUrl);
                         video.onerror = () => {
-                            const imgJpg = new Image();
-                            imgJpg.src = npcImageJpg;
-                            imgJpg.onload = () => showImagePopup(item, imgJpg.src);
-                            imgJpg.onerror = () => {
-                                const imgPng = new Image();
-                                imgPng.src = npcImagePng;
-                                imgPng.onload = () => showImagePopup(item, imgPng.src);
+                            const tryFullPortrait = () => {
+                                const imgFull = new Image();
+                                imgFull.src = playerFullPortraitUrl;
+                                imgFull.onload = () => showImagePopup(item, playerFullPortraitUrl);
+                                imgFull.onerror = () => {
+                                    const imgPortrait = new Image();
+                                    imgPortrait.src = portraitUrl;
+                                    imgPortrait.onload = () => showImagePopup(item, portraitUrl);
+                                    imgPortrait.onerror = () => {
+                                        const imgPng = new Image();
+                                        imgPng.src = npcImagePng;
+                                        imgPng.onload = () => showImagePopup(item, imgPng.src);
+                                        imgPng.onerror = () => {
+                                            const imgJpg = new Image();
+                                            imgJpg.src = npcImageJpg;
+                                            imgJpg.onload = () => showImagePopup(item, imgJpg.src);
+                                        };
+                                    };
+                                };
                             };
+                            tryFullPortrait();
                         };
                     });
                 }
@@ -8035,6 +8044,7 @@
                     const slugFromMeta = member.image_slug || normalizePortraitSlug(member.name || '');
                     const versionFromMeta = member.image_version || null;
 
+                    const playerFullPortraitUrl = withAssetVersion(`/static/portraits/${slugFromMeta}_full.png`, versionFromMeta);
                     const playerPortraitUrl = withAssetVersion(`/static/portraits/${slugFromMeta}.png`, versionFromMeta);
                     const npcBasePath = `/media/npcs/${slugFromMeta}`;
                     const videoCandidates = member.type === 'player'
@@ -8055,11 +8065,14 @@
                             withAssetVersion(`${npcBasePath}.png`, versionFromMeta),
                         ];
 
+                    // TABLETOP MODE: Player popup prefers static portraits (_full.png -> .png) before NPC media
+                    // to avoid stale JPG fallback after portrait create/upload.
                     const popupImageCandidates = member.type === 'player'
                         ? [
-                            withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta),
-                            withAssetVersion(`${npcBasePath}.png`, versionFromMeta),
+                            playerFullPortraitUrl,
                             playerPortraitUrl,
+                            withAssetVersion(`${npcBasePath}.png`, versionFromMeta),
+                            withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta),
                             withAssetVersion(`${npcBasePath}_thumb.jpg`, versionFromMeta),
                         ]
                         : [
@@ -10240,6 +10253,8 @@
                         clearRevealMode(targetMessageDiv); // Clean up reveal spans
                         targetMessageDiv.classList.remove('reveal-mode'); // Remove reveal mode class
                         revealState = null; // Clear reveal state
+                        // TABLETOP MODE: Re-pin chat to bottom after fallback reveal expands content
+                        requestAnimationFrame(() => scrollToBottom('game-output'));
                     }
                 }, 1000);
             }
@@ -10516,6 +10531,14 @@
             // Reveal all text
             revealState.revealed.textContent = revealState.fullText;
             revealState.unrevealed.textContent = '';
+
+            // TABLETOP MODE: Re-pin chat to bottom after reveal completes
+            const gameOutput = document.getElementById('game-output');
+            if (gameOutput) {
+                requestAnimationFrame(() => {
+                    gameOutput.scrollTop = gameOutput.scrollHeight;
+                });
+            }
         }
 
         function clearRevealMode(messageDiv) {

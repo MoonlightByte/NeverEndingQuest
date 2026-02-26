@@ -43,5 +43,5 @@
 
 ## 8. Documentation and builder handoff
 
-- [ ] 8.1 Update `plans/journal.md` links/references if implementation-specific details differ from approved MVP contract.
+- [ ] 8.1 Update `plans/version-2/journal.md` links/references if implementation-specific details differ from approved MVP contract.
 - [ ] 8.2 Add implementer notes in `openspec/changes/journal-diary-mvp-phase1/executor_prompts.md` with phase order and verification commands for Kimi execution.

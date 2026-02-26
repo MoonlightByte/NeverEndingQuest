@@ -118,7 +118,7 @@ data = llm.call(role="extract_character", messages=[...], structured_output=Char
 - Foundation for future extraction to clean TT-only fork
 - Plugin architecture allows gradual hardening toward TT-only
 
-**Implementation:** Planned 2-3 week migration (see `/plans/openrouter_llm_router_architecture.md`)
+**Implementation:** Planned 2-3 week migration (see `/plans/version-2/openrouter_llm_router_architecture.md`)
 
 ## Data Schema Extensions
 - `party_tracker.json` now includes:

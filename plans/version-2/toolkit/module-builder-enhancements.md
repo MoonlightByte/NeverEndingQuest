@@ -5,6 +5,13 @@ Owner: Toolkit rebuild workstream
 Date: 2026-02-19
 Scope: Multi-phase rebuild of module toolkit and module builder with Phase 1 focused on NPC generation/promotion alignment.
 
+## Titan v2 Alignment Stub
+
+- Umbrella reference: `plans/version-2/titan-integration.md`
+- Retune status: Pending (module pressure ingestion contract not yet added)
+- Last tagged: 2026-02-26
+- Retune focus: consuming approved Titan world-pressure lines in module seeds with bounded influence rules
+
 ---
 
 ## 1) Why this roadmap exists

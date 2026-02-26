@@ -1,3 +1,10 @@
+## Titan v2 Alignment Stub
+
+- Umbrella reference: `plans/version-2/titan-integration.md`
+- Retune status: Pending (OpenSpec proposal not yet extended with Titan lifecycle tables)
+- Last tagged: 2026-02-26
+- Retune focus: relationship-alignment schema, Titan cycle audit logs, and local/regional/world history-line proposal lifecycle
+
 ## Why
 
 NeverEndingQuest needs a copyright-safe world-narrative ingestion foundation before implementation proceeds. The current direction is correct (PDF-only, one-book-at-a-time, source-anonymous outputs, local `/user_uploads/text/`), but Phase 1/2 must be formalized as OpenSpec builder-ready work with explicit MUST boundaries.

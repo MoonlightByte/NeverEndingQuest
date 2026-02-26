@@ -376,7 +376,7 @@ Active development of Tabletop Mode features, focusing on party management and U
   - **PR2 Handoff Ready:** Archive zip portability work can begin (scaffolded in `/archiving.md`)
 
 - **Journal Diary MVP Phase 1 Planning (PLANNED - 2026-02-16):
-  - Created comprehensive MVP plan at `/plans/journal.md` for transparent diary system with dual-checkpoint model
+  - Created comprehensive MVP plan at `/plans/version-2/journal.md` for transparent diary system with dual-checkpoint model
   - **Dual-Checkpoint Architecture:** Start Game triggers draft refresh (unsaved session summary), Save triggers confirmed checkpoint (save-bound canonical entry)
   - **Key Design Decisions:**
     - Draft entries excluded from "Story So Far" PDF export (confirmed-only canon)
@@ -601,7 +601,7 @@ Active development of Tabletop Mode features, focusing on party management and U
   - **Future OpenSpec Changes:** `ego-foundation-passive-observer`, `ego-bounded-adjustments`, `ratio-reviewed-evolution`
   - **Prerequisite:** OpenRouter router facade completion
   - **Status:** Conceptual review complete; ready for implementation post-tester release
-  - **Files:** `plans/EGO.md` (rewritten, 353 lines)
+  - **Files:** `plans/version-2/CNS build/EGO.md` (rewritten, 353 lines)
 
 - **Hallucinated Monster Defense - Three-Layer Safety System (COMPLETED - 2026-02-10):**
   - **Problem:** Narrator LLM hallucinating creature names (e.g., "spectral servants") led to auto-created stat blocks via monster_builder.py, creating data integrity issues with fabricated monsters
@@ -684,7 +684,7 @@ Active development of Tabletop Mode features, focusing on party management and U
     - **Phase 1 (3-4 days):** Create `utils/llm_router.py`, update `model_config.py`, integration tests
     - **Phase 2 (5-7 days):** Migrate all 39 files with LLM calls
     - **Phase 3 (2-3 days):** Cleanup, usage reporting, documentation
-  - **Plan Document:** `/plans/openrouter_llm_router_architecture.md` (700 lines comprehensive)
+  - **Plan Document:** `/plans/version-2/openrouter_llm_router_architecture.md` (700 lines comprehensive)
   - **Status:** PLANNING PHASE - Not yet implemented, under review
 
 - **TTS Auto-Play Fix & Queue Management (COMPLETED - 2026-02-06):**

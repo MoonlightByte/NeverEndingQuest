@@ -101,7 +101,7 @@ Frontend-only state management to prevent duplicate portrait operations and prov
 
 ## LLM Router Architecture (PLANNED)
 **Status:** Architecture plan complete, implementation pending
-**Location:** `/plans/openrouter_llm_router_architecture.md`
+**Location:** `/plans/version-2/openrouter_llm_router_architecture.md`
 
 **Core Components:**
 - `utils/llm_router.py` - Centralized LLM router with capability-based routing

@@ -4,7 +4,7 @@ Status: Draft for implementation
 Priority: High
 Date: 2026-02-23
 Owner: Tabletop UX + combat systems
-Target: `plans/combat-mapping.md`
+Target: `plans/version-2/combat-mapping.md`
 
 ---
 
@@ -39,7 +39,7 @@ Primary goals:
 - Keep schema changes backward compatible (optional fields first).
 - Fail-open on missing map data: combat still runs with current initiative-only UI.
 - Use ASCII-first implementation as an intentional scaffold for canvas rendering, not as throwaway work.
-- Align combat map contracts with `plans/world-mapping.md` shared graph contract so combat is a scoped profile, not a separate map system.
+- Align combat map contracts with `plans/version-2/world-mapping.md` shared graph contract so combat is a scoped profile, not a separate map system.
 
 ---
 
@@ -339,7 +339,7 @@ Renderer contract:
 - Tactical math and validation stay in backend/shared helpers; renderer only draws.
 
 Cross-plan alignment:
-- Combat map uses the same renderer boundary defined in `plans/world-mapping.md`.
+- Combat map uses the same renderer boundary defined in `plans/version-2/world-mapping.md`.
 - Combat should be represented as `scope: "combat"` within shared map payload semantics.
 - Shared map UI host (`Maps` tab) should be able to display local/module/world/combat scopes without parallel rendering stacks.
 - Worldview graph semantics (`memory.db` node/edge tables) are shared infrastructure for non-combat map scopes; combat state remains encounter-authoritative.
@@ -371,7 +371,7 @@ This section defines what must be added to current combat code so mapping works 
   - Never allow negative remaining movement.
 - Scope boundary:
   - MultiPCCombatManager owns `combat` scope map state only.
-  - Local/module/world exploration map scopes are handled by world mapping services (`plans/world-mapping.md`).
+  - Local/module/world exploration map scopes are handled by world mapping services (`plans/version-2/world-mapping.md`).
 
 `core/managers/combat_manager.py` (orchestration point):
 - Request and pass map-aware encounter state into multi-PC manager each combat tick.

@@ -4,7 +4,14 @@ Status: Draft for implementation
 Priority: High
 Date: 2026-02-24
 Owner: Tabletop combat + content pipeline
-Target: `plans/monsters.md`
+Target: `plans/version-2/toolkit/monsters.md`
+
+## Titan v2 Alignment Stub
+
+- Umbrella reference: `plans/version-2/titan-integration.md`
+- Retune status: Pending (bridge design not yet integrated)
+- Last tagged: 2026-02-26
+- Retune focus: approved Titan pressure -> declarations -> seeding, with undeclared fail-closed invariants
 
 ---
 

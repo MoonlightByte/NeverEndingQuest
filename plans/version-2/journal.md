@@ -2,7 +2,7 @@
 
 Status: Ready for review (MVP only)  
 Owner: Kimi Builder  
-Target: `plans/journal.md`  
+Target: `plans/version-2/journal.md`  
 Scope: Implement a two-point diary model (Start Game draft + Save confirmed), Diary tab in Journal UI, and on-demand "Story so far" PDF download from confirmed entries only.
 
 ---

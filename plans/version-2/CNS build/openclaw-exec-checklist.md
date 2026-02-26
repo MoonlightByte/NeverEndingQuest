@@ -2,10 +2,10 @@
 
 Status: Execution companion
 Date: 2026-02-18
-Primary plan: `plans/openclaw.md`
+Primary plan: `plans/version-2/CNS build/openclaw.md`
 Related architecture plans:
-- `plans/openrouter_llm_router_architecture.md`
-- `plans/EGO.md`
+- `plans/version-2/openrouter_llm_router_architecture.md`
+- `plans/version-2/CNS build/EGO.md`
 
 ---
 
@@ -14,7 +14,7 @@ Related architecture plans:
 This is the compact, session-by-session execution checklist for implementing the OpenClaw pattern extraction in NEQ.
 
 Use this file while building.
-Use `plans/openclaw.md` for full rationale and references.
+Use `plans/version-2/CNS build/openclaw.md` for full rationale and references.
 
 ---
 
@@ -30,9 +30,9 @@ Use `plans/openclaw.md` for full rationale and references.
 
 ## Quick Reading Order Before Coding
 
-- [ ] Read `plans/openclaw.md` sections 4, 6, 7, 9.
-- [ ] Re-read `plans/openrouter_llm_router_architecture.md` sections on facade + fallback.
-- [ ] Re-read `plans/EGO.md` boundary contract and phase gates.
+- [ ] Read `plans/version-2/CNS build/openclaw.md` sections 4, 6, 7, 9.
+- [ ] Re-read `plans/version-2/openrouter_llm_router_architecture.md` sections on facade + fallback.
+- [ ] Re-read `plans/version-2/CNS build/EGO.md` boundary contract and phase gates.
 
 ---
 

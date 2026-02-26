@@ -2674,9 +2674,25 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
            debug(f"RESUME: Using fallback narration due to error: {str(e)}", category="combat_events")
    else:
        # This is a new combat. Use the original logic to get the initial scene.
-       debug("AI_CALL: Getting initial scene description...", category="combat_events")
-       initiative_order = get_initiative_order(encounter_data)
-       
+
+       # TABLETOP MODE: Fast-lane for Phase 1 multi-PC combat with pending initiative
+       # Skip redundant LLM narration when main DM response already described the encounter
+       is_fast_lane = (
+           multi_pc_manager is not None and
+           encounter_data.get("awaitingPcGroupRoll", False) is True
+       )
+
+       if is_fast_lane:
+           info("COMBAT_INIT: Using fast-lane path (skipping initial-scene LLM call)", category="combat_events")
+           # Skip the initial scene LLM generation block entirely
+           # TABLETOP MODE: Immediately prompt for initiative without extra LLM narration
+           print("Dungeon Master: [SYSTEM] Combat initiated. Initiative pending. Enter /init <1-20> to begin combat.")
+           import sys
+           sys.stdout.flush()
+       else:
+           debug("AI_CALL: Getting initial scene description...", category="combat_events")
+           initiative_order = get_initiative_order(encounter_data)
+
        # TABLETOP MODE: Check for group initiative handover
        initiative_narrative = ""
        if multi_pc_manager:

@@ -4,7 +4,14 @@ Status: Draft for implementation
 Priority: High
 Date: 2026-02-23
 Owner: Tabletop UX + world systems
-Target: `plans/world-mapping.md`
+Target: `plans/version-2/world-mapping.md`
+
+## Titan v2 Alignment Stub
+
+- Umbrella reference: `plans/version-2/titan-integration.md`
+- Retune status: Pending (overlay and filters not yet implemented)
+- Last tagged: 2026-02-26
+- Retune focus: read-only Titan pressure overlays by scope and debug filters by Titan/status
 
 ---
 

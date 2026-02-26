@@ -30,5 +30,5 @@
 
 ## 6. Documentation and Handoff
 
-- [ ] 6.1 Update architecture documentation to describe facade/factory/config boundaries and phase-2 migration handoff (`plans/openrouter_llm_router_architecture.md` and/or docs file) (verify: docs reference current file paths and interfaces).
+- [ ] 6.1 Update architecture documentation to describe facade/factory/config boundaries and phase-2 migration handoff (`plans/version-2/openrouter_llm_router_architecture.md` and/or docs file) (verify: docs reference current file paths and interfaces).
 - [ ] 6.2 Record rollout and rollback procedure in implementation notes for operators (verify: includes enable path, disable path, and failure triage steps).

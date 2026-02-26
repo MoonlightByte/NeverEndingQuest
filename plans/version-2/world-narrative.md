@@ -4,6 +4,13 @@ Status: Draft for review
 Date: 2026-02-22
 Owner: Narrative systems + memory integration
 
+## Titan v2 Alignment Stub
+
+- Umbrella reference: `plans/version-2/titan-integration.md`
+- Retune status: Pending (schema and lifecycle updates not yet applied)
+- Last tagged: 2026-02-26
+- Retune focus: alignment relationship tables, Titan cycle logs, and world history proposal lifecycle
+
 ---
 
 ## 0) Priority Zero: Copyright Firewall

@@ -225,38 +225,48 @@ def exit_game():
 
 def check_and_inject_return_message(conversation_history, is_combat_active=False):
     """
-    Checks if a 'player has returned' message needs to be injected at startup.
-    
+    Checks if a startup recap message needs to be injected at startup.
+
     Args:
         conversation_history: List of conversation messages
         is_combat_active: Boolean indicating if combat is currently active (prevents duplicate injection)
-        
+
     Returns:
         Tuple of (updated_conversation_history, was_injected)
     """
     # Skip if no conversation history (first startup)
     if not conversation_history:
-        debug("STATE_CHANGE: No conversation history found, skipping return message injection", category="session_management")
+        debug("STATE_CHANGE: No conversation history found, skipping startup recap message injection", category="session_management")
         return conversation_history, False
-    
+
     # Check if there are any user messages (game has been played before)
     user_messages = [msg for msg in conversation_history if msg.get("role") == "user"]
     if not user_messages:
-        debug("STATE_CHANGE: No user messages found, skipping return message injection", category="session_management")
+        debug("STATE_CHANGE: No user messages found, skipping startup recap message injection", category="session_management")
         return conversation_history, False
-    
+
+    # TABLETOP MODE: Clean up any stale recap messages from previous restarts
+    # Prevents accumulation of "do NOT emit gameplay actions" constraints that block combat
+    original_len = len(conversation_history)
+    conversation_history[:] = [
+        msg for msg in conversation_history
+        if "SESSION RESUME RECAP ONLY" not in msg.get("content", "")
+    ]
+    if len(conversation_history) < original_len:
+        debug(f"STATE_CHANGE: Removed {original_len - len(conversation_history)} stale recap messages", category="session_management")
+
     # Get the last message
     last_message = conversation_history[-1] if conversation_history else None
     if not last_message:
-        debug("STATE_CHANGE: No last message found, skipping return message injection", category="session_management")
+        debug("STATE_CHANGE: No last message found, skipping startup recap message injection", category="session_management")
         return conversation_history, False
-    
-    # Check if last message is already a return message
+
+    # Check if last message is already the startup recap control message
     last_content = last_message.get("content", "")
-    if "Resume the game, the player has returned" in last_content:
-        debug("STATE_CHANGE: Return message already present, skipping injection", category="session_management")
+    if "SESSION RESUME RECAP ONLY" in last_content:
+        debug("STATE_CHANGE: Startup recap message already present, skipping injection", category="session_management")
         return conversation_history, False
-    
+
     # Check if we're resuming from combat - if so, inject a different tracking message
     if is_combat_active:
         # Combat manager will handle its own resume message, so we just add a tracking marker
@@ -276,13 +286,13 @@ def check_and_inject_return_message(conversation_history, is_combat_active=False
         debug("STATE_CHANGE: Added combat recovery marker", category="session_management")
         return conversation_history, True
     
-    # Normal (non-combat) resume message injection
+    # Normal (non-combat) startup recap injection
     return_message = {
         "role": "user",
-        "content": "Dungeon Master Note: Resume the game, the player has returned. Welcome the player back warmly. Have the party members acknowledge their return with brief in-character reactions. Provide a concise atmospheric recap of the immediate situation and surroundings, then naturally prompt for the player's next action while maintaining immersion in the ongoing narrative. IMPORTANT: Do NOT use transitionLocation action - the party is already at their current location. Just provide narrative and prompts."
+        "content": "Dungeon Master Note: SESSION RESUME RECAP ONLY. Provide a brief in-world recap so the table can continue immediately from current state. The party is already present at the current location. Do NOT narrate anyone returning, arriving, or being welcomed back. Do NOT include reunion dialogue, relief beats, or newcomer framing (for example, 'wanderer returns'). Summarize only: (1) where the party is, (2) what happened most recently, and (3) the most immediate unresolved objective or threat. Keep it concise (3-5 sentences), atmospheric, and grounded in existing conversation history and current world state. End with one forward prompt for action. IMPORTANT: Narration-only recap; do NOT emit gameplay actions. IMPORTANT: Do NOT use transitionLocation action - the party is already at their current location."
     }
     conversation_history.append(return_message)
-    debug("STATE_CHANGE: Injected 'player has returned' message at startup", category="session_management")
+    debug("STATE_CHANGE: Injected startup recap message at startup", category="session_management")
     return conversation_history, True
 
 def generate_arrival_narration(departure_narration, party_tracker_data, conversation_history):
@@ -936,6 +946,72 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
     if npc_normalized_response != response_to_validate:
         print(f"INFO: Auto-corrected NPC names - {npc_normalization_message}")
         response_to_validate = npc_normalized_response
+
+    # TABLETOP MODE: NPC Arrival State Sync Validation (Tasks 1.1-1.4)
+    # Validate that narration cannot introduce off-location known NPCs
+    # unless the same response includes a matching state action
+    # STRICT FAIL-CLOSED: All context loading must succeed or validation fails
+    try:
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync, load_module_npc_names
+        
+        # Parse the response JSON for validation
+        try:
+            response_json = json.loads(response_to_validate)
+        except json.JSONDecodeError as e:
+            error_msg = "NPC arrival state sync validation error: invalid assistant JSON during guard evaluation"
+            print(f"ERROR: {error_msg}")
+            return (False, error_msg)
+        
+        # Get module name - required for context loading
+        module_name = party_tracker_data.get("module", "")
+        if not module_name or not module_name.strip():
+            error_msg = "NPC arrival state sync validation error: module name missing from party tracker"
+            print(f"ERROR: {error_msg}")
+            return (False, error_msg)
+        
+        # Get current location data - required for present NPC detection
+        current_location_id = party_tracker_data["worldConditions"]["currentLocationId"]
+        current_area_id = party_tracker_data["worldConditions"]["currentAreaId"]
+        
+        module_name_normalized = module_name.replace(" ", "_")
+        from utils.module_path_manager import ModulePathManager
+        path_manager = ModulePathManager(module_name_normalized)
+        area_file = path_manager.get_area_path(current_area_id)
+        
+        try:
+            with open(area_file, "r", encoding="utf-8") as file:
+                area_data = json.load(file)
+            location_data = next((loc for loc in area_data["locations"] if loc["locationId"] == current_location_id), None)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            error_msg = f"NPC arrival state sync validation error: failed to load location context ({str(e)})"
+            print(f"ERROR: {error_msg}")
+            return (False, error_msg)
+        
+        if location_data is None:
+            error_msg = f"NPC arrival state sync validation error: location '{current_location_id}' not found in area '{current_area_id}'"
+            print(f"ERROR: {error_msg}")
+            return (False, error_msg)
+        
+        # Load all module NPC names for comprehensive known NPC detection
+        module_npc_names = load_module_npc_names(module_name)
+        
+        # Run NPC arrival state sync validation
+        is_sync_valid, sync_reason = validate_npc_arrival_state_sync(
+            response_json,
+            party_tracker_data,
+            location_data=location_data,
+            module_npc_names=module_npc_names
+        )
+        
+        if not is_sync_valid:
+            print(f"ERROR: NPC arrival state sync validation failed - {sync_reason}")
+            return (False, sync_reason)
+        
+    except Exception as e:
+        # Fail-closed: all validation errors block processing
+        error_msg = f"NPC arrival state sync validation error: {str(e)}"
+        print(f"ERROR: {error_msg}")
+        return (False, error_msg)
 
     # The validation needs sufficient context to understand what happened
     # We need to include recent conversation history, not just the last two messages

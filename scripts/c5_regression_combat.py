@@ -215,5 +215,63 @@ class TestC1C2MainLoopHelpers(unittest.TestCase):
         self.assertNotIn("Proceeding with the last generated response.", source)
 
 
+class TestFastLaneInitiationContract(unittest.TestCase):
+    """Regression tests for Phase 1 fast-lane combat initiation (no-duplicate-opening)."""
+
+    def _load_combat_manager_source(self):
+        """Load raw source of combat_manager.py for contract tests."""
+        cm_path = os.path.join(PROJECT_ROOT, "core/managers/combat_manager.py")
+        with open(cm_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def test_fast_lane_guard_contract_exists(self):
+        """Fast-lane must guard on multi_pc_manager and awaitingPcGroupRoll."""
+        source = self._load_combat_manager_source()
+        # Must contain the guard condition
+        self.assertIn("multi_pc_manager is not None", source)
+        self.assertIn('encounter_data.get("awaitingPcGroupRoll", False) is True', source)
+        # Must be assigned to is_fast_lane and used in if statement
+        self.assertIn("is_fast_lane = (", source)
+        self.assertIn("if is_fast_lane:", source)
+
+    def test_immediate_initiative_prompt_exists(self):
+        """Fast-lane must print immediate initiative prompt without LLM call."""
+        source = self._load_combat_manager_source()
+        expected_msg = (
+            "Dungeon Master: [SYSTEM] Combat initiated. Initiative pending. "
+            "Enter /init <1-20> to begin combat."
+        )
+        self.assertIn(expected_msg, source)
+        # Must flush stdout immediately after print
+        self.assertIn('import sys\n            sys.stdout.flush()', source)
+
+    def test_initial_scene_llm_in_non_fast_lane_path(self):
+        """Initial scene AI call must be in non-fast-lane (else) branch."""
+        source = self._load_combat_manager_source()
+        # The AI call should NOT appear in fast-lane block (before else)
+        # Instead it should be in the else branch
+        # Find the fast-lane block boundary
+        fast_lane_start = source.find("if is_fast_lane:")
+        else_start = source.find("else:", fast_lane_start)
+        # Verify AI call comes after else (in non-fast-lane path)
+        ai_call_pos = source.find('debug("AI_CALL: Getting initial scene description..."')
+        self.assertGreater(ai_call_pos, else_start, "AI_CALL must be in else branch, not fast-lane")
+
+    def test_existing_init_gate_preserved(self):
+        """Existing /init validation gate must remain present."""
+        source = self._load_combat_manager_source()
+        # Must contain the awaitingPcGroupRoll gate in combat loop
+        self.assertIn(
+            'if multi_pc_manager and encounter_data.get("awaitingPcGroupRoll", False):',
+            source
+        )
+        # Must contain usage prompts for invalid /init
+        self.assertIn('Dungeon Master: [SYSTEM] Initiative pending. Usage: /init <1-20>', source)
+        self.assertIn(
+            'Dungeon Master: [SYSTEM] Initiative pending. Roll must be between 1 and 20.',
+            source
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

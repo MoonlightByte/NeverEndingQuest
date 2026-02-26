@@ -15,6 +15,13 @@
 
 **Current Priority:** The codebase is reverted to OpenAI as LLM provider. The incomplete OpenRouter migration code remains in place but is inactive (`LLM_PROVIDER = "openai"`). The immediate priority is finalizing the Tabletop Mode build and pushing to a personal fork for testers. This router plan will be implemented **after** the OpenAI-based TT build is stable and shipped.
 
+## Titan v2 Alignment Stub
+
+- Umbrella reference: `plans/version-2/titan-integration.md`
+- Retune status: Pending (Titan task profile not yet added)
+- Last tagged: 2026-02-26
+- Retune focus: dedicated Titan task routing to free-thinking profile with isolated budgets and fail-open behavior
+
 ---
 
 ## Current State Analysis
@@ -1467,7 +1474,7 @@ All items below are deferred until after the router is implemented and a second 
 
 **For implementation session:**
 
-"Implement Phase 0 + Phase 1 of the LLM Router from /plans/openrouter_llm_router_architecture.md.
+"Implement Phase 0 + Phase 1 of the LLM Router from /plans/version-2/openrouter_llm_router_architecture.md.
 
 Phase 0 (config & factory prep):
 - Add MODEL_PROFILES dict and DEFAULT_PROFILE to model_config.py (see Model Agnosticism section for exact profiles: hybrid kimi-complex-gemini-simple, kimi-thinking-split, plus single-provider baselines for kimi, gemini, claude, and openai/gpt-4.1 fallback)

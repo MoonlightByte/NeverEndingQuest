@@ -252,7 +252,7 @@
 
 - **PR1 Archive Global Save Index and Restore Routing (COMPLETED - 2026-02-16):** OpenSpec change `archive-global-save-index-and-restore-routing` is fully implemented and validated. **Global Save Catalog:** `list_save_games_global()` scans all modules, deterministic timestamp sorting with tie-break, additive metadata fields (`source_module`, `memory_package_present`). **Cross-Module Restore Routing:** Target validator with path traversal rejection, module-aware entrypoint `restore_save_game_global()` that delegates to shared core pipeline, legacy `saveFolder`-only path preserved. **Web Integration:** `listSaves` action returns global entries, `restoreGame` accepts module-aware payload with fallback, load dialog shows source module + memory indicator `[M]`. **Files Modified:** `updates/save_game_manager.py`, `web/web_interface.py`, `web/templates/game_interface.html`. **All 12 completion items PASS.** Ready for PR2 zip portability work.
 
-- **Journal Diary MVP Phase 1 (PLANNED - 2026-02-16):** Completed detailed MVP plan at `/plans/journal.md` and scaffolded OpenSpec change `journal-diary-mvp-phase1` with full artifacts. **Dual-Checkpoint Model:** Start Game refreshes draft diary entries when source history is stale; Save operations create confirmed canonical entries bound to `save_id`. **Journal UI:** Tabbed interface with preserved Quests behavior and new Diary tab showing draft card + confirmed timeline ordered by game-world time. **PDF Export:** "Download the story so far..." button generates fan-fiction style chronicle from confirmed entries only (draft excluded by design). **Failure Isolation:** Diary generation failures are non-blocking for both Start Game and Save flows. **Data Model:** Additive migration for `session_diary_entries`, `session_diary_state`, `story_so_far_cache` tables. **New Modules:** `core/memory/session_diary.py` (checkpoint logic), `core/memory/story_so_far_compiler.py` (PDF generation with caching). **Integration Points:** Save hook in `updates/save_game_manager.py`, Start Game hook in `web/web_interface.py`, Journal tabs in `web/templates/game_interface.html`, API endpoints `/api/journal/diary` and `/api/journal/story-so-far/pdf`. **Time Estimate:** 4-6 days. Status: Plan complete, ready for Kimi Builder execution.
+- **Journal Diary MVP Phase 1 (PLANNED - 2026-02-16):** Completed detailed MVP plan at `/plans/version-2/journal.md` and scaffolded OpenSpec change `journal-diary-mvp-phase1` with full artifacts. **Dual-Checkpoint Model:** Start Game refreshes draft diary entries when source history is stale; Save operations create confirmed canonical entries bound to `save_id`. **Journal UI:** Tabbed interface with preserved Quests behavior and new Diary tab showing draft card + confirmed timeline ordered by game-world time. **PDF Export:** "Download the story so far..." button generates fan-fiction style chronicle from confirmed entries only (draft excluded by design). **Failure Isolation:** Diary generation failures are non-blocking for both Start Game and Save flows. **Data Model:** Additive migration for `session_diary_entries`, `session_diary_state`, `story_so_far_cache` tables. **New Modules:** `core/memory/session_diary.py` (checkpoint logic), `core/memory/story_so_far_compiler.py` (PDF generation with caching). **Integration Points:** Save hook in `updates/save_game_manager.py`, Start Game hook in `web/web_interface.py`, Journal tabs in `web/templates/game_interface.html`, API endpoints `/api/journal/diary` and `/api/journal/story-so-far/pdf`. **Time Estimate:** 4-6 days. Status: Plan complete, ready for Kimi Builder execution.
 
 - **Exit/Enter GUI Button Implementation Phase 1 (COMPLETED - 2026-02-17):**
   - **OpenSpec Change:** `exit-only-gui-shutdown` fully implemented, validated, and archived
@@ -297,7 +297,7 @@
 
 - **EGO + RATIO Concept Plan (COMPLETED - 2026-02-12):** Revised cybernetic control architecture based on RSO (Relative State Observer) framework. Defined EGO (fast bounded controller) and RATIO (slow optimizer) with strict write tiers, decision relay (END/ADJUST/ESCALATE), and human DM as external training signal. Conceptual review complete; implementation deferred until after OpenRouter router work and tester build stabilization.
 
-- **OpenRouter LLM Router Architecture (PLANNING - 2026-02-07):** Comprehensive architecture plan to centralize all 89 LLM calls through a single router interface. Capability-based model routing with Trinity Large Preview (creative/narration) and Gemini 2.5 Flash Lite (mechanics/JSON). Strategic decision to maintain dual-mode support (MULTIPLAYER_MODE toggle) for upstream merge potential while gradually hardening toward TT-only. Plan document created at `/plans/openrouter_llm_router_architecture.md` (700 lines). OpenSpec scaffolding complete; implementation pending tester release.
+- **OpenRouter LLM Router Architecture (PLANNING - 2026-02-07):** Comprehensive architecture plan to centralize all 89 LLM calls through a single router interface. Capability-based model routing with Trinity Large Preview (creative/narration) and Gemini 2.5 Flash Lite (mechanics/JSON). Strategic decision to maintain dual-mode support (MULTIPLAYER_MODE toggle) for upstream merge potential while gradually hardening toward TT-only. Plan document created at `/plans/version-2/openrouter_llm_router_architecture.md` (700 lines). OpenSpec scaffolding complete; implementation pending tester release.
 
 - **TTS Auto-Play Fix & Queue Management (COMPLETED - 2026-02-06):** Implemented comprehensive TTS management system with queue control, message filtering, and [skipTTS] tagging. Fixed cacophony on page reload, parallel playback, and mechanical message narration. Only DM narration speaks now; combat results and system commands display but don't break immersion.
 
@@ -360,7 +360,7 @@
   - **Builder Ready:** Executor prompts staged for 6 execution phases
 
 - **Journal Diary MVP Phase 1 Planning (COMPLETED - 2026-02-16):**
-    - Created comprehensive MVP plan at `/plans/journal.md` establishing two-point diary model (Start Game draft + Save confirmed)
+    - Created comprehensive MVP plan at `/plans/version-2/journal.md` establishing two-point diary model (Start Game draft + Save confirmed)
     - Scaffolded OpenSpec change `journal-diary-mvp-phase1` with complete artifact set:
       - `proposal.md` - Why, what changes, capabilities, impact, rollout risk
       - `design.md` - Dual-checkpoint state model, Start Game/Save integration decisions, confirmed-only PDF contract
@@ -534,7 +534,7 @@
     - **Future OpenSpec Changes:** `ego-foundation-passive-observer`, `ego-bounded-adjustments`, `ratio-reviewed-evolution`
     - **Prerequisite:** OpenRouter router facade completion
     - **Status:** Conceptual review complete; ready for implementation post-tester release
-    - **Files:** `plans/EGO.md` (rewritten, 353 lines)
+    - **Files:** `plans/version-2/CNS build/EGO.md` (rewritten, 353 lines)
 
 - **Hallucinated Monster Defense - Three-Layer Safety System (COMPLETED - 2026-02-10):**
     - **Problem:** Narrator LLM hallucinating creature names (e.g., "spectral servants") led to auto-created stat blocks via monster_builder.py, creating data integrity issues with fabricated monsters
@@ -640,7 +640,7 @@
       - **Phase 1 (3-4 days):** Create `utils/llm_router.py`, update `model_config.py`, integration tests
       - **Phase 2 (5-7 days):** Migrate all 39 files with LLM calls
       - **Phase 3 (2-3 days):** Cleanup, usage reporting, documentation
-    - **Plan Document:** `/plans/openrouter_llm_router_architecture.md` (700 lines comprehensive)
+    - **Plan Document:** `/plans/version-2/openrouter_llm_router_architecture.md` (700 lines comprehensive)
     - **Status:** PLANNING PHASE - Not yet implemented, under review
 
 - **TTS Auto-Play Fix & Queue Management (COMPLETED - 2026-02-06):**

@@ -5,10 +5,10 @@ Started: 2026-02-18
 Owner: NEQ core maintainers
 
 Related plans:
-- `plans/openclaw.md`
-- `plans/openclaw-exec-checklist.md`
-- `plans/openrouter_llm_router_architecture.md`
-- `plans/EGO.md`
+- `plans/version-2/CNS build/openclaw.md`
+- `plans/version-2/CNS build/openclaw-exec-checklist.md`
+- `plans/version-2/openrouter_llm_router_architecture.md`
+- `plans/version-2/CNS build/EGO.md`
 
 ---
 

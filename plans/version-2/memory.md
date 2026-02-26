@@ -4,6 +4,13 @@ Date: 2026-02-13
 Project: NeverEndingQuest (Tabletop merge-safe branch)
 Status: Planning refresh (schema + retrieval first)
 
+## Titan v2 Alignment Stub
+
+- Umbrella reference: `plans/version-2/titan-integration.md`
+- Retune status: Pending (Titan relationship retrieval requirements not yet folded in)
+- Last tagged: 2026-02-26
+- Retune focus: relationship-edge scoring, Titan provenance traces, and retrieval audit links
+
 ## Overview
 
 This plan formalizes a two-layer memory system:

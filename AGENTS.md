@@ -1798,7 +1798,7 @@ Implement a transparent diary system with dual-checkpoint model: Start Game refr
 
 **Time Estimate:** 4-6 days (MVP Phase 1)
 
-**Plan Location:** `/plans/journal.md`
+**Plan Location:** `/plans/version-2/journal.md`
 
 ---
 
@@ -3079,7 +3079,7 @@ data = llm.call(role="extract_json", messages=[...], structured_output=Schema)  
 - JSON retry logic (3 attempts with progressive correction)
 - Structured output support (Pydantic model validation)
 
-**Plan Document:** `/plans/openrouter_llm_router_architecture.md` (700 lines comprehensive plan)
+**Plan Document:** `/plans/version-2/openrouter_llm_router_architecture.md` (700 lines comprehensive plan)
 
 **Status:** PLANNING PHASE - Under review, not yet implemented
 
@@ -3368,7 +3368,7 @@ Three planned OpenSpec changes when implementation begins:
 Requires completion of `openrouter-llm-router-facade` for unified `llm.call()` entrypoint with role/task routing and usage stats.
 
 **Files Modified:**
-- `plans/EGO.md` (REWRITTEN - concise architecture, 353 lines)
+- `plans/version-2/CNS build/EGO.md` (REWRITTEN - concise architecture, 353 lines)
 - `plans/EGO-Comments_on_Cybernetic_Potentials.md` (REFERENCE - theoretical analysis)
 
 **Status:**
