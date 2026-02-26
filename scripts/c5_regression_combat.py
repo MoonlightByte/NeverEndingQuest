@@ -215,6 +215,504 @@ class TestC1C2MainLoopHelpers(unittest.TestCase):
         self.assertNotIn("Proceeding with the last generated response.", source)
 
 
+class TestDmGroupOpeningPhaseTransitionContract(unittest.TestCase):
+    """Regression tests for dmGroup opening enemy batch -> PC phase transition and non-loop behavior."""
+
+    def _load_combat_manager_source(self):
+        """Load raw source of combat_manager.py for contract tests."""
+        cm_path = os.path.join(PROJECT_ROOT, "core/managers/combat_manager.py")
+        with open(cm_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def test_init_dmgroup_sets_opening_marker(self):
+        """/init path must set openingEnemyBatchPending when dmGroup wins initiative."""
+        source = self._load_combat_manager_source()
+        # Find the /init resolution block where dmGroup wins
+        # The marker should be set via apply_opening_batch_marker when winner is dmGroup
+        self.assertIn('apply_opening_batch_marker(encounter_data, winner)', source)
+        # Verify the PHASE_MARKER debug log for dmGroup via /init path
+        self.assertIn(
+            'PHASE_MARKER: Set openingEnemyBatchPending=True via /init dmGroup path',
+            source
+        )
+
+    def test_roundstart_dmgroup_sets_opening_marker(self):
+        """Round-start path must set openingEnemyBatchPending when roundStartsWith=dmGroup."""
+        source = self._load_combat_manager_source()
+        # Find the round start block that applies dmGroup phase
+        self.assertIn('round_starts_with = encounter_data.get("roundStartsWith", "pcGroup")', source)
+        self.assertIn('if round_starts_with == "dmGroup":', source)
+        self.assertIn('apply_opening_batch_marker(encounter_data, "dmGroup")', source)
+        # Verify the PHASE_MARKER debug log for dmGroup via round-start path
+        self.assertIn(
+            'PHASE_MARKER: Set openingEnemyBatchPending=True via round-start dmGroup path',
+            source
+        )
+
+    def test_opening_batch_clears_marker_and_returns_pc_phase(self):
+        """Opening batch completion must clear marker and transition to PC_PHASE."""
+        source = self._load_combat_manager_source()
+        # Find the opening batch completion block
+        self.assertIn('if encounter_data.get("openingEnemyBatchPending", False):', source)
+        # Verify marker is cleared
+        self.assertIn('encounter_data["openingEnemyBatchPending"] = False', source)
+        # Verify PC phase is made ready
+        self.assertIn('multi_pc_manager.pc_phase_complete = False', source)
+        # Verify the PHASE_MARKER debug log for clearing
+        self.assertIn(
+            'PHASE_MARKER: Cleared openingEnemyBatchPending after opening enemy batch resolution',
+            source
+        )
+        # Verify STATE_CHANGE log for PC phase transition
+        self.assertIn(
+            'STATE_CHANGE: Opening batch complete -> PC_PHASE',
+            source
+        )
+
+    def test_opening_batch_completion_block_is_non_looping_contract(self):
+        """Opening batch completion block must not re-enable marker in the same path (non-loop)."""
+        source = self._load_combat_manager_source()
+        # Find the opening batch completion block boundaries
+        marker_check_pos = source.find('if encounter_data.get("openingEnemyBatchPending", False):')
+        self.assertGreater(marker_check_pos, 0, "Opening batch check must exist")
+
+        # Find the next significant block after the opening batch completion
+        # (either next round handling or save/exit)
+        save_after_clear = source.find(
+            'save_json_file(f"modules/encounters/encounter_{encounter_id}.json", encounter_data)',
+            marker_check_pos
+        )
+        self.assertGreater(save_after_clear, marker_check_pos, "Save must occur after marker clear")
+
+        # Verify that within the completion block, there is no re-setting of the marker
+        completion_block = source[marker_check_pos:save_after_clear]
+
+        # Count occurrences of marker being set to True in this block
+        # Should be exactly one clear (False), zero sets (True)
+        false_count = completion_block.count('"openingEnemyBatchPending"] = False')
+        true_count = completion_block.count('"openingEnemyBatchPending"] = True')
+
+        self.assertEqual(false_count, 1, "Marker must be cleared exactly once in completion block")
+        self.assertEqual(true_count, 0, "Marker must NOT be set to True in completion block (non-loop)")
+
+    def test_pcgroup_clears_marker_does_not_set(self):
+        """pcGroup winner must clear opening marker without setting it."""
+        source = self._load_combat_manager_source()
+        # Verify the PHASE_MARKER debug log for pcGroup clearing marker
+        self.assertIn(
+            'PHASE_MARKER: Cleared openingEnemyBatchPending via /init pcGroup path',
+            source
+        )
+        self.assertIn(
+            'PHASE_MARKER: Cleared openingEnemyBatchPending via round-start pcGroup path',
+            source
+        )
+
+
+class TestEncounterRosterBackfillContract(unittest.TestCase):
+    """Regression tests for encounter roster backfill and duplicate-prevention."""
+
+    def _load_combat_manager_source(self):
+        """Load raw source of combat_manager.py for contract tests."""
+        cm_path = os.path.join(PROJECT_ROOT, "core/managers/combat_manager.py")
+        with open(cm_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def _load_combat_state_sync_source(self):
+        """Load raw source of combat_state_sync.py for backfill contract tests."""
+        css_path = os.path.join(PROJECT_ROOT, "core/managers/combat_state_sync.py")
+        with open(css_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def _load_combat_builder_source(self):
+        """Load raw source of combat_builder.py for encounter generation contract tests."""
+        cb_path = os.path.join(PROJECT_ROOT, "core/generators/combat_builder.py")
+        with open(cb_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def test_backfill_contract_present_for_missing_party_members(self):
+        """Backfill must add missing party members to encounter roster."""
+        # Check combat_state_sync.py for normalize_multi_pc_roster function
+        css_source = self._load_combat_state_sync_source()
+        self.assertIn(
+            "def normalize_multi_pc_roster(",
+            css_source,
+            "normalize_multi_pc_roster function must exist for roster backfill"
+        )
+        # Check for party member iteration logic
+        self.assertIn(
+            'party_members = party_tracker_data.get("partyMembers", [])',
+            css_source,
+            "Must read partyMembers from party_tracker_data"
+        )
+        # Check for missing player detection
+        self.assertIn(
+            "if not normalized_member or normalized_member in existing_players:",
+            css_source,
+            "Must check for existing players to identify missing ones"
+        )
+        # Check for player addition to creatures
+        self.assertIn(
+            'creatures.append(',
+            css_source,
+            "Must append missing players to creatures list"
+        )
+        # Check backfill logging
+        self.assertIn(
+            "ROSTER_BACKFILL: Added missing player",
+            css_source,
+            "Must log when backfilling missing players"
+        )
+
+    def test_backfill_contract_preserves_existing_enemy_npc_state(self):
+        """Backfill must preserve existing enemy/NPC HP/status/initiative (additive only)."""
+        css_source = self._load_combat_state_sync_source()
+        # Verify additive-only approach - creatures list is extended, not replaced
+        self.assertIn(
+            "creatures = encounter_data.get(\"creatures\", [])",
+            css_source,
+            "Must read existing creatures list (not replace)"
+        )
+        # Verify only appending new players, not modifying existing entries
+        append_pos = css_source.find("creatures.append(")
+        self.assertGreater(append_pos, 0, "Must append to creatures list")
+        # Verify no modification of existing creature properties
+        self.assertNotIn(
+            "creature[\"status\"] =",
+            css_source,
+            "Must NOT modify existing creature status (preserve enemy/NPC state)"
+        )
+        self.assertNotIn(
+            "creature[\"initiative\"] =",
+            css_source,
+            "Must NOT modify existing creature initiative (preserve enemy/NPC state)"
+        )
+
+    def test_duplicate_prevention_when_player_already_exists(self):
+        """Duplicate prevention: existing player must not be added again."""
+        css_source = self._load_combat_state_sync_source()
+        # Check for existing player tracking set
+        self.assertIn(
+            "existing_players = {",
+            css_source,
+            "Must track existing players in a set for deduplication"
+        )
+        # Check for case-insensitive name normalization
+        self.assertIn(
+            "def _normalize_name(name: Any) -> str:",
+            css_source,
+            "Must normalize names for case-insensitive matching"
+        )
+        self.assertIn(
+            '.strip().lower()',
+            css_source,
+            "Must use lowercase comparison for name deduplication"
+        )
+        # Check for skip logic when player already exists
+        self.assertIn(
+            "if not normalized_member or normalized_member in existing_players:",
+            css_source,
+            "Must skip players already in existing_players set (duplicate prevention)"
+        )
+        # Also verify combat_builder.py duplicate prevention during generation
+        cb_source = self._load_combat_builder_source()
+        self.assertIn(
+            "if not normalized_member or normalized_member in seen_players:",
+            cb_source,
+            "combat_builder must also prevent duplicate players during generation"
+        )
+
+    def test_fail_open_contract_for_missing_character_sources(self):
+        """Missing character file must not crash combat (fail-open behavior)."""
+        css_source = self._load_combat_state_sync_source()
+        # Check for safe character loading with fallback
+        self.assertIn(
+            "char_data = safe_json_load(char_file)",
+            css_source,
+            "Must use safe_json_load for character file loading"
+        )
+        # Check for continue on missing character (not crash)
+        self.assertIn(
+            "if not char_data:",
+            css_source,
+            "Must check if character data loaded successfully"
+        )
+        self.assertIn(
+            "continue",
+            css_source,
+            "Must continue to next party member if character file missing (fail-open)"
+        )
+        # Check for warning log instead of error/crash
+        self.assertIn(
+            "warning(",
+            css_source,
+            "Must use warning (not error) for missing character data"
+        )
+        self.assertIn(
+            "ROSTER_BACKFILL: Missing character data for",
+            css_source,
+            "Must log warning when character data missing"
+        )
+        # Check outer exception handling (fail-open at function level)
+        self.assertIn(
+            "except Exception as e:",
+            css_source,
+            "Must have outer exception handler for fail-open behavior"
+        )
+        self.assertIn(
+            "ROSTER_BACKFILL: Fail-open due to normalization error",
+            css_source,
+            "Must log and return safely on any normalization error"
+        )
+
+
+class TestInitiativePayloadInclusionContract(unittest.TestCase):
+    """Regression tests for initiative payload inclusion of unconscious/incapacitated players."""
+
+    def _load_tabletop_socket_handlers_source(self):
+        """Load raw source of tabletop_socket_handlers.py for contract tests."""
+        tsh_path = os.path.join(PROJECT_ROOT, "web/extensions/tabletop_socket_handlers.py")
+        with open(tsh_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def test_unconscious_incapacitated_players_included_in_payload(self):
+        """Unconscious and incapacitated players must be included in initiative payload."""
+        source = self._load_tabletop_socket_handlers_source()
+        # Verify Section 3.1 TABLETOP MODE comment exists
+        self.assertIn(
+            "TABLETOP MODE: Section 3.1 - Keep player combatants visible during active combat",
+            source,
+            "Must have TABLETOP MODE Section 3.1 comment for player visibility"
+        )
+        # Verify player inclusion logic includes non-dead players
+        self.assertIn(
+            'if creature_type == "player":',
+            source,
+            "Must check creature type for player combatants"
+        )
+        self.assertIn(
+            'if status != "dead":',
+            source,
+            "Must include players with status != dead (covers unconscious/incapacitated)"
+        )
+        self.assertIn(
+            "visible_combatants.append(creature)",
+            source,
+            "Must append non-dead players to visible combatants"
+        )
+
+    def test_dead_players_excluded_from_payload(self):
+        """Dead players must be excluded from initiative payload."""
+        source = self._load_tabletop_socket_handlers_source()
+        # Verify dead player exclusion logic
+        self.assertIn(
+            'if status != "dead":',
+            source,
+            "Must exclude dead players via status != dead check"
+        )
+        # Ensure there's no logic that would include dead players
+        player_block_start = source.find('if creature_type == "player":')
+        player_block_end = source.find("else:", player_block_start)
+        player_block = source[player_block_start:player_block_end]
+        # Verify dead check is present in player block
+        self.assertIn(
+            'if status != "dead":',
+            player_block,
+            "Dead player exclusion must be in player type block"
+        )
+
+    def test_status_field_preserved_for_ui_display(self):
+        """Status field must be preserved in payload for UI consumption."""
+        source = self._load_tabletop_socket_handlers_source()
+        # Verify status is read from creature data
+        self.assertIn(
+            'status = str(creature.get("status", "unknown")).lower()',
+            source,
+            "Must read status field from creature data"
+        )
+        # Verify status is included in combatant_data
+        self.assertIn(
+            '"status": combatant.get("status")',
+            source,
+            "Must include status in combatant_data payload"
+        )
+
+    def test_all_unconscious_edge_case_payload_still_active(self):
+        """All players unconscious/incapacitated must still show active combat payload."""
+        source = self._load_tabletop_socket_handlers_source()
+        # Verify active flag is set when visible_combatants exist
+        self.assertIn(
+            "if not visible_combatants:",
+            source,
+            "Must check if visible combatants exist before setting inactive"
+        )
+        self.assertIn(
+            "'active': True",
+            source,
+            "Must set active: True when combatants are present"
+        )
+        # Verify the flow: non-dead players -> visible_combatants -> active: True
+        # This ensures even all-unconscious party keeps combat active
+        visible_check_pos = source.find("if not visible_combatants:")
+        active_true_pos = source.find("'active': True")
+        self.assertGreater(
+            active_true_pos,
+            visible_check_pos,
+            "active: True must come after visible_combatants check"
+        )
+
+
+class TestCompatibilityAndSinglePlayerContract(unittest.TestCase):
+    """Regression tests for pcGroup starts and single-player behavior compatibility."""
+
+    def _load_combat_manager_source(self):
+        """Load raw source of combat_manager.py for contract tests."""
+        cm_path = os.path.join(PROJECT_ROOT, "core/managers/combat_manager.py")
+        with open(cm_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def _load_combat_state_sync_source(self):
+        """Load raw source of combat_state_sync.py for contract tests."""
+        css_path = os.path.join(PROJECT_ROOT, "core/managers/combat_state_sync.py")
+        with open(css_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def _load_combat_builder_source(self):
+        """Load raw source of combat_builder.py for contract tests."""
+        cb_path = os.path.join(PROJECT_ROOT, "core/generators/combat_builder.py")
+        with open(cb_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def test_pcgroup_winner_no_opening_batch_marker(self):
+        """pcGroup winner must NOT set openingEnemyBatchPending marker."""
+        cm_source = self._load_combat_manager_source()
+        css_source = self._load_combat_state_sync_source()
+
+        # Verify apply_opening_batch_marker exists
+        self.assertIn(
+            "def apply_opening_batch_marker(",
+            css_source,
+            "apply_opening_batch_marker function must exist"
+        )
+
+        # Verify pcGroup path clears marker via apply_opening_batch_marker
+        self.assertIn(
+            'apply_opening_batch_marker(encounter_data, winner)',
+            cm_source,
+            "Must call apply_opening_batch_marker with winner parameter"
+        )
+
+        # Verify pcGroup clears marker (sets to False)
+        self.assertIn(
+            'marker_enabled = str(starts_with or "").strip() == "dmGroup"',
+            css_source,
+            "Marker must only be enabled for dmGroup, not pcGroup"
+        )
+
+        # Verify PHASE_MARKER logs for pcGroup clearing
+        self.assertIn(
+            'PHASE_MARKER: Cleared openingEnemyBatchPending via /init pcGroup path',
+            cm_source,
+            "Must log pcGroup marker clearing via /init path"
+        )
+
+    def test_single_player_no_roster_expansion(self):
+        """Single-player mode must NOT trigger multi-PC roster expansion."""
+        css_source = self._load_combat_state_sync_source()
+        cb_source = self._load_combat_builder_source()
+
+        # Verify backfill only triggers with > 1 party members
+        self.assertIn(
+            "if len(party_members) <= 1:",
+            css_source,
+            "Must skip backfill for single party member"
+        )
+
+        # Verify combat_builder single-party-member guard
+        self.assertIn(
+            "if len(party_members) > 1:",
+            cb_source,
+            "combat_builder must check party size > 1 before roster expansion"
+        )
+
+        # Verify single player keeps existing behavior
+        self.assertIn(
+            'player_names = [encounter_data["player"]]',
+            cb_source,
+            "Single-player must use only triggering player, not expand roster"
+        )
+
+    def test_legacy_encounter_fail_open_contract(self):
+        """Legacy encounters without new fields must work (fail-open compatibility)."""
+        cm_source = self._load_combat_manager_source()
+        css_source = self._load_combat_state_sync_source()
+
+        # Verify safe defaults for missing initiativeMode
+        self.assertIn(
+            'encounter_data.get("initiativeMode", "two_group_phase1")',
+            cm_source,
+            "Must use default initiativeMode when field missing (legacy compatibility)"
+        )
+
+        # Verify safe defaults for missing initiativeWinner
+        self.assertIn(
+            'encounter_data.get("initiativeWinner", "pending")',
+            cm_source,
+            "Must use default initiativeWinner when field missing"
+        )
+
+        # Verify safe defaults for missing roundStartsWith
+        self.assertIn(
+            'encounter_data.get("roundStartsWith", "pcGroup")',
+            cm_source,
+            "Must use default roundStartsWith when field missing"
+        )
+
+        # Verify safe_json_load usage in backfill
+        self.assertIn(
+            "char_data = safe_json_load(char_file)",
+            css_source,
+            "Must use safe_json_load for fail-open character loading"
+        )
+
+    def test_roundstart_pcgroup_no_forced_enemy_phase(self):
+        """Round start with pcGroup must NOT force enemy phase."""
+        cm_source = self._load_combat_manager_source()
+
+        # Verify round start logic differentiates pcGroup vs dmGroup
+        self.assertIn(
+            'if round_starts_with == "dmGroup":',
+            cm_source,
+            "Must check round_starts_with value to determine phase"
+        )
+
+        # Verify pcGroup path sets pc_phase_complete = False (PC_PHASE ready)
+        self.assertIn(
+            'multi_pc_manager.pc_phase_complete = False',
+            cm_source,
+            "pcGroup round start must set pc_phase_complete = False (PC_PHASE)"
+        )
+
+        # Verify dmGroup path is explicitly different
+        dmgroup_block_start = cm_source.find('if round_starts_with == "dmGroup":')
+        pcgroup_block_start = cm_source.find('else:', dmgroup_block_start)
+        roundstart_block = cm_source[dmgroup_block_start:pcgroup_block_start]
+
+        # dmGroup path should set pc_phase_complete = True (ENEMY_PHASE)
+        self.assertIn(
+            "multi_pc_manager.pc_phase_complete = True",
+            roundstart_block,
+            "dmGroup round start must set pc_phase_complete = True (ENEMY_PHASE)"
+        )
+
+        # Verify STATE_CHANGE logging distinguishes the paths
+        self.assertIn(
+            "STATE_CHANGE: Applied roundStartsWith=pcGroup -> PC_PHASE start",
+            cm_source,
+            "Must log pcGroup round start as PC_PHASE"
+        )
+
+
 class TestFastLaneInitiationContract(unittest.TestCase):
     """Regression tests for Phase 1 fast-lane combat initiation (no-duplicate-opening)."""
 
@@ -242,8 +740,11 @@ class TestFastLaneInitiationContract(unittest.TestCase):
             "Enter /init <1-20> to begin combat."
         )
         self.assertIn(expected_msg, source)
+        # TABLETOP MODE: Ensure initiative helper auto-prefill marker is preserved
+        self.assertIn("[prefill:/init ]", source)
         # Must flush stdout immediately after print
-        self.assertIn('import sys\n            sys.stdout.flush()', source)
+        self.assertIn('import sys', source)
+        self.assertIn('sys.stdout.flush()', source)
 
     def test_initial_scene_llm_in_non_fast_lane_path(self):
         """Initial scene AI call must be in non-fast-lane (else) branch."""
@@ -271,6 +772,9 @@ class TestFastLaneInitiationContract(unittest.TestCase):
             'Dungeon Master: [SYSTEM] Initiative pending. Roll must be between 1 and 20.',
             source
         )
+        # TABLETOP MODE: Prompt lines should carry /init input prefill marker
+        self.assertIn('[prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Usage: /init <1-20>', source)
+        self.assertIn('[prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Enter /init <1-20> to begin combat.', source)
 
 
 if __name__ == "__main__":

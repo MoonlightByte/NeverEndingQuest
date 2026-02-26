@@ -161,6 +161,23 @@ from core.ai.combat_compressor import CombatUserMessageCompressor
 # Import inventory context matcher for enhancing player combat actions
 from core.ai.inventory_context_integration import enhance_player_input_with_inventory
 
+# Import combat state sync helpers (plugin-style)
+# TABLETOP MODE: Phase and roster synchronization helpers
+try:
+    from core.managers.combat_state_sync import (
+        apply_opening_batch_marker,
+        normalize_multi_pc_roster,
+    )
+    COMBAT_STATE_SYNC_AVAILABLE = True
+except ImportError:
+    COMBAT_STATE_SYNC_AVAILABLE = False
+    def apply_opening_batch_marker(encounter_data, starts_with):
+        """Fallback: No-op if combat_state_sync not available."""
+        return False
+    def normalize_multi_pc_roster(encounter_data, party_tracker_data, path_manager):
+        """Fallback: No-op if combat_state_sync not available."""
+        return encounter_data, False
+
 # Import multi-PC combat manager (plugin-style)
 try:
     from core.managers.multi_pc_combat import (
@@ -2686,7 +2703,7 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
            info("COMBAT_INIT: Using fast-lane path (skipping initial-scene LLM call)", category="combat_events")
            # Skip the initial scene LLM generation block entirely
            # TABLETOP MODE: Immediately prompt for initiative without extra LLM narration
-           print("Dungeon Master: [SYSTEM] Combat initiated. Initiative pending. Enter /init <1-20> to begin combat.")
+           print("[skipTTS][prefill:/init ] Dungeon Master: [SYSTEM] Combat initiated. Initiative pending. Enter /init <1-20> to begin combat.")
            import sys
            sys.stdout.flush()
        else:
@@ -2997,7 +3014,7 @@ Player: {initial_prompt_text}"""
            if cmd.startswith("/init"):
                parts = clean_input.split()
                if len(parts) != 2:
-                   print("Dungeon Master: [SYSTEM] Initiative pending. Usage: /init <1-20>")
+                   print("[skipTTS][prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Usage: /init <1-20>")
                    import sys
                    sys.stdout.flush()
                    continue
@@ -3005,13 +3022,13 @@ Player: {initial_prompt_text}"""
                try:
                    pc_group_roll = int(parts[1])
                except ValueError:
-                   print("Dungeon Master: [SYSTEM] Initiative pending. Usage: /init <1-20>")
+                   print("[skipTTS][prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Usage: /init <1-20>")
                    import sys
                    sys.stdout.flush()
                    continue
 
                if pc_group_roll < 1 or pc_group_roll > 20:
-                   print("Dungeon Master: [SYSTEM] Initiative pending. Roll must be between 1 and 20.")
+                   print("[skipTTS][prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Roll must be between 1 and 20.")
                    import sys
                    sys.stdout.flush()
                    continue
@@ -3037,6 +3054,21 @@ Player: {initial_prompt_text}"""
                encounter_data["initiativeWinner"] = winner
                encounter_data["roundStartsWith"] = winner
                encounter_data["awaitingPcGroupRoll"] = False
+
+               # TABLETOP MODE: Section 1 - Apply opening batch marker based on winner
+               if COMBAT_STATE_SYNC_AVAILABLE:
+                   marker_enabled = apply_opening_batch_marker(encounter_data, winner)
+                   if marker_enabled:
+                       debug(
+                           "PHASE_MARKER: Set openingEnemyBatchPending=True via /init dmGroup path",
+                           category="combat_events"
+                       )
+                   else:
+                       debug(
+                           "PHASE_MARKER: Cleared openingEnemyBatchPending via /init pcGroup path",
+                           category="combat_events"
+                       )
+
                save_json_file(json_file_path, encounter_data)
 
                # TABLETOP MODE: C3.3 - Sync compatibility mirror after /init resolution
@@ -3077,7 +3109,7 @@ Player: {initial_prompt_text}"""
                save_json_file(conversation_history_file, conversation_history)
                user_input_text = "Enemies turn."
            else:
-               print("Dungeon Master: [SYSTEM] Initiative pending. Enter /init <1-20> to begin combat.")
+               print("[skipTTS][prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Enter /init <1-20> to begin combat.")
                import sys
                sys.stdout.flush()
                continue
@@ -4192,26 +4224,40 @@ Rules:
                    
                    # TABLETOP MODE: Sync round state to manager
                    if multi_pc_manager:
-                       debug(f"STATE_CHANGE: Syncing MultiPCManager to Round {new_round}", category="combat_events")
-                       multi_pc_manager.start_new_round()
-                       # Ensure manager round matches (start_new_round increments, but let's be safe)
-                       multi_pc_manager.current_round = new_round
+                        debug(f"STATE_CHANGE: Syncing MultiPCManager to Round {new_round}", category="combat_events")
+                        multi_pc_manager.start_new_round()
+                        # Ensure manager round matches (start_new_round increments, but let's be safe)
+                        multi_pc_manager.current_round = new_round
 
-                       # TABLETOP MODE: Phase 1 deterministic round start.
-                       # Persisted roundStartsWith controls which phase opens each new round.
-                       round_starts_with = encounter_data.get("roundStartsWith", "pcGroup")
-                       if round_starts_with == "dmGroup":
-                           multi_pc_manager.pc_phase_complete = True
-                           debug(
-                               "STATE_CHANGE: Applied roundStartsWith=dmGroup -> ENEMY_PHASE start",
-                               category="combat_events"
-                           )
-                       else:
-                           multi_pc_manager.pc_phase_complete = False
-                           debug(
-                               "STATE_CHANGE: Applied roundStartsWith=pcGroup -> PC_PHASE start",
-                               category="combat_events"
-                           )
+                        # TABLETOP MODE: Phase 1 deterministic round start.
+                        # Persisted roundStartsWith controls which phase opens each new round.
+                        round_starts_with = encounter_data.get("roundStartsWith", "pcGroup")
+                        if round_starts_with == "dmGroup":
+                            multi_pc_manager.pc_phase_complete = True
+                            # TABLETOP MODE: Set opening batch marker for dmGroup round starts
+                            if COMBAT_STATE_SYNC_AVAILABLE:
+                                apply_opening_batch_marker(encounter_data, "dmGroup")
+                            debug(
+                                "STATE_CHANGE: Applied roundStartsWith=dmGroup -> ENEMY_PHASE start",
+                                category="combat_events"
+                            )
+                            debug(
+                                "PHASE_MARKER: Set openingEnemyBatchPending=True via round-start dmGroup path",
+                                category="combat_events"
+                            )
+                        else:
+                            multi_pc_manager.pc_phase_complete = False
+                            # TABLETOP MODE: Clear opening batch marker for pcGroup round starts
+                            if COMBAT_STATE_SYNC_AVAILABLE:
+                                apply_opening_batch_marker(encounter_data, "pcGroup")
+                            debug(
+                                "STATE_CHANGE: Applied roundStartsWith=pcGroup -> PC_PHASE start",
+                                category="combat_events"
+                            )
+                            debug(
+                                "PHASE_MARKER: Cleared openingEnemyBatchPending via round-start pcGroup path",
+                                category="combat_events"
+                            )
 
                    # Save the updated encounter data
                    save_json_file(f"modules/encounters/encounter_{encounter_id}.json", encounter_data)
@@ -4395,6 +4441,22 @@ Rules:
                        debug(f"[COMBAT_MANAGER] Advanced active character to {next_actor.name}", category="combat_events")
                    else:
                        debug(f"[COMBAT_MANAGER] Advanced turn to enemy/NPC: {next_actor.name}", category="combat_events")
+
+       # TABLETOP MODE: Section 1.2 - Opening enemy batch completion transition
+       # If DM_GROUP opened the round, clear marker and return control to PC_PHASE after batch resolves.
+       if multi_pc_manager:
+           if encounter_data.get("openingEnemyBatchPending", False):
+               encounter_data["openingEnemyBatchPending"] = False
+               multi_pc_manager.pc_phase_complete = False
+               debug(
+                   "PHASE_MARKER: Cleared openingEnemyBatchPending after opening enemy batch resolution",
+                   category="combat_events"
+               )
+               debug(
+                   "STATE_CHANGE: Opening batch complete -> PC_PHASE",
+                   category="combat_events"
+               )
+               save_json_file(f"modules/encounters/encounter_{encounter_id}.json", encounter_data)
 
        # STEP 2: EXECUTE the consolidated updates. This is the only place character files are saved.
        if final_character_updates:

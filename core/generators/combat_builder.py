@@ -291,8 +291,9 @@ def generate_encounter(encounter_data):
     if "encounterSummary" in encounter_data:
         encounter["encounterSummary"] = encounter_data["encounterSummary"]
 
-    # Add player
+    # Add player(s)
     # Get current module from party tracker for consistent path resolution
+    party_tracker = None
     try:
         from utils.encoding_utils import safe_json_load
         party_tracker = safe_json_load("party_tracker.json")
@@ -300,38 +301,64 @@ def generate_encounter(encounter_data):
         path_manager = ModulePathManager(current_module)
     except:
         path_manager = ModulePathManager()  # Fallback to reading from file
-    player_file = path_manager.get_character_path(encounter_data['player'])
-    logging.debug(f"Attempting to load player data from {player_file}")
-    
-    backup_player_file(player_file)
-    player_data = load_json(player_file)
-    
-    if not player_data:
-        logging.error(f"Failed to load player data from {player_file}")
-        print(colored(f"Error: Failed to load player data from {player_file}", "red"))
-        # Attempt to load from backup
-        backup_file = f"{player_file}.bak"
-        player_data = load_json(backup_file)
-        if player_data:
-            logging.info(f"Loaded player data from backup file {backup_file}")
-            print(colored(f"Loaded player data from backup file {backup_file}", "yellow"))
-        else:
-            return None
 
-    logging.debug(f"Loaded player data: {json.dumps(player_data, indent=2)}")
+    # TABLETOP MODE: Section 2.1 - In Multi-PC mode include all party members.
+    # Keep the triggering player first for compatibility.
+    player_names = [encounter_data["player"]]
+    party_members = party_tracker.get("partyMembers", []) if isinstance(party_tracker, dict) else []
+    if len(party_members) > 1:
+        seen_players = {str(encounter_data["player"]).strip().lower()}
+        for member in party_members:
+            member_name = member.get("name", "") if isinstance(member, dict) else str(member)
+            normalized_member = str(member_name).strip().lower()
+            if not normalized_member or normalized_member in seen_players:
+                continue
+            seen_players.add(normalized_member)
+            player_names.append(member_name)
 
-    player = {
-        "name": player_data["name"],
-        "type": "player",
-        "initiative": random.randint(1, 20),
-        "status": player_data.get("status", "alive"),
-        "conditions": player_data.get("condition_affected", []),
-        "actions": {"actionType": "", "target": ""},
-        "currentHitPoints": player_data["hitPoints"],
-        "maxHitPoints": player_data["maxHitPoints"],
-        "armorClass": player_data["armorClass"]
-    }
-    encounter["creatures"].append(player)
+    for index, player_name in enumerate(player_names):
+        player_file = path_manager.get_character_path(player_name)
+        logging.debug(f"Attempting to load player data from {player_file}")
+
+        # Preserve existing backup behavior for the primary player entry.
+        if index == 0:
+            backup_player_file(player_file)
+
+        player_data = load_json(player_file)
+
+        if not player_data:
+            if index == 0:
+                logging.error(f"Failed to load player data from {player_file}")
+                print(colored(f"Error: Failed to load player data from {player_file}", "red"))
+                backup_file = f"{player_file}.bak"
+                player_data = load_json(backup_file)
+                if player_data:
+                    logging.info(f"Loaded player data from backup file {backup_file}")
+                    print(colored(f"Loaded player data from backup file {backup_file}", "yellow"))
+                else:
+                    return None
+            else:
+                # TABLETOP MODE: Section 2.4 fail-open for non-primary roster hydration.
+                warning(
+                    f"ROSTER_BACKFILL: Could not load optional party member '{player_name}'",
+                    category="combat_builder"
+                )
+                continue
+
+        logging.debug(f"Loaded player data: {json.dumps(player_data, indent=2)}")
+
+        player = {
+            "name": player_data["name"],
+            "type": "player",
+            "initiative": random.randint(1, 20),
+            "status": player_data.get("status", "alive"),
+            "conditions": player_data.get("condition_affected", []),
+            "actions": {"actionType": "", "target": ""},
+            "currentHitPoints": player_data["hitPoints"],
+            "maxHitPoints": player_data["maxHitPoints"],
+            "armorClass": player_data["armorClass"]
+        }
+        encounter["creatures"].append(player)
 
     # Add monsters
     monster_counts = {}

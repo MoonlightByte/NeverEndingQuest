@@ -2225,6 +2225,76 @@ Harden combat entry, command routing, initiative startup state, and enemy-phase 
 - Change implementation complete and validated.
 - Not archived yet (intentionally deferred pending full gameplay test pass).
 
+### Multi-PC Initiative Phase Sync and Roster Integrity (COMPLETED - 2026-02-27)
+
+**Status:** COMPLETED - Archived to `openspec/changes/archive/2026-02-27-multipc-initiative-phase-sync-and-roster-integrity/`
+
+**Priority:** High (Combat Flow Integrity)
+
+**Objective:**
+Resolve coder collision around opening-batch marker contract and complete the Phase 1 two-group initiative synchronization implementation.
+
+**Collision Context:**
+- Prior builder added regression tests expecting `apply_opening_batch_marker()` calls and `PHASE_MARKER` logs
+- Runtime implementation had partial wiring (/init path only) causing 6 test failures
+- Required reconciliation to bring runtime into alignment with test contract
+
+**Implementation (Collision Reconciliation Pass 2):**
+
+1. **Import Infrastructure** (`core/managers/combat_manager.py:163-179`):
+   - Added `apply_opening_batch_marker` and `normalize_multi_pc_roster` imports from `combat_state_sync`
+   - Fail-open fallback definitions for missing module
+
+2. **Initiative Resolution Marker Wiring** (`core/managers/combat_manager.py:3054-3069`):
+   - `/init` path now calls `apply_opening_batch_marker(encounter_data, winner)` after winner determination
+   - Logs: `PHASE_MARKER: Set openingEnemyBatchPending=True via /init dmGroup path`
+   - Logs: `PHASE_MARKER: Cleared openingEnemyBatchPending via /init pcGroup path`
+
+3. **Round-Start Marker Wiring** (`core/managers/combat_manager.py:4235-4260`):
+   - Round start now calls `apply_opening_batch_marker(encounter_data, "dmGroup")` when `round_starts_with == "dmGroup"`
+   - Round start calls `apply_opening_batch_marker(encounter_data, "pcGroup")` for pcGroup path
+   - Logs: `PHASE_MARKER: Set openingEnemyBatchPending=True via round-start dmGroup path`
+   - Logs: `PHASE_MARKER: Cleared openingEnemyBatchPending via round-start pcGroup path`
+
+4. **Opening Batch Completion Block** (`core/managers/combat_manager.py:4445-4459`):
+   - After first enemy batch resolves when marker is set:
+   - Clears `openingEnemyBatchPending`
+   - Sets `pc_phase_complete = False`
+   - Logs: `PHASE_MARKER: Cleared openingEnemyBatchPending after opening enemy batch resolution`
+   - Logs: `STATE_CHANGE: Opening batch complete -> PC_PHASE`
+   - Persists encounter state
+
+5. **Prefill Prompt Consistency**:
+   - All initiative pending prompts now include `[skipTTS][prefill:/init ]` markers
+   - Applied to fast-lane combat initiation and /init validation paths
+
+**Roster Integrity Implementation:**
+- `core/managers/combat_state_sync.py` - Normalization helpers for multi-PC roster
+- Backfill logic ensures all `partyMembers` appear in encounter creatures
+- Deduplication prevents duplicate player entries
+- Fail-open handling for missing character files
+
+**Smoke Validation (Step 5.3):**
+- Scenario A (dmGroup start): PASS - marker set -> enemy batch -> clear -> PC_PHASE
+- Scenario B (pcGroup start): PASS - direct PC_PHASE (no opening batch)
+- Roster integrity: PASS - no duplication, all party members present
+
+**Test Results:**
+- C5 regression suite: 30/30 PASS (all collision-reconciliation tests green)
+- Smoke validation: All scenarios PASS
+
+**Files Modified:**
+- `core/managers/combat_manager.py` - Marker wiring, round-start logic, completion block, prefill prompts
+- `core/managers/combat_state_sync.py` - Roster normalization helpers
+- `scripts/c5_regression_combat.py` - Regression tests (unchanged, contract preserved)
+- `scripts/step_5_3_smoke_validation.py` - NEW - Smoke validation script
+- `openspec/specs/tt-combat-phase-sync/spec.md` - NEW - Main spec synced from delta
+- `openspec/specs/tt-combat-roster-coherence/spec.md` - NEW - Main spec synced from delta
+
+**OpenSpec Status:**
+- Validated: `openspec validate multipc-initiative-phase-sync-and-roster-integrity` -> valid
+- Archived to: `openspec/changes/archive/2026-02-27-multipc-initiative-phase-sync-and-roster-integrity/`
+
 ### Streaming UX Reversion to Foundation-Only (COMPLETED - 2026-02-15)
 
 **Status:** COMPLETED  

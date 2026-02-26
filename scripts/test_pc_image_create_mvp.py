@@ -2288,6 +2288,79 @@ class TestPartyPopupQualityContracts(unittest.TestCase):
         try_video_idx = source.find("tryVideoAt(videoCandidates)", click_handler_start)
         self.assertNotEqual(try_video_idx, -1, "tryVideoAt must be called with videoCandidates")
 
+    def test_player_popup_candidates_prioritize_static_portraits_before_npc_media(self):
+        """Test: Player popup candidates prefer static portraits before NPC media."""
+        source = self._read_game_interface_source()
+        start = source.find("const popupImageCandidates = member.type === 'player'")
+        self.assertNotEqual(start, -1, "popupImageCandidates block must exist")
+        end = source.find("item.style.backgroundSize = 'cover';", start)
+        self.assertNotEqual(end, -1, "popupImageCandidates block end marker must exist")
+        block = source[start:end]
+
+        # Player branch should prefer _full.png then .png before any NPC media
+        idx_full = block.find("playerFullPortraitUrl")
+        idx_static_png = block.find("playerPortraitUrl")
+        idx_npc_png = block.find("withAssetVersion(`${npcBasePath}.png`, versionFromMeta)")
+        idx_npc_jpg = block.find("withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta)")
+
+        self.assertNotEqual(idx_full, -1, "playerFullPortraitUrl must be in player popup candidates")
+        self.assertNotEqual(idx_static_png, -1, "playerPortraitUrl must be in player popup candidates")
+        self.assertNotEqual(idx_npc_png, -1, "NPC .png must be in player popup candidates")
+        self.assertNotEqual(idx_npc_jpg, -1, "NPC .jpg must be in player popup candidates")
+
+        # Priority order: _full.png -> static .png -> NPC .png -> NPC .jpg
+        self.assertLess(idx_full, idx_static_png, "_full.png should be preferred over static .png")
+        self.assertLess(idx_static_png, idx_npc_png, "Static .png should be preferred over NPC .png")
+        self.assertLess(idx_npc_png, idx_npc_jpg, "NPC .png should be preferred over NPC .jpg")
+
+
+class TestInitiativePopupPriorityContracts(unittest.TestCase):
+    """Contracts for combat initiative player popup media selection priority."""
+
+    def _read_game_interface_source(self) -> str:
+        html_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "templates", "game_interface.html"
+        )
+        with open(html_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def test_initiative_player_click_fallback_prefers_full_then_static_png_before_npc_media(self):
+        """Test: Initiative player click popup prefers _full.png then static .png before NPC media."""
+        source = self._read_game_interface_source()
+
+        # Find the player block in initiative rendering
+        player_block_start = source.find("if (combatant.type === 'player')")
+        self.assertNotEqual(player_block_start, -1, "Player block in initiative must exist")
+
+        # Find the click handler within player block
+        click_handler_start = source.find("item.addEventListener('click', function()", player_block_start)
+        self.assertNotEqual(click_handler_start, -1, "Click handler must exist in player block")
+
+        # Find the video.onerror handler which contains the image fallback chain
+        video_onerror_start = source.find("video.onerror = () =>", click_handler_start)
+        self.assertNotEqual(video_onerror_start, -1, "video.onerror handler must exist")
+
+        # Extract the image fallback chain
+        chain_end = source.find("};", video_onerror_start)
+        block = source[video_onerror_start:chain_end]
+
+        # Check for the new fallback order
+        idx_full = block.find("playerFullPortraitUrl")
+        idx_portrait = block.find("portraitUrl")
+        idx_npc_png = block.find("npcImagePng")
+        idx_npc_jpg = block.find("npcImageJpg")
+
+        self.assertNotEqual(idx_full, -1, "playerFullPortraitUrl must be in fallback chain")
+        self.assertNotEqual(idx_portrait, -1, "portraitUrl must be in fallback chain")
+        self.assertNotEqual(idx_npc_png, -1, "npcImagePng must be in fallback chain")
+        self.assertNotEqual(idx_npc_jpg, -1, "npcImageJpg must be in fallback chain")
+
+        # Priority order: _full.png -> portrait.png -> NPC .png -> NPC .jpg
+        self.assertLess(idx_full, idx_portrait, "_full.png should be preferred over portrait.png")
+        self.assertLess(idx_portrait, idx_npc_png, "portrait.png should be preferred over NPC .png")
+        self.assertLess(idx_npc_png, idx_npc_jpg, "NPC .png should be preferred over NPC .jpg")
+
 
 class TestPortraitDownloadBestResolutionContracts(unittest.TestCase):
     """Contracts for best-resolution PC portrait download via sidebar button."""
