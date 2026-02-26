@@ -1021,6 +1021,112 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Combat Initiation Fast-Lane (COMPLETED - 2026-02-26)
+
+**Status:** COMPLETED - Steps 1.1-1.4 implemented, 13 tests passing
+
+**Objective:**
+Remove duplicate combat-start narration and eliminate extra LLM call at combat initiation in Multi-PC Phase 1.
+
+**Implementation Summary:**
+
+**Step 1.1 - Fast-Lane Guard:**
+- Added `is_fast_lane` condition in `core/managers/combat_manager.py`:
+  - `multi_pc_manager is not None`
+  - `encounter_data.get("awaitingPcGroupRoll", False) is True`
+- Fast-lane branch skips initial-scene LLM generation
+- Non-fast-lane paths (single-player, resumed combat) unchanged
+
+**Step 1.2 - Immediate Initiative Prompt:**
+- Added system prompt in fast-lane branch:
+  - `"Dungeon Master: [SYSTEM] Combat initiated. Initiative pending. Enter /init <1-20> to begin combat."`
+- Immediate stdout flush after print
+- Existing `/init` validation preserved
+
+**Step 1.3 - Regression Coverage:**
+- Added `TestFastLaneInitiationContract` class to `scripts/c5_regression_combat.py`:
+  - `test_fast_lane_guard_contract_exists` - verifies guard conditions
+  - `test_immediate_initiative_prompt_exists` - verifies exact prompt string
+  - `test_initial_scene_llm_in_non_fast_lane_path` - verifies AI call in else branch
+  - `test_existing_init_gate_preserved` - verifies `/init` validation unchanged
+- All 4 new tests PASS (13/13 total tests PASS)
+
+**Step 1.4 - Verification:**
+- Syntax validation: PASS (`python3 -m py_compile`)
+- Regression suite: PASS (13 tests)
+- Compatibility: Resume path, non-fast-lane path, `/init` gate all preserved
+
+**Impact:**
+- **Before:** 2 LLM narrations + ~3-5 second delay before `/init` prompt
+- **After:** 1 LLM narration + immediate `/init` prompt
+- **Savings:** ~$0.01-0.03 + 2-5 seconds per Phase 1 combat initiation
+
+**Files Modified:**
+- `core/managers/combat_manager.py` (+16 lines fast-lane logic)
+- `scripts/c5_regression_combat.py` (+58 lines, 4 new tests)
+
+---
+
+### Session Resume Recap Cleanup (COMPLETED - 2026-02-26)
+
+**Status:** COMPLETED - Implementation and state cleanup complete
+
+**Objective:**
+Fix combat initiation failure caused by accumulated "SESSION RESUME RECAP ONLY" prompts blocking gameplay actions.
+
+**Root Cause:**
+`main.py` injected recap prompt containing "do NOT emit gameplay actions" every server start. Multiple restarts accumulated these constraints in `conversation_history.json`, causing LLM to output `actions: []` instead of `createEncounter`.
+
+**Implementation:**
+- Added stale recap filter in `main.py:check_and_inject_return_message()` (line ~248):
+  - `conversation_history[:] = [msg for msg in conversation_history if "SESSION RESUME RECAP ONLY" not in msg.get("content", "")]`
+  - Logs removal count: `STATE_CHANGE: Removed N stale recap messages`
+- Created cleanup utility: `scripts/cleanup_stale_recaps.py`
+
+**State Cleanup:**
+- Removed 8 stale messages from active session:
+  - `conversation_history.json`: 42 → 38 messages
+  - `chat_history.json`: 32 → 28 messages
+
+**Verification:**
+- Syntax validation: PASS (`python3 -m py_compile main.py`)
+- Cleanup script executed successfully
+
+**Files Modified:**
+- `main.py` (+10 lines cleanup logic)
+- `scripts/cleanup_stale_recaps.py` (new, 26 lines)
+
+---
+
+### Chat Auto-Scroll Fix for TTS Word-Sync (COMPLETED - 2026-02-26)
+
+**Status:** COMPLETED - 3 surgical fixes applied
+
+**Objective:**
+Restore reliable chat auto-scroll on new DM messages when word-sync/fallback reveal is active.
+
+**Root Cause:**
+Pre-initializing reveal mode collapsed message height before playback, causing initial auto-scroll to target wrong final height.
+
+**Implementation (3 fixes in `web/templates/game_interface.html`):**
+1. Removed early reveal pre-init from `addMessage()` autoplay path (~line 6190)
+2. Added `requestAnimationFrame(() => scrollToBottom('game-output'))` in watchdog fallback (~line 10257)
+3. Added same scroll pin in `finalizeReveal()` for end/error/stop paths (~line 10533)
+
+**Behavior:**
+- New messages arrive at full height → initial auto-scroll works
+- 1s watchdog reveals text → chat re-pins to bottom
+- Stop/error paths also re-pin scroll
+
+**Verification:**
+- JavaScript syntax: PASS
+- Logic verified, TABLETOP MODE comments preserved
+
+**Files Modified:**
+- `web/templates/game_interface.html` (~15 lines across 3 locations)
+
+---
+
 ### Multi-Currency Debug Tab Cost Conversion (COMPLETED - 2026-02-24)
 
 **Status:** COMPLETED - Live exchange rate fetching with multi-currency support and robust fallback behavior
