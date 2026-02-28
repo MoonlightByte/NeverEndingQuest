@@ -1922,6 +1922,55 @@ Implement explicit PC retirement/rejoin lifecycle with world-memory continuity p
 
 ---
 
+### Module Import and World Expansion Plan (PLANNED - 2026-02-28)
+
+**Status:** PLANNED - Documentation complete, ready for implementation  
+**Priority:** High (Core Platform Growth)  
+**Effort:** Large (~2-3 weeks)  
+**Implementation Date:** TBD
+
+**Objective:**
+Build a strict, continuous import pipeline that ingests large volumes of community adventure content (DMsGuild free purchases, Homebrewery markdown), converts it into NEQ-compatible modules, validates those modules, and stitches them into one long-lived canonical world campaign.
+
+**Key Capabilities:**
+- Bulk intake scanner for `Docs/modules/` and Homebrewery sources
+- Dual extractor path: PDF (text chunking) + Markdown (heading-aware parsing)
+- Canonical intermediate adventure schema (acts, locations, NPCs, encounter seeds)
+- World consistency rewrite pass aligning factions/timeline with `plans/version-2/world-narrative.md`
+- NEQ module emission (areas, encounters, plots, characters, monsters)
+- Strict validation gate: only 100% schema-valid modules auto-publish
+- Level-band progression ladder (1-4, 3-6, 5-8, 10-15, etc.)
+- Auto-stitch integration with existing module stitcher
+
+**Campaign Initialization Model:**
+- **Default: Canonical world** - All new campaigns start in shared canonical world
+- **Modules are continuously expanded** as new sources are imported
+- **No per-campaign module duplication** required
+- **Future: Forked world profiles** (many worlds) supported but disabled by default
+
+**Source Inputs:**
+- PDF adventures (DMsGuild free purchases)
+- Markdown exports (Homebrewery)
+- Asset packs (maps, handouts)
+
+**Strict Quality Gates:**
+- Schema validation must pass (`core/validation/validate_module_files.py`)
+- Cross-reference integrity checks
+- Level range present and valid
+- Encounter/creature references resolve
+- Degraded imports quarantined, never silently stitched
+
+**Files Created:**
+- `plans/version-2/module-import.md` - Complete implementation plan
+
+**Documentation:**
+- Plan Location: `plans/version-2/module-import.md`
+- Pipeline: Intake -> Extract -> Normalize -> Canonical Rewrite -> Emit -> Validate -> Stitch
+- Supports continuous import ("NeverEnding" expansion)
+- Canonical worldline over source fidelity
+
+---
+
 ### Journal Diary MVP Phase 1 Planning (PLANNED - 2026-02-16)
 
 **Status:** PLANNED - Ready for Kimi Builder execution  

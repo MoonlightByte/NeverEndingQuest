@@ -1,6 +1,13 @@
 ## Context
 
-`core/managers/combat_manager.py` combines upstream combat flow and TABLETOP MODE extensions in one large function (`run_combat_simulation`). The most fragile parts are TT initiative gate handling (`/init`) and phase/roster sync branches that are deeply nested and frequently edited.
+`core/managers/combat_manager.py` combines upstream combat flow and TABLETOP MODE extensions in one large function (`run_combat_simulation`). The most fragile parts are TT initiative gate handling (`/init`) and phase/round sync branches that are deeply nested and frequently edited.
+
+Interim combat updates already landed after this change was drafted:
+- startup normalization through `normalize_phase1_initiative(...)` in `combat_manager.py`,
+- fast-lane startup when `awaitingPcGroupRoll=True`,
+- opening marker lifecycle spanning `/init`, round-start, and post-opening-batch clear.
+
+This design revision hardens helper isolation against that newer baseline.
 
 For the current test build, we need TT-only hardening: improve edit safety and testability without broad upstream refactor risk.
 
@@ -8,7 +15,7 @@ For the current test build, we need TT-only hardening: improve edit safety and t
 
 **Goals:**
 - Extract TT initiative gate logic into a dedicated helper with clear contract.
-- Keep TT phase/roster sync delegated through `combat_state_sync.py` where possible.
+- Preserve current TT state-sync ownership boundaries (no relocation in this change).
 - Add a deterministic builder syntax check utility that fails fast on malformed Python edits.
 - Preserve current gameplay behavior (no rules change).
 
@@ -33,6 +40,7 @@ For the current test build, we need TT-only hardening: improve edit safety and t
   - updates encounter initiative fields,
   - applies `openingEnemyBatchPending` marker via `apply_opening_batch_marker(...)`,
   - persists encounter + mirror payload,
+  - preserves deterministic gate messaging (`[skipTTS][prefill:/init ]`) and dmGroup forced enemy fall-through behavior,
   - returns structured result to caller.
 - Rationale: deterministic behavior and isolated testing.
 - Alternative considered: leave inline and add comments. Rejected as insufficient for reliability.
@@ -42,7 +50,15 @@ For the current test build, we need TT-only hardening: improve edit safety and t
 - SHOULD support convenience mode for changed files from git diff.
 - Rationale: catches indentation/syntax regressions immediately in builder loop.
 
-4) Compatibility invariants (MUST)
+4) Baseline ownership and marker lifecycle invariants (MUST)
+- Keep `normalize_phase1_initiative(...)` defined/invoked in `combat_manager.py` for this change.
+- Keep `combat_state_sync.py` ownership limited to marker/roster helpers (`apply_opening_batch_marker`, `normalize_multi_pc_roster`).
+- Preserve opening marker lifecycle across all current touchpoints:
+  - `/init` winner resolution,
+  - round-start reapplication,
+  - post-opening-batch clear to transition back to PC phase.
+
+5) Compatibility invariants (MUST)
 - Single-player behavior remains unchanged.
 - TT refactor remains additive and fail-open for legacy encounter data.
 - Existing logging categories remain stable where practical.
@@ -58,9 +74,9 @@ For the current test build, we need TT-only hardening: improve edit safety and t
 
 1. Extract `/init` gate logic into helper with behavior-equivalent outputs.
 2. Replace inline `/init` branch with thin helper invocation.
-3. Keep phase/roster sync through `combat_state_sync.py`; avoid additional logic inlined into main loop.
+3. Preserve current ownership split: keep phase1 normalization in `combat_manager.py`; keep marker/roster helpers in `combat_state_sync.py`.
 4. Add `scripts/check_builder_patch_syntax.py`.
-5. Validate with compile + `scripts/test_multi_pc_combat.py` + dmGroup/pcGroup smoke checks.
+5. Validate with compile + `scripts/test_multi_pc_combat.py` + `scripts/c5_regression_combat.py` + dmGroup/pcGroup smoke checks.
 
 Rollback strategy:
 - Revert helper invocation and restore previous inline block if any behavioral regression appears.

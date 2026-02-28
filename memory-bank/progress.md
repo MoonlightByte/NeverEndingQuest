@@ -6,6 +6,10 @@
 Active development of Tabletop Mode features, focusing on combat flow optimization, session stability, and UI polish.
 
 ### Documentation Maintenance
+- 2026-03-01: Added detailed canonical-world bulk module import plan at `plans/version-2/module-import.md`.
+  - Canonical-first campaign initialization confirmed.
+  - Strict validation-only autopublish confirmed.
+  - Many-world forking documented as future optional overlay architecture.
 - 2026-02-26: Memory Bank updated with recent combat initiation fast-lane, session recap cleanup, and chat auto-scroll fixes. Repository reorganized with plans moved to version-2/ structure. Commit `930b99a` includes all completed non-pending changes.
 - 2026-02-04: Memory Bank reviewed/updated on request (documentation-only pass; no code changes).
 - 2026-02-19: Developer documentation packaging pass completed for tester handoff commit stream.
@@ -15,6 +19,15 @@ Active development of Tabletop Mode features, focusing on combat flow optimizati
   - `.opencode` policy clarified: only share curated skills/command docs paths; avoid force-adding package artifacts.
 
 ## 🚀 Recent Achievements
+
+- **Module Import and World Expansion Plan (PLANNED - 2026-02-28):**
+  - **Status:** Planning complete; implementation pending.
+  - **Plan File:** `plans/version-2/module-import.md`
+  - **Core Direction:** Continuous ingest of adventure sources into one canonical, linked campaign world.
+  - **Inputs:** DMsGuild free PDFs, Homebrewery markdown exports, map/asset archives.
+  - **Pipeline:** Intake -> Extract -> Normalize -> Canonical Rewrite -> Emit -> Validate -> Stitch.
+  - **Autopublish Policy:** Strict pass-only publication with quarantine for failures.
+  - **Campaign Init:** Canonical world default; future many-world forks supported as optional overlays.
 
 - **NPC Arrival State Sync (COMPLETED - 2026-02-27):**
   - **OpenSpec Change:** `tt-npc-arrival-state-sync` (archived to `openspec/changes/archive/2025-02-27-tt-npc-arrival-state-sync/`)

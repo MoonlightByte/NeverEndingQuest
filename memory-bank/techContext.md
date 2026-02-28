@@ -128,3 +128,28 @@ Frontend-only state management to prevent duplicate portrait operations and prov
 - Keep SP code as merge insurance policy
 - All new features are TT-only
 - Eventually extract to clean TT-only fork when value exceeds merge potential
+
+## Module Import and World Expansion Architecture (PLANNED - 2026-02-28)
+
+- **Plan Document:** `plans/version-2/module-import.md`
+- **Default Campaign World:** Canonical shared world mapping for all new campaign initializations.
+- **Future Extension:** Optional many-world fork overlays (campaign-profile mapping deltas) without duplicating module assets.
+
+**Pipeline Contract:**
+- Intake: Bulk scanner for `Docs/modules/` and Homebrewery markdown drops
+- Extract: PDF chunking + heading-aware markdown parse + asset zip unpack
+- Normalize: Canonical intermediate adventure schema (acts, locations, NPCs, encounter seeds)
+- Canonical Rewrite: Align content to `plans/version-2/world-narrative.md` worldline
+- Emit: NEQ module artifacts (areas, encounters, plot, entities, media refs)
+- Validate: Strict schema/integrity gates (`core/validation/validate_module_files.py`)
+- Stitch: Integrate passing modules into world registry and progression graph
+
+**Strict Publication Rules:**
+- Pass-only autopublish (strict mode)
+- Quarantine on validation failure
+- No silent bypass on validator exceptions in production pipeline
+
+**Campaign Progression Rules:**
+- Level-band overlap for smooth advancement (for example `1-4`, `3-6`, `5-8`, `10-15`)
+- Multi-branch next-module recommendations to reduce repetition fatigue
+- Narrative travel linking via stitcher-compatible transitions

@@ -5,11 +5,12 @@
 - [ ] 1.3 Ensure helper path preserves existing writes for initiative fields and mirror payload, including `openingEnemyBatchPending` handling via `apply_opening_batch_marker(...)`.
 - [ ] 1.4 Keep single-player flow unchanged and guard TT path behind existing multi-PC activation checks.
 
-## 2. TT Phase/Roster Sync Hardening
+## 2. TT State Ownership and Marker Lifecycle Hardening
 
-- [ ] 2.1 Keep TT roster and phase sync delegation in `core/managers/combat_state_sync.py`; avoid new inline logic in main loop.
-- [ ] 2.2 Confirm startup/resume path still applies `normalize_phase1_initiative(...)` and `normalize_multi_pc_roster(...)` in deterministic order.
-- [ ] 2.3 Add/retain `# TABLETOP MODE:` markers at host integration points for merge clarity.
+- [ ] 2.1 Preserve ownership boundary: keep `normalize_phase1_initiative(...)` in `core/managers/combat_manager.py` for this change; do not relocate it to `combat_state_sync.py`.
+- [ ] 2.2 Preserve current startup/resume sync behavior for phase1 normalization + mirror updates + fast-lane initiative gate assumptions.
+- [ ] 2.3 Preserve opening marker lifecycle across all current paths: `/init` winner resolution, round-start reapplication, and post-opening-batch clear.
+- [ ] 2.4 Add/retain `# TABLETOP MODE:` markers at host integration points for merge clarity.
 
 ## 3. Builder Compile Guard Script
 
@@ -21,5 +22,6 @@
 
 - [ ] 4.1 Run `python3 -m py_compile core/managers/combat_manager.py core/managers/combat_state_sync.py core/generators/combat_builder.py scripts/check_builder_patch_syntax.py`.
 - [ ] 4.2 Run `python3 scripts/test_multi_pc_combat.py` and confirm pass.
-- [ ] 4.3 Smoke-check one `dmGroup` opener and one `pcGroup` opener to confirm no phase desync regression.
-- [ ] 4.4 Validate change artifacts with `openspec validate tt-combat-manager-hardening-only`.
+- [ ] 4.3 Run `python3 scripts/c5_regression_combat.py` and confirm pass.
+- [ ] 4.4 Smoke-check one `dmGroup` opener and one `pcGroup` opener to confirm no phase desync regression.
+- [ ] 4.5 Validate change artifacts with `openspec validate tt-combat-manager-hardening-only`.

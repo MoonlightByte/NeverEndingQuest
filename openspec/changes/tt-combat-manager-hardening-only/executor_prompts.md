@@ -37,22 +37,26 @@ Verify before moving on:
 
 ---
 
-## Prompt 2 - Preserve TT Marker and Sync Semantics
+## Prompt 2 - Preserve TT Ownership and Marker Lifecycle Semantics
 
-Implement tasks `1.3`, `1.4`, `2.1`, and `2.2`.
+Implement tasks `1.3`, `1.4`, `2.1`, `2.2`, `2.3`, and `2.4`.
 
 Scope:
 - `core/managers/combat_manager.py`
-- `core/managers/combat_state_sync.py`
+- `core/managers/combat_state_sync.py` (only if required for marker/roster compatibility)
 
 Requirements:
 - Ensure helper path still applies `apply_opening_batch_marker(...)` semantics.
-- Ensure startup/resume still applies `normalize_phase1_initiative(...)` then `normalize_multi_pc_roster(...)`.
+- Keep `normalize_phase1_initiative(...)` in `core/managers/combat_manager.py` for this change (no relocation).
+- Preserve startup/resume phase1 normalization + mirror update behavior used by fast-lane initiation.
+- Preserve opening marker lifecycle across all existing paths (`/init`, round-start, post-opening-batch clear).
+- Preserve deterministic gate output behavior for invalid/non-`/init` input (`[skipTTS][prefill:/init ]`) and dmGroup forced enemy fall-through.
 - Keep writes additive and fail-open.
 
 Verify before moving on:
 - `python3 -m py_compile core/managers/combat_manager.py core/managers/combat_state_sync.py`
 - `python3 scripts/test_multi_pc_combat.py`
+- `python3 scripts/c5_regression_combat.py`
 
 ---
 
@@ -84,6 +88,7 @@ Scope:
 Required commands:
 - `python3 -m py_compile core/managers/combat_manager.py core/managers/combat_state_sync.py core/generators/combat_builder.py scripts/check_builder_patch_syntax.py`
 - `python3 scripts/test_multi_pc_combat.py`
+- `python3 scripts/c5_regression_combat.py`
 - `python3 scripts/check_builder_patch_syntax.py core/managers/combat_manager.py core/managers/combat_state_sync.py core/generators/combat_builder.py`
 - `openspec validate tt-combat-manager-hardening-only`
 
@@ -99,4 +104,5 @@ Manual smoke checklist:
 
 - Stop immediately if compile fails after a patch and fix before proceeding.
 - Stop and report if behavior drift is detected in `/init` gate semantics.
+- Stop and report if `scripts/c5_regression_combat.py` contract checks fail after extraction.
 - Do not start upstream-wide refactor here; that belongs to v2 plan.

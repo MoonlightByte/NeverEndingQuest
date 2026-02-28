@@ -1,5 +1,14 @@
 ## Current Work Focus
 
+- **Module Import and World Expansion Plan (PLANNED - 2026-02-28):**
+  - **Status:** Planning complete in `plans/version-2/module-import.md`; implementation not started.
+  - **Goal:** Continuous bulk ingest of DMsGuild free purchases and Homebrewery markdown into NEQ modules.
+  - **Default World Model:** Canonical shared world for all new campaigns.
+  - **Fork Potential:** Many-world overlays are explicitly documented as future optional campaign profiles.
+  - **Pipeline Contract:** Intake -> Extract -> Normalize -> Canonical Rewrite -> Emit -> Validate -> Stitch.
+  - **Publication Policy:** Strict autopublish only for fully validated modules; degraded imports quarantined.
+  - **Progression Contract:** Level-band ladders (`1-4`, `3-6`, `5-8`, `10-15`) to support long-form party advancement.
+
 - **Combat Initiation Fast-Lane (COMPLETED - 2026-02-26):**
   - **Problem:** Combat initiation had duplicate LLM narrations and delayed `/init` prompt, causing 3-step startup (DM narrates → Combat LLM narrates → `/init` prompt).
   - **Solution:** Implemented fast-lane path in `core/managers/combat_manager.py` that skips redundant initial-scene LLM call when `awaitingPcGroupRoll=True`.

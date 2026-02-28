@@ -4,8 +4,9 @@ The current test build needs safer iteration on TABLETOP MODE combat behavior wi
 
 ## What Changes
 
-- Refactor TABLETOP MODE initiative and phase-sync blocks into focused helper functions while preserving existing behavior.
+- Isolate TABLETOP MODE `/init` two-group initiative gate into a focused helper boundary while preserving existing behavior.
 - Isolate `/init` two-group initiative gate handling into a dedicated helper path with stable inputs/outputs.
+- Preserve current TT ownership split for state sync: `normalize_phase1_initiative(...)` stays in `combat_manager.py`, while marker/roster helpers stay in `combat_state_sync.py`.
 - Keep host-file edits minimal and additive, with `# TABLETOP MODE:` markers for merge clarity.
 - Add a builder regression syntax guard script that compiles touched Python files after each patch step.
 - Preserve single-player compatibility and fail-open behavior for missing/legacy fields.
@@ -13,7 +14,7 @@ The current test build needs safer iteration on TABLETOP MODE combat behavior wi
 ## Capabilities
 
 ### New Capabilities
-- `tt-combat-manager-gate-isolation`: `/init` two-group initiative gate and TT phase-marker handling are extracted into testable helper boundaries without behavior drift.
+- `tt-combat-manager-gate-isolation`: `/init` two-group initiative gate and TT phase-marker handling are isolated behind a helper boundary without behavior drift.
 - `tt-builder-patch-compile-guard`: deterministic compile-check utility for builder workflows validates touched Python files and fails fast on syntax errors.
 
 ### Modified Capabilities
