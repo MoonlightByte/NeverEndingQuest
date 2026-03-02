@@ -19,6 +19,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import json
 import unittest
 import tempfile
 import shutil
@@ -33,6 +34,7 @@ from core.importers.homebrewery_importer import (
     _extract_markdown_tables,
     _build_intermediate_adventure,
     _generate_neq_ids,
+    _emit_map_file,
     import_homebrewery_adventure_to_module,
 )
 
@@ -473,6 +475,41 @@ Another test room.
         finally:
             importer.ModuleStitcher = orig_stitcher
             importer.STITCHER_AVAILABLE = orig_available
+
+
+class TestMapCoordinateSchemaContract(unittest.TestCase):
+    """Ensure emitted map coordinates match map schema contract."""
+
+    def test_emit_map_file_coordinates_are_strings(self):
+        temp_dir = tempfile.mkdtemp()
+        try:
+            module_path = Path(temp_dir)
+            intermediate = {
+                "rooms": [
+                    {"name": "Room 1"},
+                    {"name": "Room 2"},
+                    {"name": "Room 3"},
+                ]
+            }
+            area_id = "TST001"
+            location_ids = ["TST001_L01", "TST001_L02", "TST001_L03"]
+
+            map_path = _emit_map_file(
+                module_path=module_path,
+                module_slug="Test_Module",
+                intermediate=intermediate,
+                area_id=area_id,
+                location_ids=location_ids,
+            )
+
+            data = json.loads(map_path.read_text(encoding="utf-8"))
+            self.assertEqual(len(data["rooms"]), 3)
+
+            for i, room in enumerate(data["rooms"]):
+                self.assertIsInstance(room["coordinates"], str)
+                self.assertEqual(room["coordinates"], f"X{i}Y0")
+        finally:
+            shutil.rmtree(temp_dir)
 
 
 if __name__ == "__main__":

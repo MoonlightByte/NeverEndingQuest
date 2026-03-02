@@ -1,5 +1,16 @@
 ## Current Work Focus
 
+- **Homebrew Deterministic Ingest Hardening + Media Planning (IN PROGRESS - 2026-03-02):**
+  - **Schema Fix Applied:** `core/importers/homebrewery_importer.py` map emission now writes string coordinates (`XnYm`) instead of object coordinates (`{"x": n, "y": m}`) to satisfy `schemas/map_schema.json`.
+  - **Regression Coverage Added:** `scripts/test_homebrewery_importer.py` now includes `TestMapCoordinateSchemaContract` to prevent coordinate object regressions.
+  - **Verification:** Compile PASS, new regression test PASS, strict ingest for `The_Secrets_of_Mangrove_Keep` succeeds and registers cleanly.
+  - **OpenSpec Extension Added:** New change `dev-homebrew-ingest-media-handles-prewarm` created and validated.
+  - **Planned Capability Contract:**
+    - Warn-only media extraction from Homebrew markdown (no ingest block on media fetch failures)
+    - Deterministic handle manifest (`modules/<slug>/media/media_handles.json`) for future chat title image and map-tab consumers
+    - Default NPC + monster portrait prewarm with fail-open degraded reporting
+  - **Source-backed Media Examples Captured:** Mangrove Keep title image (`t50VrIo.jpg`) and large map (`WSwArYs.jpg`) plus additional DM/exterior/interior map URLs are now explicit plan fixtures.
+
 - **Startup Stale Recap Auto-Cleanup (COMPLETED - 2026-03-02):**
   - **Problem:** Multiple server restarts caused accumulation of "SESSION RESUME RECAP ONLY" prompts in conversation/chat history, blocking normal gameplay actions with "do NOT emit gameplay actions" constraints.
   - **Solution:** Implemented automatic cleanup at startup using shared utility module.

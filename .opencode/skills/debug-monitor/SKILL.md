@@ -1,3 +1,14 @@
+---
+name: debug-monitor
+description: On-demand TABLETOP MODE debug configuration, log analysis, and cleanup workflow.
+license: MIT
+compatibility: opencode
+metadata:
+  audience: developers
+  workflow: debugging
+  project: NeverEndingQuest
+---
+
 # Tabletop Mode Debug Monitor Skill
 
 **Version:** 2.3.0 (Three-Phase Complete Workflow)

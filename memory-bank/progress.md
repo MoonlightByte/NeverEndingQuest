@@ -6,6 +6,14 @@
 Active development of Tabletop Mode features, focusing on combat flow optimization, session stability, and UI polish.
 
 ### Documentation Maintenance
+- 2026-03-02: Added and validated new OpenSpec change `dev-homebrew-ingest-media-handles-prewarm`.
+  - Scope added: warn-only Homebrew image extraction, deterministic media handle manifest, and NPC+monster portrait prewarm.
+  - Captured explicit Mangrove Keep media fixtures for implementation and tests (title image + large map + DM map set).
+  - Validation: `openspec validate dev-homebrew-ingest-media-handles-prewarm` PASS.
+- 2026-03-02: Fixed deterministic importer map schema mismatch and added regression coverage.
+  - `core/importers/homebrewery_importer.py` now emits map room `coordinates` as `XnYm` strings (schema-compliant).
+  - `scripts/test_homebrewery_importer.py` includes `TestMapCoordinateSchemaContract` to prevent object-coordinate regressions.
+  - Verified by successful strict ingest/registry registration for `The_Secrets_of_Mangrove_Keep`.
 - 2026-03-01: Added detailed canonical-world bulk module import plan at `plans/version-2/module-import.md`.
   - Canonical-first campaign initialization confirmed.
   - Strict validation-only autopublish confirmed.

@@ -588,7 +588,7 @@ def _emit_map_file(
             "id": loc_id,
             "name": room["name"],
             "connections": connections,
-            "coordinates": {"x": i, "y": 0},  # Linear layout
+            "coordinates": f"X{i}Y0",  # Linear layout, schema requires string
         }
         map_rooms.append(map_room)
 

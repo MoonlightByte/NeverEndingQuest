@@ -1,3 +1,14 @@
+---
+name: dev-homebrew-ingest
+description: Developer workflow to preflight, transform, validate, and ingest Homebrew modules.
+license: MIT
+compatibility: opencode
+metadata:
+  audience: developers
+  workflow: content-ingest
+  project: NeverEndingQuest
+---
+
 # Dev Homebrew Ingest Skill
 
 **Purpose:** Developer-only workflow for preparing and ingesting Homebrew modules into NEQ.
