@@ -11,7 +11,7 @@ NeverEndingQuest is an AI-powered Dungeon Master system for running SRD 5.2.1 co
 - `AGENTS.md` is the canonical repo guide for architecture, standards, and workflow.
 - `openspec/changes/*` is the source of truth for active change requirements and acceptance criteria.
 - `plans/` captures planning and draft thinking; once reflected in OpenSpec, plans are reference-oriented.
-- `memory-bank/` is optional legacy context (if present) and non-authoritative.
+- `memory-bank/` is deprecated legacy context (if present), non-authoritative, and read-only by default.
 - Conflict resolution: `AGENTS.md` governs repo-wide rules; active OpenSpec artifacts govern change-specific scope.
 - Repositories without `memory-bank/` are fully valid and follow the `AGENTS.md` + `openspec` + `plans` workflow.
 
@@ -306,7 +306,7 @@ When implementing game mechanics:
 - **Purpose**: Captures "in-the-moment" developer observations from gameplay testing
 - **Content**: Narrative summaries, combat analyses, OCNote patterns, architectural insights
 - **Format**: Chronological entries with timestamps, conversational tone
-- **Relationship**: Complements formal docs (AGENTS.md, memory-bank) with informal testing observations
+- **Relationship**: Complements formal docs (AGENTS.md, OpenSpec) with informal testing observations
 - **Updates**: Written after each "read chat log" analysis session
 
 **OpenCode Skill System:**
@@ -319,8 +319,8 @@ When implementing game mechanics:
   - **Status**: Active (2026-02-05)
 - **Location**: `~/.config/opencode/skills/sync-project-memory/SKILL.md`
 - **Trigger Phrases**: "update memory bank", "update memory", "sync memory", "sync docs and memory", "update agents and memory"
-- **Purpose**: Ensures AGENTS.md and Cline memory-bank are updated together with synchronized information
-- **Behavior**: Exact-phrase matching only (ignores partials like "memory"), updates existing files only (never creates), follows Cline formatting patterns
+- **Purpose**: Enforces AGENTS-first documentation sync; memory-bank is deprecated legacy context
+- **Behavior**: Exact-phrase matching only (ignores partials like "memory"); always updates AGENTS.md, updates memory-bank only on explicit legacy request, and never creates new files
 - **Status**: Active and tested (2026-02-03)
 
 **Real-Time Chat Monitoring (TABLETOP MODE):**
@@ -1020,6 +1020,28 @@ character_data["is_active_pc"] = True
 ---
 
 ## Recent Changes
+
+### AGENTS-First Memory Sync Policy (COMPLETED - 2026-03-02)
+
+**Status:** COMPLETED - Documentation policy and skill contract updated
+
+**Objective:**
+Deprecate legacy Cline-style memory-bank synchronization as a default behavior and make AGENTS.md the sole default memory target.
+
+**Implementation Summary:**
+- Updated Documentation Source Hierarchy wording to mark `memory-bank/` as deprecated, non-authoritative, and read-only by default
+- Updated sync-project-memory skill contract description in AGENTS to enforce AGENTS-first behavior
+- Clarified sync-project-memory behavior:
+  - Always update `AGENTS.md`
+  - Update `memory-bank/` only on explicit legacy request
+  - Never create missing files
+- Updated ONCNotes relationship text to reference AGENTS/OpenSpec as formal sources
+
+**Result:**
+- Default memory update flow is now AGENTS-only
+- Legacy memory-bank support remains available as explicit opt-in for historical workflows
+
+---
 
 ### Startup Stale Recap Auto-Cleanup (COMPLETED - 2026-03-02)
 
