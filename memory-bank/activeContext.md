@@ -1,6 +1,18 @@
 ## Current Work Focus
 
-- **Module Import and World Expansion Plan (PLANNED - 2026-02-28):**
+- **Startup Stale Recap Auto-Cleanup (COMPLETED - 2026-03-02):**
+  - **Problem:** Multiple server restarts caused accumulation of "SESSION RESUME RECAP ONLY" prompts in conversation/chat history, blocking normal gameplay actions with "do NOT emit gameplay actions" constraints.
+  - **Solution:** Implemented automatic cleanup at startup using shared utility module.
+  - **Implementation:**
+    - Shared utility `utils/session_cleanup.py` provides canonical stale recap detection/removal
+    - Startup cleanup runs before combat/non-combat branching for both history files
+    - Fail-open design: missing/malformed files log degraded status, startup continues
+    - Script parity: `scripts/cleanup_stale_recaps.py` supports `--dry-run` and `--apply` modes
+  - **Party Member NPC Arrival Exemption:** Fixed hard fail where party members (PCs) were misclassified as NPCs requiring arrival actions. Added `_build_party_member_set()` in `utils/npc_arrival_validator.py` to exempt PCs from NPC arrival validation.
+  - **Verification:** All 13 tests PASS (5 session cleanup + 3 CLI contracts + 5 party exemption), compile checks PASS, OpenSpec validation VALID, archived to `openspec/changes/archive/2026-03-02-startup-stale-recap-autocleanup/`
+  - **Files:** `main.py`, `utils/session_cleanup.py`, `scripts/cleanup_stale_recaps.py`, `utils/npc_arrival_validator.py`, test files (3 new)
+
+- **Module Import and World Expansion Plan (PLANNED - 2026-02-28):
   - **Status:** Planning complete in `plans/version-2/module-import.md`; implementation not started.
   - **Goal:** Continuous bulk ingest of DMsGuild free purchases and Homebrewery markdown into NEQ modules.
   - **Default World Model:** Canonical shared world for all new campaigns.

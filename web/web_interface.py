@@ -91,7 +91,19 @@ from updates.update_character_info import normalize_character_name
 from core.managers.status_manager import set_status_callback, set_compression_callback
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.character_creation_audit import apply_background_feature_suggestion_if_generic
-from model_config import DM_MINI_MODEL, ENABLE_BROWSER_TTS_STREAM_SYNC, ENABLE_CHAT_STREAMING, ENABLE_BROWSER_WORD_SYNC, ENABLE_TTS_ESTIMATED_TIMING
+from model_config import (
+    DM_MINI_MODEL,
+    ENABLE_BROWSER_TTS_STREAM_SYNC,
+    ENABLE_CHAT_STREAMING,
+    ENABLE_BROWSER_WORD_SYNC,
+    ENABLE_TTS_ESTIMATED_TIMING,
+    ENABLE_MODULE_INGEST_WATCH,
+    MODULE_INGEST_WATCH_DIR,
+    MODULE_INGEST_ARCHIVE_DIR,
+    MODULE_INGEST_POLL_INTERVAL_SECONDS,
+    MODULE_INGEST_ALLOWED_EXTENSIONS,
+    MODULE_INGEST_STRICT_VALIDATION,
+)
 from web.extensions.live_chat_monitor import setup_live_chat_monitor
 from web.extensions.streaming_events import configure_stream_transport
 from web.extensions.tabletop_socket_handlers import (
@@ -111,6 +123,17 @@ try:
     MISSING_MEDIA_AUTOGEN_AVAILABLE = True
 except ImportError:
     MISSING_MEDIA_AUTOGEN_AVAILABLE = False
+    enqueue_missing_media_autogen_task = None
+    is_allied_companion_check = None
+    start_missing_media_autogen_worker = None
+
+# TABLETOP MODE: Import module ingest watch worker for auto-ingesting source files
+try:
+    from web.extensions.module_ingest_watch import start_module_ingest_watch_worker
+    MODULE_INGEST_WATCH_AVAILABLE = True
+except ImportError:
+    MODULE_INGEST_WATCH_AVAILABLE = False
+    start_module_ingest_watch_worker = None
 from web.output_markers import extract_output_markers, detect_tts_scope_marker
 from web.routes.browser_settings_routes import register_browser_settings_routes
 from web.routes.character_sheet_routes import (
@@ -277,6 +300,26 @@ except Exception as autogen_start_error:
     warning(
         f"MISSING_MEDIA_AUTOGEN: Failed to start worker: {autogen_start_error}",
         category="web_interface"
+    )
+
+# TABLETOP MODE: Start module ingest watch worker for modules/ingest folder.
+try:
+    if MODULE_INGEST_WATCH_AVAILABLE and ENABLE_MODULE_INGEST_WATCH:
+        start_module_ingest_watch_worker(
+            watch_dir=MODULE_INGEST_WATCH_DIR,
+            archive_dir=MODULE_INGEST_ARCHIVE_DIR,
+            poll_interval_seconds=MODULE_INGEST_POLL_INTERVAL_SECONDS,
+            strict_validation=MODULE_INGEST_STRICT_VALIDATION,
+            allowed_extensions=MODULE_INGEST_ALLOWED_EXTENSIONS,
+        )
+        info(
+            f"MODULE_INGEST: Watcher started dir={MODULE_INGEST_WATCH_DIR} archive={MODULE_INGEST_ARCHIVE_DIR}",
+            category="web_interface",
+        )
+except Exception as ingest_watch_start_error:
+    warning(
+        f"MODULE_INGEST: Failed to start watcher: {ingest_watch_start_error}",
+        category="web_interface",
     )
 
 # Add static route for graphic_packs to improve thumbnail loading performance

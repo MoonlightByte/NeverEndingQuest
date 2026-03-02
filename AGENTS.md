@@ -1021,6 +1021,51 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Startup Stale Recap Auto-Cleanup (COMPLETED - 2026-03-02)
+
+**Status:** COMPLETED - OpenSpec change archived
+
+**Objective:**
+Ensure automatic stale recap cleanup runs at startup for both history files, preventing accumulation of "SESSION RESUME RECAP ONLY" constraints that block gameplay actions.
+
+**Implementation Summary:**
+
+**Shared Cleanup Utility (1.1-1.3):**
+- Created `utils/session_cleanup.py` as canonical source for stale recap detection/removal
+- Functions: `is_stale_resume_recap_message()`, `remove_stale_resume_recaps()`, `cleanup_history_file()`, `cleanup_history_files()`
+- Fail-open design: missing/malformed files log degraded status but don't block startup
+
+**Startup Integration (2.1-2.3):**
+- Moved cleanup call to pre-branch location in `main.py` (before combat/non-combat split)
+- Cleans both `conversation_history.json` and `chat_history.json`
+- Per-file logging with status: ok/missing/error
+- Removed dead unreachable cleanup block from combat branch
+
+**Script Parity (3.1-3.3):**
+- Refactored `scripts/cleanup_stale_recaps.py` to use shared utility
+- CLI modes: `--dry-run` (default safe) and `--apply`
+- Deterministic summary output with per-file counts
+
+**Regression Coverage (4.1-4.2):**
+- `scripts/test_session_cleanup.py`: 5 tests for matcher/removal/idempotency/fail-open
+- `scripts/test_cleanup_stale_recaps_cli.py`: 3 tests for CLI mode contracts
+- `scripts/test_npc_arrival_party_exemption.py`: 5 tests for party member exemption
+
+**Verification:**
+- Compile: PASS for all modified files
+- Tests: 13/13 PASS (5 + 3 + 5)
+- OpenSpec validation: VALID
+- Archive: `openspec/changes/archive/2026-03-02-startup-stale-recap-autocleanup/`
+
+**Files Modified:**
+- `main.py` (+30 lines startup cleanup wiring, removed dead block)
+- `utils/session_cleanup.py` (new, ~120 lines)
+- `scripts/cleanup_stale_recaps.py` (refactored to shared utility, ~70 lines)
+- `scripts/test_session_cleanup.py` (new, ~90 lines)
+- `scripts/test_cleanup_stale_recaps_cli.py` (new, ~75 lines)
+
+---
+
 ### NPC Arrival State Sync (COMPLETED - 2026-02-27)
 
 **Status:** COMPLETED - All tasks 1.1-5.4 implemented and archived

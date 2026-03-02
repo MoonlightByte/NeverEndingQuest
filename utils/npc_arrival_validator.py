@@ -46,6 +46,7 @@ def validate_npc_arrival_state_sync(
     actions = response_json.get("actions", [])
 
     # Build deterministic state sets
+    party_members = _build_party_member_set(party_tracker_data)
     present_npcs = _build_present_npc_set(party_tracker_data, location_data)
     known_npcs = _build_known_npc_set(party_tracker_data, location_data, module_npc_names)
 
@@ -53,7 +54,9 @@ def validate_npc_arrival_state_sync(
     mentioned_npcs = _extract_npc_mentions(narration, known_npcs)
 
     # Find newly mentioned non-present NPCs
-    newly_mentioned = mentioned_npcs - present_npcs
+    # CRITICAL FIX: Exclude party members (PCs) from NPC arrival checks
+    # Party members are controlled by players, not background NPCs
+    newly_mentioned = (mentioned_npcs - party_members) - present_npcs
 
     if not newly_mentioned:
         # All mentioned NPCs are already present - validation passes
@@ -73,6 +76,18 @@ def validate_npc_arrival_state_sync(
     return (True, "")
 
 
+def _build_party_member_set(party_tracker_data: Dict[str, Any]) -> Set[str]:
+    """
+    Build set of party member (PC) names.
+    Party members are PCs, not NPCs, and should be exempt from NPC arrival checks.
+    """
+    party_members = set()
+    for member_name in party_tracker_data.get("partyMembers", []):
+        if member_name and isinstance(member_name, str):
+            party_members.add(member_name.lower())
+    return party_members
+
+
 def _build_present_npc_set(
     party_tracker_data: Dict[str, Any],
     location_data: Optional[Dict[str, Any]] = None
@@ -80,6 +95,7 @@ def _build_present_npc_set(
     """
     Build set of currently present NPC names.
     Present = current location NPCs + partyNPCs
+    Note: partyMembers (PCs) are not included here - they are tracked separately
     """
     present = set()
 

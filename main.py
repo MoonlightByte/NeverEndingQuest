@@ -90,6 +90,7 @@ from utils.encoding_utils import (
     fix_corrupted_location_name,
     setup_utf8_console
 )
+from utils.session_cleanup import cleanup_history_files, remove_stale_resume_recaps
 
 # Import token tracking
 try:
@@ -245,15 +246,12 @@ def check_and_inject_return_message(conversation_history, is_combat_active=False
         debug("STATE_CHANGE: No user messages found, skipping startup recap message injection", category="session_management")
         return conversation_history, False
 
-    # TABLETOP MODE: Clean up any stale recap messages from previous restarts
-    # Prevents accumulation of "do NOT emit gameplay actions" constraints that block combat
-    original_len = len(conversation_history)
-    conversation_history[:] = [
-        msg for msg in conversation_history
-        if "SESSION RESUME RECAP ONLY" not in msg.get("content", "")
-    ]
-    if len(conversation_history) < original_len:
-        debug(f"STATE_CHANGE: Removed {original_len - len(conversation_history)} stale recap messages", category="session_management")
+    # TABLETOP MODE: Shared stale recap cleanup (idempotent guard)
+    # Primary cleanup runs in startup path for both history files.
+    cleaned_history, removed_count = remove_stale_resume_recaps(conversation_history)
+    if removed_count > 0:
+        conversation_history[:] = cleaned_history
+        debug(f"STATE_CHANGE: Removed {removed_count} stale recap messages", category="session_management")
 
     # Get the last message
     last_message = conversation_history[-1] if conversation_history else None
@@ -3114,6 +3112,32 @@ def main_game_loop():
     with open("prompts/system_prompt.txt", "r", encoding="utf-8") as file:
         main_system_prompt_text = file.read()
     debug("INITIALIZATION: Main system prompt loaded for both paths", category="initialization")
+    
+    # TABLETOP MODE: Automatic stale recap cleanup at startup for both history files.
+    # Prevents recap constraint accumulation that can block normal gameplay actions.
+    # Runs BEFORE combat/non-combat branching to ensure cleanup always occurs.
+    cleanup_results = cleanup_history_files(apply_changes=True)
+    for cleanup_result in cleanup_results:
+        history_name = os.path.basename(cleanup_result.get("path", "history"))
+        status = cleanup_result.get("status", "error")
+        removed_count = cleanup_result.get("removed_count", 0)
+
+        if status == "ok":
+            if removed_count > 0:
+                debug(
+                    f"STATE_CHANGE: Removed {removed_count} stale recap messages from {history_name}",
+                    category="session_management"
+                )
+        elif status == "missing":
+            debug(
+                f"STATE_CHANGE: Skipped stale recap cleanup for missing file {history_name}",
+                category="session_management"
+            )
+        else:
+            warning(
+                f"STATE_CHANGE: Stale recap cleanup degraded for {history_name}: {cleanup_result.get('error', 'unknown error')}",
+                category="session_management"
+            )
     
     if party_tracker_data and party_tracker_data["worldConditions"].get("activeCombatEncounter"):
         active_encounter_id = party_tracker_data["worldConditions"]["activeCombatEncounter"]

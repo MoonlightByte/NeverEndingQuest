@@ -1,0 +1,28 @@
+change_id: dev-homebrew-tools
+title: Developer Homebrew Ingest Tools
+status: planning
+priority: medium
+effort: medium
+parent: module-ingest-playable-registration
+created: 2026-03-02
+updated: 2026-03-02
+
+overview: |
+  Build 5 helper scripts to streamline developer workflow for preparing
+  and ingesting Homebrew modules into NEQ. These tools wrap the existing
+  ingestion infrastructure (already built) with preflight checks,
+  structural transformation, orchestration, and verification.
+
+  This is a DEVELOPER-ONLY workflow. End-users continue using Toolkit GUI.
+
+artifacts:
+  - proposal.md
+  - design.md
+  - tasks.md
+  - executor_prompts.md
+  - specs/:
+      - homebrew-preflight/spec.md
+      - homebrew-transform/spec.md
+      - homebrew-orchestrator/spec.md
+      - homebrew-sidecar-audit/spec.md
+      - homebrew-registry-guard/spec.md

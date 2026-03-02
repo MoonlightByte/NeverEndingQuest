@@ -20,7 +20,27 @@ Active development of Tabletop Mode features, focusing on combat flow optimizati
 
 ## 🚀 Recent Achievements
 
-- **Module Import and World Expansion Plan (PLANNED - 2026-02-28):**
+- **Startup Stale Recap Auto-Cleanup (COMPLETED - 2026-03-02):**
+  - **OpenSpec Change:** `startup-stale-recap-autocleanup` (archived to `openspec/changes/archive/2026-03-02-startup-stale-recap-autocleanup/`)
+  - **Objective:** Ensure automatic stale recap cleanup runs at startup for both history files, preventing accumulation of "SESSION RESUME RECAP ONLY" constraints that block gameplay actions.
+  - **Shared Cleanup Utility (1.1-1.3):**
+    - Created `utils/session_cleanup.py` with canonical matcher/removal helpers
+    - Fail-open design: missing/malformed files log degraded status but don't block startup
+  - **Startup Integration (2.1-2.3):**
+    - Moved cleanup to pre-branch location in `main.py` (runs before combat/non-combat split)
+    - Cleans both `conversation_history.json` and `chat_history.json`
+    - Removed dead unreachable cleanup block from combat branch
+  - **Script Parity (3.1-3.3):**
+    - Refactored `scripts/cleanup_stale_recaps.py` to use shared utility
+    - CLI modes: `--dry-run` (default safe) and `--apply`
+  - **Regression Coverage (4.1-4.2):**
+    - `scripts/test_session_cleanup.py`: 5 tests for matcher/removal/idempotency/fail-open
+    - `scripts/test_cleanup_stale_recaps_cli.py`: 3 tests for CLI mode contracts
+    - `scripts/test_npc_arrival_party_exemption.py`: 5 tests for party member exemption in NPC arrival validation
+  - **Verification:** Compile PASS, 13/13 tests PASS, OpenSpec validation VALID
+  - **Files Modified:** `main.py`, `utils/session_cleanup.py` (new), `scripts/cleanup_stale_recaps.py`, test files (3 new)
+
+- **Module Import and World Expansion Plan (PLANNED - 2026-02-28):
   - **Status:** Planning complete; implementation pending.
   - **Plan File:** `plans/version-2/module-import.md`
   - **Core Direction:** Continuous ingest of adventure sources into one canonical, linked campaign world.

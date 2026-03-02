@@ -237,6 +237,19 @@ MISSING_MEDIA_WARNING_THROTTLE_SECONDS = 300   # Window in seconds (5 minutes)
 # ============================================================================
 
 # ============================================================================
+# TABLETOP MODE: Module Ingest Watch Folder Settings
+# ============================================================================
+# Watches modules/ingest for new source files and auto-ingests them into modules.
+# Processed files are archived to modules/ingest/archive with a result sidecar.
+ENABLE_MODULE_INGEST_WATCH = True
+MODULE_INGEST_WATCH_DIR = "modules/ingest"
+MODULE_INGEST_ARCHIVE_DIR = "modules/ingest/archive"
+MODULE_INGEST_POLL_INTERVAL_SECONDS = 5.0
+MODULE_INGEST_ALLOWED_EXTENSIONS = [".md", ".markdown", ".txt"]
+MODULE_INGEST_STRICT_VALIDATION = True
+# ============================================================================
+
+# ============================================================================
 # TABLETOP MODE: LLM Usage Tracking and Cost Estimation
 # ============================================================================
 # Provider-agnostic usage tracking with session/week rollups and cost estimation.
