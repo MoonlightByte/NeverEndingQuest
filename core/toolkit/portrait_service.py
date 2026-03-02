@@ -872,9 +872,201 @@ def materialize_npc_media_from_portrait(
         return result
 
 
+def materialize_monster_media_from_portrait(
+    monster_name: str,
+    module_name: Optional[str] = None
+) -> Dict[str, Any]:
+    """Materialize monster media variants from existing portrait sources (reuse-first).
+    
+    TABLETOP MODE: Added to support homebrew ingest portrait prewarm with explicit
+    module targeting (not active runtime module).
+    
+    Checks for existing portrait files in canonical locations and converts them
+    into the monster media variants required by /media/monsters serving path.
+    
+    Args:
+        monster_name: The monster character name
+        module_name: Optional module context; if None, reads from party_tracker.json
+        
+    Returns:
+        Result dictionary with keys:
+        - success: bool - True if any media was materialized
+        - reused: bool - True if existing portrait was reused (no provider call needed)
+        - source_path: Optional[str] - Path to the source portrait that was reused
+        - paths_written: List[str] - List of output file paths written
+        - error: Optional[str] - Error message if failed
+    """
+    result = {
+        "success": False,
+        "reused": False,
+        "source_path": None,
+        "paths_written": [],
+        "error": None
+    }
+    
+    try:
+        # Normalize name for filename matching
+        normalized_name = _normalize_character_name(monster_name)
+        if not normalized_name:
+            result["error"] = "invalid_monster_name"
+            return result
+        
+        # Determine module context if not provided
+        if not module_name:
+            try:
+                import json
+                with open("party_tracker.json", "r", encoding="utf-8") as f:
+                    tracker = json.load(f)
+                    module_name = tracker.get("module", "").replace(" ", "_")
+            except Exception:
+                pass
+        
+        # Search for existing portrait sources in priority order:
+        # 1. web/static/portraits/<name>.png
+        # 2. modules/<module>/portraits/<name>.png
+        source_image = None
+        source_path = None
+        
+        static_portrait_path = Path(f"web/static/portraits/{normalized_name}.png")
+        if static_portrait_path.exists():
+            try:
+                source_image = Image.open(static_portrait_path)
+                source_path = str(static_portrait_path)
+            except Exception:
+                pass
+        
+        if source_image is None and module_name:
+            module_portrait_path = Path(f"modules/{module_name}/portraits/{normalized_name}.png")
+            if module_portrait_path.exists():
+                try:
+                    source_image = Image.open(module_portrait_path)
+                    source_path = str(module_portrait_path)
+                except Exception:
+                    pass
+        
+        # No reusable source found
+        if source_image is None:
+            result["error"] = "no_reusable_source"
+            return result
+        
+        # We have a reusable source
+        result["reused"] = True
+        result["source_path"] = source_path
+        
+        info(
+            f"PORTRAIT_SERVICE: Reusing existing portrait for {monster_name} from {source_path}",
+            category="portrait_generation"
+        )
+        
+        # Ensure output directories exist
+        if module_name:
+            module_monsters_dir = Path(f"modules/{module_name}/media/monsters")
+            module_monsters_dir.mkdir(parents=True, exist_ok=True)
+        
+        static_monsters_dir = Path("web/static/media/monsters")
+        static_monsters_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Convert to RGB for JPEG output
+        if source_image.mode == 'RGBA':
+            rgb_image = Image.new('RGB', source_image.size, (255, 255, 255))
+            rgb_image.paste(source_image, mask=source_image.split()[3] if len(source_image.split()) > 3 else None)
+        else:
+            rgb_image = source_image.convert('RGB') if source_image.mode != 'RGB' else source_image
+        
+        # Create thumbnail version
+        thumb_image = rgb_image.copy()
+        thumb_image.thumbnail((128, 128), Image.Resampling.LANCZOS)
+        
+        # Write outputs to all required locations
+        paths_written = []
+        
+        # Module media paths
+        if module_name:
+            # Full-size JPG
+            module_full_path = module_monsters_dir / f"{normalized_name}.jpg"
+            try:
+                rgb_image.save(module_full_path, 'JPEG', quality=95)
+                paths_written.append(str(module_full_path))
+                info(
+                    f"PORTRAIT_SERVICE: Saved monster media to {module_full_path}",
+                    category="portrait_generation"
+                )
+            except Exception as e:
+                warning(
+                    f"PORTRAIT_SERVICE: Failed to save module monster full image for {monster_name}: {e}",
+                    category="portrait_generation"
+                )
+            
+            # Thumbnail JPG
+            module_thumb_path = module_monsters_dir / f"{normalized_name}_thumb.jpg"
+            try:
+                thumb_image.save(module_thumb_path, 'JPEG', quality=85)
+                paths_written.append(str(module_thumb_path))
+                info(
+                    f"PORTRAIT_SERVICE: Saved monster thumbnail to {module_thumb_path}",
+                    category="portrait_generation"
+                )
+            except Exception as e:
+                warning(
+                    f"PORTRAIT_SERVICE: Failed to save module monster thumbnail for {monster_name}: {e}",
+                    category="portrait_generation"
+                )
+        
+        # Static fallback paths
+        static_full_path = static_monsters_dir / f"{normalized_name}.jpg"
+        try:
+            rgb_image.save(static_full_path, 'JPEG', quality=95)
+            paths_written.append(str(static_full_path))
+            info(
+                f"PORTRAIT_SERVICE: Saved monster media to {static_full_path}",
+                category="portrait_generation"
+            )
+        except Exception as e:
+            warning(
+                f"PORTRAIT_SERVICE: Failed to save static monster full image for {monster_name}: {e}",
+                category="portrait_generation"
+            )
+        
+        static_thumb_path = static_monsters_dir / f"{normalized_name}_thumb.jpg"
+        try:
+            thumb_image.save(static_thumb_path, 'JPEG', quality=85)
+            paths_written.append(str(static_thumb_path))
+            info(
+                f"PORTRAIT_SERVICE: Saved monster thumbnail to {static_thumb_path}",
+                category="portrait_generation"
+            )
+        except Exception as e:
+            warning(
+                f"PORTRAIT_SERVICE: Failed to save static monster thumbnail for {monster_name}: {e}",
+                category="portrait_generation"
+            )
+        
+        result["success"] = len(paths_written) > 0
+        result["paths_written"] = paths_written
+        
+        if result["success"]:
+            info(
+                f"PORTRAIT_SERVICE: Successfully materialized {len(paths_written)} monster media files for {monster_name}",
+                category="portrait_generation"
+            )
+        else:
+            result["error"] = "no_files_written"
+        
+        return result
+        
+    except Exception as e:
+        error(
+            f"PORTRAIT_SERVICE: Unexpected error materializing monster media for {monster_name}: {e}",
+            category="portrait_generation"
+        )
+        result["error"] = f"unexpected: {e}"
+        return result
+
+
 __all__ = [
     "build_character_portrait_prompt",
     "generate_and_save_portrait",
     "_normalize_character_name",
     "materialize_npc_media_from_portrait",
+    "materialize_monster_media_from_portrait",
 ]

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2024 MoonlightByte
 # SPDX-License-Identifier: Fair-Source-1.0
 # License: See LICENSE file in the repository root
@@ -9,7 +10,7 @@ Copyright (c) 2024 MoonlightByte
 Licensed under Fair Source License 1.0
 
 Developer-only orchestration pipeline for Homebrew ingest:
-preflight -> transform -> dry-run -> duplicate guard -> strict ingest -> sidecar audit -> registry verify.
+preflight -> transform -> dry-run -> duplicate guard -> strict ingest -> sidecar audit -> registry verify -> media extract -> media handles -> portrait prewarm.
 
 This software is free for non-commercial and educational use.
 Commercial competing use is prohibited for 2 years from release.
@@ -20,10 +21,12 @@ See LICENSE file for full terms.
 import argparse
 import json
 import os
+import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -46,11 +49,89 @@ def _infer_stage_exit_code(stage: str) -> int:
         "ingest": 5,
         "audit": 6,
         "verify": 7,
+        "media_extract": 8,
+        "media_handles": 9,
+        "portrait_prewarm": 10,
     }
     return mapping.get(stage, 7)
 
 
-def run_ingest_pipeline(source_path: str, strict: bool = True, dry_run_only: bool = False) -> Dict[str, Any]:
+def _run_subprocess_stage(
+    script_name: str,
+    args: List[str],
+    timeout_seconds: int,
+    suppress_output: bool = True
+) -> Dict[str, Any]:
+    """Run a subprocess stage with timeout and JSON output capture."""
+    start_time = time.time()
+    result = {
+        "status": "planned",
+        "duration_ms": 0,
+        "stdout": "",
+        "stderr": "",
+        "parsed_output": None,
+        "error": None,
+    }
+    
+    try:
+        script_path = Path(__file__).parent / script_name
+        cmd = [sys.executable, str(script_path)] + args + ["--json"]
+        
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+        
+        duration_ms = int((time.time() - start_time) * 1000)
+        result["duration_ms"] = duration_ms
+        result["stdout"] = proc.stdout
+        result["stderr"] = proc.stderr
+        result["returncode"] = proc.returncode
+        
+        # Try to parse JSON output
+        try:
+            parsed = json.loads(proc.stdout)
+            result["parsed_output"] = parsed
+            # Infer status from parsed output
+            if parsed.get("status") in ["success", "downloaded", "degraded"]:
+                result["status"] = "success" if parsed.get("status") == "success" else "degraded"
+            elif parsed.get("status") in ["skipped"]:
+                result["status"] = "skipped"
+            else:
+                result["status"] = "failed"
+        except json.JSONDecodeError:
+            # Non-JSON output is a failure
+            result["status"] = "failed"
+            result["error"] = f"Invalid JSON output from {script_name}"
+        
+        return result
+        
+    except subprocess.TimeoutExpired:
+        duration_ms = int((time.time() - start_time) * 1000)
+        result["duration_ms"] = duration_ms
+        result["status"] = "failed"
+        result["error"] = f"Timeout after {timeout_seconds}s"
+        return result
+        
+    except Exception as e:
+        duration_ms = int((time.time() - start_time) * 1000)
+        result["duration_ms"] = duration_ms
+        result["status"] = "failed"
+        result["error"] = str(e)
+        return result
+
+
+def run_ingest_pipeline(
+    source_path: str,
+    strict: bool = True,
+    dry_run_only: bool = False,
+    no_media_extract: bool = False,
+    no_prewarm: bool = False,
+    media_timeout: int = 30,
+    allow_provider: bool = False,
+) -> Dict[str, Any]:
     """Execute full developer ingest pipeline with stop-on-failure semantics."""
     source_file = Path(source_path)
     if not source_file.exists() or not source_file.is_file():
@@ -133,8 +214,9 @@ def run_ingest_pipeline(source_path: str, strict: bool = True, dry_run_only: boo
             "exit_code": 4,
         }
 
+    # Handle dry-run only mode
     if dry_run_only:
-        return {
+        result = {
             "status": "success",
             "stage": "dry_run",
             "source": str(source_file),
@@ -146,6 +228,15 @@ def run_ingest_pipeline(source_path: str, strict: bool = True, dry_run_only: boo
             "exit_code": 0,
             "note": "Dry-run only mode; strict ingest not executed",
         }
+        
+        # Add skipped media stages in dry-run mode
+        if not no_media_extract:
+            result["media_extraction"] = {"status": "skipped", "note": "Dry-run mode"}
+            result["media_handles"] = {"status": "skipped", "note": "Dry-run mode"}
+        if not no_prewarm:
+            result["portrait_prewarm"] = {"status": "skipped", "note": "Dry-run mode"}
+        
+        return result
 
     # Stage 5: Strict ingest
     ingest_result = import_homebrewery_adventure_to_module(
@@ -188,7 +279,8 @@ def run_ingest_pipeline(source_path: str, strict: bool = True, dry_run_only: boo
             "exit_code": 7,
         }
 
-    return {
+    # Initialize final result with core stages
+    result = {
         "status": "success",
         "stage": "verify",
         "source": str(source_file),
@@ -205,6 +297,196 @@ def run_ingest_pipeline(source_path: str, strict: bool = True, dry_run_only: boo
         "verify": verify_result,
         "exit_code": 0,
     }
+    
+    # Aggregate warnings from media stages
+    media_warnings = []
+
+    # Stage 8: Media extraction (fail-open)
+    if not no_media_extract:
+        extract_result = _run_subprocess_stage(
+            "homebrew_media_extract.py",
+            ["--source", prepared_path, "--module-slug", module_slug],
+            timeout_seconds=media_timeout,
+        )
+        result["media_extraction"] = extract_result
+        
+        # Collect warnings from extraction
+        if extract_result.get("parsed_output", {}).get("warnings"):
+            for warning in extract_result["parsed_output"]["warnings"]:
+                media_warnings.append({
+                    "stage": "media_extraction",
+                    "type": warning.get("type", "warning"),
+                    "message": warning.get("message", ""),
+                    "url": warning.get("url"),
+                })
+        
+        # Stage 9: Media handles (only if extraction attempted)
+        if extract_result.get("status") in ["success", "degraded"]:
+            handles_result = _run_subprocess_stage(
+                "homebrew_media_handles.py",
+                ["--slug", module_slug],
+                timeout_seconds=media_timeout,
+            )
+            result["media_handles"] = handles_result
+            
+            # Note: handles stage doesn't typically have warnings, but check anyway
+            if handles_result.get("status") == "failed":
+                media_warnings.append({
+                    "stage": "media_handles",
+                    "type": "stage_failed",
+                    "message": handles_result.get("error", "Unknown error"),
+                })
+    else:
+        result["media_extraction"] = {"status": "skipped", "note": "--no-media-extract specified"}
+        result["media_handles"] = {"status": "skipped", "note": "--no-media-extract specified"}
+
+    # Stage 10: Portrait prewarm (fail-open)
+    if not no_prewarm:
+        prewarm_args = ["--slug", module_slug]
+        if allow_provider:
+            prewarm_args.append("--allow-provider")
+        prewarm_result = _run_subprocess_stage(
+            "homebrew_prewarm_portraits.py",
+            prewarm_args,
+            timeout_seconds=media_timeout * 2,  # Longer timeout for generation
+        )
+        result["portrait_prewarm"] = prewarm_result
+        
+        # Collect warnings from prewarm
+        if prewarm_result.get("parsed_output", {}).get("warnings"):
+            for warning in prewarm_result["parsed_output"]["warnings"]:
+                media_warnings.append({
+                    "stage": "portrait_prewarm",
+                    "type": warning.get("type", "warning"),
+                    "entity_type": warning.get("entity_type"),
+                    "name": warning.get("name"),
+                    "message": warning.get("message", ""),
+                })
+        
+        # Check for failed generations
+        prewarm_parsed = prewarm_result.get("parsed_output", {})
+        npc_failed = prewarm_parsed.get("npcs", {}).get("failed", 0)
+        monster_failed = prewarm_parsed.get("monsters", {}).get("failed", 0)
+        if npc_failed > 0 or monster_failed > 0:
+            media_warnings.append({
+                "stage": "portrait_prewarm",
+                "type": "generation_failures",
+                "message": f"Failed: {npc_failed} NPCs, {monster_failed} monsters",
+            })
+    else:
+        result["portrait_prewarm"] = {"status": "skipped", "note": "--no-prewarm specified"}
+
+    # Add aggregated warnings
+    if media_warnings:
+        result["media_warnings"] = media_warnings
+        
+        # Degrade overall status if any media stage failed (but don't fail ingest)
+        has_failures = any(
+            w.get("type") in ["stage_failed", "generation_failures"]
+            for w in media_warnings
+        )
+        if has_failures and result["status"] == "success":
+            result["status"] = "degraded"
+            result["media_note"] = "Some media stages encountered issues (see media_warnings)"
+
+    # Persist media stages to sidecar (if sidecar exists)
+    sidecar_persistence = _persist_media_to_sidecar(
+        module_slug=module_slug,
+        media_extraction=result.get("media_extraction"),
+        media_handles=result.get("media_handles"),
+        portrait_prewarm=result.get("portrait_prewarm"),
+        media_warnings=result.get("media_warnings"),
+    )
+    if sidecar_persistence.get("success"):
+        result["sidecar_persisted"] = True
+    else:
+        result["sidecar_persisted"] = False
+        result["sidecar_persistence_note"] = sidecar_persistence.get("error", "Unknown persistence issue")
+
+    return result
+
+
+def _persist_media_to_sidecar(
+    module_slug: str,
+    media_extraction: Optional[Dict[str, Any]],
+    media_handles: Optional[Dict[str, Any]],
+    portrait_prewarm: Optional[Dict[str, Any]],
+    media_warnings: Optional[List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """Persist media stage blocks into existing sidecar artifact.
+    
+    TABLETOP MODE: Added to support homebrew ingest media stage persistence.
+    Finds the latest sidecar for module_slug and appends media blocks.
+    Fail-open: returns error but doesn't block if sidecar not found or unwritable.
+    """
+    from homebrew_sidecar_audit import find_latest_sidecar_for_slug
+    
+    result = {"success": False, "error": None, "sidecar_path": None}
+    
+    try:
+        sidecar_path = find_latest_sidecar_for_slug(module_slug)
+        if not sidecar_path:
+            result["error"] = f"No sidecar found for slug: {module_slug}"
+            return result
+        
+        # Load existing sidecar
+        with open(sidecar_path, "r", encoding="utf-8") as f:
+            sidecar_data = json.load(f)
+        
+        # Ensure result section exists
+        if "result" not in sidecar_data:
+            sidecar_data["result"] = {}
+        
+        # Add media stages to result section (canonical keys)
+        if media_extraction:
+            sidecar_data["result"]["media_extraction"] = _sanitize_stage_for_sidecar(media_extraction)
+        if media_handles:
+            sidecar_data["result"]["media_handles"] = _sanitize_stage_for_sidecar(media_handles)
+        if portrait_prewarm:
+            sidecar_data["result"]["portrait_prewarm"] = _sanitize_stage_for_sidecar(portrait_prewarm)
+        if media_warnings:
+            sidecar_data["result"]["media_warnings"] = media_warnings
+        
+        # Atomic write
+        tmp_path = sidecar_path.with_suffix(".tmp")
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(sidecar_data, f, indent=2)
+        tmp_path.replace(sidecar_path)
+        
+        result["success"] = True
+        result["sidecar_path"] = str(sidecar_path)
+        
+    except Exception as e:
+        result["error"] = f"Failed to persist media stages: {e}"
+    
+    return result
+
+
+def _sanitize_stage_for_sidecar(stage_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Sanitize stage data for sidecar persistence (remove large internal fields)."""
+    sanitized = {
+        "status": stage_data.get("status"),
+        "duration_ms": stage_data.get("duration_ms"),
+    }
+    
+    # Include parsed output summary if available
+    parsed = stage_data.get("parsed_output")
+    if parsed and isinstance(parsed, dict):
+        # For media extraction: include summary counts
+        if "detected_urls" in parsed:
+            sanitized["detected_count"] = len(parsed.get("detected_urls", []))
+            sanitized["extracted_count"] = parsed.get("extracted_count", 0)
+            sanitized["warning_count"] = parsed.get("warning_count", 0)
+        # For media handles: include handle count
+        if "handle_count" in parsed:
+            sanitized["handle_count"] = parsed.get("handle_count", 0)
+        # For prewarm: include counters
+        if "npcs" in parsed:
+            sanitized["npcs"] = parsed.get("npcs")
+        if "monsters" in parsed:
+            sanitized["monsters"] = parsed.get("monsters")
+    
+    return sanitized
 
 
 def _create_parser() -> argparse.ArgumentParser:
@@ -217,6 +499,33 @@ def _create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-strict", dest="strict", action="store_false", help="Disable strict mode")
     parser.add_argument("--dry-run", action="store_true", default=False, help="Stop after dry-run stage")
     parser.add_argument("--json", action="store_true", default=False, help="Output JSON")
+    
+    # Media stage flags
+    parser.add_argument(
+        "--no-media-extract",
+        action="store_true",
+        default=False,
+        help="Skip media extraction and handle generation stages",
+    )
+    parser.add_argument(
+        "--no-prewarm",
+        action="store_true",
+        default=False,
+        help="Skip portrait prewarm stage",
+    )
+    parser.add_argument(
+        "--media-timeout",
+        type=int,
+        default=30,
+        help="Timeout in seconds for media stage subprocess calls (default: 30)",
+    )
+    parser.add_argument(
+        "--allow-provider",
+        action="store_true",
+        default=False,
+        help="Allow paid provider image generation in prewarm stage (default: disabled)",
+    )
+    
     return parser
 
 
@@ -232,11 +541,31 @@ def _print_json_or_text(payload: Dict[str, Any], as_json: bool) -> None:
         print(f"source: {payload.get('source')}")
         print(f"prepared: {payload.get('prepared')}")
         print(f"module_slug: {payload.get('module_slug')}")
-        if payload.get("status") == "success":
+        
+        # Core stages
+        if payload.get("status") == "success" or payload.get("status") == "degraded":
             print(f"areas: {payload.get('areas')}")
             print(f"registry_verified: {payload.get('registry_verified')}")
+            
+            # Media stages summary
+            if "media_extraction" in payload:
+                me = payload["media_extraction"]
+                print(f"media_extraction: {me.get('status')} ({me.get('duration_ms', 0)}ms)")
+            if "media_handles" in payload:
+                mh = payload["media_handles"]
+                print(f"media_handles: {mh.get('status')} ({mh.get('duration_ms', 0)}ms)")
+            if "portrait_prewarm" in payload:
+                pp = payload["portrait_prewarm"]
+                print(f"portrait_prewarm: {pp.get('status')} ({pp.get('duration_ms', 0)}ms)")
+            
+            # Media warnings
+            if payload.get("media_warnings"):
+                print(f"media_warnings: {len(payload['media_warnings'])} warning(s)")
+            
             if payload.get("sidecar_note"):
                 print(f"note: {payload.get('sidecar_note')}")
+            if payload.get("media_note"):
+                print(f"media_note: {payload.get('media_note')}")
         else:
             print(f"error: {payload.get('error')}")
 
@@ -245,7 +574,15 @@ def main() -> None:
     parser = _create_parser()
     args = parser.parse_args()
 
-    payload = run_ingest_pipeline(args.source, strict=args.strict, dry_run_only=args.dry_run)
+    payload = run_ingest_pipeline(
+        args.source,
+        strict=args.strict,
+        dry_run_only=args.dry_run,
+        no_media_extract=args.no_media_extract,
+        no_prewarm=args.no_prewarm,
+        media_timeout=args.media_timeout,
+        allow_provider=args.allow_provider,
+    )
     _print_json_or_text(payload, args.json)
     sys.exit(payload.get("exit_code", _infer_stage_exit_code(payload.get("stage", "verify"))))
 

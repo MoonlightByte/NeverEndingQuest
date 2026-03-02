@@ -19,11 +19,12 @@ See LICENSE file for full terms.
 
 # 1. Standard library imports
 import hashlib
+import json
 import os
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 # 2. Third-party imports
 
@@ -400,6 +401,148 @@ def _generate_neq_ids(module_slug: str, rooms: List[Dict[str, Any]]) -> Tuple[st
     return area_id, location_ids
 
 
+def _load_bestiary_reference() -> Dict[str, Any]:
+    """Load bestiary monster names for entity matching.
+    
+    TABLETOP MODE: Added to support deterministic entity extraction
+    from adventure text without LLM calls.
+    """
+    bestiary_path = Path("data/bestiary/monster_compendium.json")
+    npc_path = Path("data/bestiary/npc_compendium.json")
+    
+    monsters = set()
+    npcs = set()
+    
+    try:
+        if bestiary_path.exists():
+            with open(bestiary_path, "r", encoding="utf-8") as f:
+                compendium = json.load(f)
+                for key, data in compendium.get("monsters", {}).items():
+                    name = data.get("name", key)
+                    monsters.add(name.lower())
+                    # Also add key variations
+                    monsters.add(key.replace("_", " ").lower())
+    except Exception:
+        pass
+    
+    # Conservative supplemental names not guaranteed in compendium.
+    # Keep this list narrow to avoid hallucinated over-detection.
+    common_monsters = {
+        "sea troll",
+        "swamp ogre",
+        "venomous snake",
+        "giant bird",
+        "overgrown insect",
+        "brown mold",
+        "bronze golem",
+        "banelar",
+        "giant snake",
+        "shrieker mushroom",
+    }
+    monsters.update(common_monsters)
+    
+    try:
+        if npc_path.exists():
+            with open(npc_path, "r", encoding="utf-8") as f:
+                compendium = json.load(f)
+                for key, data in compendium.get("npcs", {}).items():
+                    name = data.get("name", key)
+                    # Extract first name for matching
+                    first_name = name.split()[0] if name else key
+                    npcs.add(first_name.lower())
+    except Exception:
+        pass
+    
+    return {"monsters": monsters, "npcs": npcs}
+
+
+def _extract_entities_from_rooms(
+    rooms: List[Dict[str, Any]],
+    bestiary: Dict[str, Set[str]]
+) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
+    """Extract NPC and monster entities from room text deterministically.
+    
+    TABLETOP MODE: Added to populate module_context with discoverable
+    entities without requiring LLM processing.
+    
+    Returns:
+        Tuple of (npcs_dict, monsters_list)
+    """
+    npcs: Dict[str, Dict[str, Any]] = {}
+    monsters: Set[str] = set()
+    
+    monster_names = bestiary.get("monsters", set())
+    
+    # Cue-driven NPC pattern (conservative):
+    # Only capture title-cased names after explicit person cues.
+    npc_cue_pattern = re.compile(
+        r"(?:named|called|hired by|met|meet|guide is|escort is|adventurer|wizard|captain|merchant|hermit|ranger)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})"
+    )
+    
+    # Track which rooms mention which entities for area linkage
+    for room in rooms:
+        # Conservative monster search:
+        # 1) Prefer explicit creatures field (high confidence)
+        # 2) Use description fallback only for multi-word monster names
+        creatures_field = room.get("creatures", "")
+        if isinstance(creatures_field, list):
+            creatures_text = " ".join(str(x) for x in creatures_field)
+        else:
+            creatures_text = str(creatures_field)
+
+        desc_text = " ".join([
+            str(room.get("description", "")),
+            str(room.get("source_room_title", "")),
+        ])
+
+        searchable_creatures = creatures_text.lower()
+        searchable_desc = desc_text.lower()
+
+        # Search for monsters with conservative matching
+        for monster_name in monster_names:
+            pattern = r"\b" + re.escape(monster_name) + r"s?\b"
+            # High-confidence match: explicit creatures field
+            if re.search(pattern, searchable_creatures):
+                # Normalize to title case for storage
+                normalized_name = monster_name.title()
+                monsters.add(normalized_name)
+                continue
+
+            # Low-confidence fallback: description text only for multi-word names
+            if " " in monster_name and re.search(pattern, searchable_desc):
+                normalized_name = monster_name.title()
+                monsters.add(normalized_name)
+        
+        # Search for NPCs using cue-driven conservative pattern
+        full_text = " ".join([
+            room.get("name", ""),
+            room.get("description", ""),
+            room.get("source_room_title", ""),
+        ])
+
+        for match in npc_cue_pattern.finditer(full_text):
+            name = match.group(1)
+            # Skip obvious non-name starters
+            skip_words = {
+                "The", "A", "An", "This", "That", "They", "Room", "Main",
+                "Alternate", "General", "Northern", "Southern", "Eastern",
+                "Western", "Central", "Outer", "Inner", "Target", "Expected",
+                "North", "South", "East", "West"
+            }
+            if name.split()[0] in skip_words:
+                continue
+
+            npc_key = name.lower().replace(" ", "_")
+            if npc_key not in npcs:
+                npcs[npc_key] = {
+                    "name": name,
+                    "description": f"NPC encountered in {room.get('name', 'the adventure')}",
+                    "type": "npc",
+                }
+    
+    return npcs, sorted(list(monsters))
+
+
 def _emit_module_context(
     module_path: Path,
     module_slug: str,
@@ -412,15 +555,19 @@ def _emit_module_context(
 
     rooms = intermediate.get("rooms", [])
     areas = {}
-    npcs = {}
     locations = {}
+    
+    # Extract entities from room text
+    bestiary = _load_bestiary_reference()
+    npcs, monsters = _extract_entities_from_rooms(rooms, bestiary)
 
-    # Build area entry
+    # Build area entry with NPC linkage
+    area_npcs = list(npcs.keys()) if npcs else []
     areas[area_id] = {
         "name": f"{module_slug} Main Area",
         "type": intermediate["module_seed"].get("module_type", "dungeon"),
         "locations": location_ids,
-        "npcs": [],
+        "npcs": area_npcs,
         "plot_points": [],
     }
 
@@ -441,7 +588,7 @@ def _emit_module_context(
         "npcs": npcs,
         "locations": locations,
         "plot_scopes": {},
-        "references": {},
+        "references": {"monsters": monsters} if monsters else {},
         "validation_issues": [],
         "generated_at": datetime.now().isoformat(),
         "import_source": intermediate["source"],
@@ -449,7 +596,46 @@ def _emit_module_context(
 
     context_path = module_path / "module_context.json"
     safe_write_json(str(context_path), context)
+    
+    # Emit deterministic seed artifacts for portrait prewarm
+    # TABLETOP MODE: Seed files as single source of truth for prewarm planning
+    _emit_seed_artifacts(module_path, module_slug, npcs, monsters)
+    
     return context_path
+
+
+def _emit_seed_artifacts(
+    module_path: Path,
+    module_slug: str,
+    npcs: Dict[str, Dict[str, Any]],
+    monsters: List[str],
+) -> None:
+    """Emit deterministic seed artifacts for portrait prewarm.
+    
+    TABLETOP MODE: Creates npcs_seed.json and monsters_seed.json as the
+    primary contract for prewarm discovery, avoiding broad prose scanning.
+    """
+    # Emit NPC seed
+    npcs_seed_path = module_path / "npcs_seed.json"
+    npcs_seed = {
+        "module_slug": module_slug,
+        "generated_at": datetime.now().isoformat(),
+        "source": "deterministic_import_extraction",
+        "npcs": npcs,
+        "count": len(npcs),
+    }
+    safe_write_json(str(npcs_seed_path), npcs_seed)
+    
+    # Emit monster seed
+    monsters_seed_path = module_path / "monsters_seed.json"
+    monsters_seed = {
+        "module_slug": module_slug,
+        "generated_at": datetime.now().isoformat(),
+        "source": "deterministic_import_extraction",
+        "monsters": monsters,
+        "count": len(monsters),
+    }
+    safe_write_json(str(monsters_seed_path), monsters_seed)
 
 
 def _emit_module_plot(

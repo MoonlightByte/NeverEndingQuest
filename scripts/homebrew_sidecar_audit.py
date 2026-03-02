@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2024 MoonlightByte
 # SPDX-License-Identifier: Fair-Source-1.0
 # License: See LICENSE file in the repository root
@@ -21,7 +22,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE_ROOT = REPO_ROOT / "modules" / "ingest" / "archive"
@@ -58,6 +59,33 @@ def find_latest_sidecar_for_slug(slug: str) -> Optional[Path]:
     return None
 
 
+def _validate_media_section(section_name: str, section_data: Any) -> Tuple[bool, List[str]]:
+    """Validate a media section (media_extract, media_handles, portrait_prewarm)."""
+    errors = []
+    
+    if section_data is None:
+        # Optional sections are OK to be missing
+        return True, []
+    
+    if not isinstance(section_data, dict):
+        errors.append(f"{section_name} must be a dictionary")
+        return False, errors
+    
+    status = section_data.get("status")
+    if status not in ["success", "degraded", "skipped", "failed", "planned"]:
+        errors.append(f"{section_name}.status has unexpected value: {status}")
+    
+    # Check for duration_ms if stage was attempted
+    if status in ["success", "degraded", "failed"]:
+        duration = section_data.get("duration_ms")
+        if duration is None:
+            errors.append(f"{section_name} missing duration_ms for completed stage")
+        elif not isinstance(duration, (int, float)):
+            errors.append(f"{section_name}.duration_ms must be numeric")
+    
+    return len(errors) == 0, errors
+
+
 def audit_sidecar(slug: str, require_success: bool = False) -> Dict[str, Any]:
     """Audit latest sidecar for slug against status/registration contract."""
     sidecar_path = find_latest_sidecar_for_slug(slug)
@@ -69,6 +97,7 @@ def audit_sidecar(slug: str, require_success: bool = False) -> Dict[str, Any]:
             "status": None,
             "quarantine_reason": None,
             "registration": {},
+            "media_sections": {},
             "error": f"No sidecar found for slug: {slug}",
             "exit_code": 1,
         }
@@ -82,6 +111,7 @@ def audit_sidecar(slug: str, require_success: bool = False) -> Dict[str, Any]:
             "status": None,
             "quarantine_reason": None,
             "registration": {},
+            "media_sections": {},
             "error": f"Invalid sidecar JSON: {err}",
             "exit_code": 4,
         }
@@ -94,7 +124,7 @@ def audit_sidecar(slug: str, require_success: bool = False) -> Dict[str, Any]:
     exit_code = 0
     errors = []
 
-    if status not in {"success", "quarantined", "dry_run", "error"}:
+    if status not in {"success", "quarantined", "dry_run", "error", "degraded"}:
         valid = False
         exit_code = 4
         errors.append(f"Unexpected status value: {status}")
@@ -117,6 +147,51 @@ def audit_sidecar(slug: str, require_success: bool = False) -> Dict[str, Any]:
                 exit_code = 3
             errors.append("registration.registry_module_present is false")
 
+    # Validate media sections (fail-open: warn but don't fail overall audit)
+    media_sections = {}
+    media_warnings = []
+    
+    # Canonical key names per tasks contract
+    canonical_sections = ["media_extraction", "media_handles", "portrait_prewarm"]
+    # Legacy key names for backward compatibility
+    legacy_map = {"media_extract": "media_extraction"}
+    
+    # Media sections are inside payload["result"]
+    result_section = payload.get("result", {})
+    
+    for section_name in canonical_sections:
+        section_data = result_section.get(section_name)
+        
+        # Check for legacy key if canonical not found
+        if section_data is None and section_name in legacy_map.values():
+            legacy_key = [k for k, v in legacy_map.items() if v == section_name][0]
+            section_data = result_section.get(legacy_key)
+            if section_data is not None:
+                media_warnings.append(
+                    f"Deprecated key '{legacy_key}' found; use '{section_name}' instead"
+                )
+        
+        if section_data is not None:
+            section_valid, section_errors = _validate_media_section(section_name, section_data)
+            media_sections[section_name] = {
+                "present": True,
+                "valid": section_valid,
+                "status": section_data.get("status") if isinstance(section_data, dict) else None,
+                "errors": section_errors if section_errors else None,
+            }
+            if section_errors:
+                media_warnings.extend(section_errors)
+        else:
+            media_sections[section_name] = {"present": False}
+    
+    # Check for aggregated media_warnings field
+    payload_media_warnings = payload.get("media_warnings", [])
+    if payload_media_warnings:
+        media_warnings.extend([
+            f"Media warning: {w.get('stage', 'unknown')} - {w.get('message', 'no details')}"
+            for w in payload_media_warnings
+        ])
+
     result = {
         "valid": valid,
         "sidecar_found": True,
@@ -129,6 +204,8 @@ def audit_sidecar(slug: str, require_success: bool = False) -> Dict[str, Any]:
             "registry_module_present": registration.get("registry_module_present", False),
             "registration_errors": registration.get("registration_errors", []),
         },
+        "media_sections": media_sections,
+        "media_warnings": media_warnings if media_warnings else None,
         "errors": errors,
         "exit_code": exit_code,
     }
@@ -165,8 +242,27 @@ def _print_json_or_text(payload: Dict[str, Any], as_json: bool) -> None:
         print(f"status: {payload.get('status')}")
         print(f"quarantine_reason: {payload.get('quarantine_reason')}")
         print(f"registration: {payload.get('registration')}")
+        
+        # Media sections summary
+        media_sections = payload.get("media_sections", {})
+        if media_sections:
+            print("\nmedia_sections:")
+            for section_name, section_info in media_sections.items():
+                present = section_info.get("present", False)
+                status = section_info.get("status", "N/A")
+                valid = section_info.get("valid", False)
+                if present:
+                    print(f"  {section_name}: {status} (valid={valid})")
+                else:
+                    print(f"  {section_name}: not present")
+        
+        if payload.get("media_warnings"):
+            print("\nmedia_warnings:")
+            for warning in payload["media_warnings"]:
+                print(f"  - {warning}")
+        
         if payload.get("errors"):
-            print("errors:")
+            print("\nerrors:")
             for err in payload["errors"]:
                 print(f"- {err}")
 
