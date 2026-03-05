@@ -1021,6 +1021,137 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### NPC Arrival Negation False-Positive Hardening (COMPLETED - 2026-03-05)
+
+**Status:** COMPLETED - Runtime guard fix + regression coverage
+
+**Objective:**
+Stop retry-loop failures where narration explicitly states an NPC is absent (for example, "no Harvest Witnesses here") but the arrival validator still flags it as an off-location arrival.
+
+**Root Cause:**
+- Mention extraction treated all matching name tokens as arrivals without robust negation handling.
+- Stopword tokens in multi-word NPC names (notably `the` in `The Harvest Witnesses`) could match unrelated text and resolve as a valid NPC mention.
+
+**Implementation Summary:**
+- Updated `utils/npc_arrival_validator.py`:
+  - Added `_is_negated_mention(...)` context filter for explicit absence phrasing.
+  - Switched `_extract_npc_mentions(...)` from `re.search` to `re.finditer` and skipped negated matches.
+  - Added `_NPC_MENTION_STOPWORDS` filter to ignore non-identity tokens (`the`, `of`, etc.) during token matching.
+  - Deduped failure reporting by changing `missing_actions` to a set.
+- Updated `scripts/test_npc_arrival_state_sync.py`:
+  - Added regression tests for negated mentions, mixed negated/positive mentions, and exact retry-loop wording using "Harvest Witnesses".
+
+**Verification:**
+- `python3 -m py_compile utils/npc_arrival_validator.py scripts/test_npc_arrival_state_sync.py` -> PASS
+- `python3 scripts/test_npc_arrival_state_sync.py` -> PASS (19/19)
+
+**Files Modified:**
+- `utils/npc_arrival_validator.py`
+- `scripts/test_npc_arrival_state_sync.py`
+
+---
+
+### Pumpkin King's Curse Occult Branching Expansion (COMPLETED - 2026-03-05)
+
+**Status:** COMPLETED - OpenSpec change archived
+
+**Objective:**
+Implement complete occult-horror branching expansion for "The Pumpkin King's Curse" module with 5 distinct endings, comprehensive clue graph, and full DM runbook documentation.
+
+**Implementation Summary:**
+
+**Prompt B - Mid-Arc Clue Graph (Completed):**
+- CMS001 additions: Elric's journal page (physical clue), ghostly whisper testimony (testimonial clue), Wisdom DC 12 check
+- BOO001 additions: Miriam Bramble's locket (complicating evidence), Sybil Nettlemire's rhyme (alternate-branch clue)
+- module_context updates: miriam_bramble NPC entry, elric appearances populated, PROMPT_B_COMPLETE marker
+
+**Ending Branch Integration (Completed):**
+- module_plot.json PP007: 5 ending branches documented (Bramble Sacrifice, Contract Void, Kingslayer, Dark Bargain, Collective Refusal)
+- Each ending has explicit requirements, unlock conditions, and distinct consequence profiles
+- Ending parity achieved: investigation reduces combat difficulty proportionally
+
+**Documentation Deliverables:**
+- CLUE_MATRIX.md: 23+ clues across 6 truth categories, DC compliance analysis (92.7% within 12-18 range)
+- DM_RUNBOOK.md: Complete drive procedures for all 5 endings, parity analysis, quick reference flowchart
+- FINAL_ACCEPTANCE_REPORT.md: Comprehensive completion summary with task matrix
+- PROMPT_B_CLOSURE_NOTES.md: Verification artifact for Prompt B completion
+
+**Clue Source Verification:**
+- Origin Truth (First Tithe): 7 independent sources across HFG001, CMS001, BOO001
+- Contract Weakness: 7 sources revealing 4 different ending paths
+- Ritual Completion: 6 sources ensuring Ember Gourd mechanics discoverable
+- All major truths exceed 2-source minimum requirement
+
+**Fallback Behavior:**
+- Kingslayer ending always available (no preparation required)
+- Original linear backbone PP001-PP007 preserved
+- No soft-locks possible
+- Ember Gourd obtainable through main quest progression
+
+**Validation:**
+- All 25 tasks completed (100%)
+- JSON syntax validation passed for all modified files
+- Schema validation skipped (jsonschema dependency unavailable), fallback JSON parse used
+- All ending paths verified reachable with distinct requirements
+- Additive-only edits confirmed, no breaking changes
+
+**Files Modified:**
+- modules/The_Pumpkin_Kings_Curse/module_plot.json (ending branches, parity note)
+- modules/The_Pumpkin_Kings_Curse/areas/GRV001.json (Executioner's Sickle, Judge dialogue)
+- modules/The_Pumpkin_Kings_Curse/areas/HLF001.json (crown mechanics, Dark Bargain, Collective Refusal)
+
+**Result:**
+- Complete branching expansion with 5 viable endings
+- Comprehensive clue graph with reason-first progression
+- Full DM documentation for driving each ending path
+- Archive: openspec/changes/archive/2026-03-05-pumpkin-kings-curse-occult-branching-expansion/
+
+---
+
+### Homebrew Watcher Strict CLI Parity (COMPLETED - 2026-03-05)
+
+**Status:** COMPLETED - OpenSpec change archived
+
+**Objective:**
+Implement strict ingest-ready gate and CLI parity for the module ingest watcher, ensuring watcher behavior aligns with the dev-homebrew-ingest skill contract.
+
+**Implementation Summary:**
+
+**Shared Pipeline Entry (Prompt 1):**
+- Added `__all__ = ["run_ingest_pipeline"]` to `scripts/homebrew_ingest_dev.py` to formalize the shared pipeline entrypoint
+- CLI behavior preserved; no breaking changes to existing workflows
+
+**Strict Watcher Gate + Pipeline Parity (Prompt 2):**
+- Updated `web/extensions/module_ingest_watch.py`:
+  - Added strict preflight readiness gate using `assess_source_readiness`
+  - Non-ready files: immediate quarantine with `quarantine_reason: "preflight_not_ready"` and full `preflight` payload
+  - Ready files: route through shared `run_ingest_pipeline` with strict validation
+  - Pipeline kwargs: `strict=True`, `dry_run_only=False`, `allow_provider=False` (provider generation opt-in only)
+- Added sidecar audit compatibility in `scripts/homebrew_sidecar_audit.py`:
+  - Supports watcher nested `result` format for `module_slug` lookup
+  - Handles `ingest.registration` nesting for registration validation
+
+**Regression Coverage:**
+- Extended `scripts/test_module_ingest_watch.py` with 16 comprehensive tests:
+  - Strict gate rejection (`preflight_not_ready`)
+  - Pipeline import failure handling
+  - Canonical media keys validation (`media_extraction`, `media_handles`, `portrait_prewarm`)
+  - Watcher/CLI parity contract verification
+  - Sidecar canonical key persistence
+
+**Verification:**
+- All 16 unit tests pass
+- Compile checks pass for all modified files
+- Sidecar audit (`--require-success`) passes for watcher-produced modules
+- OpenSpec validation passes
+
+**Result:**
+- Watcher now enforces strict ingest-ready gating with CLI parity through shared pipeline
+- Provider generation remains opt-in only (`allow_provider=False` by default)
+- Archive: `openspec/changes/archive/2026-03-05-homebrew-watcher-strict-cli-parity/`
+
+---
+
 ### AGENTS-First Memory Sync Policy (COMPLETED - 2026-03-02)
 
 **Status:** COMPLETED - Documentation policy and skill contract updated

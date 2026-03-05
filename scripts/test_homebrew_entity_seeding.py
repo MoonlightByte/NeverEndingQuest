@@ -17,7 +17,14 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.importers.homebrewery_importer import _emit_module_context, _extract_entities_from_rooms
-from scripts.homebrew_prewarm_portraits import _discover_npcs, _discover_monsters, prewarm_portraits
+from scripts.homebrew_prewarm_portraits import (
+    _discover_npcs,
+    _discover_monsters,
+    prewarm_portraits,
+    _resolve_monster_media,
+    _process_monster,
+    _generate_monster_media,
+)
 
 
 class TestEntitySeeding(unittest.TestCase):
@@ -255,6 +262,231 @@ class TestPrewarmFallback(unittest.TestCase):
 
                 self.assertTrue((module_media / "npcs").exists())
                 self.assertTrue((module_media / "monsters").exists())
+            finally:
+                os.chdir(cwd)
+
+
+class TestPrewarmMonsterReuse(unittest.TestCase):
+    """Tests for Prompt 1-2: monster reuse-first resolution and provider gating."""
+
+    def test_reuse_first_resolves_from_module_media_without_provider(self) -> None:
+        """Reusable monster media from module should be counted as reused without calling provider."""
+        with tempfile.TemporaryDirectory() as td:
+            cwd = os.getcwd()
+            try:
+                os.chdir(td)
+                module_slug = "ReuseFirst_Module"
+                module_dir = Path("modules") / module_slug
+                module_dir.mkdir(parents=True, exist_ok=True)
+
+                # Simulate existing module media (video-first check)
+                media_dir = module_dir / "media" / "monsters"
+                media_dir.mkdir(parents=True, exist_ok=True)
+                # Create video asset (should be preferred)
+                (media_dir / "skeleton_video.mp4").write_text("dummy video", encoding="utf-8")
+
+                monster = {"name": "Skeleton", "type": "monster"}
+
+                # Patch resolve to return module source; should NOT call generation path
+                with patch(
+                    "scripts.homebrew_prewarm_portraits._resolve_monster_media",
+                    return_value=("reused_module", media_dir / "skeleton_video.mp4")
+                ) as mock_resolve, patch(
+                    "scripts.homebrew_prewarm_portraits._generate_monster_media"
+                ) as mock_generate:
+                    result = _process_monster(module_slug, monster, allow_provider=False)
+
+                self.assertEqual(result["status"], "reused")
+                self.assertEqual(result["source"], "reused_module")
+                mock_resolve.assert_called_once_with(module_slug, "Skeleton")
+                mock_generate.assert_not_called()
+            finally:
+                os.chdir(cwd)
+
+    def test_provider_disabled_returns_missing_without_generation_call(self) -> None:
+        """When no reusable media exists and provider disabled, status=missing and no generation."""
+        with tempfile.TemporaryDirectory() as td:
+            cwd = os.getcwd()
+            try:
+                os.chdir(td)
+                module_slug = "NoReuse_Module"
+                module_dir = Path("modules") / module_slug
+                module_dir.mkdir(parents=True, exist_ok=True)
+
+                monster = {"name": "Dragon", "type": "monster"}
+
+                # Resolve returns None (no media); provider disabled
+                with patch(
+                    "scripts.homebrew_prewarm_portraits._resolve_monster_media",
+                    return_value=(None, None)
+                ) as mock_resolve, patch(
+                    "scripts.homebrew_prewarm_portraits._generate_monster_media"
+                ) as mock_generate:
+                    result = _process_monster(module_slug, monster, allow_provider=False)
+
+                self.assertEqual(result["status"], "missing")
+                self.assertIsNone(result["source"])
+                self.assertIn("provider", result["error"].lower())
+                mock_resolve.assert_called_once()
+                mock_generate.assert_not_called()
+            finally:
+                os.chdir(cwd)
+
+    def test_provider_enabled_generates_when_no_reusable_media(self) -> None:
+        """When provider enabled and no reusable media, generation is attempted."""
+        with tempfile.TemporaryDirectory() as td:
+            cwd = os.getcwd()
+            try:
+                os.chdir(td)
+                module_slug = "Gen_Module"
+                module_dir = Path("modules") / module_slug
+                module_dir.mkdir(parents=True, exist_ok=True)
+
+                monster = {"name": "Imp", "type": "monster"}
+
+                # Resolve returns None; generate returns success
+                with patch(
+                    "scripts.homebrew_prewarm_portraits._resolve_monster_media",
+                    return_value=(None, None)
+                ) as mock_resolve, patch(
+                    "scripts.homebrew_prewarm_portraits._generate_monster_media",
+                    return_value=(True, None)
+                ) as mock_generate:
+                    result = _process_monster(module_slug, monster, allow_provider=True)
+
+                self.assertEqual(result["status"], "generated")
+                self.assertEqual(result["source"], "generated")
+                mock_resolve.assert_called_once()
+                mock_generate.assert_called_once_with(module_slug, monster)
+            finally:
+                os.chdir(cwd)
+
+    def test_provider_enabled_generation_failure_returns_failed(self) -> None:
+        """When provider enabled but generation errors, status=failed with error message."""
+        with tempfile.TemporaryDirectory() as td:
+            cwd = os.getcwd()
+            try:
+                os.chdir(td)
+                module_slug = "GenFail_Module"
+                module_dir = Path("modules") / module_slug
+                module_dir.mkdir(parents=True, exist_ok=True)
+
+                monster = {"name": "Barghest", "type": "monster"}
+
+                with patch(
+                    "scripts.homebrew_prewarm_portraits._resolve_monster_media",
+                    return_value=(None, None)
+                ), patch(
+                    "scripts.homebrew_prewarm_portraits._generate_monster_media",
+                    return_value=(False, "API failure")
+                ) as mock_generate:
+                    result = _process_monster(module_slug, monster, allow_provider=True)
+
+                self.assertEqual(result["status"], "failed")
+                self.assertIsNone(result["source"])  # no source when failed
+                self.assertEqual(result["error"], "API failure")
+                mock_generate.assert_called_once()
+            finally:
+                os.chdir(cwd)
+
+    def test_monster_flow_writes_only_to_module_media_monsters(self) -> None:
+        """Monster generation must target modules/<slug>/media/monsters; never portraits/."""
+        with tempfile.TemporaryDirectory() as td:
+            cwd = os.getcwd()
+            try:
+                os.chdir(td)
+                module_slug = "LaneCheck_Module"
+                module_dir = Path("modules") / module_slug
+                module_dir.mkdir(parents=True, exist_ok=True)
+
+                monster = {"name": "Ghoul", "type": "monster"}
+
+                # Use actual small generation stub that writes to expected path
+                def fake_generate(module_slug, monster, timeout_seconds=120):
+                    target_dir = Path(f"modules/{module_slug}/media/monsters")
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                    (target_dir / "ghoul.jpg").write_text("fake image")
+                    return (True, None)
+
+                with patch(
+                    "scripts.homebrew_prewarm_portraits._resolve_monster_media",
+                    return_value=(None, None)
+                ), patch(
+                    "scripts.homebrew_prewarm_portraits._generate_monster_media",
+                    side_effect=fake_generate
+                ):
+                    _ = _process_monster(module_slug, monster, allow_provider=True)
+
+                # Verify only module media/monsters was created
+                self.assertTrue((module_dir / "media" / "monsters").exists())
+                self.assertTrue((module_dir / "media" / "monsters" / "ghoul.jpg").exists())
+                # Portraits lane should not exist
+                self.assertFalse((module_dir / "portraits").exists())
+            finally:
+                os.chdir(cwd)
+
+    def test_monster_reuse_detects_module_video_first(self) -> None:
+        """Module media video (*_video.mp4) should be preferred over images."""
+        with tempfile.TemporaryDirectory() as td:
+            cwd = os.getcwd()
+            try:
+                os.chdir(td)
+                module_slug = "VideoPref_Module"
+                module_dir = Path("modules") / module_slug
+                module_dir.mkdir(parents=True, exist_ok=True)
+
+                media_dir = module_dir / "media" / "monsters"
+                media_dir.mkdir(parents=True, exist_ok=True)
+                # Both video and image exist
+                (media_dir / "vampire_video.mp4").write_text("video")
+                (media_dir / "vampire.jpg").write_text("image")
+
+                # We expect resolver to find video first
+                source_type, path = _resolve_monster_media(module_slug, "Vampire")
+                self.assertEqual(source_type, "reused_module")
+                self.assertTrue(path.name.endswith("_video.mp4"))
+            finally:
+                os.chdir(cwd)
+
+    def test_monster_reuse_detects_static_media_fallback(self) -> None:
+        """If module media missing, static media should be used."""
+        with tempfile.TemporaryDirectory() as td:
+            cwd = os.getcwd()
+            try:
+                os.chdir(td)
+                module_slug = "StaticFallback_Module"
+                module_dir = Path("modules") / module_slug
+                module_dir.mkdir(parents=True, exist_ok=True)
+
+                # Static media exists
+                static_dir = Path("web/static/media/monsters")
+                static_dir.mkdir(parents=True, exist_ok=True)
+                (static_dir / "zombie.jpg").write_text("static image")
+
+                source_type, path = _resolve_monster_media(module_slug, "Zombie")
+                self.assertEqual(source_type, "reused_static")
+                self.assertEqual(path.name, "zombie.jpg")
+            finally:
+                os.chdir(cwd)
+
+    def test_monster_reuse_detects_pack_assets_fallback(self) -> None:
+        """If module and static missing, pack assets should be used."""
+        with tempfile.TemporaryDirectory() as td:
+            cwd = os.getcwd()
+            try:
+                os.chdir(td)
+                module_slug = "PackFallback_Module"
+                module_dir = Path("modules") / module_slug
+                module_dir.mkdir(parents=True, exist_ok=True)
+
+                # Pack/bestiary media exists
+                pack_dir = Path("data/bestiary/media/monsters")
+                pack_dir.mkdir(parents=True, exist_ok=True)
+                (pack_dir / "goblin.jpg").write_text("pack image")
+
+                source_type, path = _resolve_monster_media(module_slug, "Goblin")
+                self.assertEqual(source_type, "reused_pack")
+                self.assertEqual(path.name, "goblin.jpg")
             finally:
                 os.chdir(cwd)
 

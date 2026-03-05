@@ -832,14 +832,25 @@ def _emit_neq_artifacts(
 
 
 def _validate_module_artifacts(module_path: Path, schema_dir: Path) -> Dict[str, Any]:
-    """Run module validation and return structured results."""
+    """Run module validation and return structured results.
+    
+    Returns validation result dict with:
+    - passed: bool - whether validation passed (best-effort for non-strict compatibility)
+    - failed_count: int - number of failed validations
+    - success_rate: float - validation success rate
+    - errors: List[str] - list of error messages
+    - validator_unavailable: bool - True if validator deps missing (strict mode should quarantine)
+    - note: Optional[str] - explanatory note when validation was skipped
+    """
     if not VALIDATOR_AVAILABLE or ModuleValidator is None:
-        # Skip validation when validator dependencies unavailable
+        # Preserve non-strict compatibility: return passed=True for best-effort ingest
+        # Strict mode must explicitly check validator_unavailable and quarantine
         return {
             "passed": True,
             "failed_count": 0,
             "success_rate": 1.0,
-            "errors": [],
+            "errors": ["Module validation skipped: jsonschema not installed. Install via 'pip install jsonschema'."],
+            "validator_unavailable": True,
             "note": "Validation skipped (validator dependencies unavailable)",
         }
 
@@ -862,6 +873,7 @@ def _validate_module_artifacts(module_path: Path, schema_dir: Path) -> Dict[str,
         "failed_count": total_failed,
         "success_rate": validator.get_success_rate(),
         "errors": errors,
+        "validator_unavailable": False,
     }
 
 
@@ -1084,6 +1096,32 @@ def import_homebrewery_adventure_to_module(
 
         # Re-collect artifacts after validation (in case validation created temp files)
         artifacts = _collect_artifacts(module_path=module_path, repo_root=repo_root)
+
+        # Strict mode: quarantine if validator unavailable (cannot verify schema compliance)
+        if strict and validation.get("validator_unavailable", False):
+            warning(
+                f"MODULE_INGEST: Validator unavailable in strict mode slug={generated_module_name}",
+                category="module_ingest",
+            )
+            return {
+                "status": "quarantined",
+                "module_slug": generated_module_name,
+                "artifacts": artifacts,
+                "validation": {
+                    "passed": False,
+                    "errors": validation["errors"],
+                    "failed_count": validation["failed_count"],
+                    "success_rate": validation["success_rate"],
+                    "validator_unavailable": True,
+                },
+                "quarantine_reason": "validator_unavailable",
+                "registration": {
+                    "registration_attempted": False,
+                    "registration_success": False,
+                    "registry_module_present": False,
+                    "registration_errors": ["Registration skipped: validator dependencies unavailable"],
+                },
+            }
 
         if strict and not validation["passed"]:
             warning(

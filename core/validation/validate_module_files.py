@@ -24,11 +24,29 @@ Portions derived from SRD 5.2.1, licensed under CC BY 4.0.
 
 import json
 import os
+import argparse
 from pathlib import Path
-from jsonschema import validate, ValidationError, Draft7Validator
 from collections import defaultdict
 from datetime import datetime
 import sys
+
+# jsonschema is optional at import time to allow --help to work without deps
+# Individual validators will raise clear errors if called without jsonschema
+try:
+    from jsonschema import validate, ValidationError, Draft7Validator
+    _JSONSCHEMA_AVAILABLE = True
+except Exception:  # ImportError or missing deps
+    _JSONSCHEMA_AVAILABLE = False
+    # Provide fallback stubs to keep type checks and runtime clear
+    class Draft7Validator:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("jsonschema is not installed")
+        def iter_errors(self, *args, **kwargs):
+            return []
+    class ValidationError(Exception):
+        pass
+    def validate(*args, **kwargs):
+        raise RuntimeError("jsonschema is not installed")
 
 
 class ModuleValidator:
@@ -58,7 +76,7 @@ class ModuleValidator:
         
         print("Loading schemas...")
         for file_type, schema_file in schema_mappings.items():
-            schema_path = self.schema_dir / schema_file
+            schema_path = self.schema_dir / "schemas" / schema_file
             if schema_path.exists():
                 try:
                     with open(schema_path, 'r') as f:
@@ -71,6 +89,13 @@ class ModuleValidator:
                 
     def validate_file(self, file_path, schema_type):
         """Validate a single file against its schema"""
+        # Runtime dependency check - allows --help to work without jsonschema
+        if not _JSONSCHEMA_AVAILABLE:
+            raise RuntimeError(
+                "jsonschema is not installed. Install it via 'pip install jsonschema' "
+                "to run module validation."
+            )
+        
         try:
             with open(file_path, 'r') as f:
                 data = json.load(f)
@@ -106,7 +131,6 @@ class ModuleValidator:
         """Validate area/location files"""
         # Find area files dynamically - check both areas/ subdirectory and root
         import glob
-        import os
         
         # First check the new areas/ subdirectory structure
         areas_dir = self.module_path / "areas"
@@ -126,7 +150,6 @@ class ModuleValidator:
             
             # Check if it's an area file by loading and checking structure
             try:
-                import json
                 with open(file_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 
@@ -147,26 +170,21 @@ class ModuleValidator:
             filename = os.path.basename(file_path)
             
             # Check if it's an area file by loading and checking structure
-            try:
-                import json
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            if data and 'areaId' in data and 'areaName' in data and 'locations' in data:
+                # This is an area file
+                success, error = self.validate_file(Path(file_path), "area")
+                # Include path info for areas/ vs root location
+                path_info = "(areas/)" if "areas/" in str(file_path) else "(root)"
+                self.results["area"]["files"].append(f"{filename} {path_info}")
                 
-                if data and 'areaId' in data and 'areaName' in data and 'locations' in data:
-                    # This is an area file
-                    success, error = self.validate_file(Path(file_path), "area")
-                    # Include path info for areas/ vs root location
-                    path_info = "(areas/)" if "areas/" in str(file_path) else "(root)"
-                    self.results["area"]["files"].append(f"{filename} {path_info}")
-                    
-                    if success:
-                        self.results["area"]["passed"] += 1
-                    else:
-                        self.results["area"]["failed"] += 1
-                        self.results["area"]["errors"].append(f"{filename} {path_info}: {error}")
-            except Exception as e:
-                # Not a valid JSON file, skip it
-                continue
+                if success:
+                    self.results["area"]["passed"] += 1
+                else:
+                    self.results["area"]["failed"] += 1
+                    self.results["area"]["errors"].append(f"{filename} {path_info}: {error}")
                     
     def validate_character_files(self):
         """Validate character files"""
@@ -187,12 +205,31 @@ class ModuleValidator:
                 self.results["character"]["failed"] += 1
                 self.results["character"]["errors"].append(f"{file_path.name}: {error}")
                 
+    @staticmethod
+    def _normalize_monster_name(name):
+        """Normalize monster name to slug format used by combat loader
+        
+        Lowercase, strip spaces, convert spaces to underscores,
+        remove apostrophes and non-alphanumeric characters.
+        """
+        if not name:
+            return ""
+        # Lowercase and strip
+        slug = name.lower().strip()
+        # Remove apostrophes
+        slug = slug.replace("'", "").replace('"', "")
+        # Replace spaces and hyphens with underscores
+        slug = slug.replace(" ", "_").replace("-", "_")
+        # Remove any remaining non-alphanumeric except underscore
+        slug = ''.join(c for c in slug if c.isalnum() or c == '_')
+        return slug
+
     def validate_monster_files(self):
         """Validate monster files"""
         monster_dir = self.module_path / "monsters"
         if not monster_dir.exists():
             return
-            
+
         for file_path in monster_dir.glob("*.json"):
             if any(part in str(file_path) for part in ["_BU", ".bak", ".backup", ".tmp"]):
                 continue
@@ -282,6 +319,92 @@ class ModuleValidator:
             else:
                 self.results["encounter"]["failed"] += 1
                 self.results["encounter"]["errors"].append(f"{file_path.name}: {error}")
+
+    def validate_monster_references(self):
+        """Validate that area/location monster references resolve to monster files
+
+        Checks all area files for monster references and verifies corresponding
+        monster stat files exist in the module monsters/ directory.
+        Records failures with detailed context for operator troubleshooting.
+        """
+        import json
+
+        areas_dir = self.module_path / "areas"
+        if not areas_dir.exists():
+            return
+
+        monster_dir = self.module_path / "monsters"
+        if not monster_dir.exists():
+            # No monsters directory means any references are unresolved
+            monster_dir = None
+
+        # Track which monster files exist (normalized names)
+        available_monsters = set()
+        if monster_dir and monster_dir.exists():
+            for file_path in monster_dir.glob("*.json"):
+                if any(part in str(file_path) for part in ["_BU", ".bak", ".backup", ".tmp"]):
+                    continue
+                # Store the slug name (without .json extension)
+                available_monsters.add(file_path.stem.lower())
+
+        # Scan all area files for monster references
+        unresolved_references = []
+
+        area_files = list(areas_dir.glob("*.json"))
+
+        for file_path in area_files:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+
+                area_id = data.get('areaId', file_path.stem)
+                area_name = data.get('areaName', 'Unknown Area')
+                locations = data.get('locations', [])
+
+                for location in locations:
+                    location_id = location.get('locationId', 'unknown')
+                    location_name = location.get('locationName', 'Unknown Location')
+                    monsters = location.get('monsters', [])
+
+                    for monster_ref in monsters:
+                        if isinstance(monster_ref, dict):
+                            monster_name = monster_ref.get('name', '')
+                        elif isinstance(monster_ref, str):
+                            monster_name = monster_ref
+                        else:
+                            continue
+
+                        if not monster_name:
+                            continue
+
+                        # Normalize to slug
+                        normalized = self._normalize_monster_name(monster_name)
+
+                        if normalized and normalized.lower() not in available_monsters:
+                            expected_path = f"monsters/{normalized}.json"
+                            unresolved_references.append({
+                                'area_id': area_id,
+                                'area_name': area_name,
+                                'location_id': location_id,
+                                'location_name': location_name,
+                                'source_name': monster_name,
+                                'expected_path': expected_path
+                            })
+
+            except Exception:
+                # Skip files that can't be loaded
+                continue
+
+        # Record results
+        if unresolved_references:
+            self.results["reference_integrity"]["failed"] = len(unresolved_references)
+            for ref in unresolved_references:
+                error_msg = (f"{ref['source_name']} in {ref['area_name']}/{ref['location_name']} "
+                           f"-> expected {ref['expected_path']}")
+                self.results["reference_integrity"]["errors"].append(error_msg)
+        else:
+            # Mark as passed if we found no issues (or no monster references at all)
+            self.results["reference_integrity"]["passed"] = 1
 
     def validate_area_connectivity(self):
         """Validate that all areas are reachable from the starting area"""
@@ -391,6 +514,7 @@ class ModuleValidator:
         """Run all validation checks"""
         self.validate_module_files()
         self.validate_area_files()
+        self.validate_monster_references()
         self.validate_character_files()
         self.validate_monster_files()
         self.validate_map_files()
@@ -418,6 +542,7 @@ class ModuleValidator:
         # Run all validation methods
         self.validate_module_files()
         self.validate_area_files()
+        self.validate_monster_references()
         self.validate_character_files()
         self.validate_monster_files()
         self.validate_map_files()
@@ -451,11 +576,26 @@ class ModuleValidator:
         print("DETAILED RESULTS BY FILE TYPE:")
         print("-" * 80)
         
-        file_type_order = ["module", "area", "character", "monster", "map", "plot",
+        file_type_order = ["module", "area", "reference_integrity", "character", "monster", "map", "plot",
                           "party", "module_context", "encounter", "connectivity"]
         
         for file_type in file_type_order:
             if file_type not in self.results:
+                continue
+
+            # Special handling for reference_integrity (no files list)
+            if file_type == "reference_integrity":
+                result = self.results[file_type]
+                print(f"\nMONSTER REFERENCE INTEGRITY CHECK")
+                if result.get("passed", 0) > 0:
+                    print(f"  Status: [OK] ALL MONSTER REFERENCES RESOLVED")
+                elif result.get("failed", 0) > 0:
+                    print(f"  Status: [ERROR] UNRESOLVED MONSTER REFERENCES")
+                    print("  Errors:")
+                    for error in result.get("errors", []):
+                        print(f"    - {error}")
+                else:
+                    print(f"  Status: [SKIPPED] No area monster references to validate")
                 continue
 
             # Special handling for connectivity (no files list)
@@ -563,21 +703,126 @@ class ModuleValidator:
         print(f"\nDetailed report saved to: {output_file}")
 
 
+def _discover_all_modules():
+    """Discover all module-like directories under modules/ for --all-modules."""
+    modules_dir = Path(__file__).parent.parent.parent / "modules"
+    if not modules_dir.exists():
+        return []
+    exclude = {
+        "ingest", "conversation_history", "campaign_summaries", "backups",
+        ".git", "__pycache__", "template", "example"
+    }
+    candidates = []
+    for entry in sorted(modules_dir.iterdir()):
+        if not entry.is_dir() or entry.name in exclude or entry.name.startswith('.'):
+            continue
+        areas_dir = entry / "areas"
+        if areas_dir.exists() and any(areas_dir.glob("*.json")):
+            candidates.append(entry.name)
+    return candidates
+
+
 def main():
-    """Main execution function"""
-    # Set paths
-    module_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "modules", "Keep_of_Doom")
-    schema_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    
-    # Create validator and run
-    validator = ModuleValidator(module_path, schema_dir)
-    validator.run_validation()
-    validator.print_report()
-    validator.save_report()
-    
-    # Return exit code based on failures
-    total_failed = sum(r["failed"] for r in validator.results.values())
-    return 0 if total_failed == 0 else 1
+    """Main execution with argparse"""
+    parser = argparse.ArgumentParser(
+        description="Validate module files against schemas",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--module",
+        help="Validate a specific module by slug (e.g. The_Pumpkin_Kings_Curse)",
+        type=str,
+        default=None
+    )
+    parser.add_argument(
+        "--module-path",
+        help="Validate an explicit module path (absolute or relative)",
+        type=str,
+        default=None
+    )
+    parser.add_argument(
+        "--all-modules",
+        help="Validate all detected modules (registry plus module-like folders)",
+        action="store_true"
+    )
+    parser.add_argument(
+        "--json",
+        help="Output combined JSON summary to stdout",
+        action="store_true"
+    )
+
+    args = parser.parse_args()
+
+    # Determine targets
+    targets = []
+    if args.module_path:
+        p = Path(args.module_path)
+        if not p.exists():
+            parser.error(f"Module path does not exist: {args.module_path}")
+        targets.append(p)
+    elif args.module:
+        base = Path(__file__).parent.parent.parent / "modules" / args.module
+        if not base.exists():
+            parser.error(f"Module not found: modules/{args.module}")
+        targets.append(base)
+    elif args.all_modules:
+        targets = [Path(__file__).parent.parent.parent / "modules" / name for name in _discover_all_modules()]
+    else:
+        # Backward compatible default: Keep_of_Doom (if it exists), otherwise first discovered module
+        default_path = Path(__file__).parent.parent.parent / "modules" / "Keep_of_Doom"
+        if default_path.exists():
+            targets = [default_path]
+        else:
+            # Fallback to discovery of any module to avoid complete failure
+            discovered = _discover_all_modules()
+            if discovered:
+                targets = [Path(__file__).parent.parent.parent / "modules" / discovered[0]]
+            else:
+                parser.error("No modules found. Provide --module or --module-path.")
+
+    schema_dir = Path(__file__).parent.parent.parent  # repo root where schemas/ lives
+    all_results = {}
+    overall_failed = False
+
+    for module_path in targets:
+        validator = ModuleValidator(module_path, schema_dir)
+        try:
+            validator.run_validation()
+        except RuntimeError as e:
+            # Unwrap dependency errors clearly for operators
+            if "jsonschema" in str(e).lower():
+                print(f"[ERROR] {e}")
+                sys.exit(2)
+            raise
+
+        total_failed = sum(r["failed"] for r in validator.results.values())
+        overall_failed = overall_failed or (total_failed > 0)
+
+        if args.json:
+            # Accumulate JSON results for all modules
+            summary = {
+                "module": str(module_path.name),
+                "total_passed": sum(r["passed"] for r in validator.results.values()),
+                "total_failed": total_failed,
+                "files": dict(validator.results)
+            }
+            all_results[module_path.name] = summary
+        else:
+            # Human report per module
+            validator.print_report()
+            validator.save_report()
+
+    if args.json:
+        combined = {
+            "modules": all_results,
+            "summary": {
+                "modules_total": len(targets),
+                "any_failed": overall_failed
+            }
+        }
+        print(json.dumps(combined, indent=2))
+
+    return 0 if not overall_failed else 1
 
 
 if __name__ == "__main__":

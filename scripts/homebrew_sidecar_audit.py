@@ -42,12 +42,14 @@ def find_latest_sidecar_for_slug(slug: str) -> Optional[Path]:
 
     sidecars = sorted(ARCHIVE_ROOT.glob("*.result.json"), key=lambda p: p.stat().st_mtime, reverse=True)
 
-    # Primary match: sidecar payload module_slug.
+    # Primary match: sidecar payload module_slug (watcher nests under result).
     for sidecar in sidecars:
         payload, err = _load_json(sidecar)
         if err or not payload:
             continue
-        if payload.get("module_slug") == slug:
+        # Support both watcher format (result.module_slug) and CLI format (module_slug)
+        sidecar_slug = payload.get("module_slug") or payload.get("result", {}).get("module_slug")
+        if sidecar_slug == slug:
             return sidecar
 
     # Fallback match: slug in filename.
@@ -116,9 +118,12 @@ def audit_sidecar(slug: str, require_success: bool = False) -> Dict[str, Any]:
             "exit_code": 4,
         }
 
-    status = payload.get("status")
-    quarantine_reason = payload.get("quarantine_reason")
-    registration = payload.get("registration", {}) or {}
+    # Support both watcher format (nested under result) and CLI format (top-level)
+    result_payload = payload.get("result", payload)
+    status = result_payload.get("status")
+    quarantine_reason = result_payload.get("quarantine_reason")
+    # Registration may be under ingest.registration (watcher) or top-level (CLI)
+    registration = result_payload.get("ingest", {}).get("registration") or result_payload.get("registration", {}) or {}
 
     valid = True
     exit_code = 0

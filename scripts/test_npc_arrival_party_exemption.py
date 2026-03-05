@@ -195,6 +195,59 @@ def test_case_insensitive_party_member_exemption():
     print("PASS: Case-insensitive party member exemption works")
 
 
+def test_party_member_short_name_exempt_under_alias_matching():
+    """
+    Task 2.5: Party-member exemption remains valid under alias-aware matching.
+    Scenario: Party member full name 'Oswin Peverell', narration uses short 'oswin'.
+    """
+    party_tracker_data = {
+        "partyMembers": ["Oswin Peverell"],
+        "partyNPCs": [],
+    }
+
+    module_npc_names = {"Oswin Peverell", "Amanita Gorse"}
+
+    location_data = {"npcs": []}
+
+    response_json = {
+        "narration": "Oswin attacks the goblin.",
+        "actions": [],
+    }
+
+    is_valid, reason = validate_npc_arrival_state_sync(
+        response_json, party_tracker_data, location_data, module_npc_names
+    )
+
+    assert is_valid, f"Short party member mention should be exempt, got: {reason}"
+    print("PASS: Party member short name exempt under alias matching")
+
+
+def test_party_member_full_name_exempt_when_short_in_party():
+    """
+    Edge case: Party member stored as short name, narration uses full name.
+    """
+    party_tracker_data = {
+        "partyMembers": ["Amanita"],
+        "partyNPCs": [],
+    }
+
+    module_npc_names = {"Amanita Gorse"}
+
+    location_data = {"npcs": []}
+
+    response_json = {
+        "narration": "Amanita Gorse fires an arrow.",
+        "actions": [],
+    }
+
+    is_valid, reason = validate_npc_arrival_state_sync(
+        response_json, party_tracker_data, location_data, module_npc_names
+    )
+
+    assert is_valid, f"Full name mention should match short party member, got: {reason}"
+    print("PASS: Full name matches short party member name")
+
+
 def run_all_tests():
     """Run all regression tests."""
     tests = [
@@ -203,6 +256,8 @@ def run_all_tests():
         test_party_npc_in_party_list_is_treated_as_present,
         test_already_present_party_npc_is_valid,
         test_case_insensitive_party_member_exemption,
+        test_party_member_short_name_exempt_under_alias_matching,
+        test_party_member_full_name_exempt_when_short_in_party,
     ]
 
     passed = 0

@@ -477,7 +477,16 @@ def build_multi_pc_dm_note(
         dm_note_parts.append(f"Monsters:\n{monsters_str}")
     if traps_str and traps_str != "None":
         dm_note_parts.append(f"Traps:\n{traps_str}")
-    dm_note_parts.append("Monsters should be active threats per engagement rules.")
+    
+    # Check if current location has been peacefully resolved
+    world_conditions = party_tracker_data.get("worldConditions", {})
+    resolved_map = world_conditions.get("resolvedHostilesByLocation", {})
+    is_resolved_here = resolved_map.get(current_location_id, False) if isinstance(resolved_map, dict) else False
+    
+    if is_resolved_here:
+        dm_note_parts.append("Resolved Hostile State: Hostile guardian at this location has been appeased. Do not re-initiate this threat unless the party provokes it.")
+    else:
+        dm_note_parts.append("Monsters should be active threats per engagement rules.")
     dm_note_parts.append("")
     
     # --- NARRATIVE RULES ---
@@ -534,8 +543,19 @@ def build_standard_dm_note(
     party_members = party_tracker_data.get('partyMembers', [])
     party_members_str = ", ".join(party_members) if party_members else "None"
     
+    # Check if current location has been peacefully resolved
+    world_conditions = party_tracker_data.get("worldConditions", {})
+    resolved_map = world_conditions.get("resolvedHostilesByLocation", {})
+    is_resolved_here = resolved_map.get(current_location_id, False) if isinstance(resolved_map, dict) else False
+    
+    threat_guidance = (
+        "Resolved Hostile State: Hostile guardian at this location has been appeased. Do not re-initiate this threat unless the party provokes it. "
+        if is_resolved_here else
+        "Monsters should be active threats per engagement rules. "
+    )
+    
     if should_inject_creation_prompt:
-        # Simplified DM note for module creation
+        # Simplified DM note for module creation - no confusing plot/quest info
         dm_note = (
             f"Dungeon Master Note: Current date and time: {date_time_str}, {current_season} season. "
             f"Current module: {current_module_name}. "
@@ -559,7 +579,7 @@ def build_standard_dm_note(
             f"Active side quests for this location:\n{side_quests_str}\n"
             f"Monsters in this location:\n{monsters_str}\n"
             f"Traps in this location:\n{traps_str}\n"
-            "Monsters should be active threats per engagement rules. "
+            f"{threat_guidance}"
         )
     
     # Add common instructions

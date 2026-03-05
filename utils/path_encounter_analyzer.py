@@ -18,7 +18,8 @@ from utils.module_path_manager import ModulePathManager
 def analyze_path_for_encounters(
     path: List[str],
     location_graph,
-    module_name: str
+    module_name: str,
+    world_conditions: Optional[Dict] = None
 ) -> Dict:
     """
     Analyze a path for encounters, exploration status, and blocking conditions.
@@ -27,11 +28,15 @@ def analyze_path_for_encounters(
         path: List of location IDs representing the path (e.g., ["A01", "B02", "C01"])
         location_graph: LocationGraph instance with loaded module data
         module_name: Current module name
+        world_conditions: Optional world state dict; may contain
+            'resolvedHostilesByLocation' mapping location_id -> bool to mark
+            peacefully resolved hostile locations as safe for travel.
 
     Note:
-        Visited status determined by checking if encounters array has entries.
-        Empty encounters array = location not yet visited/explored.
-        Has encounters = location has been visited and combat occurred.
+        Visited status determined by checking if encounters array has entries
+        OR if location is marked resolved in world_conditions.
+        Empty encounters array and not resolved = location not yet visited/explored.
+        Has encounters or marked resolved = location has been visited.
 
     Returns:
         Dict with:
@@ -111,7 +116,13 @@ def analyze_path_for_encounters(
         # Check exploration status
         # If encounters array has GAMEPLAY entries (with encounterId), location visited
         # Template encounters (type/description) or empty array = not yet explored
-        is_visited = has_encounter_entries
+        # Also consider location visited if marked resolved in world_conditions
+        resolved_hostiles = (
+            world_conditions.get("resolvedHostilesByLocation", {})
+            if world_conditions else {}
+        )
+        is_resolved = resolved_hostiles.get(location_id, False) if isinstance(resolved_hostiles, dict) else False
+        is_visited = has_encounter_entries or is_resolved
         status = "visited" if is_visited else "unexplored"
 
         # Determine if this location blocks travel
@@ -144,6 +155,7 @@ def analyze_path_for_encounters(
             "status": status,
             "has_monsters": has_monsters,
             "has_encounter_entries": has_encounter_entries,
+            "is_resolved": is_resolved,
             "monster_count": len(monsters),
             "monster_names": [m.get('name', 'Unknown') for m in monsters if isinstance(m, dict)],
             "blocks_travel": blocks_travel,

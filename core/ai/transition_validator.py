@@ -164,7 +164,7 @@ at an intermediate location due to unexplored encounters. Respond with JSON only
                 warning(f"Falling back to OpenAI: {api_error}", category="ai_provider")
                 fallback_client = create_chat_client(use_fallback=True)
                 response = fallback_client.chat.completions.create(
-                model=actual_model_used,
+                    model=TRANSITION_VALIDATOR_MODEL,
                     temperature=TRANSITION_VALIDATOR_TEMPERATURE,
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -179,17 +179,19 @@ at an intermediate location due to unexplored encounters. Respond with JSON only
         try:
             from utils.api_logger import log_api_call
             log_api_call(
-                call_type="transition_agent",
-                model=TRANSITION_VALIDATOR_MODEL,
-                request_data={
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_message}
-                    ],
-                    "temperature": TRANSITION_VALIDATOR_TEMPERATURE
-                },
-                response_content=response.choices[0].message.content,
-                usage=response.usage.model_dump() if hasattr(response, 'usage') else None
+                "transition_agent",
+                [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message}
+                ],
+                response,
+                metadata={
+                    "temperature": TRANSITION_VALIDATOR_TEMPERATURE,
+                    "configured_model": TRANSITION_VALIDATOR_MODEL,
+                    "actual_model_used": actual_model_used,
+                    "current_location_id": current_location_id,
+                    "target_location_id": target_location_id
+                }
             )
         except Exception as e:
             debug(f"Failed to log transition agent API call: {e}", category="transition_validation")

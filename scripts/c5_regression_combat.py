@@ -776,6 +776,53 @@ class TestFastLaneInitiationContract(unittest.TestCase):
         self.assertIn('[prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Usage: /init <1-20>', source)
         self.assertIn('[prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Enter /init <1-20> to begin combat.', source)
 
+    def test_fast_lane_skips_initial_scene_bootstrap_contract(self):
+        """Fast-lane must skip initial scene bootstrap and defer narration until phase starts."""
+        source = self._load_combat_manager_source()
+        # Guard must exist to skip bootstrap in fast-lane
+        self.assertIn("if not is_fast_lane:", source)
+        guard_pos = source.find("if not is_fast_lane:")
+        self.assertGreater(guard_pos, 0, "Missing non-fast-lane bootstrap guard")
+
+        # Initial prompt bootstrap must live under this guard
+        initial_prompt_pos = source.find('initial_prompt = f"""Dungeon Master Note:', guard_pos)
+        self.assertGreater(
+            initial_prompt_pos,
+            guard_pos,
+            "Initial prompt bootstrap must be inside if not is_fast_lane guard"
+        )
+
+        # Fast-lane path should explicitly log deferred narration contract
+        self.assertIn(
+            "COMBAT_INIT: Fast-lane startup complete; deferring narration until phase starts",
+            source
+        )
+
+    def test_initiative_order_usage_stays_in_non_fast_lane_contract(self):
+        """initiative_order assignment and usage must stay in non-fast-lane paths."""
+        source = self._load_combat_manager_source()
+        # Find the fast-lane block start
+        fast_lane_start = source.find("if is_fast_lane:")
+        self.assertGreater(fast_lane_start, 0, "if is_fast_lane block must exist")
+
+        # Find the else branch that follows if is_fast_lane
+        else_after_fast_lane = source.find("else:", fast_lane_start)
+        self.assertGreater(else_after_fast_lane, fast_lane_start, "else branch after if is_fast_lane must exist")
+
+        # Find where initiative_order is assigned
+        assignment_pos = source.find("initiative_order = get_initiative_order(encounter_data)")
+        self.assertGreater(assignment_pos, else_after_fast_lane, 
+            "initiative_order assignment must be in the else branch after if is_fast_lane")
+
+        # Find the if not is_fast_lane bootstrap guard
+        bootstrap_guard = source.find("if not is_fast_lane:")
+        self.assertGreater(bootstrap_guard, 0, "if not is_fast_lane guard must exist")
+
+        # Find where initiative_order is used in initial prompt
+        usage_pos = source.find("Initiative Order: {initiative_order}")
+        self.assertGreater(usage_pos, bootstrap_guard, 
+            "initiative_order usage must be inside if not is_fast_lane bootstrap block")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

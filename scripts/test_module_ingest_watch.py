@@ -23,7 +23,9 @@ import unittest
 import tempfile
 import shutil
 import time
+import types
 from pathlib import Path
+from unittest.mock import patch
 
 from web.extensions import module_ingest_watch as watch
 
@@ -171,6 +173,32 @@ class TestSidecarResultWriting(unittest.TestCase):
         self.assertEqual(data["result"]["quarantine_reason"], "validation_failed")
         self.assertIn("Schema error", data["result"]["validation"]["errors"])
 
+    def test_sidecar_preserves_canonical_media_stage_keys(self):
+        """Sidecar stores canonical media stage blocks under result."""
+        source_file = Path(self.temp_dir) / "media_ready.txt"
+        source_file.write_text("content")
+
+        archived = watch._archive_processed_file(source_file, self.archive_dir, "success")
+
+        result = {
+            "status": "success",
+            "module_slug": "Media_Module",
+            "media_extraction": {"status": "success", "duration_ms": 12},
+            "media_handles": {"status": "success", "duration_ms": 8},
+            "portrait_prewarm": {"status": "skipped", "duration_ms": 0},
+        }
+        watch._write_result_sidecar(archived, result)
+
+        sidecar = archived.with_suffix(f"{archived.suffix}.result.json")
+        import json
+        with open(sidecar) as f:
+            data = json.load(f)
+
+        self.assertIn("media_extraction", data["result"])
+        self.assertIn("media_handles", data["result"])
+        self.assertIn("portrait_prewarm", data["result"])
+        self.assertEqual(data["result"]["media_extraction"]["status"], "success")
+
 
 class TestFileStabilityGuard(unittest.TestCase):
     """Test file stability detection."""
@@ -276,11 +304,10 @@ class TestWorkerStats(unittest.TestCase):
         self.assertEqual(stats["files_quarantined"], 0)
 
 
-class TestWatcherDeterministicDefault(unittest.TestCase):
-    """Test that watcher always forces deterministic ingest for markdown/text files."""
+class TestStrictGateAndPipelineParity(unittest.TestCase):
+    """Test strict gate rejection and shared pipeline routing."""
 
     def setUp(self):
-        """Create temp directories."""
         self.temp_dir = tempfile.mkdtemp()
         self.watch_dir = Path(self.temp_dir) / "watch"
         self.archive_dir = Path(self.temp_dir) / "archive"
@@ -288,108 +315,165 @@ class TestWatcherDeterministicDefault(unittest.TestCase):
         self.archive_dir.mkdir()
 
     def tearDown(self):
-        """Clean up."""
         shutil.rmtree(self.temp_dir)
 
-    def test_watcher_calls_importer_with_use_deterministic_true(self):
-        """Watcher must force deterministic ingest for watched markdown files."""
-        # Create a markdown source file
-        source_file = self.watch_dir / "test_adventure.md"
-        source_file.write_text("""```metadata
-title: Test Adventure
-```
+    def test_non_ready_source_returns_quarantined_with_preflight(self):
+        """Strict gate must quarantine non-ready source with explicit reason."""
+        source_file = self.watch_dir / "invalid.md"
+        source_file.write_text("bad source")
 
-## Room 1: Start
-Start description.
+        fake_preflight = {
+            "ready": False,
+            "can_auto_transform": False,
+            "issues": [
+                {
+                    "type": "structure_unknown",
+                    "severity": "manual_required",
+                    "recommended": "Convert source to deterministic format",
+                }
+            ],
+        }
 
-## Room 2: End
-End description.
-""")
-
-        # Track importer call arguments via mock
-        import core.importers.homebrewery_importer as importer
-        orig_importer = importer.import_homebrewery_adventure_to_module
-        
-        call_args = {}
-        def mock_importer(**kwargs):
-            call_args.update(kwargs)
-            return {
-                "status": "dry_run",
-                "module_slug": "Test_Adventure",
-                "artifacts": [],
-                "validation": {"passed": True, "errors": [], "failed_count": 0, "success_rate": "100%"},
-                "quarantine_reason": None,
-                "registration": {
-                    "registration_attempted": False,
-                    "registration_success": False,
-                    "registry_module_present": False,
-                    "registration_errors": ["Registration skipped in non-strict mode"],
-                },
-            }
-        
-        importer.import_homebrewery_adventure_to_module = mock_importer
-        
-        try:
-            # Call the watcher function
-            result = watch._process_source_file(source_file, strict_validation=False)
-            
-            # Verify deterministic flag was forced
-            self.assertIn("use_deterministic", call_args)
-            self.assertTrue(call_args["use_deterministic"])
-            
-            # Verify source_path and strict were passed correctly
-            self.assertIn("source_path", call_args)
-            self.assertEqual(call_args["source_path"], str(source_file))
-            self.assertIn("strict", call_args)
-            self.assertFalse(call_args["strict"])
-        finally:
-            importer.import_homebrewery_adventure_to_module = orig_importer
-
-    def test_watcher_calls_importer_with_use_deterministic_true_txt_files(self):
-        """Watcher must force deterministic ingest for watched text files."""
-        # Create a text source file
-        source_file = self.watch_dir / "test_adventure.txt"
-        source_file.write_text("""```metadata
-title: Text Adventure
-```
-
-## Room 1: Text Room
-Text description.
-""")
-
-        import core.importers.homebrewery_importer as importer
-        orig_importer = importer.import_homebrewery_adventure_to_module
-        
-        call_args = {}
-        def mock_importer(**kwargs):
-            call_args.update(kwargs)
-            return {
-                "status": "dry_run",
-                "module_slug": "Text_Adventure",
-                "artifacts": [],
-                "validation": {"passed": True, "errors": [], "failed_count": 0, "success_rate": "100%"},
-                "quarantine_reason": None,
-                "registration": {
-                    "registration_attempted": False,
-                    "registration_success": False,
-                    "registry_module_present": False,
-                    "registration_errors": ["Registration skipped in non-strict mode"],
-                },
-            }
-        
-        importer.import_homebrewery_adventure_to_module = mock_importer
-        
-        try:
+        with patch.object(watch, "assess_source_readiness", return_value=fake_preflight):
             result = watch._process_source_file(source_file, strict_validation=True)
-            
-            # Verify deterministic flag was forced even for .txt
-            self.assertIn("use_deterministic", call_args)
-            self.assertTrue(call_args["use_deterministic"])
-            
-            # Verify strict mode was passed correctly
-            self.assertTrue(call_args["strict"])
+
+        self.assertEqual(result.get("status"), "quarantined")
+        self.assertEqual(result.get("quarantine_reason"), "preflight_not_ready")
+        self.assertIn("preflight", result)
+        self.assertFalse(result["validation"].get("passed", True))
+        self.assertIsNone(result.get("module_slug"))
+
+    def test_non_ready_source_does_not_attempt_pipeline_import(self):
+        """Gate failures must not attempt run_ingest_pipeline import/call."""
+        source_file = self.watch_dir / "invalid.txt"
+        source_file.write_text("bad source")
+
+        fake_preflight = {
+            "ready": False,
+            "can_auto_transform": False,
+            "issues": [{"type": "metadata_missing", "severity": "fixable"}],
+        }
+        import_attempts = {"count": 0}
+        original_import = __import__
+
+        def tracked_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "scripts.homebrew_ingest_dev":
+                import_attempts["count"] += 1
+            return original_import(name, globals, locals, fromlist, level)
+
+        with patch.object(watch, "assess_source_readiness", return_value=fake_preflight):
+            with patch("builtins.__import__", side_effect=tracked_import):
+                result = watch._process_source_file(source_file, strict_validation=True)
+
+        self.assertEqual(result.get("status"), "quarantined")
+        self.assertEqual(import_attempts["count"], 0)
+
+    def test_ready_source_import_failure_returns_error(self):
+        """If shared pipeline import fails, watcher returns error result."""
+        source_file = self.watch_dir / "ready.md"
+        source_file.write_text("ready source")
+
+        fake_preflight = {"ready": True, "can_auto_transform": False, "issues": []}
+        original_import = __import__
+        saved_module = sys.modules.pop("scripts.homebrew_ingest_dev", None)
+
+        def fail_pipeline_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "scripts.homebrew_ingest_dev":
+                raise ImportError("forced import failure for test")
+            return original_import(name, globals, locals, fromlist, level)
+
+        try:
+            with patch.object(watch, "assess_source_readiness", return_value=fake_preflight):
+                with patch("builtins.__import__", side_effect=fail_pipeline_import):
+                    result = watch._process_source_file(source_file, strict_validation=True)
         finally:
-            importer.import_homebrewery_adventure_to_module = orig_importer
+            if saved_module is not None:
+                sys.modules["scripts.homebrew_ingest_dev"] = saved_module
+
+        self.assertEqual(result.get("status"), "error")
+        self.assertIn("Pipeline import failed", result.get("error", ""))
+        self.assertFalse(result["validation"].get("passed", True))
+
+    def test_ready_source_returns_pipeline_result_with_canonical_media_keys(self):
+        """Gate-pass path returns shared pipeline payload including media keys."""
+        source_file = self.watch_dir / "ready.md"
+        source_file.write_text("ready source")
+
+        fake_preflight = {"ready": True, "can_auto_transform": False, "issues": []}
+        fake_pipeline_result = {
+            "status": "success",
+            "stage": "verify",
+            "module_slug": "test_module",
+            "media_extraction": {"status": "success", "duration_ms": 10},
+            "media_handles": {"status": "success", "duration_ms": 12},
+            "portrait_prewarm": {"status": "skipped", "duration_ms": 0},
+            "provider_generation_allowed": False,
+        }
+        fake_pipeline_module = types.ModuleType("scripts.homebrew_ingest_dev")
+        pipeline_calls = {"count": 0, "kwargs": None}
+
+        def fake_run_ingest_pipeline(**kwargs):
+            pipeline_calls["count"] += 1
+            pipeline_calls["kwargs"] = kwargs
+            return dict(fake_pipeline_result)
+
+        setattr(fake_pipeline_module, "run_ingest_pipeline", fake_run_ingest_pipeline)
+
+        with patch.object(watch, "assess_source_readiness", return_value=fake_preflight):
+            with patch.dict(sys.modules, {"scripts.homebrew_ingest_dev": fake_pipeline_module}):
+                result = watch._process_source_file(source_file, strict_validation=True)
+
+        self.assertEqual(pipeline_calls["count"], 1)
+        self.assertEqual(result.get("status"), "success")
+        self.assertIn("media_extraction", result)
+        self.assertIn("media_handles", result)
+        self.assertIn("portrait_prewarm", result)
+        self.assertIsNotNone(pipeline_calls["kwargs"])
+        self.assertEqual(pipeline_calls["kwargs"].get("strict"), True)
+        self.assertEqual(pipeline_calls["kwargs"].get("dry_run_only"), False)
+        self.assertEqual(pipeline_calls["kwargs"].get("allow_provider"), False)
+
+    def test_ready_source_parity_matches_shared_pipeline_result(self):
+        """Watcher gate-pass result should match shared pipeline output for same fixture."""
+        source_file = self.watch_dir / "parity_ready.md"
+        source_file.write_text("ready source")
+
+        fake_preflight = {"ready": True, "can_auto_transform": False, "issues": []}
+        shared_result = {
+            "status": "success",
+            "stage": "verify",
+            "module_slug": "parity_module",
+            "dry_run": {"status": "dry_run", "validation": {"passed": True}},
+            "guard": {"safe_to_proceed": True, "conflicts": []},
+            "ingest": {"status": "success"},
+            "verify": {"present": True},
+            "media_extraction": {"status": "success", "duration_ms": 14},
+            "media_handles": {"status": "success", "duration_ms": 9},
+            "portrait_prewarm": {"status": "skipped", "duration_ms": 0},
+        }
+        fake_pipeline_module = types.ModuleType("scripts.homebrew_ingest_dev")
+
+        def fake_run_ingest_pipeline(**kwargs):
+            return dict(shared_result)
+
+        setattr(fake_pipeline_module, "run_ingest_pipeline", fake_run_ingest_pipeline)
+
+        with patch.object(watch, "assess_source_readiness", return_value=fake_preflight):
+            with patch.dict(sys.modules, {"scripts.homebrew_ingest_dev": fake_pipeline_module}):
+                watcher_result = watch._process_source_file(source_file, strict_validation=True)
+
+        cli_result = fake_run_ingest_pipeline(
+            source_path=str(source_file),
+            strict=True,
+            dry_run_only=False,
+            cleanup_failed=True,
+            no_media_extract=False,
+            no_prewarm=False,
+            media_timeout=30,
+            allow_provider=False,
+        )
+
+        self.assertEqual(watcher_result, cli_result)
 
 
 if __name__ == "__main__":

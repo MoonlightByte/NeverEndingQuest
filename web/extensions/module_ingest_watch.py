@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional, Tuple
 # 3. Internal module imports (grouped by layer)
 from utils.enhanced_logger import debug, error, info, warning
 from utils.file_operations import safe_write_json
+from homebrew_preflight import assess_source_readiness
 
 
 # Worker state (module-level, thread-safe)
@@ -153,18 +154,48 @@ def _write_result_sidecar(archived_path: Path, result: Dict[str, Any]) -> None:
 
 
 def _process_source_file(source_path: Path, strict_validation: bool) -> Dict[str, Any]:
-    """Run importer against one source file and return structured result."""
-    # TABLETOP MODE: Lazy import keeps web startup resilient if importer dependencies
-    # are unavailable; failures are handled per-file and archived with error status.
-    from core.importers.homebrewery_importer import import_homebrewery_adventure_to_module
+    """Process one source file through strict gate and shared pipeline.
 
-    # TABLETOP MODE: Force deterministic ingest for watched markdown/text files.
-    # The watch-folder path must never invoke AI builder; deterministic parse only.
-    return import_homebrewery_adventure_to_module(
+    Strict mode: only ingest-ready files proceed. Non-ready files are quarantined
+    with explicit preflight rejection reason. Ready files run full ingest pipeline.
+    """
+    # 1) Strict preflight gate (read-only integration)
+    preflight = assess_source_readiness(str(source_path))
+    if not preflight.get("ready"):
+        # Reject: not ingest-ready; cannot auto-transform in watcher strict mode
+        return {
+            "status": "quarantined",
+            "module_slug": None,
+            "artifacts": [],
+            "validation": {"passed": False},
+            "quarantine_reason": "preflight_not_ready",
+            "preflight": preflight,
+        }
+
+    # 2) Gate passed: invoke shared ingest pipeline (deterministic, includes media stages)
+    try:
+        from scripts.homebrew_ingest_dev import run_ingest_pipeline
+    except ImportError as e:
+        return {
+            "status": "error",
+            "module_slug": None,
+            "artifacts": [],
+            "validation": {"passed": False},
+            "error": f"Pipeline import failed: {e}",
+        }
+
+    # Pipeline args: strict, no dry-run, allow-provider default False
+    pipeline_result = run_ingest_pipeline(
         source_path=str(source_path),
         strict=strict_validation,
-        use_deterministic=True,
+        dry_run_only=False,
+        cleanup_failed=True,
+        no_media_extract=False,
+        no_prewarm=False,
+        media_timeout=30,
+        allow_provider=False,
     )
+    return pipeline_result
 
 
 def _watch_worker_loop(

@@ -1,6 +1,6 @@
 ---
 name: dev-homebrew-ingest
-description: Developer workflow to preflight, transform, validate, and ingest Homebrew modules with media extraction and portrait prewarm.
+description: Developer workflow to normalize, preflight, transform, validate, and ingest Homebrew modules with media extraction and portrait prewarm.
 license: MIT
 compatibility: opencode
 metadata:
@@ -39,56 +39,62 @@ Homebrew Source (Docs/modules/hombrew/*.md)
            - Structure classification (room-based vs act/location)
            |
            v
-    [2] STRUCTURAL TRANSFORM (if needed)
-           - ACT/LOCATION format -> ## Room N: format
-           - Add explicit exits
-           - Generate deterministic connectivity
+    [2] LLM NORMALIZATION (when source is human-readable only)
+           - Convert prose into deterministic room-based markdown
+           - Add required metadata (title, author, description)
+           - Preserve source intent; do not invent mechanics
            |
            v
-    [3] DRY-RUN VALIDATION
-           - scripts/homebrew_ingest_dev.py --dry-run --strict
-           |
-           v
-    [4] REGISTRY GUARD
-           - Check for duplicate/conflicting slugs
-           |
-           v
-    [5] STRICT INGEST
-           - Copy to modules/ingest/ or run direct CLI ingest
-           |
-           v
-    [6] SIDECAR AUDIT
-           - Check .result.json for success/quarantine
-           |
-           v
-    [7] REGISTRY VERIFICATION
-           - Confirm slug in world_registry.json
-           - Confirm module appears in /api/toolkit/modules
-           |
-           v
-    [8] MEDIA EXTRACTION
-           - Parse markdown for image URLs
-           - Download/copy to modules/<slug>/media/
-           - Classify: title_image, map_image, handout
-           - Warn-only on fetch failures (degraded, not blocked)
-           |
-           v
-    [9] MEDIA HANDLE MANIFEST
-           - Generate media_handles.json
-           - Deterministic handle IDs
-           - Future-use flags: chat_title_candidate, map_tab_candidate
-           |
-           v
-    [10] PORTRAIT PREWARM
-           - Discover NPCs and monsters from module
-           - Generate portraits with skip-if-exists
-           - Fail-open on provider errors
-           |
-           v
-    [11] REPORT
-           - PASS/DEGRADED/FAIL status
-           - Registry slug
-           - Media stage summaries
+    [3] STRUCTURAL TRANSFORM (if needed)
+            - ACT/LOCATION format -> ## Room N: format
+            - Add explicit exits
+            - Generate deterministic connectivity
+            |
+            v
+    [4] DRY-RUN VALIDATION
+            - scripts/homebrew_ingest_dev.py --dry-run --strict
+            |
+            v
+    [5] REGISTRY GUARD
+            - Check for duplicate/conflicting slugs
+            |
+            v
+    [6] STRICT INGEST
+            - Copy to modules/ingest/ or run direct CLI ingest
+            |
+            v
+    [7] SIDECAR AUDIT
+            - Check .result.json for success/quarantine
+            |
+            v
+    [8] REGISTRY VERIFICATION
+            - Confirm slug in world_registry.json
+            - Confirm module appears in /api/toolkit/modules
+            |
+            v
+    [9] MEDIA EXTRACTION
+            - Parse markdown for image URLs
+            - Download/copy to modules/<slug>/media/
+            - Classify: title_image, map_image, handout
+            - Warn-only on fetch failures (degraded, not blocked)
+            |
+            v
+    [10] MEDIA HANDLE MANIFEST
+            - Generate media_handles.json
+            - Deterministic handle IDs
+            - Future-use flags: chat_title_candidate, map_tab_candidate
+            |
+            v
+    [11] PORTRAIT PREWARM
+            - Discover NPCs and monsters from module
+            - Generate portraits with skip-if-exists
+            - Fail-open on provider errors
+            |
+            v
+    [12] REPORT
+            - PASS/DEGRADED/FAIL status
+            - Registry slug
+            - Media stage summaries
            - Degraded media reporting (if applicable)
            - Quarantine reason (if failed)
            - Cleanup guidance
@@ -200,6 +206,22 @@ Must return:
 ```
 
 If `passed: false`, stop and report issues. Do not proceed to ingest.
+
+### Step 2A: LLM Normalization Requirement (when preflight is not auto-transformable)
+
+If preflight returns `structure_unknown` or `can_auto_transform: false`, run an LLM normalization pass before transform/ingest.
+
+Normalization contract:
+- MUST add required metadata: `title`, `author`, `description`
+- MUST produce deterministic `## Room N: <name>` sections
+- MUST include parseable `**Exits:**` bullets
+- MUST preserve source names, locations, and encounter intent
+- MUST NOT invent new mechanics, factions, or plot branches not present in source
+- SHOULD include a brief assumptions note for developer review
+
+Output target:
+- Write normalized file to a separate path (for example `/tmp/prepared_<slug>.md`)
+- Re-run Step 2 preflight and continue only when structure is deterministic
 
 ### Step 5: Registry Guard Check
 

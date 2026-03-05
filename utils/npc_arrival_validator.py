@@ -18,7 +18,205 @@ state synchronization actions.
 
 import json
 import re
-from typing import Dict, List, Set, Tuple, Any, Optional
+from typing import Dict, List, Set, Tuple, Any, Optional, Literal
+
+
+_NPC_MENTION_STOPWORDS: Set[str] = {
+    "the", "a", "an", "and", "or", "of", "to", "for", "from",
+    "in", "on", "at", "by", "with", "without", "into", "over",
+    "under", "near", "around", "through"
+}
+
+
+class IdentityResolutionResult:
+    """
+    Result container for NPC identity resolution.
+    
+    Attributes:
+        status: One of "matched", "ambiguous", "unmatched"
+        canonical_name: The resolved canonical name if status is "matched"
+        candidates: List of ambiguous candidate names if status is "ambiguous"
+    """
+    def __init__(
+        self,
+        status: Literal["matched", "ambiguous", "unmatched"],
+        canonical_name: Optional[str] = None,
+        candidates: Optional[List[str]] = None
+    ):
+        self.status = status
+        self.canonical_name = canonical_name
+        self.candidates = candidates or []
+    
+    def __repr__(self):
+        if self.status == "matched":
+            return f"IdentityResolutionResult(status='matched', canonical_name='{self.canonical_name}')"
+        elif self.status == "ambiguous":
+            return f"IdentityResolutionResult(status='ambiguous', candidates={self.candidates})"
+        else:
+            return "IdentityResolutionResult(status='unmatched')"
+
+
+def _normalize_name_for_matching(name: str) -> str:
+    """
+    Normalize a name for comparison.
+    
+    - Lowercase
+    - Strip leading/trailing whitespace
+    - Collapse internal whitespace to single space
+    - Remove common punctuation (apostrophes, hyphens, periods)
+    """
+    if not name:
+        return ""
+    
+    normalized = name.lower().strip()
+    
+    normalized = re.sub(r"['\-\._]", "", normalized)
+    
+    normalized = re.sub(r"\s+", " ", normalized)
+    
+    return normalized
+
+
+def _extract_name_tokens(name: str) -> Set[str]:
+    """
+    Extract individual tokens/words from a name.
+    
+    Returns set of normalized tokens (lowercase, punctuation removed).
+    """
+    if not name:
+        return set()
+    
+    normalized = _normalize_name_for_matching(name)
+    
+    tokens = set(normalized.split())
+    
+    return tokens
+
+
+def _is_negated_mention(narration_lower: str, match_start: int, match_end: int) -> bool:
+    """
+    Detect whether a matched NPC name/token appears in explicit absence context.
+
+    Prevents false positives for phrases like:
+    - "There are no Harvest Witnesses here"
+    - "No gathering of the Harvest Witnesses is present"
+    - "Harvest Witnesses are not present"
+    """
+    prefix_context = narration_lower[max(0, match_start - 48):match_start]
+    suffix_context = narration_lower[match_end:min(len(narration_lower), match_end + 48)]
+
+    prefix_patterns = [
+        r"\bno\s+(?:\w+\s+){0,6}$",
+        r"\bwithout\s+(?:\w+\s+){0,6}$",
+        r"\bthere\s+(?:is|are|was|were)\s+no\s+(?:\w+\s+){0,6}$",
+        r"\bnot\s+(?:a|an|any)\s+(?:\w+\s+){0,5}$",
+    ]
+
+    suffix_patterns = [
+        r"^\s*(?:are|is|were|was)\s+not\s+(?:present|here|visible)\b",
+        r"^\s*not\s+(?:present|here|visible)\b",
+        r"^\s*(?:remain|remains)\s+absent\b",
+        r"^\s*(?:are|is|were|was)\s+absent\b",
+    ]
+
+    for pattern in prefix_patterns:
+        if re.search(pattern, prefix_context):
+            return True
+
+    for pattern in suffix_patterns:
+        if re.search(pattern, suffix_context):
+            return True
+
+    return False
+
+
+def resolve_npc_identity(
+    input_name: str,
+    candidate_names: Set[str]
+) -> IdentityResolutionResult:
+    """
+    Resolve an input name to a canonical NPC identity from candidate set.
+    
+    Matching order:
+    1) Exact normalized equality
+    2) Unique token-subset match (input tokens are subset of one candidate)
+    3) Otherwise ambiguous (multiple matches) or unmatched
+    
+    Args:
+        input_name: The name to resolve (may be short form or variant)
+        candidate_names: Set of canonical candidate names to match against
+    
+    Returns:
+        IdentityResolutionResult with status and resolved/candidate info
+    """
+    if not input_name or not candidate_names:
+        return IdentityResolutionResult(status="unmatched")
+    
+    input_normalized = _normalize_name_for_matching(input_name)
+    input_tokens = _extract_name_tokens(input_name)
+    
+    if not input_normalized:
+        return IdentityResolutionResult(status="unmatched")
+    
+    for candidate in candidate_names:
+        candidate_normalized = _normalize_name_for_matching(candidate)
+        if candidate_normalized == input_normalized:
+            return IdentityResolutionResult(status="matched", canonical_name=candidate)
+    
+    token_match_candidates = []
+    
+    for candidate in candidate_names:
+        candidate_tokens = _extract_name_tokens(candidate)
+        
+        if input_tokens and input_tokens.issubset(candidate_tokens):
+            token_match_candidates.append(candidate)
+    
+    if len(token_match_candidates) == 1:
+        return IdentityResolutionResult(
+            status="matched",
+            canonical_name=token_match_candidates[0]
+        )
+    elif len(token_match_candidates) > 1:
+        return IdentityResolutionResult(
+            status="ambiguous",
+            candidates=token_match_candidates
+        )
+    
+    return IdentityResolutionResult(status="unmatched")
+
+
+def resolve_npc_identity_batch(
+    input_names: Set[str],
+    candidate_names: Set[str]
+) -> Tuple[Set[str], Set[str], Set[str]]:
+    """
+    Resolve multiple input names against a candidate set.
+    
+    Args:
+        input_names: Set of input names to resolve
+        candidate_names: Set of canonical candidate names
+    
+    Returns:
+        Tuple of (matched_canonical_names, ambiguous_input_names, unmatched_input_names)
+        - matched_canonical_names: Set of canonical names that were matched
+        - ambiguous_input_names: Set of original input names that matched multiple candidates
+        - unmatched_input_names: Set of original input names that matched no candidates
+    """
+    matched_canonical = set()
+    ambiguous_inputs = set()
+    unmatched_inputs = set()
+    
+    for input_name in input_names:
+        result = resolve_npc_identity(input_name, candidate_names)
+        
+        if result.status == "matched" and result.canonical_name:
+            matched_canonical.add(result.canonical_name)
+        elif result.status == "ambiguous":
+            ambiguous_inputs.add(input_name)
+        else:
+            unmatched_inputs.add(input_name)
+    
+    return matched_canonical, ambiguous_inputs, unmatched_inputs
 
 
 def validate_npc_arrival_state_sync(
@@ -45,32 +243,95 @@ def validate_npc_arrival_state_sync(
     narration = response_json.get("narration", "")
     actions = response_json.get("actions", [])
 
-    # Build deterministic state sets
-    party_members = _build_party_member_set(party_tracker_data)
-    present_npcs = _build_present_npc_set(party_tracker_data, location_data)
-    known_npcs = _build_known_npc_set(party_tracker_data, location_data, module_npc_names)
+    party_members_lower = _build_party_member_set(party_tracker_data)
+    party_members_canonical = _build_party_member_canonical_set(party_tracker_data)
+    
+    present_npcs_lower = _build_present_npc_set(party_tracker_data, location_data)
+    present_npcs_canonical = _build_present_npc_canonical_set(party_tracker_data, location_data)
+    
+    known_npcs_lower = _build_known_npc_set(party_tracker_data, location_data, module_npc_names)
+    known_npcs_canonical = _build_known_npc_canonical_set(party_tracker_data, location_data, module_npc_names)
 
-    # Detect NPC mentions in narration (case-insensitive, canonical full-name matching)
-    mentioned_npcs = _extract_npc_mentions(narration, known_npcs)
+    mentioned_npcs_lower = _extract_npc_mentions(narration, known_npcs_lower)
 
-    # Find newly mentioned non-present NPCs
-    # CRITICAL FIX: Exclude party members (PCs) from NPC arrival checks
-    # Party members are controlled by players, not background NPCs
-    newly_mentioned = (mentioned_npcs - party_members) - present_npcs
-
-    if not newly_mentioned:
-        # All mentioned NPCs are already present - validation passes
+    if not mentioned_npcs_lower:
         return (True, "")
 
-    # Check for required state actions for each newly mentioned NPC
-    missing_actions = []
-    for npc_name in sorted(newly_mentioned):
-        has_valid_action = _has_arrival_action_for_npc(npc_name, actions)
-        if not has_valid_action:
-            missing_actions.append(npc_name)
+    missing_actions: Set[str] = set()
+    ambiguous_mentions = set()
+    
+    for mentioned_lower in mentioned_npcs_lower:
+        for party_member in party_members_canonical:
+            if party_member.lower() == mentioned_lower:
+                mentioned_lower = None
+                break
+            result = resolve_npc_identity(mentioned_lower, {party_member})
+            if result.status == "matched":
+                mentioned_lower = None
+                break
+            mentioned_tokens = _extract_name_tokens(mentioned_lower)
+            party_tokens = _extract_name_tokens(party_member)
+            if mentioned_tokens and party_tokens and party_tokens.issubset(mentioned_tokens):
+                mentioned_lower = None
+                break
+        
+        if mentioned_lower is None:
+            continue
+
+        for present_npc in present_npcs_canonical:
+            if present_npc.lower() == mentioned_lower:
+                mentioned_lower = None
+                break
+            result = resolve_npc_identity(mentioned_lower, {present_npc})
+            if result.status == "matched":
+                mentioned_lower = None
+                break
+        
+        if mentioned_lower is None:
+            continue
+
+        resolve_result = resolve_npc_identity(mentioned_lower, known_npcs_canonical)
+        
+        if resolve_result.status == "ambiguous":
+            ambiguous_mentions.add(mentioned_lower)
+            continue
+
+        if resolve_result.status == "unmatched":
+            continue
+
+        canonical_name = resolve_result.canonical_name
+        if not canonical_name:
+            continue
+
+        exempt = False
+        for party_member in party_members_canonical:
+            if party_member.lower() == canonical_name.lower():
+                exempt = True
+                break
+            result = resolve_npc_identity(canonical_name, {party_member})
+            if result.status == "matched":
+                exempt = True
+                break
+            canonical_tokens = _extract_name_tokens(canonical_name)
+            party_tokens = _extract_name_tokens(party_member)
+            if canonical_tokens and party_tokens and party_tokens.issubset(canonical_tokens):
+                exempt = True
+                break
+        
+        if exempt:
+            continue
+        
+        has_action = _has_arrival_action_for_npc(
+            canonical_name, 
+            actions, 
+            known_npcs_canonical
+        )
+        
+        if not has_action:
+            missing_actions.add(canonical_name)
 
     if missing_actions:
-        reason = _format_failure_reason(missing_actions)
+        reason = _format_failure_reason(sorted(missing_actions))
         return (False, reason)
 
     return (True, "")
@@ -80,11 +341,25 @@ def _build_party_member_set(party_tracker_data: Dict[str, Any]) -> Set[str]:
     """
     Build set of party member (PC) names.
     Party members are PCs, not NPCs, and should be exempt from NPC arrival checks.
+    
+    Returns lowercase set for backward compatibility.
     """
     party_members = set()
     for member_name in party_tracker_data.get("partyMembers", []):
         if member_name and isinstance(member_name, str):
             party_members.add(member_name.lower())
+    return party_members
+
+
+def _build_party_member_canonical_set(party_tracker_data: Dict[str, Any]) -> Set[str]:
+    """
+    Build set of party member (PC) names in canonical (original) case.
+    Used for identity resolution matching.
+    """
+    party_members = set()
+    for member_name in party_tracker_data.get("partyMembers", []):
+        if member_name and isinstance(member_name, str):
+            party_members.add(member_name)
     return party_members
 
 
@@ -118,6 +393,37 @@ def _build_present_npc_set(
                 present.add(npc_name.lower())
         elif isinstance(npc, str):
             present.add(npc.lower())
+
+    return present
+
+
+def _build_present_npc_canonical_set(
+    party_tracker_data: Dict[str, Any],
+    location_data: Optional[Dict[str, Any]] = None
+) -> Set[str]:
+    """
+    Build set of currently present NPC names in canonical (original) case.
+    Used for identity resolution matching.
+    """
+    present = set()
+
+    if location_data and "npcs" in location_data:
+        for npc in location_data["npcs"]:
+            if isinstance(npc, dict):
+                npc_name = npc.get("name", "")
+                if npc_name:
+                    present.add(npc_name)
+            elif isinstance(npc, str):
+                present.add(npc)
+
+    party_npcs = party_tracker_data.get("partyNPCs", [])
+    for npc in party_npcs:
+        if isinstance(npc, dict):
+            npc_name = npc.get("name", "")
+            if npc_name:
+                present.add(npc_name)
+        elif isinstance(npc, str):
+            present.add(npc)
 
     return present
 
@@ -160,36 +466,93 @@ def _build_known_npc_set(
     return known
 
 
+def _build_known_npc_canonical_set(
+    party_tracker_data: Dict[str, Any],
+    location_data: Optional[Dict[str, Any]] = None,
+    module_npc_names: Optional[Set[str]] = None
+) -> Set[str]:
+    """
+    Build set of all known canonical NPC names in original case.
+    Used for identity resolution matching.
+    """
+    known = set()
+
+    if module_npc_names:
+        known.update(module_npc_names)
+
+    if location_data and "npcs" in location_data:
+        for npc in location_data["npcs"]:
+            if isinstance(npc, dict):
+                npc_name = npc.get("name", "")
+                if npc_name:
+                    known.add(npc_name)
+            elif isinstance(npc, str):
+                known.add(npc)
+
+    party_npcs = party_tracker_data.get("partyNPCs", [])
+    for npc in party_npcs:
+        if isinstance(npc, dict):
+            npc_name = npc.get("name", "")
+            if npc_name:
+                known.add(npc_name)
+        elif isinstance(npc, str):
+            known.add(npc)
+
+    return known
+
+
 def _extract_npc_mentions(narration: str, known_npcs: Set[str]) -> Set[str]:
     """
     Extract mentions of known NPCs from narration text.
-    Uses case-insensitive canonical full-name matching.
+    
+    Matches both full canonical names AND individual name tokens (short forms).
+    The resolver will determine if short forms map to known NPCs.
 
-    Returns set of lowercase NPC names that are mentioned.
+    Returns set of lowercase NPC names/tokens that are mentioned.
     """
     mentioned = set()
     narration_lower = narration.lower()
 
     for npc_name in known_npcs:
-        # Use word boundary matching for full canonical names
-        # This prevents partial matches (e.g., "Li" matching "Liri")
         pattern = r'\b' + re.escape(npc_name) + r'\b'
-        if re.search(pattern, narration_lower):
-            mentioned.add(npc_name)
+        for match in re.finditer(pattern, narration_lower):
+            if not _is_negated_mention(narration_lower, match.start(), match.end()):
+                mentioned.add(npc_name)
+                break
+
+        tokens = _extract_name_tokens(npc_name)
+        for token in tokens:
+            if len(token) < 3:
+                continue
+            if token in _NPC_MENTION_STOPWORDS:
+                continue
+
+            token_pattern = r'\b' + re.escape(token) + r'\b'
+            for match in re.finditer(token_pattern, narration_lower):
+                if not _is_negated_mention(narration_lower, match.start(), match.end()):
+                    mentioned.add(token)
+                    break
 
     return mentioned
 
 
-def _has_arrival_action_for_npc(npc_name: str, actions: List[Dict[str, Any]]) -> bool:
+def _has_arrival_action_for_npc(
+    npc_name: str,
+    actions: List[Dict[str, Any]],
+    known_npc_canonical: Optional[Set[str]] = None
+) -> bool:
     """
     Check if actions include a valid arrival action for the given NPC.
+    
+    Uses identity resolver for alias-aware matching when known_npc_canonical is provided.
+    Falls back to strict lowercase equality when resolver not available.
 
     Valid actions:
     - moveBackgroundNPC with matching npcName
     - updatePartyNPCs with operation: "add" and matching NPC identity
     """
-    npc_name_lower = npc_name.lower()
-
+    action_npc_names = set()
+    
     for action in actions:
         if not isinstance(action, dict):
             continue
@@ -198,23 +561,40 @@ def _has_arrival_action_for_npc(npc_name: str, actions: List[Dict[str, Any]]) ->
         params = action.get("parameters", {})
 
         if action_type == "moveBackgroundNPC":
-            action_npc_name = params.get("npcName", "").lower()
-            if action_npc_name == npc_name_lower:
-                return True
+            action_npc_name = params.get("npcName", "")
+            if action_npc_name:
+                action_npc_names.add(action_npc_name)
 
         elif action_type == "updatePartyNPCs":
             operation = params.get("operation", "").lower()
             if operation == "add":
                 npc_data = params.get("npc", {})
                 if isinstance(npc_data, dict):
-                    npc_data_name = npc_data.get("name", "").lower()
-                    if npc_data_name == npc_name_lower:
-                        return True
+                    npc_data_name = npc_data.get("name", "")
+                    if npc_data_name:
+                        action_npc_names.add(npc_data_name)
                 elif isinstance(npc_data, str):
-                    if npc_data.lower() == npc_name_lower:
-                        return True
-
-    return False
+                    if npc_data:
+                        action_npc_names.add(npc_data)
+    
+    if not action_npc_names:
+        return False
+    
+    if known_npc_canonical:
+        for action_name in action_npc_names:
+            result = resolve_npc_identity(action_name, known_npc_canonical)
+            if result.status == "matched" and result.canonical_name == npc_name:
+                return True
+            result = resolve_npc_identity(npc_name, {action_name})
+            if result.status == "matched":
+                return True
+        return False
+    else:
+        npc_name_lower = npc_name.lower()
+        for action_name in action_npc_names:
+            if action_name.lower() == npc_name_lower:
+                return True
+        return False
 
 
 def _format_failure_reason(missing_actions: List[str]) -> str:

@@ -44,12 +44,18 @@ def _build_handle_id(kind: str, source_ref: str, storage_relpath: str) -> str:
 
 
 def _infer_kind_from_path(storage_relpath: str) -> str:
-    """Infer media kind from storage path."""
+    """Infer media kind from storage path.
+    
+    Supports image and video files. Videos are identified by _video.mp4 suffix.
+    """
     path_lower = storage_relpath.lower()
     
     if '/npcs/' in path_lower or 'npc_portrait' in path_lower:
         return "npc_portrait"
     elif '/monsters/' in path_lower or 'monster_portrait' in path_lower:
+        # Check for video variant
+        if path_lower.endswith('_video.mp4'):
+            return "monster_video"
         return "monster_portrait"
     elif '/maps/' in path_lower:
         return "map_image"
@@ -99,7 +105,7 @@ def _scan_media_files(module_slug: str) -> List[Dict[str, Any]]:
         "environment": ["jpg", "jpeg", "png", "webp", "gif"],
         "maps": ["jpg", "jpeg", "png", "webp", "gif"],
         "npcs": ["jpg", "jpeg", "png", "webp"],
-        "monsters": ["jpg", "jpeg", "png", "webp"],
+        "monsters": ["jpg", "jpeg", "png", "webp", "mp4"],
     }
     
     for subdir, extensions in media_dirs.items():
@@ -294,7 +300,7 @@ def _dedupe_handles_by_source_ref(handles: List[Dict[str, Any]]) -> List[Dict[st
     
     Selection priority:
     1) download_status: downloaded > failed/missing
-    2) kind priority: title_image > map_image > handout > npc_portrait > monster_portrait
+    2) kind priority: title_image > map_image > handout > npc_portrait > monster_portrait > monster_video
     3) stable path tie-break (alphabetical by storage_relpath)
     """
     # Priority ordering for kinds (lower = better)
@@ -342,7 +348,7 @@ def _dedupe_handles_by_source_ref(handles: List[Dict[str, Any]]) -> List[Dict[st
 def _sort_handles(handles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Sort handles deterministically for stable output."""
     # Sort by kind, then source_ref, then storage_relpath
-    kind_order = {"title_image": 0, "map_image": 1, "handout": 2, "npc_portrait": 3, "monster_portrait": 4}
+    kind_order = {"title_image": 0, "map_image": 1, "handout": 2, "npc_portrait": 3, "monster_portrait": 4, "monster_video": 5}
     
     def sort_key(handle: Dict[str, Any]) -> Tuple[int, str, str]:
         kind = handle.get("kind", "handout")

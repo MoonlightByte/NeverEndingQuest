@@ -39,6 +39,9 @@ from homebrew_registry_guard import check_duplicate, verify_present
 from homebrew_sidecar_audit import audit_sidecar
 from homebrew_transform_to_deterministic import transform_source_to_deterministic
 
+# Shared entrypoint for watcher parity (Prompt 1)
+__all__ = ["run_ingest_pipeline"]
+
 
 def _infer_stage_exit_code(stage: str) -> int:
     mapping = {
@@ -123,10 +126,79 @@ def _run_subprocess_stage(
         return result
 
 
+def _cleanup_failed_ingest(
+    module_slug: Optional[str],
+    cleanup_enabled: bool = True,
+) -> Dict[str, Any]:
+    """Archive or clean up failed/quarantined ingest artifacts.
+
+    TABLETOP MODE: Added to prevent orphan module folders in modules/ after failed runs.
+    Returns structured cleanup report without raising exceptions (fail-open).
+    """
+    result = {
+        "status": "skipped",
+        "action": "none",
+        "reason": None,
+        "archived_path": None,
+        "error": None,
+    }
+
+    if not cleanup_enabled:
+        result["reason"] = "Cleanup disabled by flag"
+        return result
+
+    if not module_slug:
+        result["reason"] = "No module slug provided"
+        return result
+
+    try:
+        module_path = Path("modules") / module_slug
+
+        # Guard: Check if path exists and is a directory
+        if not module_path.exists() or not module_path.is_dir():
+            result["reason"] = "Module directory does not exist"
+            return result
+
+        # Guard: Check if module is registered/active in registry
+        try:
+            verify_result = verify_present(module_slug)
+            if verify_result.get("present", False):
+                result["status"] = "skipped"
+                result["action"] = "none"
+                result["reason"] = "Module is registered/active - cleanup skipped for safety"
+                return result
+        except Exception:
+            # If verification fails, be conservative and continue with cleanup
+            pass
+
+        # Create archive directory with timestamp
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        archive_dir = Path("modules/ingest/archive") / f"failed_{timestamp}_{module_slug}"
+        archive_dir.parent.mkdir(parents=True, exist_ok=True)
+
+        # Move module directory to archive
+        module_path.rename(archive_dir)
+
+        result["status"] = "success"
+        result["action"] = "archived"
+        result["archived_path"] = str(archive_dir)
+        result["reason"] = f"Moved {module_slug} to archive"
+
+    except Exception as e:
+        result["status"] = "failed"
+        result["action"] = "error"
+        result["reason"] = f"Cleanup error: {e}"
+        result["error"] = str(e)
+
+    return result
+
+
 def run_ingest_pipeline(
     source_path: str,
     strict: bool = True,
     dry_run_only: bool = False,
+    cleanup_failed: bool = True,
     no_media_extract: bool = False,
     no_prewarm: bool = False,
     media_timeout: int = 30,
@@ -247,6 +319,8 @@ def run_ingest_pipeline(
     )
 
     if ingest_result.get("status") != "success":
+        # TABLETOP MODE: Cleanup failed ingest artifacts before returning
+        cleanup_result = _cleanup_failed_ingest(module_slug, cleanup_enabled=cleanup_failed)
         return {
             "status": "failed",
             "stage": "ingest",
@@ -254,6 +328,7 @@ def run_ingest_pipeline(
             "prepared": prepared_path,
             "module_slug": module_slug,
             "ingest": ingest_result,
+            "cleanup_failed_ingest": cleanup_result,
             "error": "Strict ingest failed or quarantined",
             "exit_code": 5,
         }
@@ -268,6 +343,8 @@ def run_ingest_pipeline(
     # Stage 7: Registry verification
     verify_result = verify_present(module_slug)
     if not verify_result.get("present", False):
+        # TABLETOP MODE: Cleanup failed ingest artifacts before returning (carry-over fix from Prompt 1)
+        cleanup_result = _cleanup_failed_ingest(module_slug, cleanup_enabled=cleanup_failed)
         return {
             "status": "failed",
             "stage": "verify",
@@ -275,9 +352,49 @@ def run_ingest_pipeline(
             "prepared": prepared_path,
             "module_slug": module_slug,
             "verify": verify_result,
+            "cleanup_failed_ingest": cleanup_result,
             "error": "Module not present in registry after successful ingest",
             "exit_code": 7,
         }
+
+    # TABLETOP MODE: Stage 7.5 - Monster materialization for combat readiness
+    # Materialize module-local monster stat files from bestiary seeds
+    mat_result = {"status": "skipped", "summary": {}}
+    try:
+        mat_script = Path(__file__).parent / "homebrew_materialize_monsters.py"
+        if mat_script.exists() and module_slug:
+            mat_args = [
+                sys.executable,
+                str(mat_script),
+                "--module",
+                module_slug,
+                "--json",
+            ]
+            # Run materialization as subprocess to isolate errors
+            mat_proc = subprocess.run(
+                mat_args,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if mat_proc.returncode == 0 and mat_proc.stdout:
+                try:
+                    mat_result = json.loads(mat_proc.stdout)
+                except json.JSONDecodeError:
+                    mat_result = {"status": "unknown", "raw_output": mat_proc.stdout[:500]}
+            else:
+                mat_result = {
+                    "status": "error",
+                    "returncode": mat_proc.returncode,
+                    "stderr": mat_proc.stderr[:500] if mat_proc.stderr else None,
+                }
+    except Exception as e:
+        mat_result = {"status": "error", "error": str(e)}
+
+    # Determine overall status considering materialization
+    overall_status = "success"
+    if mat_result.get("status") == "failed" or mat_result.get("missing_in_bestiary_count", 0) > 0:
+        overall_status = "degraded"
 
     # Initialize final result with core stages
     result = {
@@ -389,6 +506,17 @@ def run_ingest_pipeline(
             result["status"] = "degraded"
             result["media_note"] = "Some media stages encountered issues (see media_warnings)"
 
+    # Add monster materialization stage result
+    result["monster_materialization"] = mat_result
+    
+    # Apply degraded status from materialization if applicable
+    if overall_status == "degraded" and result["status"] == "success":
+        result["status"] = "degraded"
+        result["monster_materialization_note"] = "Some seed monsters could not be resolved to bestiary entries"
+    
+    # Add provider generation flag for cost transparency
+    result["provider_generation_allowed"] = allow_provider
+
     # Persist media stages to sidecar (if sidecar exists)
     sidecar_persistence = _persist_media_to_sidecar(
         module_slug=module_slug,
@@ -499,7 +627,21 @@ def _create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-strict", dest="strict", action="store_false", help="Disable strict mode")
     parser.add_argument("--dry-run", action="store_true", default=False, help="Stop after dry-run stage")
     parser.add_argument("--json", action="store_true", default=False, help="Output JSON")
-    
+
+    # Cleanup flags
+    parser.add_argument(
+        "--cleanup-failed",
+        action="store_true",
+        default=True,
+        help="Archive failed/quarantined module artifacts (default: enabled)",
+    )
+    parser.add_argument(
+        "--no-cleanup-failed",
+        dest="cleanup_failed",
+        action="store_false",
+        help="Disable cleanup of failed/quarantined artifacts",
+    )
+
     # Media stage flags
     parser.add_argument(
         "--no-media-extract",
@@ -525,7 +667,7 @@ def _create_parser() -> argparse.ArgumentParser:
         default=False,
         help="Allow paid provider image generation in prewarm stage (default: disabled)",
     )
-    
+
     return parser
 
 
@@ -578,6 +720,7 @@ def main() -> None:
         args.source,
         strict=args.strict,
         dry_run_only=args.dry_run,
+        cleanup_failed=args.cleanup_failed,
         no_media_extract=args.no_media_extract,
         no_prewarm=args.no_prewarm,
         media_timeout=args.media_timeout,

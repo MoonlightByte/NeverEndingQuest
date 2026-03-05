@@ -662,10 +662,69 @@ Many items can be validated programmatically:
 - Connectivity graph analysis
 
 ### Validation Commands
-```bash
-# Validate module schemas
-python core/validation/validate_module_files.py [ModuleName]
 
+#### Schema Validation (Per-Module)
+```bash
+# Validate specific module by slug
+python core/validation/validate_module_files.py --module The_Pumpkin_Kings_Curse
+
+# Validate with JSON output
+python core/validation/validate_module_files.py --module The_Pumpkin_Kings_Curse --json
+
+# Validate all detected modules
+python core/validation/validate_module_files.py --all-modules
+
+# Validate with explicit path
+python core/validation/validate_module_files.py --module-path /path/to/module
+
+# Get help
+python core/validation/validate_module_files.py --help
+```
+
+**Exit codes:**
+- `0` - Validation passed
+- `1` - Validation failed (schema errors or validation failures)
+- `2` - Execution error (e.g., jsonschema not installed, module not found)
+
+#### Bulk Validation (All Modules)
+```bash
+# Validate all modules with human-readable output
+python scripts/validate_modules_bulk.py
+
+# Validate all modules with JSON output
+python scripts/validate_modules_bulk.py --json
+
+# Validate specific module(s)
+python scripts/validate_modules_bulk.py --module The_Pumpkin_Kings_Curse
+python scripts/validate_modules_bulk.py --module Keep_of_Doom --module The_Thornwood_Watch
+
+# Force all-modules scan
+python scripts/validate_modules_bulk.py --all
+```
+
+**Exit codes:**
+- `0` - All modules passed
+- `1` - One or more modules failed validation
+- `2` - Execution/config error (no modules found, modules dir missing)
+
+#### Gameplay Audit (Monster Reference Parity)
+```bash
+# Audit specific module for monster reference parity
+python scripts/audit_module_gameplay.py --module The_Pumpkin_Kings_Curse
+
+# Audit with JSON output
+python scripts/audit_module_gameplay.py --module The_Pumpkin_Kings_Curse --json
+
+# Audit with strict instruction checking
+python scripts/audit_module_gameplay.py --module The_Pumpkin_Kings_Curse --strict-instructions
+```
+
+**Exit codes:**
+- `0` - No blocking errors
+- `1` - Blocking errors found (missing monster JSON, missing media, etc.)
+
+#### Manual Checks
+```bash
 # Test pathfinding
 python -c "
 from utils.location_path_finder import LocationGraph

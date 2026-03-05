@@ -141,6 +141,28 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
    fail_reason: "Narration claims [NPC] arrived/joined from off-location but missing required state action (moveBackgroundNPC or updatePartyNPCs add). Add matching action or remove arrival claim."
 }
 
+@PARLAY_LOOP_PREVENTION={
+    rule: Travel intent from peacefully resolved location must not loop back to same hostile blocker without action.
+    trigger: Player expresses intent to leave/travel onward from current location
+    invalid_loop: Assistant re-blocks at same location with hostile narration + actions:[] + no new provocation
+    fail_reason: "Repeated blocker loop: travel intent from resolved/non-provoked location returned hostile blocker with actions:[]. Provide transitionLocation, updatePartyTracker with resolvedHostilesByLocation state sync, or if combat re-initiates use createEncounter with explicit trigger."
+    valid_resolution: travel intent + transitionLocation bundle = VALID
+    valid_state_sync: travel intent + updatePartyTracker with resolvedHostilesByLocation = VALID
+    valid_combat_reinitiate: travel intent + createEncounter with explicit justification = VALID
+}
+
+@PASSAGE_STATE_SYNC={
+    rule: Guardian/sentinel yielding passage after peaceful parlay MUST persist state sync.
+    trigger: Narration indicates guardian yields, allows passage, parts way, or dissolves after appeasement without combat
+    required_action: updatePartyTracker with resolvedHostilesByLocation for current location = MANDATORY
+    action_form_valid: top-level resolvedHostilesByLocation OR nested worldConditions.resolvedHostilesByLocation
+    fail_reason: "Missing passage state sync: narration granted peaceful passage but response omitted updatePartyTracker resolvedHostilesByLocation update."
+    invalid_passage: passage narration + actions:[] (no updatePartyTracker sync) = INVALID
+    valid_passage: passage narration + updatePartyTracker with resolvedHostilesByLocation = VALID
+    valid_combat_alt: passage narration + createEncounter (explicit trigger justification) = VALID
+    note: State sync prevents regression and enables travel gating to treat location as resolved
+}
+
 @VALIDATION_EXAMPLES={
   true_valid: {"valid":true,"reason":"Correctly uses updateCharacterInfo for inventory after pickup"}
   true_inventory_check: {"valid":true,"reason":"Player asks 'How many arrows?' - correctly narrates counts without updateCharacterInfo"}
@@ -187,7 +209,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   storageInteraction: {"description":str,"characterName":str}
   createNewModule: {"moduleName":str,"startingLocation":str}
   updateEncounter: {"encounterId":str,"changes":obj}
-  updatePartyTracker: {"module":str_opt,"currentAreaId":str_opt,"currentArea":str_opt,"currentLocationId":str_opt,"currentLocation":str_opt} #all optional
+  updatePartyTracker: {"module":str_opt,"currentAreaId":str_opt,"currentArea":str_opt,"currentLocationId":str_opt,"currentLocation":str_opt,"resolvedHostilesByLocation":dict_opt,"worldConditions":dict_opt} #resolvedHostilesByLocation marks peacefully resolved hostile locations; worldConditions allows nested updates
   saveGame: {"saveName":str}
   restoreGame: {"saveName":str}
   listSaves: {}

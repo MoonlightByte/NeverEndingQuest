@@ -56,6 +56,7 @@ import subprocess
 import os
 import random
 from datetime import datetime
+from typing import Dict, Any
 from openai import OpenAI
 import config
 from core.managers.location_manager import get_location_data
@@ -128,6 +129,10 @@ ACTION_REST = "rest"
 # to work with the regular conversation update cycle
 
 
+# Import merge helper from utils for testability
+from utils.party_tracker_merge import _merge_party_tracker_updates
+
+
 def pre_validate_transition(parameters, party_tracker_data, conversation_history, location_graph, path_manager):
     """
     Pre-validate a transitionLocation action using the transition intelligence agent.
@@ -171,7 +176,8 @@ def pre_validate_transition(parameters, party_tracker_data, conversation_history
 
         # Analyze path for encounters and blocking
         current_module = party_tracker_data.get("module", "").replace(" ", "_")
-        path_analysis = analyze_path_for_encounters(path, location_graph, current_module)
+        world_conditions = party_tracker_data.get("worldConditions", {})
+        path_analysis = analyze_path_for_encounters(path, location_graph, current_module, world_conditions)
 
         # RETREAT DETECTION: Check if this is a legitimate retreat vs fast-travel exploit
         future_segments = [
@@ -195,7 +201,7 @@ def pre_validate_transition(parameters, party_tracker_data, conversation_history
             return True, ""  # Approve immediately, skip agent call
 
         # Build transition atlas
-        transition_atlas = build_transition_atlas(location_graph, current_module)
+        transition_atlas = build_transition_atlas(location_graph, current_module, world_conditions)
 
         # Load plot data
         plot_data = safe_read_json(path_manager.get_plot_path()) or {}
@@ -983,12 +989,25 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                 print(f"[DEBUG ACTION_HANDLER] Full stderr: {result.stderr}")
                 print("[DEBUG ACTION_HANDLER] ========== CREATE ENCOUNTER END WITH FAILURE ==========\n")
                 # C1.2: Return explicit error status instead of silent continue
+                # TABLETOP MODE: 3.1 Enrich error message with missing monster details
                 try:
                     from core.managers.status_manager import status_ready
                     status_ready()
                 except Exception:
                     pass
-                return {"status": "error", "error_message": "Combat encounter creation failed. Check game logs for details."}
+                # Extract missing monster info from builder output
+                error_detail = "Combat encounter creation failed."
+                if result.stdout:
+                    # Look for TABLETOP MODE monster errors in stdout
+                    import re
+                    monster_match = re.search(r"TABLETOP MODE: Monster '([^']+)' not found in bestiary at ([^\.]+\.json)", result.stdout)
+                    if monster_match:
+                        monster_name = monster_match.group(1)
+                        expected_file = monster_match.group(2)
+                        error_detail = f"Combat encounter creation failed: Monster '{monster_name}' is referenced in module content but missing stat file '{expected_file}'. Add the monster stat file or correct the reference."
+                    elif "Failed to generate encounter" in result.stdout:
+                        error_detail = "Combat encounter creation failed. Check game logs for details."
+                return {"status": "error", "error_message": error_detail}
 
         except subprocess.CalledProcessError as e:
             print(f"Error occurred while running combat_builder.py: {e}")
@@ -1705,17 +1724,8 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     except Exception as e:
                         print(f"WARNING: Could not auto-set starting location for {new_module}: {e}")
             
-            # Update party tracker with all provided parameters
-            for key, value in parameters.items():
-                if key in ["currentLocationId", "currentLocation", "currentAreaId", "currentArea"]:
-                    if "worldConditions" not in current_party_data:
-                        current_party_data["worldConditions"] = {}
-                    current_party_data["worldConditions"][key] = value
-                elif key == "module":
-                    current_party_data["module"] = value
-                else:
-                    # Handle any other party tracker fields
-                    current_party_data[key] = value
+            # Update party tracker with all provided parameters using merge helper
+            current_party_data = _merge_party_tracker_updates(current_party_data, parameters)
             
             # Save updated party tracker
             safe_json_dump(current_party_data, "party_tracker.json")

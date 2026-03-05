@@ -217,6 +217,222 @@ class TestCanonicalDedupe(unittest.TestCase):
         self.assertFalse(self._should_show_npc("macdavier", party2), "Without apostrophe (canonical)")
 
 
+class TestAliasResolution(unittest.TestCase):
+    """Test cases for NPC arrival alias resolution (Prompt 3 tasks 2.1-2.4)."""
+
+    def test_short_mention_with_full_arrival_action_is_valid(self):
+        """
+        Task 2.1: Short narration mention + full arrival action => valid.
+        Scenario: Narration says 'oswin', action uses 'Oswin Peverell'.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": "Oswin approaches from the north.",
+            "actions": [{"action": "moveBackgroundNPC", "parameters": {"npcName": "Oswin Peverell"}}]
+        }
+        party_tracker_data = {"partyMembers": ["Zeug"], "partyNPCs": []}
+        location_data = {"npcs": []}
+        module_npc_names = {"Oswin Peverell", "Amanita Gorse", "Edda Ravenscroft"}
+
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json, party_tracker_data, location_data, module_npc_names
+        )
+        self.assertTrue(is_valid, f"Short mention + full action should be valid, got: {reason}")
+
+    def test_short_mention_with_full_present_state_is_valid(self):
+        """
+        Task 2.2: Short narration mention + full present-state identity => valid/no arrival required.
+        Scenario: 'amanita' mentioned, 'Amanita Gorse' already present in partyNPCs.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": "Amanita readies her bow.",
+            "actions": []
+        }
+        party_tracker_data = {
+            "partyMembers": ["Zeug"],
+            "partyNPCs": [{"name": "Amanita Gorse"}]
+        }
+        location_data = {"npcs": []}
+        module_npc_names = {"Oswin Peverell", "Amanita Gorse", "Edda Ravenscroft"}
+
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json, party_tracker_data, location_data, module_npc_names
+        )
+        self.assertTrue(is_valid, f"Short mention with full present state should be valid, got: {reason}")
+
+    def test_ambiguous_short_alias_fails_open(self):
+        """
+        Task 2.3: Ambiguous short alias with multiple full-name candidates => fail-open.
+        Scenario: 'Will' mentioned, module has 'Will Blackwood' and 'Will Turner'.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": "Will enters the tavern.",
+            "actions": []
+        }
+        party_tracker_data = {"partyMembers": ["Zeug"], "partyNPCs": []}
+        location_data = {"npcs": []}
+        module_npc_names = {"Will Blackwood", "Will Turner", "Amanita Gorse"}
+
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json, party_tracker_data, location_data, module_npc_names
+        )
+        self.assertTrue(is_valid, f"Ambiguous alias should fail-open (valid), got: {reason}")
+
+    def test_unambiguous_off_location_without_action_fails_closed(self):
+        """
+        Task 2.4: Unambiguous off-location mention without matching arrival action => invalid.
+        Scenario: 'edda' mentioned, 'Edda Ravenscroft' is unambiguous, not present, no action.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": "Edda Ravenscroft appears at the door.",
+            "actions": []
+        }
+        party_tracker_data = {"partyMembers": ["Zeug"], "partyNPCs": []}
+        location_data = {"npcs": []}
+        module_npc_names = {"Oswin Peverell", "Amanita Gorse", "Edda Ravenscroft"}
+
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json, party_tracker_data, location_data, module_npc_names
+        )
+        self.assertFalse(is_valid, "Unambiguous off-location without action should fail-closed")
+        self.assertIn("edda ravenscroft", reason.lower())
+
+    def test_unambiguous_short_without_action_enforced(self):
+        """
+        Negative control: Short mention with uniquely resolvable alias and no action is enforced.
+        Ensures validator does not silently bypass enforcement for unambiguous cases.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": "Oswin walks in.",
+            "actions": []
+        }
+        party_tracker_data = {"partyMembers": ["Zeug"], "partyNPCs": []}
+        location_data = {"npcs": []}
+        module_npc_names = {"Oswin Peverell"}
+
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json, party_tracker_data, location_data, module_npc_names
+        )
+        self.assertFalse(is_valid, "Unambiguous short mention without action should be enforced")
+        self.assertIn("oswin", reason.lower())
+
+
+class TestNegatedNpcMentions(unittest.TestCase):
+    """Regression tests for negated NPC mention handling."""
+
+    def test_negated_absence_mention_is_not_treated_as_arrival(self):
+        """Negated mention should not require arrival action."""
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": "There are no Harvest Witnesses here, only battered shrines and wind.",
+            "actions": []
+        }
+        party_tracker_data = {"partyMembers": ["Zeug"], "partyNPCs": []}
+        location_data = {"npcs": []}
+        module_npc_names = {"The Harvest Witnesses", "Oswin Peverell"}
+
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json, party_tracker_data, location_data, module_npc_names
+        )
+        self.assertTrue(is_valid, f"Negated absence mention should pass, got: {reason}")
+
+    def test_positive_mention_without_action_still_fails(self):
+        """Positive arrival mention without action must still fail-closed."""
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": "The Harvest Witnesses gather at the road behind you.",
+            "actions": []
+        }
+        party_tracker_data = {"partyMembers": ["Zeug"], "partyNPCs": []}
+        location_data = {"npcs": []}
+        module_npc_names = {"The Harvest Witnesses", "Oswin Peverell"}
+
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json, party_tracker_data, location_data, module_npc_names
+        )
+        self.assertFalse(is_valid, "Positive mention without action should fail")
+        self.assertIn("harvest witnesses", reason.lower())
+
+    def test_mixed_negated_and_positive_mentions_requires_action(self):
+        """If any non-negated mention exists, arrival action is required."""
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": (
+                "There are no Harvest Witnesses at the altar, "
+                "but the Harvest Witnesses gather at the road behind you."
+            ),
+            "actions": []
+        }
+        party_tracker_data = {"partyMembers": ["Zeug"], "partyNPCs": []}
+        location_data = {"npcs": []}
+        module_npc_names = {"The Harvest Witnesses", "Oswin Peverell"}
+
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json, party_tracker_data, location_data, module_npc_names
+        )
+        self.assertFalse(is_valid, "Mixed mentions should fail due to positive mention")
+        self.assertIn("harvest witnesses", reason.lower())
+
+    def test_exact_retry_phrase_with_negated_harvest_witnesses_passes(self):
+        """Regression for repeated retry-loop phrase in Pumpkin King travel narration."""
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": (
+                "No spectral witnesses, no gathering of the Harvest Witnesses "
+                "or other spirits are present here--just the echoes of the party's own triumph."
+            ),
+            "actions": []
+        }
+        party_tracker_data = {"partyMembers": ["Zeug", "Anselara"], "partyNPCs": []}
+        location_data = {"npcs": []}
+        module_npc_names = {"The Harvest Witnesses", "Ghost of the Last Judge", "Oswin Peverell"}
+
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json, party_tracker_data, location_data, module_npc_names
+        )
+        self.assertTrue(is_valid, f"Negated Harvest Witnesses phrase should pass, got: {reason}")
+
+
 class TestContractIntegration(unittest.TestCase):
     """Integration tests combining validation and dedupe logic."""
 
@@ -251,6 +467,8 @@ if __name__ == "__main__":
     # Add all test classes
     suite.addTests(loader.loadTestsFromTestCase(TestNPCArrivalValidation))
     suite.addTests(loader.loadTestsFromTestCase(TestCanonicalDedupe))
+    suite.addTests(loader.loadTestsFromTestCase(TestAliasResolution))
+    suite.addTests(loader.loadTestsFromTestCase(TestNegatedNpcMentions))
     suite.addTests(loader.loadTestsFromTestCase(TestContractIntegration))
 
     runner = unittest.TextTestRunner(verbosity=2)

@@ -8,31 +8,39 @@ Purpose: Provide lightweight, exploration-focused atlas for validating travel re
 """
 
 import os
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from utils.file_operations import safe_read_json
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug
 
 
-def build_transition_atlas(location_graph, module_name: str) -> str:
+def build_transition_atlas(
+    location_graph,
+    module_name: str,
+    world_conditions: Optional[Dict[str, Any]] = None
+) -> str:
     """
     Build atlas with exploration status markers for transition validation.
 
     This is optimized for the transition intelligence agent and includes:
-    - Exploration status ([VISITED], [UNEXPLORED - SAFE], [UNEXPLORED - HAS MONSTERS])
+    - Exploration status ([VISITED], [UNEXPLORED - SAFE], [UNEXPLORED - HAS MONSTERS], [RESOLVED - SAFE])
     - Monster presence indicators
     - Lightweight format (no full descriptions)
 
     Args:
         location_graph: LocationGraph instance
         module_name: Current module name
+        world_conditions: Optional world state dict; may contain
+            'resolvedHostilesByLocation' mapping location_id -> bool to mark
+            peacefully resolved hostile locations as safe for travel.
 
     Returns:
         String atlas with exploration markers
 
     Note:
-        Visited status determined by checking encounters array.
-        Empty encounters = unexplored, Has encounters = visited.
+        Visited status determined by checking encounters array OR resolution marker.
+        Empty encounters + not resolved = unexplored.
+        Has encounters OR resolved = visited/safe.
     """
     debug(f"Building transition atlas for {module_name}", category="transition_atlas")
 
@@ -87,11 +95,20 @@ def build_transition_atlas(location_graph, module_name: str) -> str:
         # Determine visited status
         # If encounters array has GAMEPLAY entries (with encounterId), location visited
         # Template encounters (type/description) or empty array = not yet explored
-        is_visited = has_encounter_entries
+        # Also consider location visited if marked resolved in world_conditions
+        resolved_hostiles = (
+            world_conditions.get("resolvedHostilesByLocation", {})
+            if world_conditions else {}
+        )
+        is_resolved = resolved_hostiles.get(loc_id, False) if isinstance(resolved_hostiles, dict) else False
+        is_visited = has_encounter_entries or is_resolved
 
         # Determine status marker
         if is_visited:
-            status_marker = "[VISITED]"
+            if is_resolved and not has_encounter_entries:
+                status_marker = "[RESOLVED - SAFE]"
+            else:
+                status_marker = "[VISITED]"
         else:
             # Unexplored location
             if has_monsters:
@@ -143,6 +160,7 @@ def build_transition_atlas(location_graph, module_name: str) -> str:
     # Add legend
     lines.append("LEGEND:")
     lines.append("  [VISITED] - Location visited (has encounter entries in encounters array)")
+    lines.append("  [RESOLVED - SAFE] - Hostile resolved peacefully (marked in world state)")
     lines.append("  [UNEXPLORED - SAFE] - Not visited, no monsters defined (safe passage)")
     lines.append("  [UNEXPLORED - HAS MONSTERS] - Not visited, has monsters defined (BLOCKS TRAVEL)")
 

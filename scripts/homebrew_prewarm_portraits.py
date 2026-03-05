@@ -265,6 +265,75 @@ def _portrait_exists(module_slug: str, entity_name: str, entity_type: str) -> bo
     return False
 
 
+def _resolve_monster_media(
+    module_slug: str,
+    monster_name: str
+) -> Tuple[Optional[str], Optional[Path]]:
+    """Resolve monster media from ordered source chain.
+    
+    Source order:
+    1) module media (modules/<slug>/media/monsters/)
+    2) static media (web/static/media/monsters/)
+    3) graphic-pack/toolkit assets (if available)
+    4) None (requires provider generation)
+    
+    Video-first: prefers *_video.mp4 over images.
+    
+    Returns: (source_type, media_path) where source_type is one of:
+        'reused_module', 'reused_static', 'reused_pack', or None
+    """
+    normalized = _normalize_name(monster_name)
+    
+    # Source 1: Module media (highest priority)
+    module_media_path = Path(f"modules/{module_slug}/media/monsters")
+    if module_media_path.exists():
+        # Video-first check
+        video_path = module_media_path / f"{normalized}_video.mp4"
+        if video_path.exists():
+            return ("reused_module", video_path)
+        # Image fallback
+        for ext in [".jpg", ".jpeg", ".png"]:
+            img_path = module_media_path / f"{normalized}{ext}"
+            if img_path.exists():
+                return ("reused_module", img_path)
+            # Also check _full variants
+            full_path = module_media_path / f"{normalized}_full{ext}"
+            if full_path.exists():
+                return ("reused_module", full_path)
+    
+    # Source 2: Static media
+    static_media_path = Path("web/static/media/monsters")
+    if static_media_path.exists():
+        # Video-first check
+        video_path = static_media_path / f"{normalized}_video.mp4"
+        if video_path.exists():
+            return ("reused_static", video_path)
+        # Image fallback
+        for ext in [".jpg", ".jpeg", ".png"]:
+            img_path = static_media_path / f"{normalized}{ext}"
+            if img_path.exists():
+                return ("reused_static", img_path)
+            full_path = static_media_path / f"{normalized}_full{ext}"
+            if full_path.exists():
+                return ("reused_static", full_path)
+    
+    # Source 3: Graphic-pack/toolkit assets (bestiary)
+    bestiary_media_path = Path("data/bestiary/media/monsters")
+    if bestiary_media_path.exists():
+        # Video-first check
+        video_path = bestiary_media_path / f"{normalized}_video.mp4"
+        if video_path.exists():
+            return ("reused_pack", video_path)
+        # Image fallback
+        for ext in [".jpg", ".jpeg", ".png"]:
+            img_path = bestiary_media_path / f"{normalized}{ext}"
+            if img_path.exists():
+                return ("reused_pack", img_path)
+    
+    # No existing media found - requires generation
+    return (None, None)
+
+
 def _generate_and_materialize_portrait(
     module_slug: str,
     entity: Dict[str, Any],
@@ -392,6 +461,160 @@ def _process_entity(
     return result
 
 
+def _process_monster(
+    module_slug: str,
+    monster: Dict[str, Any],
+    allow_provider: bool = False,
+    timeout_seconds: int = 120
+) -> Dict[str, Any]:
+    """Process a single monster with reuse-first resolution.
+    
+    TABLETOP MODE: Monsters use dedicated bestiary resolution chain,
+    never character portrait lanes.
+    
+    Returns result dict with source tracking:
+        - status: 'reused', 'generated', 'missing', or 'failed'
+        - source: 'reused_module', 'reused_static', 'reused_pack', or None
+        - error: error message if failed
+    """
+    monster_name = monster["name"]
+    
+    result = {
+        "entity_type": "monster",
+        "name": monster_name,
+        "status": "planned",
+        "source": None,
+        "error": None
+    }
+    
+    # Step 1: Resolve existing media from source chain
+    source_type, media_path = _resolve_monster_media(module_slug, monster_name)
+    
+    if source_type:
+        # Found existing media - mark as reused
+        result["status"] = "reused"
+        result["source"] = source_type
+        return result
+    
+    # Step 2: No existing media - check if provider generation allowed
+    if not allow_provider:
+        result["status"] = "missing"
+        result["error"] = "No existing media found and provider generation disabled (use --allow-provider)"
+        return result
+    
+    # Step 3: Provider generation fallback (monster-specific, not portrait)
+    # TABLETOP MODE: Use monster generator, not character portrait service
+    success, error = _generate_monster_media(module_slug, monster)
+    
+    if success:
+        result["status"] = "generated"
+        result["source"] = "generated"
+        if error:
+            result["warning"] = error
+    else:
+        result["status"] = "failed"
+        result["error"] = error
+    
+    return result
+
+
+def _generate_monster_media(
+    module_slug: str,
+    monster: Dict[str, Any],
+    timeout_seconds: int = 120
+) -> Tuple[bool, Optional[str]]:
+    """Generate monster media using monster-specific generator.
+    
+    TABLETOP MODE: Never uses character portrait service.
+    Only generates to monster media paths (no portrait lanes).
+    
+    Returns: (success, error_message)
+    """
+    import io
+    import contextlib
+    import shutil
+    
+    try:
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        
+        # Import MonsterGenerator class (not portrait service)
+        from core.toolkit.monster_generator import MonsterGenerator
+        try:
+            from config import OPENAI_API_KEY
+        except ImportError:
+            OPENAI_API_KEY = None
+        
+        monster_name = monster["name"]
+        normalized = _normalize_name(monster_name)
+        
+        # Target directory: module media/monsters (never portraits/)
+        target_dir = Path(f"modules/{module_slug}/media/monsters")
+        target_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Initialize generator
+        if not OPENAI_API_KEY:
+            return False, "OPENAI_API_KEY not configured"
+        
+        generator = MonsterGenerator(api_key=OPENAI_API_KEY)
+        
+        # Generate to temporary graphic pack location (not final module yet)
+        # Use deterministic temp pack name for this module
+        temp_pack = f"__prewarm_{module_slug}"
+        
+        # Suppress stdout for clean CLI output
+        stdout_buffer = io.StringIO()
+        with contextlib.redirect_stdout(stdout_buffer):
+            result = generator.generate_monster_image(
+                monster_id=normalized,
+                style="photorealistic",
+                model="dall-e-3",
+                pack_name=temp_pack
+            )
+        
+        if not result.get("success"):
+            return False, result.get("error", "Unknown generation error")
+        
+        # Copy generated files from graphic pack to module media/monsters
+        pack_dir = Path(f"graphic_packs/{temp_pack}/monsters")
+        if not pack_dir.exists():
+            return False, "Generated pack directory not found"
+        
+        copied_count = 0
+        for src_file in pack_dir.glob(f"{normalized}*"):
+            # Skip thumbnails - we only want main images
+            if src_file.stem.endswith("_thumb"):
+                continue
+            
+            # Determine destination filename (standardize to .jpg)
+            if src_file.suffix.lower() in (".jpg", ".jpeg", ".png"):
+                dest_name = f"{normalized}.jpg"
+                dest_path = target_dir / dest_name
+                
+                try:
+                    shutil.copy2(src_file, dest_path)
+                    copied_count += 1
+                except Exception:
+                    # Continue copying other files even if one fails
+                    pass
+        
+        if copied_count == 0:
+            return False, "No image files copied from generated pack"
+        
+        # Cleanup temporary pack directory
+        try:
+            if pack_dir.exists():
+                shutil.rmtree(pack_dir.parent)  # Remove entire pack folder
+        except Exception:
+            pass  # Fail open - temp files are not critical
+        
+        return True, None
+    
+    except ImportError as e:
+        return False, f"Import error: {e}"
+    except Exception as e:
+        return False, f"Generation error: {e}"
+
+
 def prewarm_portraits(
     module_slug: str,
     max_concurrent: int = 4,
@@ -404,88 +627,126 @@ def prewarm_portraits(
     
     TABLETOP MODE: Provider generation is opt-in only (--allow-provider).
     By default, prewarm operates in metadata-only mode (no paid API calls).
+    
+    Monsters use reuse-first resolution chain:
+        1) module media -> 2) static media -> 3) pack assets -> 4) provider (if allowed)
     """
     
     # Discover entities
     npcs = [] if skip_npc else _discover_npcs(module_slug)
     monsters = [] if skip_monster else _discover_monsters(module_slug)
     
-    all_entities = npcs + monsters
-    
-    if not all_entities:
+    if not npcs and not monsters:
         return {
             "status": "skipped",
             "module_slug": module_slug,
             "npcs": {"planned": 0, "done": 0, "failed": 0, "skipped": 0},
-            "monsters": {"planned": 0, "done": 0, "failed": 0, "skipped": 0},
+            "monsters": {
+                "planned": 0, "reused_module": 0, "reused_static": 0, 
+                "reused_pack": 0, "generated": 0, "missing": 0, "failed": 0
+            },
             "warnings": [{"type": "no_entities", "message": "No NPCs or monsters discovered"}]
         }
     
-    # Provider guardrail: skip generation unless explicitly allowed
-    if not allow_provider:
-        return {
-            "status": "skipped",
-            "module_slug": module_slug,
-            "npcs": {"planned": len(npcs), "done": 0, "failed": 0, "skipped": len(npcs)},
-            "monsters": {"planned": len(monsters), "done": 0, "failed": 0, "skipped": len(monsters)},
-            "warnings": [{
-                "type": "provider_disabled",
-                "message": "Provider image generation disabled by default. Use --allow-provider to enable."
-            }]
-        }
-
-    # Ensure target portrait directories exist when planned counts > 0
-    # TABLETOP MODE: deterministic directory creation for portrait outputs
+    # Ensure target directories exist (NPCs only - monsters handled in their processing)
     module_media = Path(f"modules/{module_slug}/media")
     if npcs:
         (module_media / "npcs").mkdir(parents=True, exist_ok=True)
-    if monsters:
-        (module_media / "monsters").mkdir(parents=True, exist_ok=True)
     
-    # Process entities
-    results = []
+    # Process NPCs (traditional portrait path - only if provider enabled)
+    npc_results = []
     warnings = []
     
-    # Use ThreadPoolExecutor for concurrent processing
-    with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
-        future_to_entity = {
-            executor.submit(_process_entity, module_slug, entity): entity
-            for entity in all_entities
-        }
-        
-        for future in as_completed(future_to_entity):
-            entity = future_to_entity[future]
-            try:
-                result = future.result(timeout=timeout_seconds)
-                results.append(result)
-                # Capture any warnings from degraded successes
-                if result.get("warning"):
-                    warnings.append({
-                        "type": "degraded_success",
-                        "entity_type": entity["type"],
+    if npcs and allow_provider:
+        with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+            future_to_entity = {
+                executor.submit(_process_entity, module_slug, entity): entity
+                for entity in npcs
+            }
+            
+            for future in as_completed(future_to_entity):
+                entity = future_to_entity[future]
+                try:
+                    result = future.result(timeout=timeout_seconds)
+                    npc_results.append(result)
+                    if result.get("warning"):
+                        warnings.append({
+                            "type": "degraded_success",
+                            "entity_type": "npc",
+                            "name": entity["name"],
+                            "message": result["warning"]
+                        })
+                except Exception as e:
+                    npc_results.append({
+                        "entity_type": "npc",
                         "name": entity["name"],
-                        "message": result["warning"]
+                        "status": "failed",
+                        "error": str(e)
                     })
-            except Exception as e:
-                results.append({
-                    "entity_type": entity["type"],
-                    "name": entity["name"],
-                    "status": "failed",
-                    "error": str(e)
-                })
-                warnings.append({
-                    "type": "processing_error",
-                    "entity_type": entity["type"],
-                    "name": entity["name"],
-                    "message": str(e)
-                })
+                    warnings.append({
+                        "type": "processing_error",
+                        "entity_type": "npc",
+                        "name": entity["name"],
+                        "message": str(e)
+                    })
+    elif npcs and not allow_provider:
+        # NPCs skipped when provider disabled
+        for entity in npcs:
+            npc_results.append({
+                "entity_type": "npc",
+                "name": entity["name"],
+                "status": "skipped",
+                "error": None
+            })
+        warnings.append({
+            "type": "provider_disabled",
+            "entity_type": "npc",
+            "message": "NPC generation disabled without --allow-provider"
+        })
     
-    # Calculate counters
-    npc_results = [r for r in results if r["entity_type"] == "npc"]
-    monster_results = [r for r in results if r["entity_type"] == "monster"]
+    # Process monsters (reuse-first chain - works without provider)
+    monster_results = []
     
+    if monsters:
+        # Monsters can be processed without provider (reuse chain)
+        with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+            future_to_monster = {
+                executor.submit(
+                    _process_monster, module_slug, monster, allow_provider, timeout_seconds
+                ): monster
+                for monster in monsters
+            }
+            
+            for future in as_completed(future_to_monster):
+                monster = future_to_monster[future]
+                try:
+                    result = future.result(timeout=timeout_seconds)
+                    monster_results.append(result)
+                    if result.get("warning"):
+                        warnings.append({
+                            "type": "degraded_success",
+                            "entity_type": "monster",
+                            "name": monster["name"],
+                            "message": result["warning"]
+                        })
+                except Exception as e:
+                    monster_results.append({
+                        "entity_type": "monster",
+                        "name": monster["name"],
+                        "status": "failed",
+                        "source": None,
+                        "error": str(e)
+                    })
+                    warnings.append({
+                        "type": "processing_error",
+                        "entity_type": "monster",
+                        "name": monster["name"],
+                        "message": str(e)
+                    })
+    
+    # Calculate NPC counters (traditional)
     def count_status(results_list, status):
-        return sum(1 for r in results_list if r["status"] == status)
+        return sum(1 for r in results_list if r.get("status") == status)
     
     npc_counters = {
         "planned": len(npc_results),
@@ -494,31 +755,44 @@ def prewarm_portraits(
         "skipped": count_status(npc_results, "skipped")
     }
     
+    # Calculate monster counters (reuse-first with source tracking)
     monster_counters = {
         "planned": len(monster_results),
-        "done": count_status(monster_results, "done"),
-        "failed": count_status(monster_results, "failed"),
-        "skipped": count_status(monster_results, "skipped")
+        "reused_module": sum(1 for r in monster_results if r.get("source") == "reused_module"),
+        "reused_static": sum(1 for r in monster_results if r.get("source") == "reused_static"),
+        "reused_pack": sum(1 for r in monster_results if r.get("source") == "reused_pack"),
+        "generated": sum(1 for r in monster_results if r.get("status") == "generated"),
+        "missing": sum(1 for r in monster_results if r.get("status") == "missing"),
+        "failed": sum(1 for r in monster_results if r.get("status") == "failed")
     }
     
     # Collect warnings from failed entities
-    for r in results:
-        if r["status"] == "failed" and r.get("error"):
+    all_results = npc_results + monster_results
+    for r in all_results:
+        if r.get("status") in ("failed", "missing") and r.get("error"):
             warnings.append({
-                "type": "generation_failed",
-                "entity_type": r["entity_type"],
-                "name": r["name"],
+                "type": "processing_failed",
+                "entity_type": r.get("entity_type", "unknown"),
+                "name": r.get("name", "unknown"),
                 "message": r["error"]
             })
     
     # Determine overall status
     total_failed = npc_counters["failed"] + monster_counters["failed"]
-    total_done = npc_counters["done"] + monster_counters["done"]
+    total_missing = monster_counters["missing"]
+    total_done = npc_counters["done"] + monster_counters["generated"]
+    total_reused = (
+        monster_counters["reused_module"] + 
+        monster_counters["reused_static"] + 
+        monster_counters["reused_pack"]
+    )
     
     if total_failed > 0:
         status = "degraded"
-    elif total_done > 0:
+    elif total_done > 0 or total_reused > 0:
         status = "success"
+    elif total_missing > 0:
+        status = "skipped"  # Missing media without provider
     else:
         status = "skipped"
     
@@ -578,10 +852,14 @@ def main() -> None:
         print(f"  Skipped: {result['npcs']['skipped']}")
         print()
         print("Monsters:")
-        print(f"  Planned: {result['monsters']['planned']}")
-        print(f"  Done: {result['monsters']['done']}")
-        print(f"  Failed: {result['monsters']['failed']}")
-        print(f"  Skipped: {result['monsters']['skipped']}")
+        monsters = result['monsters']
+        print(f"  Planned: {monsters['planned']}")
+        print(f"  Reused (module): {monsters.get('reused_module', 0)}")
+        print(f"  Reused (static): {monsters.get('reused_static', 0)}")
+        print(f"  Reused (pack): {monsters.get('reused_pack', 0)}")
+        print(f"  Generated: {monsters.get('generated', 0)}")
+        print(f"  Missing: {monsters.get('missing', 0)}")
+        print(f"  Failed: {monsters.get('failed', 0)}")
         
         if result['warnings']:
             print()

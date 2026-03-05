@@ -2710,34 +2710,37 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
            debug("AI_CALL: Getting initial scene description...", category="combat_events")
            initiative_order = get_initiative_order(encounter_data)
 
-       # TABLETOP MODE: Check for group initiative handover
-       initiative_narrative = ""
-       if multi_pc_manager:
-           combat_initiative = party_tracker_data.get("worldConditions", {}).get("combatInitiative")
-           if not combat_initiative:
-               # TABLETOP MODE: C3.2 - Derive from normalized encounter state; do not use legacy reroll fallback
-               normalized_rolls = encounter_data.get("initiativeRolls", {})
-               normalized_winner = encounter_data.get("initiativeWinner")
-               combat_initiative = {
-                   "partyRoll": normalized_rolls.get("pcGroup"),
-                   "enemyRoll": normalized_rolls.get("dmGroup"),
-                   "partyGoesFirst": (normalized_winner == "pcGroup") if normalized_winner in ("pcGroup", "dmGroup") else True
-               }
-               party_tracker_data.setdefault("worldConditions", {})["combatInitiative"] = combat_initiative
+       # TABLETOP MODE: In fast-lane, skip initial-scene bootstrap entirely and go
+       # directly to combat loop so /init can resolve deterministically.
+       if not is_fast_lane:
+            # TABLETOP MODE: Check for group initiative handover
+            initiative_narrative = ""
+            if multi_pc_manager:
+                combat_initiative = party_tracker_data.get("worldConditions", {}).get("combatInitiative")
+                if not combat_initiative:
+                    # TABLETOP MODE: C3.2 - Derive from normalized encounter state; do not use legacy reroll fallback
+                    normalized_rolls = encounter_data.get("initiativeRolls", {})
+                    normalized_winner = encounter_data.get("initiativeWinner")
+                    combat_initiative = {
+                        "partyRoll": normalized_rolls.get("pcGroup"),
+                        "enemyRoll": normalized_rolls.get("dmGroup"),
+                        "partyGoesFirst": (normalized_winner == "pcGroup") if normalized_winner in ("pcGroup", "dmGroup") else True
+                    }
+                    party_tracker_data.setdefault("worldConditions", {})["combatInitiative"] = combat_initiative
 
-           debug(f"[COMBAT_MANAGER] Using group initiative state: {combat_initiative}", category="combat_events")
-           multi_pc_manager.party_initiative = combat_initiative.get("partyRoll", 0) or 0
-           multi_pc_manager.enemy_initiative = combat_initiative.get("enemyRoll", 0) or 0
-           multi_pc_manager.party_goes_first = combat_initiative.get("partyGoesFirst", True)
-           initiative_narrative = get_multi_pc_initiative_narrative(multi_pc_manager)
-       
-       # TABLETOP MODE: Anchor narration to Immutable Roster to prevent phantom enemy hallucination
-       initial_prompt_text = f"""The setup scene for the combat has already been given and described to the party. Now, describe the combat situation and ONLY the enemies listed in the VALID TARGETS & ACTORS (IMMUTABLE) roster that the party faces."""
-       if initiative_narrative:
-           initial_prompt_text = f"{initiative_narrative}\n\n{initial_prompt_text}"
+                debug(f"[COMBAT_MANAGER] Using group initiative state: {combat_initiative}", category="combat_events")
+                multi_pc_manager.party_initiative = combat_initiative.get("partyRoll", 0) or 0
+                multi_pc_manager.enemy_initiative = combat_initiative.get("enemyRoll", 0) or 0
+                multi_pc_manager.party_goes_first = combat_initiative.get("partyGoesFirst", True)
+                initiative_narrative = get_multi_pc_initiative_narrative(multi_pc_manager)
+            
+            # TABLETOP MODE: Anchor narration to Immutable Roster to prevent phantom enemy hallucination
+            initial_prompt_text = f"""The setup scene for the combat has already been given and described to the party. Now, describe the combat situation and ONLY the enemies listed in the VALID TARGETS & ACTORS (IMMUTABLE) roster that the party faces."""
+            if initiative_narrative:
+                initial_prompt_text = f"{initiative_narrative}\n\n{initial_prompt_text}"
 
-       # TABLETOP MODE: Reinforce Immutable Roster constraint in initial scene prompt
-       initial_prompt = f"""Dungeon Master Note: Respond with valid JSON containing a 'narration' field, 'combat_round' field, and an 'actions' array. This is the start of combat, so describe the scene using ONLY creatures from the VALID TARGETS & ACTORS (IMMUTABLE) roster and set initiative order, but don't take any actions yet. Start off by hooking the player and engaging them for the start of combat the way any world class dungeon master would.
+            # TABLETOP MODE: Reinforce Immutable Roster constraint in initial scene prompt
+            initial_prompt = f"""Dungeon Master Note: Respond with valid JSON containing a 'narration' field, 'combat_round' field, and an 'actions' array. This is the start of combat, so describe the scene using ONLY creatures from the VALID TARGETS & ACTORS (IMMUTABLE) roster and set initiative order, but don't take any actions yet. Start off by hooking the player and engaging them for the start of combat the way any world class dungeon master would.
 
 Important Character Field Definitions:
 - 'status' field: Overall life/death state - ONLY use 'alive', 'dead', 'unconscious', or 'defeated' (lowercase)
@@ -2758,87 +2761,89 @@ Initiative Order: {initiative_order}
 
 Player: {initial_prompt_text}"""
 
-       # TABLETOP MODE: Inject multi-PC context into initial prompt
-       if multi_pc_manager:
-           active_pc = party_tracker_data.get("active_character") or multi_pc_manager.current_pc_name
-           initial_prompt = modify_combat_prompt_for_multi_pc(initial_prompt, active_pc, multi_pc_manager)
+            # TABLETOP MODE: Inject multi-PC context into initial prompt
+            if multi_pc_manager:
+                active_pc = party_tracker_data.get("active_character") or multi_pc_manager.current_pc_name
+                initial_prompt = modify_combat_prompt_for_multi_pc(initial_prompt, active_pc, multi_pc_manager)
 
-       conversation_history.append({"role": "user", "content": initial_prompt})
-       save_json_file(conversation_history_file, conversation_history)
+            conversation_history.append({"role": "user", "content": initial_prompt})
+            save_json_file(conversation_history_file, conversation_history)
 
-       max_retries = 3
-       initial_response = None
-       initial_conversation_length = len(conversation_history)
-       
-       for attempt in range(max_retries):
-           try:
-               # Calculate temperature with attempt number for dynamic adjustment
-               temperature_used = get_combat_temperature(encounter_data, validation_attempt=attempt)
-               
-               # Compress conversation history before sending to AI
-               messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-               
-               # Export compressed conversation for review
-               with open("debug/api_captures/combat_messages_to_api.json", "w", encoding="utf-8") as f:
-                   json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
-               print(f"DEBUG: [COMBAT] Exported compressed messages to debug/api_captures/combat_messages_to_api.json")
-               
-               response = client.chat.completions.create(
-                   model=COMBAT_MAIN_MODEL, 
-                   temperature=temperature_used, 
-                        messages=messages_to_send,
-                        timeout=COMBAT_API_TIMEOUT_SECONDS  # TABLETOP MODE: Prevent indefinite hang
-               )
-               
-               # Track usage
-               if USAGE_TRACKING_AVAILABLE:
-                   try:
-                       track_response(response)
-                   except:
-                       pass
-               
-               initial_response = response.choices[0].message.content.strip()
-               conversation_history.append({"role": "assistant", "content": initial_response})
-               
-               if not is_valid_json(initial_response):
-                   if attempt < max_retries - 1:
-                       conversation_history.append({"role": "user", "content": "Invalid JSON format. Please try again."})
-                       continue
-                   else: break
+            max_retries = 3
+            initial_response = None
+            initial_conversation_length = len(conversation_history)
+            
+            for attempt in range(max_retries):
+                try:
+                    # Calculate temperature with attempt number for dynamic adjustment
+                    temperature_used = get_combat_temperature(encounter_data, validation_attempt=attempt)
+                    
+                    # Compress conversation history before sending to AI
+                    messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
+                    
+                    # Export compressed conversation for review
+                    with open("debug/api_captures/combat_messages_to_api.json", "w", encoding="utf-8") as f:
+                        json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
+                    print(f"DEBUG: [COMBAT] Exported compressed messages to debug/api_captures/combat_messages_to_api.json")
+                    
+                    response = client.chat.completions.create(
+                        model=COMBAT_MAIN_MODEL, 
+                        temperature=temperature_used, 
+                             messages=messages_to_send,
+                             timeout=COMBAT_API_TIMEOUT_SECONDS  # TABLETOP MODE: Prevent indefinite hang
+                    )
+                    
+                    # Track usage
+                    if USAGE_TRACKING_AVAILABLE:
+                        try:
+                            track_response(response)
+                        except:
+                            pass
+                    
+                    initial_response = response.choices[0].message.content.strip()
+                    conversation_history.append({"role": "assistant", "content": initial_response})
+                    
+                    if not is_valid_json(initial_response):
+                        if attempt < max_retries - 1:
+                            conversation_history.append({"role": "user", "content": "Invalid JSON format. Please try again."})
+                            continue
+                        else: break
 
-               # FIX: Use the correct variable for the user input parameter
-               # PASS MULTI-PC MANAGER FOR INITIAL VALIDATION
-               validation_result = validate_combat_response(initial_response, encounter_data, initial_prompt_text, conversation_history, multi_pc_manager=multi_pc_manager)
-               
-               if validation_result is True:
-                   break
-               else:
-                   if attempt < max_retries - 1:
-                       # validation_result is now the full feedback string
-                       conversation_history.append({"role": "user", "content": validation_result})
-                       continue
-                   else: break
-           except Exception as e:
-               error(f"FAILURE: AI call for initial scene failed on attempt {attempt + 1}", exception=e, category="combat_events")
-               if attempt >= max_retries - 1: break
-       
-       # FIX: Simplified cleanup logic
-       conversation_history = conversation_history[:initial_conversation_length]
-       if initial_response:
-           conversation_history.append({"role": "assistant", "content": initial_response})
-           save_json_file(conversation_history_file, conversation_history)
-           try:
-               parsed_response = json.loads(initial_response)
-               print(f"Dungeon Master: {parsed_response['narration']}")
-               import sys
-               sys.stdout.flush()
-           except (json.JSONDecodeError, KeyError):
-               print(f"Dungeon Master: {initial_response}") # Print raw if parsing fails
-               import sys
-               sys.stdout.flush()
+                    # FIX: Use the correct variable for the user input parameter
+                    # PASS MULTI-PC MANAGER FOR INITIAL VALIDATION
+                    validation_result = validate_combat_response(initial_response, encounter_data, initial_prompt_text, conversation_history, multi_pc_manager=multi_pc_manager)
+                    
+                    if validation_result is True:
+                        break
+                    else:
+                        if attempt < max_retries - 1:
+                            # validation_result is now the full feedback string
+                            conversation_history.append({"role": "user", "content": validation_result})
+                            continue
+                        else: break
+                except Exception as e:
+                    error(f"FAILURE: AI call for initial scene failed on attempt {attempt + 1}", exception=e, category="combat_events")
+                    if attempt >= max_retries - 1: break
+            
+            # FIX: Simplified cleanup logic
+            conversation_history = conversation_history[:initial_conversation_length]
+            if initial_response:
+                conversation_history.append({"role": "assistant", "content": initial_response})
+                save_json_file(conversation_history_file, conversation_history)
+                try:
+                    parsed_response = json.loads(initial_response)
+                    print(f"Dungeon Master: {parsed_response['narration']}")
+                    import sys
+                    sys.stdout.flush()
+                except (json.JSONDecodeError, KeyError):
+                    print(f"Dungeon Master: {initial_response}") # Print raw if parsing fails
+                    import sys
+                    sys.stdout.flush()
+            else:
+                error("FAILURE: Could not get a valid initial scene from AI.", category="combat_events")
+                return None, None # Exit if we can't start combat
        else:
-           error("FAILURE: Could not get a valid initial scene from AI.", category="combat_events")
-           return None, None # Exit if we can't start combat
+           debug("COMBAT_INIT: Fast-lane startup complete; deferring narration until phase starts", category="combat_events")
    # --- END: RESUMPTION AND INITIAL SCENE LOGIC ---
    
    # Combat loop

@@ -275,7 +275,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   createEncounter:     {"encounterSummary": string, "player": string, "npcs": array, "monsters": array} // all arrays contain individual strings
   storageInteraction:  {"description": string, "characterName": string}
   updateEncounter:     {"encounterId": string, "changes": object}
-  updatePartyTracker:  {"module": string, "currentAreaId": string, "currentArea": string, "currentLocationId": string, "currentLocation": string}
+  updatePartyTracker:  {"module": string, "currentAreaId": string, "currentArea": string, "currentLocationId": string, "currentLocation": string, "resolvedHostilesByLocation": object, "worldConditions": object}  // resolvedHostilesByLocation marks peacefully resolved hostile locations for travel unblocking; worldConditions allows nested state updates
   rest:                {"type": "long|short", "characters": [string]}  // characters optional, defaults to all party members
 }
 

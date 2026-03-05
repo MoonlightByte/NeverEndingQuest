@@ -15,6 +15,8 @@ from homebrew_media_extract import extract_media, _download_image
 from homebrew_media_handles import (
     _dedupe_handles_by_source_ref,
     _find_existing_file_by_stem,
+    _infer_kind_from_path,
+    _sort_handles,
     generate_manifest,
 )
 
@@ -126,6 +128,96 @@ class TestMangroveScenario(unittest.TestCase):
         self.assertEqual(len(deduped), 1)
         # Should prefer title_image
         self.assertEqual(deduped[0]["kind"], "title_image")
+
+
+class TestMonsterVideoHandles(unittest.TestCase):
+    """Tests for Prompt 3: monster video handles and deterministic ordering."""
+
+    def test_infer_kind_from_path_identifies_monster_video(self) -> None:
+        """_video.mp4 files under monsters should be classified as monster_video."""
+        self.assertEqual(_infer_kind_from_path("modules/abc/media/monsters/goblin_video.mp4"), "monster_video")
+        self.assertEqual(_infer_kind_from_path("web/static/media/monsters/dragon_video.mp4"), "monster_video")
+
+    def test_infer_kind_from_path_monster_portrait_for_images(self) -> None:
+        """Image files under monsters should remain monster_portrait."""
+        self.assertEqual(_infer_kind_from_path("modules/abc/media/monsters/goblin.jpg"), "monster_portrait")
+        self.assertEqual(_infer_kind_from_path("modules/abc/media/monsters/dragon_full.png"), "monster_portrait")
+
+    def test_dedupe_handles_prefers_monster_portrait_over_video(self) -> None:
+        """When same source_ref has both portrait and video, portrait should win (higher priority)."""
+        handles = [
+            {
+                "handle_id": "p1",
+                "kind": "monster_portrait",
+                "source_ref": "https://example.com/monster.jpg",
+                "storage_relpath": "media/monsters/monster.jpg",
+                "download_status": "downloaded",
+            },
+            {
+                "handle_id": "v1",
+                "kind": "monster_video",
+                "source_ref": "https://example.com/monster.jpg",
+                "storage_relpath": "media/monsters/monster_video.mp4",
+                "download_status": "downloaded",
+            },
+        ]
+        deduped = _dedupe_handles_by_source_ref(handles)
+        self.assertEqual(len(deduped), 1)
+        self.assertEqual(deduped[0]["kind"], "monster_portrait")
+
+    def test_dedupe_handles_preserves_video_when_portrait_not_present(self) -> None:
+        """If only video exists for a source_ref, it should be kept."""
+        handles = [
+            {
+                "handle_id": "v1",
+                "kind": "monster_video",
+                "source_ref": "https://example.com/monster_video.mp4",
+                "storage_relpath": "media/monsters/monster_video.mp4",
+                "download_status": "downloaded",
+            }
+        ]
+        deduped = _dedupe_handles_by_source_ref(handles)
+        self.assertEqual(len(deduped), 1)
+        self.assertEqual(deduped[0]["kind"], "monster_video")
+
+    def test_sort_handles_maintains_monster_video_after_portrait(self) -> None:
+        """Sort order should place monster_video after monster_portrait."""
+        handles = [
+            {"kind": "monster_video", "source_ref": "c", "storage_relpath": "media/monsters/c_video.mp4"},
+            {"kind": "monster_portrait", "source_ref": "a", "storage_relpath": "media/monsters/a.jpg"},
+            {"kind": "monster_portrait", "source_ref": "b", "storage_relpath": "media/monsters/b.jpg"},
+        ]
+        sorted_handles = _sort_handles(handles)
+        kinds = [h["kind"] for h in sorted_handles]
+        # All monster_portrait must come before any monster_video
+        first_video_idx = kinds.index("monster_video") if "monster_video" in kinds else len(kinds)
+        after_video = kinds[first_video_idx:]
+        self.assertTrue(all(k == "monster_video" for k in after_video),
+                        "All handles after first monster_video should be monster_video")
+
+    def test_dedupe_handles_video_image_different_source_refs_both_kept(self) -> None:
+        """Different source_refs (even with video/image variants) should both be preserved."""
+        handles = [
+            {
+                "handle_id": "p1",
+                "kind": "monster_portrait",
+                "source_ref": "https://example.com/goblin.jpg",
+                "storage_relpath": "media/monsters/goblin.jpg",
+                "download_status": "downloaded",
+            },
+            {
+                "handle_id": "v1",
+                "kind": "monster_video",
+                "source_ref": "https://example.com/goblin_video.mp4",
+                "storage_relpath": "media/monsters/goblin_video.mp4",
+                "download_status": "downloaded",
+            },
+        ]
+        deduped = _dedupe_handles_by_source_ref(handles)
+        self.assertEqual(len(deduped), 2)
+        kinds = {h["kind"] for h in deduped}
+        self.assertIn("monster_portrait", kinds)
+        self.assertIn("monster_video", kinds)
 
 
 if __name__ == "__main__":

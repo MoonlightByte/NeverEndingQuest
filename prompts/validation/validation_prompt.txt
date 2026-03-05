@@ -246,7 +246,13 @@ Requires "narrative" parameter containing rich story description with embedded m
    If player mentions a location from the current module, use transitionLocation.
    If player mentions another module by name, use updatePartyTracker with module parameter.
    
-   Requires parameters for the specific updates (module, currentLocationId, currentLocation, currentAreaId, currentArea, etc.).
+    Requires parameters for the specific updates:
+    - module, currentLocationId, currentLocation, currentAreaId, currentArea: Standard module/location tracking
+    - resolvedHostilesByLocation: Dict marking peacefully resolved hostile locations (e.g., {"V04": true}) for travel unblocking after parlay
+    - worldConditions: Dict for nested state updates (may contain resolvedHostilesByLocation and other world state)
+    
+    **PEACEFUL RESOLUTION SYNC:**
+    When a hostile guardian is appeased through parlay (no combat), use updatePartyTracker with resolvedHostilesByLocation to persist the resolution state so travel is not repeatedly blocked.
 "moveBackgroundNPC": Used for managing NPCs in location files who are NOT traveling with the party. This action handles NPCs who are captured, killed, relocated, or have status changes due to narrative events. CRITICAL DISTINCTION: Use this ONLY for background NPCs in location files, NOT for party NPCs (use updatePartyNPCs for those). Should be used when:
    - Background NPCs are captured or taken away ("Rusk was captured by the party")
    - Background NPCs are killed or die ("The merchant was killed in the attack")
@@ -877,6 +883,71 @@ NPC immediately agrees without considering their critical leadership role.
 
 The AI should make NPCs feel like real people with their own motivations, responsibilities, and decision-making processes when it comes to joining the party.
 
+
+## PARLAY LOOP PREVENTION VALIDATION RULES
+
+When a player expresses intent to travel onward from a location where a hostile guardian was previously appeased through peaceful parlay, the AI must not repeatedly block travel with the same hostile narration.
+
+### Parlay Loop Prevention Requirements:
+- **INVALID LOOP**: Player expresses travel intent + assistant returns hostile blocker narration + actions:[] + no new party provocation = VALIDATION FAILURE
+- **REQUIRED ACTIONS**: Travel intent must be accompanied by one of:
+  1. `transitionLocation` action (plus time bundle per existing contract)
+  2. `updatePartyTracker` with `resolvedHostilesByLocation` state sync
+  3. `createEncounter` with explicit trigger justification (if combat truly re-initiates)
+
+### Validation Failures:
+- **Repeated Blocker Without Action**: "The Bloodshadow blocks your path again" with empty actions array when player said "we venture onward"
+- **Missing Resolution State Sync**: Peaceful parlay succeeded but no `resolvedHostilesByLocation` persisted
+- **Passive Re-hostilization**: Hostile narration without corresponding state action or combat initiation
+
+### Required Response for Parlay Loops:
+```json
+{
+  "valid": false,
+  "reason": "Repeated blocker loop: travel intent from resolved/non-provoked location returned hostile blocker with actions:[]. Provide transitionLocation, updatePartyTracker with resolvedHostilesByLocation state sync, or if combat re-initiates use createEncounter with explicit trigger."
+}
+```
+
+## PASSAGE STATE SYNCHRONIZATION VALIDATION RULES
+
+When a guardian/sentinel yields passage after peaceful parlay (no combat), the AI must persist state sync to mark the location as resolved.
+
+### Requirements:
+- **Trigger**: Narration indicates guardian yields, allows passage, parts the way, or dissolves after appeasement
+- **Mandatory Action**: `updatePartyTracker` with `resolvedHostilesByLocation` for current location
+- **Valid Action Forms**:
+  - Top-level: `{"resolvedHostilesByLocation": {"V04": true}}`
+  - Nested: `{"worldConditions": {"resolvedHostilesByLocation": {"V04": true}}}`
+
+### Validation Rules:
+- **VALID**: Passage narration + `updatePartyTracker` with resolvedHostilesByLocation
+- **VALID**: Passage narration + `createEncounter` with explicit trigger justification (combat path)
+- **INVALID**: Passage narration + empty actions array (no state sync)
+- **INVALID**: Passage narration without `resolvedHostilesByLocation` update
+
+### Fail Reason:
+```json
+{
+  "valid": false,
+  "reason": "Missing passage state sync: narration granted peaceful passage but response omitted updatePartyTracker resolvedHostilesByLocation update."
+}
+```
+
+### Examples:
+**INVALID - Passage granted but no state sync:**
+Narration: "The Bloodshadow bows and dissolves, leaving the path open."
+Actions: []
+Result: INVALID - must include `updatePartyTracker` with `resolvedHostilesByLocation`.
+
+**VALID - Passage with state sync:**
+Narration: "The Bloodshadow yields, its form fading into mist."
+Actions: [{"action":"updatePartyTracker","parameters":{"resolvedHostilesByLocation":{"V04":true}}}]
+Result: VALID - resolved marker persisted.
+
+**VALID - Combat re-initiation alternative:**
+Narration: "The Bloodshadow yields but then attacks without warning!"
+Actions: [{"action":"createEncounter","parameters":{...}}]
+Result: VALID - combat trigger justifies hostile re-engagement.
 
 ## NPC ARRIVAL STATE SYNCHRONIZATION VALIDATION RULES
 

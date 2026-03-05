@@ -3861,6 +3861,16 @@ def main_game_loop():
             party_stats_str = "; ".join(party_stats_formatted) if party_stats_formatted else "None"
             current_location_name_note = world_conditions["currentLocation"]
             current_location_id_note = world_conditions["currentLocationId"]
+            
+            # Check if current location has been peacefully resolved
+            resolved_map = world_conditions.get("resolvedHostilesByLocation", {})
+            is_resolved_here = resolved_map.get(current_location_id_note, False) if isinstance(resolved_map, dict) else False
+            
+            threat_guidance = (
+                "Resolved Hostile State: Hostile guardian at this location has been appeased. Do not re-initiate this threat unless the party provokes it. "
+                if is_resolved_here else
+                "Monsters should be active threats per engagement rules. "
+            )
         
             # --- CONNECTIVITY SECTION ---
             connected_locations_display_str = "None listed"
@@ -4186,7 +4196,7 @@ def main_game_loop():
                         f"Active side quests for this location:\n{side_quests_str}\n"
                         f"Monsters in this location:\n{monsters_str}\n"
                         f"Traps in this location:\n{traps_str}\n"
-                        "Monsters should be active threats per engagement rules. ")
+                        f"{threat_guidance}")
         
             # Add common instructions
             dm_note += (

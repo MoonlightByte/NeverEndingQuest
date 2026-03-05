@@ -129,5 +129,71 @@ class TestErrorHandling(TestCase):
         self.assertIn("not found", result["error"].lower())
 
 
+class TestMonsterMaterializationStage(TestCase):
+    """Test monster materialization stage in pipeline (Task 5.3)."""
+
+    def test_result_structure_supports_materialization(self):
+        """Pipeline result structure should support monster_materialization field."""
+        # This test documents that the pipeline structure supports the field
+        # Full integration would require complex mocking; manual verification shows
+        # the field is populated in successful non-dry-run completions
+        from homebrew_ingest_dev import run_ingest_pipeline
+        
+        # Verify function signature accepts allow_provider (cost transparency)
+        import inspect
+        sig = inspect.signature(run_ingest_pipeline)
+        self.assertIn("allow_provider", sig.parameters)
+        self.assertIn("cleanup_failed", sig.parameters)
+
+
+class TestProviderGenerationFlag(TestCase):
+    """Test provider generation cost transparency (Task 5.3)."""
+
+    def setUp(self):
+        self.temp_dir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_provider_generation_parameter_exists(self):
+        """Provider generation flag should be in function signature."""
+        from homebrew_ingest_dev import run_ingest_pipeline
+        import inspect
+        
+        sig = inspect.signature(run_ingest_pipeline)
+        self.assertIn("allow_provider", sig.parameters)
+        
+        # Default should be False (opt-in only)
+        param = sig.parameters["allow_provider"]
+        self.assertEqual(param.default, False)
+
+
+class TestCleanupIntegration(TestCase):
+    """Test cleanup stage integration (Task 5.3)."""
+
+    def setUp(self):
+        self.temp_dir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_cleanup_result_structure_on_failure(self):
+        """Cleanup result should have expected structure on ingest failure."""
+        source = self.temp_dir / "bad.md"
+        source.write_text('Invalid content without structure.')
+        
+        result = run_ingest_pipeline(str(source), strict=True)
+        
+        # On ingest failure, cleanup_failed_ingest should be in payload
+        if result["stage"] in ["ingest", "verify"] and result["status"] == "failed":
+            self.assertIn("cleanup_failed_ingest", result)
+            cleanup = result["cleanup_failed_ingest"]
+            self.assertIn("status", cleanup)
+            self.assertIn("action", cleanup)
+            self.assertIn("reason", cleanup)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -58,6 +58,7 @@ import io
 import zipfile
 from contextlib import redirect_stdout, redirect_stderr
 from PIL import Image
+from pathlib import Path  # TABLETOP MODE: Import Path for module preflight validation
 
 # Add parent directory to path so we can import from utils, core, etc.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -529,6 +530,7 @@ configure_stream_transport(socketio.emit)
 
 # TABLETOP MODE: Shared debug-line filter markers for WebOutputCapture
 WEB_OUTPUT_DEBUG_FILTER_MARKERS = [
+    '[DEBUG]',
     'Lightweight chat history updated',
     'System messages removed:',
     'User messages:',
@@ -634,8 +636,9 @@ class WebOutputCapture:
                             # If buffer append fails, reset DM section
                             self.in_dm_section = False
                             self.dm_buffer = []
-                    elif any(marker in clean_line for marker in ['DEBUG:', 'ERROR:', 'WARNING:', '[COMBAT_MANAGER]']) or \
-                         clean_line.startswith('[') and ('HP:' in clean_line or 'XP:' in clean_line) or \
+                    elif clean_line.startswith('[DEBUG]') or \
+                         any(marker in clean_line for marker in ['DEBUG:', 'ERROR:', 'WARNING:', '[COMBAT_MANAGER]']) or \
+                         (clean_line.startswith('[') and ('HP:' in clean_line or 'XP:' in clean_line)) or \
                          clean_line.startswith('>'):
                         # This ends the DM section - send accumulated DM content as single message
                         if self.dm_buffer:
@@ -2937,6 +2940,31 @@ def handle_start_game():
     if game_thread and game_thread.is_alive():
         emit('error', {'message': 'Game is already running'})
         return
+    
+    # TABLETOP MODE: Preflight validation - check module integrity before starting
+    try:
+        from utils.file_operations import safe_read_json
+        party_tracker = safe_read_json("party_tracker.json")
+        if party_tracker:
+            current_module = party_tracker.get("module", "").replace(" ", "_")
+            if current_module:
+                module_path = Path("modules") / current_module
+                if module_path.exists():
+                    from core.validation.validate_module_files import ModuleValidator
+                    validator = ModuleValidator(module_path, ".")
+                    validator.run_all_validations()
+                    
+                    ref_int = validator.results.get("reference_integrity", {})
+                    if ref_int.get("failed", 0) > 0:
+                        error_msg = (f"[SYSTEM] Module validation failed: {current_module} has unresolved monster references. "
+                                   f"Combat will not function correctly. Please resolve missing monster stat files before starting. "
+                                   f"See logs for details.")
+                        emit('error', {'message': error_msg})
+                        return
+    except Exception as e:
+        # Fail-open: log but don't block game start on validation error
+        from utils.enhanced_logger import warning
+        warning(f"Module preflight validation error: {e}", category="module_validation")
     
     # Uninstall debug interceptor to prevent competing stdout redirections
     uninstall_debug_interceptor()
