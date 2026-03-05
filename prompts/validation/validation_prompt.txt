@@ -226,16 +226,22 @@ Requires "narrative" parameter containing rich story description with embedded m
    - Update party tracking data
    
    ### CRITICAL MODULE TRAVEL VALIDATION:
-   **VALID for updatePartyTracker with module change:**
-   - "I travel to Frostward_Peaks" [VALID]
-   - "Take us to the Desert Crown module" [VALID]
-   - "Let's journey to [specific module name]" [VALID]
-   
-   **INVALID - Use transitionLocation instead:**
-   - "Let's go" (within same module) [INVALID]
-   - "I leave the inn" [INVALID]
-   - "We travel to the forest" (same module location) [INVALID]
-   - Vague travel without module name [INVALID]
+**VALID for updatePartyTracker with module change:**
+    - "I travel to Frostward_Peaks" [VALID]
+    - "Take us to the Desert Crown module" [VALID]
+    - "Let's journey to [specific module name]" [VALID]
+    
+    **INVALID - Use transitionLocation instead:**
+    - "Let's go" (within same module) [INVALID]
+    - "I leave the inn" [INVALID]
+    - "We travel to the forest" (same module location) [INVALID]
+    - Vague travel without module name [INVALID]
+
+**TRAVEL-TIME BUNDLE VALIDATION:**
+    **REQUIRED:** transitionLocation MUST include updateTime in the same action bundle for time passage.
+    **VIOLATION:** transitionLocation without updateTime = incomplete travel-state sync; mark invalid with reason.
+    **VALID BUNDLE EXAMPLE:** [{"action":"transitionLocation","parameters":{"newLocation":"V07"}}, {"action":"updateTime","parameters":{"timeEstimate":15}}] - both actions in same response.
+    **INVALID EXAMPLE:** [{"action":"transitionLocation","parameters":{"newLocation":"V07"}}] alone without updateTime.
    
    If player mentions a location from the current module, use transitionLocation.
    If player mentions another module by name, use updatePartyTracker with module parameter.

@@ -103,6 +103,14 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   required: updateTime for full journey
 }
 
+@TRAVEL_TIME_BUNDLE={
+  rule: transitionLocation MUST include updateTime in same action bundle for time passage.
+  violation: transitionLocation without updateTime = incomplete travel-state sync
+  valid_example: [{"action":"transitionLocation",...}, {"action":"updateTime",...}] bundled together
+  invalid_example: [{"action":"transitionLocation",...}] alone without updateTime
+  note: Runtime will auto-apply fallback time if bundle missing; prefer explicit bundle.
+}
+
 @STORAGE_VALIDATION={
   currency_math: Check sufficient funds; verify conversion (1g=10s=100c)
   action_order: updateCharacterInfo(payment) BEFORE storageInteraction

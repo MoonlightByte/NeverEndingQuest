@@ -2171,7 +2171,11 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
         # If not a transition or levelup, proceed with normal processing
         narration = parsed_response.get("narration", "")
         sanitized_narration = sanitize_text(narration)
-        print(colored("Dungeon Master:", "blue"), colored(sanitized_narration, "blue"))
+        
+        # TABLETOP MODE: 3.3 Defer narration emission until after action processing
+        # This prevents combat narration from being shown when createEncounter fails
+        narration_deferred = sanitized_narration
+        narration_emitted = False
 
         actions_processed = False
         
@@ -2185,6 +2189,45 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
         # Separate updateCharacterInfo actions from others for concurrent processing
         char_update_actions = [action for action in actions if action.get("action") == "updateCharacterInfo"]
         other_actions = [action for action in actions if action.get("action") != "updateCharacterInfo"]
+        
+        # TABLETOP MODE: Fail-open fallback for transitionLocation without updateTime
+        # If movement occurs without explicit time advancement, inject deterministic updateTime
+        has_transition = any(action.get("action") == "transitionLocation" for action in actions)
+        has_update_time = any(action.get("action") == "updateTime" for action in actions)
+        
+        if has_transition and not has_update_time:
+            # Find the transitionLocation action to get target
+            transition_action = next((a for a in actions if a.get("action") == "transitionLocation"), None)
+            if transition_action:
+                target_location = transition_action.get("parameters", {}).get("newLocation", "")
+                current_area_id = party_tracker_data.get("worldConditions", {}).get("currentAreaId", "")
+                
+                # Determine if cross-area transition using location graph
+                is_cross_area = False
+                try:
+                    if location_graph and target_location in location_graph.nodes:
+                        target_area_id = location_graph.nodes[target_location].get("area_id", "")
+                        is_cross_area = (target_area_id != current_area_id)
+                except Exception as e:
+                    debug(f"STATE_SYNC: Could not determine area for location {target_location}: {e}", category="time_sync")
+                    # Default to cross-area if we can't determine (safer assumption)
+                    is_cross_area = True
+                
+                # Deterministic fallback minutes
+                fallback_minutes = 20 if is_cross_area else 10
+                
+                # Create synthetic updateTime action
+                synthetic_update_time = {
+                    "action": "updateTime",
+                    "parameters": {
+                        "timeEstimate": fallback_minutes
+                    }
+                }
+                
+                # Insert at beginning of other_actions so time updates before transition
+                other_actions.insert(0, synthetic_update_time)
+                
+                info(f"STATE_SYNC: Auto-applied updateTime={fallback_minutes} due to transitionLocation without updateTime (cross_area={is_cross_area})", category="time_sync")
         
         debug(f"STATE_CHANGE: Separated into {len(char_update_actions)} character updates and {len(other_actions)} other actions", category="character_updates")
         print(f"DEBUG: STATE_CHANGE: Separated into {len(char_update_actions)} character updates and {len(other_actions)} other actions")
@@ -2312,6 +2355,12 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                 if result.get("needs_update"): needs_conversation_history_update = True
             elif result == "exit": return "exit"
             elif isinstance(result, bool) and result: needs_conversation_history_update = True
+
+        # TABLETOP MODE: 3.3 Emit deferred narration after successful action processing
+        # This prevents combat narration from being shown when createEncounter fails
+        if not narration_emitted and narration_deferred:
+            print(colored("Dungeon Master:", "blue"), colored(narration_deferred, "blue"))
+            narration_emitted = True
 
         if actions_processed:
             party_tracker_data = load_json_file("party_tracker.json")
@@ -3205,7 +3254,6 @@ def main_game_loop():
             )
             process_ai_response(ai_response_after_combat, party_tracker_data, location_data_post_combat, conversation_history)
         
-        print("[DEBUG] Combat resumption complete - should enter main game loop now")
         debug("CRITICAL: Combat resumption complete - attempting to enter main loop", category="session_management")
         
     # --- END: COMBAT RESUMPTION LOGIC ---
@@ -3300,8 +3348,6 @@ def main_game_loop():
     empty_input_count = 0
     max_empty_inputs = 5
     
-    print("[DEBUG] ENTERING MAIN GAME LOOP - while True")
-
     def handle_local_command(input_text):
         """Handle local slash commands that shouldn't go to the LLM"""
         # Clean input of potential multi-PC tags (e.g., "[Character]: /command")
@@ -3584,10 +3630,8 @@ def main_game_loop():
             
         return False
     if combat_was_resumed:
-        print("[DEBUG] SUCCESS: Main loop reached after combat resumption!")
         debug("SUCCESS: Main game loop reached after combat resumption", category="session_management")
     while True:
-        print("[DEBUG] Top of main game loop iteration")
         conversation_history = truncate_dm_notes(conversation_history)
         conversation_history = remove_duplicate_messages(conversation_history)
 
@@ -3693,10 +3737,8 @@ def main_game_loop():
             time_display = f"{current_time_str[:5]} ({time_context})"  # Show HH:MM (context)
             stats_display = f"{LIGHT_OFF_GREEN}[{time_display}][HP:{current_hp}/{max_hp}][XP:{current_xp}/{next_level_xp}]{RESET_COLOR}"
             player_name_display = f"{SOLID_GREEN}{player_name_actual}{RESET_COLOR}"
-            print("[DEBUG] About to show input prompt with stats")
             user_input_text = input(f"{stats_display} {player_name_display}: ")
         else:
-            print("[DEBUG] About to show basic input prompt")
             user_input_text = input("User: ")
 
         # Skip processing if input is empty or only whitespace
