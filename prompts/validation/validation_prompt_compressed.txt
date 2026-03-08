@@ -133,12 +133,14 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 }
 
 @NPC_ARRIVAL_VALIDATION={
-   rule: Off-location known NPC arrival claims in narration MUST have matching state action in SAME response.
-   valid: Narration says "Scout Elen arrives from the trail" + moveBackgroundNPC with npcName="Scout Elen" = VALID
-   valid: Narration says "Kira joins your party" + updatePartyNPCs add with npc.name="Kira" = VALID
-   invalid: Narration claims off-location NPC arrived/joined but NO moveBackgroundNPC or updatePartyNPCs action = INVALID
+   rule: EXPLICIT off-location known NPC arrival claims in narration MUST have matching state action in SAME response.
+   explicit_arrival_verbs: [arrives, enters, joins, appears, emerges, approaches, comes, steps, arrives from, enters from, appears from, steps out, comes from]
+   valid: Narration says "Scout Elen arrives from the trail" + moveBackgroundNPC with npcName="Scout Elen" = VALID (explicit arrival verb)
+   valid: Narration says "Kira joins your party" + updatePartyNPCs add with npc.name="Kira" = VALID (explicit join verb)
+   valid: Narration mentions "Scout Elen" during travel WITHOUT explicit arrival verbs + NO action = VALID (incidental mention)
+   invalid: Narration uses EXPLICIT arrival verbs (arrives/enters/joins/etc) for off-location NPC but NO moveBackgroundNPC or updatePartyNPCs action = INVALID
    no_action_needed: NPC already present at location or in party requires NO additional action = VALID
-   fail_reason: "Narration claims [NPC] arrived/joined from off-location but missing required state action (moveBackgroundNPC or updatePartyNPCs add). Add matching action or remove arrival claim."
+   fail_reason: "Explicit arrival claim detected (arrives/enters/joins/etc) for off-location NPC but missing required state action. Add moveBackgroundNPC or updatePartyNPCs add, or rephrase without explicit arrival verbs."
 }
 
 @PARLAY_LOOP_PREVENTION={
