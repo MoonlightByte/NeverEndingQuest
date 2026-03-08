@@ -155,12 +155,14 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
 }
 
 @NPC_ARRIVAL_STATE_SYNC={
-   rule: MUST - If narration claims an off-location known NPC has ARRIVED or JOINED, the SAME response must include matching state action.
+   rule: MUST - If narration EXPLICITLY claims an off-location known NPC has ARRIVED, JOINED, ENTERED, APPEARED, or EMERGED from elsewhere, the SAME response must include matching state action.
+   explicit_arrival_verbs: [arrives, enters, joins, appears, emerges, approaches, comes, steps, walks into, arrives from, enters from, appears from, steps out, comes from]
    valid_actions: [moveBackgroundNPC (npc arrives at location), updatePartyNPCs add (npc joins party)]
-   requirement: Narration mention of off-location NPC arrival MUST be paired with corresponding state action in same JSON response.
+   requirement: EXPLICIT arrival claim (using verbs above) MUST be paired with corresponding state action in same JSON response.
    already_present: NPCs already at current location or in party require NO additional action.
    off_location_definition: NPC not currently in party roster AND not listed in current location's NPCs.
-   fail_closed: Missing state action for off-location arrival claim = validation failure and retry.
+   incidental_mention: Mentioning an off-location NPC without explicit arrival verbs during travel is ALLOWED (no action required).
+   fail_closed: Missing state action for EXPLICIT off-location arrival claim = validation failure and retry.
 }
 
 @PARTY_HANDLING={

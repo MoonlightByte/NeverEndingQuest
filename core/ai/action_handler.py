@@ -133,7 +133,7 @@ ACTION_REST = "rest"
 from utils.party_tracker_merge import _merge_party_tracker_updates
 
 
-def pre_validate_transition(parameters, party_tracker_data, conversation_history, location_graph, path_manager):
+def pre_validate_transition(parameters, party_tracker_data, conversation_history, location_graph, path_manager, raw_player_input=None):
     """
     Pre-validate a transitionLocation action using the transition intelligence agent.
     This runs BEFORE the main validator, similar to how validation runs before execution.
@@ -144,6 +144,7 @@ def pre_validate_transition(parameters, party_tracker_data, conversation_history
         conversation_history: Current conversation history
         location_graph: LocationGraph instance
         path_manager: ModulePathManager instance
+        raw_player_input: Optional raw player utterance (not DM-note-augmented) for clearer intent detection
 
     Returns:
         Tuple (approved: bool, error_message: str)
@@ -221,12 +222,14 @@ def pre_validate_transition(parameters, party_tracker_data, conversation_history
             except Exception:
                 pass
 
-        # Get player request from conversation history
-        player_request = ""
-        for msg in reversed(conversation_history):
-            if msg.get("role") == "user" and not msg.get("content", "").startswith("Error Note:"):
-                player_request = msg.get("content", "")
-                break
+        # Get player request from conversation history (or use raw input if provided)
+        # TABLETOP MODE: Prefer raw_player_input for clearer intent detection
+        player_request = raw_player_input if raw_player_input else ""
+        if not player_request:
+            for msg in reversed(conversation_history):
+                if msg.get("role") == "user" and not msg.get("content", "").startswith("Error Note:"):
+                    player_request = msg.get("content", "")
+                    break
 
         # Call transition intelligence agent
         print(f"DEBUG: [TRANSITION AGENT] Checking travel: {current_location_id} -> {new_location_id}")

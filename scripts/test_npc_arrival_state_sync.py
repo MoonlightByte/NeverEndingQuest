@@ -433,6 +433,150 @@ class TestNegatedNpcMentions(unittest.TestCase):
         self.assertTrue(is_valid, f"Negated Harvest Witnesses phrase should pass, got: {reason}")
 
 
+class TestTravelIntentFailSoft(unittest.TestCase):
+    """Task 5.1: Travel-intent fail-soft and explicit-arrival fail-closed tests."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.party_tracker = {
+            "partyMembers": ["Zeug"],
+            "partyNPCs": [],
+            "worldConditions": {
+                "currentLocationId": "LOC001",
+                "currentLocation": "Test Location",
+                "currentAreaId": "AREA01"
+            }
+        }
+        self.location_data = {"npcs": []}
+        self.module_npcs = {"Scout Elen", "Oswin Peverell", "Kira"}
+
+    def test_travel_intent_incidental_mention_valid(self):
+        """
+        Task 5.1a: Travel-intent + off-location mention + NO explicit-arrival + NO action => VALID.
+        Incidental NPC mentions during travel should not require state action.
+        """
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": "As you travel north, you pass near the outpost where Elen is stationed.",
+            "actions": []
+        }
+        
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json,
+            self.party_tracker,
+            location_data=self.location_data,
+            module_npc_names=self.module_npcs,
+            is_travel_intent=True,
+            user_utterance="go north"
+        )
+        
+        self.assertTrue(is_valid,
+            f"Travel fail-soft should allow incidental NPC references without explicit arrival, got: {reason}")
+        self.assertEqual(reason, "")
+
+    def test_travel_intent_explicit_arrival_fail_closed(self):
+        """
+        Task 5.1b: Travel-intent + explicit-arrival + NO action => INVALID (fail-closed).
+        Even during travel, explicit arrival verbs require matching action.
+        """
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": "As you travel north, Scout Elen arrives from the outpost to join you.",
+            "actions": []  # Missing moveBackgroundNPC
+        }
+        
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json,
+            self.party_tracker,
+            location_data=self.location_data,
+            module_npc_names=self.module_npcs,
+            is_travel_intent=True,
+            user_utterance="go north"
+        )
+        
+        self.assertFalse(is_valid,
+            "Travel fail-soft should NOT apply when explicit arrival verbs present")
+        self.assertIn("scout elen", reason.lower())
+
+    def test_travel_intent_explicit_arrival_with_action_valid(self):
+        """
+        Task 5.1c: Travel-intent + explicit-arrival + matching action => VALID.
+        """
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": "As you travel north, Scout Elen arrives from the outpost.",
+            "actions": [
+                {"action": "moveBackgroundNPC", "parameters": {"npcName": "Scout Elen"}}
+            ]
+        }
+        
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json,
+            self.party_tracker,
+            location_data=self.location_data,
+            module_npc_names=self.module_npcs,
+            is_travel_intent=True,
+            user_utterance="go north"
+        )
+        
+        self.assertTrue(is_valid,
+            f"Explicit arrival with matching action should be valid, got: {reason}")
+
+    def test_non_travel_strict_behavior_unchanged(self):
+        """
+        Task 5.1d: Non-travel strict behavior unchanged (is_travel_intent=False).
+        """
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": "You notice that Elen is watching from the outpost.",
+            "actions": []
+        }
+        
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json,
+            self.party_tracker,
+            location_data=self.location_data,
+            module_npc_names=self.module_npcs,
+            is_travel_intent=False,  # NOT a travel turn
+            user_utterance="look around"
+        )
+        
+        self.assertFalse(is_valid,
+            "Non-travel turns should fail-closed even without explicit arrival verbs")
+        self.assertIn("scout elen", reason.lower())
+
+    def test_complex_travel_narration_multiple_npcs(self):
+        """
+        Task 5.1 extended: Complex travel narration referencing multiple distant NPCs => VALID.
+        """
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": (
+                "As you journey through the valley, you pass the crossroads where Elen patrols, "
+                "the abandoned watchtower where Oswin once stood guard, and the grove where "
+                "villagers say Kira trains recruits. The road ahead is clear."
+            ),
+            "actions": []
+        }
+        
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json,
+            self.party_tracker,
+            location_data=self.location_data,
+            module_npc_names=self.module_npcs,
+            is_travel_intent=True,
+            user_utterance="travel to the valley"
+        )
+        
+        self.assertTrue(is_valid,
+            f"Complex travel narration with distant NPC refs should pass, got: {reason}")
+
+
 class TestContractIntegration(unittest.TestCase):
     """Integration tests combining validation and dedupe logic."""
 
@@ -469,6 +613,7 @@ if __name__ == "__main__":
     suite.addTests(loader.loadTestsFromTestCase(TestCanonicalDedupe))
     suite.addTests(loader.loadTestsFromTestCase(TestAliasResolution))
     suite.addTests(loader.loadTestsFromTestCase(TestNegatedNpcMentions))
+    suite.addTests(loader.loadTestsFromTestCase(TestTravelIntentFailSoft))
     suite.addTests(loader.loadTestsFromTestCase(TestContractIntegration))
 
     runner = unittest.TextTestRunner(verbosity=2)

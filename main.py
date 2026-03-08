@@ -993,12 +993,22 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         # Load all module NPC names for comprehensive known NPC detection
         module_npc_names = load_module_npc_names(module_name)
         
+        # TABLETOP MODE: Detect travel intent from user input
+        # Travel turns should fail-soft on NPC mentions without explicit arrival verbs
+        is_travel_intent = False
+        if user_input:
+            travel_keywords = ["go", "travel", "move", "head", "walk", "proceed", "return", "leave", "enter", "exit", "back", "to"]
+            input_lower = user_input.lower()
+            is_travel_intent = any(keyword in input_lower for keyword in travel_keywords)
+        
         # Run NPC arrival state sync validation
         is_sync_valid, sync_reason = validate_npc_arrival_state_sync(
             response_json,
             party_tracker_data,
             location_data=location_data,
-            module_npc_names=module_npc_names
+            module_npc_names=module_npc_names,
+            is_travel_intent=is_travel_intent,
+            user_utterance=user_input
         )
         
         if not is_sync_valid:
@@ -4198,25 +4208,35 @@ def main_game_loop():
                         f"Traps in this location:\n{traps_str}\n"
                         f"{threat_guidance}")
         
-            # Add common instructions
-            dm_note += (
-                "updateCharacterInfo for player and NPC character changes (inventory, stats, abilities), "
-                "updateTime for time passage, "
-                "updatePlot for story progression, discovers, and new information, "
-                "updatePartyNPCs for party composition changes to the party tracker, "
-                "levelUp for advancement, "
-                "establishHub when the party gains ownership or control of a location that could serve as a base of operations (stronghold, tavern, keep, etc.) - example: establishHub('The Silver Swan Inn', {hubType: 'tavern', description: 'Our permanent base of operations', services: ['rest', 'information'], ownership: 'party'}), "
-                "exitGame for ending sessions, and "
-                "transitionLocation should always be used when the player expresses a desire to move to a new location, "
-                "Always roleplay the NPC and NPC party rolls without asking the player. "
-                "Always ask the player character to roll for skill checks and other actions. "
-                "Proactively narrate location NPCs, start conversations, and weave plot elements into the adventure. "
-                "Use party NPCs to narrate if possible instead of always narrating from the DM's perspective, but don't overdo it. "
-                "Maintain immersive and engaging storytelling similar to an adventure novel while accurately managing game mechanics. "
-                "Update all relevant information immediately and confirm with the player before major actions. "
-                "Consider whether the party's action trigger traps in this location. "
-                "Consider updating the plot elements on every action the player and NPCs take."
-                f"{module_creation_prompt}")
+            # Add common instructions (skip for multi-PC mode to reduce prompt bulk)
+            # TABLETOP MODE: Multi-PC path uses leaner prompt without legacy instruction tail
+            is_multi_pc_mode = False
+            try:
+                from config import MULTIPLAYER_MODE
+                party_members = party_tracker_data.get('partyMembers', [])
+                is_multi_pc_mode = MULTIPLAYER_MODE and len(party_members) > 1
+            except ImportError:
+                is_multi_pc_mode = False
+            
+            if not is_multi_pc_mode:
+                dm_note += (
+                    "updateCharacterInfo for player and NPC character changes (inventory, stats, abilities), "
+                    "updateTime for time passage, "
+                    "updatePlot for story progression, discovers, and new information, "
+                    "updatePartyNPCs for party composition changes to the party tracker, "
+                    "levelUp for advancement, "
+                    "establishHub when the party gains ownership or control of a location that could serve as a base of operations (stronghold, tavern, keep, etc.) - example: establishHub('The Silver Swan Inn', {hubType: 'tavern', description: 'Our permanent base of operations', services: ['rest', 'information'], ownership: 'party'}), "
+                    "exitGame for ending sessions, and "
+                    "transitionLocation should always be used when the player expresses a desire to move to a new location, "
+                    "Always roleplay the NPC and NPC party rolls without asking the player. "
+                    "Always ask the player character to roll for skill checks and other actions. "
+                    "Proactively narrate location NPCs, start conversations, and weave plot elements into the adventure. "
+                    "Use party NPCs to narrate if possible instead of always narrating from the DM's perspective, but don't overdo it. "
+                    "Maintain immersive and engaging storytelling similar to an adventure novel while accurately managing game mechanics. "
+                    "Update all relevant information immediately and confirm with the player before major actions. "
+                    "Consider whether the party's action trigger traps in this location. "
+                    "Consider updating the plot elements on every action the player and NPCs take."
+                    f"{module_creation_prompt}")
         else:
             dm_note = "Dungeon Master Note: Remember to take actions if necessary such as updating the plot, time, character sheets, and location if changes occur."
 
@@ -4258,6 +4278,10 @@ def main_game_loop():
         retry_count = 0
         valid_response_received = False 
         ai_response_content = None
+        
+        # TABLETOP MODE: Retry de-looping state (Task 3.3)
+        last_validation_reason = None
+        repeated_reason_count = 0
     
         while retry_count < 5 and not valid_response_received:
             # Pass validation retry count for intelligent model escalation
@@ -4352,12 +4376,17 @@ def main_game_loop():
                         # Found transitionLocation - call transition intelligence agent
                         from core.ai.action_handler import pre_validate_transition
 
+                        # TABLETOP MODE: Pass raw player input for pre-validation (not DM-note-augmented)
+                        # This provides clearer intent to the transition validator
+                        raw_player_input_for_transition = user_input_text
+
                         transition_approved, transition_error = pre_validate_transition(
                             action.get("parameters", {}),
                             party_tracker_data,
                             conversation_history,
                             location_graph,
-                            path_manager
+                            path_manager,
+                            raw_player_input=raw_player_input_for_transition
                         )
 
                         if not transition_approved:
@@ -4485,10 +4514,41 @@ def main_game_loop():
                 # Validation failed with a reason
                 debug(f"VALIDATION: Validation failed. Reason: {validation_reason}", category="ai_validation")
                 status_retrying(retry_count + 1, 5)
-                # CRITICAL: Save the failed assistant response so the AI can see what it did wrong
-                if ai_response_content:
-                    conversation_history.append({"role": "assistant", "content": ai_response_content})
-                conversation_history.append({"role": "user", "content": f"Error Note: Your previous response failed validation. Reason: {validation_reason}. Please adjust your response accordingly."})
+                
+                # TABLETOP MODE: Task 3.3 - Repeated reason short-circuit detection
+                # Check if this is the same deterministic reason as last time
+                normalized_reason = validation_reason.strip().lower()
+                if last_validation_reason and normalized_reason == last_validation_reason:
+                    repeated_reason_count += 1
+                    if repeated_reason_count >= 1:  # Same reason twice = short-circuit
+                        error(f"VALIDATION: Same deterministic reason repeated twice ({repeated_reason_count}), short-circuiting retry loop", category="ai_validation")
+                        # Force exhaustion by setting retry_count to max
+                        retry_count = 5
+                        break  # Exit retry loop immediately
+                else:
+                    # New reason - reset counter and store
+                    last_validation_reason = normalized_reason
+                    repeated_reason_count = 0
+                
+                # TABLETOP MODE: Task 3.1 - Do NOT append failed assistant output for deterministic guard failures
+                # The AI only needs the correction note, not the invalid response
+                
+                # TABLETOP MODE: Task 3.2 - Concise normalized correction note
+                # Use shorter, stable correction message to reduce token bloat
+                is_deterministic = (
+                    "npc arrival state sync" in normalized_reason or
+                    "transition pre-validation" in normalized_reason or
+                    "validation failed" in normalized_reason
+                )
+                
+                if is_deterministic:
+                    # Concise deterministic guard correction
+                    correction_note = f"[CORRECTION REQUIRED]: {validation_reason}"
+                else:
+                    # Standard correction for non-deterministic failures
+                    correction_note = f"Error Note: {validation_reason}. Please adjust your response."
+                
+                conversation_history.append({"role": "user", "content": correction_note})
                 save_conversation_history(conversation_history)
                 retry_count += 1
             else: 

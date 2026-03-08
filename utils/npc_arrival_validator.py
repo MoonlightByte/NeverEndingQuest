@@ -28,6 +28,25 @@ _NPC_MENTION_STOPWORDS: Set[str] = {
 }
 
 
+_EXPLICIT_ARRIVAL_VERBS: Set[str] = {
+    "arrive", "arrives", "arrived", "arriving",
+    "enter", "enters", "entered", "entering",
+    "join", "joins", "joined", "joining",
+    "appear", "appears", "appeared", "appearing",
+    "emerge", "emerges", "emerged", "emerging",
+    "approach", "approaches", "approached", "approaching",
+    "come", "comes", "came", "coming",
+    "step", "steps", "stepped", "stepping",
+    "walk", "walks", "walked", "walking",
+    "arrive from", "arrives from", "arrived from", "arriving from",
+    "enter from", "enters from", "entered from", "entering from",
+    "emerge from", "emerges from", "emerged from", "emerging from",
+    "appear from", "appears from", "appeared from", "appearing from",
+    "step out", "steps out", "stepped out", "stepping out",
+    "come from", "comes from", "came from", "coming from"
+}
+
+
 class IdentityResolutionResult:
     """
     Result container for NPC identity resolution.
@@ -219,11 +238,47 @@ def resolve_npc_identity_batch(
     return matched_canonical, ambiguous_inputs, unmatched_inputs
 
 
+def _has_explicit_arrival_semantics(narration: str, npc_mentions: Set[str]) -> bool:
+    """
+    Detect if narration contains explicit arrival semantics for NPC mentions.
+    
+    Explicit arrival = verbs like arrive, enter, join, appear, emerge, approach, etc.
+    These verbs signal intentional NPC movement rather than incidental narration.
+    
+    Args:
+        narration: The narration text
+        npc_mentions: Set of NPC names/tokens mentioned (lowercase)
+    
+    Returns:
+        True if any explicit arrival verb found in proximity to NPC mentions
+    """
+    narration_lower = narration.lower()
+    
+    # Check for explicit arrival verbs in the narration
+    for verb_phrase in _EXPLICIT_ARRIVAL_VERBS:
+        if verb_phrase in narration_lower:
+            # If an arrival verb exists, verify it's near an NPC mention
+            # to avoid false positives on generic "arrive" usage
+            for npc in npc_mentions:
+                # Look for patterns like "NPC arrives" or "arrives NPC"
+                # within reasonable proximity (within 100 chars of mention)
+                for match in re.finditer(r'\b' + re.escape(npc) + r'\b', narration_lower):
+                    start = max(0, match.start() - 100)
+                    end = min(len(narration_lower), match.end() + 100)
+                    context = narration_lower[start:end]
+                    if verb_phrase in context:
+                        return True
+    
+    return False
+
+
 def validate_npc_arrival_state_sync(
     response_json: Dict[str, Any],
     party_tracker_data: Dict[str, Any],
     location_data: Optional[Dict[str, Any]] = None,
-    module_npc_names: Optional[Set[str]] = None
+    module_npc_names: Optional[Set[str]] = None,
+    is_travel_intent: bool = False,
+    user_utterance: Optional[str] = None
 ) -> Tuple[bool, str]:
     """
     Validate that narration does not introduce off-location known NPCs
@@ -234,6 +289,8 @@ def validate_npc_arrival_state_sync(
         party_tracker_data: Current party tracker state
         location_data: Current location data with npcs list (optional)
         module_npc_names: Set of all canonical NPC names in the module (optional)
+        is_travel_intent: Whether this is a travel/transition turn (fail-soft for non-explicit arrivals)
+        user_utterance: Optional raw user utterance for detecting travel intent
 
     Returns:
         Tuple of (is_valid, reason_message)
@@ -256,6 +313,10 @@ def validate_npc_arrival_state_sync(
 
     if not mentioned_npcs_lower:
         return (True, "")
+
+    # TABLETOP MODE: Travel fail-soft detection
+    # Check for explicit arrival semantics BEFORE processing exemptions
+    has_explicit_arrival = _has_explicit_arrival_semantics(narration, mentioned_npcs_lower)
 
     missing_actions: Set[str] = set()
     ambiguous_mentions = set()
@@ -331,6 +392,14 @@ def validate_npc_arrival_state_sync(
             missing_actions.add(canonical_name)
 
     if missing_actions:
+        # TABLETOP MODE: Travel fail-soft for non-explicit arrivals
+        # If this is a travel-intent turn and no explicit arrival semantics found,
+        # fail-soft (allow) to prevent blocking legitimate travel narration
+        if is_travel_intent and not has_explicit_arrival:
+            # Log but allow - travel turns may reference distant NPCs incidentally
+            return (True, "")
+        
+        # STANDARD PATH: Fail-closed for explicit arrivals without matching action
         reason = _format_failure_reason(sorted(missing_actions))
         return (False, reason)
 
