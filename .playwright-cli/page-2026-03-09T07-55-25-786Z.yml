@@ -1,0 +1,352 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - heading "NeverEndingQuest v0.3.5" [level=1] [ref=e3]
+    - generic [ref=e4]:
+      - generic [ref=e5]: Harvest Warden's Path (Fields of Supplication)
+      - generic [ref=e6]: 2 Springmonth 1492 - 07:35:00 [BOO001:V03]
+    - generic [ref=e7]:
+      - generic [ref=e8]: Connected
+      - button "Game Running" [disabled] [ref=e305] [cursor=pointer]
+      - generic [ref=e11]:
+        - button "Save" [ref=e12] [cursor=pointer]
+        - button "Load" [ref=e13] [cursor=pointer]
+        - button "Reset" [ref=e14] [cursor=pointer]
+      - generic [ref=e15]:
+        - button "Settings" [ref=e16] [cursor=pointer]:
+          - img [ref=e17]
+          - text: Settings
+        - option "Browser (Free)" [selected]
+        - option "OpenAI Standard"
+        - option "OpenAI HD"
+        - option "Chrome (recommended)" [selected]
+        - option "Edge"
+        - option "System Default"
+        - option "Albert (en-US)" [selected]
+        - option "Bad News (en-US)"
+        - option "Bahh (en-US)"
+        - option "Bells (en-US)"
+        - option "Boing (en-US)"
+        - option "Bubbles (en-US)"
+        - option "Cellos (en-US)"
+        - option "Daniel (en-GB)"
+        - option "Eddy (English (United Kingdom)) (en-GB)"
+        - option "Eddy (English (United States)) (en-US)"
+        - option "Eddy (Spanish (Mexico)) (es-MX)"
+        - option "Eddy (Spanish (Spain)) (es-ES)"
+        - option "Flo (English (United Kingdom)) (en-GB)"
+        - option "Flo (English (United States)) (en-US)"
+        - option "Flo (Spanish (Mexico)) (es-MX)"
+        - option "Flo (Spanish (Spain)) (es-ES)"
+        - option "Fred (en-US)"
+        - option "Good News (en-US)"
+        - option "Grandma (English (United Kingdom)) (en-GB)"
+        - option "Grandma (English (United States)) (en-US)"
+        - option "Grandma (Spanish (Mexico)) (es-MX)"
+        - option "Grandma (Spanish (Spain)) (es-ES)"
+        - option "Grandpa (English (United Kingdom)) (en-GB)"
+        - option "Grandpa (English (United States)) (en-US)"
+        - option "Grandpa (Spanish (Mexico)) (es-MX)"
+        - option "Grandpa (Spanish (Spain)) (es-ES)"
+        - option "Jester (en-US)"
+        - option "Junior (en-US)"
+        - option "Karen (en-AU)"
+        - option "Kathy (en-US)"
+        - option "Moira (en-IE)"
+        - option "Mónica (es-ES)"
+        - option "Organ (en-US)"
+        - option "Paulina (es-MX)"
+        - option "Ralph (en-US)"
+        - option "Reed (English (United Kingdom)) (en-GB)"
+        - option "Reed (English (United States)) (en-US)"
+        - option "Reed (Spanish (Mexico)) (es-MX)"
+        - option "Reed (Spanish (Spain)) (es-ES)"
+        - option "Rishi (en-IN)"
+        - option "Rocko (English (United Kingdom)) (en-GB)"
+        - option "Rocko (English (United States)) (en-US)"
+        - option "Rocko (Spanish (Mexico)) (es-MX)"
+        - option "Rocko (Spanish (Spain)) (es-ES)"
+        - option "Samantha (en-US)"
+        - option "Sandy (English (United Kingdom)) (en-GB)"
+        - option "Sandy (English (United States)) (en-US)"
+        - option "Sandy (Spanish (Mexico)) (es-MX)"
+        - option "Sandy (Spanish (Spain)) (es-ES)"
+        - option "Shelley (English (United Kingdom)) (en-GB)"
+        - option "Shelley (English (United States)) (en-US)"
+        - option "Shelley (Spanish (Mexico)) (es-MX)"
+        - option "Shelley (Spanish (Spain)) (es-ES)"
+        - option "Superstar (en-US)"
+        - option "Tessa (en-ZA)"
+        - option "Trinoids (en-US)"
+        - option "Whisper (en-US)"
+        - option "Wobble (en-US)"
+        - option "Zarvox (en-US)"
+      - button "Toolkit" [ref=e19] [cursor=pointer]:
+        - img [ref=e20]
+        - generic [ref=e22]: Toolkit
+      - button "× Exit" [ref=e23] [cursor=pointer]
+  - generic [ref=e24]:
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e28]:
+          - generic [ref=e30]:
+            - generic [ref=e589] [cursor=pointer]: Anselara
+            - generic [ref=e591] [cursor=pointer]: Oswin Peverell
+            - generic [ref=e593] [cursor=pointer]: Amanita Gorse
+            - generic [ref=e595] [cursor=pointer]: Edda Ravenscroft
+            - generic [ref=e597] [cursor=pointer]: Wandering Supplicant
+          - button ">" [ref=e41] [cursor=pointer]
+        - generic [ref=e43]:
+          - generic [ref=e45]: Quick Rolls
+          - generic [ref=e46]:
+            - button "D20" [ref=e47] [cursor=pointer]
+            - button "D12" [ref=e48] [cursor=pointer]
+            - button "D10" [ref=e49] [cursor=pointer]
+            - button "D8" [ref=e50] [cursor=pointer]
+            - button "D6" [ref=e51] [cursor=pointer]
+            - button "D4" [ref=e52] [cursor=pointer]
+            - button "Clear" [ref=e53] [cursor=pointer]
+      - generic [ref=e55]:
+        - generic [ref=e58]: "--- Previous Session Messages ---"
+        - generic [ref=e59]:
+          - generic [ref=e60]: ⚔️
+          - generic [ref=e61]:
+            - generic [ref=e63]: Anselara
+            - generic [ref=e64]: We go back to the Vale, replenish our energy at the Tavern with a hearty breakfast, then on to our Father's shrine to rest and plan.
+        - generic [ref=e65]:
+          - img "DM" [ref=e67]
+          - generic [ref=e68]:
+            - generic [ref=e69]:
+              - generic [ref=e70]: Dungeon Master
+              - generic [ref=e71]: DM
+              - button "▶" [ref=e72] [cursor=pointer]
+              - button "Generate Image" [ref=e73] [cursor=pointer]
+            - generic [ref=e74]: Dawn spills pale light across the Harvest Warden's Path, where battered shrines and the fading chill of the Harvest Shade's defeat still linger in the air. The party stands amid the muddy trail, the oppressive darkness now lifted, but weariness from the spectral battle heavy on their shoulders. The Vale lies westward, its promise of rest and hot food beckoning beyond the haunted fields. Yet, the memory of the Pumpkin King's curse and the quest for the Ember Gourd press close, unresolved and urgent. What will you do next as the mists thin and the path stands open before you?
+        - generic [ref=e75]:
+          - generic [ref=e76]: ⚔️
+          - generic [ref=e77]:
+            - generic [ref=e79]: Anselara
+            - generic [ref=e80]: We go back to the Vale, replenish our energy at the Tavern with a hearty breakfast, then on to our Father's shrine to rest and plan.
+        - generic [ref=e81]:
+          - generic [ref=e82]: ⚔️
+          - generic [ref=e83]:
+            - generic [ref=e85]: Anselara
+            - generic [ref=e86]: Hellooo?
+        - generic [ref=e87]:
+          - generic [ref=e88]: ⚔️
+          - generic [ref=e89]:
+            - generic [ref=e91]: Anselara
+            - generic [ref=e92]: OY! DM WAKEUP!
+        - generic [ref=e93]:
+          - img "DM" [ref=e95]
+          - generic [ref=e96]:
+            - generic [ref=e97]:
+              - generic [ref=e98]: Dungeon Master
+              - generic [ref=e99]: DM
+              - button "▶" [ref=e100] [cursor=pointer]
+              - button "Generate Image" [ref=e101] [cursor=pointer]
+            - generic [ref=e102]: Mist coils around the battered shrines of the Harvest Warden's Path as the party gathers themselves after banishing the Harvest Shade. The oppressive gloom has lifted, but the muddy trail still bears signs of recent struggle and lingering dread. With the path westward clear, the quest for the Ember Gourd hangs in the balance, and the Pumpkin King's curse weighs heavily on every breath. Fatigue and uncertainty settle over the group, but the Vale and its fleeting comforts lie within reach. What will you do next in the quiet after the storm?
+        - generic [ref=e103]:
+          - generic [ref=e104]: ⚔️
+          - generic [ref=e105]:
+            - generic [ref=e107]: Anselara
+            - generic [ref=e108]: e go back to the Vale, replenish our energy at the Tavern with a hearty breakfast, then on to our Father's shrine to rest and plan.
+        - generic [ref=e109]:
+          - img "DM" [ref=e111]
+          - generic [ref=e112]:
+            - generic [ref=e113]:
+              - generic [ref=e114]: Dungeon Master
+              - generic [ref=e115]: DM
+              - button "▶" [ref=e116] [cursor=pointer]
+              - button "Generate Image" [ref=e117] [cursor=pointer]
+            - generic [ref=e118]: Dawn breaks cold and gray over the Harvest Warden's Path, where battered shrines and muddy ruts mark the ground beneath Anselara, Zeug, and their companions. The oppressive presence of the Harvest Shade has been banished, yet exhaustion and the weight of the Pumpkin King's lingering curse cling to the air. The Vale lies just beyond the haunted fields, beckoning with the promise of rest and strategy, while the quest for the Ember Gourd remains urgent and unresolved. Silence settles as the party gathers themselves, the path west now clear. What will you do next?
+        - generic [ref=e119]:
+          - generic [ref=e120]: ⚔️
+          - generic [ref=e121]:
+            - generic [ref=e123]: Anselara
+            - generic [ref=e124]: We go back to the Vale, replenish our energy at the Tavern with a hearty breakfast, then on to our Father's shrine to rest and plan.
+        - generic [ref=e125]:
+          - img "DM" [ref=e127]
+          - generic [ref=e128]:
+            - generic [ref=e129]:
+              - generic [ref=e130]: Dungeon Master
+              - generic [ref=e131]: DM
+              - button "▶" [ref=e132] [cursor=pointer]
+              - button "Generate Image" [ref=e133] [cursor=pointer]
+            - generic [ref=e134]: There are no Harvest Witnesses on the Harvest Warden's Path. Only Anselara, Zeug, and their close companions stand among the battered shrines, the morning mist curling around their boots. The supernatural threat has passed, and the way to the Vale is open. The next move belongs to you.
+        - generic [ref=e135]:
+          - generic [ref=e136]: ⚔️
+          - generic [ref=e137]:
+            - generic [ref=e139]: zeug
+            - generic [ref=e140]: We go back to the Vale, replenish our energy at the Tavern with a hearty breakfast, then on to our Father's shrine to rest and plan.
+        - generic [ref=e141]:
+          - img "DM" [ref=e143]
+          - generic [ref=e144]:
+            - generic [ref=e145]:
+              - generic [ref=e146]: Dungeon Master
+              - generic [ref=e147]: DM
+              - button "▶" [ref=e148] [cursor=pointer]
+              - button "Generate Image" [ref=e149] [cursor=pointer]
+            - generic [ref=e150]: No Harvest Witnesses stand upon the Harvest Warden's Path--only Zeug, Anselara, and their loyal companions remain among the battered shrines and muddy ruts. The road to the Vale is clear. What will you do next?
+        - generic [ref=e151]:
+          - generic [ref=e152]: ⚔️
+          - generic [ref=e153]:
+            - generic [ref=e155]: zeug
+            - generic [ref=e156]: We walk back down the road to the Vale
+        - generic [ref=e157]:
+          - img "DM" [ref=e159]
+          - generic [ref=e160]:
+            - generic [ref=e161]:
+              - generic [ref=e162]: Dungeon Master
+              - generic [ref=e163]: DM
+              - button "▶" [ref=e164] [cursor=pointer]
+              - button "Generate Image" [ref=e165] [cursor=pointer]
+            - generic [ref=e166]: Mist lingers over the battered shrines of the Harvest Warden's Path, where Zeug, Anselara, and their companions stand in the cold light of early morning. The oppressive chill left by the Harvest Shade has only just lifted, its spectral threat broken in a desperate fight. Wounds ache, nerves are frayed, and the memory of the Shade's scythe lingers in the silence. The quest for the Ember Gourd presses on, but the road west toward the Vale offers a promise of respite and strategy. What will you do next?
+        - generic [ref=e167]:
+          - generic [ref=e168]: ⚔️
+          - generic [ref=e169]:
+            - generic [ref=e171]: Anselara
+            - generic [ref=e172]: We walk back down the road to the Vale
+        - generic [ref=e175]: "--- Current Session ---"
+        - generic [ref=e318]: Game started! You can now enter commands.
+        - generic [ref=e431]:
+          - img "DM" [ref=e433]
+          - generic [ref=e434]:
+            - generic [ref=e435]:
+              - generic [ref=e436]: Dungeon Master
+              - generic [ref=e437]: DM
+              - button "▶" [ref=e438] [cursor=pointer]
+              - button "Generate Image" [ref=e439] [cursor=pointer]
+            - generic [ref=e440]: The party stands on the Harvest Warden's Path, where dawn mist curls around battered shrines and muddy ruts. The oppressive threat of the Harvest Shade has been shattered, but fatigue and the weight of the Pumpkin King's lingering curse hang in the air. Wounds ache and nerves are frayed, yet the quest for the Ember Gourd remains urgent and unresolved. The Vale lies just beyond the haunted fields, promising rest and strategy, while the road deeper into the cursed lands beckons. What will you do next?
+        - generic [ref=e482]:
+          - generic [ref=e483]: ⚔️
+          - generic [ref=e484]:
+            - generic [ref=e486]: Anselara
+            - generic [ref=e487]: look around the room
+        - generic [ref=e560]:
+          - generic [ref=e561]: ⚔️
+          - generic [ref=e562]:
+            - generic [ref=e564]: Anselara
+            - generic [ref=e565]: alpha beta
+        - generic [ref=e577]:
+          - img "DM" [ref=e579]
+          - generic [ref=e580]:
+            - generic [ref=e581]:
+              - generic [ref=e582]: Dungeon Master
+              - generic [ref=e583]: DM
+              - button "▶" [ref=e584] [cursor=pointer]
+              - button "Generate Image" [ref=e585] [cursor=pointer]
+            - generic [ref=e586]: No spirits or witnesses gather on the Harvest Warden's Path. Only Anselara, Zeug, and their living companions stand among the mud and battered shrines, with the morning mist curling low. The supernatural hush is heavy, and the next move belongs to the party.
+      - generic [ref=e176]:
+        - generic [ref=e177]:
+          - button "zeug" [ref=e179] [cursor=pointer]
+          - button "Anselara" [ref=e181] [cursor=pointer]
+        - button "+" [ref=e182] [cursor=pointer]
+      - generic [ref=e183]:
+        - textbox "Enter your command..." [active] [ref=e587]
+        - button "Send" [ref=e185] [cursor=pointer]
+    - generic [ref=e186]: "||"
+    - generic [ref=e187]:
+      - generic [ref=e188]:
+        - button "Character" [ref=e189] [cursor=pointer]
+        - button "Inventory" [ref=e190] [cursor=pointer]
+        - button "Spells & Magic" [ref=e191] [cursor=pointer]
+        - button "NPCs" [ref=e192] [cursor=pointer]
+        - button "Journal" [ref=e193] [cursor=pointer]
+        - button "Debug" [ref=e194] [cursor=pointer]
+      - generic [ref=e320]:
+        - generic [ref=e321]:
+          - generic [ref=e200]:
+            - img [ref=e201]
+            - generic [ref=e202] [cursor=pointer]:
+              - button "Upload" [ref=e203]
+              - button "Create" [ref=e204]
+              - button "Download" [ref=e205]
+          - generic [ref=e322]:
+            - generic [ref=e324]: Anselara
+            - generic [ref=e325]:
+              - generic [ref=e326]: Level 3 Half Elf/Human Wizard
+              - generic [ref=e327]: "XP: 470 / 300"
+              - generic [ref=e328]: "Profession: Folk Hero"
+              - generic [ref=e329]: "Alignment: Neutral Good"
+        - generic [ref=e330]:
+          - generic [ref=e331] [cursor=pointer]:
+            - generic [ref=e332]: STR
+            - generic [ref=e333]: "10"
+            - generic [ref=e334]: "+0"
+          - generic [ref=e335] [cursor=pointer]:
+            - generic [ref=e336]: DEX
+            - generic [ref=e337]: "19"
+            - generic [ref=e338]: "+4"
+          - generic [ref=e339] [cursor=pointer]:
+            - generic [ref=e340]: CON
+            - generic [ref=e341]: "9"
+            - generic [ref=e342]: "-1"
+          - generic [ref=e343] [cursor=pointer]:
+            - generic [ref=e344]: INT
+            - generic [ref=e345]: "23"
+            - generic [ref=e346]: "+6"
+          - generic [ref=e347] [cursor=pointer]:
+            - generic [ref=e348]: WIS
+            - generic [ref=e349]: "10"
+            - generic [ref=e350]: "+0"
+          - generic [ref=e351] [cursor=pointer]:
+            - generic [ref=e352]: CHA
+            - generic [ref=e353]: "18"
+            - generic [ref=e354]: "+4"
+        - generic [ref=e355]:
+          - generic [ref=e356]:
+            - generic [ref=e357]: HP
+            - generic [ref=e358]: 17/17
+          - generic [ref=e361]:
+            - generic [ref=e362]: AC
+            - generic [ref=e363]: "15"
+          - generic [ref=e364]:
+            - generic [ref=e365]: INIT
+            - generic [ref=e366]: "+4"
+          - generic [ref=e367]:
+            - generic [ref=e368]: GP
+            - generic [ref=e369]: "0"
+          - generic [ref=e370]:
+            - generic [ref=e371]: SP
+            - generic [ref=e372]: "0"
+          - generic [ref=e373]:
+            - generic [ref=e374]: CP
+            - generic [ref=e375]: "0"
+        - generic [ref=e376]:
+          - generic [ref=e377]:
+            - heading "Weapons & Attacks" [level=4] [ref=e378]
+            - generic [ref=e379]:
+              - generic [ref=e381]: Quarterstaff (1d4+0)
+              - generic [ref=e383]: Ray of Frost (1d4+0)
+              - generic [ref=e385]: Magic Missile (1d4+0)
+          - generic [ref=e386]:
+            - heading "Ammunition" [level=4] [ref=e387]
+            - generic [ref=e390]: No ammunition.
+        - generic [ref=e391]:
+          - heading "Saving Throws" [level=4] [ref=e392]
+          - generic [ref=e393]:
+            - generic [ref=e394] [cursor=pointer]:
+              - generic [ref=e395]: Strength ○
+              - generic [ref=e396]: "+0"
+            - generic [ref=e397] [cursor=pointer]:
+              - generic [ref=e398]: Dexterity ○
+              - generic [ref=e399]: "+4"
+            - generic [ref=e400] [cursor=pointer]:
+              - generic [ref=e401]: Constitution ○
+              - generic [ref=e402]: "-1"
+            - generic [ref=e403] [cursor=pointer]:
+              - generic [ref=e404]: Intelligence ●
+              - generic [ref=e405]: "+8"
+            - generic [ref=e406] [cursor=pointer]:
+              - generic [ref=e407]: Wisdom ●
+              - generic [ref=e408]: "+2"
+            - generic [ref=e409] [cursor=pointer]:
+              - generic [ref=e410]: Charisma ○
+              - generic [ref=e411]: "+4"
+        - generic [ref=e413]:
+          - heading "Background" [level=4] [ref=e414]
+          - generic [ref=e417]: Rustic Hospitality
+        - generic [ref=e418]:
+          - button "Edit" [ref=e419] [cursor=pointer]
+          - button "Download PDF" [ref=e420] [cursor=pointer]
+  - text: ○ ○ ✓

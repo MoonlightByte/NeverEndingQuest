@@ -1,0 +1,87 @@
+{
+  "module": "The_Thornwood_Watch",
+  "timestamp": "2026-03-09T20:42:55.374711",
+  "summary": {
+    "total_files": 35,
+    "total_passed": 36,
+    "total_failed": 0
+  },
+  "results": {
+    "area": {
+      "files": [
+        "TW001_BU.json (areas/)",
+        "TW001.json (areas/)",
+        "RO001_BU.json (areas/)",
+        "NCW001.json (areas/)",
+        "NCW001_BU.json (areas/)",
+        "RO001.json (areas/)"
+      ],
+      "passed": 6,
+      "failed": 0,
+      "errors": []
+    },
+    "reference_integrity": {
+      "files": [],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "monster": {
+      "files": [
+        "twig_blight.json",
+        "bandit_captain.json",
+        "guard.json",
+        "wolf.json",
+        "lookout.json",
+        "malarok_the_corruptor.json",
+        "tainted_stirge.json",
+        "bandit_sentry.json",
+        "tree_blight.json",
+        "tainted_naiad.json",
+        "corrupted_wolf.json",
+        "corrupted_cave_fisher.json",
+        "awakened_shrub.json",
+        "bandit_captain_gorvek.json",
+        "shadow_corrupted_wolf.json",
+        "elite_bandit_bodyguard.json",
+        "sentry.json",
+        "bandit.json",
+        "bandit_warrior.json",
+        "corrupted_ranger_thane.json",
+        "ashbound_bandit.json",
+        "wounded_bandit.json",
+        "whispering_ashling.json",
+        "corrupted_owlbear.json"
+      ],
+      "passed": 24,
+      "failed": 0,
+      "errors": []
+    },
+    "map": {
+      "files": [
+        "map_NCW001.json",
+        "map_RO001.json",
+        "map_TW001.json"
+      ],
+      "passed": 3,
+      "failed": 0,
+      "errors": []
+    },
+    "plot": {
+      "files": [
+        "module_plot.json"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "module_context": {
+      "files": [
+        "module_context.json"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    }
+  }
+}
