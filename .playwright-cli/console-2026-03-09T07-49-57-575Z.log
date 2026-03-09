@@ -1,1 +1,21 @@
 [    3750ms] [ERROR] Failed to load resource: the server responded with a status of 404 (NOT FOUND) @ http://localhost:8357/favicon.ico:0
+[ 6389068ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHz7k3:0
+[ 6391457ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHz8Lb:0
+[ 6393821ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHz8wZ:0
+[ 6398827ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHzA8l:0
+[ 6403833ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHzBMx:0
+[ 6443342ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHzL0H:0
+[ 6445874ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHzLdt:0
+[ 6449730ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHzMa7:0
+[ 6454734ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHzNoI:0
+[ 6459740ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHzP0V:0
+[ 6464749ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHzQEj:0
+[ 6469752ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHzRSy:0
+[ 6474756ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHzSh9:0
+[ 6479761ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHzTvL:0
+[ 6484768ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHzV7a:0
+[ 6489773ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHzWLn:0
+[ 6494777ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHzXZz:0
+[ 6499784ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHzYoA:0
+[ 6504789ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHza0P:0
+[ 6509793ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8357/socket.io/?EIO=4&transport=polling&t=PpHzbEc:0

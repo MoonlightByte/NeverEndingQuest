@@ -47,12 +47,15 @@ Use that file as the canonical step list. If this skill and the checklist diverg
 
 ## Execution Contract
 
-1. **Preflight**
-   - Confirm Playwright CLI availability:
-     - Prefer `playwright --version`
-     - Fallback: `npx playwright --version`
-   - Ensure Chromium runtime is installed for CLI runs:
-     - `npx playwright install chromium`
+1. **Preflight + port hygiene**
+    - Confirm Playwright CLI availability:
+      - Prefer `playwright --version`
+      - Fallback: `npx playwright --version`
+    - Ensure Chromium runtime is installed for CLI runs:
+      - `npx playwright install chromium`
+    - Check for stale listeners on `8357`:
+      - `lsof -t -nP -iTCP:8357 -sTCP:LISTEN`
+      - If stale/duplicate automation servers exist, terminate listeners before starting a fresh smoke server.
     - Confirm target server reachable at `http://localhost:8357`.
 
 2. **If server unavailable**
@@ -77,12 +80,20 @@ Use that file as the canonical step list. If this skill and the checklist diverg
    - Return compact pass/fail list with one line per check.
    - Add a final verdict: `PASS`, `PASS WITH WARNINGS`, or `FAIL`.
 
+6. **Post-run cleanup (required)**
+   - Stop automation-started server process(es) used for smoke.
+   - Re-check `8357` listener state and ensure no leftover smoke server remains.
+   - Recommended commands:
+     - `lsof -t -nP -iTCP:8357 -sTCP:LISTEN`
+     - `kill -TERM <pid>` (then `kill -KILL <pid>` only if needed)
+
 ## Guardrails
 
 - Do not change gameplay/state files unless explicitly asked.
 - Do not commit code as part of smoke execution.
 - Keep output concise and actionable.
 - Prefer deterministic checks over subjective UI judgments.
+- Do not kill user browser processes; only terminate stale/listening NEQ server processes on `8357`.
 
 ## Notes
 
