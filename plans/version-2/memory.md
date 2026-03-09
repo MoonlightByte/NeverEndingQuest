@@ -2,7 +2,8 @@
 
 Date: 2026-02-13
 Project: NeverEndingQuest (Tabletop merge-safe branch)
-Status: Planning refresh (schema + retrieval first)
+Status: Planning in progress (schema + retrieval first)
+Track reference: `plans/version-2/v2-narrative-track.md`
 
 ## Titan v2 Alignment Stub
 
@@ -41,7 +42,9 @@ Human memory inspiration (fragile + robust) is explicitly modeled:
 4. Retrieval is token-budgeted by design.
 5. Raw history completeness is allowed; narrator context is always filtered.
 
-## Current Baseline (Audited)
+## Current Baseline
+
+Audited baseline:
 
 Existing sources already provide strong raw material:
 
@@ -52,6 +55,32 @@ Existing sources already provide strong raw material:
 - Companion memory systems: `core/memories/*`, `data/companion_memories/*`
 - Role transitions/tabletop identity surfaces: `utils/pc_manager.py`, `web/routes/tabletop_party_routes.py`
 - SQLite precedent: `core/managers/world_observer.py`, `data/world_surveillance.db`
+- Continuity substrate (new): ingest/readiness continuity contract and gate outputs
+
+## Continuity Substrate Update (Initial Build)
+
+A module continuity baseline is now available and should be treated as pre-memory quality input:
+
+1. Ingest emits `continuity_contract` metadata.
+2. Sidecar audit validates continuity payload shape.
+3. Readiness and bulk validators expose continuity gate outcomes.
+
+For memory architecture planning, continuity outcomes should be used as:
+- ingestion quality signals,
+- module readiness prerequisites,
+- and candidate ranking hints for future narrative-thread synthesis.
+
+This layer is not a memory event source by itself; it is metadata that improves trust in upstream narrative structure.
+
+## Next Milestone
+
+Integrate continuity gate outcomes into memory ingestion/retrieval quality signals so narrative retrieval can prefer continuity-healthy module context.
+
+## Exit Criteria
+
+- Memory retrieval contracts can consume continuity quality metadata deterministically.
+- Continuity quality does not override mechanical truth or write boundaries.
+- Retrieval remains bounded and token-safe with continuity-aware ranking.
 
 ## Locked Build Order
 

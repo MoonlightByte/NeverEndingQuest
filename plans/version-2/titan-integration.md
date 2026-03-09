@@ -1,9 +1,10 @@
 # NEQ v2 Titan Integration Plan
 
-Status: Strategic integration plan for next-version rebuild (post-v1 testing)
+Status: Planning in progress for next-version rebuild (post-v1 testing)
 Date: 2026-02-26
 Owner: NEQ MP TTRPG architecture (OpenRouter + EGO + world-narrative + memory + seeding)
 Scope: Integration umbrella for existing plans and OpenSpec drafts
+Track reference: `plans/version-2/v2-narrative-track.md`
 
 ---
 
@@ -33,6 +34,38 @@ The v2 narrative engine uses a Pantheon conceptual model to drive long-range wor
 Core rule:
 
 `Python enforces reality; Titan/EGO interprets and applies narrative pressure.`
+
+## Current Baseline
+
+An initial continuity normalization layer is now implemented in ingest and validation workflows.
+
+What this provides to Titan integration:
+
+1. Stable module-level narrative contract:
+   - `continuity_contract` payloads are emitted and audited.
+   - strict and warn-first modes are deterministic.
+
+2. Pre-Titan gating inputs:
+   - readiness and bulk validators now expose continuity outcomes per module.
+   - this creates a measurable substrate for Titan selection and pressure logic later.
+
+3. Any-order module readiness signal:
+   - required continuity keys are now explicit and machine-checkable.
+   - missing-key failure in strict mode protects Titan from consuming under-specified modules.
+
+Current limitation (expected):
+- Titan cycles are not yet directly consuming continuity payloads.
+- Continuity remains a module ingest/validation layer until Titan runtime bridge is implemented.
+
+## Next Milestone
+
+Define and implement the Titan runtime bridge that consumes continuity-qualified module signals as interpreted inputs for proposal generation.
+
+## Exit Criteria
+
+- Titan cycle input contract explicitly includes continuity-qualified module context.
+- Titan outputs remain proposal-only and never mutate mechanical truth.
+- Fail-open runtime guarantees remain intact under continuity bridge failures.
 
 ---
 

@@ -1,9 +1,10 @@
 # Titan v2 Retune Execution Order
 
-Status: Planning checklist for v2 kickoff
+Status: Planning in progress (v2 kickoff checklist)
 Date: 2026-02-26
 Owner: NEQ v2 rebuild sequencing
 Primary reference: `plans/version-2/titan-integration.md`
+Track reference: `plans/version-2/v2-narrative-track.md`
 
 ---
 
@@ -12,6 +13,28 @@ Primary reference: `plans/version-2/titan-integration.md`
 This document is the practical start-order checklist for retuning existing NEQ plans and OpenSpec drafts to the Titan v2 architecture.
 
 Use this when v1 testing is complete and v2 implementation begins.
+
+## Current Baseline
+
+The following substrate is now already in place before Titan retune starts:
+
+1. Ingest continuity contract emission (`continuity_contract`).
+2. Sidecar continuity payload validation.
+3. Readiness continuity gate and strict/warn mode support.
+4. Bulk validator continuity reporting (including summary counts).
+
+Retune implication:
+- Phase 0 and Phase 3 should treat module continuity gating as existing infrastructure, then extend upward into Titan relationship/cycle layers.
+
+## Next Milestone
+
+Apply this baseline explicitly in Phase 0 acceptance and Phase 3 schema retune tasks so Titan planning starts from continuity-aware contracts.
+
+## Exit Criteria
+
+- Phase checklist explicitly references continuity substrate dependencies.
+- Titan retune phases do not duplicate already-implemented continuity gate work.
+- Retune sequence preserves strict/warn continuity semantics end-to-end.
 
 ---
 

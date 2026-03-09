@@ -2,9 +2,38 @@
 
 ## Status
 
-- Planned
+- Lifecycle state: Planning in progress
 - Priority: High (tester validation)
 - Scope: First Homebrew markdown ingest (Birble adventure), then generalize to similar markdown modules, then begin PDF ingest foundation
+- Continuity baseline: Implemented (ingest/readiness/sidecar/bulk continuity contracts)
+- V2 narrative track reference: `plans/version-2/v2-narrative-track.md`
+
+## Current Baseline
+
+The ingest pipeline now includes continuity normalization and validation hooks as baseline behavior:
+
+1. Ingest emits `continuity_contract` payloads.
+2. Sidecar audit validates continuity payload shape.
+3. Readiness and bulk validators include continuity gate outcomes.
+4. Strict mode blocks missing required continuity keys; warn-first mode allows degraded pass for soft issues.
+
+Required continuity keys (v1 baseline):
+- `continuity_version`
+- `entry_state_variants`
+- `cross_module_refs`
+- `standalone_fallback`
+
+This plan should treat continuity metadata as required for any-order module readiness going forward.
+
+## Next Milestone
+
+Backfill continuity keys across active modules so strict readiness can pass without overrides.
+
+## Exit Criteria
+
+- New ingests emit valid `continuity_contract` payloads.
+- Sidecar/readiness/bulk continuity gates pass in strict mode for target modules.
+- Any-order continuity metadata is present for release-bound modules.
 
 ## Objective
 

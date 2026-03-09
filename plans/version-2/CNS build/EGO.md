@@ -2,9 +2,10 @@
 
 ## Status
 
-- This document is conceptual review only.
-- It is not an implementation commitment.
+- Lifecycle state: Conceptual planning in progress.
+- This document is not an implementation commitment.
 - It defines a possible future build after current stabilization work.
+- V2 narrative track reference: `plans/version-2/v2-narrative-track.md`
 
 ## Titan v2 Alignment Stub
 
@@ -12,6 +13,31 @@
 - Retune status: Pending (not yet rewritten to Titan cycle architecture)
 - Last tagged: 2026-02-26
 - Retune focus: Titan identity scheduler, interpreted-only writes, and proposal/apply boundaries
+
+## Current Baseline
+
+A first continuity substrate is now operational in module ingest and validation. This matters for EGO/RATIO because it provides machine-readable continuity quality signals before live adaptive loops are enabled.
+
+What is now available:
+
+1. Continuity payload contract in ingest results/sidecars (`continuity_contract`).
+2. Strict vs warn-first enforcement for continuity completeness.
+3. Readiness and bulk validator continuity outcomes that can be consumed as quality gates.
+
+How EGO/RATIO should treat this right now:
+- Use continuity gate outcomes as precondition checks and observability inputs.
+- Do not treat continuity metadata as mechanical truth.
+- Do not attempt autonomous correction writes outside existing bounded prompt surfaces.
+
+## Next Milestone
+
+Fold continuity-quality signals into passive EGO observation/reporting so DRIFT/DISTORTION/HALLUCINATION analysis can incorporate module continuity health without adding write risk.
+
+## Exit Criteria
+
+- EGO observability reports include continuity-quality context where available.
+- Continuity-derived inputs remain interpreted-only and bounded.
+- No new write surfaces are introduced outside existing tier policy.
 
 ## Purpose
 

@@ -1,8 +1,9 @@
 # World Narrative Plan v0.3 (Copyright-First)
 
-Status: Draft for review
+Status: Planning in progress (draft for review)
 Date: 2026-02-22
 Owner: Narrative systems + memory integration
+Track reference: `plans/version-2/v2-narrative-track.md`
 
 ## Titan v2 Alignment Stub
 
@@ -10,6 +11,44 @@ Owner: Narrative systems + memory integration
 - Retune status: Pending (schema and lifecycle updates not yet applied)
 - Last tagged: 2026-02-26
 - Retune focus: alignment relationship tables, Titan cycle logs, and world history proposal lifecycle
+
+## Current Baseline
+
+A first operational continuity layer now exists for module ingest and validation. This is the current bridge from module-level narrative data into future world-narrative and Titan/EGO pipelines.
+
+Operational baseline:
+
+1. Continuity contract output at ingest time:
+   - ingest emits `continuity_contract` in result payload and sidecar.
+
+2. Deterministic enforcement modes:
+   - strict mode: missing required continuity keys fail closed.
+   - warn-first mode: ambiguous aliases and soft continuity issues remain non-blocking with warnings.
+
+3. Validation integration:
+   - continuity payload validation in sidecar audit,
+   - continuity gate in readiness validator,
+   - continuity reporting in bulk module validation summary.
+
+4. Contract keys used as current v1 baseline:
+   - `continuity_version`
+   - `entry_state_variants`
+   - `cross_module_refs`
+   - `standalone_fallback`
+
+Architectural note:
+- This baseline does not yet populate campaign world model tables directly.
+- It does establish normalized module continuity metadata that can be lifted into world-model interpretation phases later.
+
+## Next Milestone
+
+Define the continuity-to-world-model bridge so module continuity signals become bounded interpreted inputs to `campaign_world_model` and `campaign_world_delta` workflows.
+
+## Exit Criteria
+
+- Continuity metadata is consumed as interpreted world input (not mechanical truth).
+- Proposal/apply lifecycle exists for world narrative updates using continuity signals.
+- Copyright and source-anonymous constraints remain enforced end-to-end.
 
 ---
 

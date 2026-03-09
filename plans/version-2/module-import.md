@@ -2,9 +2,50 @@
 
 ## Status
 
-- Planned
+- Lifecycle state: Planning in progress
 - Default world mode: Canonical
 - Forking mode: Supported in architecture, disabled by default
+- Continuity baseline: Initial build implemented (ingest/readiness/sidecar/bulk contracts)
+- V2 narrative track reference: `plans/version-2/v2-narrative-track.md`
+
+## Current Baseline
+
+The first continuity normalization build is now in place and should be treated as the default contract for future module ingest work.
+
+Operational baseline:
+
+1. Ingest emits continuity metadata:
+   - `continuity_contract` is produced during ingest and persisted to sidecar results.
+
+2. Strict vs warn-first behavior is standardized:
+   - strict mode fails closed when required continuity keys are missing.
+   - warn-first mode allows degraded pass with explicit warnings (for example alias ambiguity).
+
+3. Validation pipeline includes continuity gate:
+   - per-module continuity audit,
+   - readiness gate integration,
+   - bulk validator continuity reporting with summary counts.
+
+4. Skill/workflow alignment is in place:
+   - developer ingest workflow and module readiness workflow now both include continuity checks.
+
+Required continuity keys for v1 contract:
+- `continuity_version`
+- `entry_state_variants`
+- `cross_module_refs`
+- `standalone_fallback`
+
+This is the bridge layer for any-order module play and should be considered mandatory in all new ingest planning.
+
+## Next Milestone
+
+Extend continuity-normalized ingest from current modules to all new imported modules with strict-ready publish defaults.
+
+## Exit Criteria
+
+- Import pipeline emits continuity-complete module payloads by default.
+- Strict continuity gate is green for release-target module imports.
+- Bulk validation summaries report continuity pass/degraded/fail deterministically.
 
 ## Goal
 

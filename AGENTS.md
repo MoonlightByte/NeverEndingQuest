@@ -1054,6 +1054,48 @@ Normalize continuity metadata so modules can support any-order play with strict/
 
 ---
 
+### Continuity Cross-Reference Enrichment + Legacy Remediation (COMPLETED - 2026-03-09)
+
+**Status:** COMPLETED - continuity workflow hardening for testing round
+
+**Objective:**
+Backfill and enrich continuity metadata on active modules, then make enrichment part of ongoing ingest/validation workflow so new homebrew modules carry narrative cross-module refs by default.
+
+**Implementation Summary:**
+- Added legacy remediation script: `scripts/remediate_module_continuity.py`
+  - Backfills required continuity keys in `module_context.json` for existing modules.
+- Added deterministic cross-ref enrichment helper + CLI:
+  - `scripts/continuity_cross_ref_enrichment.py`
+  - `scripts/enrich_module_cross_refs.py`
+- Updated ingest pipeline (`scripts/homebrew_ingest_dev.py`) to:
+  - auto-backfill required continuity keys,
+  - auto-enrich `continuity.cross_module_refs` from narrative text hints,
+  - persist `continuity_enrichment` metadata to sidecar result payload.
+- Updated continuity/readiness validators:
+  - `scripts/module_continuity_audit.py` now warns when `cross_module_refs` is empty and validates canonical `entity_id` format.
+  - `scripts/audit_module_readiness.py` adds deterministic fix guidance for cross-ref enrichment.
+- Updated skill contracts:
+  - `.opencode/skills/dev-homebrew-ingest/SKILL.md`
+  - `.opencode/skills/module-gameplay-audit/SKILL.md`
+
+**Testing Round Application:**
+- Applied remediation + enrichment across active modules for local testing round.
+- Strict continuity audit passes for:
+  - `Keep_of_Doom`
+  - `Night_of_the_Restless_Dead`
+  - `The_Pumpkin_Kings_Curse`
+  - `The_Thornwood_Watch`
+- Bulk validator now reports all current modules passing (`scripts/validate_modules_bulk.py --all --json`).
+
+**Verification:**
+- `python3 scripts/test_remediate_module_continuity.py` -> PASS
+- `python3 scripts/test_continuity_cross_ref_enrichment.py` -> PASS
+- `python3 scripts/test_module_continuity_audit.py` -> PASS
+- `python3 scripts/test_homebrew_ingest_dev.py` -> PASS
+- `python3 scripts/validate_modules_bulk.py --all --json` -> PASS (`all_passed: true`)
+
+---
+
 ### Monster Reference Closure + Validator Hygiene (COMPLETED - 2026-03-09)
 
 **Status:** COMPLETED - Builder/runtime integrity hardening
