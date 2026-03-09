@@ -1021,6 +1021,26 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### ADR Baseline and Memory-Sync Wiring (COMPLETED - 2026-03-10)
+
+**Status:** COMPLETED - ADR corpus initialized and sync guidance updated
+
+**Objective:**
+Establish a durable project-level architecture decision record set for tabletop/v2 decisions and wire memory sync guidance to maintain ADR status/supersession links.
+
+**Implementation Summary:**
+- Created root ADR directory and baseline records: `adrs/` (`0001`-`0029`) plus `adrs/index.md` and `adrs/0000-template.md`.
+- Added supersession cross-links:
+  - `ADR-0023` supersedes `ADR-0028`.
+  - `ADR-0026` marked planned successor to `ADR-0025`.
+- Updated ADR docs guidance in `adrs/README.md` and index supersession map in `adrs/index.md`.
+- Updated global `sync-project-memory` skill guidance to include ADR maintenance during memory sync (`~/.config/opencode/skills/sync-project-memory/SKILL.md`).
+
+**Verification:**
+- `adrs/` contains indexed ADR set with template and status labels.
+- Cross-link fields (`Supersedes`, `Superseded by`) present in related ADRs.
+- Sync skill now includes ADR update rules and hierarchy placement.
+
 ### Start Game Monster Preflight Hard-Fail Gate (COMPLETED - 2026-03-10)
 
 **Status:** COMPLETED - OpenSpec change archived
