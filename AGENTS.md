@@ -1021,6 +1021,64 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Any-Order Module Continuity Normalization (COMPLETED - 2026-03-09)
+
+**Status:** COMPLETED - OpenSpec change archived
+
+**OpenSpec:** `openspec/changes/archive/2026-03-09-any-order-module-continuity-normalization/`
+
+**Objective:**
+Normalize continuity metadata so modules can support any-order play with strict/warn-first validation behavior across ingest, sidecar auditing, readiness, and bulk validation.
+
+**Implementation Summary:**
+- Added continuity contract audit script: `scripts/module_continuity_audit.py`.
+- Updated ingest pipeline (`scripts/homebrew_ingest_dev.py`) to:
+  - normalize continuity v1 contract fields,
+  - enforce strict missing-key failure behavior,
+  - persist `continuity_contract` to sidecar result payload.
+- Updated readiness gate orchestration (`scripts/audit_module_readiness.py`) to include a continuity gate with strict/warn-mode controls.
+- Updated bulk validation (`scripts/validate_modules_bulk.py`) to include continuity outcomes in pass/fail and summary.
+- Updated sidecar audit coverage (`scripts/homebrew_sidecar_audit.py` + tests) for continuity payload validation.
+- Updated local skill docs:
+  - `.opencode/skills/dev-homebrew-ingest/SKILL.md`
+  - `.opencode/skills/module-gameplay-audit/SKILL.md`
+
+**Verification:**
+- Continuity regression suites passing:
+  - `python3 scripts/test_homebrew_ingest_dev.py`
+  - `python3 scripts/test_homebrew_sidecar_audit.py`
+  - `python3 scripts/test_audit_module_readiness.py`
+  - `python3 scripts/test_module_continuity_audit.py`
+  - `python3 scripts/test_homebrew_ingest_media_pipeline.py`
+- OpenSpec change validated and archived.
+
+---
+
+### Monster Reference Closure + Validator Hygiene (COMPLETED - 2026-03-09)
+
+**Status:** COMPLETED - Builder/runtime integrity hardening
+
+**Objective:**
+Eliminate unresolved monster-reference drift by enforcing closure during module generation, and reduce validator noise from backup files/duplicate reporting.
+
+**Implementation Summary:**
+- Added monster reference closure in `core/generators/module_generator.py`:
+  - collects referenced monsters from active area files,
+  - generates missing monster files via `monster_builder.py`,
+  - fail-closed if unresolved references remain.
+- Updated `core/generators/monster_builder.py` with explicit `--module` support for deterministic module path writes.
+- Hardened validator (`core/validation/validate_module_files.py`):
+  - excludes backup/temp area files in reference scans,
+  - improves location-name fallback (`locationName -> name -> locationId`),
+  - deduplicates unresolved monster-reference errors.
+- Added regression coverage: `scripts/test_validator_monster_reference_hygiene.py`.
+
+**Verification:**
+- `python3 scripts/test_validator_monster_reference_hygiene.py` -> PASS (8/8)
+- `.venv/bin/python core/validation/validate_module_files.py --module The_Thornwood_Watch` -> PASS (100%)
+
+---
+
 ### NPC Arrival Negation False-Positive Hardening (COMPLETED - 2026-03-05)
 
 **Status:** COMPLETED - Runtime guard fix + regression coverage

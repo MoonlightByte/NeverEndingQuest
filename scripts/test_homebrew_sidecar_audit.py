@@ -275,5 +275,84 @@ class TestQuarantineReason(TestCase):
         self.assertEqual(result["quarantine_reason"], "no_rooms_found")
 
 
+class TestContinuityContractValidation(TestCase):
+    """Test continuity_contract sidecar validation behavior."""
+
+    def setUp(self):
+        self.temp_dir = Path(tempfile.mkdtemp())
+        self.archive_root = self.temp_dir / "modules" / "ingest" / "archive"
+        self.archive_root.mkdir(parents=True, exist_ok=True)
+
+        import homebrew_sidecar_audit
+        homebrew_sidecar_audit.ARCHIVE_ROOT = self.archive_root
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_valid_continuity_contract_passes(self):
+        sidecar = self.archive_root / "continuity_valid.json"
+        sidecar.write_text(json.dumps({
+            "module_slug": "ContinuityMod",
+            "status": "success",
+            "result": {
+                "status": "success",
+                "registration": {
+                    "registration_attempted": True,
+                    "registration_success": True,
+                    "registry_module_present": True,
+                },
+                "continuity_contract": {
+                    "status": "success",
+                    "version": "v1",
+                    "required_keys_present": ["continuity_version"],
+                    "missing_required_keys": [],
+                    "warnings": [],
+                    "errors": [],
+                    "normalized_refs_count": 1,
+                    "alias_resolution": {"resolved": 1, "ambiguous": 0, "unresolved": 0},
+                }
+            }
+        }))
+
+        result = audit_sidecar("ContinuityMod", require_success=True)
+        self.assertTrue(result["valid"])
+        self.assertTrue(result["continuity"]["present"])
+        self.assertTrue(result["continuity"]["valid"])
+
+    def test_invalid_continuity_contract_fails_require_success(self):
+        sidecar = self.archive_root / "continuity_invalid.json"
+        sidecar.write_text(json.dumps({
+            "module_slug": "ContinuityBadMod",
+            "status": "success",
+            "result": {
+                "status": "success",
+                "registration": {
+                    "registration_attempted": True,
+                    "registration_success": True,
+                    "registry_module_present": True,
+                },
+                "continuity_contract": {
+                    "status": "bad_status",
+                    "version": "v2",
+                    "required_keys_present": "not-a-list",
+                    "missing_required_keys": [],
+                    "warnings": [],
+                    "errors": [],
+                    "normalized_refs_count": "one",
+                    "alias_resolution": {"resolved": 0},
+                }
+            }
+        }))
+
+        result = audit_sidecar("ContinuityBadMod", require_success=True)
+        # Continuity payload issues are reported in continuity block but do not
+        # fail sidecar gate by themselves.
+        self.assertTrue(result["valid"])
+        self.assertTrue(result["continuity"]["present"])
+        self.assertFalse(result["continuity"]["valid"])
+        self.assertGreater(len(result["continuity"]["errors"]), 0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

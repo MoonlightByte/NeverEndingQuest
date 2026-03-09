@@ -35,6 +35,7 @@ class TestAuditModuleReadiness(unittest.TestCase):
         gameplay_payload = {"blocking_errors": [], "warnings": []}
         sidecar_payload = {"valid": True, "sidecar_found": True}
         schema_payload = {"summary": {"any_failed": False}}
+        continuity_payload = {"blocking_errors": [], "warnings": [], "required_keys_present": [], "continuity_version": "v1"}
 
         with patch.object(
             readiness,
@@ -43,6 +44,7 @@ class TestAuditModuleReadiness(unittest.TestCase):
                 _result(0, gameplay_payload),
                 _result(0, sidecar_payload),
                 _result(0, schema_payload),
+                _result(0, continuity_payload),
             ],
         ):
             report = readiness.audit_module_readiness("example_module")
@@ -52,6 +54,7 @@ class TestAuditModuleReadiness(unittest.TestCase):
         self.assertEqual(report["gates"]["gameplay"]["status"], "pass")
         self.assertEqual(report["gates"]["sidecar"]["status"], "pass")
         self.assertEqual(report["gates"]["schema"]["status"], "pass")
+        self.assertEqual(report["gates"]["continuity"]["status"], "pass")
 
     def test_sidecar_missing_fails(self):
         gameplay_payload = {"blocking_errors": [], "warnings": []}
@@ -61,6 +64,7 @@ class TestAuditModuleReadiness(unittest.TestCase):
             "error": "No sidecar found for slug",
         }
         schema_payload = {"summary": {"any_failed": False}}
+        continuity_payload = {"blocking_errors": [], "warnings": [], "required_keys_present": [], "continuity_version": "v1"}
 
         with patch.object(
             readiness,
@@ -69,6 +73,7 @@ class TestAuditModuleReadiness(unittest.TestCase):
                 _result(0, gameplay_payload),
                 _result(1, sidecar_payload),
                 _result(0, schema_payload),
+                _result(0, continuity_payload),
             ],
         ):
             report = readiness.audit_module_readiness("example_module")
@@ -82,6 +87,7 @@ class TestAuditModuleReadiness(unittest.TestCase):
         gameplay_payload = {"blocking_errors": [], "warnings": []}
         sidecar_payload = {"valid": True, "sidecar_found": True}
         schema_stdout = "[ERROR] jsonschema is not installed. Install it via 'pip install jsonschema'."
+        continuity_payload = {"blocking_errors": [], "warnings": [], "required_keys_present": [], "continuity_version": "v1"}
 
         with patch.object(
             readiness,
@@ -90,6 +96,7 @@ class TestAuditModuleReadiness(unittest.TestCase):
                 _result(0, gameplay_payload),
                 _result(0, sidecar_payload),
                 _result(2, None, stdout=schema_stdout),
+                _result(0, continuity_payload),
             ],
         ):
             report = readiness.audit_module_readiness("example_module")
@@ -109,6 +116,7 @@ class TestAuditModuleReadiness(unittest.TestCase):
         }
         sidecar_payload = {"valid": True, "sidecar_found": True}
         schema_payload = {"summary": {"any_failed": False}}
+        continuity_payload = {"blocking_errors": [], "warnings": [], "required_keys_present": [], "continuity_version": "v1"}
 
         with patch.object(
             readiness,
@@ -117,6 +125,7 @@ class TestAuditModuleReadiness(unittest.TestCase):
                 _result(1, gameplay_payload),
                 _result(0, sidecar_payload),
                 _result(0, schema_payload),
+                _result(0, continuity_payload),
             ],
         ):
             report = readiness.audit_module_readiness("example_module")
@@ -136,14 +145,43 @@ class TestAuditModuleReadiness(unittest.TestCase):
             report = readiness.audit_module_readiness(
                 "example_module",
                 include_sidecar_gate=False,
+                include_continuity_gate=False,
                 include_schema_gate=False,
                 strict_gameplay=False,
             )
 
         self.assertEqual(report["overall_status"], "pass")
         self.assertEqual(report["gates"]["sidecar"]["status"], "skipped")
+        self.assertEqual(report["gates"]["continuity"]["status"], "skipped")
         self.assertEqual(report["gates"]["schema"]["status"], "skipped")
         self.assertFalse(report["strict_contract"]["strict_gameplay"])
+
+    def test_continuity_blockers_fail(self):
+        gameplay_payload = {"blocking_errors": [], "warnings": []}
+        sidecar_payload = {"valid": True, "sidecar_found": True}
+        schema_payload = {"summary": {"any_failed": False}}
+        continuity_payload = {
+            "blocking_errors": ["Missing required continuity keys: ['entry_state_variants']"],
+            "warnings": [],
+            "required_keys_present": ["continuity_version"],
+            "continuity_version": "v1",
+        }
+
+        with patch.object(
+            readiness,
+            "run_gate_command",
+            side_effect=[
+                _result(0, gameplay_payload),
+                _result(0, sidecar_payload),
+                _result(0, schema_payload),
+                _result(1, continuity_payload),
+            ],
+        ):
+            report = readiness.audit_module_readiness("example_module")
+
+        self.assertEqual(report["overall_status"], "fail")
+        self.assertEqual(report["gates"]["continuity"]["status"], "fail")
+        self.assertEqual(report["gates"]["continuity"]["reason"], "continuity_blocking_errors")
 
 
 if __name__ == "__main__":

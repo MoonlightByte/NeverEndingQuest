@@ -40,7 +40,10 @@ def find_latest_sidecar_for_slug(slug: str) -> Optional[Path]:
     if not ARCHIVE_ROOT.exists() or not ARCHIVE_ROOT.is_dir():
         return None
 
-    sidecars = sorted(ARCHIVE_ROOT.glob("*.result.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    result_sidecars = list(ARCHIVE_ROOT.glob("*.result.json"))
+    generic_sidecars = list(ARCHIVE_ROOT.glob("*.json"))
+    deduped_sidecars = {str(path): path for path in (result_sidecars + generic_sidecars)}
+    sidecars = sorted(deduped_sidecars.values(), key=lambda p: p.stat().st_mtime, reverse=True)
 
     # Primary match: sidecar payload module_slug (watcher nests under result).
     for sidecar in sidecars:
@@ -84,6 +87,72 @@ def _validate_media_section(section_name: str, section_data: Any) -> Tuple[bool,
             errors.append(f"{section_name} missing duration_ms for completed stage")
         elif not isinstance(duration, (int, float)):
             errors.append(f"{section_name}.duration_ms must be numeric")
+    
+    return len(errors) == 0, errors
+
+
+def _validate_continuity_contract(continuity_data: Any) -> Tuple[bool, List[str]]:
+    """
+    Validate continuity_contract payload shape when present in sidecar.
+
+    Checks required top-level keys, valid status enum, and version.
+    Returns (is_valid, list_of_errors).
+    """
+    errors = []
+    
+    if continuity_data is None:
+        # Optional field - OK to be missing
+        return True, []
+    
+    if not isinstance(continuity_data, dict):
+        errors.append("continuity_contract must be a dictionary")
+        return False, errors
+    
+    # Required top-level keys
+    required_keys = [
+        "status",
+        "version",
+        "required_keys_present",
+        "missing_required_keys",
+        "warnings",
+        "errors",
+        "normalized_refs_count",
+        "alias_resolution",
+    ]
+    for key in required_keys:
+        if key not in continuity_data:
+            errors.append(f"continuity_contract missing required key: {key}")
+    
+    # Validate status is one of valid enum values
+    valid_statuses = ["success", "warning", "error", "quarantined"]
+    status = continuity_data.get("status")
+    if status is not None and status not in valid_statuses:
+        errors.append(f"continuity_contract.status has unexpected value: {status} (expected one of {valid_statuses})")
+    
+    # Validate version is "v1"
+    version = continuity_data.get("version")
+    if version is not None and version != "v1":
+        errors.append(f"continuity_contract.version has unexpected value: {version} (expected 'v1')")
+
+    # Type validations for continuity contract shape
+    list_fields = ["required_keys_present", "missing_required_keys", "warnings", "errors"]
+    for field in list_fields:
+        if field in continuity_data and not isinstance(continuity_data.get(field), list):
+            errors.append(f"continuity_contract.{field} must be a list")
+
+    if "normalized_refs_count" in continuity_data and not isinstance(continuity_data.get("normalized_refs_count"), int):
+        errors.append("continuity_contract.normalized_refs_count must be an integer")
+
+    alias_resolution = continuity_data.get("alias_resolution")
+    if "alias_resolution" in continuity_data:
+        if not isinstance(alias_resolution, dict):
+            errors.append("continuity_contract.alias_resolution must be a dictionary")
+        else:
+            for key in ["resolved", "ambiguous", "unresolved"]:
+                if key not in alias_resolution:
+                    errors.append(f"continuity_contract.alias_resolution missing key: {key}")
+                elif not isinstance(alias_resolution.get(key), int):
+                    errors.append(f"continuity_contract.alias_resolution.{key} must be an integer")
     
     return len(errors) == 0, errors
 
@@ -161,8 +230,8 @@ def audit_sidecar(slug: str, require_success: bool = False) -> Dict[str, Any]:
     # Legacy key names for backward compatibility
     legacy_map = {"media_extract": "media_extraction"}
     
-    # Media sections are inside payload["result"]
-    result_section = payload.get("result", {})
+    # Media sections are inside watcher result payload or top-level CLI payload
+    result_section = result_payload
     
     for section_name in canonical_sections:
         section_data = result_section.get(section_name)
@@ -197,6 +266,23 @@ def audit_sidecar(slug: str, require_success: bool = False) -> Dict[str, Any]:
             for w in payload_media_warnings
         ])
 
+    # Validate continuity contract if present
+    # Check in result_payload (which handles both watcher and CLI formats)
+    continuity_data = result_payload.get("continuity_contract")
+    continuity_valid, continuity_errors = _validate_continuity_contract(continuity_data)
+    
+    if continuity_errors:
+        media_warnings.extend([f"Continuity: {err}" for err in continuity_errors])
+    
+    # Build continuity section for result
+    continuity_section = {
+        "present": continuity_data is not None,
+        "valid": continuity_valid,
+        "status": continuity_data.get("status") if continuity_data else None,
+        "version": continuity_data.get("version") if continuity_data else None,
+        "errors": continuity_errors if continuity_errors else None,
+    }
+
     result = {
         "valid": valid,
         "sidecar_found": True,
@@ -211,6 +297,7 @@ def audit_sidecar(slug: str, require_success: bool = False) -> Dict[str, Any]:
         },
         "media_sections": media_sections,
         "media_warnings": media_warnings if media_warnings else None,
+        "continuity": continuity_section,
         "errors": errors,
         "exit_code": exit_code,
     }

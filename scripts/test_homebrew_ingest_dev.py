@@ -13,7 +13,7 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from homebrew_ingest_dev import run_ingest_pipeline
+from homebrew_ingest_dev import run_ingest_pipeline, _normalize_continuity_contract, _persist_media_to_sidecar
 
 
 class TestPipelineStopConditions(TestCase):
@@ -193,6 +193,80 @@ class TestCleanupIntegration(TestCase):
             self.assertIn("status", cleanup)
             self.assertIn("action", cleanup)
             self.assertIn("reason", cleanup)
+
+
+class TestContinuityContractNormalization(TestCase):
+    """Test continuity contract normalization stage payload."""
+
+    def test_warn_first_allows_missing_required_keys(self):
+        contract = _normalize_continuity_contract(module_context={}, module_plot={}, strict=False)
+        self.assertEqual(contract["status"], "warning")
+        self.assertIn("continuity_version", contract["missing_required_keys"])
+
+    def test_strict_fails_missing_required_keys(self):
+        contract = _normalize_continuity_contract(module_context={}, module_plot={}, strict=True)
+        self.assertEqual(contract["status"], "error")
+        self.assertGreater(len(contract["errors"]), 0)
+
+    def test_entry_state_variants_requires_object_shape(self):
+        module_context = {
+            "continuity": {
+                "continuity_version": "v1",
+                "entry_state_variants": {
+                    "cold_start": {"summary": "fresh start"},
+                    "partial_context": {"summary": "known lore"},
+                    "late_arc": {"summary": "deep continuity"},
+                },
+                "cross_module_refs": [],
+                "standalone_fallback": {"enabled": True},
+            }
+        }
+        contract = _normalize_continuity_contract(module_context=module_context, module_plot={}, strict=True)
+        self.assertEqual(contract["status"], "success")
+        self.assertEqual(contract["missing_required_keys"], [])
+
+
+class TestSidecarContinuityPersistence(TestCase):
+    """Test sidecar persistence includes continuity_contract payload."""
+
+    def setUp(self):
+        self.temp_dir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    @patch("homebrew_sidecar_audit.find_latest_sidecar_for_slug")
+    def test_persists_continuity_contract_to_sidecar(self, mock_find_sidecar):
+        sidecar_path = self.temp_dir / "test.sidecar.json"
+        sidecar_path.write_text(json.dumps({"status": "success", "result": {}}), encoding="utf-8")
+        mock_find_sidecar.return_value = sidecar_path
+
+        continuity_payload = {
+            "status": "warning",
+            "version": "v1",
+            "required_keys_present": ["continuity_version"],
+            "missing_required_keys": ["entry_state_variants"],
+            "warnings": ["missing entry_state_variants"],
+            "errors": [],
+            "normalized_refs_count": 0,
+            "alias_resolution": {"resolved": 0, "ambiguous": 0, "unresolved": 0},
+        }
+
+        persisted = _persist_media_to_sidecar(
+            module_slug="Test_Module",
+            media_extraction=None,
+            media_handles=None,
+            portrait_prewarm=None,
+            media_warnings=None,
+            continuity_contract=continuity_payload,
+        )
+
+        self.assertTrue(persisted["success"])
+
+        sidecar_data = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        self.assertIn("continuity_contract", sidecar_data["result"])
+        self.assertEqual(sidecar_data["result"]["continuity_contract"]["status"], "warning")
 
 
 if __name__ == "__main__":

@@ -219,27 +219,32 @@ def remove_nested_values(data):
         return data
 
 def main():
-    if len(sys.argv) != 2:
-        print(f"{RED}Usage: python monster_builder.py <monster_name>{RESET}")
-        return
-
-    monster_name_arg = sys.argv[1]
+    import argparse
     
-    # Get average party level from all character files
-    party_level = 1
-    try:
-        from utils.encoding_utils import safe_json_load
-        party_tracker = safe_json_load("party_tracker.json")
-        if party_tracker and party_tracker.get("partyMembers"):
-            levels = []
-            for character_name in party_tracker["partyMembers"]:
-                character_data = safe_json_load(f"characters/{character_name}.json")
-                if character_data:
-                    levels.append(character_data.get("level", 1))
-            if levels:
-                party_level = round(sum(levels) / len(levels))
-    except:
-        party_level = 1
+    parser = argparse.ArgumentParser(description='Generate monster stat blocks')
+    parser.add_argument('monster_name', help='Name of the monster to generate')
+    parser.add_argument('--module', '-m', help='Module name for path resolution (optional)')
+    parser.add_argument('--level', '-l', type=int, default=None, help='Average party level (optional)')
+    
+    args = parser.parse_args()
+    monster_name_arg = args.monster_name
+    
+    # Get average party level
+    party_level = args.level if args.level else 1
+    if not args.level:
+        try:
+            from utils.encoding_utils import safe_json_load
+            party_tracker = safe_json_load("party_tracker.json")
+            if party_tracker and party_tracker.get("partyMembers"):
+                levels = []
+                for character_name in party_tracker["partyMembers"]:
+                    character_data = safe_json_load(f"characters/{character_name}.json")
+                    if character_data:
+                        levels.append(character_data.get("level", 1))
+                if levels:
+                    party_level = round(sum(levels) / len(levels))
+        except:
+            party_level = 1
     
     schema_data = load_schema("schemas/mon_schema.json")
     if not schema_data:
@@ -247,14 +252,19 @@ def main():
 
     generated_monster_data = generate_monster(monster_name_arg, schema_data, party_level)
     if generated_monster_data:
-        # Get current module from party tracker for consistent path resolution
-        try:
-            from utils.encoding_utils import safe_json_load
-            party_tracker = safe_json_load("party_tracker.json")
-            current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
-            path_manager = ModulePathManager(current_module)
-        except:
-            path_manager = ModulePathManager()  # Fallback to reading from file
+        # Use provided module name or fall back to party tracker
+        current_module = None
+        if args.module:
+            current_module = args.module.replace(" ", "_")
+        else:
+            try:
+                from utils.encoding_utils import safe_json_load
+                party_tracker = safe_json_load("party_tracker.json")
+                current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
+            except:
+                pass
+        
+        path_manager = ModulePathManager(current_module)
         full_path = path_manager.get_monster_path(monster_name_arg)
         if save_json(full_path, generated_monster_data):
             info(f"SUCCESS: Monster creation ({monster_name_arg}) - PASS", category="monster_creation")

@@ -50,6 +50,7 @@ def _infer_stage_exit_code(stage: str) -> int:
         "dry_run": 3,
         "guard": 4,
         "ingest": 5,
+        "continuity": 11,
         "audit": 6,
         "verify": 7,
         "media_extract": 8,
@@ -57,6 +58,139 @@ def _infer_stage_exit_code(stage: str) -> int:
         "portrait_prewarm": 10,
     }
     return mapping.get(stage, 7)
+
+
+def _normalize_continuity_contract(
+    module_context: Dict[str, Any],
+    module_plot: Dict[str, Any],
+    strict: bool = True,
+    alias_registry: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Normalize and validate any-order continuity contract for a module.
+
+    Checks for required continuity keys and normalizes cross-module references.
+    In strict mode, missing required keys results in error status.
+    In warn-first mode, missing keys generate warnings but don't block.
+
+    Args:
+        module_context: Parsed module_context.json dict
+        module_plot: Parsed module_plot.json dict
+        strict: If True, missing required keys cause error; if False, warnings only
+        alias_registry: Optional registry for alias resolution
+
+    Returns:
+        Continuity contract dict with status, version, keys present/missing,
+        warnings, errors, normalized refs count, and alias resolution stats.
+    """
+    contract: Dict[str, Any] = {
+        "status": "success",
+        "version": "v1",
+        "required_keys_present": [],
+        "missing_required_keys": [],
+        "warnings": [],
+        "errors": [],
+        "normalized_refs_count": 0,
+        "alias_resolution": {"resolved": 0, "ambiguous": 0, "unresolved": 0},
+    }
+
+    REQUIRED_KEYS = ["continuity_version", "entry_state_variants", "cross_module_refs", "standalone_fallback"]
+
+    # Extract continuity section from module_context (may be nested under module_context or top-level)
+    continuity_data = module_context.get("continuity") or module_context.get("module_context", {}).get("continuity", {})
+
+    # Check for required keys
+    for key in REQUIRED_KEYS:
+        if key in continuity_data and continuity_data[key] is not None:
+            contract["required_keys_present"].append(key)
+        else:
+            contract["missing_required_keys"].append(key)
+
+    # Determine status based on strict mode and missing keys
+    if contract["missing_required_keys"]:
+        if strict:
+            contract["status"] = "error"
+            contract["errors"].append(
+                f"Missing required continuity keys: {contract['missing_required_keys']}"
+            )
+        else:
+            contract["status"] = "warning"
+            contract["warnings"].append(
+                f"Missing recommended continuity keys: {contract['missing_required_keys']}"
+            )
+
+    # Validate continuity_version if present
+    if "continuity_version" in continuity_data:
+        version = continuity_data["continuity_version"]
+        if version != "v1":
+            contract["warnings"].append(f"Unexpected continuity_version: {version} (expected v1)")
+
+    # Validate entry_state_variants structure if present
+    if "entry_state_variants" in continuity_data:
+        variants = continuity_data["entry_state_variants"]
+        expected_variant_keys = ["cold_start", "partial_context", "late_arc"]
+        if not isinstance(variants, dict):
+            message = "entry_state_variants should be an object with keys cold_start/partial_context/late_arc"
+            if strict:
+                contract["status"] = "error"
+                contract["errors"].append(message)
+            else:
+                contract["warnings"].append(message)
+        else:
+            missing_variant_keys = [key for key in expected_variant_keys if key not in variants]
+            if missing_variant_keys:
+                message = f"entry_state_variants missing keys: {missing_variant_keys}"
+                if strict:
+                    contract["status"] = "error"
+                    contract["errors"].append(message)
+                else:
+                    contract["warnings"].append(message)
+
+    # Normalize cross_module_refs if present
+    if "cross_module_refs" in continuity_data:
+        refs = continuity_data["cross_module_refs"]
+        if isinstance(refs, list):
+            normalized_count = 0
+            required_ref_keys = ["target_module", "entity_id", "relation", "confidence"]
+            for ref in refs:
+                if isinstance(ref, dict) and "target_module" in ref:
+                    normalized_count += 1
+                    missing_ref_keys = [key for key in required_ref_keys if not ref.get(key)]
+                    if missing_ref_keys:
+                        contract["warnings"].append(
+                            f"cross_module_ref missing required fields: {missing_ref_keys}"
+                        )
+                    confidence = ref.get("confidence")
+                    if confidence and confidence not in ["high", "medium", "low"]:
+                        contract["warnings"].append(
+                            f"cross_module_ref has invalid confidence '{confidence}' (expected high|medium|low)"
+                        )
+                    # Check for alias ambiguity if registry provided
+                    if alias_registry and "alias" in ref:
+                        alias = ref["alias"]
+                        alias_matches = alias_registry.get(alias, [])
+                        if len(alias_matches) > 1:
+                            contract["alias_resolution"]["ambiguous"] += 1
+                            contract["warnings"].append(
+                                f"Ambiguous alias '{alias}' resolves to multiple targets"
+                            )
+                        elif len(alias_matches) == 1:
+                            contract["alias_resolution"]["resolved"] += 1
+                        else:
+                            contract["alias_resolution"]["unresolved"] += 1
+            contract["normalized_refs_count"] = normalized_count
+        else:
+            contract["warnings"].append("cross_module_refs should be a list")
+
+    # Validate standalone_fallback if present
+    if "standalone_fallback" in continuity_data:
+        fallback = continuity_data["standalone_fallback"]
+        if not isinstance(fallback, dict):
+            contract["warnings"].append("standalone_fallback should be a dict")
+        elif "enabled" not in fallback:
+            contract["warnings"].append("standalone_fallback missing 'enabled' flag")
+
+    return contract
 
 
 def _run_subprocess_stage(
@@ -333,7 +467,59 @@ def run_ingest_pipeline(
             "exit_code": 5,
         }
 
-    # Stage 6: Sidecar audit (best effort; direct CLI ingest may not create sidecar)
+    # Stage 6: Continuity normalization (any-order module support)
+    continuity_contract = None
+    if module_slug:
+        try:
+            # Load module context and plot for continuity validation
+            module_dir = Path("modules") / module_slug
+            context_path = module_dir / "module_context.json"
+            plot_path = module_dir / "module_plot.json"
+
+            module_context = {}
+            module_plot = {}
+
+            if context_path.exists():
+                with open(context_path, "r", encoding="utf-8") as f:
+                    module_context = json.load(f)
+            if plot_path.exists():
+                with open(plot_path, "r", encoding="utf-8") as f:
+                    module_plot = json.load(f)
+
+            continuity_contract = _normalize_continuity_contract(
+                module_context=module_context,
+                module_plot=module_plot,
+                strict=strict,
+                alias_registry=None,  # Future: pass module alias registry
+            )
+
+            # Fail closed in strict mode if continuity contract has errors
+            if strict and continuity_contract.get("status") == "error":
+                error_msg = f"Continuity contract validation failed: {continuity_contract.get('errors', [])}"
+                return {
+                    "status": "failed",
+                    "stage": "continuity",
+                    "source": str(source_file),
+                    "prepared": prepared_path,
+                    "module_slug": module_slug,
+                    "continuity_contract": continuity_contract,
+                    "error": error_msg,
+                    "exit_code": 11,
+                }
+        except Exception as e:
+            # Fail-open in warn-first mode; strict mode treats as warning
+            continuity_contract = {
+                "status": "warning" if not strict else "error",
+                "version": "v1",
+                "required_keys_present": [],
+                "missing_required_keys": ["continuity_version", "entry_state_variants", "cross_module_refs", "standalone_fallback"],
+                "warnings": [f"Continuity normalization exception: {e}"],
+                "errors": [str(e)] if strict else [],
+                "normalized_refs_count": 0,
+                "alias_resolution": {"resolved": 0, "ambiguous": 0, "unresolved": 0},
+            }
+
+    # Stage 7: Sidecar audit (best effort; direct CLI ingest may not create sidecar)
     sidecar_audit = audit_sidecar(module_slug, require_success=True)
     if not sidecar_audit.get("valid"):
         sidecar_audit_note = "Sidecar audit unavailable/invalid (expected for direct CLI ingest)"
@@ -409,6 +595,7 @@ def run_ingest_pipeline(
         "dry_run": dry_run_result,
         "guard": guard_result,
         "ingest": ingest_result,
+        "continuity_contract": continuity_contract,
         "sidecar_audit": sidecar_audit,
         "sidecar_note": sidecar_audit_note,
         "verify": verify_result,
@@ -524,6 +711,7 @@ def run_ingest_pipeline(
         media_handles=result.get("media_handles"),
         portrait_prewarm=result.get("portrait_prewarm"),
         media_warnings=result.get("media_warnings"),
+        continuity_contract=result.get("continuity_contract"),
     )
     if sidecar_persistence.get("success"):
         result["sidecar_persisted"] = True
@@ -535,11 +723,12 @@ def run_ingest_pipeline(
 
 
 def _persist_media_to_sidecar(
-    module_slug: str,
+    module_slug: Optional[str],
     media_extraction: Optional[Dict[str, Any]],
     media_handles: Optional[Dict[str, Any]],
     portrait_prewarm: Optional[Dict[str, Any]],
     media_warnings: Optional[List[Dict[str, Any]]],
+    continuity_contract: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
     """Persist media stage blocks into existing sidecar artifact.
     
@@ -552,6 +741,10 @@ def _persist_media_to_sidecar(
     result = {"success": False, "error": None, "sidecar_path": None}
     
     try:
+        if not module_slug:
+            result["error"] = "No module slug available for sidecar persistence"
+            return result
+
         sidecar_path = find_latest_sidecar_for_slug(module_slug)
         if not sidecar_path:
             result["error"] = f"No sidecar found for slug: {module_slug}"
@@ -574,6 +767,8 @@ def _persist_media_to_sidecar(
             sidecar_data["result"]["portrait_prewarm"] = _sanitize_stage_for_sidecar(portrait_prewarm)
         if media_warnings:
             sidecar_data["result"]["media_warnings"] = media_warnings
+        if continuity_contract:
+            sidecar_data["result"]["continuity_contract"] = continuity_contract
         
         # Atomic write
         tmp_path = sidecar_path.with_suffix(".tmp")
@@ -585,7 +780,7 @@ def _persist_media_to_sidecar(
         result["sidecar_path"] = str(sidecar_path)
         
     except Exception as e:
-        result["error"] = f"Failed to persist media stages: {e}"
+        result["error"] = f"Failed to persist ingest stages: {e}"
     
     return result
 

@@ -7,7 +7,8 @@ Validate full NEQ module readiness with a single strict pass contract.
 This skill now runs a consolidated validator that requires all gates to pass:
 1. Gameplay parity gate (monster references and media parity)
 2. Ingest sidecar gate (sidecar exists and passes require-success contract)
-3. Schema gate (module validator passes with `jsonschema` available)
+3. Continuity gate (continuity contract passes strict required-key checks)
+4. Schema gate (module validator passes with `jsonschema` available)
 
 The module only passes when all enabled gates are green.
 
@@ -84,7 +85,7 @@ Hard fail rule:
 
 - `module`
 - `overall_status` (`pass` or `fail`)
-- `gates.gameplay|sidecar|schema` (each with `status`, `reason`, `exit_code`)
+- `gates.gameplay|sidecar|continuity|schema` (each with `status`, `reason`, `exit_code`)
 - `blocking_errors`
 - `fix_list`
 - `strict_contract`
@@ -97,6 +98,12 @@ These are available for local debugging only and should not be used for release 
 # Skip sidecar gate
 python3 scripts/audit_module_readiness.py --module <slug> --no-sidecar-gate
 
+# Skip continuity gate
+python3 scripts/audit_module_readiness.py --module <slug> --no-continuity-gate
+
+# Continuity warn-first mode
+python3 scripts/audit_module_readiness.py --module <slug> --continuity-warn-mode
+
 # Skip schema gate
 python3 scripts/audit_module_readiness.py --module <slug> --no-schema-gate
 
@@ -107,3 +114,19 @@ python3 scripts/audit_module_readiness.py --module <slug> --gameplay-dev-mode
 ## Legacy Compatibility
 
 `scripts/audit_module_gameplay.py` remains available for focused monster parity analysis, but this skill treats `scripts/audit_module_readiness.py` as the canonical validator entrypoint.
+
+## Continuity Gate Contract
+
+Readiness now includes continuity contract checks:
+
+```bash
+python3 scripts/module_continuity_audit.py --module <module_slug> --json --strict
+```
+
+Pass criteria:
+- Exit code is 0
+- `blocking_errors` is empty
+
+Warn-first behavior:
+- Alias ambiguity and unknown target modules are warnings (degraded), not blockers
+- Missing required continuity keys become blockers only when strict mode is enabled

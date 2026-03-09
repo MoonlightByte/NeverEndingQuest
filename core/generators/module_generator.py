@@ -793,6 +793,249 @@ If the field expects an object, return just the object.
         else:
             return "mixed"
     
+    @staticmethod
+    def _normalize_monster_name(name: str) -> str:
+        """Normalize monster name to slug format matching validator contract"""
+        if not name:
+            return ""
+        slug = name.lower().strip()
+        slug = slug.replace("'", "").replace('"', "")
+        slug = slug.replace(" ", "_").replace("-", "_")
+        slug = ''.join(c for c in slug if c.isalnum() or c == '_')
+        return slug
+    
+    def _get_active_area_files(self, module_dir: str) -> List[str]:
+        """Get list of active area files, excluding backups and temp files"""
+        areas_dir = os.path.join(module_dir, "areas")
+        if not os.path.exists(areas_dir):
+            return []
+        
+        exclude_patterns = ('_BU.json', '.bak', '.backup', '.tmp', '_backup.json')
+        area_files = []
+        
+        for f in os.listdir(areas_dir):
+            if f.endswith('.json') and not any(pattern in f for pattern in exclude_patterns):
+                area_files.append(os.path.join(areas_dir, f))
+        
+        return area_files
+    
+    def _collect_referenced_monsters(self, module_dir: str) -> Dict[str, Dict]:
+        """Collect all monster references from area files with source context"""
+        referenced = {}
+        area_files = self._get_active_area_files(module_dir)
+        
+        for area_path in area_files:
+            try:
+                with open(area_path, 'r') as f:
+                    area_data = json.load(f)
+                
+                area_name = area_data.get("areaName", os.path.basename(area_path))
+                area_id = area_data.get("areaId", "unknown")
+                
+                for location in area_data.get("locations", []):
+                    location_name = location.get("locationName") or location.get("name") or location.get("locationId", "Unknown Location")
+                    location_id = location.get("locationId", "unknown")
+                    
+                    for monster in location.get("monsters", []):
+                        if isinstance(monster, dict):
+                            monster_name = monster.get("name", "").strip()
+                        else:
+                            monster_name = str(monster).strip()
+                        
+                        if monster_name:
+                            slug = self._normalize_monster_name(monster_name)
+                            if slug:
+                                if slug not in referenced:
+                                    referenced[slug] = {
+                                        "original_names": set(),
+                                        "sources": []
+                                    }
+                                referenced[slug]["original_names"].add(monster_name)
+                                referenced[slug]["sources"].append({
+                                    "area_id": area_id,
+                                    "area_name": area_name,
+                                    "location_id": location_id,
+                                    "location_name": location_name
+                                })
+            except (IOError, json.JSONDecodeError) as e:
+                warning(f"Could not read area file {area_path}: {e}", category="module_generation")
+        
+        # Convert sets to lists for JSON serialization
+        for slug in referenced:
+            referenced[slug]["original_names"] = list(referenced[slug]["original_names"])
+        
+        return referenced
+    
+    def _collect_existing_monster_slugs(self, module_dir: str) -> set:
+        """Collect existing monster file slugs from module monsters directory"""
+        monsters_dir = os.path.join(module_dir, "monsters")
+        if not os.path.exists(monsters_dir):
+            return set()
+        
+        exclude_patterns = ('_BU.json', '.bak', '.backup', '.tmp', '_backup.json', '.gitkeep')
+        slugs = set()
+        
+        for f in os.listdir(monsters_dir):
+            if f.endswith('.json') and not any(pattern in f for pattern in exclude_patterns):
+                slug = f[:-5].lower()  # Remove .json extension and lowercase
+                slugs.add(slug)
+        
+        return slugs
+    
+    def _materialize_missing_monsters(self, module_name: str, module_dir: str, 
+                                       missing: Dict[str, Dict]) -> Dict[str, Any]:
+        """Generate missing monster stat files via monster_builder subprocess"""
+        results = {
+            "generated": [],
+            "failed": [],
+            "skipped": []
+        }
+        
+        if not missing:
+            return results
+        
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        monster_builder_path = os.path.join(current_dir, "monster_builder.py")
+        
+        for slug, monster_info in missing.items():
+            # Use first original name as display name
+            display_name = monster_info["original_names"][0] if monster_info["original_names"] else slug
+            
+            info(f"Generating missing monster: {display_name} ({slug})", category="module_generation")
+            
+            try:
+                import subprocess
+                import sys
+                result = subprocess.run(
+                    [sys.executable, monster_builder_path, display_name, "--module", module_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=120
+                )
+                
+                if result.returncode == 0:
+                    # Verify file was created
+                    expected_path = os.path.join(module_dir, "monsters", f"{slug}.json")
+                    if os.path.exists(expected_path):
+                        results["generated"].append({
+                            "slug": slug,
+                            "display_name": display_name,
+                            "path": expected_path
+                        })
+                        info(f"Successfully generated monster: {display_name}", category="module_generation")
+                    else:
+                        # Monster builder might use different slug format - check for any matching file
+                        monsters_dir = os.path.join(module_dir, "monsters")
+                        found = False
+                        for f in os.listdir(monsters_dir):
+                            if f.endswith('.json') and not any(p in f for p in ['_BU', '.bak', '.tmp']):
+                                if self._normalize_monster_name(f[:-5]) == slug:
+                                    results["generated"].append({
+                                        "slug": slug,
+                                        "display_name": display_name,
+                                        "path": os.path.join(monsters_dir, f)
+                                    })
+                                    found = True
+                                    break
+                        
+                        if not found:
+                            results["failed"].append({
+                                "slug": slug,
+                                "display_name": display_name,
+                                "reason": "File not created by builder"
+                            })
+                            error(f"Monster builder succeeded but file not found for: {display_name}", category="module_generation")
+                else:
+                    results["failed"].append({
+                        "slug": slug,
+                        "display_name": display_name,
+                        "reason": result.stderr or "Unknown error"
+                    })
+                    error(f"Monster builder failed for {display_name}: {result.stderr}", category="module_generation")
+                    
+            except subprocess.TimeoutExpired:
+                results["failed"].append({
+                    "slug": slug,
+                    "display_name": display_name,
+                    "reason": "Timeout after 120 seconds"
+                })
+                error(f"Monster builder timeout for: {display_name}", category="module_generation")
+            except Exception as e:
+                results["failed"].append({
+                    "slug": slug,
+                    "display_name": display_name,
+                    "reason": str(e)
+                })
+                error(f"Monster builder exception for {display_name}: {e}", category="module_generation")
+        
+        return results
+    
+    def _ensure_monster_reference_closure(self, module_name: str, module_dir: str) -> Dict[str, Any]:
+        """Ensure all monster references have corresponding stat files"""
+        closure_report = {
+            "timestamp": datetime.now().isoformat(),
+            "required": 0,
+            "existing_before": 0,
+            "generated": 0,
+            "unresolved": 0,
+            "details": {}
+        }
+        
+        # Collect all referenced monsters
+        referenced = self._collect_referenced_monsters(module_dir)
+        closure_report["required"] = len(referenced)
+        
+        if not referenced:
+            info("No monster references found in module areas", category="module_generation")
+            return closure_report
+        
+        # Collect existing monster slugs
+        existing = self._collect_existing_monster_slugs(module_dir)
+        closure_report["existing_before"] = len(existing)
+        
+        # Identify missing monsters
+        missing = {slug: info for slug, info in referenced.items() if slug not in existing}
+        
+        info(f"Monster reference closure: {len(referenced)} required, {len(existing)} existing, {len(missing)} missing", 
+             category="module_generation")
+        
+        if missing:
+            # Generate missing monsters
+            generation_results = self._materialize_missing_monsters(module_name, module_dir, missing)
+            closure_report["details"]["generation"] = generation_results
+            closure_report["generated"] = len(generation_results["generated"])
+            
+            # Re-scan to verify
+            existing_after = self._collect_existing_monster_slugs(module_dir)
+            still_missing = {slug: info for slug, info in referenced.items() if slug not in existing_after}
+            closure_report["unresolved"] = len(still_missing)
+            
+            if still_missing:
+                closure_report["details"]["unresolved"] = [
+                    {
+                        "slug": slug,
+                        "original_names": info["original_names"],
+                        "sources": info["sources"][:3]  # Limit for report
+                    }
+                    for slug, info in still_missing.items()
+                ]
+                error(f"Monster reference closure failed: {len(still_missing)} unresolved references", 
+                      category="module_generation")
+            else:
+                info("Monster reference closure complete: all references resolved", category="module_generation")
+        else:
+            info("Monster reference closure complete: no missing references", category="module_generation")
+        
+        # Save closure report
+        report_path = os.path.join(module_dir, "monster_closure_report.json")
+        try:
+            save_json_safely(closure_report, report_path)
+            info(f"Monster closure report saved to {report_path}", category="module_generation")
+        except Exception as e:
+            warning(f"Could not save monster closure report: {e}", category="module_generation")
+        
+        return closure_report
+    
     def update_area_with_prefix(self, area_data: Dict[str, Any], prefix: str) -> Dict[str, Any]:
         """Update all location IDs in area data to use the specified prefix"""
         import re
@@ -952,6 +1195,16 @@ If the field expects an object, return just the object.
         
         # Generate unified plot file
         self.generate_unified_plot_file(module_data, areas, module_name)
+        
+        # MONSTER REFERENCE CLOSURE: Ensure all referenced monsters have stat files
+        print("DEBUG: [Module Generator] Ensuring monster reference closure...")
+        closure_report = self._ensure_monster_reference_closure(module_name, module_dir)
+        
+        if closure_report["unresolved"] > 0:
+            error_msg = f"Monster reference closure failed: {closure_report['unresolved']} unresolved references"
+            error(error_msg, category="module_generation")
+            # Fail-closed: raise error to prevent publishing invalid module
+            raise ValueError(error_msg)
         
         # Create party tracker file
         # party_tracker = {

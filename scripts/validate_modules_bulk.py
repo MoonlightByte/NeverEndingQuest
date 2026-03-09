@@ -6,8 +6,8 @@
 """
 Bulk Module Validation Script
 
-Validates all modules (ingested or downloaded) using schema validation
-and gameplay audit.
+Validates all modules (ingested or downloaded) using schema validation,
+gameplay audit, and continuity audit.
 
 Usage:
     python validate_modules_bulk.py
@@ -202,10 +202,58 @@ def _run_gameplay_audit(module_slug: str, modules_dir: Path) -> Dict[str, Any]:
         }
 
 
+def _run_continuity_audit(module_slug: str, modules_dir: Path) -> Dict[str, Any]:
+    """Run continuity audit for a single module."""
+    script_path = Path(__file__).parent / "module_continuity_audit.py"
+
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script_path), "--module", module_slug, "--json", "--strict"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        if result.stdout:
+            try:
+                data = json.loads(result.stdout)
+                return {
+                    "success": result.returncode == 0,
+                    "exit_code": result.returncode,
+                    "data": data,
+                    "stderr": result.stderr if result.stderr else None,
+                }
+            except json.JSONDecodeError:
+                return {
+                    "success": False,
+                    "exit_code": result.returncode,
+                    "error": "Invalid JSON output from continuity audit",
+                    "stdout": result.stdout[:500],
+                    "stderr": result.stderr if result.stderr else None,
+                }
+        return {
+            "success": False,
+            "exit_code": result.returncode,
+            "error": "No output from continuity audit",
+            "stderr": result.stderr if result.stderr else None,
+        }
+
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "error": "Continuity audit timed out after 60s",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Execution error: {str(e)}",
+        }
+
+
 def main():
     """Main execution function."""
     parser = argparse.ArgumentParser(
-        description="Bulk validate modules using schema validation and gameplay audit",
+        description="Bulk validate modules using schema, gameplay, and continuity audits",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
@@ -262,6 +310,9 @@ def main():
         
         # Run gameplay audit
         audit_result = _run_gameplay_audit(slug, modules_dir)
+
+        # Run continuity audit
+        continuity_result = _run_continuity_audit(slug, modules_dir)
         
         # Determine overall status
         schema_passed = schema_result.get("success", False) and schema_result.get("exit_code", 1) == 0
@@ -271,10 +322,20 @@ def main():
         if audit_result.get("data"):
             has_blocking_errors = bool(audit_result["data"].get("blocking_errors", []))
         
-        # Module fails if: schema fails OR audit has blocking errors OR any execution error occurred
+        continuity_passed = continuity_result.get("success", False) and continuity_result.get("exit_code", 1) == 0
+        continuity_exec_error = continuity_result.get("error") is not None
+
+        # Module fails if: schema fails OR audit has blocking errors OR continuity fails OR execution error
         schema_exec_error = schema_result.get("error") is not None
         audit_exec_error = audit_result.get("error") is not None
-        module_failed = not schema_passed or has_blocking_errors or schema_exec_error or audit_exec_error
+        module_failed = (
+            not schema_passed
+            or has_blocking_errors
+            or not continuity_passed
+            or schema_exec_error
+            or audit_exec_error
+            or continuity_exec_error
+        )
         any_failed = any_failed or module_failed
         
         results[slug] = {
@@ -291,6 +352,13 @@ def main():
                 "has_blocking_errors": has_blocking_errors,
                 "data": audit_result.get("data")
             },
+            "continuity": {
+                "passed": continuity_passed,
+                "exit_code": continuity_result.get("exit_code"),
+                "error": continuity_result.get("error"),
+                "has_blocking_errors": bool((continuity_result.get("data") or {}).get("blocking_errors", [])),
+                "data": continuity_result.get("data"),
+            },
             "overall_passed": not module_failed
         }
         
@@ -299,10 +367,13 @@ def main():
             status = "[OK]" if not module_failed else "[FAIL]"
             print(f"  {status} Schema: {'PASS' if schema_passed else 'FAIL'}")
             print(f"  {status} Audit: {'PASS' if audit_passed and not has_blocking_errors else 'FAIL'}")
+            print(f"  {status} Continuity: {'PASS' if continuity_passed else 'FAIL'}")
             if schema_result.get("error"):
                 print(f"  Schema Error: {schema_result['error']}")
             if audit_result.get("error"):
                 print(f"  Audit Error: {audit_result['error']}")
+            if continuity_result.get("error"):
+                print(f"  Continuity Error: {continuity_result['error']}")
     
     # Output summary
     if args.json:

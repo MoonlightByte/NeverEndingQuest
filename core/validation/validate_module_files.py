@@ -326,6 +326,7 @@ class ModuleValidator:
         Checks all area files for monster references and verifies corresponding
         monster stat files exist in the module monsters/ directory.
         Records failures with detailed context for operator troubleshooting.
+        Excludes backup/temp files and deduplicates errors for cleaner reporting.
         """
         import json
 
@@ -349,10 +350,18 @@ class ModuleValidator:
 
         # Scan all area files for monster references
         unresolved_references = []
+        seen_refs = set()  # Track unique references for deduplication
 
         area_files = list(areas_dir.glob("*.json"))
-
+        # BACKUP FILE EXCLUSION: Skip backup and temp files
+        exclude_patterns = ('_BU.json', '.bak', '.backup', '.tmp', '_backup.json')
+        active_area_files = []
         for file_path in area_files:
+            if any(part in str(file_path) for part in exclude_patterns):
+                continue
+            active_area_files.append(file_path)
+        
+        for file_path in active_area_files:
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
@@ -363,7 +372,11 @@ class ModuleValidator:
 
                 for location in locations:
                     location_id = location.get('locationId', 'unknown')
-                    location_name = location.get('locationName', 'Unknown Location')
+                    # LOCATION NAME FALLBACK: locationName -> name -> locationId -> "Unknown Location"
+                    location_name = (location.get('locationName') or 
+                                     location.get('name') or 
+                                     location.get('locationId') or 
+                                     'Unknown Location')
                     monsters = location.get('monsters', [])
 
                     for monster_ref in monsters:
@@ -381,6 +394,11 @@ class ModuleValidator:
                         normalized = self._normalize_monster_name(monster_name)
 
                         if normalized and normalized.lower() not in available_monsters:
+                            # DEDUPLICATION: One error per missing monster (regardless of location)
+                            ref_key = normalized.lower()
+                            if ref_key in seen_refs:
+                                continue
+                            seen_refs.add(ref_key)
                             expected_path = f"monsters/{normalized}.json"
                             unresolved_references.append({
                                 'area_id': area_id,
@@ -415,14 +433,13 @@ class ModuleValidator:
         if not areas_dir.exists():
             return True, []
 
-        # Load all area files
+        # Load all area files (excluding backups)
         area_data = {}
-        area_files = list(areas_dir.glob("*_BU.json"))
+        exclude_patterns = ('_BU.json', '.bak', '.backup', '.tmp', '_backup.json')
+        area_files = list(areas_dir.glob("*.json"))
+        active_area_files = [f for f in area_files if not any(p in str(f) for p in exclude_patterns)]
 
-        if not area_files:
-            area_files = list(areas_dir.glob("*.json"))
-
-        for file_path in area_files:
+        for file_path in active_area_files:
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)

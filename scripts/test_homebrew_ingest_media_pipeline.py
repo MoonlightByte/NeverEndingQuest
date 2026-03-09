@@ -128,6 +128,7 @@ class TestSidecarPersistence(unittest.TestCase):
                 media_handles=media_handles,
                 portrait_prewarm=portrait_prewarm,
                 media_warnings=[],
+                continuity_contract=None,
             )
             
             self.assertTrue(result["success"])
@@ -161,6 +162,7 @@ class TestSidecarPersistence(unittest.TestCase):
             media_handles=None,
             portrait_prewarm=None,
             media_warnings=None,
+            continuity_contract=None,
         )
         
         self.assertFalse(result["success"])

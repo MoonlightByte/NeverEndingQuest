@@ -63,35 +63,42 @@ Homebrew Source (Docs/modules/hombrew/*.md)
             - Copy to modules/ingest/ or run direct CLI ingest
             |
             v
-    [7] SIDECAR AUDIT
-            - Check .result.json for success/quarantine
+    [7] CONTINUITY NORMALIZATION
+            - Build continuity v1 contract from module_context + module_plot
+            - Warn-first on alias ambiguity
+            - Strict mode: fail when required continuity keys are missing
             |
             v
-    [8] REGISTRY VERIFICATION
+    [8] SIDECAR AUDIT
+            - Check .result.json for success/quarantine
+            - Validate continuity_contract payload shape
+            |
+            v
+    [9] REGISTRY VERIFICATION
             - Confirm slug in world_registry.json
             - Confirm module appears in /api/toolkit/modules
             |
             v
-    [9] MEDIA EXTRACTION
+    [10] MEDIA EXTRACTION
             - Parse markdown for image URLs
             - Download/copy to modules/<slug>/media/
             - Classify: title_image, map_image, handout
             - Warn-only on fetch failures (degraded, not blocked)
             |
             v
-    [10] MEDIA HANDLE MANIFEST
+    [11] MEDIA HANDLE MANIFEST
             - Generate media_handles.json
             - Deterministic handle IDs
             - Future-use flags: chat_title_candidate, map_tab_candidate
             |
             v
-    [11] PORTRAIT PREWARM
+    [12] PORTRAIT PREWARM
             - Discover NPCs and monsters from module
             - Generate portraits with skip-if-exists
             - Fail-open on provider errors
             |
             v
-    [12] REPORT
+    [13] REPORT
             - PASS/DEGRADED/FAIL status
             - Registry slug
             - Media stage summaries
@@ -379,8 +386,9 @@ HALT and report immediately if:
 2. **Dry-run validation fails** - do not proceed to strict ingest
 3. **Registry guard finds conflicts** - prevent duplicate/clone slugs
 4. **Sidecar shows quarantine** - registration did not occur
-5. **Registry verification fails** - module not present after claimed success
-6. **File I/O error** - cannot read source or write prepared file
+5. **Continuity contract fails in strict mode** - missing required continuity keys
+6. **Registry verification fails** - module not present after claimed success
+7. **File I/O error** - cannot read source or write prepared file
 
 **Continue with WARNING if:**
 - Media extraction fails (degraded, not failed)
@@ -446,8 +454,9 @@ python scripts/homebrew_registry_guard.py --remove <slug>
 7. Media extraction: DEGRADED (3/6 images - Imgur rate limits)
 8. Media handles: SUCCESS (6 handles generated, 3 marked failed)
 9. Portrait prewarm: SUCCESS (0 NPCs, 0 monsters - no entities in module)
-10. Sidecar audit: PASSED
-11. Registry verification: CONFIRMED (8 areas, 3 encounters)
+10. Continuity normalization: WARNING (alias ambiguity in refs, warn-first mode)
+11. Sidecar audit: PASSED (continuity_contract present and valid)
+12. Registry verification: CONFIRMED (8 areas, 3 encounters)
 
 **Output:**
 ```
@@ -499,5 +508,11 @@ Contract alignment notes:
 - Legacy `media_extract` key is accepted with deprecation warning
 - Media stages are fail-open (degraded status) while core ingest is fail-closed
 
-Version: 2.0
-Last Updated: 2026-03-02
+Continuity contract requirements (`any-order-module-continuity-normalization`):
+- `scripts/homebrew_ingest_dev.py` MUST emit `continuity_contract` in pipeline output and sidecar `result`
+- Strict profile MUST fail closed when required continuity keys are missing
+- Alias ambiguity SHOULD remain warn-first unless strict alias policy is explicitly enabled
+- `scripts/homebrew_sidecar_audit.py` MUST validate continuity payload shape when present
+
+Version: 2.1
+Last Updated: 2026-03-09

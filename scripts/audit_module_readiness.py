@@ -9,10 +9,11 @@ NeverEndingQuest CLI - Module Readiness Audit
 Copyright (c) 2024 MoonlightByte
 Licensed under Fair Source License 1.0
 
-Strict NEQ module validator that aggregates three required gates:
+Strict NEQ module validator that aggregates required gates:
 1) Gameplay parity audit
 2) Ingest sidecar audit
-3) Schema validation
+3) Continuity contract audit
+4) Schema validation
 
 A module is ready only when ALL enabled gates pass.
 """
@@ -29,6 +30,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 GAMEPLAY_AUDIT_SCRIPT = REPO_ROOT / "scripts" / "audit_module_gameplay.py"
 SIDECAR_AUDIT_SCRIPT = REPO_ROOT / "scripts" / "homebrew_sidecar_audit.py"
 SCHEMA_VALIDATOR_SCRIPT = REPO_ROOT / "core" / "validation" / "validate_module_files.py"
+CONTINUITY_AUDIT_SCRIPT = REPO_ROOT / "scripts" / "module_continuity_audit.py"
 
 
 def _safe_json_load(text: str) -> Optional[Dict[str, Any]]:
@@ -164,6 +166,36 @@ def evaluate_schema_gate(result: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def evaluate_continuity_gate(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Evaluate continuity contract gate result."""
+    payload = result.get("json") or {}
+    blocking_errors = payload.get("blocking_errors", []) if isinstance(payload, dict) else []
+    warnings = payload.get("warnings", []) if isinstance(payload, dict) else []
+    required_keys_present = payload.get("required_keys_present", []) if isinstance(payload, dict) else []
+    continuity_version = payload.get("continuity_version") if isinstance(payload, dict) else None
+
+    passed = result["exit_code"] == 0 and len(blocking_errors) == 0
+    reason = "pass"
+
+    if result.get("json") is None:
+        reason = "continuity_output_not_json"
+    elif len(blocking_errors) > 0:
+        reason = "continuity_blocking_errors"
+    elif result["exit_code"] != 0:
+        reason = "continuity_exit_nonzero"
+
+    return {
+        "status": "pass" if passed else "fail",
+        "reason": reason,
+        "exit_code": result["exit_code"],
+        "blocking_error_count": len(blocking_errors),
+        "warning_count": len(warnings),
+        "required_keys_present": required_keys_present,
+        "continuity_version": continuity_version,
+        "raw": result,
+    }
+
+
 def _build_fix_list(gates: Dict[str, Dict[str, Any]]) -> List[str]:
     """Generate deterministic fix recommendations for failed gates."""
     fixes: List[str] = []
@@ -186,14 +218,20 @@ def _build_fix_list(gates: Dict[str, Dict[str, Any]]) -> List[str]:
         else:
             fixes.append("Fix schema validation failures from core/validation/validate_module_files.py")
 
+    continuity = gates.get("continuity", {})
+    if continuity.get("status") == "fail":
+        fixes.append("Fix continuity contract issues reported by scripts/module_continuity_audit.py")
+
     return fixes
 
 
 def audit_module_readiness(
     module_slug: str,
     include_sidecar_gate: bool = True,
+    include_continuity_gate: bool = True,
     include_schema_gate: bool = True,
     strict_gameplay: bool = True,
+    strict_continuity: bool = True,
 ) -> Dict[str, Any]:
     """Run strict module readiness audit across configured gates."""
     python_exec = sys.executable
@@ -248,7 +286,26 @@ def audit_module_readiness(
             "exit_code": None,
         }
 
-    for gate_name in ["gameplay", "sidecar", "schema"]:
+    if include_continuity_gate:
+        continuity_cmd = [
+            python_exec,
+            str(CONTINUITY_AUDIT_SCRIPT),
+            "--module",
+            module_slug,
+            "--json",
+        ]
+        if strict_continuity:
+            continuity_cmd.append("--strict")
+        continuity_raw = run_gate_command(continuity_cmd)
+        gates["continuity"] = evaluate_continuity_gate(continuity_raw)
+    else:
+        gates["continuity"] = {
+            "status": "skipped",
+            "reason": "gate_disabled",
+            "exit_code": None,
+        }
+
+    for gate_name in ["gameplay", "sidecar", "schema", "continuity"]:
         gate = gates.get(gate_name, {})
         if gate.get("status") == "fail":
             blocking_errors.append(f"{gate_name}_gate_failed: {gate.get('reason')}")
@@ -256,7 +313,7 @@ def audit_module_readiness(
     fix_list = _build_fix_list(gates)
 
     overall_pass = True
-    for gate_name in ["gameplay", "sidecar", "schema"]:
+    for gate_name in ["gameplay", "sidecar", "schema", "continuity"]:
         gate = gates.get(gate_name, {})
         if gate.get("status") == "fail":
             overall_pass = False
@@ -270,8 +327,10 @@ def audit_module_readiness(
         "strict_contract": {
             "requires_gameplay": True,
             "requires_sidecar": include_sidecar_gate,
+            "requires_continuity": include_continuity_gate,
             "requires_schema": include_schema_gate,
             "strict_gameplay": strict_gameplay,
+            "strict_continuity": strict_continuity,
         },
         "exit_code": 0 if overall_pass else 1,
     }
@@ -291,10 +350,22 @@ def _create_parser() -> argparse.ArgumentParser:
         help="Disable sidecar gate (development only)",
     )
     parser.add_argument(
+        "--no-continuity-gate",
+        action="store_true",
+        default=False,
+        help="Disable continuity gate (development only)",
+    )
+    parser.add_argument(
         "--no-schema-gate",
         action="store_true",
         default=False,
         help="Disable schema gate (development only)",
+    )
+    parser.add_argument(
+        "--continuity-warn-mode",
+        action="store_true",
+        default=False,
+        help="Run continuity gate in warn-first mode (development only)",
     )
     parser.add_argument(
         "--gameplay-dev-mode",
@@ -314,7 +385,7 @@ def _print_text_report(report: Dict[str, Any]) -> None:
     print("")
 
     gates = report.get("gates", {})
-    for gate_name in ["gameplay", "sidecar", "schema"]:
+    for gate_name in ["gameplay", "sidecar", "schema", "continuity"]:
         gate = gates.get(gate_name, {})
         print(f"{gate_name}: status={gate.get('status')} reason={gate.get('reason')} exit={gate.get('exit_code')}")
 
@@ -336,8 +407,10 @@ def main() -> int:
     report = audit_module_readiness(
         module_slug=args.module,
         include_sidecar_gate=not args.no_sidecar_gate,
+        include_continuity_gate=not args.no_continuity_gate,
         include_schema_gate=not args.no_schema_gate,
         strict_gameplay=not args.gameplay_dev_mode,
+        strict_continuity=not args.continuity_warn_mode,
     )
 
     if args.json:
