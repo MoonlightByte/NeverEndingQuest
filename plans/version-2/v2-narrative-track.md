@@ -90,8 +90,8 @@ Phase 5: Governance and Observability Hardening (PLANNED)
 
 ## Plan Ownership Matrix
 
-- `plans/ingest-module.md`
-  - Owns: ingest/watcher operational flow and continuity payload emission behavior.
+- `plans/archive/ingest-module.md`
+  - Owns: historical ingest/watcher operational flow and continuity payload emission behavior (archived reference).
 - `plans/version-2/module-import.md`
   - Owns: high-volume import pipeline and any-order readiness policy.
 - `plans/version-2/world-narrative.md`
@@ -104,6 +104,8 @@ Phase 5: Governance and Observability Hardening (PLANNED)
   - Owns: umbrella runtime integration design for Titan cycle architecture.
 - `plans/version-2/titan-retune-execution-order.md`
   - Owns: implementation sequencing, dependency ordering, and retune gates.
+- `plans/version-2/encounterEscalationProfile.md`
+  - Owns: deterministic combat encounter scaling policy for over/under-level world roaming, including cap-safe elite composition and staged reinforcement behavior.
 
 ## Dependency Chain
 

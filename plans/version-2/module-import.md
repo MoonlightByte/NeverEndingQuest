@@ -7,6 +7,7 @@
 - Forking mode: Supported in architecture, disabled by default
 - Continuity baseline: Initial build implemented (ingest/readiness/sidecar/bulk contracts)
 - V2 narrative track reference: `plans/version-2/v2-narrative-track.md`
+- Encounter escalation reference: `plans/version-2/encounterEscalationProfile.md`
 
 ## Current Baseline
 

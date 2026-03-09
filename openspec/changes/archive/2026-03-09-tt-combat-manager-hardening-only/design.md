@@ -72,11 +72,12 @@ For the current test build, we need TT-only hardening: improve edit safety and t
 
 ## Migration Plan
 
-1. Extract `/init` gate logic into helper with behavior-equivalent outputs.
-2. Replace inline `/init` branch with thin helper invocation.
-3. Preserve current ownership split: keep phase1 normalization in `combat_manager.py`; keep marker/roster helpers in `combat_state_sync.py`.
-4. Add `scripts/check_builder_patch_syntax.py`.
-5. Validate with compile + `scripts/test_multi_pc_combat.py` + `scripts/c5_regression_combat.py` + dmGroup/pcGroup smoke checks.
+1. Add `scripts/check_builder_patch_syntax.py` first, with explicit-file compile mode.
+2. Extract `/init` gate logic into helper with behavior-equivalent outputs.
+3. Replace inline `/init` branch with thin helper invocation.
+4. Preserve current ownership split: keep phase1 normalization in `combat_manager.py`; keep marker/roster helpers in `combat_state_sync.py`.
+5. Add optional convenience mode to compile guard (changed-file detection when no args are supplied).
+6. Validate with compile + `scripts/test_multi_pc_combat.py` + `scripts/c5_regression_combat.py` + dmGroup/pcGroup smoke checks.
 
 Rollback strategy:
 - Revert helper invocation and restore previous inline block if any behavioral regression appears.
@@ -84,5 +85,5 @@ Rollback strategy:
 
 ## Open Questions
 
-- Should compile-guard script run only explicit file args in test build, or include git-diff auto-detection now?
-- Do we include one targeted regression test specifically for `/init` helper return contract in this change, or defer to broader v2 test expansion?
+- Resolved for this change: compile guard is implemented in explicit-file mode first; git-diff auto-detection is optional follow-up after explicit mode passes.
+- Should we include one targeted regression test specifically for `/init` helper return contract in this change, or defer to broader v2 test expansion?

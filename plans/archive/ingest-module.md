@@ -2,9 +2,10 @@
 
 ## Status
 
-- Lifecycle state: Planning in progress
-- Priority: High (tester validation)
-- Scope: First Homebrew markdown ingest (Birble adventure), then generalize to similar markdown modules, then begin PDF ingest foundation
+- Lifecycle state: Archived (superseded/deferred, 2026-03-10)
+- Priority: Archived reference
+- Scope: Historical Wave 1 plan for dev ingest and watch workflow
+- Closure decision: Dev ingest pipeline validation completed on active modules; Birble-specific ingest deferred to future full homebrew ingest rollout
 - Continuity baseline: Implemented (ingest/readiness/sidecar/bulk continuity contracts)
 - V2 narrative track reference: `plans/version-2/v2-narrative-track.md`
 

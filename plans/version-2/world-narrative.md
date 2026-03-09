@@ -4,6 +4,7 @@ Status: Planning in progress (draft for review)
 Date: 2026-02-22
 Owner: Narrative systems + memory integration
 Track reference: `plans/version-2/v2-narrative-track.md`
+Encounter escalation reference: `plans/version-2/encounterEscalationProfile.md`
 
 ## Titan v2 Alignment Stub
 

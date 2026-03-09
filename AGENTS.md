@@ -1021,6 +1021,57 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Start Game Monster Preflight Hard-Fail Gate (COMPLETED - 2026-03-10)
+
+**Status:** COMPLETED - OpenSpec change archived
+
+**OpenSpec:** `openspec/changes/archive/2026-03-09-start-game-monster-preflight-hard-fail/`
+
+**Objective:**
+Enforce strict startup integrity for unresolved monster references while allowing one deterministic remediation attempt before final hard fail.
+
+**Implementation Summary:**
+- Added preflight helper: `web/extensions/start_game_preflight.py`
+  - Terminal status contract: `pass`, `repaired_pass`, `fail`
+  - One-attempt remediation flow: validate -> attempt closure -> revalidate -> terminal decision
+- Updated startup hook in `web/web_interface.py`:
+  - Calls preflight helper before output redirection and thread launch
+  - Hard-fails on `status=fail` with deterministic `[SYSTEM]` operator message
+- Added regression coverage: `scripts/test_start_game_preflight.py`
+  - Helper outcomes: direct pass, remediation pass, remediation fail
+  - One-attempt guarantee test
+  - Source-contract fail-gate test (emit+return before startup progression)
+
+**Verification:**
+- `python3 -m py_compile web/extensions/start_game_preflight.py web/web_interface.py` -> PASS
+- `.venv/bin/python scripts/test_start_game_preflight.py -v` -> PASS (11 tests)
+- `.venv/bin/python core/validation/validate_module_files.py --module The_Thornwood_Watch` -> PASS (reference integrity resolved)
+- `openspec validate start-game-monster-preflight-hard-fail` -> VALID
+
+**Archive Notes:**
+- Archive completed with `--skip-specs` due OpenSpec modifier resolution issue in automated sync.
+- Main specs were synchronized manually:
+  - `openspec/specs/tt-start-game-monster-preflight-gate/spec.md` (new)
+  - `openspec/specs/tt-monster-reference-integrity-validation/spec.md` (updated)
+
+### Homebrew Ingest Plan Archival (COMPLETED - 2026-03-10)
+
+**Status:** COMPLETED - plan archived as superseded/deferred
+
+**Objective:**
+Close the Wave 1 dev-ingest planning artifact now that ingest watcher and continuity gates are validated in active module workflows, while deferring Birble-specific ingest to later full homebrew rollout.
+
+**Implementation Summary:**
+- Moved `plans/ingest-module.md` to `plans/archive/ingest-module.md`.
+- Updated archived plan status to explicitly mark deferred Birble scope.
+- Updated ownership reference in `plans/version-2/v2-narrative-track.md` to point to archived plan path.
+
+**Verification:**
+- Archived plan present at `plans/archive/ingest-module.md`.
+- No active `plans/ingest-module.md` file remains.
+
+---
+
 ### V2 Narrative Prime Directive Integration (COMPLETED - 2026-03-09)
 
 **Status:** COMPLETED - planning/doc synchronization update

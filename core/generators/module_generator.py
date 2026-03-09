@@ -357,7 +357,7 @@ def update_location_references(file_path, id_mappings):
         
         # Save if modified
         if modified:
-            save_json_safely(data, file_path)
+            save_json_safely(file_path, data)
             print(f"DEBUG: [Module Generator] Updated location references in {file_path}")
     
     except (json.JSONDecodeError, IOError):
@@ -606,7 +606,7 @@ If the field expects an object, return just the object.
                     
                     # Create validation report
                     module_dir = f"modules/{module_name}"
-                    save_json_safely({"issues": issues}, f"{module_dir}/validation_report.json")
+                    save_json_safely(f"{module_dir}/validation_report.json", {"issues": issues})
                     print(f"DEBUG: [Module Generator] Validation report saved to {module_dir}/validation_report.json")
                 else:
                     print("DEBUG: [Module Generator] Module validation passed!")
@@ -1029,8 +1029,10 @@ If the field expects an object, return just the object.
         # Save closure report
         report_path = os.path.join(module_dir, "monster_closure_report.json")
         try:
-            save_json_safely(closure_report, report_path)
-            info(f"Monster closure report saved to {report_path}", category="module_generation")
+            if save_json_safely(report_path, closure_report):
+                info(f"Monster closure report saved to {report_path}", category="module_generation")
+            else:
+                warning(f"Could not save monster closure report: write returned False for {report_path}", category="module_generation")
         except Exception as e:
             warning(f"Could not save monster closure report: {e}", category="module_generation")
         
@@ -1175,7 +1177,7 @@ If the field expects an object, return just the object.
             module_plot["plotPoints"].append(plot_point)
         
         # Save unified plot file
-        save_json_safely(module_plot, f"{module_dir}/module_plot.json")
+        save_json_safely(f"{module_dir}/module_plot.json", module_plot)
         print(f"DEBUG: [Module Generator] Generated unified module plot file with {len(module_plot['plotPoints'])} plot points")
     
     def save_module(self, module_data: Dict[str, Any], filename: str = None):
@@ -1250,7 +1252,7 @@ If the field expects an object, return just the object.
             "errors": debugger.errors,
             "warnings": debugger.warnings
         }
-        save_json_safely(validation_data, f"{module_dir}/validation_report.json")
+        save_json_safely(f"{module_dir}/validation_report.json", validation_data)
         
         print(f"DEBUG: [Module Generator] Validation complete - {len(debugger.errors)} errors, {len(debugger.warnings)} warnings")
         print(f"DEBUG: [Module Generator] Validation report saved to {module_dir}/validation_report.json")

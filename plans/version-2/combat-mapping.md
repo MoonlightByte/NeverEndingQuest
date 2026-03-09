@@ -40,6 +40,7 @@ Primary goals:
 - Fail-open on missing map data: combat still runs with current initiative-only UI.
 - Use ASCII-first implementation as an intentional scaffold for canvas rendering, not as throwaway work.
 - Align combat map contracts with `plans/version-2/world-mapping.md` shared graph contract so combat is a scoped profile, not a separate map system.
+- Align encounter readability assumptions with `plans/version-2/encounterEscalationProfile.md` (cap-safe enemy counts, elite-preferred scaling, staged reinforcement behavior).
 
 ---
 

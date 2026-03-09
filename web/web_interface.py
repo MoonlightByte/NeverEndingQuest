@@ -2942,29 +2942,38 @@ def handle_start_game():
         return
     
     # TABLETOP MODE: Preflight validation - check module integrity before starting
-    try:
-        from utils.file_operations import safe_read_json
-        party_tracker = safe_read_json("party_tracker.json")
-        if party_tracker:
-            current_module = party_tracker.get("module", "").replace(" ", "_")
-            if current_module:
-                module_path = Path("modules") / current_module
-                if module_path.exists():
-                    from core.validation.validate_module_files import ModuleValidator
-                    validator = ModuleValidator(module_path, ".")
-                    validator.run_all_validations()
-                    
-                    ref_int = validator.results.get("reference_integrity", {})
-                    if ref_int.get("failed", 0) > 0:
-                        error_msg = (f"[SYSTEM] Module validation failed: {current_module} has unresolved monster references. "
-                                   f"Combat will not function correctly. Please resolve missing monster stat files before starting. "
-                                   f"See logs for details.")
-                        emit('error', {'message': error_msg})
-                        return
-    except Exception as e:
-        # Fail-open: log but don't block game start on validation error
-        from utils.enhanced_logger import warning
-        warning(f"Module preflight validation error: {e}", category="module_validation")
+    # Lazy import to avoid module-level dependencies
+    from web.extensions.start_game_preflight import run_start_game_module_preflight
+    preflight_result = run_start_game_module_preflight()
+    
+    # Log preflight status for observability
+    from utils.enhanced_logger import debug, info
+    debug(
+        f"Start-game preflight status={preflight_result.get('status')} "
+        f"module={preflight_result.get('module')} "
+        f"reference_failed={preflight_result.get('reference_failed')}",
+        category="module_validation"
+    )
+    
+    if preflight_result.get('status') == 'pass':
+        info(
+            f"Start-game preflight passed for module: {preflight_result.get('module')}",
+            category="module_validation"
+        )
+    elif preflight_result.get('status') == 'repaired_pass':
+        info(
+            f"Start-game preflight repaired and passed for module: {preflight_result.get('module')}",
+            category="module_validation"
+        )
+    # TABLETOP MODE: Hard-fail startup gate for unresolved references
+    if preflight_result.get('status') == 'fail':
+        error_msg = (
+            preflight_result.get('message')
+            or "[SYSTEM] Module preflight failed. Combat startup blocked. "
+            "Check logs and fix unresolved monster references."
+        )
+        emit('error', {'message': error_msg})
+        return
     
     # Uninstall debug interceptor to prevent competing stdout redirections
     uninstall_debug_interceptor()

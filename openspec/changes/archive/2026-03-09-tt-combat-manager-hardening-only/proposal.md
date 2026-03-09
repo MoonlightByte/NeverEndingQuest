@@ -9,6 +9,7 @@ The current test build needs safer iteration on TABLETOP MODE combat behavior wi
 - Preserve current TT ownership split for state sync: `normalize_phase1_initiative(...)` stays in `combat_manager.py`, while marker/roster helpers stay in `combat_state_sync.py`.
 - Keep host-file edits minimal and additive, with `# TABLETOP MODE:` markers for merge clarity.
 - Add a builder regression syntax guard script that compiles touched Python files after each patch step.
+- Execute compile-guard setup first in implementation order to reduce indentation-regression risk before combat-manager edits.
 - Preserve single-player compatibility and fail-open behavior for missing/legacy fields.
 
 ## Capabilities

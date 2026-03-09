@@ -1087,6 +1087,118 @@ def normalize_phase1_initiative(encounter_data, party_tracker_data):
 
     return encounter_data, changed, mirror_payload
 
+# TABLETOP MODE: Isolated helper contract for Phase 1 /init gate handling
+def _handle_group_initiative_gate(cmd, encounter_data, multi_pc_manager, party_tracker_data):
+    """
+    Handle TT Phase 1 two-group initiative gate for `/init <1-20>` command.
+
+    Args:
+        cmd: Lowercase command string (e.g., "/init 15")
+        encounter_data: Current encounter state dict
+        multi_pc_manager: MultiPCCombatManager instance (optional)
+        party_tracker_data: Party tracker state dict
+
+    Returns:
+        dict with structure:
+        {
+            "handled": bool,              # True if valid /init processed
+            "valid_init": bool,           # True if syntax valid and roll in range
+            "error_message": str,         # Guidance message if invalid (with [skipTTS][prefill:/init ])
+            "winner": str,                # "pcGroup" or "dmGroup"
+            "pc_group_roll": int,
+            "dm_group_roll": int,
+            "phase_label": str,           # "PC_PHASE" or "ENEMY_PHASE"
+            "encounter_updates": dict,    # Fields to write to encounter_data
+            "marker_enabled": bool,       # Result of apply_opening_batch_marker
+            "mirror_payload": dict,       # Combat initiative mirror for party tracker
+            "needs_enemy_injection": bool # True if dmGroup winner needs enemy phase trigger
+        }
+    """
+    result = {
+        "handled": False,
+        "valid_init": False,
+        "error_message": "",
+        "winner": None,
+        "pc_group_roll": 0,
+        "dm_group_roll": 0,
+        "phase_label": "",
+        "encounter_updates": {},
+        "marker_enabled": False,
+        "mirror_payload": {},
+        "needs_enemy_injection": False
+    }
+
+    # Only process /init commands
+    if not cmd.startswith("/init"):
+        result["error_message"] = "[skipTTS][prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Enter /init <1-20> to begin combat."
+        return result
+
+    # Parse the command
+    parts = cmd.split()
+    if len(parts) != 2:
+        result["error_message"] = "[skipTTS][prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Usage: /init <1-20>"
+        return result
+
+    try:
+        pc_group_roll = int(parts[1])
+    except ValueError:
+        result["error_message"] = "[skipTTS][prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Usage: /init <1-20>"
+        return result
+
+    if pc_group_roll < 1 or pc_group_roll > 20:
+        result["error_message"] = "[skipTTS][prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Roll must be between 1 and 20."
+        return result
+
+    # Valid /init received
+    result["handled"] = True
+    result["valid_init"] = True
+    result["pc_group_roll"] = pc_group_roll
+
+    initiative_rolls = encounter_data.get("initiativeRolls", {})
+    dm_group_roll = initiative_rolls.get("dmGroup", 1)
+    result["dm_group_roll"] = dm_group_roll
+
+    # Determine winner (dmGroup wins ties per Phase 1 rules)
+    if pc_group_roll > dm_group_roll:
+        winner = "pcGroup"
+        phase_label = "PC_PHASE"
+    else:
+        winner = "dmGroup"
+        phase_label = "ENEMY_PHASE"
+
+    result["winner"] = winner
+    result["phase_label"] = phase_label
+
+    # Prepare encounter updates
+    result["encounter_updates"] = {
+        "initiativeMode": "two_group_phase1",
+        "initiativeRolls": {
+            "dmGroup": dm_group_roll,
+            "pcGroup": pc_group_roll
+        },
+        "initiativeWinner": winner,
+        "roundStartsWith": winner,
+        "awaitingPcGroupRoll": False
+    }
+
+    # Apply opening batch marker via helper
+    if COMBAT_STATE_SYNC_AVAILABLE:
+        result["marker_enabled"] = apply_opening_batch_marker(encounter_data, winner)
+    else:
+        result["marker_enabled"] = False
+
+    # Prepare mirror payload for party tracker
+    result["mirror_payload"] = {
+        "partyRoll": pc_group_roll,
+        "enemyRoll": dm_group_roll,
+        "partyGoesFirst": (winner == "pcGroup")
+    }
+
+    # dmGroup winner needs enemy phase injection
+    result["needs_enemy_injection"] = (winner == "dmGroup")
+
+    return result
+
 def get_initiative_order(encounter_data):
     """Generate initiative order string for combat validation context"""
     if not encounter_data or not isinstance(encounter_data, dict):
@@ -3016,108 +3128,74 @@ Player: {initial_prompt_text}"""
        # When awaiting facilitator PC group roll, block all combat progression
        # until valid `/init <1-20>` is received.
        if multi_pc_manager and encounter_data.get("awaitingPcGroupRoll", False):
-           if cmd.startswith("/init"):
-               parts = clean_input.split()
-               if len(parts) != 2:
-                   print("[skipTTS][prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Usage: /init <1-20>")
+           gate_result = _handle_group_initiative_gate(cmd, encounter_data, multi_pc_manager, party_tracker_data)
+
+           if not gate_result["handled"]:
+               # Invalid or non-/init input: print guidance and continue
+               if gate_result["error_message"]:
+                   print(gate_result["error_message"])
                    import sys
                    sys.stdout.flush()
-                   continue
+               continue
 
-               try:
-                   pc_group_roll = int(parts[1])
-               except ValueError:
-                   print("[skipTTS][prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Usage: /init <1-20>")
-                   import sys
-                   sys.stdout.flush()
-                   continue
+           # Valid /init processed
+           # Update encounter state from helper
+           encounter_data.update(gate_result["encounter_updates"])
 
-               if pc_group_roll < 1 or pc_group_roll > 20:
-                   print("[skipTTS][prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Roll must be between 1 and 20.")
-                   import sys
-                   sys.stdout.flush()
-                   continue
+           # Apply manager phase state based on winner
+           if gate_result["winner"] == "pcGroup":
+               multi_pc_manager.pc_phase_complete = False
+           else:
+               multi_pc_manager.pc_phase_complete = True
 
-               initiative_rolls = encounter_data.get("initiativeRolls", {})
-               dm_group_roll = initiative_rolls.get("dmGroup", 1)
-
-               if pc_group_roll > dm_group_roll:
-                   winner = "pcGroup"
-                   multi_pc_manager.pc_phase_complete = False
-                   phase_label = "PC_PHASE"
-               else:
-                   # Tie rule: DM group wins ties in Phase 1
-                   winner = "dmGroup"
-                   multi_pc_manager.pc_phase_complete = True
-                   phase_label = "ENEMY_PHASE"
-
-               encounter_data["initiativeMode"] = "two_group_phase1"
-               encounter_data["initiativeRolls"] = {
-                   "dmGroup": dm_group_roll,
-                   "pcGroup": pc_group_roll
-               }
-               encounter_data["initiativeWinner"] = winner
-               encounter_data["roundStartsWith"] = winner
-               encounter_data["awaitingPcGroupRoll"] = False
-
-               # TABLETOP MODE: Section 1 - Apply opening batch marker based on winner
-               if COMBAT_STATE_SYNC_AVAILABLE:
-                   marker_enabled = apply_opening_batch_marker(encounter_data, winner)
-                   if marker_enabled:
-                       debug(
-                           "PHASE_MARKER: Set openingEnemyBatchPending=True via /init dmGroup path",
-                           category="combat_events"
-                       )
-                   else:
-                       debug(
-                           "PHASE_MARKER: Cleared openingEnemyBatchPending via /init pcGroup path",
-                           category="combat_events"
-                       )
-
-               save_json_file(json_file_path, encounter_data)
-
-               # TABLETOP MODE: C3.3 - Sync compatibility mirror after /init resolution
-               party_tracker_data.setdefault("worldConditions", {})["combatInitiative"] = {
-                   "partyRoll": pc_group_roll,
-                   "enemyRoll": dm_group_roll,
-                   "partyGoesFirst": (winner == "pcGroup")
-               }
-               save_json_file("party_tracker.json", party_tracker_data)
-
+           # Log marker state change
+           if gate_result["marker_enabled"]:
                debug(
-                   f"INITIATIVE: Received /init {pc_group_roll}. "
-                   f"DM_GROUP={dm_group_roll}, winner={winner}, phase={phase_label}",
+                   "PHASE_MARKER: Set openingEnemyBatchPending=True via /init dmGroup path",
                    category="combat_events"
                )
-               print(
-                   f"Dungeon Master: [SYSTEM] Initiative locked. "
-                   f"DM_GROUP {dm_group_roll} vs PC_GROUP {pc_group_roll}. "
-                   f"Starting {phase_label}."
-               )
-               import sys
-               sys.stdout.flush()
-
-               if winner == "pcGroup":
-                   # Wait for the facilitator's first PC action.
-                   continue
-
-               # DM group starts: inject explicit enemy-phase trigger and fall through to AI.
-               pending_enemies = multi_pc_manager.get_remaining_enemies_for_round()
-               pending_list_str = ", ".join(pending_enemies) if pending_enemies else "all remaining enemies/NPCs"
-               system_msg = (
-                   "System: Initiative resolved. DM_GROUP won the opening phase. PROCEED TO ENEMY PHASE.\n"
-                   f"Turn Order: {pending_list_str}.\n"
-                   "INSTRUCTIONS: Generate actions for exactly these combatants in order. Once they have acted, STOP.\n"
-                   "If this ends the round, increment 'combat_round' in your JSON, but DO NOT narrate the start of the next round."
-               )
-               conversation_history.append({"role": "user", "content": system_msg})
-               save_json_file(conversation_history_file, conversation_history)
-               user_input_text = "Enemies turn."
            else:
-               print("[skipTTS][prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Enter /init <1-20> to begin combat.")
-               import sys
-               sys.stdout.flush()
+               debug(
+                   "PHASE_MARKER: Cleared openingEnemyBatchPending via /init pcGroup path",
+                   category="combat_events"
+               )
+
+           save_json_file(json_file_path, encounter_data)
+
+           # TABLETOP MODE: C3.3 - Sync compatibility mirror after /init resolution
+           party_tracker_data.setdefault("worldConditions", {})["combatInitiative"] = gate_result["mirror_payload"]
+           save_json_file("party_tracker.json", party_tracker_data)
+
+           debug(
+               f"INITIATIVE: Received /init {gate_result['pc_group_roll']}. "
+               f"DM_GROUP={gate_result['dm_group_roll']}, winner={gate_result['winner']}, "
+               f"phase={gate_result['phase_label']}",
+               category="combat_events"
+           )
+           print(
+               f"Dungeon Master: [SYSTEM] Initiative locked. "
+               f"DM_GROUP {gate_result['dm_group_roll']} vs PC_GROUP {gate_result['pc_group_roll']}. "
+               f"Starting {gate_result['phase_label']}."
+           )
+           import sys
+           sys.stdout.flush()
+
+           if gate_result["winner"] == "pcGroup":
+               # Wait for the facilitator's first PC action.
                continue
+
+           # DM group starts: inject explicit enemy-phase trigger and fall through to AI.
+           pending_enemies = multi_pc_manager.get_remaining_enemies_for_round()
+           pending_list_str = ", ".join(pending_enemies) if pending_enemies else "all remaining enemies/NPCs"
+           system_msg = (
+               "System: Initiative resolved. DM_GROUP won the opening phase. PROCEED TO ENEMY PHASE.\n"
+               f"Turn Order: {pending_list_str}.\n"
+               "INSTRUCTIONS: Generate actions for exactly these combatants in order. Once they have acted, STOP.\n"
+               "If this ends the round, increment 'combat_round' in your JSON, but DO NOT narrate the start of the next round."
+           )
+           conversation_history.append({"role": "user", "content": system_msg})
+           save_json_file(conversation_history_file, conversation_history)
+           user_input_text = "Enemies turn."
         
         # ----------------------------------------------------------------------
         # TABLETOP MODE: Fast Lane Command Processing

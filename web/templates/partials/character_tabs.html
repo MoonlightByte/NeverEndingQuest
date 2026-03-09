@@ -266,13 +266,13 @@
 
 <!-- TABLETOP MODE: Manage PC Modal (Edit Only - separate from Manage Party) -->
 <div id="manage-pc-modal" class="npc-details-modal">
-    <div class="npc-details-modal-content" style="max-width: 600px;">
+    <div class="npc-details-modal-content" style="max-width: 600px; width: 90%; margin: 3vh auto; max-height: 92vh; display: flex; flex-direction: column;">
         <div class="npc-details-header">
             <div class="npc-details-title">Manage PC</div>
             <span class="npc-details-close" onclick="closeManagePcModal()">&times;</span>
         </div>
         
-        <div class="npc-details-body">
+        <div class="npc-details-body" style="max-height: calc(92vh - 120px); overflow-y: auto;">
             <!-- Roll Your Own Form for Edit Only -->
             <form id="manage-pc-form" class="save-form" autocomplete="off">
                 <!-- Hidden field to track which character we're editing -->
