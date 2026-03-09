@@ -29,6 +29,68 @@ from pathlib import Path
 from typing import Dict, List, Any, Set, Optional
 
 
+def _safe_json_load(text: str) -> Optional[Dict[str, Any]]:
+    """Parse JSON from pure or mixed stdout payloads.
+
+    Supports validators that print preamble lines before a final JSON block.
+    """
+    if not text:
+        return None
+
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+
+    lines = text.strip().split("\n")
+    for index in range(len(lines) - 1, -1, -1):
+        if lines[index].lstrip().startswith("{"):
+            candidate = "\n".join(lines[index:])
+            try:
+                parsed = json.loads(candidate)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                continue
+
+    return None
+
+
+def _pick_schema_python(repo_root: Path) -> str:
+    """Pick python executable for schema validation.
+
+    Prefer current interpreter if jsonschema is importable; otherwise fall back
+    to local virtualenv python when available.
+    """
+    try:
+        probe = subprocess.run(
+            [sys.executable, "-c", "import jsonschema"],
+            capture_output=True,
+            text=True,
+        )
+        if probe.returncode == 0:
+            return sys.executable
+    except Exception:
+        pass
+
+    venv_python = repo_root / ".venv" / "bin" / "python"
+    if venv_python.exists():
+        try:
+            probe = subprocess.run(
+                [str(venv_python), "-c", "import jsonschema"],
+                capture_output=True,
+                text=True,
+            )
+            if probe.returncode == 0:
+                return str(venv_python)
+        except Exception:
+            pass
+
+    return sys.executable
+
+
 def _load_world_registry(modules_dir: Path) -> Set[str]:
     """Load registered module slugs from world_registry.json."""
     registry_path = modules_dir / "world_registry.json"
@@ -102,13 +164,13 @@ def _resolve_targets(modules_dir: Path, explicit_modules: Optional[List[str]] = 
     return sorted(targets)
 
 
-def _run_schema_validation(module_slug: str, modules_dir: Path) -> Dict[str, Any]:
+def _run_schema_validation(module_slug: str, modules_dir: Path, schema_python: str) -> Dict[str, Any]:
     """Run schema validation for a single module."""
     script_path = Path(__file__).parent.parent / "core" / "validation" / "validate_module_files.py"
     
     try:
         result = subprocess.run(
-            [sys.executable, str(script_path), "--module", module_slug, "--json"],
+            [schema_python, str(script_path), "--module", module_slug, "--json"],
             capture_output=True,
             text=True,
             timeout=120
@@ -116,27 +178,30 @@ def _run_schema_validation(module_slug: str, modules_dir: Path) -> Dict[str, Any
         
         # Try to parse JSON output
         if result.stdout:
-            try:
-                data = json.loads(result.stdout)
+            data = _safe_json_load(result.stdout)
+            if data is not None:
                 return {
                     "success": result.returncode == 0,
                     "exit_code": result.returncode,
                     "data": data,
+                    "python_exec": schema_python,
                     "stderr": result.stderr if result.stderr else None
                 }
-            except json.JSONDecodeError:
-                return {
-                    "success": False,
-                    "exit_code": result.returncode,
-                    "error": "Invalid JSON output from validator",
-                    "stdout": result.stdout[:500],
-                    "stderr": result.stderr if result.stderr else None
-                }
+
+            return {
+                "success": False,
+                "exit_code": result.returncode,
+                "error": "Invalid JSON output from validator",
+                "python_exec": schema_python,
+                "stdout": result.stdout[:500],
+                "stderr": result.stderr if result.stderr else None
+            }
         else:
             return {
                 "success": False,
                 "exit_code": result.returncode,
                 "error": "No output from validator",
+                "python_exec": schema_python,
                 "stderr": result.stderr if result.stderr else None
             }
     
@@ -299,6 +364,7 @@ def main():
     # Validate each module
     results = {}
     any_failed = False
+    schema_python = _pick_schema_python(repo_root)
     
     for slug in targets:
         # Progress output only in human mode
@@ -306,7 +372,7 @@ def main():
             print(f"\n[{slug}] Validating...")
         
         # Run schema validation
-        schema_result = _run_schema_validation(slug, modules_dir)
+        schema_result = _run_schema_validation(slug, modules_dir, schema_python)
         
         # Run gameplay audit
         audit_result = _run_gameplay_audit(slug, modules_dir)
@@ -375,6 +441,14 @@ def main():
             if continuity_result.get("error"):
                 print(f"  Continuity Error: {continuity_result['error']}")
     
+    # Aggregate continuity counts for summary
+    continuity_passed = sum(1 for r in results.values() if r.get("continuity", {}).get("passed", False))
+    continuity_failed = sum(1 for r in results.values() if not r.get("continuity", {}).get("passed", False))
+    continuity_degraded = sum(
+        1 for r in results.values()
+        if r.get("continuity", {}).get("data", {}).get("status") == "degraded"
+    )
+
     # Output summary
     if args.json:
         summary = {
@@ -383,7 +457,12 @@ def main():
                 "total": len(targets),
                 "passed": sum(1 for r in results.values() if r["overall_passed"]),
                 "failed": sum(1 for r in results.values() if not r["overall_passed"]),
-                "all_passed": not any_failed
+                "all_passed": not any_failed,
+                "continuity": {
+                    "passed": continuity_passed,
+                    "failed": continuity_failed,
+                    "degraded": continuity_degraded
+                }
             }
         }
         print(json.dumps(summary, indent=2))
@@ -394,6 +473,10 @@ def main():
         print(f"Total modules: {len(targets)}")
         print(f"Passed: {sum(1 for r in results.values() if r['overall_passed'])}")
         print(f"Failed: {sum(1 for r in results.values() if not r['overall_passed'])}")
+        print(f"\nContinuity:")
+        print(f"  Passed: {continuity_passed}")
+        print(f"  Failed: {continuity_failed}")
+        print(f"  Degraded: {continuity_degraded}")
         print(f"\nExit code: {'0 (PASS)' if not any_failed else '1 (FAIL)'}")
     
     return 0 if not any_failed else 1

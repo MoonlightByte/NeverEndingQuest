@@ -38,6 +38,8 @@ from homebrew_preflight import assess_source_readiness
 from homebrew_registry_guard import check_duplicate, verify_present
 from homebrew_sidecar_audit import audit_sidecar
 from homebrew_transform_to_deterministic import transform_source_to_deterministic
+from continuity_cross_ref_enrichment import enrich_continuity_cross_refs
+from utils.file_operations import safe_write_json
 
 # Shared entrypoint for watcher parity (Prompt 1)
 __all__ = ["run_ingest_pipeline"]
@@ -191,6 +193,102 @@ def _normalize_continuity_contract(
             contract["warnings"].append("standalone_fallback missing 'enabled' flag")
 
     return contract
+
+
+def _default_continuity_contract(module_slug: str) -> Dict[str, Any]:
+    """Return additive continuity v1 defaults for new/legacy modules."""
+    module_label = module_slug.replace("_", " ")
+    return {
+        "continuity_version": "v1",
+        "entry_state_variants": {
+            "cold_start": {
+                "summary": (
+                    f"Party enters {module_label} with no prior continuity context. "
+                    "Present the opening conflict and immediate objective clearly."
+                )
+            },
+            "partial_context": {
+                "summary": (
+                    f"Party enters {module_label} with partial prior context. "
+                    "Reinforce known clues before branch-critical decisions."
+                )
+            },
+            "late_arc": {
+                "summary": (
+                    f"Party enters {module_label} in late-arc state. "
+                    "Provide compact recap and preserve ending accessibility."
+                )
+            },
+        },
+        "cross_module_refs": [],
+        "standalone_fallback": {
+            "enabled": True,
+            "clue_sources": ["module_context", "module_plot"],
+            "notes": (
+                f"{module_slug} remains playable as a standalone module when "
+                "cross-module continuity is unavailable."
+            ),
+        },
+    }
+
+
+def _ensure_continuity_contract_keys(module_context: Dict[str, Any], module_slug: str) -> Dict[str, Any]:
+    """Ensure required continuity keys are present before strict audit.
+
+    Returns shape:
+      {
+        "module_context": dict,
+        "changed": bool,
+        "injected_keys": list[str]
+      }
+    """
+    injected_keys: List[str] = []
+    defaults = _default_continuity_contract(module_slug)
+
+    continuity = module_context.get("continuity")
+    if not isinstance(continuity, dict):
+        continuity = {}
+        module_context["continuity"] = continuity
+        injected_keys.append("continuity")
+
+    if continuity.get("continuity_version") is None:
+        continuity["continuity_version"] = defaults["continuity_version"]
+        injected_keys.append("continuity.continuity_version")
+
+    variants = continuity.get("entry_state_variants")
+    if not isinstance(variants, dict):
+        continuity["entry_state_variants"] = defaults["entry_state_variants"]
+        injected_keys.append("continuity.entry_state_variants")
+    else:
+        for variant_key in ["cold_start", "partial_context", "late_arc"]:
+            if variant_key not in variants or not isinstance(variants.get(variant_key), dict):
+                variants[variant_key] = defaults["entry_state_variants"][variant_key]
+                injected_keys.append(f"continuity.entry_state_variants.{variant_key}")
+
+    if not isinstance(continuity.get("cross_module_refs"), list):
+        continuity["cross_module_refs"] = defaults["cross_module_refs"]
+        injected_keys.append("continuity.cross_module_refs")
+
+    fallback = continuity.get("standalone_fallback")
+    if not isinstance(fallback, dict):
+        continuity["standalone_fallback"] = defaults["standalone_fallback"]
+        injected_keys.append("continuity.standalone_fallback")
+    else:
+        if "enabled" not in fallback:
+            fallback["enabled"] = True
+            injected_keys.append("continuity.standalone_fallback.enabled")
+        if "clue_sources" not in fallback or not isinstance(fallback.get("clue_sources"), list):
+            fallback["clue_sources"] = defaults["standalone_fallback"]["clue_sources"]
+            injected_keys.append("continuity.standalone_fallback.clue_sources")
+        if "notes" not in fallback:
+            fallback["notes"] = defaults["standalone_fallback"]["notes"]
+            injected_keys.append("continuity.standalone_fallback.notes")
+
+    return {
+        "module_context": module_context,
+        "changed": len(injected_keys) > 0,
+        "injected_keys": injected_keys,
+    }
 
 
 def _run_subprocess_stage(
@@ -469,6 +567,14 @@ def run_ingest_pipeline(
 
     # Stage 6: Continuity normalization (any-order module support)
     continuity_contract = None
+    continuity_patch = {"changed": False, "injected_keys": []}
+    continuity_enrichment = {
+        "status": "skipped",
+        "changed": False,
+        "added_refs": [],
+        "existing_count": 0,
+        "final_count": 0,
+    }
     if module_slug:
         try:
             # Load module context and plot for continuity validation
@@ -485,6 +591,36 @@ def run_ingest_pipeline(
             if plot_path.exists():
                 with open(plot_path, "r", encoding="utf-8") as f:
                     module_plot = json.load(f)
+
+            # TABLETOP MODE: Backfill required continuity keys before strict audit
+            continuity_patch = _ensure_continuity_contract_keys(module_context, module_slug)
+            module_context = continuity_patch["module_context"]
+
+            # TABLETOP MODE: Enrich cross-module narrative refs before strict audit
+            continuity_enrichment = enrich_continuity_cross_refs(
+                module_slug=module_slug,
+                module_context=module_context,
+                module_plot=module_plot,
+            )
+            module_context = continuity_enrichment.get("module_context", module_context)
+
+            if continuity_patch["changed"] or continuity_enrichment.get("changed"):
+                write_ok = safe_write_json(str(context_path), module_context)
+                if not write_ok:
+                    error_msg = f"Failed to persist continuity normalization to {context_path}"
+                    if strict:
+                        return {
+                            "status": "failed",
+                            "stage": "continuity",
+                            "source": str(source_file),
+                            "prepared": prepared_path,
+                            "module_slug": module_slug,
+                            "continuity_contract": continuity_contract,
+                            "continuity_patch": continuity_patch,
+                            "continuity_enrichment": continuity_enrichment,
+                            "error": error_msg,
+                            "exit_code": 11,
+                        }
 
             continuity_contract = _normalize_continuity_contract(
                 module_context=module_context,
@@ -503,6 +639,8 @@ def run_ingest_pipeline(
                     "prepared": prepared_path,
                     "module_slug": module_slug,
                     "continuity_contract": continuity_contract,
+                    "continuity_patch": continuity_patch,
+                    "continuity_enrichment": continuity_enrichment,
                     "error": error_msg,
                     "exit_code": 11,
                 }
@@ -596,6 +734,8 @@ def run_ingest_pipeline(
         "guard": guard_result,
         "ingest": ingest_result,
         "continuity_contract": continuity_contract,
+        "continuity_patch": continuity_patch,
+        "continuity_enrichment": continuity_enrichment,
         "sidecar_audit": sidecar_audit,
         "sidecar_note": sidecar_audit_note,
         "verify": verify_result,
@@ -712,6 +852,7 @@ def run_ingest_pipeline(
         portrait_prewarm=result.get("portrait_prewarm"),
         media_warnings=result.get("media_warnings"),
         continuity_contract=result.get("continuity_contract"),
+        continuity_enrichment=result.get("continuity_enrichment"),
     )
     if sidecar_persistence.get("success"):
         result["sidecar_persisted"] = True
@@ -729,6 +870,7 @@ def _persist_media_to_sidecar(
     portrait_prewarm: Optional[Dict[str, Any]],
     media_warnings: Optional[List[Dict[str, Any]]],
     continuity_contract: Optional[Dict[str, Any]],
+    continuity_enrichment: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Persist media stage blocks into existing sidecar artifact.
     
@@ -769,6 +911,8 @@ def _persist_media_to_sidecar(
             sidecar_data["result"]["media_warnings"] = media_warnings
         if continuity_contract:
             sidecar_data["result"]["continuity_contract"] = continuity_contract
+        if continuity_enrichment:
+            sidecar_data["result"]["continuity_enrichment"] = continuity_enrichment
         
         # Atomic write
         tmp_path = sidecar_path.with_suffix(".tmp")

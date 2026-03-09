@@ -65,6 +65,8 @@ Homebrew Source (Docs/modules/hombrew/*.md)
             v
     [7] CONTINUITY NORMALIZATION
             - Build continuity v1 contract from module_context + module_plot
+            - Auto-backfill missing required continuity keys into module_context.json
+            - Auto-enrich continuity.cross_module_refs from narrative text hints
             - Warn-first on alias ambiguity
             - Strict mode: fail when required continuity keys are missing
             |
@@ -510,6 +512,8 @@ Contract alignment notes:
 
 Continuity contract requirements (`any-order-module-continuity-normalization`):
 - `scripts/homebrew_ingest_dev.py` MUST emit `continuity_contract` in pipeline output and sidecar `result`
+- `scripts/homebrew_ingest_dev.py` SHOULD backfill missing continuity v1 required keys before strict audit
+- `scripts/homebrew_ingest_dev.py` SHOULD enrich `continuity.cross_module_refs` from module narrative hints before strict audit
 - Strict profile MUST fail closed when required continuity keys are missing
 - Alias ambiguity SHOULD remain warn-first unless strict alias policy is explicitly enabled
 - `scripts/homebrew_sidecar_audit.py` MUST validate continuity payload shape when present

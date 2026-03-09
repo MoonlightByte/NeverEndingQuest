@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -20,12 +21,12 @@ class TestModuleContinuityAudit(unittest.TestCase):
         import shutil
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def _make_module(self, name: str, continuity: dict | None = None, plot: dict | None = None) -> Path:
+    def _make_module(self, name: str, continuity: Any = None, plot: Any = None) -> Path:
         module_dir = self.temp_dir / name
         module_dir.mkdir(parents=True, exist_ok=True)
         (module_dir / "areas").mkdir(exist_ok=True)
 
-        module_context = {"moduleName": name}
+        module_context: dict[str, object] = {"moduleName": name}
         if continuity is not None:
             module_context["continuity"] = continuity
         (module_dir / "module_context.json").write_text(json.dumps(module_context), encoding="utf-8")
@@ -78,6 +79,23 @@ class TestModuleContinuityAudit(unittest.TestCase):
         self.assertIn("continuity_version", result["required_keys_present"])
         # Degraded because target module likely missing in temp modules root, but not blocking.
         self.assertGreaterEqual(len(result["warnings"]), 0)
+
+    def test_empty_cross_refs_emits_warning_not_blocker(self):
+        continuity = {
+            "continuity_version": "v1",
+            "entry_state_variants": {
+                "cold_start": {"summary": "new party"},
+                "partial_context": {"summary": "some clues"},
+                "late_arc": {"summary": "deep continuity"},
+            },
+            "cross_module_refs": [],
+            "standalone_fallback": {"enabled": True, "clue_sources": ["module_plot"]},
+        }
+        module_dir = self._make_module("EmptyRefsMod", continuity=continuity)
+        result = audit_module_continuity(module_dir, strict=True)
+
+        self.assertEqual(result["exit_code"], 0)
+        self.assertTrue(any("cross_module_refs is empty" in item for item in result["warnings"]))
 
 
 if __name__ == "__main__":

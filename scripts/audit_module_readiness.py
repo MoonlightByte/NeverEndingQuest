@@ -221,6 +221,14 @@ def _build_fix_list(gates: Dict[str, Dict[str, Any]]) -> List[str]:
     continuity = gates.get("continuity", {})
     if continuity.get("status") == "fail":
         fixes.append("Fix continuity contract issues reported by scripts/module_continuity_audit.py")
+    elif continuity.get("status") == "pass":
+        raw_json = (((continuity.get("raw") or {}).get("json")) or {})
+        warnings = raw_json.get("warnings", []) if isinstance(raw_json, dict) else []
+        if any("cross_module_refs is empty" in str(item) for item in warnings):
+            fixes.append(
+                "Seed narrative cross-module refs: "
+                "python3 scripts/enrich_module_cross_refs.py --module <slug> --apply"
+            )
 
     return fixes
 

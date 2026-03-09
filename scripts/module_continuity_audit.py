@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -134,6 +135,11 @@ def audit_module_continuity(module_dir: Path, strict: bool = False) -> Dict[str,
             else:
                 warnings.append(msg)
         else:
+            if len(refs) == 0:
+                warnings.append(
+                    "cross_module_refs is empty; run scripts/enrich_module_cross_refs.py --module "
+                    f"{module_dir.name} --apply to seed narrative continuity links"
+                )
             known_modules = set(_list_known_modules(module_dir.parent))
             for idx, ref in enumerate(refs):
                 if not isinstance(ref, dict):
@@ -143,6 +149,11 @@ def audit_module_continuity(module_dir: Path, strict: bool = False) -> Dict[str,
                 for req_key in ["target_module", "entity_id", "relation", "confidence"]:
                     if not ref.get(req_key):
                         warnings.append(f"cross_module_refs[{idx}] missing {req_key}")
+                entity_id = ref.get("entity_id")
+                if entity_id and not re.match(r"^[a-z0-9_\.]+$", str(entity_id)):
+                    warnings.append(
+                        f"cross_module_refs[{idx}] entity_id '{entity_id}' has non-canonical format"
+                    )
                 confidence = ref.get("confidence")
                 if confidence and confidence not in ["high", "medium", "low"]:
                     warnings.append(

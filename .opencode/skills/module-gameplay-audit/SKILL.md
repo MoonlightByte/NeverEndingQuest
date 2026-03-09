@@ -111,6 +111,26 @@ python3 scripts/audit_module_readiness.py --module <slug> --no-schema-gate
 python3 scripts/audit_module_readiness.py --module <slug> --gameplay-dev-mode
 ```
 
+## Legacy Continuity Remediation
+
+For existing modules created before continuity v1 enforcement, run remediation first:
+
+```bash
+python3 scripts/remediate_module_continuity.py --all --apply
+```
+
+Then enrich narrative cross-module refs:
+
+```bash
+python3 scripts/enrich_module_cross_refs.py --all --apply
+```
+
+Then re-run strict readiness validation:
+
+```bash
+python3 scripts/audit_module_readiness.py --module <module_slug>
+```
+
 ## Legacy Compatibility
 
 `scripts/audit_module_gameplay.py` remains available for focused monster parity analysis, but this skill treats `scripts/audit_module_readiness.py` as the canonical validator entrypoint.
@@ -126,6 +146,9 @@ python3 scripts/module_continuity_audit.py --module <module_slug> --json --stric
 Pass criteria:
 - Exit code is 0
 - `blocking_errors` is empty
+
+Advisory quality signal:
+- Empty `cross_module_refs` emits continuity warning with enrichment fix guidance.
 
 Warn-first behavior:
 - Alias ambiguity and unknown target modules are warnings (degraded), not blockers

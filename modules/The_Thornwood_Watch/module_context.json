@@ -3,7 +3,7 @@
   "module_id": "The_Thornwood_Watch",
   "areas": {
     "RO001": {
-      "name": "Rangers\u2019 Outpost",
+      "name": "Rangers’ Outpost",
       "type": "wilderness",
       "locations": [],
       "npcs": [
@@ -53,8 +53,10 @@
   "npcs": {
     "ranger_elen": {
       "name": "Ranger Elen",
-      "role": "",
-      "faction": "",
+      "role": "Outpost Commander, regional authority",
+      "faction": "Frontier Rangers",
+      "motivation": "Protect the outpost, stop the corruption, honor ancient watch-oaths she barely understands",
+      "secretNote": "Carries an heirloom charm with thorn-crown sigil (matches bell carvings); doesn't know its significance",
       "appears_in": [
         {
           "area": "RO001",
@@ -64,8 +66,10 @@
     },
     "quartermaster_brann": {
       "name": "Quartermaster Brann",
-      "role": "",
-      "faction": "",
+      "role": "Logistics coordinator, local historian",
+      "faction": "Frontier Rangers",
+      "motivation": "Keep the outpost supplied, preserve what records remain",
+      "secretNote": "Knows the silver bells predate the Rangers; has seen similar harvest-sigils in traveling merchants' wares from the southern vale",
       "appears_in": [
         {
           "area": "RO001",
@@ -75,8 +79,10 @@
     },
     "trader_sila": {
       "name": "Trader Sila",
-      "role": "",
-      "faction": "",
+      "role": "Merchant, regional traveler",
+      "faction": "Independent (formerly of distant trade guilds)",
+      "motivation": "Profit, safety, escape before things get worse",
+      "secretNote": "Has heard rumors of 'harvest troubles' in villages two days south; assumes it's unrelated",
       "appears_in": [
         {
           "area": "RO001",
@@ -86,8 +92,10 @@
     },
     "captured_bandit_leader_rusk": {
       "name": "Captured Bandit Leader Rusk",
-      "role": "",
-      "faction": "",
+      "role": "Reluctant informant, terrified survivor",
+      "faction": "Former Bandit Coalition (now broken)",
+      "motivation": "Survive Malarok's wrath, escape the region",
+      "secretNote": "Genuinely believes Malarok was 'trying to stop something worse'; overheard references to 'debts' and 'the old hunger'",
       "appears_in": [
         {
           "area": "RO001",
@@ -97,8 +105,10 @@
     },
     "merchant_lira": {
       "name": "Merchant Lira",
-      "role": "",
-      "faction": "",
+      "role": "Captive survivor, witness",
+      "faction": "Independent",
+      "motivation": "Escape, warn others about the tribute-gathering",
+      "secretNote": "Overheard bandits mention 'gathering tributes for the master's ritual' at a 'forgotten altar'",
       "appears_in": [
         {
           "area": "TW001",
@@ -108,8 +118,10 @@
     },
     "wounded_scout_neris": {
       "name": "Wounded Scout Neris",
-      "role": "",
-      "faction": "",
+      "role": "Ranger scout, intelligence gatherer",
+      "faction": "Frontier Rangers",
+      "motivation": "Survive, share map intelligence with party",
+      "secretNote": "Saw symbols in the corrupted woods matching those on the silver bells—thorn-crown, hollow eye",
       "appears_in": [
         {
           "area": "TW001",
@@ -119,8 +131,10 @@
     },
     "spirit-touched_hermit_maelo": {
       "name": "Spirit-Touched Hermit Maelo",
-      "role": "",
-      "faction": "",
+      "role": "Forest sage, keeper-lore remnants",
+      "faction": "Independent (former druidic circle initiate)",
+      "motivation": "Protect the forest's spiritual balance, atone for failing to stop Malarok earlier",
+      "secretNote": "Recognized Malarok years ago as 'a man seeking ward-breaking without wrath'; refused to help; knows the iron charm's significance as 'keeper-forged'",
       "appears_in": [
         {
           "area": "TW001",
@@ -128,16 +142,32 @@
         }
       ]
     },
+    "malarok_the_corruptor": {
+      "name": "Malarok the Corruptor",
+      "role": "Tragic antagonist, failed warden",
+      "faction": "Independent (former Keeper of the Northern Circle)",
+      "motivation": "Contain the 'old hunger' using the Voidstone, break the ancient debt-cycle by any means",
+      "secretNote": "Was once a warden of the northern druid circle; discovered the 'split covenant' and tried to take the debt's power into himself; failed, corrupted, now genuinely believes the Voidstone is both amplifier AND seal",
+      "appears_in": [
+        {
+          "area": "NCW001",
+          "location": "NC05"
+        }
+      ]
+    },
     "corrupted_woodland_creatures": {
       "name": "Corrupted Woodland Creatures",
-      "role": "",
-      "faction": "",
+      "role": "Environmental hazards, evidence of corruption spread",
+      "faction": "None (victims of Voidstone influence)",
+      "motivation": "Survival twisted by dark magic",
       "appears_in": []
     },
     "the_withered_hart": {
       "name": "The Withered Hart",
-      "role": "",
-      "faction": "",
+      "role": "Forest guardian, lorekeeper, optional ally",
+      "faction": "Ancient Wardens (remnant)",
+      "motivation": "Protect the forest's memory, warn of the broken covenant, serve as witness to the old debt",
+      "secretNote": "Holds fragmented memories of the original keeper circle, the 'southern covenant,' and the pact that split them; if freed, shares visions that point toward other regional mysteries without naming them",
       "appears_in": [
         {
           "area": "NCW001",
@@ -191,5 +221,71 @@
   "validation_issues": [
     "NPC 'Corrupted Woodland Creatures' is referenced in ['module:plotStages'] but not placed in any location"
   ],
-  "generated_at": "2025-06-22T22:27:41.391154"
+  "narrativeContext": {
+    "regionalAtmosphere": "A day's travel south lies the fertile vale where harvest festivals end in unease. Here in the northern woods, the corruption feels older—like a wound that never fully healed, now tearing open again.",
+    "keyMysteries": [
+      "The silver bells bear symbols no Ranger recognizes, yet their magic still works",
+      "Malarok's journals speak of 'debts' and 'covenants' no living person remembers signing",
+      "The Voidstone's pulse matches no known magical frequency—except perhaps the rhythm of distant bells on quiet nights"
+    ],
+    "indirectConnections": {
+      "designPhilosophy": "All hints point 'south' and 'harvest' and 'debt' without naming specific places or entities. Players may connect these to other adventures, but nothing is required.",
+      "suggestedEchoes": [
+        "Harvest sigils that resemble those found in distant village records",
+        "A 'split covenant' that might parallel other broken pacts",
+        "An 'old hunger' that sleeps beneath many lands, not just this one"
+      ]
+    },
+    "dmGuidance": {
+      "moralAmbiguity": "Malarok is a tragic figure, not a cackling villain. He chose corruption to stop something worse—but that choice made him the monster. Players may question whether destroying the Voidstone was right.",
+      "puzzleBalance": "Lore fragments enhance narrative depth but never block progress. All endings are accessible; only the 'purified_path' and 'witness_path' require optional content.",
+      "horrorTone": "Emphasize atmosphere over gore. The horror is existential—broken covenants, forgotten debts, cycles that repeat. Let players fill the gaps with their imagination."
+    }
+  },
+  "generated_at": "2025-06-22T22:27:41.391154",
+  "continuity": {
+    "continuity_version": "v1",
+    "entry_state_variants": {
+      "cold_start": {
+        "summary": "Party enters The Thornwood Watch with no prior continuity context. Present the opening conflict and immediate objective clearly."
+      },
+      "partial_context": {
+        "summary": "Party enters The Thornwood Watch with partial prior context. Reinforce known clues before branch-critical decisions."
+      },
+      "late_arc": {
+        "summary": "Party enters The Thornwood Watch in late-arc state. Provide compact recap and maintain path to a valid ending."
+      }
+    },
+    "cross_module_refs": [
+      {
+        "target_module": "Keep_of_Doom",
+        "entity_id": "scout_elen",
+        "relation": "reference",
+        "confidence": "high",
+        "notes": "Narrative handoff references Scout Elen and Harrow's Hollow."
+      },
+      {
+        "target_module": "Keep_of_Doom",
+        "entity_id": "shadow_relic",
+        "relation": "artifact_link",
+        "confidence": "medium",
+        "notes": "Shadow relic thread echoes in adjacent module lore."
+      },
+      {
+        "target_module": "The_Pumpkin_Kings_Curse",
+        "entity_id": "pumpkin_king",
+        "relation": "antagonist",
+        "confidence": "medium",
+        "notes": "Pumpkin King and harvest pact are shared continuity anchors."
+      }
+    ],
+    "standalone_fallback": {
+      "enabled": true,
+      "clue_sources": [
+        "module_context",
+        "module_plot"
+      ],
+      "notes": "The_Thornwood_Watch remains fully playable as a standalone module when cross-module continuity is unavailable."
+    }
+  }
 }

@@ -13,7 +13,13 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from homebrew_ingest_dev import run_ingest_pipeline, _normalize_continuity_contract, _persist_media_to_sidecar
+from homebrew_ingest_dev import (
+    run_ingest_pipeline,
+    _normalize_continuity_contract,
+    _persist_media_to_sidecar,
+    _ensure_continuity_contract_keys,
+)
+from continuity_cross_ref_enrichment import enrich_continuity_cross_refs
 
 
 class TestPipelineStopConditions(TestCase):
@@ -224,6 +230,78 @@ class TestContinuityContractNormalization(TestCase):
         contract = _normalize_continuity_contract(module_context=module_context, module_plot={}, strict=True)
         self.assertEqual(contract["status"], "success")
         self.assertEqual(contract["missing_required_keys"], [])
+
+
+class TestContinuityContractBackfill(TestCase):
+    """Test additive continuity key backfill for new ingests."""
+
+    def test_backfills_missing_keys_before_strict_audit(self):
+        module_context = {"module_name": "Backfill Test"}
+        result = _ensure_continuity_contract_keys(module_context, "Backfill_Test")
+
+        self.assertTrue(result["changed"])
+        continuity = result["module_context"]["continuity"]
+        self.assertEqual(continuity["continuity_version"], "v1")
+        self.assertIn("cold_start", continuity["entry_state_variants"])
+        self.assertIn("partial_context", continuity["entry_state_variants"])
+        self.assertIn("late_arc", continuity["entry_state_variants"])
+        self.assertIsInstance(continuity["cross_module_refs"], list)
+        self.assertIsInstance(continuity["standalone_fallback"], dict)
+
+    def test_preserves_existing_cross_module_refs(self):
+        module_context = {
+            "module_name": "Backfill Test",
+            "continuity": {
+                "continuity_version": "v1",
+                "entry_state_variants": {"cold_start": {"summary": "custom"}},
+                "cross_module_refs": [
+                    {
+                        "target_module": "Other",
+                        "entity_id": "npc.test",
+                        "relation": "echo",
+                        "confidence": "medium",
+                    }
+                ],
+                "standalone_fallback": {"enabled": False},
+            },
+        }
+
+        result = _ensure_continuity_contract_keys(module_context, "Backfill_Test")
+        continuity = result["module_context"]["continuity"]
+
+        self.assertEqual(len(continuity["cross_module_refs"]), 1)
+        self.assertEqual(continuity["cross_module_refs"][0]["target_module"], "Other")
+        self.assertFalse(continuity["standalone_fallback"]["enabled"])
+
+
+class TestContinuityCrossRefEnrichment(TestCase):
+    """Test deterministic narrative cross-module ref enrichment."""
+
+    def test_enrich_adds_refs_for_detected_targets(self):
+        module_context = {
+            "module_name": "Night_of_the_Restless_Dead",
+            "continuity": {"cross_module_refs": []},
+            "faction_context": {
+                "notes": "Miriam fears the Pumpkin King and seeks Thornwood druid aid."
+            },
+        }
+        module_plot = {"echo": "The old debt reaches toward Greenfields Vale."}
+
+        result = enrich_continuity_cross_refs(
+            module_slug="Night_of_the_Restless_Dead",
+            module_context=module_context,
+            module_plot=module_plot,
+            known_modules=[
+                "Night_of_the_Restless_Dead",
+                "The_Pumpkin_Kings_Curse",
+                "The_Thornwood_Watch",
+            ],
+        )
+
+        self.assertTrue(result["changed"])
+        refs = result["module_context"]["continuity"]["cross_module_refs"]
+        self.assertGreater(len(refs), 0)
+        self.assertTrue(any(row.get("target_module") == "The_Pumpkin_Kings_Curse" for row in refs))
 
 
 class TestSidecarContinuityPersistence(TestCase):
