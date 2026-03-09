@@ -6,6 +6,11 @@
 Active development of Tabletop Mode features, focusing on combat flow optimization, session stability, and UI polish.
 
 ### Documentation Maintenance
+- 2026-03-09: Locked v2 narrative prime directive and creative ingest approval-gate flow.
+  - Updated `plans/version-2/v2-narrative-track.md` with explicit LLM<->Python authority contract.
+  - Added Phase 2A for raw prose creative ingest plus mandatory facilitator approval gate.
+  - Documented Ralph loop safety contract: proposal -> Python validation -> human approval.
+  - Synced canonical summary to `AGENTS.md` recent changes.
 - 2026-03-02: Added and validated new OpenSpec change `dev-homebrew-ingest-media-handles-prewarm`.
   - Scope added: warn-only Homebrew image extraction, deterministic media handle manifest, and NPC+monster portrait prewarm.
   - Captured explicit Mangrove Keep media fixtures for implementation and tests (title image + large map + DM map set).

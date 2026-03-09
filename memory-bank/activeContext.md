@@ -1,5 +1,14 @@
 ## Current Work Focus
 
+- **V2 Prime Directive Lock + Creative Ingest Planning (COMPLETED - 2026-03-09):**
+  - Updated `plans/version-2/v2-narrative-track.md` with explicit LLM<->Python authority contract:
+    - Python is mechanical/world reality authority.
+    - Runtime LLM remains dynamically adaptive to indeterministic tabletop party inputs.
+    - Approval gate required before canon apply.
+    - Ralph loop enforced: proposal -> Python validation -> human approval.
+  - Added Phase 2A execution track for raw prose -> creative structured draft -> deterministic validation -> facilitator approval -> apply/provenance.
+  - AGENTS canonical memory sync completed with matching recent-change entry.
+
 - **Homebrew Deterministic Ingest Hardening + Media Planning (IN PROGRESS - 2026-03-02):**
   - **Schema Fix Applied:** `core/importers/homebrewery_importer.py` map emission now writes string coordinates (`XnYm`) instead of object coordinates (`{"x": n, "y": m}`) to satisfy `schemas/map_schema.json`.
   - **Regression Coverage Added:** `scripts/test_homebrewery_importer.py` now includes `TestMapCoordinateSchemaContract` to prevent coordinate object regressions.

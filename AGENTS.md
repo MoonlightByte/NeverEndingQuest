@@ -1021,6 +1021,30 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### V2 Narrative Prime Directive Integration (COMPLETED - 2026-03-09)
+
+**Status:** COMPLETED - planning/doc synchronization update
+
+**Objective:**
+Lock the v2 narrative prime directive for LLM/Python authority boundaries and dynamic runtime narrative evolution under indeterministic tabletop PC input.
+
+**Implementation Summary:**
+- Updated `plans/version-2/v2-narrative-track.md` with canonical prime-directive language:
+  - Python remains world reality authority.
+  - Runtime LLM remains creatively adaptive during live play.
+  - Approval gate remains mandatory before canon apply.
+  - Ralph loop documented as proposal -> Python validation -> human approval.
+- Added explicit Phase 2A track for creative ingest + approval gate MVP.
+- Added execution stages for runtime draft synthesis, deterministic validation, facilitator review, apply/provenance, and gameplay-coupled evolution.
+
+**Verification:**
+- Prime directive language present in `plans/version-2/v2-narrative-track.md` under:
+  - `## Prime Directive (Locked for v2)`
+  - `## Creative Ingest Execution Plan (v2)`
+  - updated dependency chain and milestone blocks.
+
+---
+
 ### Any-Order Module Continuity Normalization (COMPLETED - 2026-03-09)
 
 **Status:** COMPLETED - OpenSpec change archived
