@@ -323,7 +323,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
     {"action":"updateTime","parameters":{"timeEstimate":15}}
   ],
   updatePartyNPCs:[
-    {"action":"updatePartyNPCs","parameters":{"operation":"add","npc":{"name":"Kira","level":"4","class":"Scout"}}}
+    {"action":"updatePartyNPCs","parameters":{"operation":"add","npc":{"name":"Scout Kira","level":"4","class":"Scout"}}}
   ],
   moveBackgroundNPC:[
     {"action":"moveBackgroundNPC","parameters":{"npcName":"Brother Lintar","context":"Escorted toward the abbey for questioning.","currentLocation":"AD01"}}

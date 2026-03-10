@@ -1021,6 +1021,37 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### NPC Join Name Canonicalization (COMPLETED - 2026-03-10)
+
+**Status:** COMPLETED - OpenSpec change archived
+
+**OpenSpec:** `openspec/changes/archive/2025-03-10-tt-npc-join-name-normalization/`
+
+**Objective:**
+Fix narrator validation loops where short NPC action names (for example `Kira`) were semantically correct but rejected by strict full-name validation contracts.
+
+**Implementation Summary:**
+- Extended runtime pre-validation canonicalization in `main.py` (`normalize_character_names_in_response`) for:
+  - `updatePartyNPCs.parameters.npc.name` (dict form)
+  - `updatePartyNPCs.parameters.npc` (string form -> canonical dict)
+  - `updatePartyNPCs.parameters.add` (string/list/list-of-dicts)
+  - `moveBackgroundNPC.parameters.npcName`
+- Preserved fail-closed behavior for ambiguous/unresolved identity mapping with deterministic rejection messaging.
+- Aligned system prompt contract example in `prompts/system_prompt_compressed.txt` to canonical name usage (`"name":"Scout Kira"`).
+- Added regression coverage in `scripts/test_npc_arrival_state_sync.py` for add-form parity and prompt source-contract guard.
+
+**Spec Sync:**
+- Created `openspec/specs/tt-party-npc-action-name-canonicalization/spec.md`.
+- Updated `openspec/specs/tt-npc-arrival-name-resolution/spec.md`.
+- Updated `openspec/specs/tt-narrator-validation-contract/spec.md`.
+
+**Verification:**
+- `.venv/bin/python -m py_compile main.py utils/npc_name_normalizer.py utils/npc_arrival_validator.py scripts/test_npc_arrival_state_sync.py` -> PASS
+- `.venv/bin/python scripts/test_npc_arrival_state_sync.py` -> PASS (37/37)
+- `.venv/bin/python scripts/test_narrator_prompt_validation_refactor.py` -> PASS (16/16)
+- `openspec validate tt-npc-join-name-normalization` -> VALID
+
+
 ### ADR Baseline and Memory-Sync Wiring (COMPLETED - 2026-03-10)
 
 **Status:** COMPLETED - ADR corpus initialized and sync guidance updated

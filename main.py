@@ -773,7 +773,7 @@ CRITICAL: If validation fails due to wrong NPC for location, provide specific co
 
 def normalize_character_names_in_response(response_text, party_tracker_data):
     """
-    Normalize NPC names in updateCharacterInfo actions before validation.
+    Normalize NPC names in updateCharacterInfo and updatePartyNPCs actions before validation.
     Handles name variations like "Kira" → "Scout Kira", "Ranger Kira" → "Scout Kira"
 
     Returns:
@@ -800,7 +800,7 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
 
         action_type = action.get('action')
 
-        # Only normalize updateCharacterInfo actions
+        # Normalize updateCharacterInfo actions
         if action_type == 'updateCharacterInfo':
             params = action.get('parameters', {})
             original_name = params.get('characterName')
@@ -827,6 +827,177 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
                 else:
                     # Name was already correct
                     print(f"[NPC_NORM] OK: '{original_name}' matches party tracker")
+
+        # TABLETOP MODE: Normalize updatePartyNPCs actions
+        elif action_type == 'updatePartyNPCs':
+            params = action.get('parameters', {})
+            npc_param = params.get('npc')
+
+            if npc_param:
+                # npc can be a dict with 'name' key (canonical form)
+                if isinstance(npc_param, dict):
+                    original_name = npc_param.get('name')
+                    if original_name:
+                        print(f"[NPC_NORM] Checking updatePartyNPCs action with npc.name='{original_name}'")
+
+                        normalized_name, match_type = normalize_npc_name_for_action(
+                            original_name, party_tracker_data, debug_print=True
+                        )
+
+                        if normalized_name is None:
+                            rejections.append(f"Action {i+1} (updatePartyNPCs): '{original_name}' not in party tracker")
+                            print(f"[NPC_NORM] REJECT: '{original_name}' cannot be matched to party tracker")
+
+                        elif normalized_name != original_name:
+                            npc_param['name'] = normalized_name
+                            corrections.append(f"Action {i+1} (updatePartyNPCs): '{original_name}' → '{normalized_name}'")
+                            print(f"[NPC_NORM] CORRECTED: '{original_name}' → '{normalized_name}'")
+
+                        else:
+                            print(f"[NPC_NORM] OK: '{original_name}' matches party tracker")
+
+                # npc can also be a string (non-canonical but accepted for normalization)
+                elif isinstance(npc_param, str):
+                    original_name = npc_param
+                    print(f"[NPC_NORM] Checking updatePartyNPCs action with npc='{original_name}' (string form)")
+
+                    normalized_name, match_type = normalize_npc_name_for_action(
+                        original_name, party_tracker_data, debug_print=True
+                    )
+
+                    if normalized_name is None:
+                        rejections.append(f"Action {i+1} (updatePartyNPCs): '{original_name}' not in party tracker")
+                        print(f"[NPC_NORM] REJECT: '{original_name}' cannot be matched to party tracker")
+
+                    elif normalized_name != original_name:
+                        # Convert string to dict with canonical name
+                        params['npc'] = {"name": normalized_name}
+                        corrections.append(f"Action {i+1} (updatePartyNPCs): '{original_name}' → '{normalized_name}' (converted to dict)")
+                        print(f"[NPC_NORM] CORRECTED: '{original_name}' → '{normalized_name}' (converted string to dict)")
+
+                    else:
+                        # Convert string to dict to match canonical form
+                        params['npc'] = {"name": original_name}
+                        print(f"[NPC_NORM] OK: '{original_name}' matches party tracker (converted to dict)")
+
+        # TABLETOP MODE: Normalize moveBackgroundNPC actions
+        elif action_type == 'moveBackgroundNPC':
+            params = action.get('parameters', {})
+            original_name = params.get('npcName')
+
+            if original_name:
+                print(f"[NPC_NORM] Checking moveBackgroundNPC action with npcName='{original_name}'")
+
+                # Try to normalize the name
+                normalized_name, match_type = normalize_npc_name_for_action(
+                    original_name, party_tracker_data, debug_print=True
+                )
+
+                if normalized_name is None:
+                    # Could not resolve name - reject
+                    rejections.append(f"Action {i+1} (moveBackgroundNPC): '{original_name}' not in party tracker")
+                    print(f"[NPC_NORM] REJECT: '{original_name}' cannot be matched to party tracker")
+
+                elif normalized_name != original_name:
+                    # Name was normalized
+                    params['npcName'] = normalized_name
+                    corrections.append(f"Action {i+1} (moveBackgroundNPC): '{original_name}' → '{normalized_name}'")
+                    print(f"[NPC_NORM] CORRECTED: '{original_name}' → '{normalized_name}'")
+
+                else:
+                    # Name was already correct
+                    print(f"[NPC_NORM] OK: '{original_name}' matches party tracker")
+
+        # TABLETOP MODE: Normalize updatePartyNPCs add parameter forms
+        # Handle parameters.add (string, list of strings, or list of dicts)
+        if action_type == 'updatePartyNPCs':
+            params = action.get('parameters', {})
+            add_param = params.get('add')
+
+            if add_param:
+                # Normalize add parameter based on its type
+                if isinstance(add_param, str):
+                    # String form: "add": "Kira"
+                    original_name = add_param
+                    print(f"[NPC_NORM] Checking updatePartyNPCs action with add='{original_name}' (string form)")
+
+                    normalized_name, match_type = normalize_npc_name_for_action(
+                        original_name, party_tracker_data, debug_print=True
+                    )
+
+                    if normalized_name is None:
+                        rejections.append(f"Action {i+1} (updatePartyNPCs): '{original_name}' not in party tracker")
+                        print(f"[NPC_NORM] REJECT: '{original_name}' cannot be matched to party tracker")
+
+                    elif normalized_name != original_name:
+                        params['add'] = normalized_name
+                        corrections.append(f"Action {i+1} (updatePartyNPCs): '{original_name}' → '{normalized_name}'")
+                        print(f"[NPC_NORM] CORRECTED: '{original_name}' → '{normalized_name}'")
+
+                    else:
+                        print(f"[NPC_NORM] OK: '{original_name}' matches party tracker")
+
+                elif isinstance(add_param, list):
+                    # List form: "add": ["Kira", "Maelo"] or [{"name": "Kira"}, {"name": "Maelo"}]
+                    print(f"[NPC_NORM] Checking updatePartyNPCs action with add={add_param} (list form)")
+                    normalized_list = []
+                    has_rejection = False
+
+                    for idx, item in enumerate(add_param):
+                        if isinstance(item, str):
+                            # List of strings
+                            original_name = item
+                            normalized_name, match_type = normalize_npc_name_for_action(
+                                original_name, party_tracker_data, debug_print=True
+                            )
+
+                            if normalized_name is None:
+                                rejections.append(f"Action {i+1} (updatePartyNPCs): list item[{idx}] '{original_name}' not in party tracker")
+                                print(f"[NPC_NORM] REJECT: list item[{idx}] '{original_name}' cannot be matched to party tracker")
+                                has_rejection = True
+
+                            elif normalized_name != original_name:
+                                normalized_list.append(normalized_name)
+                                corrections.append(f"Action {i+1} (updatePartyNPCs): list item[{idx}] '{original_name}' → '{normalized_name}'")
+                                print(f"[NPC_NORM] CORRECTED: list item[{idx}] '{original_name}' → '{normalized_name}'")
+
+                            else:
+                                normalized_list.append(original_name)
+                                print(f"[NPC_NORM] OK: list item[{idx}] '{original_name}' matches party tracker")
+
+                        elif isinstance(item, dict):
+                            # List of dicts - check for name key
+                            original_name = item.get('name')
+                            if original_name:
+                                normalized_name, match_type = normalize_npc_name_for_action(
+                                    original_name, party_tracker_data, debug_print=True
+                                )
+
+                                if normalized_name is None:
+                                    rejections.append(f"Action {i+1} (updatePartyNPCs): dict item[{idx}] '{original_name}' not in party tracker")
+                                    print(f"[NPC_NORM] REJECT: dict item[{idx}] '{original_name}' cannot be matched to party tracker")
+                                    has_rejection = True
+
+                                elif normalized_name != original_name:
+                                    item['name'] = normalized_name
+                                    normalized_list.append(item)
+                                    corrections.append(f"Action {i+1} (updatePartyNPCs): dict item[{idx}] '{original_name}' → '{normalized_name}'")
+                                    print(f"[NPC_NORM] CORRECTED: dict item[{idx}] '{original_name}' → '{normalized_name}'")
+
+                                else:
+                                    normalized_list.append(item)
+                                    print(f"[NPC_NORM] OK: dict item[{idx}] '{original_name}' matches party tracker")
+                            else:
+                                # No name key in dict, keep as-is
+                                normalized_list.append(item)
+
+                        else:
+                            # Unknown type, keep as-is
+                            normalized_list.append(item)
+
+                    # Only update params if no rejections occurred
+                    if not has_rejection and normalized_list:
+                        params['add'] = normalized_list
 
     # If any rejections, return error
     if rejections:

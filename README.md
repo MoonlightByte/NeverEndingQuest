@@ -2,7 +2,7 @@
 
 **Version 0.3.5 (Alpha) - Fork: NeverEndingQuest-TTRPG**
 
-This repository is the tabletop-focused fork of NeverEndingQuest for live facilitator-led multiplayer sessions and ongoing gameplay-test iteration.
+This repository is the tabletop-focused fork of [NeverEndingQuest](https://github.com/MoonlightByte/NeverEndingQuest) for live facilitator-led multiplayer sessions and ongoing gameplay-test iteration.
 
 An AI-powered Dungeon Master for running SRD 5.2.1 compatible tabletop RPG campaigns with infinite adventure potential. Experience the world's most popular roleplaying game with an intelligent AI that remembers every decision, adapts to your playstyle, and creates endless adventures tailored to your party.
 
@@ -24,6 +24,7 @@ An AI-powered Dungeon Master for running SRD 5.2.1 compatible tabletop RPG campa
 
 - [Quick Start](#quick-start)
 - [Fork Identity](#fork-identity)
+- [Upstream vs Fork Enhancements](#upstream-vs-fork-enhancements)
 - [Key Features](#key-features)
 - [Module Toolkit](#module-toolkit)
 - [Installation](#installation)
@@ -54,6 +55,12 @@ NeverEndingQuest-TTRPG keeps upstream NeverEndingQuest as the base while adding 
 
 For contributor setup and workflow, see `CONTRIBUTING.md` and `DEV_SETUP.md`.
 
+### Upstream vs Fork Enhancements
+
+- **MoonlightByte upstream foundation**: Core SRD 5.2.1 engine, AI DM loop, module toolkit, compression architecture, and baseline web interface systems.
+- **NeverEndingQuest-TTRPG fork additions**: Tabletop multiplayer tabbed-PC workflow, deterministic multi-PC combat state handling, tabletop-specific party/PC lifecycle tools, and merge-safe extension hooks.
+- **How this is maintained fairly**: Upstream behaviors are preserved by default; fork behavior is added as isolated extensions or minimal host hooks marked with `# TABLETOP MODE:`.
+
 ## Quick Start
 
 ### 🎯 One-Click Windows Installer (Recommended)
@@ -61,27 +68,27 @@ For contributor setup and workflow, see `CONTRIBUTING.md` and `DEV_SETUP.md`.
 **For non-technical users on Windows:**
 
 1. **Download the installer**:
+
    - Click here: [install_neverendingquest_windows.bat](https://github.com/zeug-zz/NeverEndingQuest-TTRPG/raw/main/install_neverendingquest_windows.bat)
    - **Right-click** → **"Save link as..."** → Save as `.bat` (not `.txt`)
    - Save to your Downloads folder
-
 2. **Run the installer**:
+
    - Double-click the downloaded `.bat` file
    - If Windows SmartScreen appears: Click **"More info"** → **"Run anyway"**
    - Choose **Player Mode** (recommended, no Git needed) or **Developer Mode** (with Git)
-
 3. **Install Python if needed**:
+
    - If prompted, install Python from **Microsoft Store**:
      - Open Microsoft Store → Search "Python 3.11" → Click "Get"
    - Or download from: https://www.python.org/downloads/
    - **Important**: Check "Add Python to PATH" during install
    - Re-run the installer after Python is installed
-
 4. **Add your OpenAI API key**: Enter your API key in the popup dialog (get one at https://platform.openai.com/api-keys)
-
 5. **Launch the game**: Run `launch_game.bat` in your `NeverEndingQuest-TTRPG` folder
 
 The installer automatically:
+
 - ✅ Checks for Python (opens Microsoft Store if missing)
 - ✅ Downloads and installs the game from the fork repository
 - ✅ Creates a virtual environment
@@ -93,6 +100,7 @@ The installer automatically:
 **Installation location:** `%USERPROFILE%\NeverEndingQuest-TTRPG`
 
 **To restart the game later:**
+
 - Run `launch_game.bat` in `%USERPROFILE%\NeverEndingQuest-TTRPG`
 - Or double-click the desktop shortcut
 
@@ -116,7 +124,8 @@ The installer automatically:
 
 ## Key Features
 
-### 💰 Advanced Token Compression (NEW!)
+### 💰 Advanced Token Compression
+
 - **70-90% Cost Reduction** - Revolutionary compression cuts API expenses dramatically
 - **Open-Source Model Support** - Run with Llama 3.1, Mistral, or other local models
 - **Parallel Processing** - 5x faster compression with multi-threaded architecture
@@ -126,6 +135,7 @@ The installer automatically:
 - **Automatic Routing** - Intelligent model selection for optimal cost/quality balance
 
 ### Core Game Systems
+
 - **SRD 5.2.1 Rules Engine** - Complete 5th edition compatible mechanics
 - **AI Dungeon Master** - GPT-powered storytelling that adapts to your actions
 - **Turn-Based Combat** - Tactical combat with initiative tracking and AI validation
@@ -134,6 +144,7 @@ The installer automatically:
 - **Save/Load System** - Automatic progress saving with backup protection
 
 ### Web Interface Features
+
 - **Real-Time Updates** - Live game state synchronization via SocketIO
 - **Character Sheets** - Interactive character information and inventory
 - **Portrait System** - Visual character portraits with hover video previews
@@ -146,9 +157,12 @@ The installer automatically:
   - Voice preview, auto-play option, and response caching to reduce API costs
 
 ### Included Adventure Modules
+
 - **The Thornwood Watch** (Level 1-2) - Defend a ranger outpost from bandits and corruption
 - **Keep of Doom** (Level 3-5) - Explore a haunted keep and establish your stronghold
-- **Shadows of Kharos** (Level 4-6) - Investigate a cursed lighthouse on a storm-wracked isle
+- **The Pumpkin King's Curse** (Level 1-3) - Unravel a harvest-time folk-horror curse across Greenfields Vale
+- **Night of the Restless Dead** (Level 1-2) - Investigate undead outbreaks tied to a cult operating beneath a ruined cathedral
+- **Homebrew source example** - [Night of the Living Dead (ingest source markdown)](https://homebrewery.naturalcrit.com/user/Shamelesshero502?sort=alpha&dir=asc)
 - **Plus unlimited AI-generated adventures** based on your choices and interests
 
 ## Module Toolkit
@@ -158,6 +172,7 @@ The installer automatically:
 Access the toolkit from the web interface or launch directly with `python launch_toolkit.py`
 
 ### Module Generator & Builder
+
 - **Visual Module Creation** - Web-based interface for creating complete adventures
 - **AI-Assisted Generation** - Describe your vision, AI creates the content
 - **Area & Location Builder** - Design interconnected regions with detailed locations
@@ -166,13 +181,15 @@ Access the toolkit from the web interface or launch directly with `python launch
 - **Validation System** - Ensures all content follows SRD 5.2.1 schemas
 
 ### NPC Generator
+
 - **Instant NPC Creation** - Generate unique NPCs with full stats and backstories
 - **Portrait Integration** - Automatic portrait assignment from graphic packs
 - **Personality System** - Rich personalities, goals, and motivations
 - **Relationship Tracking** - NPCs remember interactions across modules
 - **Party Recruitment Ready** - Any NPC can potentially join the party
 
-### Monster Generator  
+### Monster Generator
+
 - **Custom Creature Creation** - Build unique monsters for your adventures
 - **Bestiary Management** - Import/export creatures from the master compendium
 - **CR Balancing** - Automatic challenge rating calculation
@@ -180,6 +197,7 @@ Access the toolkit from the web interface or launch directly with `python launch
 - **Visual Integration** - Assign portraits and animations from packs
 
 ### Module Media Generator
+
 - **Batch Image Generation** - Create images for all NPCs and monsters in a module
 - **Missing Asset Detection** - Automatically identifies characters without images
 - **Style Consistency** - Apply consistent art styles across entire modules
@@ -188,6 +206,7 @@ Access the toolkit from the web interface or launch directly with `python launch
 - **Selective Overwrite** - Choose whether to replace existing images
 
 ### Graphic Pack System
+
 - **Reusable Asset Packs** - Share visual content across multiple modules
 - **Pack Manager** - Create, import, export, and manage visual content packs
 - **Module Independence** - Images stored in packs for easy module distribution
@@ -196,12 +215,14 @@ Access the toolkit from the web interface or launch directly with `python launch
 - **Pack Merging** - Combine multiple packs into custom collections
 
 ### Style Management
+
 - **Visual Themes** - Switch between different art styles
 - **Custom Styles** - Create your own visual themes
 - **Prompt Templates** - AI image generation prompts for consistency
 - **Style Preview** - See how content looks in different styles
 
 ### Content Import/Export
+
 - **Bestiary Integration** - Access the complete monster compendium
 - **Module Sharing** - Export modules for community sharing
 - **Pack Distribution** - Share graphic packs as ZIP files
@@ -212,15 +233,19 @@ Access the toolkit from the web interface or launch directly with `python launch
 NeverEndingQuest is licensed under the **Fair Source License 1.0** with comprehensive protection for its innovative systems:
 
 ### 🔒 **Fair Source License (5-year term)**
+
 The entire codebase including AI prompts, conversation compression, and all game systems are protected.
+
 - ✅ **Free for personal, educational, and non-commercial use**
-- ✅ **Community contributions welcome**  
+- ✅ **Community contributions welcome**
 - ✅ **Modify and customize freely for your campaigns**
 - ❌ **Commercial competing use prohibited for 5 years**
 - ⏰ **Becomes Apache 2.0 (fully open source) after 5 years**
 
 ### 📚 **SRD Content (CC-BY 4.0)**
+
 Game mechanics use SRD 5.2.1 content from Wizards of the Coast.
+
 - ✅ **SRD content used with proper attribution**
 - ⚠️ **This is unofficial Fan Content**
 - ℹ️ **Not affiliated with Wizards of the Coast**
@@ -230,6 +255,7 @@ See [LICENSING.md](LICENSING.md) for complete details, FAQ, and legal informatio
 ## Installation
 
 ### Prerequisites
+
 - Python 3.9 or higher
 - OpenAI API key ([Get one here](https://platform.openai.com/api-keys))
 - 4GB+ RAM recommended
@@ -239,37 +265,39 @@ See [LICENSING.md](LICENSING.md) for complete details, FAQ, and legal informatio
 ### Setup Steps
 
 1. **Clone the repository**
+
    ```bash
    git clone https://github.com/zeug-zz/NeverEndingQuest-TTRPG.git
    cd NeverEndingQuest-TTRPG
    ```
-
 2. **Install dependencies**
+
    ```bash
    pip install -r requirements.txt
    ```
-
 3. **Configure OpenAI API**
+
    ```bash
    cp config_template.py config.py
    # Edit config.py and add your OpenAI API key
    ```
-
 4. **Launch the game**
+
    ```bash
    # Full game with web interface (recommended)
    python run_web.py
    # Opens at http://localhost:8357
-   
+
    # Module Toolkit directly
    python launch_toolkit.py
    # Opens at http://localhost:8357/toolkit
-   
+
    # Terminal interface (basic)
    python main.py
    ```
 
 ### First Time Setup
+
 - The AI wizard will guide you through character creation
 - Choose from pre-built modules or generate a custom adventure
 - Web interface provides tutorial tooltips for new players
@@ -277,7 +305,9 @@ See [LICENSING.md](LICENSING.md) for complete details, FAQ, and legal informatio
 ## How It Overcomes AI Limitations
 
 ### The Context Window Challenge
+
 Traditional AI systems have limited memory - typically 100-200k tokens. In a text-heavy RPG, this means:
+
 - Conversations get truncated after a few hours of play
 - NPCs "forget" your previous interactions
 - Story continuity breaks between sessions
@@ -288,6 +318,7 @@ Traditional AI systems have limited memory - typically 100-200k tokens. In a tex
 NeverEndingQuest implements a sophisticated compression pipeline that maintains full contextual understanding:
 
 #### 1. **Living Summary Generation & Chronicle System**
+
 - Each module generates a comprehensive living summary upon exit that captures the complete adventure
 - AI analyzes the entire module conversation and creates beautifully written fantasy prose summaries
 - Living summaries are completely regenerated (not appended) on each visit to incorporate new experiences
@@ -297,6 +328,7 @@ NeverEndingQuest implements a sophisticated compression pipeline that maintains 
 - **Single File System**: Always `[Module_Name]_summary_001.json` - never increments, always regenerates
 
 #### 2. **Hub-and-Spoke Architecture with Module-Specific Conversations**
+
 ```
 Module Structure:
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
@@ -327,6 +359,7 @@ Module Conversation Management:
 - Return to any location with full memory of past events specific to that module
 
 #### 3. **Living World Persistence with Smart Summary Management**
+
 - **NPC Memory**: Characters remember your entire relationship history through living summaries
 - **Dynamic NPC Context**: Real-time NPC discovery system provides complete context for AI interactions
 - **Validation-Aware NPCs**: Automatic NPC tracking prevents hallucination and ensures consistency
@@ -339,6 +372,7 @@ Module Conversation Management:
 - **Smart Context Injection**: Previous module summaries are injected as campaign context, excluding the current module to prevent duplication
 
 ### Benefits
+
 - **Truly Infinite Campaigns**: Play for hundreds of hours without context loss across multiple adventures
 - **Persistent Relationships**: NPCs remember you after months of real-time play through living summaries
 - **Coherent Storytelling**: Every adventure builds on previous experiences with complete cross-module continuity
@@ -353,9 +387,11 @@ Module Conversation Management:
 ## Advanced Token Compression System
 
 ### 🌟 CORE FEATURE - Now Production Ready!
+
 The Advanced Token Compression System has graduated from experimental to **CORE FEATURE** status in v0.3.0. This revolutionary technology is now the foundation of NeverEndingQuest's AI architecture, enabling unprecedented cost savings and local model compatibility while maintaining complete game fidelity.
 
 ### Key Benefits
+
 - **Cost Reduction**: 60-70% reduction in OpenAI API costs through compression and intelligent routing
 - **Open-Source Compatibility**: Reduced context from 100K+ to under 10K tokens enables local model deployment
 - **Performance**: Faster inference times with smaller contexts
@@ -365,6 +401,7 @@ The Advanced Token Compression System has graduated from experimental to **CORE 
 ### Compression Technologies
 
 #### 1. Parallel Conversation Compression (`core/ai/conversation_compression.py`)
+
 The system uses advanced parallel processing to compress conversation history in real-time:
 
 - **Parallel Processing**: ThreadPoolExecutor with up to 5 workers for concurrent compression
@@ -374,24 +411,29 @@ The system uses advanced parallel processing to compress conversation history in
 - **Configuration**: Toggle system-wide with `COMPRESSION_ENABLED` flag in `config.py`
 
 **Performance Metrics:**
+
 - Average compression ratio: 76-82% per message
 - Processing speed: 5 messages compressed simultaneously
 - Cache hit rate: ~40% in typical gameplay
 
 #### 2. Compressed System Prompts
+
 Revolutionary @TAG machine language format reduces prompt sizes by 87-92%:
 
 **`system_prompt_compressed.txt`**: Main game prompt
+
 - Original: 101,000 characters
 - Compressed: 8,000 characters
 - Reduction: 92%
 
 **`validation_prompt_compressed.txt`**: Validation prompt
+
 - Original: 48,000 characters
 - Compressed: 6,500 characters
 - Reduction: 87%
 
 **Compression Methodology:**
+
 ```
 @FMT: Formatting rules and output constraints
 @ACTIONS: Available game actions with exact parameter contracts
@@ -403,6 +445,7 @@ Revolutionary @TAG machine language format reduces prompt sizes by 87-92%:
 This structured notation maintains all game rules while dramatically reducing token usage.
 
 #### 3. Module Transition Compression
+
 Intelligent conversation archiving during module transitions:
 
 - **Automatic Archiving**: Conversations compressed when transitioning between adventure modules
@@ -412,6 +455,7 @@ Intelligent conversation archiving during module transitions:
 - **Implementation**: `check_and_process_module_transitions()` in `main.py`
 
 #### 4. Combat Message Compression
+
 Special handling for verbose combat narration:
 
 - **Combat Narration**: Reduces messages from 4,630 to ~850 characters (82% reduction)
@@ -420,6 +464,7 @@ Special handling for verbose combat narration:
 - **Fidelity**: Full combat mechanics preserved despite compression
 
 Example:
+
 ```
 Original: "The orc chieftain raises his massive battle-axe high above his head, muscles rippling with primal fury as he brings it down in a devastating arc toward your shoulder. The blade bites deep into your armor... [4,630 chars]"
 
@@ -427,6 +472,7 @@ Compressed: "Orc chieftain attacks with battle-axe. Hit: 18 vs AC 16. Damage: 2d
 ```
 
 #### 5. Action Prediction & Model Routing (`utils/action_predictor.py`)
+
 Intelligent routing between AI models based on input complexity:
 
 - **Input Analysis**: Predicts whether user input requires game actions
@@ -437,6 +483,7 @@ Intelligent routing between AI models based on input complexity:
 - **Seamless Experience**: Automatic routing with no user intervention
 
 **Routing Logic:**
+
 ```python
 if requires_game_action(user_input):
     model = "gpt-4o"  # Full capabilities
@@ -447,6 +494,7 @@ else:
 ### Configuration & Setup
 
 #### Enable/Disable Compression
+
 Edit `config.py` to control compression settings:
 
 ```python
@@ -462,6 +510,7 @@ MINI_MODEL_THRESHOLD = 0.3        # Confidence threshold for mini model
 ```
 
 #### Monitoring & Telemetry
+
 The system includes comprehensive telemetry for optimization:
 
 - **Usage Tracking**: `openai_usage_tracker.py` logs all API calls
@@ -475,6 +524,7 @@ The system includes comprehensive telemetry for optimization:
 The compression system enables deployment with popular open-source models:
 
 #### Compatible Models
+
 - **Llama 3.1**: 8K-128K context window
 - **Mistral**: 32K context window
 - **Claude API Alternatives**: Various context sizes
@@ -482,12 +532,14 @@ The compression system enables deployment with popular open-source models:
 - **Solar**: 10K context window
 
 #### Local Deployment Benefits
+
 - **GPU Requirements**: Reduced from 48GB to 8-16GB VRAM
 - **Inference Speed**: 3-5x faster with compressed contexts
 - **Memory Usage**: 80% reduction in RAM requirements
 - **Batch Processing**: Support for multiple concurrent games
 
 #### Setup for Local Models
+
 1. Install local model runtime (Ollama, llama.cpp, etc.)
 2. Enable compression in `config.py`
 3. Configure model endpoint in `config.py`
@@ -505,29 +557,31 @@ NeverEndingQuest now includes experimental support for running with [LM Studio](
 This integration is **experimental** and has known limitations:
 
 1. **Prompt Compatibility**: All system prompts and compression technology were designed and optimized exclusively for ChatGPT/GPT-4 architecture. Local models may:
+
    - Produce malformed JSON action structures
    - Fail to follow complex game mechanics properly
    - Generate inconsistent SRD 5.2.1 rule interpretations
    - Struggle with the compressed @TAG notation format
-
 2. **Token Requirements**:
+
    - **Minimum 32K context window required** (64K+ recommended)
    - Models with smaller contexts will fail during extended gameplay
    - Parallel request handling may exceed context limits
-
 3. **Memory & Performance**:
+
    - **Use quantized models** (Q4_K_M or Q5_K_M) to reduce VRAM usage
    - 7B models: Require 16GB+ system RAM
    - 13B models: Require 32GB+ system RAM
    - Parallel API requests may cause memory spikes
-
 4. **Game Mechanics**:
+
    - Combat system relies on precise JSON formatting from SRD 5.2.1 licensed game content
    - Character progression uses SRD 5.2.1 rules (may not be in model training data)
    - Module transitions require exact action detection
    - NPC dialogue and quest tracking depend on GPT instruction-following
 
 **Recommended Models** (best compatibility):
+
 - **Mistral 7B Instruct v0.3** - 32K context, good instruction following
 - **Llama 3.1 8B Instruct** - 128K context, excellent for long sessions
 - **Mistral Nemo 12B** - 128K context, strong storytelling
@@ -547,6 +601,7 @@ This integration is **experimental** and has known limitations:
 **Configuration Verification**:
 
 Make sure your LM Studio settings match:
+
 ```
 API Endpoint: http://127.0.0.1:1234/v1
 Model Identifier: <your-loaded-model>
@@ -558,6 +613,7 @@ The proxy system in `lmstudio_forwarder.py` will automatically redirect all Open
 **Temperature Settings Note**: The game controls temperature settings through the proxy. If you experience JSON formatting errors or poor prompt adherence, you can lower the temperature in LM Studio's server settings to improve accuracy, though this may reduce narrative creativity and storytelling immersion.
 
 **Known Issues**:
+
 - JSON parsing errors during complex combat
 - Inconsistent action detection compared to GPT-4
 - May require manual intervention for edge cases
@@ -565,6 +621,7 @@ The proxy system in `lmstudio_forwarder.py` will automatically redirect all Open
 - Parallel requests may cause response delays or errors
 
 **Documentation**:
+
 - Complete setup guide: `LMSTUDIO_SETUP.md`
 - Quick reference: `LMSTUDIO_QUICKSTART.txt`
 - Configuration help: Edit `lmstudio_forwarder.py` lines 19-22
@@ -573,30 +630,34 @@ The proxy system in `lmstudio_forwarder.py` will automatically redirect all Open
 
 ### Performance Metrics Summary
 
-| Component | Original Size | Compressed Size | Reduction |
-|-----------|--------------|-----------------|-----------|
-| System Prompt | 101K chars | 8K chars | 92% |
-| Validation Prompt | 48K chars | 6.5K chars | 87% |
-| Combat Messages | 4.6K chars | 850 chars | 82% |
-| Conversation History | 100K+ tokens | <10K tokens | 90%+ |
-| Overall API Costs | Baseline | 30-40% of original | 60-70% |
+| Component            | Original Size | Compressed Size    | Reduction |
+| -------------------- | ------------- | ------------------ | --------- |
+| System Prompt        | 101K chars    | 8K chars           | 92%       |
+| Validation Prompt    | 48K chars     | 6.5K chars         | 87%       |
+| Combat Messages      | 4.6K chars    | 850 chars          | 82%       |
+| Conversation History | 100K+ tokens  | <10K tokens        | 90%+      |
+| Overall API Costs    | Baseline      | 30-40% of original | 60-70%    |
 
 ### Advanced Features
 
 #### Compression Cache System
+
 - **MD5 Hashing**: Identifies duplicate messages instantly
 - **LRU Cache**: Most recent 1000 compressions cached
 - **Hit Rate**: ~40% cache hits in typical gameplay
 - **Memory Usage**: <50MB for full cache
 
 #### Adaptive Compression Levels
+
 The system automatically adjusts compression based on content type:
+
 - **Narrative**: Maximum compression (80-85%)
 - **Combat**: Balanced compression (75-80%) preserving mechanics
 - **Technical**: Minimal compression (60-70%) for rule clarity
 - **Character Sheets**: No compression (data integrity)
 
 #### Future Enhancements
+
 - **Model-Specific Optimization**: Tailored compression for each LLM
 - **Dynamic Context Windows**: Automatic adjustment based on model
 - **Streaming Compression**: Real-time compression during generation
@@ -605,6 +666,7 @@ The system automatically adjusts compression based on content type:
 ## Game Features
 
 ### SRD 5.2.1 Rules Implementation
+
 - **Complete Character System** - All classes, races, backgrounds from SRD
 - **Spell System** - Full spellcasting with components and concentration
 - **Combat Mechanics** - Actions, bonus actions, reactions, opportunity attacks
@@ -613,6 +675,7 @@ The system automatically adjusts compression based on content type:
 - **Skill Checks & Saves** - Advantage/disadvantage, proficiency bonuses
 
 ### AI-Powered Features
+
 - **Adaptive Storytelling** - AI responds to creative solutions and unexpected actions
 - **Dynamic NPCs** - Characters with personalities that evolve based on interactions
 - **Tactical Combat AI** - Intelligent enemy behavior and positioning
@@ -621,6 +684,7 @@ The system automatically adjusts compression based on content type:
 - **Flexible Rules** - AI can be convinced, negotiated with, or surprised
 
 ### Module System
+
 - **Self-Contained Adventures** - Each module is a complete experience
 - **Seamless Transitions** - Travel between modules with full continuity
 - **Level Progression** - Modules scale from levels 1-20
@@ -629,6 +693,7 @@ The system automatically adjusts compression based on content type:
 - **Living World** - Completed modules permanently change the world state
 
 ### Party & NPC Systems
+
 - **Party Recruitment** - Convince any NPC to join your adventures
 - **Relationship Tracking** - NPCs remember all interactions and develop bonds
 - **Party Combat** - NPCs fight alongside you with unique abilities
@@ -636,6 +701,7 @@ The system automatically adjusts compression based on content type:
 - **Cross-Module Memory** - Companions remember adventures across regions
 
 ### Inventory & Storage
+
 - **Natural Language Commands** - "I store my gold in a chest here"
 - **Location-Based Storage** - Create storage anywhere in the world
 - **Container Types** - Chests, barrels, lockboxes with different capacities
@@ -643,6 +709,7 @@ The system automatically adjusts compression based on content type:
 - **Persistent Storage** - Items remain safe across sessions and modules
 
 ### Player Housing & Hubs
+
 - **Claim Any Location** - Transform locations into permanent bases
 - **Hub Services** - Rest, storage, training, research facilities
 - **Multiple Bases** - Maintain strongholds across different regions
@@ -652,6 +719,7 @@ The system automatically adjusts compression based on content type:
 ## Technical Architecture
 
 ### Manager Pattern Implementation
+
 The codebase follows a clean Manager Pattern for all major subsystems:
 
 - **CampaignManager** - Orchestrates module transitions and world state
@@ -665,6 +733,7 @@ The codebase follows a clean Manager Pattern for all major subsystems:
 - **CompanionMemoryManager** - Tracks NPC relationships and interactions
 
 ### Module-Centric Architecture
+
 ```
 modules/[module_name]/
 ├── areas/              # Location files (area_id.json)
@@ -678,13 +747,16 @@ modules/[module_name]/
 ```
 
 ### Atomic Operations
+
 All state modifications use atomic patterns:
+
 1. Create backup of affected files
 2. Perform operation with validation
-3. Verify final state integrity  
+3. Verify final state integrity
 4. Clean up on success OR restore on failure
 
 ### Web Interface Architecture
+
 - **Flask Backend** - RESTful API for game operations
 - **SocketIO** - Real-time bidirectional communication
 - **Queue-Based Output** - Thread-safe console streaming
@@ -692,6 +764,7 @@ All state modifications use atomic patterns:
 - **Static File Serving** - Efficient portrait and video delivery
 
 ### AI Integration Patterns
+
 - **Specialized Models** - Different GPT models for different tasks
 - **Validation Layers** - AI responses validated before application
 - **Fallback Mechanisms** - Graceful degradation on AI failures
@@ -699,6 +772,7 @@ All state modifications use atomic patterns:
 - **Token Management** - Intelligent context window optimization
 
 ### Portrait System Integration
+
 The game features a sophisticated portrait system with video previews:
 
 - **Dynamic Portraits** - Characters display appropriate emotional states
@@ -712,6 +786,7 @@ The game features a sophisticated portrait system with video previews:
 ### How the Campaign World Works
 
 #### Location-Based Module System
+
 The game uses a revolutionary **geographic boundary system** instead of traditional campaign chapters:
 
 - **Modules as Geographic Regions**: Each adventure module represents a geographic area network (village + forest + dungeon)
@@ -720,6 +795,7 @@ The game uses a revolutionary **geographic boundary system** instead of traditio
 - **Living World Memory**: Every location remembers your visits and the world evolves based on accumulated decisions
 
 #### How Modules Connect
+
 ```
 Example World Evolution:
 Keep_of_Doom: Harrow's Hollow (village) → Gloamwood (forest) → Shadowfall Keep (ruins)
@@ -730,6 +806,7 @@ Keep_of_Doom: Harrow's Hollow (village) → Gloamwood (forest) → Shadowfall Ke
 The AI analyzes area descriptions and themes to suggest natural narrative bridges between modules.
 
 #### Adventure Continuity
+
 - **Chronicle System**: When you leave a module, the system generates a beautiful prose summary of your adventure
 - **Context Accumulation**: Return visits include full history of previous adventures in that region
 - **Character Relationships**: NPCs remember you across modules and adventures continue to evolve
@@ -747,6 +824,7 @@ The AI analyzes area descriptions and themes to suggest natural narrative bridge
 - **Plug-and-Play**: Simply drop modules in the `modules/` directory and they integrate on next startup
 
 ### Module Creation & Sharing
+
 - **Web Module Builder**: Interactive web interface for creating complete adventure modules
 - **AI-Assisted Creation**: AI helps generate cohesive module content that integrates seamlessly
 - **Real-time Progress Tracking**: Visual progress bar shows module generation stages
@@ -756,6 +834,7 @@ The AI analyzes area descriptions and themes to suggest natural narrative bridge
 ### Key System Features
 
 #### Context Management System
+
 - **Conversation Compression Pipeline** - 85-90% token reduction
 - **Chronicle Generation** - Beautiful AI-generated adventure summaries
 - **Hub-and-Spoke Architecture** - Isolated modules with shared context
@@ -763,6 +842,7 @@ The AI analyzes area descriptions and themes to suggest natural narrative bridge
 - **Automatic Compression** - Seamless token limit management
 
 #### Module Generation & Management
+
 - **Web Module Builder** - Interactive creation interface
 - **Context-Aware Generation** - Consistent content across modules
 - **Schema Compliance** - Strict SRD 5.2.1 validation
@@ -772,6 +852,7 @@ The AI analyzes area descriptions and themes to suggest natural narrative bridge
 - **Narrative Parsing** - Natural language module descriptions
 
 #### Player Housing & Hub System
+
 - **Establish Hubs**: Transform any location into a permanent base of operations
 - **Hub Services**: Rest, storage, gathering, training, research facilities automatically available
 - **Ownership Types**: Party-owned, shared arrangements, or individual strongholds
@@ -779,12 +860,14 @@ The AI analyzes area descriptions and themes to suggest natural narrative bridge
 - **Multi-Hub Support**: Maintain multiple bases across different regions and modules
 
 **Hub Types Available:**
+
 - **Strongholds**: Fortified keeps and castles for defensive operations
 - **Settlements**: Villages and towns for commerce and community building
 - **Taverns**: Social hubs for information gathering and party meetings
 - **Specialized Facilities**: Wizard towers, temples, guildhalls with unique services
 
 #### Player Storage System
+
 - **Natural Language Storage**: Use intuitive commands like "I store my gold in a chest here"
 - **Location-Based Containers**: Create storage at any location using available containers
 - **Persistent Storage**: Items remain safely stored across sessions and module transitions
@@ -792,6 +875,7 @@ The AI analyzes area descriptions and themes to suggest natural narrative bridge
 - **Automatic Inventory Management**: System handles all inventory transfers with full safety protocols
 
 **Storage Features:**
+
 - **Container Types**: Chests, lockboxes, barrels, crates, strongboxes
 - **Smart Organization**: AI helps organize items by type and importance
 - **Secure Storage**: Containers tied to specific locations for security
@@ -809,12 +893,14 @@ The AI analyzes area descriptions and themes to suggest natural narrative bridge
 - **Full Character Sheets**: NPCs become full party members with stats, equipment, and progression
 
 **Recruitment Examples:**
+
 - *"Who can you spare to help us?"* → Scout volunteers and AI evaluates if they can leave their duties
 - *"Mira, would you like to join us? We could use a skilled healer on our journey."* → AI considers her personality and current situation
 - *"Gareth, we're heading to dangerous lands. Your sword arm would be welcome."* → AI weighs his courage against his responsibilities
 - *"Can anyone help with this mission?"* → Multiple NPCs may volunteer, but only appropriate ones will actually join
 
 **NPC Party Features:**
+
 - **Smart Recruitment**: NPCs evaluate your requests based on their personality, duties, and relationship with you
 - **Realistic Responses**: Some NPCs may decline if they can't leave their post or don't trust you yet
 - **Natural Conversation**: Ask for help, and NPCs will respond in character - no special commands needed
@@ -825,18 +911,21 @@ The AI analyzes area descriptions and themes to suggest natural narrative bridge
 - **Character Development**: NPCs grow and change based on shared experiences
 
 #### AI-Driven Module Auto-Generation
+
 - **Contextual Adventures**: AI analyzes party history to create personalized modules
 - **Seamless Integration**: New modules connect naturally to existing world geography
 - **Dynamic Scaling**: Adventures adjust to party level and accumulated experience
 - **Narrative Continuity**: References previous adventures and established relationships
 
 **Auto-Generation Triggers:**
+
 - **Adventure Completion**: New modules generated when current adventures conclude
 - **Player Interest**: AI detects story hooks and creates relevant content
 - **World Events**: Major decisions trigger consequences in new regions
 - **Party Progression**: Level advancement unlocks higher-tier adventure options
 
 #### Living Campaign World Integration
+
 - **Isolated Module Architecture**: Each module operates independently while maintaining world coherence
 - **AI Travel Narration**: Seamless transitions between modules with atmospheric descriptions
 - **World Registry**: Central tracking of all modules, areas, and their relationships
@@ -845,6 +934,7 @@ The AI analyzes area descriptions and themes to suggest natural narrative bridge
 ## Usage Examples
 
 ### Starting Your Adventure
+
 ```bash
 # Launch the web interface
 python run_web.py
@@ -853,6 +943,7 @@ python run_web.py
 ```
 
 ### Using the Module Toolkit
+
 ```bash
 # Open toolkit directly
 python launch_toolkit.py
@@ -866,6 +957,7 @@ python launch_toolkit.py
 ```
 
 ### Managing Graphic Packs and Module Media
+
 ```python
 # From the toolkit interface:
 
@@ -884,6 +976,7 @@ python launch_toolkit.py
 ```
 
 ### Natural Language Storage
+
 ```
 Player: "I want to store my extra weapons in a chest here"
 AI: *Creates storage container and transfers items*
@@ -893,6 +986,7 @@ AI: *Lists all containers and contents at that location*
 ```
 
 ### NPC Recruitment
+
 ```
 Player: "Elena, would you join us on our quest?"
 AI: *Elena considers your relationship and her goals*
@@ -901,6 +995,7 @@ AI: "After what you've done for this town, I'd be honored to join you."
 ```
 
 ### Combat Example
+
 ```
 AI: "Roll for initiative!"
 Player: "I cast fireball at the grouped enemies"
@@ -911,6 +1006,7 @@ AI: "The explosion engulfs three goblins..."
 ## Project Structure
 
 ### Directory Organization
+
 ```
 /
 ├── core/                    # Core game engine modules
@@ -938,26 +1034,29 @@ AI: "The explosion engulfs three goblins..."
 ```
 
 ### Core Systems
+
 - **Entry Points**
+
   - `main.py` - Terminal interface game loop
   - `run_web.py` - Web interface launcher
   - `launch_toolkit.py` - Module toolkit launcher
   - `web/web_interface.py` - Flask server and routes
-
 - **Core Modules** (`core/`)
+
   - `ai/` - AI integration and DM logic
   - `generators/` - Content generation systems
   - `managers/` - System orchestration
   - `validation/` - Data validation
   - `toolkit/` - Module toolkit components
-
 - **Support Systems** (`utils/`)
+
   - File operations and encoding
   - Logging and debugging
   - Character progression
   - Module path management
 
 ### Module Toolkit Components
+
 - `core/toolkit/monster_generator.py` - Creature creation
 - `core/toolkit/npc_generator.py` - NPC generation
 - `core/toolkit/pack_manager.py` - Graphic pack management
@@ -966,6 +1065,7 @@ AI: "The explosion engulfs three goblins..."
 - `core/toolkit/pack_integration.py` - Pack activation system
 
 ### Data Organization
+
 - `modules/` - Adventure modules and game data
 - `graphic_packs/` - Visual content packs
 - `data/bestiary/` - Monster compendium
@@ -977,6 +1077,7 @@ AI: "The explosion engulfs three goblins..."
 ## Configuration
 
 ### OpenAI API Setup
+
 Edit `config.py` to configure AI models:
 
 ```python
@@ -991,11 +1092,13 @@ MODULE_CREATION_MODEL = "gpt-4o-mini"  # Content generation
 ```
 
 ### Web Interface Settings
+
 - **Port**: 8357 (configurable in config.py)
 - **Host**: localhost (network accessible with --host 0.0.0.0)
 - **Debug Mode**: Disabled by default for production
 
 ### System Requirements
+
 - **Python**: 3.9 or higher
 - **RAM**: 4GB minimum, 8GB recommended
 - **Storage**: 2GB for base install, more for packs
@@ -1007,17 +1110,20 @@ MODULE_CREATION_MODEL = "gpt-4o-mini"  # Content generation
 The module stitcher includes comprehensive safety protocols for community-created content:
 
 ### Automatic Safety Validation
+
 - **Content Review**: AI analyzes all module content for family-friendly appropriateness
 - **File Security**: Blocks executable files, oversized content, and malicious patterns
 - **Schema Compliance**: Validates JSON structure against 5th edition schemas
 - **ID Conflict Resolution**: Automatically resolves duplicate area/location identifiers
 
 ### How It Works
+
 ```
 New module detected → Security scan → Content safety check → Schema validation → Conflict resolution → Integration
 ```
 
 ### For Module Creators
+
 - Use unique area IDs to avoid conflicts
 - Keep files under 10MB (JSON/text only)
 - Create family-friendly content
@@ -1026,6 +1132,7 @@ New module detected → Security scan → Content safety check → Schema valida
 - Include module documentation
 
 ### For Players
+
 - Download modules from trusted sources
 - System provides multiple safety layers automatically
 - All community modules undergo validation before integration
@@ -1036,21 +1143,25 @@ New module detected → Security scan → Content safety check → Schema valida
 ### Common Issues
 
 #### Installation
+
 - **Module not found**: Run `pip install -r requirements.txt`
 - **OpenAI API errors**: Check API key in `config.py`
 - **Python version**: Requires 3.9+ (`python --version`)
 
 #### Startup Problems
+
 - **No modules**: Check `modules/` directory exists
 - **Web won't start**: Check port 8357 availability
 - **Toolkit unavailable**: Ensure `core/toolkit/` exists
 
 #### Performance
+
 - **Slow responses**: Normal (10-30s for AI)
 - **High memory**: Restart after long sessions
 - **File issues**: Check `.backup` files
 
 #### Platform-Specific
+
 - **Windows encoding**: Use web interface
 - **macOS permissions**: Check file access
 - **Linux paths**: Use absolute paths
@@ -1058,21 +1169,25 @@ New module detected → Security scan → Content safety check → Schema valida
 ### Developer Debugging
 
 #### Debug Logging
+
 - **API Captures**: Check `debug/api_captures/` for request/response logs
 - **Error Logs**: Review `debug/logs/` for detailed error traces
 - **Telemetry**: Analyze `telemetry_log.jsonl` for usage patterns
 
 #### Combat Debugging
+
 - **Ammunition Tracking**: Enable `AMMO_DEBUG` in `combat_manager.py`
 - **Combat Flow**: Monitor turn-by-turn combat logs in debug output
 - **Validation Errors**: Check AI response validation in console
 
 #### Module Transitions
+
 - **Cross-Module Travel**: Look for "different module" error messages
 - **Chronicle Generation**: Check `campaign_summaries/` for AI summaries
 - **Conversation Archives**: Review `campaign_archives/` for saved histories
 
 ### Getting Help
+
 - Check this fork's GitHub Issues tab for known problems
 - Create a new issue with your error message and system information
 - Include your Python version and operating system in bug reports
@@ -1084,6 +1199,7 @@ We welcome contributions to NeverEndingQuest-TTRPG. Start with `CONTRIBUTING.md`
 ### How to Contribute
 
 #### For Developers
+
 1. **Fork the repository** and create a feature branch
 2. **Follow the code style** established in existing files
 3. **Test your changes** thoroughly before submitting
@@ -1091,6 +1207,7 @@ We welcome contributions to NeverEndingQuest-TTRPG. Start with `CONTRIBUTING.md`
 5. **Submit a pull request** with a clear description of changes
 
 #### For Content Creators
+
 - **Create adventure modules** using the web module builder
 - **Design graphic packs** with unique visual styles
 - **Share your modules** with the community
@@ -1098,6 +1215,7 @@ We welcome contributions to NeverEndingQuest-TTRPG. Start with `CONTRIBUTING.md`
 - **Write documentation** or tutorials
 
 #### For Players
+
 - **Report bugs** with detailed reproduction steps
 - **Suggest features** based on your gameplay experience
 - **Share feedback** on game balance and AI behavior
@@ -1105,6 +1223,7 @@ We welcome contributions to NeverEndingQuest-TTRPG. Start with `CONTRIBUTING.md`
 - **Test character classes** and abilities
 
 ### Development Setup
+
 ```bash
 # Fork and clone your fork
 git clone https://github.com/zeug-zz/NeverEndingQuest-TTRPG.git
@@ -1126,6 +1245,7 @@ black .
 ```
 
 ### Contribution Guidelines
+
 - **Code Style**: Follow existing patterns and use meaningful variable names
 - **Documentation**: Update README and docstrings for new features
 - **Testing**: Add tests for new functionality when possible
@@ -1133,6 +1253,7 @@ black .
 - **Licensing**: All contributions will be under Fair Source License 1.0 (transitioning to Apache 2.0 after 5 years)
 
 ### Areas Needing Help
+
 - **Module Toolkit** - Enhanced generators and templates
 - **Graphic Packs** - More visual styles and content
 - **Web Interface** - UI/UX improvements
@@ -1148,6 +1269,7 @@ NeverEndingQuest is licensed under the Fair Source License 1.0 with a 5-year tra
 See the LICENSE and LICENSING.md files for complete details.
 
 ### Fair Source License Summary
+
 - ✅ **Free for personal, educational, and non-commercial use**
 - ✅ **Modify and customize for your campaigns**
 - ❌ **Cannot create competing commercial services**
@@ -1166,7 +1288,9 @@ This is unofficial Fan Content and is not affiliated with, endorsed, sponsored, 
 ### Version 0.3.5 - DM Voice Text-to-Speech
 
 #### DM Voice Feature
+
 New text-to-speech system for immersive DM narration:
+
 - **Dual Engine Support**: Choose between free browser voices or premium OpenAI TTS
 - **Browser Engine (Free)**: Uses Web Speech API with system-installed voices (English/Spanish)
 - **OpenAI Engine (Paid)**: High-quality AI voices with Standard and HD model options
@@ -1176,6 +1300,7 @@ New text-to-speech system for immersive DM narration:
 - **Settings Integration**: Consolidated settings dropdown with smooth animations
 
 #### UI/UX Improvements
+
 - **Settings Dropdown**: Consolidated AI Images, DM Voice, and Model toggles into single dropdown
 - **Accordion Animation**: Smooth expand/collapse for DM Voice settings section
 - **Consistent Styling**: Unified button heights and spacing across chat interface
@@ -1184,14 +1309,17 @@ New text-to-speech system for immersive DM narration:
 ### Version 0.3.0 - Token Compression System (First Iteration)
 
 #### Token Compression System
+
 First iteration of conversation compression technology:
+
 - **Conversation compression**: Reduces token usage by approximately 70-90% in testing
 - **Compressed system prompt**: 101K tokens → 8K tokens (~93% reduction)
-- **Combat message compression**: ~70-85% compression rate  
+- **Combat message compression**: ~70-85% compression rate
 - **Validation prompt compression**: ~60-75% compression rate
 - **Goal**: Enable local LLM usage in future iterations
 
 #### Dynamic NPC Core Memory System
+
 - **Real-time NPC Discovery**: Automatically scans all module files to build complete NPC context
 - **Dynamic Context Building**: Creates comprehensive NPC presence data for AI validation
 - **Location-Aware Tracking**: Knows exactly which NPCs are at each location
@@ -1199,6 +1327,7 @@ First iteration of conversation compression technology:
 - **Cross-Module Consistency**: Maintains NPC continuity across different adventures
 
 #### Bug Fixes
+
 - Fixed debug log file growing to 3GB+ due to exponential growth bug
 - Fixed level up preserving current XP (was incorrectly resetting to 0)
 - Fixed atlas caching bug preventing updates from showing
@@ -1206,6 +1335,7 @@ First iteration of conversation compression technology:
 - Improved file locking and save error handling
 
 #### Performance Stats (from actual usage)
+
 - **Main system prompt**: ~93% token reduction
 - **Combat messages**: ~70-85% compression rate
 - **Validation messages**: ~60-75% compression rate
@@ -1213,6 +1343,7 @@ First iteration of conversation compression technology:
 This is the first iteration of the compression system designed to reduce API costs and enable future local LLM deployment.
 
 ### Version 0.2.6 - Chronicle System & Enhanced Debugging
+
 - **Chronicle Format** - Conversation history now shows "CHRONICLE" labels for historical adventure records
 - **Cross-Module Transitions** - Improved error messages guide AI when moving between modules
 - **File Organization** - Better project structure with dedicated debug/ and utils/compression/ directories
@@ -1221,6 +1352,7 @@ This is the first iteration of the compression system designed to reduce API cos
 - **Tooling Integration** - Playwright CLI smoke workflow and Context7 documentation access
 
 ### Version 0.2.5 - Advanced Token Compression System
+
 - **Token Compression Pipeline** - 76-82% reduction per message with parallel processing
 - **Compressed Prompts** - System prompts reduced by 87-92% using @TAG notation
 - **Open-Source Compatibility** - Context reduced from 100K+ to <10K tokens for local models
@@ -1231,6 +1363,7 @@ This is the first iteration of the compression system designed to reduce API cos
 - **Local Model Support** - Compatible with Llama 3.1, Mistral, and other open-source LLMs
 
 ### Version 0.2.0 - Module Toolkit Release
+
 - **Module Toolkit** - Complete content creation suite
 - **NPC Generator** - Create NPCs with portraits and backstories
 - **Monster Generator** - Build custom creatures with visuals
@@ -1242,6 +1375,7 @@ This is the first iteration of the compression system designed to reduce API cos
 - **Portrait System** - Unified hover previews across all characters
 
 ### Version 0.1.5 - Core Improvements
+
 - **Conversation Compression** - Initial compression implementation
 - **Module Architecture** - Clean separation of adventures
 - **Living Summaries** - Dynamic adventure chronicles
@@ -1252,6 +1386,7 @@ This is the first iteration of the compression system designed to reduce API cos
 - **Storage System** - Natural language inventory management
 
 ### Roadmap
+
 - **Mobile Support** - Responsive web interface
 - **Voice Integration** - Speech-to-text commands
 - **AI Image Generation** - Scene and character art

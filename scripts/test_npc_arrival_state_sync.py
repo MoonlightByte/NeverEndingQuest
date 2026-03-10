@@ -15,6 +15,7 @@ import unittest
 import sys
 import os
 import re
+import json
 
 
 class TestNPCArrivalValidation(unittest.TestCase):
@@ -683,6 +684,336 @@ class TestNarratorPromptRefactorContracts(unittest.TestCase):
         self.assertTrue(is_valid_pass, f"Clean follow-up should pass, got: {reason_pass}")
 
 
+class TestNPCNameNormalization(unittest.TestCase):
+    """Regression tests for NPC name canonicalization in action payloads."""
+
+    def test_short_name_canonicalized_to_full_name(self):
+        """
+        Short action name ('Kira') should be canonicalized to 'Scout Kira'.
+        
+        This is the core fix for the Kira onboarding loop.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from main import normalize_character_names_in_response
+        
+        # Response with short name in action
+        response = json.dumps({
+            "narration": "Kira joins your party.",
+            "actions": [
+                {"action": "updatePartyNPCs", "parameters": {"operation": "add", "npc": {"name": "Kira", "level": "4", "class": "Scout"}}}
+            ]
+        })
+        
+        party_tracker_data = {
+            "partyMembers": ["Acheron"],
+            "partyNPCs": [{"name": "Scout Kira", "role": "Scout"}]
+        }
+        
+        normalized, message = normalize_character_names_in_response(response, party_tracker_data)
+        
+        self.assertIsNotNone(normalized, f"Should normalize successfully, got error: {message}")
+        
+        parsed = json.loads(normalized)
+        npc_name = parsed["actions"][0]["parameters"]["npc"]["name"]
+        self.assertEqual(npc_name, "Scout Kira", "Short name should be canonicalized")
+
+    def test_ambiguous_short_name_fails_closed(self):
+        """
+        Ambiguous short name matching multiple NPCs should fail closed.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from main import normalize_character_names_in_response
+        
+        # Response with ambiguous short name
+        response = json.dumps({
+            "narration": "A scout joins you.",
+            "actions": [
+                {"action": "updatePartyNPCs", "parameters": {"operation": "add", "npc": {"name": "Scout", "level": "4"}}}
+            ]
+        })
+        
+        # Two NPCs with "Scout" in their name
+        party_tracker_data = {
+            "partyMembers": ["Acheron"],
+            "partyNPCs": [
+                {"name": "Scout Kira", "role": "Scout"},
+                {"name": "Scout Mara", "role": "Scout"}
+            ]
+        }
+        
+        normalized, message = normalize_character_names_in_response(response, party_tracker_data)
+        
+        self.assertIsNone(normalized, "Ambiguous name should fail closed")
+        self.assertIn("not in party tracker", message)
+
+    def test_canonical_name_unchanged(self):
+        """
+        Canonical names should remain unchanged (no-op normalization).
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from main import normalize_character_names_in_response
+        
+        # Response with canonical name
+        response = json.dumps({
+            "narration": "Scout Kira joins your party.",
+            "actions": [
+                {"action": "updatePartyNPCs", "parameters": {"operation": "add", "npc": {"name": "Scout Kira", "level": "4", "class": "Scout"}}}
+            ]
+        })
+        
+        party_tracker_data = {
+            "partyMembers": ["Acheron"],
+            "partyNPCs": [{"name": "Scout Kira", "role": "Scout"}]
+        }
+        
+        normalized, message = normalize_character_names_in_response(response, party_tracker_data)
+        
+        self.assertIsNotNone(normalized, "Canonical name should pass")
+        
+        parsed = json.loads(normalized)
+        npc_name = parsed["actions"][0]["parameters"]["npc"]["name"]
+        self.assertEqual(npc_name, "Scout Kira", "Canonical name should be unchanged")
+
+    def test_moveBackgroundNPC_short_name_canonicalized(self):
+        """
+        Short name in moveBackgroundNPC action should also be canonicalized.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from main import normalize_character_names_in_response
+        
+        # Response with short name in moveBackgroundNPC
+        response = json.dumps({
+            "narration": "Kira moves to the tower.",
+            "actions": [
+                {"action": "moveBackgroundNPC", "parameters": {"npcName": "Kira", "context": "Moving to tower", "currentLocation": "T01"}}
+            ]
+        })
+        
+        party_tracker_data = {
+            "partyMembers": ["Acheron"],
+            "partyNPCs": [{"name": "Scout Kira", "role": "Scout"}]
+        }
+        
+        normalized, message = normalize_character_names_in_response(response, party_tracker_data)
+        
+        self.assertIsNotNone(normalized, f"Should normalize successfully, got error: {message}")
+        
+        parsed = json.loads(normalized)
+        npc_name = parsed["actions"][0]["parameters"]["npcName"]
+        self.assertEqual(npc_name, "Scout Kira", "Short name in moveBackgroundNPC should be canonicalized")
+
+    def test_string_npc_form_converted_to_dict(self):
+        """
+        Non-canonical string form for npc parameter should be converted to dict.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from main import normalize_character_names_in_response
+        
+        # Response with npc as string (non-canonical)
+        response = json.dumps({
+            "narration": "Kira joins your party.",
+            "actions": [
+                {"action": "updatePartyNPCs", "parameters": {"operation": "add", "npc": "Kira"}}
+            ]
+        })
+        
+        party_tracker_data = {
+            "partyMembers": ["Acheron"],
+            "partyNPCs": [{"name": "Scout Kira", "role": "Scout"}]
+        }
+        
+        normalized, message = normalize_character_names_in_response(response, party_tracker_data)
+        
+        self.assertIsNotNone(normalized, f"Should normalize successfully, got error: {message}")
+        
+        parsed = json.loads(normalized)
+        npc_param = parsed["actions"][0]["parameters"]["npc"]
+        self.assertIsInstance(npc_param, dict, "String npc should be converted to dict")
+        self.assertEqual(npc_param["name"], "Scout Kira", "Canonical name should be used")
+
+    def test_add_string_short_name_canonicalized(self):
+        """
+        String in parameters.add should be canonicalized to full name.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from main import normalize_character_names_in_response
+
+        response = json.dumps({
+            "narration": "Kira joins your party.",
+            "actions": [
+                {"action": "updatePartyNPCs", "parameters": {"add": "Kira"}}
+            ]
+        })
+
+        party_tracker_data = {
+            "partyMembers": ["Acheron"],
+            "partyNPCs": [{"name": "Scout Kira", "role": "Scout"}]
+        }
+
+        normalized, message = normalize_character_names_in_response(response, party_tracker_data)
+        self.assertIsNotNone(normalized, f"Should normalize successfully, got error: {message}")
+
+        parsed = json.loads(normalized)
+        add_param = parsed["actions"][0]["parameters"]["add"]
+        self.assertEqual(add_param, "Scout Kira", "Short name in add should be canonicalized")
+
+    def test_add_list_short_names_canonicalized(self):
+        """
+        List of strings in parameters.add should be canonicalized.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from main import normalize_character_names_in_response
+
+        response = json.dumps({
+            "narration": "Kira and Maelo join your party.",
+            "actions": [
+                {"action": "updatePartyNPCs", "parameters": {"add": ["Kira", "Maelo"]}}
+            ]
+        })
+
+        party_tracker_data = {
+            "partyMembers": ["Acheron"],
+            "partyNPCs": [
+                {"name": "Scout Kira", "role": "Scout"},
+                {"name": "Maelo the Wise", "role": "Companion"}
+            ]
+        }
+
+        normalized, message = normalize_character_names_in_response(response, party_tracker_data)
+        self.assertIsNotNone(normalized, f"Should normalize successfully, got error: {message}")
+
+        parsed = json.loads(normalized)
+        add_list = parsed["actions"][0]["parameters"]["add"]
+        self.assertEqual(add_list, ["Scout Kira", "Maelo the Wise"], "List items should be canonicalized")
+
+    def test_add_list_ambiguous_fails_closed(self):
+        """
+        Ambiguous short name in add list should fail closed.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from main import normalize_character_names_in_response
+
+        response = json.dumps({
+            "narration": "Scout joins your party.",
+            "actions": [
+                {"action": "updatePartyNPCs", "parameters": {"add": ["Scout"]}}
+            ]
+        })
+
+        party_tracker_data = {
+            "partyMembers": ["Acheron"],
+            "partyNPCs": [
+                {"name": "Scout Kira", "role": "Scout"},
+                {"name": "Scout Mara", "role": "Scout"}
+            ]
+        }
+
+        normalized, message = normalize_character_names_in_response(response, party_tracker_data)
+        self.assertIsNone(normalized, "Ambiguous add list name should fail closed")
+        self.assertIn("not in party tracker", message)
+
+    def test_add_list_canonical_names_noop(self):
+        """
+        Canonical names in parameters.add should remain unchanged.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from main import normalize_character_names_in_response
+
+        response = json.dumps({
+            "narration": "Scout Kira and Maelo the Wise join your party.",
+            "actions": [
+                {"action": "updatePartyNPCs", "parameters": {"add": ["Scout Kira", "Maelo the Wise"]}}
+            ]
+        })
+
+        party_tracker_data = {
+            "partyMembers": ["Acheron"],
+            "partyNPCs": [
+                {"name": "Scout Kira", "role": "Scout"},
+                {"name": "Maelo the Wise", "role": "Companion"}
+            ]
+        }
+
+        normalized, message = normalize_character_names_in_response(response, party_tracker_data)
+        self.assertIsNotNone(normalized, f"Canonical add list should pass, got error: {message}")
+
+        parsed = json.loads(normalized)
+        add_list = parsed["actions"][0]["parameters"]["add"]
+        self.assertEqual(add_list, ["Scout Kira", "Maelo the Wise"], "Canonical add list should be unchanged")
+
+    def test_add_list_dict_names_canonicalized(self):
+        """
+        List of dict entries in parameters.add should canonicalize each name key.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from main import normalize_character_names_in_response
+
+        response = json.dumps({
+            "narration": "Kira and Maelo join your party.",
+            "actions": [
+                {
+                    "action": "updatePartyNPCs",
+                    "parameters": {
+                        "add": [
+                            {"name": "Kira", "role": "Scout"},
+                            {"name": "Maelo", "role": "Companion"}
+                        ]
+                    }
+                }
+            ]
+        })
+
+        party_tracker_data = {
+            "partyMembers": ["Acheron"],
+            "partyNPCs": [
+                {"name": "Scout Kira", "role": "Scout"},
+                {"name": "Maelo the Wise", "role": "Companion"}
+            ]
+        }
+
+        normalized, message = normalize_character_names_in_response(response, party_tracker_data)
+        self.assertIsNotNone(normalized, f"Dict add list should normalize, got error: {message}")
+
+        parsed = json.loads(normalized)
+        add_list = parsed["actions"][0]["parameters"]["add"]
+        self.assertEqual(add_list[0]["name"], "Scout Kira")
+        self.assertEqual(add_list[1]["name"], "Maelo the Wise")
+
+    def test_prompt_example_uses_canonical_name(self):
+        """
+        Source-contract test: compressed system prompt must use canonical Scout Kira.
+        """
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        prompt_path = os.path.join(repo_root, "prompts", "system_prompt_compressed.txt")
+
+        with open(prompt_path, "r", encoding="utf-8") as handle:
+            prompt_content = handle.read()
+
+        # Guard against reintroducing contradictory short-name example.
+        self.assertNotIn('"name":"Kira"', prompt_content)
+        self.assertIn('"name":"Scout Kira"', prompt_content)
+
+
 if __name__ == "__main__":
     # Run tests with verbosity
     loader = unittest.TestLoader()
@@ -696,6 +1027,7 @@ if __name__ == "__main__":
     suite.addTests(loader.loadTestsFromTestCase(TestTravelIntentFailSoft))
     suite.addTests(loader.loadTestsFromTestCase(TestContractIntegration))
     suite.addTests(loader.loadTestsFromTestCase(TestNarratorPromptRefactorContracts))
+    suite.addTests(loader.loadTestsFromTestCase(TestNPCNameNormalization))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
