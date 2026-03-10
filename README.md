@@ -49,7 +49,7 @@ NeverEndingQuest-TTRPG keeps upstream NeverEndingQuest as the base while adding 
 - Active and archived implementation contracts: `openspec/`
 - Long-horizon planning and v2 tracks: `plans/`
 - Durable architecture decisions: `adrs/`
-- Legacy upstream/background context retained: `ARCHITECTURE.md`, `ARCHITECTURE_PHILOSOPHY.md`, and historical sections in this README
+- Legacy upstream/background context retained: `docs/development/ARCHITECTURE.md`, `docs/development/ARCHITECTURE_PHILOSOPHY.md`, and historical sections in this README
 - AI operator and automation workflows: `.opencode/skills/`
 
 For contributor setup and workflow, see `CONTRIBUTING.md` and `DEV_SETUP.md`.

@@ -479,7 +479,7 @@ Active development of Tabletop Mode features, focusing on combat flow optimizati
   - **Step 3 Web Integration:** `listSaves` returns global entries, `restoreGame` accepts module-aware payload with fallback routing, load dialog shows source module label + memory parity `[M]` indicator + module-aware payload on load
   - **Step 4 Validation:** All 12 completion items PASS (compile, import, positive smoke, negative smoke)
   - **Files Modified:** `updates/save_game_manager.py`, `web/web_interface.py`, `web/templates/game_interface.html`
-  - **PR2 Handoff Ready:** Archive zip portability work can begin (scaffolded in `/archiving.md`)
+  - **PR2 Handoff Ready:** Archive zip portability work can begin (scaffolded in `/docs/operations/archiving.md`)
 
 - **Journal Diary MVP Phase 1 Planning (PLANNED - 2026-02-16):
   - Created comprehensive MVP plan at `/plans/version-2/journal.md` for transparent diary system with dual-checkpoint model

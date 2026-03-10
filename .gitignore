@@ -195,6 +195,8 @@ test_*.py
 
 # Allow all test files in scripts/ directory for developer access
 !scripts/test_*.py
+!scripts/legacy/
+!scripts/legacy/test_*.py
 
 # Documentation files (keep core docs, exclude development plans)
 *_plan.md
@@ -444,9 +446,7 @@ NeverEndingQuest.code-workspace
 modules/The_Thornwood_Watch/images/image_metadata.json
 modules/The_Thornwood_Watch/player_quests_The_Thornwood_Watch.json
 # plans/  # NOTE: Commented out - plans/ should be committed for developer access
-Docs/staff_guide.md
 
 # Personal documentation
-Docs/
+Local_Docs/
 data/bestiary/npc_compendium.json
-session-ses_3d04.md

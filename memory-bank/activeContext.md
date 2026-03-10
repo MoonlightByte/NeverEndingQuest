@@ -448,7 +448,7 @@
 
 - **PR3 Root Archive Export Planning (COMPLETED - 2026-02-16):**
   - **OpenSpec Scaffolding:** Created `archive-root-export-and-zip-import-restore` with full artifact set
-  - **Plan Location:** `archiving.md` (lines 125-244) and OpenSpec change directory
+  - **Plan Location:** `docs/operations/archiving.md` (lines 125-244) and OpenSpec change directory
   - **Key Decisions:** Root export folder `archive_exports/`, deterministic naming, staged restore model
   - **Builder Ready:** Executor prompts staged for 6 execution phases
 
