@@ -433,6 +433,9 @@ telemetry_log.jsonl
 development/
 exports/
 modules/validation_cache.json
+# Keep curated docs folder tracked even with legacy 'development/' ignore rule
+!docs/development/
+!docs/development/*.md
 # Dynamic companion memory files (character-specific, generated during gameplay)
 data/companion_memories/
 data/companion_memories_compressed/*_memories_*.json
