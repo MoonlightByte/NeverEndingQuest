@@ -213,6 +213,11 @@ Here's the strict list of specific actions that the model should take when the s
 **VALIDATION RULE:** If user input is a vague question without specific commitment, createNewModule is INVALID regardless of what the AI response contains.
 
 Requires "narrative" parameter containing rich story description with embedded module parameters (name, type, level range, areas, themes).
+"rest": Dedicated narrator-layer rest action. Canonical usage is `{"action":"rest","parameters":{"type":"short|long","characters":[...]}}` with `updateTime` in the same response bundle. Python runtime owns rest recovery mechanics.
+"saveGame": Save current game state snapshot. Canonical payload supports optional description and save mode.
+"restoreGame": Restore from a specific save folder identifier.
+"listSaves": List available save snapshots.
+"deleteSave": Delete a specific save folder identifier.
 "exitGame": Must be taken and only taken when the player requests to exit the play session.
 "storageInteraction": Used when players want to store, retrieve, or manage items in containers at locations. This action processes natural language storage requests and handles inventory transfers automatically. Should be used when players express intent to:
    - Store items in containers ("I put my gold in a chest", "I store extra gear here")
@@ -266,6 +271,16 @@ Requires "narrative" parameter containing rich story description with embedded m
    - Using on NPCs that don't exist in location files [INVALID]
    - Using without clear narrative reason [INVALID]
 
+## CANONICAL ACTION PARAMETER CONTRACTS (COVERED SLICE)
+
+For covered save-management and module-creation actions, enforce these canonical parameter shapes:
+
+- createNewModule: {"narrative":str,"moduleName":str_opt,"module_name":str_opt,"numberOfAreas":int_opt,"locationsPerArea":int_opt,"levelRange":str_or_obj_opt,"adventureType":str_opt,"plotThemes":str_opt,"concept":str_opt}
+- saveGame: {"description":str_opt,"saveMode":str_opt}
+- restoreGame: {"saveFolder":str}
+- listSaves: {}
+- deleteSave: {"saveFolder":str}
+
 // Example Response 13: False - Combat Not Initiated at Commitment Point
 {
   "valid": false,
@@ -282,36 +297,26 @@ Requires "narrative" parameter containing rich story description with embedded m
 
 When characters take a short rest or long rest, the following validation rules MUST be enforced:
 
-### Short Rest Validation (1 hour):
-- REQUIRED: updateTime action with timeEstimate: 60 (minimum)
-- REQUIRED: updateCharacterInfo for ANY character benefits received
-- INVALID: Spell slot recovery for most classes (only Warlocks recover spell slots on short rest)
-- VALID: Hit Dice spending for HP recovery
-- VALID: Class feature recharge (Fighter's Second Wind/Action Surge, Monk's Ki, etc.)
-- CHECK: Character class matches recovery rules
+### Canonical Rest Contract:
+- REQUIRED: Use dedicated `rest` action with `parameters.type` set to `short` or `long`
+- REQUIRED: Include `updateTime` in the same action bundle for rest duration
+- REQUIRED: For short rest, duration must be at least 60 minutes
+- REQUIRED: For long rest, duration must be at least 480 minutes
+- NOTE: Runtime (Python) owns mechanical rest recovery semantics
+- NOTE: Narrator-authored direct `updateCharacterInfo` recovery deltas are optional bookkeeping, not required for canonical rest validity
 
-### Long Rest Validation (8 hours):
-- REQUIRED: updateTime action with timeEstimate: 480 (minimum)
-- REQUIRED: updateCharacterInfo for ALL characters resting
-- REQUIRED: Full HP recovery for all characters
-- REQUIRED: All spell slot recovery (per class rules)
-- REQUIRED: Half Hit Dice recovery (minimum 1)
-- VALID: All class features recharge
-- CHECK: Safe location and proper rest conditions
-
-### Class-Specific Recovery Validation:
-**WIZARD:** Short rest = Arcane Recovery once per day (spell slots = half level rounded up)
-**WARLOCK:** Short rest = ALL spell slots recover (unique)
-**FIGHTER:** Short rest = Second Wind + Action Surge recharge
-**MONK:** Short rest = All Ki points recover
-**ALL OTHER CLASSES:** Short rest = NO spell slot recovery
+### Class-Specific Recovery Expectations (Runtime-Owned):
+**WIZARD:** Short rest may include Arcane Recovery once per day
+**WARLOCK:** Short rest restores warlock pact slots
+**FIGHTER:** Short rest refreshes Second Wind and Action Surge
+**MONK:** Short rest restores Ki points
+**ALL OTHER CLASSES:** Short rest does not generally restore all spell slots
 
 ### Rest Validation Failures:
-- Missing updateTime action for rest duration
-- Missing updateCharacterInfo for recovery benefits
-- Incorrect spell slot recovery for character class
-- Short rest described but long rest benefits applied
-- Long rest described but missing full recovery
+- Missing `rest` action for a narrated rest event
+- Missing `updateTime` for the narrated rest duration
+- Invalid `rest.parameters.type` value
+- Rest duration incompatible with declared rest type
 
 ## LOCATION AND NPC REFERENCE VALIDATION RULES
 
@@ -571,6 +576,13 @@ Here are examples of acceptable model assistant responses:
   "narration": "After a long rest and some training, you feel stronger and more skilled.",
   "actions": [
     {
+      "action": "rest",
+      "parameters": {
+        "type": "long",
+        "characters": ["kai"]
+      }
+    },
+    {
       "action": "updateTime",
       "parameters": {
         "timeEstimate": 480
@@ -597,6 +609,13 @@ Here are examples of acceptable model assistant responses:
 {
   "narration": "After securing the chamber, your party settles in for a well-deserved long rest. Eight hours later, you wake refreshed and restored. Elen stretches, feeling much better, and checks her spell components. 'I have all my magic back,' she says with relief.",
   "actions": [
+    {
+      "action": "rest",
+      "parameters": {
+        "type": "long",
+        "characters": ["norn", "elen"]
+      }
+    },
     {
       "action": "updateTime",
       "parameters": {
@@ -625,6 +644,13 @@ Here are examples of acceptable model assistant responses:
   "narration": "You find a safe alcove and rest for an hour. As a Warlock, your patron's power flows back to you, restoring your spell slots. You also spend a Hit Die to recover some health.",
   "actions": [
     {
+      "action": "rest",
+      "parameters": {
+        "type": "short",
+        "characters": ["zareth"]
+      }
+    },
+    {
       "action": "updateTime",
       "parameters": {
         "timeEstimate": 60
@@ -644,6 +670,13 @@ Here are examples of acceptable model assistant responses:
 {
   "narration": "You rest for an hour. As a Ranger, you feel refreshed and your magic returns.",
   "actions": [
+    {
+      "action": "rest",
+      "parameters": {
+        "type": "short",
+        "characters": ["elen"]
+      }
+    },
     {
       "action": "updateTime",
       "parameters": {
@@ -1017,4 +1050,3 @@ Correction: Add updatePartyNPCs with operation="add" and npc details.
 - Describing NPC joining party without updatePartyNPCs add action
 - Assuming NPC presence without proper state tracking
 - Confusing already-present NPCs with off-location arrivals
-

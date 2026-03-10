@@ -50,10 +50,28 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   updatePartyTracker: module/location updates; triggers archiving
   moveBackgroundNPC: NPCs not in party (captured/killed/relocated)
   updatePartyNPCs: add/remove traveling companions
+  rest: dedicated rest action; runtime applies mechanical recovery
   saveGame: save current game state
   restoreGame: load saved game state
   listSaves: list available saves
   deleteSave: remove saved game
+  requestRoll: explicit player-facing save/check request action; pause before contingent outcome
+}
+
+@STRUCTURED_OPS={
+  additive_contract: updateCharacterInfo may include optional `ops` alongside legacy `changes`.
+  fallback_rule: `changes`-only remains valid for backward compatibility.
+  supported_initial: [set_hp, hp_delta, spell_slot_delta, inventory_add, inventory_remove, currency_delta, condition_add, condition_remove]
+}
+
+@REQUEST_ROLL_VALIDATION={
+  action_name: requestRoll is the canonical structured action for player-facing saving throws/checks.
+  payload_minimum: requestRoll.parameters MUST include characterName, rollType, dc, reason.
+  roll_type_allowed: rollType MUST be one of [saving_throw, ability_check, skill_check].
+  conditional_fields: saving_throw and ability_check require ability; skill_check requires skill.
+  advantage_field: advantage is optional and if present MUST be one of [normal, advantage, disadvantage].
+  pause_rule: If requestRoll is emitted, response MUST stop before narrating contingent player-roll success/failure.
+  compatibility: Prose-only save/check requests remain valid during migration if no explicit requestRoll action is emitted.
 }
 
 @CREATEMODULE_VALIDATION={
@@ -80,15 +98,19 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 }
 
 @REST_VALIDATION={
-  short: >=60m; updateTime+updateCharacterInfo REQUIRED
-    warlock: ALL slots recover
-    fighter: regain Action Surge and Second Wind on short rest
-    monk: regain all Ki points on short rest
-    others: NO spell slots (except wizard arcane recovery)
-    valid: Hit Dice, class features
-  long: >=8h; updateTime+updateCharacterInfo REQUIRED
-    required: Full HP, all slots, half Hit Dice
-  fail: Missing time/character updates, wrong recovery by class
+  canonical_action: rest is REQUIRED narrator action for short/long rest
+  short: >=60m; rest(type="short") + updateTime REQUIRED in same bundle
+    runtime_owned: Python applies supported short-rest recovery semantics
+    narrator_delta_not_required: direct updateCharacterInfo recovery deltas are optional, not required
+  long: >=8h; rest(type="long") + updateTime REQUIRED in same bundle
+    runtime_owned: Python applies supported long-rest recovery semantics
+    narrator_delta_not_required: direct updateCharacterInfo recovery deltas are optional, not required
+  fail: Missing rest action, missing updateTime, invalid rest type
+}
+
+@CONCENTRATION_VALIDATION={
+  deterministic_dc: concentration DC SHALL use max(10, floor(damage / 2)).
+  request_style: player-facing concentration saves SHOULD use requestRoll with rollType=saving_throw and ability=constitution.
 }
 
 @LOCATION_NPC_REFS={
@@ -207,7 +229,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 }
 
 @ACTION_PARAMS={
-  updateCharacterInfo: {"characterName":str,"changes":str} #SINGLE name only. Multiple chars = multiple actions in array
+  updateCharacterInfo: {"characterName":str,"changes":str,"ops":arr_opt} #additive contract; changes-only remains valid fallback. SINGLE name only. Multiple chars = multiple actions in array
   updateTime: {"timeEstimate":int} #integer only, not string
   updatePlot: {"plotPointId":str,"newStatus":str,"plotImpact":str}
   updatePartyNPCs: {"operation":str,"npc":obj} #npc is object: {"name":str,"level":str,"class":str}
@@ -217,14 +239,16 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   exitGame: {"farewell":str}
   transitionLocation: {"newLocation":str} #EXACTLY this one key
   createEncounter: {"encounterSummary":str,"player":str,"npcs":arr,"monsters":arr} #all arrays contain individual strings
+  rest: {"type":"short|long","characters":arr_opt}
   storageInteraction: {"description":str,"characterName":str}
-  createNewModule: {"moduleName":str,"startingLocation":str}
+  createNewModule: {"narrative":str,"moduleName":str_opt,"module_name":str_opt,"numberOfAreas":int_opt,"locationsPerArea":int_opt,"levelRange":str_or_obj_opt,"adventureType":str_opt,"plotThemes":str_opt,"concept":str_opt}
   updateEncounter: {"encounterId":str,"changes":obj}
   updatePartyTracker: {"module":str_opt,"currentAreaId":str_opt,"currentArea":str_opt,"currentLocationId":str_opt,"currentLocation":str_opt,"resolvedHostilesByLocation":dict_opt,"worldConditions":dict_opt} #resolvedHostilesByLocation marks peacefully resolved hostile locations; worldConditions allows nested updates
-  saveGame: {"saveName":str}
-  restoreGame: {"saveName":str}
+  requestRoll: {"characterName":str,"rollType":"saving_throw|ability_check|skill_check","dc":int,"reason":str,"ability":str_opt,"skill":str_opt,"advantage":"normal|advantage|disadvantage"_opt}
+  saveGame: {"description":str_opt,"saveMode":str_opt}
+  restoreGame: {"saveFolder":str}
   listSaves: {}
-  deleteSave: {"saveName":str}
+  deleteSave: {"saveFolder":str}
 }
 
 @OUTPUT_CONSTRAINTS={

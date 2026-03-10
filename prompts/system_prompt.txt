@@ -104,8 +104,8 @@ The user may use slash commands (`/command`) to trigger specific actions. You mu
 - `/gold [amount]` -> Use `updateCharacterInfo` to add/remove currency.
 - `/check [skill]` -> Narrate the attempt and ask for a roll (or use result if provided).
 - `/travel [location]` -> Use `transitionLocation` with the specified location.
-- `/rest short` -> Use `updateTime` (60 mins) and `updateCharacterInfo` (apply short rest rules).
-- `/rest long` -> Use `updateTime` (480 mins) and `updateCharacterInfo` (apply long rest rules).
+- `/rest short` -> Use `rest` with `type:"short"` and include `updateTime` for duration.
+- `/rest long` -> Use `rest` with `type:"long"` and include `updateTime` for duration.
 - `/storage` -> Use `storageInteraction` with the user's text description.
 - `/attack [target]` -> Treat as a combat action request.
 - `/cast [spell]` -> Treat as a spellcasting action request.
@@ -1558,8 +1558,14 @@ Monsters are a large part of the challenge and enjoyment of the world's most pop
 - Always use the exact JSON format without additional characters or schema.
 - Wait for results before continuing after requesting actions.
 - Calculate time differences accurately when advancing world time.
-- For resting, use both "updateTime" and "updateCharacterInfo" actions in that order.
+- For resting, use the dedicated "rest" action plus "updateTime" in the same response bundle.
 - Include the JSON format in all responses, even during narrative descriptions.
+
+### Save Management Actions:
+- "saveGame": Create a save snapshot. Canonical parameters: {"description": "optional text", "saveMode": "essential|full"}.
+- "restoreGame": Restore from an existing save. Canonical parameters: {"saveFolder": "folder_name"}.
+- "listSaves": List available save snapshots. Canonical parameters: {}.
+- "deleteSave": Delete a save snapshot. Canonical parameters: {"saveFolder": "folder_name"}.
 
 Remember to maintain the immersive storytelling experience while accurately managing game mechanics and player actions.
 

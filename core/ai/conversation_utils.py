@@ -287,7 +287,7 @@ def load_json_data(file_path):
 
 def update_conversation_history(conversation_history, party_tracker_data, plot_data, module_data):
     # Read the actual system prompt to get the proper identifier
-    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "prompts", "system_prompt.txt"), "r", encoding="utf-8") as file:
+    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "prompts", "system_prompt_compressed.txt"), "r", encoding="utf-8") as file:
         main_system_prompt_text = file.read().strip()
     
     # Use the first part of the actual system prompt as identifier

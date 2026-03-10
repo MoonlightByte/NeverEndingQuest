@@ -129,6 +129,10 @@ from utils.ai_client_factory import (
     handle_provider_error,
     get_fallback_notification
 )
+from utils.character_ops_routing import (
+    normalize_character_ops_payload,
+    classify_character_update_payload,
+)
 from core.managers.world_observer import get_world_observer
 
 # Set script name for logging
@@ -1244,7 +1248,252 @@ def repair_character_data(character_data):
     
     return character_data
 
-def update_character_info(character_name, changes, character_role=None):
+
+SUPPORTED_CHARACTER_OPS = {
+    "set_hp",
+    "hp_delta",
+    "spell_slot_delta",
+    "inventory_add",
+    "inventory_remove",
+    "currency_delta",
+    "condition_add",
+    "condition_remove",
+}
+
+_last_ops_routing_marker = {
+    "mode": "unknown",
+    "reason": "unknown",
+}
+
+# TABLETOP MODE: Deterministic routing reason markers for ops pilot telemetry.
+# Keep these as explicit string constants so tests can lock source contracts.
+OPS_ROUTING_REASON_OPS_ABSENT = "ops_absent"
+OPS_ROUTING_REASON_INVALID_WITH_CHANGES = "ops_invalid_with_changes_fallback"
+OPS_ROUTING_REASON_UNSUPPORTED_WITH_CHANGES = "ops_unsupported_with_changes_fallback"
+
+
+def _set_last_ops_routing_marker(mode: str, reason: str) -> None:
+    global _last_ops_routing_marker
+    _last_ops_routing_marker = {
+        "mode": str(mode),
+        "reason": str(reason),
+    }
+
+
+def get_last_ops_routing_marker() -> Dict[str, str]:
+    """Return the last ops routing marker for diagnostics."""
+    return dict(_last_ops_routing_marker)
+
+
+def _normalize_spell_slot_level(level_value: Any) -> str:
+    level_str = str(level_value).strip().lower()
+    if level_str.startswith("level"):
+        return level_str
+    return f"level{level_str}"
+
+
+def _resolve_op_type(op: Dict[str, Any]) -> str:
+    op_type = op.get("op")
+    if not isinstance(op_type, str) or not op_type.strip():
+        op_type = op.get("type")
+    if not isinstance(op_type, str):
+        return ""
+    return op_type.strip().lower()
+
+
+def _find_equipment_entry(equipment: List[Dict[str, Any]], item_name: str) -> Optional[Dict[str, Any]]:
+    target = item_name.strip().lower()
+    for item in equipment:
+        if not isinstance(item, dict):
+            continue
+        existing_name = str(item.get("item_name") or item.get("name") or "").strip().lower()
+        if existing_name == target:
+            return item
+    return None
+
+
+def _find_ammunition_entry(ammunition: List[Dict[str, Any]], item_name: str) -> Optional[Dict[str, Any]]:
+    target = item_name.strip().lower()
+    for item in ammunition:
+        if not isinstance(item, dict):
+            continue
+        existing_name = str(item.get("name") or "").strip().lower()
+        if existing_name == target:
+            return item
+    return None
+
+
+def _to_int(value: Any, field_name: str, op_type: str) -> int:
+    try:
+        return int(value)
+    except Exception:
+        raise ValueError(f"Invalid integer for {op_type}.{field_name}: {value}")
+
+
+def _apply_character_ops_deterministic(character_data: Dict[str, Any], ops: List[Dict[str, Any]]) -> Tuple[bool, Dict[str, Any], str, List[str]]:
+    """Apply supported structured ops directly to character data.
+
+    Returns:
+        (success, updated_data, error_message, unsupported_ops)
+    """
+    unsupported_ops: List[str] = []
+    for op in ops:
+        op_type = _resolve_op_type(op)
+        if not op_type or op_type not in SUPPORTED_CHARACTER_OPS:
+            unsupported_ops.append(op_type or "unknown")
+
+    if unsupported_ops:
+        return (False, character_data, "unsupported_ops", unsupported_ops)
+
+    updated_data = copy.deepcopy(character_data)
+
+    for op in ops:
+        op_type = _resolve_op_type(op)
+
+        if op_type == "set_hp":
+            hp_value = _to_int(op.get("value", op.get("hp")), "value", op_type)
+            max_hp = _to_int(updated_data.get("maxHitPoints", hp_value), "maxHitPoints", op_type)
+            updated_data["hitPoints"] = max(0, min(hp_value, max_hp))
+
+        elif op_type == "hp_delta":
+            delta = _to_int(op.get("delta"), "delta", op_type)
+            current_hp = _to_int(updated_data.get("hitPoints", 0), "hitPoints", op_type)
+            max_hp = _to_int(updated_data.get("maxHitPoints", current_hp), "maxHitPoints", op_type)
+            updated_data["hitPoints"] = max(0, min(current_hp + delta, max_hp))
+
+        elif op_type == "spell_slot_delta":
+            level_key = _normalize_spell_slot_level(op.get("level", ""))
+            delta = _to_int(op.get("delta"), "delta", op_type)
+
+            spellcasting = updated_data.get("spellcasting", {})
+            if not isinstance(spellcasting, dict):
+                spellcasting = {}
+                updated_data["spellcasting"] = spellcasting
+
+            spell_slots = spellcasting.get("spellSlots", {})
+            if not isinstance(spell_slots, dict):
+                return (False, character_data, "spellcasting.spellSlots missing or invalid", [])
+
+            slot_data = spell_slots.get(level_key)
+            if not isinstance(slot_data, dict):
+                return (False, character_data, f"unknown spell slot level: {level_key}", [])
+
+            current = _to_int(slot_data.get("current", 0), "current", op_type)
+            maximum = _to_int(slot_data.get("max", 0), "max", op_type)
+            new_value = current + delta
+            if new_value < 0 or new_value > maximum:
+                return (False, character_data, f"invalid spell slot delta for {level_key}: {current}+{delta} outside [0,{maximum}]", [])
+            slot_data["current"] = new_value
+
+        elif op_type in ["inventory_add", "inventory_remove"]:
+            item_name = str(op.get("item_name") or op.get("name") or op.get("item") or "").strip()
+            if not item_name:
+                return (False, character_data, f"{op_type} missing item name", [])
+
+            quantity = _to_int(op.get("quantity", 1), "quantity", op_type)
+            if quantity <= 0:
+                return (False, character_data, f"{op_type} quantity must be > 0", [])
+
+            container = str(op.get("container", "equipment")).strip().lower()
+            is_ammo = container == "ammunition" or str(op.get("item_type", "")).strip().lower() == "ammunition"
+
+            if is_ammo:
+                ammunition = updated_data.get("ammunition", [])
+                if not isinstance(ammunition, list):
+                    ammunition = []
+                    updated_data["ammunition"] = ammunition
+
+                entry = _find_ammunition_entry(ammunition, item_name)
+                if entry is None and op_type == "inventory_remove":
+                    return (False, character_data, f"cannot remove ammunition not present: {item_name}", [])
+
+                if entry is None:
+                    ammunition.append({"name": item_name, "quantity": quantity})
+                else:
+                    current_qty = _to_int(entry.get("quantity", 0), "quantity", op_type)
+                    if op_type == "inventory_add":
+                        entry["quantity"] = current_qty + quantity
+                    else:
+                        if quantity > current_qty:
+                            return (False, character_data, f"cannot remove {quantity} {item_name}; only {current_qty} available", [])
+                        entry["quantity"] = current_qty - quantity
+            else:
+                equipment = updated_data.get("equipment", [])
+                if not isinstance(equipment, list):
+                    equipment = []
+                    updated_data["equipment"] = equipment
+
+                entry = _find_equipment_entry(equipment, item_name)
+                if entry is None and op_type == "inventory_remove":
+                    return (False, character_data, f"cannot remove equipment not present: {item_name}", [])
+
+                if entry is None:
+                    equipment.append({
+                        "item_name": item_name,
+                        "item_type": str(op.get("item_type", "miscellaneous")),
+                        "quantity": quantity,
+                    })
+                else:
+                    current_qty = _to_int(entry.get("quantity", 0), "quantity", op_type)
+                    if op_type == "inventory_add":
+                        entry["quantity"] = current_qty + quantity
+                    else:
+                        if quantity > current_qty:
+                            return (False, character_data, f"cannot remove {quantity} {item_name}; only {current_qty} available", [])
+                        entry["quantity"] = current_qty - quantity
+
+        elif op_type == "currency_delta":
+            currency = updated_data.get("currency", {})
+            if not isinstance(currency, dict):
+                currency = {}
+                updated_data["currency"] = currency
+
+            deltas = op.get("deltas")
+            if isinstance(deltas, dict):
+                delta_map = deltas
+            else:
+                coin_type = str(op.get("currency") or op.get("coin") or "").strip().lower()
+                delta_value = op.get("delta")
+                if not coin_type:
+                    return (False, character_data, "currency_delta missing currency key", [])
+                delta_map = {coin_type: delta_value}
+
+            for coin_type, delta_value in delta_map.items():
+                coin = str(coin_type).strip().lower()
+                if coin not in ["gold", "silver", "copper"]:
+                    return (False, character_data, f"unsupported currency type: {coin}", [])
+                delta = _to_int(delta_value, coin, op_type)
+                current_value = _to_int(currency.get(coin, 0), coin, op_type)
+                new_value = current_value + delta
+                if new_value < 0:
+                    return (False, character_data, f"currency underflow for {coin}: {current_value}+{delta}", [])
+                currency[coin] = new_value
+
+        elif op_type in ["condition_add", "condition_remove"]:
+            condition_name = str(op.get("condition") or op.get("name") or "").strip()
+            if not condition_name:
+                return (False, character_data, f"{op_type} missing condition", [])
+
+            conditions = updated_data.get("condition_affected", [])
+            if not isinstance(conditions, list):
+                conditions = []
+
+            normalized = [str(c).strip().lower() for c in conditions]
+            target = condition_name.lower()
+
+            if op_type == "condition_add":
+                if target not in normalized:
+                    conditions.append(condition_name)
+            else:
+                conditions = [c for c in conditions if str(c).strip().lower() != target]
+
+            updated_data["condition_affected"] = conditions
+            updated_data["condition"] = conditions[0] if conditions else "none"
+
+    return (True, updated_data, "", [])
+
+
+def update_character_info(character_name, changes, character_role=None, ops=None):
     """
     Unified function to update character information for both players and NPCs
     
@@ -1252,6 +1501,7 @@ def update_character_info(character_name, changes, character_role=None):
         character_name (str): Name of the character to update
         changes (str): Description of changes to make
         character_role (str, optional): 'player' or 'npc', auto-detected if None
+        ops (list, optional): Additive structured operations for deterministic mechanics updates
     
     Returns:
         bool: True if successful, False otherwise
@@ -1260,6 +1510,30 @@ def update_character_info(character_name, changes, character_role=None):
     global client  # Required because fallback reassigns client at line 2110
 
     debug(f"STATE_CHANGE: Updating character info for: {character_name}", category="character_updates")
+
+    normalized_ops = normalize_character_ops_payload(ops)
+    if isinstance(changes, dict):
+        changes = json.dumps(changes)
+    elif changes is None:
+        changes = ""
+    elif not isinstance(changes, str):
+        changes = str(changes)
+    changes_text = changes
+
+    payload_route = classify_character_update_payload(changes_text, ops)
+    _set_last_ops_routing_marker(payload_route["mode"], payload_route["reason"])
+
+    if payload_route["mode"] == "prose_fallback":
+        info(
+            f"CHAR_OPS_FALLBACK reason={payload_route['reason']} character={character_name}",
+            category="character_updates",
+        )
+    elif payload_route["mode"] == "hard_fail" and payload_route["reason"] == "ops_invalid_no_fallback":
+        error(
+            f"FAILURE: Invalid ops payload without prose fallback for {character_name} (reason=ops_invalid_no_fallback)",
+            category="character_updates",
+        )
+        return False
     
     # Try fuzzy matching first if the character isn't found
     original_name = character_name
@@ -1318,7 +1592,89 @@ def update_character_info(character_name, changes, character_role=None):
     
     # Create in-memory backup
     original_data = copy.deepcopy(character_data)
-    
+
+    # TABLETOP MODE: Additive structured "ops" contract (Phase 3 pilot)
+    # If supported ops are present, apply deterministically in Python.
+    if normalized_ops is not None:
+        if not normalized_ops:
+            if not changes_text.strip():
+                error(
+                    f"FAILURE: Invalid or empty structured ops payload for {character_name} with no prose fallback",
+                    category="character_updates",
+                )
+                return False
+            warning(
+                f"CHAR_OPS: Structured ops invalid/empty for {character_name}; falling back to legacy changes",
+                category="character_updates",
+            )
+            _set_last_ops_routing_marker("prose_fallback", "ops_invalid_with_changes_fallback")
+        else:
+            ops_success, ops_updated_data, ops_error, unsupported_ops = _apply_character_ops_deterministic(
+                character_data,
+                normalized_ops,
+            )
+
+            if unsupported_ops:
+                if not changes_text.strip():
+                    error(
+                        f"FAILURE: Unsupported ops with no prose fallback for {character_name}: {unsupported_ops}",
+                        category="character_updates",
+                    )
+                    return False
+                warning(
+                    f"CHAR_OPS: Unsupported ops for {character_name} ({unsupported_ops}); using legacy prose fallback",
+                    category="character_updates",
+                )
+                _set_last_ops_routing_marker("prose_fallback", "ops_unsupported_with_changes_fallback")
+            elif not ops_success:
+                _set_last_ops_routing_marker("hard_fail", "ops_deterministic_apply_failed")
+                error(
+                    f"FAILURE: Deterministic ops application failed for {character_name}: {ops_error}",
+                    category="character_updates",
+                )
+                return False
+            else:
+                _set_last_ops_routing_marker("structured_applied", "ops_applied")
+                updated_data = normalize_status_and_condition(ops_updated_data, character_role)
+                updated_data, removed_fields = purge_invalid_fields(updated_data, schema, character_name)
+                if removed_fields:
+                    warning(
+                        f"VALIDATION: Purged {len(removed_fields)} invalid fields after ops application: {', '.join(removed_fields)}",
+                        category="character_validation",
+                    )
+
+                is_valid, error_msg = validate_character_data(updated_data, schema, character_name)
+                if not is_valid:
+                    error(
+                        f"VALIDATION: Deterministic ops update failed schema validation for {character_name}: {error_msg}",
+                        category="character_validation",
+                    )
+                    return False
+
+                updated_data = repair_character_data(updated_data)
+                save_result = safe_write_json(character_path, updated_data)
+                if not save_result:
+                    error(f"FAILURE: Could not persist deterministic ops update for {character_name}", category="file_operations")
+                    return False
+
+                try:
+                    observer = get_world_observer()
+                    observer.record_event(
+                        track="MECHANICAL",
+                        event_type="CHARACTER_UPDATE",
+                        actor=character_name,
+                        action="structured_ops_update",
+                        metadata={"ops": normalized_ops},
+                    )
+                except Exception as e:
+                    warning(f"WorldObserver hook failed for structured ops update: {e}", category="world_observer")
+
+                info(
+                    f"SUCCESS: Applied deterministic structured ops update for {character_name}",
+                    category="character_updates",
+                )
+                return True
+
     # Load and process conversation history
     history = load_conversation_history()
     if character_role == 'player':

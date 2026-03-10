@@ -156,6 +156,7 @@ from utils.encoding_utils import safe_json_load
 from utils.file_operations import safe_write_json
 import core.ai.cumulative_summary as cumulative_summary
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
+from utils.save_roll_contract import calculate_concentration_dc
 # Import combat message compressor for optimizing conversation history
 from core.ai.combat_compressor import CombatUserMessageCompressor
 # Import inventory context matcher for enhancing player combat actions
@@ -206,6 +207,38 @@ set_script_name(__name__)
 
 # Temperature
 TEMPERATURE = 0.8
+
+
+def build_request_roll_action(
+    character_name: str,
+    roll_type: str,
+    dc: int,
+    reason: str,
+    ability: str = None,
+    skill: str = None,
+    advantage: str = "normal",
+) -> dict:
+    """Build a lightweight requestRoll action payload (scaffolding helper)."""
+    parameters = {
+        "characterName": character_name,
+        "rollType": roll_type,
+        "dc": dc,
+        "reason": reason,
+        "advantage": advantage,
+    }
+    if ability:
+        parameters["ability"] = ability
+    if skill:
+        parameters["skill"] = skill
+    return {
+        "action": "requestRoll",
+        "parameters": parameters,
+    }
+
+
+def get_concentration_request_dc(damage_taken: int) -> int:
+    """Return deterministic concentration save DC for requestRoll scaffolding."""
+    return calculate_concentration_dc(damage_taken)
 
 def get_combat_temperature(encounter_data, validation_attempt=0):
     """

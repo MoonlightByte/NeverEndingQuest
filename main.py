@@ -124,6 +124,7 @@ from utils.character_creation_audit import (
     audit_character_creation,
 )
 from utils import pc_manager
+from utils.save_roll_contract import calculate_concentration_dc
 
 # Import new manager modules
 from core.managers import location_manager
@@ -190,6 +191,11 @@ awaiting_combat_resolution = False
 
 # Status display configuration
 current_status_line = None
+
+
+def get_request_roll_concentration_dc(damage_taken: int) -> int:
+    """Return deterministic concentration DC for requestRoll scaffolding."""
+    return calculate_concentration_dc(damage_taken)
 
 def display_status(message):
     """Display status message above the command prompt"""
@@ -1244,6 +1250,62 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         print(f"ERROR: {error_msg}")
         return (False, error_msg)
 
+    # TABLETOP MODE: Deterministic mechanics precheck for explicit contradictions
+    # Run before LLM validator to fail closed on parseable HP/slot/inventory contradictions.
+    try:
+        from utils.deterministic_mechanics_precheck import validate_deterministic_mechanics_precheck
+
+        mechanics_ok, mechanics_reason = validate_deterministic_mechanics_precheck(
+            response_json,
+            party_tracker_data=party_tracker_data,
+        )
+        if not mechanics_ok:
+            print(f"ERROR: {mechanics_reason}")
+            return (False, mechanics_reason)
+    except Exception as e:
+        error_msg = f"Deterministic mechanics precheck error: {str(e)}"
+        print(f"ERROR: {error_msg}")
+        return (False, error_msg)
+
+    skip_llm_validation = False
+    skip_reason = "not_evaluated"
+    validation_routing_telemetry = {
+        "skip_llm_validation": False,
+        "skip_reason": "not_evaluated",
+        "used_validation_compression": False,
+        "compression_reason": "not_evaluated",
+        "validation_payload_chars": 0,
+    }
+
+    # TABLETOP MODE: Conservative low-risk validator skip routing.
+    # If deterministic checks pass and actions are explicitly low-risk, skip LLM validation.
+    try:
+        from utils.validation_routing import should_skip_llm_validation, build_validation_routing_telemetry
+
+        skip_llm_validation, skip_reason = should_skip_llm_validation(
+            response_json=response_json,
+            deterministic_passed=deterministic_result.get("deterministic_passed", False),
+        )
+        validation_routing_telemetry = build_validation_routing_telemetry(
+            skip_llm_validation=skip_llm_validation,
+            skip_reason=skip_reason,
+            used_validation_compression=False,
+            compression_reason="not_evaluated",
+            validation_payload_chars=0,
+        )
+        if skip_llm_validation:
+            debug(
+                f"VALIDATION: LLM validator skipped ({skip_reason}) telemetry={json.dumps(validation_routing_telemetry)}",
+                category="ai_validation"
+            )
+            return (True, response_to_validate)
+    except Exception as e:
+        skip_reason = "skip_routing_unavailable"
+        warning(
+            f"VALIDATION: Skip routing unavailable, continuing full validation: {e}",
+            category="ai_validation"
+        )
+
     # The validation needs sufficient context to understand what happened
     # We need to include recent conversation history, not just the last two messages
     # This helps the validator understand ongoing narratives like ritual completions
@@ -1350,100 +1412,23 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
     # Create module data context for location/NPC validation
     module_data_context = create_module_validation_context(party_tracker_data, path_manager)
     
-    # Extract character names from updateCharacterInfo actions and load their inventories
-    character_inventory_context = ""
+    # Build compact mechanics-first truth packs for touched updateCharacterInfo actions.
+    character_truth_pack_context = ""
     try:
-        # Parse the primary response to find updateCharacterInfo actions
-        response_data = json.loads(primary_response)
-        if "actions" in response_data:
-            characters_to_load = set()
-            for action in response_data["actions"]:
-                if action.get("action") == "updateCharacterInfo":
-                    char_name = action.get("parameters", {}).get("characterName", "")
-                    if char_name:
-                        characters_to_load.add(char_name)
-            
-            # Load character sheets for identified characters
-            if characters_to_load:
-                character_inventory_context = "\n\nCHARACTER INVENTORY DATA FOR VALIDATION:\n"
-                for char_name in characters_to_load:
-                    # Try to load from characters directory
-                    # Note: get_character_path already adds .json extension
-                    char_file_name = char_name.lower().replace(" ", "_")
-                    char_path = path_manager.get_character_path(char_file_name)
-                    
-                    if os.path.exists(char_path):
-                        try:
-                            with open(char_path, 'r', encoding='utf-8') as f:
-                                char_data = json.load(f)
-                            
-                            # Extract relevant inventory data
-                            ammunition = char_data.get("ammunition", [])
-                            currency = char_data.get("currency", {})
-                            equipment = char_data.get("equipment", [])
-                            
-                            character_inventory_context += f"\n{char_name}:\n"
-                            character_inventory_context += f"  Currency: {currency.get('gold', 0)} gold, {currency.get('silver', 0)} silver, {currency.get('copper', 0)} copper\n"
-                            
-                            # Add ammunition
-                            if ammunition:
-                                character_inventory_context += "  Ammunition:\n"
-                                for ammo in ammunition:
-                                    character_inventory_context += f"    - {ammo.get('name', 'Unknown')}: {ammo.get('quantity', 0)}\n"
-                            else:
-                                character_inventory_context += "  Ammunition: None\n"
-                            
-                            # Add equipment and items (especially consumables like potions)
-                            consumables = []
-                            weapons = []
-                            armor = []
-                            other_equipment = []
-                            
-                            for item in equipment:
-                                item_name = item.get("item_name", "Unknown")
-                                item_type = item.get("item_type", "")
-                                quantity = item.get("quantity", 1)
-                                
-                                if item_type == "consumable" or item.get("consumable", False):
-                                    consumables.append(f"{item_name} (x{quantity})")
-                                elif item_type == "weapon":
-                                    weapons.append(item_name)
-                                elif item_type == "armor":
-                                    armor.append(item_name)
-                                else:
-                                    other_equipment.append(item_name)
-                            
-                            if consumables:
-                                character_inventory_context += "  Consumables:\n"
-                                for item in consumables:
-                                    character_inventory_context += f"    - {item}\n"
-                            
-                            if weapons:
-                                character_inventory_context += "  Weapons:\n"
-                                for item in weapons:
-                                    character_inventory_context += f"    - {item}\n"
-                            
-                            if armor:
-                                character_inventory_context += "  Armor:\n"
-                                for item in armor:
-                                    character_inventory_context += f"    - {item}\n"
-                            
-                            if other_equipment:
-                                character_inventory_context += "  Other Equipment:\n"
-                                for item in other_equipment:
-                                    character_inventory_context += f"    - {item}\n"
-                        except Exception as e:
-                            debug(f"VALIDATION: Could not load character data for {char_name}: {e}", category="ai_validation")
-                    else:
-                        debug(f"VALIDATION: Character file not found: {char_path}", category="ai_validation")
-                
-                if character_inventory_context != "\n\nCHARACTER INVENTORY DATA FOR VALIDATION:\n":
-                    debug(f"VALIDATION: Loaded inventory data for: {', '.join(characters_to_load)}", category="ai_validation")
-    except json.JSONDecodeError:
-        # Response might not be valid JSON, skip inventory loading
-        pass
+        from utils.validator_truth_pack import (
+            build_touched_character_truth_pack,
+            format_truth_pack_for_validation,
+        )
+
+        truth_packs = build_touched_character_truth_pack(response_json)
+        if truth_packs:
+            character_truth_pack_context = format_truth_pack_for_validation(truth_packs)
+            debug(
+                f"VALIDATION: CHARACTER_MECHANICAL_TRUTH_PACK built for {len(truth_packs)} character(s)",
+                category="ai_validation"
+            )
     except Exception as e:
-        debug(f"VALIDATION: Error extracting character names: {e}", category="ai_validation")
+        debug(f"VALIDATION: Truth-pack build failed, continuing without it: {e}", category="ai_validation")
     
     # Add structure validation status to context
     structure_validation_note = ""
@@ -1479,11 +1464,12 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         {"role": "system", "content": validation_prompt_text},
         {"role": "system", "content": structure_validation_note},
         {"role": "system", "content": f"DETERMINISTIC_VALIDATION_RESULT: {deterministic_metadata_msg}"},
+        {"role": "system", "content": f"VALIDATION_ROUTING_TELEMETRY: {json.dumps(validation_routing_telemetry)}"},
         {"role": "system", "content": npc_validation_context},  # Always include, even if empty
         {"role": "system", "content": location_details},
         {"role": "system", "content": user_input_context},
         {"role": "system", "content": module_data_context},
-        {"role": "system", "content": character_inventory_context} if character_inventory_context else None,
+        {"role": "system", "content": character_truth_pack_context} if character_truth_pack_context else None,
     ]
     
     
@@ -1507,9 +1493,38 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
             debug(f"VALIDATION: Message {i+1}: {msg['role']}: {msg['content'][:100]}...", category="ai_validation")
         debug("VALIDATION: *** END VALIDATION DEBUG ***", category="ai_validation")
 
-    # Apply compression to validation messages if enabled
-    from model_config import COMPRESSION_ENABLED
-    if COMPRESSION_ENABLED:
+    # Apply compression to validation messages only when payload exceeds threshold.
+    from model_config import COMPRESSION_ENABLED, VALIDATION_COMPRESSION_MIN_CHARS
+    from utils.validation_routing import (
+        build_validation_routing_telemetry,
+        get_validation_compression_decision,
+    )
+
+    validation_payload_size = sum(
+        len(msg.get("content", ""))
+        for msg in validation_conversation
+        if isinstance(msg, dict)
+    )
+    use_validation_compression, compression_reason = get_validation_compression_decision(
+        total_chars=validation_payload_size,
+        compression_enabled=COMPRESSION_ENABLED,
+        threshold_chars=VALIDATION_COMPRESSION_MIN_CHARS,
+    )
+
+    validation_routing_telemetry = build_validation_routing_telemetry(
+        skip_llm_validation=skip_llm_validation,
+        skip_reason=skip_reason,
+        used_validation_compression=use_validation_compression,
+        compression_reason=compression_reason,
+        validation_payload_chars=validation_payload_size,
+    )
+
+    for msg in validation_conversation:
+        if isinstance(msg, dict) and isinstance(msg.get("content"), str) and msg["content"].startswith("VALIDATION_ROUTING_TELEMETRY:"):
+            msg["content"] = f"VALIDATION_ROUTING_TELEMETRY: {json.dumps(validation_routing_telemetry)}"
+            break
+
+    if use_validation_compression:
         try:
             from pathlib import Path
 
@@ -1557,6 +1572,10 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
             warning(f"VALIDATION: Compression failed, using original messages: {e}", category="ai_validation")
             validation_messages_to_send = validation_conversation
     else:
+        debug(
+            f"VALIDATION: Compression skipped (payload={validation_payload_size} chars, threshold={VALIDATION_COMPRESSION_MIN_CHARS}, reason={compression_reason})",
+            category="ai_validation"
+        )
         validation_messages_to_send = validation_conversation
     
     # TABLETOP MODE: Strip active_pc from validation messages before API call
@@ -1692,12 +1711,8 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
     return (True, response_to_validate)
 
 def load_validation_prompt():
-    from model_config import COMPRESSION_ENABLED
-    if COMPRESSION_ENABLED:
-        # Use compressed validation prompt when compression is enabled
-        prompt_file = "prompts/validation/validation_prompt_compressed.txt"
-    else:
-        prompt_file = "prompts/validation/validation_prompt.txt"
+    # Canonical runtime authority: always use compressed validation prompt.
+    prompt_file = "prompts/validation/validation_prompt_compressed.txt"
     
     with open(prompt_file, "r", encoding="utf-8") as file:
         return file.read().strip()
@@ -3430,7 +3445,8 @@ def main_game_loop():
     debug("INITIALIZATION: Validation prompt loaded for both paths", category="initialization")
     
     # Load main system prompt for both paths - also needed in main loop
-    with open("prompts/system_prompt.txt", "r", encoding="utf-8") as file:
+    # Canonical runtime authority: compressed prompt is the live narrator source.
+    with open("prompts/system_prompt_compressed.txt", "r", encoding="utf-8") as file:
         main_system_prompt_text = file.read()
     debug("INITIALIZATION: Main system prompt loaded for both paths", category="initialization")
     

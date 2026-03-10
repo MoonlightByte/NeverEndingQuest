@@ -68,6 +68,7 @@ ENABLE_TTS_ESTIMATED_TIMING = False                    # Estimated timing sync f
 COMPRESSION_ENABLED = True                              # Master switch for all compression
 COMPRESS_LOCATION_ENCOUNTERS = True                     # Compress location encounter data using dynamic compressor
 COMPRESS_LOCATION_SUMMARIES = True                      # Compress location summaries (now implemented)
+VALIDATION_COMPRESSION_MIN_CHARS = 12000                # Compress validation context only when payload size crosses threshold
 
 # --- Compression Model Configuration ---
 # Models used for compressing conversation history and location data

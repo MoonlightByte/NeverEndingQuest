@@ -71,6 +71,10 @@ from core.managers.status_manager import (
 from utils.location_path_finder import LocationGraph
 from core.ai.conversation_utils import handle_module_conversation_segmentation
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.save_roll_contract import (
+    calculate_concentration_dc,
+    validate_request_roll_parameters,
+)
 
 # Import token tracking
 try:
@@ -124,6 +128,7 @@ ACTION_RESTORE_GAME = "restoreGame"
 ACTION_LIST_SAVES = "listSaves"
 ACTION_DELETE_SAVE = "deleteSave"
 ACTION_REST = "rest"
+ACTION_REQUEST_ROLL = "requestRoll"
 
 # Module conversation segmentation has been moved to conversation_utils.py
 # to work with the regular conversation update cycle
@@ -711,7 +716,7 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
     from core.managers import location_manager
     from updates.update_world_time import update_world_time
     from updates.plot_update import update_plot
-    from updates.update_character_info import update_character_info
+    from updates.update_character_info import update_character_info, get_last_ops_routing_marker
 
     # Helper function to create consistent return values
     def create_return(status="continue", needs_update=False, response_data=None):
@@ -1340,11 +1345,33 @@ Please use a valid location that exists in the current area ({current_area_id}) 
         status_updating_character()
         debug("STATE_CHANGE: Processing updateCharacterInfo action", category="character_updates")
         changes = parameters.get("changes")
+        ops = parameters.get("ops")
+        has_ops_payload = ops is not None
+        has_changes_payload = bool(changes) and isinstance(changes, (str, dict))
         
-        # Validate changes parameter
-        if not changes or not isinstance(changes, (str, dict)):
-            print(f"ERROR: Invalid changes parameter: {changes} (type: {type(changes)})")
+        # Validate incoming payload: requires legacy changes and/or additive structured ops.
+        if not has_changes_payload and not has_ops_payload:
+            print(
+                f"ERROR: Invalid updateCharacterInfo payload. changes={changes} (type: {type(changes)}), "
+                f"\"ops\"={ops} (type: {type(ops)})"
+            )
             return create_return(status="continue", needs_update=False)
+
+        if has_ops_payload and not isinstance(ops, list):
+            if has_changes_payload:
+                warning(
+                    f"CHAR_OPS: Invalid ops payload type ({type(ops)}), falling back to legacy changes path",
+                    category="character_updates"
+                )
+                ops = None
+                has_ops_payload = False
+            else:
+                print(f"ERROR: Invalid \"ops\" parameter type: {type(ops)}")
+                return create_return(status="continue", needs_update=False)
+
+        if not has_changes_payload:
+            # ops-only payloads are valid in structured mode.
+            changes = ""
         
         # Convert dict to string if needed
         if isinstance(changes, dict):
@@ -1368,7 +1395,15 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             debug(f"STATE_CHANGE: Updating character info for {character_name}", category="character_updates")
             try:
                 debug(f"STATE_CHANGE: Calling update_character_info for {character_name}", category="character_updates")
-                success = update_character_info(character_name, changes)
+                success = update_character_info(character_name, changes, ops=ops)
+                try:
+                    ops_route = get_last_ops_routing_marker()
+                    debug(
+                        f"CHAR_OPS_ROUTE mode={ops_route.get('mode')} reason={ops_route.get('reason')}",
+                        category="character_updates",
+                    )
+                except Exception:
+                    pass
                 debug(f"STATE_CHANGE: update_character_info returned {success}", category="character_updates")
                 if success:
                     info("SUCCESS: Character info updated successfully", category="character_updates")
@@ -1409,6 +1444,40 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 status_ready()
             except Exception:
                 pass
+
+
+    elif action_type == ACTION_REQUEST_ROLL:
+        # TABLETOP MODE: Scaffold-only structured roll request contract.
+        # Runtime behavior remains narration-driven in this phase; we only
+        # validate payload shape and surface deterministic contract errors.
+        debug("STATE_CHANGE: Processing requestRoll action", category="character_updates")
+        is_valid_roll_request, roll_error = validate_request_roll_parameters(parameters)
+        if not is_valid_roll_request:
+            error(
+                f"FAILURE: Invalid requestRoll payload: {roll_error}",
+                category="character_updates",
+            )
+            print(f"ERROR: Invalid requestRoll payload: {roll_error}")
+            return create_return(status="continue", needs_update=False)
+
+        roll_type = parameters.get("rollType")
+        reason_text = str(parameters.get("reason", ""))
+        if roll_type == "saving_throw" and "concentration" in reason_text.lower():
+            # Optional preflight metadata check for future concentration wiring.
+            # If damage is provided, compute expected deterministic concentration DC.
+            damage_value = parameters.get("damage")
+            if isinstance(damage_value, int) and damage_value >= 0:
+                expected_dc = calculate_concentration_dc(damage_value)
+                if expected_dc != parameters.get("dc"):
+                    warning(
+                        f"REQUEST_ROLL: Concentration DC mismatch (expected={expected_dc}, payload={parameters.get('dc')})",
+                        category="character_updates",
+                    )
+
+        info(
+            f"REQUEST_ROLL: Valid structured roll request accepted for {parameters.get('characterName')}",
+            category="character_updates",
+        )
 
 
     elif action_type == ACTION_UPDATE_PARTY_NPCS:
