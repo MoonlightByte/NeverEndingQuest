@@ -4698,7 +4698,7 @@
     </div>
     
     <div class="header">
-        <h1>Never<span>Ending</span>Quest <small style="font-size: 0.4em; opacity: 0.7;" id="version-display">v{{ version }}</small><button id="update-button" style="display: none; margin-left: 10px; padding: 4px 12px; font-size: 11px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-family: Arial, sans-serif;" onclick="showUpdateDialog()">[UPDATE] Update Available</button></h1>
+        <h1>Never<span>Ending</span>Quest <small style="font-size: 0.4em; opacity: 0.7;" id="version-display">v{{ version }}</small><button id="update-button" style="display: none; margin-left: 10px; padding: 4px 12px; font-size: 11px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-family: Arial, sans-serif;" onclick="showUpdateDialog()">[UPDATE] Fork Update</button></h1>
         <div class="location-info" id="location-info">
             <div class="location-name" id="location-name">Loading location...</div>
             <div class="location-details" id="location-details"></div>
@@ -8957,11 +8957,11 @@
     <!-- Update Dialog -->
     <div id="update-dialog-overlay" class="save-dialog-overlay">
         <div class="save-dialog">
-            <h3>🔄 Update Available</h3>
-            <p id="update-version-info">A new version is available!</p>
+            <h3>Fork Update Available</h3>
+            <p id="update-version-info">A new fork-channel version is available!</p>
             <div class="reset-warning-box">
-                <strong>⚠️ Backup Recommended</strong>
-                <p>Before updating, we recommend backing up your saved games and any custom modules.</p>
+                <strong>Backup Recommended</strong>
+                <p>Before updating from your fork channel, back up saved games and custom modules.</p>
             </div>
             <div class="dialog-buttons">
                 <button class="dialog-button primary" onclick="proceedWithUpdate()">Proceed with Update</button>
@@ -9884,7 +9884,7 @@
         function proceedWithUpdate() {
             console.log('[UPDATE] Starting update process');
             document.getElementById('update-progress').style.display = 'block';
-            document.getElementById('update-status').textContent = 'Starting update...';
+            document.getElementById('update-status').textContent = 'Starting fork update...';
             socket.emit('trigger_update');
         }
 
@@ -9931,7 +9931,7 @@
                 console.log('[UPDATE] Update available, showing button');
                 document.getElementById('update-button').style.display = 'inline-block';
                 document.getElementById('update-version-info').textContent =
-                    'A new version is available: v' + data.local_version + ' -> v' + data.remote_version;
+                    data.message || ('A new fork-channel version is available: v' + data.local_version + ' -> v' + data.remote_version);
             } else {
                 console.log('[UPDATE] No update available');
             }

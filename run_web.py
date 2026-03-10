@@ -143,23 +143,29 @@ def main():
 if __name__ == "__main__":
     # Check for updates before starting
     try:
-        from utils.version_checker import check_for_updates
+        from utils.version_checker import check_for_updates, resolve_update_target
         status, local_ver, remote_ver, message = check_for_updates(silent=True)
+        target = resolve_update_target() or {}
+        target_owner_repo = target.get('owner_repo', 'origin-unresolved')
+        target_branch = target.get('branch', 'main')
 
         print(f"\nNeverEndingQuest v{local_ver}")
+        print(f"Update channel: {target_owner_repo}@{target_branch}")
 
         if status == 'update_available':
             print(f"\n{'='*60}")
-            print(f"  UPDATE AVAILABLE: v{local_ver} → v{remote_ver}")
+            print(f"  FORK UPDATE AVAILABLE: v{local_ver} -> v{remote_ver}")
             print(f"{'='*60}")
-            print("\nA new version is available!")
+            print("\nA new fork-channel version is available.")
             print("\nTo update:")
             print("  1. Close the game")
-            print("  2. Run: git pull")
+            print(f"  2. Run: git pull --ff-only origin {target_branch}")
             print("  3. Run: pip install -r requirements.txt (or venv\\Scripts\\activate then pip install)")
             print("  4. Restart the game")
             print()
             input("Press Enter to continue with current version...")
+        elif status == 'unknown':
+            print(f"[VERSION_CHECK] {message}")
 
     except Exception as e:
         print(f"[VERSION_CHECK] Could not check for updates: {e}")

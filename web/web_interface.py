@@ -5608,72 +5608,124 @@ def handle_generate_unified_assets(data):
 
 @socketio.on('trigger_update')
 def handle_trigger_update():
-    """Handle auto-update request from client"""
+    """Handle fork-channel auto-update request from client."""
     import subprocess
     import sys
     import os
+    from utils.version_checker import resolve_update_target
 
-    emit('update_log', {'message': 'Starting auto-update...'})
-    print("[AUTO_UPDATE] Handler triggered")  # Console debug
+    emit('update_log', {'message': 'Starting fork-channel update...'})
+    print("[AUTO_UPDATE] Handler triggered")
 
     try:
-        # Get the current working directory
         repo_path = os.getcwd()
-        print(f"[AUTO_UPDATE] Current directory: {repo_path}")  # Console debug
+        git_safe_path = repo_path.replace('\\', '/')
+
         emit('update_log', {'message': f'Repository path: {repo_path}'})
 
-        # Normalize path separators for Git (Git expects forward slashes even on Windows)
-        # C:\dungeon_master_v1 -> C:/dungeon_master_v1
-        git_safe_path = repo_path.replace('\\', '/')
-        print(f"[AUTO_UPDATE] Git safe path: {git_safe_path}")  # Console debug
-        emit('update_log', {'message': f'Git path format: {git_safe_path}'})
+        # Resolve explicit fork target from origin.
+        target = resolve_update_target(repo_path=repo_path)
+        if not target:
+            emit('update_error', {
+                'error': 'Could not resolve update source from origin remote. Update aborted.'
+            })
+            return
 
-        # Step 1: Git pull with safe.directory config applied directly
-        # Use -c flag to pass safe.directory config inline (avoids persistent config issues)
-        git_cmd = ["git", "-c", f"safe.directory={git_safe_path}", "pull"]
-        print(f"[AUTO_UPDATE] Git command: {' '.join(git_cmd)}")  # Console debug
-        emit('update_log', {'message': f'Running: git -c safe.directory={git_safe_path} pull'})
-        emit('update_log', {'message': 'Pulling latest code from GitHub...'})
+        remote = target['remote']
+        branch = target['branch']
+        owner_repo = target['owner_repo']
+        emit('update_log', {'message': f'Resolved fork target: {owner_repo}@{branch}'})
 
-        result = subprocess.run(
-            git_cmd,
+        # Preflight: fail closed on dirty working tree.
+        dirty_check_cmd = [
+            'git', '-c', f'safe.directory={git_safe_path}', 'status', '--porcelain'
+        ]
+        dirty_result = subprocess.run(
+            dirty_check_cmd,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=repo_path,
+        )
+        if dirty_result.returncode != 0:
+            emit('update_error', {
+                'error': f'Could not verify worktree state: {dirty_result.stderr.strip()}'
+            })
+            return
+        if dirty_result.stdout.strip():
+            emit('update_error', {
+                'error': (
+                    'Update blocked: working tree has local changes. '
+                    'Commit, stash, or clean changes before running update.'
+                )
+            })
+            return
+
+        # Step 1: Fetch explicit fork remote/branch.
+        fetch_cmd = [
+            'git', '-c', f'safe.directory={git_safe_path}', 'fetch', remote, branch
+        ]
+        emit('update_log', {'message': f'Running: git fetch {remote} {branch}'})
+        fetch_result = subprocess.run(
+            fetch_cmd,
             capture_output=True,
             text=True,
             timeout=30,
-            cwd=repo_path
+            cwd=repo_path,
         )
-
-        if result.returncode != 0:
-            emit('update_error', {'error': f'Git pull failed: {result.stderr}'})
+        if fetch_result.returncode != 0:
+            error_text = (fetch_result.stderr or fetch_result.stdout).strip()
+            emit('update_error', {'error': f'Git fetch failed: {error_text}'})
             return
 
-        emit('update_log', {'message': f'Git: {result.stdout.strip()}'})
+        # Step 2: Pull explicit fork remote/branch with fast-forward-only.
+        pull_cmd = [
+            'git',
+            '-c', f'safe.directory={git_safe_path}',
+            'pull',
+            '--ff-only',
+            remote,
+            branch,
+        ]
+        emit('update_log', {'message': f'Running: git pull --ff-only {remote} {branch}'})
+        pull_result = subprocess.run(
+            pull_cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=repo_path,
+        )
+        if pull_result.returncode != 0:
+            error_text = (pull_result.stderr or pull_result.stdout).strip()
+            emit('update_error', {
+                'error': (
+                    f'Git pull --ff-only failed: {error_text}. '
+                    'Resolve divergence manually, then retry.'
+                )
+            })
+            return
 
-        # Step 2: Pip install
+        emit('update_log', {'message': f'Git: {pull_result.stdout.strip()}'})
+
+        # Step 3: Dependency refresh.
         emit('update_log', {'message': 'Updating dependencies...'})
-
-        pip_cmd = [sys.executable, "-m", "pip", "install", "-r", "requirements.txt", "--upgrade"]
-
-        result = subprocess.run(
+        pip_cmd = [sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt', '--upgrade']
+        pip_result = subprocess.run(
             pip_cmd,
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=120,
         )
-
-        if result.returncode != 0:
-            emit('update_error', {'error': f'Pip install failed: {result.stderr}'})
+        if pip_result.returncode != 0:
+            emit('update_error', {'error': f'Pip install failed: {pip_result.stderr}'})
             return
 
         emit('update_log', {'message': 'Dependencies updated successfully!'})
+        emit('update_complete', {
+            'message': f'Fork update complete from {owner_repo}@{branch}. Server restarting...'
+        })
 
-        # Step 3: Restart server
-        emit('update_complete', {'message': 'Update complete! Server restarting...'})
-
-        # Give client time to receive message
         socketio.sleep(1)
-
-        # Restart the server process
         os.execv(sys.executable, ['python'] + sys.argv)
 
     except Exception as e:
