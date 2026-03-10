@@ -1021,6 +1021,47 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Prompt/Validator Refactor Completion (A1-A8) (COMPLETED - 2026-03-10)
+
+**Status:** COMPLETED - OpenSpec change chain archived and specs synchronized
+
+**OpenSpec Archives:**
+- `openspec/changes/archive/2026-03-10-prompt-validator-contract-alignment/`
+- `openspec/changes/archive/2026-03-10-prompt-validator-save-module-contract-alignment/`
+- `openspec/changes/archive/2026-03-10-prompt-validator-deterministic-mechanics-precheck/`
+- `openspec/changes/archive/2026-03-10-prompt-validator-runtime-authority-and-performance/`
+- `openspec/changes/archive/2026-03-10-prompt-validator-telemetry-and-truth-pack/`
+- `openspec/changes/archive/2026-03-10-prompt-validator-structured-ops-pilot/`
+- `openspec/changes/archive/2026-03-10-prompt-validator-save-concentration-contract/`
+- `openspec/changes/archive/2026-03-10-prompt-validator-expanded-deterministic-guards/`
+
+**Objective:**
+Complete the phased prompt/validator hardening plan in `plans/prompt-validator-fix.md` by finishing canonical compressed-prompt authority, deterministic mechanics and guard rails, validator routing/performance controls, structured update contracts, and explicit save/concentration contracts.
+
+**Implementation Summary:**
+- Canonical runtime source enforced for compressed prompts and validation ordering hardened.
+- Thresholded validation compression, low-risk skip routing, and validation telemetry/truth-pack wiring added.
+- Deterministic mechanics precheck expanded across explicit contradiction classes (HP/slots/inventory/ammo/rest/unconscious coherence) with fail-open ambiguity handling.
+- Structured `updateCharacterInfo.ops` contract introduced with deterministic fallback markers and runtime routing visibility.
+- First-class `requestRoll` + concentration DC contract (`max(10, floor(damage / 2))`) introduced with compatibility-preserving pause semantics.
+- Main specs synced for all archived prompt-validator capabilities under `openspec/specs/tt-*`.
+
+**Verification:**
+- `python3 scripts/test_prompt_validator_rest_contract.py` -> PASS
+- `python3 scripts/test_prompt_validator_save_module_contracts.py` -> PASS
+- `python3 scripts/test_runtime_prompt_authority.py` -> PASS
+- `python3 scripts/test_validation_compression_routing.py` -> PASS
+- `python3 scripts/test_validation_skip_routing.py` -> PASS
+- `python3 scripts/test_validation_routing_telemetry.py` -> PASS
+- `python3 scripts/test_validator_truth_pack.py` -> PASS
+- `python3 scripts/test_update_character_ops_contract.py` -> PASS
+- `python3 scripts/test_save_concentration_contract.py` -> PASS
+- `python3 scripts/test_expanded_deterministic_guards_contract.py` -> PASS
+- `python3 scripts/test_deterministic_mechanics_precheck.py` -> PASS
+
+**ADR Impact:**
+- No new ADR required. Changes extend existing prompt-validator architecture and contracts without introducing a new durable architecture decision boundary.
+
 ### NPC Join Name Canonicalization (COMPLETED - 2026-03-10)
 
 **Status:** COMPLETED - OpenSpec change archived
