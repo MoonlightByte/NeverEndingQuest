@@ -2232,13 +2232,25 @@ def move_background_npc(npc_name, context, current_location_hint=None, party_tra
             path_manager = ModulePathManager(module_name)
             
             # Find the NPC in area files
-            npc_location = find_npc_in_areas(npc_name, path_manager, current_location_hint)
-            if not npc_location:
+            lookup_status, lookup_data = find_npc_in_areas(npc_name, path_manager, current_location_hint)
+            
+            if lookup_status == 'not_found':
                 print(f"ERROR: Could not find NPC '{npc_name}' in any location")
                 return False
-                
-            area_file, location_id, npc_data = npc_location
-            debug(f"VALIDATION: Found {npc_name} in {area_file} at location {location_id}", category="npc_management")
+            elif lookup_status == 'ambiguous':
+                # Explicit ambiguity error for operator clarity
+                locations = [loc_id for _, loc_id, _ in lookup_data]
+                print(f"ERROR: Ambiguous NPC '{npc_name}' - found in multiple locations: {locations}. Cannot determine correct location without more specific information.")
+                return False
+            elif lookup_status not in ('strict_match', 'fallback_match'):
+                # Unknown status - defensive coding
+                print(f"ERROR: Unexpected lookup status '{lookup_status}' for NPC '{npc_name}'")
+                return False
+            
+            # Extract data from successful lookup
+            area_file, location_id, npc_data = lookup_data
+            lookup_type = "strict hint" if lookup_status == 'strict_match' else "fallback"
+            debug(f"VALIDATION: Found {npc_name} in {area_file} at location {location_id} via {lookup_type}", category="npc_management")
             
             # Load area data with backup
             area_data = safe_read_json(area_file)
@@ -2323,10 +2335,26 @@ def move_background_npc(npc_name, context, current_location_hint=None, party_tra
             return False
 
 def find_npc_in_areas(npc_name, path_manager, location_hint=None):
-    """Find an NPC in area files, returning (area_file, location_id, npc_data)"""
+    """Find an NPC in area files, returning lookup result with status.
+    
+    TABLETOP MODE: Step 3.3 - Implements strict-then-fallback lookup strategy:
+    1. Try strict location hint match first
+    2. If miss, try canonical identity fallback across all locations
+    3. Only accept fallback if unambiguous (exactly one match)
+    4. Fail-closed if ambiguous or no match
+    
+    Returns:
+        tuple: (status, data) where status is one of:
+            - 'strict_match': Found at hinted location, data is (area_file, location_id, npc)
+            - 'fallback_match': Found via fallback, data is (area_file, location_id, npc)
+            - 'ambiguous': Multiple matches found, data is list of (area_file, location_id, npc)
+            - 'not_found': No match found, data is None
+    """
     import glob
     import os
+    from datetime import datetime
     from utils.file_operations import safe_read_json
+    from utils.npc_arrival_validator import resolve_npc_identity
     
     # Get all area files in the module, excluding backup files
     area_pattern = f"{path_manager.module_dir}/areas/*.json"
@@ -2344,30 +2372,96 @@ def find_npc_in_areas(npc_name, path_manager, location_hint=None):
     
     debug(f"FILE_OP: Searching {len(area_files)} active area files (excluded {len(all_files) - len(area_files)} backup files)", category="file_operations")
     
+    # PHASE 1: Strict hint match
+    if location_hint:
+        for area_file in area_files:
+            try:
+                area_data = safe_read_json(area_file)
+                if not area_data:
+                    continue
+                    
+                # Search through all locations in this area
+                for location in area_data.get("locations", []):
+                    location_id = location.get("locationId", "")
+                    
+                    # Strict hint match only
+                    if location_hint != location_id:
+                        continue
+                        
+                    # Search NPCs in this location using canonical identity resolution
+                    for npc in location.get("npcs", []):
+                        npc_canonical_name = npc.get("name", "")
+                        result = resolve_npc_identity(npc_name, {npc_canonical_name})
+                        if result.status == "matched":
+                            debug(f"NPC_LOOKUP: Strict hint match found {npc_name} in {location_id}", category="npc_management")
+                            return ('strict_match', (area_file, location_id, npc))
+                            
+            except Exception as e:
+                warning(f"FILE_OP: Could not search area file {area_file}: {e}", category="file_operations")
+                continue
+        
+        # Strict hint failed - log for monitoring
+        info(f"NPC_LOOKUP: Strict hint failed for {npc_name} in {location_hint}, attempting fallback", category="npc_management")
+    
+    # PHASE 2: Canonical identity fallback (unambiguous only)
+    # Collect all NPC canonical names across all locations
+    all_npc_canonical = set()
+    npc_location_map = {}  # Maps canonical name -> [(area_file, location_id, npc), ...]
+    
     for area_file in area_files:
         try:
             area_data = safe_read_json(area_file)
             if not area_data:
                 continue
                 
-            # Search through all locations in this area
+            # Search through ALL locations (no hint filter)
             for location in area_data.get("locations", []):
                 location_id = location.get("locationId", "")
                 
-                # If location hint provided, check if this matches
-                if location_hint and location_hint != location_id:
-                    continue
-                    
                 # Search NPCs in this location
                 for npc in location.get("npcs", []):
-                    if npc.get("name", "").lower() == npc_name.lower():
-                        return (area_file, location_id, npc)
+                    npc_canonical_name = npc.get("name", "")
+                    if npc_canonical_name:
+                        all_npc_canonical.add(npc_canonical_name)
+                        if npc_canonical_name not in npc_location_map:
+                            npc_location_map[npc_canonical_name] = []
+                        npc_location_map[npc_canonical_name].append((area_file, location_id, npc))
                         
         except Exception as e:
             warning(f"FILE_OP: Could not search area file {area_file}: {e}", category="file_operations")
             continue
     
-    return None
+    # Resolve input name to canonical identity
+    resolve_result = resolve_npc_identity(npc_name, all_npc_canonical)
+    
+    if resolve_result.status == "matched" and resolve_result.canonical_name:
+        # Found canonical match - check if unambiguous
+        canonical_name = resolve_result.canonical_name
+        matches = npc_location_map.get(canonical_name, [])
+        
+        if len(matches) == 1:
+            # Unambiguous canonical match - use fallback
+            area_file, location_id, npc = matches[0]
+            info(f"NPC_MOVE_FALLBACK: name={npc_name} stale_hint={location_hint} resolved_location={location_id} timestamp={datetime.now().isoformat()}", category="npc_management")
+            return ('fallback_match', (area_file, location_id, npc))
+        elif len(matches) > 1:
+            # Ambiguous canonical match - fail-closed
+            locations = [loc_id for _, loc_id, _ in matches]
+            error(f"NPC_LOOKUP AMBIGUOUS: {npc_name} (canonical: {canonical_name}) found in multiple locations: {locations}. Cannot determine correct location.", category="npc_management")
+            return ('ambiguous', matches)
+        else:
+            # Should not happen, but handle defensively
+            debug(f"NPC_LOOKUP: No location data for canonical match {canonical_name}", category="npc_management")
+            return ('not_found', None)
+    elif resolve_result.status == "ambiguous":
+        # Ambiguous resolution
+        candidates = resolve_result.candidates if resolve_result.candidates else []
+        error(f"NPC_LOOKUP AMBIGUOUS: {npc_name} resolves to multiple candidates: {candidates}. Cannot determine correct NPC.", category="npc_management")
+        return ('ambiguous', candidates)
+    else:
+        # No match found anywhere
+        debug(f"NPC_LOOKUP: No fallback match found for {npc_name}", category="npc_management")
+        return ('not_found', None)
 
 def get_ai_npc_movement_decision(npc_name, context, npc_data, area_data, location_id, module_name, party_npcs=None, attempt=1):
     """Use AI to determine what to do with the NPC based on context"""

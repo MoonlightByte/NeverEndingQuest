@@ -1,0 +1,64 @@
+{
+  "fixture_name": "retry_pollution_chain",
+  "description": "Retry loop correction notes contaminate conversation history as user turns instead of remaining validation-local",
+  "input_sequence": {
+    "attempt_1": {
+      "model_output": "The guard captain eyes you warily. 'State your business,' he demands.",
+      "actions": [],
+      "validation_result": "fail",
+      "failure_reason": "missing_required_action",
+      "explanation": "Narrator mentions guard captain but no updateLocation or dialogue action"
+    },
+    "correction_1": {
+      "note": "[CORRECTION REQUIRED] Mention of guard captain requires either updateLocation if moving, or dialogue action if interacting. Add appropriate action.",
+      "storage_location": "conversation_history",
+      "role": "user"
+    },
+    "attempt_2": {
+      "model_output": "The merchant offers you a fair price for the goods.",
+      "actions": [],
+      "validation_result": "fail",
+      "failure_reason": "unrelated_content_after_correction",
+      "explanation": "Model responded to merchant topic, ignoring correction about guard captain"
+    },
+    "correction_2": {
+      "note": "[CORRECTION REQUIRED] Previous correction still applies. Guard captain mention must have matching action.",
+      "storage_location": "conversation_history",
+      "role": "user"
+    },
+    "attempt_3": {
+      "model_output": "You continue down the road, seeing nothing of interest.",
+      "actions": [],
+      "validation_result": "fail",
+      "failure_reason": "max_retries_exceeded",
+      "explanation": "Failed to address correction after 3 attempts"
+    }
+  },
+  "expected_clean_behavior": {
+    "correction_storage": "validation-local metadata",
+    "conversation_history": [
+      {"role": "system", "content": "DM context..."},
+      {"role": "user", "content": "Player input"},
+      {"role": "assistant", "content": "Narrator output attempt 1"},
+      {"role": "assistant", "content": "Narrator output attempt 2"},
+      {"role": "assistant", "content": "Narrator output attempt 3"}
+    ],
+    "correction_count_in_history": 0,
+    "explanation": "Correction notes never appear as user messages in conversation history"
+  },
+  "actual_polluted_behavior": {
+    "correction_storage": "conversation_history as user messages",
+    "conversation_history": [
+      {"role": "system", "content": "DM context..."},
+      {"role": "user", "content": "Player input"},
+      {"role": "assistant", "content": "Narrator output attempt 1"},
+      {"role": "user", "content": "[CORRECTION REQUIRED] Mention of guard captain..."},
+      {"role": "assistant", "content": "Narrator output attempt 2"},
+      {"role": "user", "content": "[CORRECTION REQUIRED] Previous correction still applies..."},
+      {"role": "assistant", "content": "Narrator output attempt 3"}
+    ],
+    "correction_count_in_history": 2,
+    "explanation": "Correction notes persisted as user messages, polluting conversation context for future turns"
+  },
+  "notes": "Key issue: Correction instructions must remain validation-local and not be persisted as user conversation turns. Each retry should receive isolated current correction, not accumulated history."
+}

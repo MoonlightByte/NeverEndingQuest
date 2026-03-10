@@ -603,6 +603,86 @@ class TestContractIntegration(unittest.TestCase):
         self.assertIn("Kira", visible_npcs)
 
 
+class TestNarratorPromptRefactorContracts(unittest.TestCase):
+    """Contract tests for narrator prompt validation refactor (Step 2.1)."""
+    
+    def test_kira_onboarding_contract_short_and_full_name_alignment(self):
+        """
+        Short mention + canonical action name path should be accepted.
+        
+        Scenario: Narration uses short name 'Kira', action uses full name 'Scout Kira'.
+        This should pass validation (alias resolution).
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+        
+        response_json = {
+            "narration": "Kira steps forward with a warm smile.",
+            "actions": [
+                {
+                    "action": "updatePartyNPCs",
+                    "parameters": {"add": ["Scout Kira"]}
+                }
+            ]
+        }
+        party_tracker_data = {"partyMembers": ["Acheron", "Ansel"], "partyNPCs": []}
+        location_data = {"npcs": ["Scout Kira"]}
+        module_npc_names = {"Scout Kira", "Maelo"}
+        
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json, party_tracker_data, location_data, module_npc_names
+        )
+        
+        self.assertTrue(is_valid, f"Short mention + full action name should be valid, got: {reason}")
+    
+    def test_validator_stateless_between_failed_and_clean_attempts(self):
+        """
+        Failed prior validation check should not force subsequent clean response failure.
+        
+        Scenario: First attempt mentions off-location NPC and fails.
+        Second attempt is clean (no off-location mentions, valid actions).
+        Second attempt should pass independently.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+        
+        party_tracker_data = {"partyMembers": ["Acheron"], "partyNPCs": []}
+        location_data = {"npcs": ["Scout Kira"]}
+        module_npc_names = {"Scout Kira", "Maelo"}
+        
+        # First attempt: mentions off-location Maelo without action (FAILS)
+        failed_response = {
+            "narration": "Scout Kira approaches. Meanwhile, Maelo waits at camp.",
+            "actions": [
+                {"action": "updatePartyNPCs", "parameters": {"add": ["Scout Kira"]}}
+            ]
+        }
+        
+        is_valid_fail, _ = validate_npc_arrival_state_sync(
+            failed_response, party_tracker_data, location_data, module_npc_names
+        )
+        self.assertFalse(is_valid_fail, "First attempt should fail with off-location mention")
+        
+        # Second attempt: clean, only mentions present NPC with valid action (PASSES)
+        clean_response = {
+            "narration": "Scout Kira steps forward to join you.",
+            "actions": [
+                {"action": "updatePartyNPCs", "parameters": {"add": ["Scout Kira"]}}
+            ]
+        }
+        
+        is_valid_pass, reason_pass = validate_npc_arrival_state_sync(
+            clean_response, party_tracker_data, location_data, module_npc_names
+        )
+        
+        # Key assertion: clean attempt passes independently of prior failure
+        self.assertTrue(is_valid_pass, f"Clean follow-up should pass, got: {reason_pass}")
+
+
 if __name__ == "__main__":
     # Run tests with verbosity
     loader = unittest.TestLoader()
@@ -615,6 +695,7 @@ if __name__ == "__main__":
     suite.addTests(loader.loadTestsFromTestCase(TestNegatedNpcMentions))
     suite.addTests(loader.loadTestsFromTestCase(TestTravelIntentFailSoft))
     suite.addTests(loader.loadTestsFromTestCase(TestContractIntegration))
+    suite.addTests(loader.loadTestsFromTestCase(TestNarratorPromptRefactorContracts))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

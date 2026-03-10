@@ -995,11 +995,55 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         
         # TABLETOP MODE: Detect travel intent from user input
         # Travel turns should fail-soft on NPC mentions without explicit arrival verbs
+        # Requires directional keywords AND destination; excludes inquiry-only inputs
         is_travel_intent = False
         if user_input:
-            travel_keywords = ["go", "travel", "move", "head", "walk", "proceed", "return", "leave", "enter", "exit", "back", "to"]
             input_lower = user_input.lower()
-            is_travel_intent = any(keyword in input_lower for keyword in travel_keywords)
+            
+            # PHASE 1: Check for directional movement verbs (required)
+            directional_verbs = ["go", "travel", "head", "move", "walk", "run", "proceed"]
+            has_directional_verb = any(
+                re.search(r'\b' + verb + r'\b', input_lower) for verb in directional_verbs
+            )
+            
+            # PHASE 2: Check for destination indicators (required)
+            # Includes: cardinal directions, location references, "there", module names
+            destination_indicators = [
+                # Cardinal directions
+                "north", "south", "east", "west", "up", "down", "left", "right",
+                "forward", "backward", "back",
+                # Generic destination markers
+                "there", "here", "to the", "toward", "towards",
+            ]
+            # Add current module location names as valid destinations
+            if location_data and "locations" in location_data:
+                for loc in location_data["locations"]:
+                    loc_name = loc.get("name", "").lower()
+                    if loc_name:
+                        destination_indicators.append(loc_name)
+            
+            has_destination = any(
+                re.search(r'\b' + re.escape(indicator) + r'\b', input_lower) 
+                for indicator in destination_indicators
+            )
+            
+            # PHASE 3: Detect inquiry-only inputs (must NOT be inquiry-only)
+            # Inquiry-only = wondering/thinking/asking WITHOUT directional movement
+            # Having wondering words + movement verbs = NOT inquiry-only (travel intent)
+            inquiry_patterns = [
+                r'^\s*(?:i\s+)?wonder\s+(?:about|if|whether)',
+                r'^\s*(?:i\s+)?think\s+(?:about|of)',
+                r'^\s*what\s+do\s+(?:i|we)\s+know',
+                r'^\s*tell\s+(?:me|us)\s+about',
+                r'^\s*ask\s+(?:about|regarding)',
+            ]
+            # Only check inquiry patterns if NO directional verb present
+            is_inquiry_only = not has_directional_verb and any(
+                re.search(pattern, input_lower) for pattern in inquiry_patterns
+            )
+            
+            # Travel intent = directional verb AND destination AND NOT inquiry-only
+            is_travel_intent = has_directional_verb and has_destination and not is_inquiry_only
         
         # Run NPC arrival state sync validation
         is_sync_valid, sync_reason = validate_npc_arrival_state_sync(
@@ -1010,6 +1054,14 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
             is_travel_intent=is_travel_intent,
             user_utterance=user_input
         )
+        
+        # TABLETOP MODE: Step 3.1 - Capture deterministic result as structured metadata
+        # This metadata is passed to LLM validator so it does not re-litigate deterministic pass/fail
+        deterministic_result = {
+            "deterministic_passed": is_sync_valid,
+            "deterministic_reason": sync_reason if not is_sync_valid else "",
+            "deterministic_required_action": sync_reason if not is_sync_valid else ""
+        }
         
         if not is_sync_valid:
             print(f"ERROR: NPC arrival state sync validation failed - {sync_reason}")
@@ -1248,9 +1300,14 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         import traceback
         traceback.print_exc()
     
+    # TABLETOP MODE: Step 3.1 - Add deterministic result metadata to validation context
+    # This ensures LLM validator knows deterministic pass/fail and does not re-litigate
+    deterministic_metadata_msg = json.dumps(deterministic_result)
+    
     validation_conversation = [
         {"role": "system", "content": validation_prompt_text},
         {"role": "system", "content": structure_validation_note},
+        {"role": "system", "content": f"DETERMINISTIC_VALIDATION_RESULT: {deterministic_metadata_msg}"},
         {"role": "system", "content": npc_validation_context},  # Always include, even if empty
         {"role": "system", "content": location_details},
         {"role": "system", "content": user_input_context},
@@ -1404,6 +1461,31 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
             except Exception as e:
                 debug(f"Failed to log validation pair: {e}", category="ai_validation")
 
+            # TABLETOP MODE: Step 3.1 - Deterministic hard-gate for arrival-sync
+            # If deterministic validator passed, LLM validator MUST NOT fail on arrival-sync grounds
+            # This enforces spec: deterministic validator is sole source of truth for arrival sync
+            arrival_sync_override = False
+            if is_valid:
+                # Already valid - no override needed
+                pass
+            elif deterministic_result.get("deterministic_passed", False):
+                # Deterministic passed but LLM failed - check if it's arrival-sync related
+                arrival_sync_keywords = [
+                    "arrival", "arrives", "arrived", "arriving",
+                    "moveBackgroundNPC", "updatePartyNPCs",
+                    "off-location", "not currently present",
+                    "NPC arrival state sync"
+                ]
+                reason_lower = reason.lower()
+                is_arrival_sync_failure = any(kw in reason_lower for kw in arrival_sync_keywords)
+                
+                if is_arrival_sync_failure:
+                    # HARD-GATE: Override LLM failure, respect deterministic pass
+                    warning(f"VALIDATION: LLM validator attempted arrival-sync failure but deterministic validator passed. Overriding to VALID. Reason: {reason}", category="ai_validation")
+                    debug(f"DETERMINISTIC_GATE: Arrival-sync failure suppressed, respecting deterministic_passed=true", category="ai_validation")
+                    is_valid = True
+                    arrival_sync_override = True
+            
             # Log only failed validations to prompt_validation.json
             if not is_valid:
                 log_entry = {
@@ -1421,7 +1503,10 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
 
                 return (False, reason)  # Return tuple with failure status and reason
             else:
-                debug("SUCCESS: Validation passed successfully", category="ai_validation")
+                if arrival_sync_override:
+                    debug("SUCCESS: Validation passed via deterministic hard-gate (LLM arrival-sync failure suppressed)", category="ai_validation")
+                else:
+                    debug("SUCCESS: Validation passed successfully", category="ai_validation")
                 # Return the fixed/validated response content
                 return (True, response_to_validate)  # Return tuple with validation status and content
 
@@ -2518,7 +2603,7 @@ def save_conversation_history(history):
     except Exception as e:
         error(f"FAILURE: Failed to save conversation history", exception=e, category="file_operations")
 
-def get_ai_response(conversation_history, validation_retry_count=0):
+def get_ai_response(conversation_history, validation_retry_count=0, transient_correction=None):
     global should_inject_creation_prompt
     status_processing_ai()
     
@@ -2660,6 +2745,12 @@ def get_ai_response(conversation_history, validation_retry_count=0):
     for msg in messages_to_send:
         if isinstance(msg, dict) and "active_pc" in msg:
             del msg["active_pc"]
+    
+    # TABLETOP MODE: Step 3.2 - Inject transient correction note without polluting conversation history
+    # This correction is passed to the AI for this request only, not persisted
+    if transient_correction:
+        messages_to_send = messages_to_send + [{"role": "user", "content": transient_correction}]
+        debug(f"RETRY: Injected transient correction note (not persisted)", category="ai_validation")
     
     # Export main conversation messages for debugging
     with open("main_conversation_messages_to_api.json", "w", encoding="utf-8") as f:
@@ -4282,10 +4373,18 @@ def main_game_loop():
         # TABLETOP MODE: Retry de-looping state (Task 3.3)
         last_validation_reason = None
         repeated_reason_count = 0
+        
+        # TABLETOP MODE: Step 3.2 - Retry-local correction note (not persisted to conversation history)
+        retry_correction_note = None
     
         while retry_count < 5 and not valid_response_received:
             # Pass validation retry count for intelligent model escalation
-            ai_response_content = get_ai_response(conversation_history, validation_retry_count=retry_count)
+            # Pass transient correction note if this is a retry
+            ai_response_content = get_ai_response(
+                conversation_history,
+                validation_retry_count=retry_count,
+                transient_correction=retry_correction_note
+            )
 
             # PRE-PROCESSING: Fix incorrect updatePartyTracker usage for within-module travel
             # This must happen BEFORE any validation to prevent wrong action from being checked
@@ -4390,13 +4489,10 @@ def main_game_loop():
                         )
 
                         if not transition_approved:
-                            # Transition blocked - append error and retry
-                            # DO NOT save failed assistant response - it teaches AI wrong pattern
-                            # AI only needs Error Note to understand the correction needed
-                            conversation_history.append({
-                                "role": "user",
-                                "content": f"Error Note: {transition_error}. Please adjust your response accordingly."
-                            })
+                            # Transition blocked - store transient correction and retry
+                            # TABLETOP MODE: Step 3.2 - Use retry-local variable (not persisted to history)
+                            retry_correction_note = f"Error Note: {transition_error}. Please adjust your response accordingly."
+                            debug(f"RETRY: Stored transient transition correction (not persisted)", category="ai_validation")
                             retry_count += 1
                             transition_check_passed = False
                             info(f"VALIDATION: Transition blocked by intelligence agent, retry {retry_count}", category="location_transitions")
@@ -4428,6 +4524,8 @@ def main_game_loop():
             
             if is_valid:
                 valid_response_received = True
+                # TABLETOP MODE: Step 3.2 - Clear transient correction note on success
+                retry_correction_note = None
                 debug(f"SUCCESS: Valid response generated on attempt {retry_count + 1}", category="ai_validation")
             
                 # SIMPLIFIED ARCHITECTURE: process_ai_response now handles ALL complexity internally.
@@ -4548,8 +4646,10 @@ def main_game_loop():
                     # Standard correction for non-deterministic failures
                     correction_note = f"Error Note: {validation_reason}. Please adjust your response."
                 
-                conversation_history.append({"role": "user", "content": correction_note})
-                save_conversation_history(conversation_history)
+                # TABLETOP MODE: Step 3.2 - Store correction in retry-local variable (not persisted)
+                # Transient correction will be passed to next get_ai_response() call
+                retry_correction_note = correction_note
+                debug(f"RETRY: Stored transient correction note (not persisted to history)", category="ai_validation")
                 retry_count += 1
             else: 
                 warning(f"VALIDATION: Unexpected validation result: is_valid={is_valid}, reason={validation_reason}. Retrying.", category="ai_validation")

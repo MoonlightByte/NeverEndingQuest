@@ -177,7 +177,7 @@ def build_npc_validation_context(current_module: str, current_location: str, par
     lines.append(f"@TOTAL_NPC_COUNT: {len(total_npcs)}")
     
     # Compressed validation rules
-    lines.append("@RULES: Any listed NPC is VALID. NPCs can appear as ghosts/spirits/memories. Do NOT flag missing physical presence as error.")
+    lines.append("@RULES: Listed NPCs are known entities. Ghosts/spirits/memories/dreams are VALID without state actions. EXPLICIT physical arrivals (arrives/enters/joins/appears/emerges/approaches) for off-location NPCs MUST have moveBackgroundNPC or updatePartyNPCs action. See @NPC_ARRIVAL_VALIDATION for details.")
     
     return "\n".join(lines)
 

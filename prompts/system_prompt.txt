@@ -1061,6 +1061,19 @@ Examples of when to use moveBackgroundNPC:
 - "Guard Captain Thorne relocated to the watchtower"
 - "The wounded scout recovered from his injuries"
 
+### NPC Arrival State Sync (Explicit Arrival Claims)
+
+- If narration EXPLICITLY claims an off-location known NPC has arrived/joined/entered/appeared/emerged from elsewhere, the SAME response MUST include matching state action.
+- Explicit arrival verbs include: arrives, enters, joins, appears, emerges, approaches, comes, steps, walks into, arrives from, enters from, appears from, steps out, comes from.
+- Valid actions:
+  - `moveBackgroundNPC` when NPC arrives at current location
+  - `updatePartyNPCs` add when NPC joins party
+- Canonical identity matching is allowed:
+  - Short mention in narration can pair with canonical action identity (example: "Kira" + npc.name="Scout Kira").
+- NPC already present at current location or already in party requires NO additional arrival action.
+- Incidental mention during travel without explicit arrival verbs is allowed without action.
+- Missing state action for explicit off-location arrival claim is a validation failure and retry.
+
 ## NPC Party Recruitment Guidelines
 
 When players ask for help or NPCs volunteer to join the party, handle recruitment naturally through roleplay:

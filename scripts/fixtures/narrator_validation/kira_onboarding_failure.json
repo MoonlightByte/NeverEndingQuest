@@ -1,0 +1,41 @@
+{
+  "fixture_name": "kira_onboarding_failure",
+  "description": "Scout Kira accepted in narration but not added to partyNPCs due to unrelated off-location Maelo mention triggering deterministic arrival-sync rejection",
+  "input": {
+    "narrator_output": "Scout Kira steps forward with a warm smile. 'I would be honored to join your cause,' she says. Meanwhile, Maelo is resting back at the Thornwood camp, unaware of these proceedings.",
+    "actions": [
+      {
+        "action": "updatePartyNPCs",
+        "parameters": {
+          "add": ["Scout Kira"]
+        }
+      }
+    ]
+  },
+  "party_state_before": {
+    "partyMembers": ["Acheron", "Ansel"],
+    "partyNPCs": [],
+    "active_character": "Acheron"
+  },
+  "expected_behavior": {
+    "deterministic_validator_result": "pass",
+    "reason": "Scout Kira is present in location and has valid add action; Maelo is party member (exempt from arrival-sync check)",
+    "party_state_after": {
+      "partyMembers": ["Acheron", "Ansel"],
+      "partyNPCs": ["Scout Kira"],
+      "active_character": "Acheron"
+    }
+  },
+  "actual_buggy_behavior": {
+    "deterministic_validator_result": "fail",
+    "failure_reason": "off_location_arrival_missing_action",
+    "blocked_npc": "Maelo",
+    "explanation": "Validator flagged Maelo mention without state action, blocking entire response including valid Kira onboarding",
+    "party_state_after": {
+      "partyMembers": ["Acheron", "Ansel"],
+      "partyNPCs": [],
+      "active_character": "Acheron"
+    }
+  },
+  "notes": "Key issue: Unrelated off-location mention of party member Maelo should not block valid Scout Kira onboarding. Party member exemption should apply."
+}

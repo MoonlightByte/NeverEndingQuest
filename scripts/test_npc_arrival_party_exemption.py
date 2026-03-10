@@ -248,6 +248,72 @@ def test_party_member_full_name_exempt_when_short_in_party():
     print("PASS: Full name matches short party member name")
 
 
+def test_party_member_reference_does_not_require_arrival_action_after_failed_attempt():
+    """
+    Party member reference should not require arrival action, even after prior failed attempt.
+    
+    Scenario: First attempt mentions party member Maelo off-location and fails.
+    Second attempt is clean with party member reference only.
+    Party member reference should still be exempt (no arrival action required).
+    """
+    party_tracker_data = {
+        "partyMembers": ["Acheron", "Maelo"],
+        "partyNPCs": [],
+    }
+    
+    module_npc_names = {"Scout Kira", "Maelo"}
+    location_data = {"npcs": ["Scout Kira"]}
+    
+    # Clean response with party member reference
+    response_json = {
+        "narration": "Scout Kira joins you. Maelo is back at camp resting.",
+        "actions": [
+            {"action": "updatePartyNPCs", "parameters": {"add": ["Scout Kira"]}}
+        ],
+    }
+    
+    is_valid, reason = validate_npc_arrival_state_sync(
+        response_json, party_tracker_data, location_data, module_npc_names
+    )
+    
+    assert is_valid, f"Party member Maelo mention should be exempt even after prior failure, got: {reason}"
+    assert "maelo" not in reason.lower(), f"Reason should not mention party member Maelo, got: {reason}"
+    print("PASS: Party member reference does not require arrival action after failed attempt")
+
+
+def test_kira_onboarding_not_blocked_when_party_member_reference_present():
+    """
+    Kira onboarding should succeed even when party member reference is present.
+    
+    Scenario: Narration mentions Scout Kira joining and party member Maelo off-location.
+    Kira should be added successfully (valid action present).
+    Maelo reference should be exempt (party member).
+    """
+    party_tracker_data = {
+        "partyMembers": ["Acheron", "Maelo"],
+        "partyNPCs": [],
+    }
+    
+    module_npc_names = {"Scout Kira", "Maelo"}
+    location_data = {"npcs": ["Scout Kira"]}
+    
+    response_json = {
+        "narration": "Scout Kira steps forward. Meanwhile, Maelo rests at camp.",
+        "actions": [
+            {"action": "updatePartyNPCs", "parameters": {"add": ["Scout Kira"]}}
+        ],
+    }
+    
+    is_valid, reason = validate_npc_arrival_state_sync(
+        response_json, party_tracker_data, location_data, module_npc_names
+    )
+    
+    # Both should be valid: Kira has action, Maelo is party member (exempt)
+    assert is_valid, f"Kira onboarding should succeed with party member Maelo present, got: {reason}"
+    assert "scout kira" not in reason.lower() or "pass" in reason.lower(), f"Reason should not block Kira, got: {reason}"
+    print("PASS: Kira onboarding not blocked when party member reference present")
+
+
 def run_all_tests():
     """Run all regression tests."""
     tests = [
@@ -258,6 +324,8 @@ def run_all_tests():
         test_case_insensitive_party_member_exemption,
         test_party_member_short_name_exempt_under_alias_matching,
         test_party_member_full_name_exempt_when_short_in_party,
+        test_party_member_reference_does_not_require_arrival_action_after_failed_attempt,
+        test_kira_onboarding_not_blocked_when_party_member_reference_present,
     ]
 
     passed = 0

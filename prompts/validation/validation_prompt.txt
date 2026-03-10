@@ -949,6 +949,15 @@ Narration: "The Bloodshadow yields but then attacks without warning!"
 Actions: [{"action":"createEncounter","parameters":{...}}]
 Result: VALID - combat trigger justifies hostile re-engagement.
 
+## DETERMINISTIC ARRIVAL HANDOFF
+
+Deterministic arrival-sync validation is authoritative.
+
+### Handoff Rules:
+- If `deterministic_passed = true`: Do NOT fail this response on arrival-sync grounds. Respect deterministic pass.
+- If `deterministic_passed = false`: This response MUST remain failed for deterministic reason. Do NOT override to pass.
+- The LLM validator should still evaluate other semantic and structural quality checks.
+
 ## NPC ARRIVAL STATE SYNCHRONIZATION VALIDATION RULES
 
 When the AI DM narrates that an NPC has arrived from an off-location or joined the party, the narration MUST be paired with a corresponding state action in the SAME response.
@@ -964,7 +973,8 @@ An NPC is considered "off-location" if they are NOT currently in the party roste
 
 ### Validation Rules:
 - **VALID**: Narration claims off-location NPC arrived + matching moveBackgroundNPC action present
-- **VALID**: Narration claims NPC joined party + matching updatePartyNPCs add action present  
+- **VALID**: Narration claims NPC joined party + matching updatePartyNPCs add action present
+- **VALID**: Off-location NPC mentioned during travel WITHOUT explicit arrival verbs + no action required (incidental mention)
 - **VALID**: NPC already present at location or in party requires NO additional action
 - **INVALID**: Narration claims off-location NPC arrived/joined but NO matching state action present
 
@@ -977,8 +987,13 @@ Result: VALID - Arrival claim paired with state update
 
 **VALID - NPC Join with State Action:**
 Narration: "Kira shouldering her pack, 'I'll come with you. Someone needs to watch your back.'"
-Actions include: updatePartyNPCs with operation="add" and npc={name:"Kira",...}
-Result: VALID - Join claim paired with party composition update
+Actions include: updatePartyNPCs with operation="add" and npc={name:"Scout Kira",...}
+Result: VALID - Join claim paired with party composition update (short mention maps to canonical identity)
+
+**VALID - Short Mention + Canonical Action Name:**
+Narration: "Kira joins your party."
+Actions include: updatePartyNPCs add with npc.name="Scout Kira"
+Result: VALID - Canonical identity match allowed
 
 **VALID - Already Present NPC Mentioned:**
 Narration: "Ranger Thane nods to Elen, who is standing guard nearby."

@@ -1,0 +1,36 @@
+{
+  "fixture_name": "bex_hint_mismatch",
+  "description": "moveBackgroundNPC fails with stale currentLocation hint despite unambiguous canonical identity",
+  "input": {
+    "action": {
+      "action": "moveBackgroundNPC",
+      "parameters": {
+        "name": "Bex",
+        "currentLocation": "TW03",
+        "targetLocation": "TW04"
+      }
+    }
+  },
+  "canonical_reference": {
+    "npc_name": "Bex",
+    "actual_location": "RO03",
+    "location_source": "RO001.json"
+  },
+  "strict_hint_expected_result": {
+    "result": "not_found",
+    "explanation": "Strict lookup in TW03 finds no NPC named Bex"
+  },
+  "fallback_expected_result": {
+    "result": "success",
+    "explanation": "Canonical identity search finds exactly one Bex in RO03, unambiguous match allows fallback recovery",
+    "fallback_applied": true,
+    "resolved_location": "RO03"
+  },
+  "actual_buggy_behavior": {
+    "result": "error",
+    "error_message": "NPC not found: Could not find NPC 'Bex' in location 'TW03'",
+    "explanation": "Strict hint lookup failed and no fallback was attempted",
+    "npc_moved": false
+  },
+  "notes": "Key issue: Stale currentLocation hints (TW03) should not prevent NPC movement when canonical identity is unambiguous (exactly one Bex exists). Fallback lookup needed."
+}
