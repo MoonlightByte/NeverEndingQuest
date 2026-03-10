@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased - NeverEndingQuest-TTRPG Fork]
+
+### Changed
+
+- Rebranded repository documentation to NeverEndingQuest-TTRPG for the tabletop multiplayer fork.
+- Updated README quick-start/runtime references to current default web port `8357`.
+- Clarified fork collaboration contract and source-of-truth hierarchy (`AGENTS.md`, `openspec/`, `plans/`, `adrs/`).
+- Archived stale OpenSpec planning changes while retaining them for collaborator visibility under `openspec/changes/archive/`.
+
+### Added
+
+- Added `CONTRIBUTING.md` with fork-specific PR workflow and guardrails.
+- Added `DEV_SETUP.md` for contributor install/run/verification workflow.
+- Added `.github/PULL_REQUEST_TEMPLATE.md` for consistent collaboration metadata and verification reporting.
+
+### Notes
+
+- Playwright test MCP server is disabled for this fork; use Playwright CLI workflows.
+
 ## [0.2.0] - 2025-08-11
 
 ### Major UI and Media Update
@@ -127,7 +146,7 @@ This is the first public alpha release of NeverEndingQuest, an AI-powered Dungeo
 - Fair Source License for codebase
 - No affiliation with Wizards of the Coast
 
-## [Unreleased] - 2025-01-20
+## [Historical Unreleased (Upstream Snapshot)] - 2025-01-20
 
 ### Changed
 - **Major Codebase Reorganization** for better maintainability:

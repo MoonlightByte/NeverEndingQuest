@@ -1,5 +1,8 @@
 # D&D Dungeon Master System - Architecture Philosophy
 
+NOTE: This document is retained as upstream/background philosophy context.
+For current fork implementation contracts, use `AGENTS.md`, `openspec/`, and `adrs/`.
+
 ## Core Design Principles
 
 ### 1. **Modular Event-Driven Architecture**

@@ -1,5 +1,8 @@
 # NeverEndingQuest - Architecture & Design Philosophy
 
+NOTE: This document is retained as upstream/background architecture context.
+For current fork implementation contracts, use `AGENTS.md`, `openspec/`, and `adrs/`.
+
 ## Table of Contents
 - [Design Philosophy](#design-philosophy)
 - [Core Architecture](#core-architecture)

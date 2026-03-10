@@ -1,28 +1,72 @@
 @echo off
 REM ============================================================================
-REM NeverEndingQuest - Windows Installation Script with Virtual Environment
+REM NeverEndingQuest-TTRPG - Windows Installation Script with Virtual Environment
 REM Automated installer for non-technical users
+REM Fork: https://github.com/zeug-zz/NeverEndingQuest-TTRPG
 REM ============================================================================
 
 SETLOCAL EnableDelayedExpansion
 
+REM Fork Configuration Constants
+set REPO_OWNER=zeug-zz
+set REPO_NAME=NeverEndingQuest-TTRPG
+set REPO_BRANCH=main
+set REPO_URL=https://github.com/%REPO_OWNER%/%REPO_NAME%.git
+set ZIP_URL=https://github.com/%REPO_OWNER%/%REPO_NAME%/archive/refs/heads/%REPO_BRANCH%.zip
+set INSTALL_DIR=%USERPROFILE%\%REPO_NAME%
+
 echo.
 echo ========================================
-echo   NeverEndingQuest Installation
+echo   NeverEndingQuest-TTRPG Installation
 echo ========================================
 echo.
+echo Installing from: github.com/%REPO_OWNER%/%REPO_NAME%
+echo Install location: %INSTALL_DIR%
+echo.
+
+REM Check if already installed in target directory
+if exist "%INSTALL_DIR%" (
+    echo [INFO] Installation directory already exists: %INSTALL_DIR%
+    choice /C YN /N /M "Update existing installation? (Y/N): "
+    if errorlevel 2 (
+        echo Installation cancelled.
+        pause
+        exit /b 0
+    )
+    echo.
+)
 
 REM Step 1: Check for Python
 echo Step 1: Checking for Python...
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo ERROR: Python not found!
     echo.
-    echo Please install Python 3.9 or higher from:
-    echo https://www.python.org/downloads/
+    echo ========================================
+    echo   Python Not Found - Install Required
+    echo ========================================
     echo.
-    echo IMPORTANT: During installation, check the box "Add Python to PATH"
+    echo Python 3.9 or higher is required to run NeverEndingQuest-TTRPG.
     echo.
+    echo OPTION 1 - Microsoft Store (Recommended):
+    echo   1. Open Microsoft Store
+    echo   2. Search for "Python 3.11"
+    echo   3. Click "Get" to install
+    echo   4. IMPORTANT: Check "Add Python to PATH"
+    echo.
+    echo OPTION 2 - Download from python.org:
+    echo   Visit: https://www.python.org/downloads/
+    echo.
+    echo After installing Python, please run this installer again.
+    echo.
+    
+    REM Try to open Microsoft Store
+    echo Opening Microsoft Store... & echo.
+    start ms-windows-store://search/?query=Python 2>nul
+    if errorlevel 1 (
+        REM Fallback to browser
+        start https://apps.microsoft.com/search?query=Python
+    )
+    
     pause
     exit /b 1
 )
@@ -31,51 +75,177 @@ python --version
 echo [OK] Python found!
 echo.
 
-REM Step 2: Check for Git
-echo Step 2: Checking for Git...
+REM Step 2: Choose Install Mode
+echo Step 2: Choose Installation Mode
+echo.
+echo ========================================
+echo   SELECT INSTALLATION METHOD
+echo ========================================
+echo.
+echo 1. Player Mode (Recommended)
+echo    - Download game as ZIP file
+echo    - No Git required
+echo    - Best for playing the game
+echo.
+echo 2. Developer Mode
+echo    - Clone with Git for updates
+echo    - Requires Git installation
+echo    - Best for contributing code
+echo.
+
+choice /C 12 /N /M "Enter your choice (1 or 2): "
+
+if errorlevel 2 (
+    set INSTALL_MODE=developer
+    echo.
+    echo [DEVELOPER MODE] Will clone repository with Git
+) else (
+    set INSTALL_MODE=player
+    echo.
+    echo [PLAYER MODE] Will download and extract ZIP
+)
+
+echo.
+
+REM Branch based on install mode
+if "%INSTALL_MODE%"=="player" goto PLAYER_INSTALL
+if "%INSTALL_MODE%"=="developer" goto DEVELOPER_INSTALL
+
+:PLAYER_INSTALL
+REM Step 3 (Player): Download and Extract ZIP
+echo Step 3: Downloading game files...
+echo.
+echo Downloading from: %ZIP_URL%
+echo This may take a moment...
+echo.
+
+REM Create install directory if doesn't exist
+if not exist "%INSTALL_DIR%" (
+    mkdir "%INSTALL_DIR%"
+)
+
+REM Download ZIP using PowerShell
+set TEMP_ZIP=%TEMP%\%REPO_NAME%-%REPO_BRANCH%.zip
+set TEMP_EXTRACT=%TEMP%\%REPO_NAME%-extract
+
+echo [INFO] Downloading ZIP file...
+powershell -NoProfile -Command "Invoke-WebRequest -Uri '%ZIP_URL%' -OutFile '%TEMP_ZIP%'" 2>nul
+
+if %errorlevel% neq 0 (
+    echo ERROR: Failed to download game files
+    echo.
+    echo Please check your internet connection and try again.
+    echo You can also manually download from: %REPO_URL%
+    pause
+    exit /b 1
+)
+
+echo [OK] Download complete!
+echo.
+
+REM Extract ZIP
+echo [INFO] Extracting files...
+if exist "%TEMP_EXTRACT%" rmdir /S /Q "%TEMP_EXTRACT%" 2>nul
+mkdir "%TEMP_EXTRACT%"
+
+powershell -NoProfile -Command "Expand-Archive -Path '%TEMP_ZIP%' -DestinationPath '%TEMP_EXTRACT%' -Force" 2>nul
+
+if %errorlevel% neq 0 (
+    echo ERROR: Failed to extract files
+    pause
+    exit /b 1
+)
+
+echo [OK] Extraction complete!
+echo.
+
+REM Copy extracted contents to install directory
+echo [INFO] Installing to %INSTALL_DIR%...
+
+REM The extracted folder will be named like "NeverEndingQuest-TTRPG-main"
+for /d %%I in ("%TEMP_EXTRACT%\%REPO_NAME%-*") do (
+    xcopy /E /Y "%%I\*" "%INSTALL_DIR%\" >nul 2>&1
+)
+
+REM Cleanup temp files
+del "%TEMP_ZIP%" 2>nul
+rmdir /S /Q "%TEMP_EXTRACT%" 2>nul
+
+echo [OK] Installation complete!
+echo.
+
+goto COMMON_SETUP
+
+:DEVELOPER_INSTALL
+REM Step 2b (Developer): Check for Git
+echo Step 2b: Checking for Git...
 git --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo Git not found. Attempting to install...
     echo.
-
-    REM Try winget first (Windows 10+)
-    winget install --id Git.Git -e --source winget >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo [OK] Git installed via winget!
-        echo Please restart this script to continue.
-        pause
-        exit /b 0
-    ) else (
-        echo ERROR: Could not auto-install Git
-        echo.
-        echo Please install Git manually from:
-        echo https://git-scm.com/download/win
-        echo.
-        echo After installing Git, run this script again.
-        pause
-        exit /b 1
+    echo ========================================
+    echo   Git Not Found - Install Required
+    echo ========================================
+    echo.
+    echo Git is required for Developer Mode.
+    echo.
+    echo OPTION 1 - Microsoft Store (Recommended):
+    echo   Search "Git" in Microsoft Store
+    echo   Or visit: https://apps.microsoft.com/search?query=Git
+    echo.
+    echo OPTION 2 - Download from git-scm.com:
+    echo   Visit: https://git-scm.com/download/win
+    echo.
+    echo OPTION 3 - Install via winget (if available):
+    echo   Run: winget install --id Git.Git
+    echo.
+    echo After installing Git, run this installer again.
+    echo.
+    
+    REM Try to open Microsoft Store for Git
+    start ms-windows-store://search/?query=Git 2>nul
+    if errorlevel 1 (
+        start https://apps.microsoft.com/search?query=Git
     )
+    
+    pause
+    exit /b 1
 )
 
 git --version
 echo [OK] Git found!
 echo.
 
-REM Step 3: Clone repository
-echo Step 3: Cloning repository...
-echo Installing to: %CD%
+REM Step 3 (Developer): Clone/Update Repository
+echo Step 3: Setting up repository...
 echo.
 
-if exist "NeverEndingQuest" (
-    echo Repository folder already exists. Updating...
-    cd NeverEndingQuest
-    git pull
-    if %errorlevel% neq 0 (
-        echo Warning: Git pull failed. Continuing with existing version...
+if exist "%INSTALL_DIR%\.git" (
+    echo Repository already exists. Updating...
+    cd /d "%INSTALL_DIR%"
+    
+    REM Update with explicit remote/branch
+    git fetch origin %REPO_BRANCH%
+    if errorlevel 1 (
+        echo WARNING: Could not fetch updates
+        echo Continuing with existing version...
+    ) else (
+        git pull --ff-only origin %REPO_BRANCH%
+        if errorlevel 1 (
+            echo WARNING: Could not fast-forward update
+            echo Your local changes may conflict with remote.
+            echo To resolve manually, run: git pull origin %REPO_BRANCH%
+            echo Continuing with existing version...
+        ) else (
+            echo [OK] Updated to latest version!
+        )
     )
-    cd ..
 ) else (
-    git clone https://github.com/MoonlightByte/NeverEndingQuest.git
+    echo Cloning repository...
+    echo From: %REPO_URL%
+    echo To: %INSTALL_DIR%
+    echo.
+    
+    git clone --branch %REPO_BRANCH% %REPO_URL% "%INSTALL_DIR%"
     if %errorlevel% neq 0 (
         echo ERROR: Failed to clone repository
         echo.
@@ -86,7 +256,12 @@ if exist "NeverEndingQuest" (
     echo [OK] Repository cloned successfully!
 )
 
-cd NeverEndingQuest
+cd /d "%INSTALL_DIR%"
+goto COMMON_SETUP
+
+:COMMON_SETUP
+REM Common setup steps for both modes
+cd /d "%INSTALL_DIR%"
 
 REM Step 4: Create virtual environment
 echo.
@@ -118,7 +293,7 @@ if %errorlevel% neq 0 (
     echo ERROR: Failed to install dependencies
     echo.
     echo Try running manually:
-    echo   cd %CD%
+    echo   cd %INSTALL_DIR%
     echo   venv\Scripts\activate
     echo   pip install -r requirements.txt
     pause
@@ -167,7 +342,11 @@ if %errorlevel% equ 0 (
         echo.
 
         REM Use PowerShell to show input dialog with proper assembly loading
-        for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "Add-Type -AssemblyName Microsoft.VisualBasic; $key = [Microsoft.VisualBasic.Interaction]::InputBox('Enter your OpenAI API key (starts with sk-):\n\nGet your key at: https://platform.openai.com/api-keys\n\nLeave blank to skip and add manually later.', 'NeverEndingQuest - API Key Setup', ''); if ($key) { Write-Output $key } else { Write-Output 'SKIP_BLANK' }"`) do set API_KEY=%%i
+        for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "Add-Type -AssemblyName Microsoft.VisualBasic; $key = [Microsoft.VisualBasic.Interaction]::InputBox('Enter your OpenAI API key (starts with sk-):
+
+Get your key at: https://platform.openai.com/api-keys
+
+Leave blank to skip and add manually later.', 'NeverEndingQuest-TTRPG - API Key Setup', ''); if ($key) { Write-Output $key } else { Write-Output 'SKIP_BLANK' }"`) do set API_KEY=%%i
 
         if "!API_KEY!"=="SKIP_BLANK" (
             echo [SKIPPED] You can add your API key later by editing config.py
@@ -212,32 +391,57 @@ echo [OK] Created launch_game.bat
 
 REM Create desktop shortcut
 set SCRIPT_DIR=%CD%
-set SHORTCUT_TARGET=%USERPROFILE%\Desktop\NeverEndingQuest.lnk
+set SHORTCUT_TARGET=%USERPROFILE%\Desktop\NeverEndingQuest-TTRPG.lnk
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%SHORTCUT_TARGET%'); $s.TargetPath = '%SCRIPT_DIR%\launch_game.bat'; $s.WorkingDirectory = '%SCRIPT_DIR%'; $s.Description = 'Launch NeverEndingQuest AI Dungeon Master'; $s.Save()" 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%SHORTCUT_TARGET%'); $s.TargetPath = '%SCRIPT_DIR%\launch_game.bat'; $s.WorkingDirectory = '%SCRIPT_DIR%'; $s.Description = 'Launch NeverEndingQuest-TTRPG AI Dungeon Master'; $s.Save()" 2>nul
 
-if exist "%USERPROFILE%\Desktop\NeverEndingQuest.lnk" (
+if exist "%USERPROFILE%\Desktop\NeverEndingQuest-TTRPG.lnk" (
     echo [OK] Desktop shortcut created!
 ) else (
     echo [WARNING] Could not create desktop shortcut
     echo You can manually create a shortcut to: %CD%\launch_game.bat
 )
 
+REM SmartScreen guidance
+echo.
+echo ========================================
+echo   Windows SmartScreen Notice
+echo ========================================
+echo.
+echo If Windows shows a security warning when launching:
+echo   - Click "More info"
+echo   - Click "Run anyway"
+echo.
+echo This is normal for .bat files downloaded from the internet.
+echo.
+
 echo.
 echo ========================================
 echo   Installation Complete!
 echo ========================================
 echo.
+echo Installation mode: %INSTALL_MODE%
 echo Installation location: %CD%
 echo.
 echo HOW TO RUN:
 echo   Option 1: Run launch_game.bat in this folder
-echo   Option 2: Run manually:
+echo   Option 2: Double-click the desktop shortcut
+echo   Option 3: Run manually:
+echo            cd %CD%
 echo            venv\Scripts\activate
 echo            python run_web.py
 echo.
 echo The game will open at: http://localhost:8357
 echo.
+echo FORK: NeverEndingQuest-TTRPG
+echo Repository: github.com/%REPO_OWNER%/%REPO_NAME%
+echo.
+
+if "%INSTALL_MODE%"=="developer" (
+    echo To update later: cd %CD% ^&^& git pull origin %REPO_BRANCH%
+    echo.
+)
+
 echo Press any key to launch the game now...
 pause >nul
 

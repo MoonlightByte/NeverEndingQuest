@@ -8,7 +8,7 @@
         "playwright",
         "run-test-mcp-server"
       ],
-      "enabled": true
+      "enabled": false
     }
   },
   "tools": {

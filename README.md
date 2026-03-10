@@ -1,6 +1,8 @@
-# NeverEndingQuest
+# NeverEndingQuest-TTRPG
 
-**Version 0.3.5 (Alpha)**
+**Version 0.3.5 (Alpha) - Fork: NeverEndingQuest-TTRPG**
+
+This repository is the tabletop-focused fork of NeverEndingQuest for live facilitator-led multiplayer sessions and ongoing gameplay-test iteration.
 
 An AI-powered Dungeon Master for running SRD 5.2.1 compatible tabletop RPG campaigns with infinite adventure potential. Experience the world's most popular roleplaying game with an intelligent AI that remembers every decision, adapts to your playstyle, and creates endless adventures tailored to your party.
 
@@ -10,17 +12,18 @@ An AI-powered Dungeon Master for running SRD 5.2.1 compatible tabletop RPG campa
 
 ## 🎮 Get Started | 💬 Join the Community
 
-**Ready to play?** → [Quick Start Guide](#quick-start) | [Download Windows Installer](https://raw.githubusercontent.com/MoonlightByte/NeverEndingQuest/main/install_neverendingquest_windows.bat) *(Right-click → Save As)*
+**Ready to play?** → [Quick Start Guide](#quick-start) | [Download Windows Installer](install_neverendingquest_windows.bat)
 
 **Need help or want to share your adventures?** → [r/NeverEndingQuest on Reddit](https://www.reddit.com/r/NeverEndingQuest/)
 
-**Report bugs or request features** → [GitHub Issues](https://github.com/MoonlightByte/NeverEndingQuest/issues)
+**Report bugs or request features** → Use this fork's GitHub Issues tab
 
 ---
 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+- [Fork Identity](#fork-identity)
 - [Key Features](#key-features)
 - [Module Toolkit](#module-toolkit)
 - [Installation](#installation)
@@ -38,29 +41,60 @@ An AI-powered Dungeon Master for running SRD 5.2.1 compatible tabletop RPG campa
 - [License](#license)
 - [Recent Updates](#recent-updates)
 
+## Fork Identity
+
+NeverEndingQuest-TTRPG keeps upstream NeverEndingQuest as the base while adding merge-safe tabletop multiplayer extensions.
+
+- Canonical engineering guidance: `AGENTS.md`
+- Active and archived implementation contracts: `openspec/`
+- Long-horizon planning and v2 tracks: `plans/`
+- Durable architecture decisions: `adrs/`
+- Legacy upstream/background context retained: `ARCHITECTURE.md`, `ARCHITECTURE_PHILOSOPHY.md`, and historical sections in this README
+- AI operator and automation workflows: `.opencode/skills/`
+
+For contributor setup and workflow, see `CONTRIBUTING.md` and `DEV_SETUP.md`.
+
 ## Quick Start
 
 ### 🎯 One-Click Windows Installer (Recommended)
 
 **For non-technical users on Windows:**
 
-1. **Download the installer**: [install_neverendingquest_windows.bat](https://raw.githubusercontent.com/MoonlightByte/NeverEndingQuest/main/install_neverendingquest_windows.bat)
-   - **Right-click the link** and select **"Save link as..."** or **"Save target as..."**
-   - Save the `.bat` file to your computer (e.g., Downloads folder)
-2. **Run the installer**: Double-click the `.bat` file
-3. **Add your OpenAI API key**: Enter your API key in the popup dialog
-4. **Launch the game**: Run `launch_game.bat` in the `NeverEndingQuest` folder
+1. **Download the installer**:
+   - Click here: [install_neverendingquest_windows.bat](https://github.com/zeug-zz/NeverEndingQuest-TTRPG/raw/main/install_neverendingquest_windows.bat)
+   - **Right-click** → **"Save link as..."** → Save as `.bat` (not `.txt`)
+   - Save to your Downloads folder
+
+2. **Run the installer**:
+   - Double-click the downloaded `.bat` file
+   - If Windows SmartScreen appears: Click **"More info"** → **"Run anyway"**
+   - Choose **Player Mode** (recommended, no Git needed) or **Developer Mode** (with Git)
+
+3. **Install Python if needed**:
+   - If prompted, install Python from **Microsoft Store**:
+     - Open Microsoft Store → Search "Python 3.11" → Click "Get"
+   - Or download from: https://www.python.org/downloads/
+   - **Important**: Check "Add Python to PATH" during install
+   - Re-run the installer after Python is installed
+
+4. **Add your OpenAI API key**: Enter your API key in the popup dialog (get one at https://platform.openai.com/api-keys)
+
+5. **Launch the game**: Run `launch_game.bat` in your `NeverEndingQuest-TTRPG` folder
 
 The installer automatically:
-- ✅ Checks for Python and Git (installs Git if missing)
-- ✅ Clones the repository to a `NeverEndingQuest` folder
+- ✅ Checks for Python (opens Microsoft Store if missing)
+- ✅ Downloads and installs the game from the fork repository
 - ✅ Creates a virtual environment
 - ✅ Installs all dependencies
 - ✅ Sets up configuration with API key dialog
 - ✅ Creates `launch_game.bat` for easy launching
+- ✅ Adds desktop shortcut
+
+**Installation location:** `%USERPROFILE%\NeverEndingQuest-TTRPG`
 
 **To restart the game later:**
-- Run `launch_game.bat` in the `NeverEndingQuest` installation folder
+- Run `launch_game.bat` in `%USERPROFILE%\NeverEndingQuest-TTRPG`
+- Or double-click the desktop shortcut
 
 ---
 
@@ -70,7 +104,7 @@ The installer automatically:
 
 1. **Install dependencies**: `pip install -r requirements.txt`
 2. **Add your OpenAI API key**: Copy `config_template.py` to `config.py` and add your key
-3. **Launch the game**: `python run_web.py` - opens the web interface at http://localhost:8358
+3. **Launch the game**: `python run_web.py` - opens the web interface at http://localhost:8357
 4. **Start your adventure**: The AI will guide you through character creation and module selection
 
 ### Additional Launch Options
@@ -206,8 +240,8 @@ See [LICENSING.md](LICENSING.md) for complete details, FAQ, and legal informatio
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/MoonlightByte/NeverEndingQuest.git
-   cd NeverEndingQuest
+   git clone https://github.com/zeug-zz/NeverEndingQuest-TTRPG.git
+   cd NeverEndingQuest-TTRPG
    ```
 
 2. **Install dependencies**
@@ -225,11 +259,11 @@ See [LICENSING.md](LICENSING.md) for complete details, FAQ, and legal informatio
    ```bash
    # Full game with web interface (recommended)
    python run_web.py
-   # Opens at http://localhost:8358
+   # Opens at http://localhost:8357
    
    # Module Toolkit directly
    python launch_toolkit.py
-   # Opens at http://localhost:8358/toolkit
+   # Opens at http://localhost:8357/toolkit
    
    # Terminal interface (basic)
    python main.py
@@ -814,7 +848,7 @@ The AI analyzes area descriptions and themes to suggest natural narrative bridge
 ```bash
 # Launch the web interface
 python run_web.py
-# Browser opens to http://localhost:8358
+# Browser opens to http://localhost:8357
 # Follow the AI wizard for character creation
 ```
 
@@ -822,7 +856,7 @@ python run_web.py
 ```bash
 # Open toolkit directly
 python launch_toolkit.py
-# Or navigate to http://localhost:8358/toolkit
+# Or navigate to http://localhost:8357/toolkit
 
 # Create a new module:
 1. Click "Create Module"
@@ -957,7 +991,7 @@ MODULE_CREATION_MODEL = "gpt-4o-mini"  # Content generation
 ```
 
 ### Web Interface Settings
-- **Port**: 8358 (configurable in config.py)
+- **Port**: 8357 (configurable in config.py)
 - **Host**: localhost (network accessible with --host 0.0.0.0)
 - **Debug Mode**: Disabled by default for production
 
@@ -1008,7 +1042,7 @@ New module detected → Security scan → Content safety check → Schema valida
 
 #### Startup Problems
 - **No modules**: Check `modules/` directory exists
-- **Web won't start**: Check port 8358 availability
+- **Web won't start**: Check port 8357 availability
 - **Toolkit unavailable**: Ensure `core/toolkit/` exists
 
 #### Performance
@@ -1039,13 +1073,13 @@ New module detected → Security scan → Content safety check → Schema valida
 - **Conversation Archives**: Review `campaign_archives/` for saved histories
 
 ### Getting Help
-- Check the [GitHub Issues](https://github.com/MoonlightByte/NeverEndingQuest/issues) for known problems
+- Check this fork's GitHub Issues tab for known problems
 - Create a new issue with your error message and system information
 - Include your Python version and operating system in bug reports
 
 ## Contributing
 
-We welcome contributions to NeverEndingQuest! This project thrives on community involvement.
+We welcome contributions to NeverEndingQuest-TTRPG. Start with `CONTRIBUTING.md` and `DEV_SETUP.md` for the current fork workflow.
 
 ### How to Contribute
 
@@ -1073,8 +1107,8 @@ We welcome contributions to NeverEndingQuest! This project thrives on community 
 ### Development Setup
 ```bash
 # Fork and clone your fork
-git clone https://github.com/yourusername/NeverEndingQuest.git
-cd NeverEndingQuest
+git clone https://github.com/zeug-zz/NeverEndingQuest-TTRPG.git
+cd NeverEndingQuest-TTRPG
 
 # Create development environment
 python -m venv venv
@@ -1184,7 +1218,7 @@ This is the first iteration of the compression system designed to reduce API cos
 - **File Organization** - Better project structure with dedicated debug/ and utils/compression/ directories
 - **Ammunition Tracking** - Enhanced debugging for combat ammunition management
 - **Container Reconciliation** - Automatic standardization of container names and ammunition
-- **MCP Integration** - Support for Playwright browser automation and Context7 documentation access
+- **Tooling Integration** - Playwright CLI smoke workflow and Context7 documentation access
 
 ### Version 0.2.5 - Advanced Token Compression System
 - **Token Compression Pipeline** - 76-82% reduction per message with parallel processing
@@ -1229,7 +1263,6 @@ This is the first iteration of the compression system designed to reduce API cos
 
 ---
 
-**Created by MoonlightByte**  
-*An AI-powered adventure that never ends*
+**Upstream created by MoonlightByte; tabletop fork maintained by NeverEndingQuest-TTRPG contributors.**
 
-For support, bug reports, or contributions, visit our [GitHub repository](https://github.com/MoonlightByte/NeverEndingQuest).
+For support, bug reports, or contributions, use this fork's GitHub repository and Issues tab.
