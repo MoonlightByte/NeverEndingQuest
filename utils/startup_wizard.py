@@ -150,6 +150,10 @@ def run_startup_sequence():
 
         created_characters = [character_name]
 
+        # TABLETOP MODE: Persist startup party state immediately after first PC creation.
+        # This enables web UI tab/sheet hydration while add-more prompt loop is still active.
+        update_party_tracker(selected_module['name'], created_characters)
+
         # TABLETOP MODE: Optional multi-PC startup loop.
         # Exit contract: loop terminates ONLY on explicit 'n'/'no' from either decision point.
         # Blank/invalid inputs reprompt indefinitely; no implicit exit paths exist.
@@ -173,6 +177,9 @@ def run_startup_sequence():
             next_character = create_new_character(conversation, selected_module)
             if next_character:
                 created_characters.append(next_character)
+                # TABLETOP MODE: Persist each successful queued PC immediately so
+                # frontend party data reflects additions without waiting for explicit loop exit.
+                update_party_tracker(selected_module['name'], created_characters)
                 print(f"Dungeon Master: Added player {next_character} to startup party.")
                 continue
 

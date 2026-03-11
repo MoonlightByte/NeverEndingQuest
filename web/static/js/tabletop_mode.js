@@ -73,6 +73,86 @@ function updateTabUI(activeName) {
 }
 
 /**
+ * TABLETOP MODE: Reconcile character tab DOM from backend party payload.
+ * Keeps tabs in sync during startup creation queue without requiring page reload.
+ * @param {Object} response - party_data_response payload
+ */
+function syncCharacterTabsFromPartyResponse(response) {
+    const tabsContainer = document.getElementById('character-tabs-container');
+    const tabsList = document.getElementById('character-tabs-list');
+    if (!tabsContainer || !tabsList) {
+        return;
+    }
+
+    const partyMembers = Array.isArray(response && response.party_members)
+        ? response.party_members
+        : [];
+
+    if (!partyMembers.length) {
+        return;
+    }
+
+    // Unhide when runtime state transitions to tabletop/multi-PC during startup flow.
+    if (partyMembers.length > 1) {
+        tabsContainer.style.display = 'flex';
+    }
+
+    const activeFromPayload = (response && response.active_character) || '';
+    const resolvedActive = partyMembers.includes(activeFromPayload)
+        ? activeFromPayload
+        : (window.active_character && partyMembers.includes(window.active_character)
+            ? window.active_character
+            : partyMembers[0]);
+
+    window.active_character = resolvedActive;
+
+    // Rebuild tab list deterministically in party order.
+    tabsList.innerHTML = '';
+    partyMembers.forEach((memberName) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'character-tab-wrapper';
+        wrapper.style.position = 'relative';
+        wrapper.style.display = 'inline-block';
+
+        const tabButton = document.createElement('button');
+        tabButton.className = `character-tab${memberName === resolvedActive ? ' active' : ''}`;
+        tabButton.setAttribute('data-character', memberName);
+        tabButton.textContent = memberName;
+
+        const retireButton = document.createElement('span');
+        retireButton.className = 'retire-character-btn';
+        retireButton.setAttribute('data-character', memberName);
+        retireButton.setAttribute('title', 'Retire from Party');
+        retireButton.style.position = 'absolute';
+        retireButton.style.top = '-5px';
+        retireButton.style.right = '-5px';
+        retireButton.style.background = '#f44336';
+        retireButton.style.color = 'white';
+        retireButton.style.borderRadius = '50%';
+        retireButton.style.width = '15px';
+        retireButton.style.height = '15px';
+        retireButton.style.fontSize = '10px';
+        retireButton.style.lineHeight = '15px';
+        retireButton.style.textAlign = 'center';
+        retireButton.style.cursor = 'pointer';
+        retireButton.style.display = 'none';
+        retireButton.style.zIndex = '10';
+        retireButton.innerHTML = '&times;';
+
+        wrapper.appendChild(tabButton);
+        wrapper.appendChild(retireButton);
+        tabsList.appendChild(wrapper);
+    });
+
+    updateTabUI(resolvedActive);
+
+    // Refresh active sheet promptly once runtime party state becomes available.
+    if (typeof loadCharacterStats === 'function') {
+        loadCharacterStats();
+    }
+}
+
+/**
  * Opens the modal for managing the party (adding/removing characters).
  */
 function openManagePartyModal() {
@@ -782,6 +862,8 @@ function addCharacterToParty(characterName) {
  * Update Sidebar stats with real-time data
  */
 tabletopSocket.on('party_data_response', (response) => {
+    syncCharacterTabsFromPartyResponse(response);
+
     if (response && response.members) {
         response.members.forEach(member => {
             // Escape names for ID usage if they contain spaces

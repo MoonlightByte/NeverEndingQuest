@@ -338,6 +338,38 @@ class TestCharacterSheetEditUIContracts(unittest.TestCase):
         self.assertLess(switch_tab_pos, load_existing_pos,
                        "switchManageTab must be called before loadExistingCharacters")
 
+    def test_party_data_socket_payload_includes_tab_sync_fields(self):
+        """Test: party_data_response payload includes party_members and active_character."""
+        socket_handler_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "extensions", "tabletop_socket_handlers.py"
+        )
+
+        with open(socket_handler_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+
+        self.assertIn("'party_members': party_tracker.get('partyMembers', [])", source,
+                      "party_data_response should include party_members for tab sync")
+        self.assertIn("'active_character': party_tracker.get('active_character')", source,
+                      "party_data_response should include active_character for tab sync")
+
+    def test_party_data_listener_calls_tab_sync_reconciler(self):
+        """Test: tabletop socket listener invokes tab reconciler on party updates."""
+        js_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "static", "js", "tabletop_mode.js"
+        )
+
+        with open(js_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+
+        self.assertIn('function syncCharacterTabsFromPartyResponse(response)', source,
+                      "Tab sync reconciler should exist")
+        self.assertIn('syncCharacterTabsFromPartyResponse(response);', source,
+                      "party_data_response listener should invoke tab sync reconciler")
+        self.assertIn('response.party_members', source,
+                      "Tab sync should use party_members from payload")
+
     def test_forms_have_autocomplete_off(self):
         """Test: Roll Your Own and Manage PC forms disable browser autofill."""
         html_path = os.path.join(

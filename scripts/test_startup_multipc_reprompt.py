@@ -72,7 +72,9 @@ class TestStartupMultiPcReprompt(unittest.TestCase):
 
         self.assertTrue(result)
         self.assertEqual(create_mock.call_count, 1)
-        update_mock.assert_called_once_with("test_module", ["alpha", "beta"])
+        self.assertEqual(update_mock.call_count, 2)
+        self.assertEqual(update_mock.call_args_list[0].args, ("test_module", ["alpha"]))
+        self.assertEqual(update_mock.call_args_list[1].args, ("test_module", ["alpha", "beta"]))
 
         self.assertGreaterEqual(output.count("Add another player character? (y/n):"), 4)
         self.assertGreaterEqual(output.count("Please enter 'y' for yes or 'n' for no."), 2)
@@ -86,7 +88,9 @@ class TestStartupMultiPcReprompt(unittest.TestCase):
 
         self.assertTrue(result)
         self.assertEqual(create_mock.call_count, 2)
-        update_mock.assert_called_once_with("test_module", ["alpha", "beta"])
+        self.assertEqual(update_mock.call_count, 2)
+        self.assertEqual(update_mock.call_args_list[0].args, ("test_module", ["alpha"]))
+        self.assertEqual(update_mock.call_args_list[1].args, ("test_module", ["alpha", "beta"]))
 
         self.assertIn("Additional player creation failed.", output)
         self.assertIn("Retry creating another player? (y/n):", output)

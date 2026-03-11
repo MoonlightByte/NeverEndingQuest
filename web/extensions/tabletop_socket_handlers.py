@@ -154,7 +154,12 @@ def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Calla
 
         party_tracker = safe_read_json("party_tracker.json")
         if not party_tracker:
-            emit_fn('party_data_response', {'members': []})
+            emit_fn('party_data_response', {
+                'members': [],
+                'location_npcs': [],
+                'party_members': [],
+                'active_character': None,
+            })
             return
 
         current_module = party_tracker.get("module", "").replace(" ", "_")
@@ -388,11 +393,21 @@ def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Calla
                                     npc_data_dict['image_version'] = location_npc_image_meta.get('image_version')
                                     location_npcs.append(npc_data_dict)
 
-        emit_fn('party_data_response', {'members': party_members, 'location_npcs': location_npcs})
+        emit_fn('party_data_response', {
+            'members': party_members,
+            'location_npcs': location_npcs,
+            'party_members': party_tracker.get('partyMembers', []),
+            'active_character': party_tracker.get('active_character'),
+        })
 
     except Exception as request_error:
         error_fn(f"Failed to get party data: {str(request_error)}", exception=request_error, category="web_interface")
-        emit_fn('party_data_response', {'members': [], 'location_npcs': []})
+        emit_fn('party_data_response', {
+            'members': [],
+            'location_npcs': [],
+            'party_members': [],
+            'active_character': None,
+        })
 
 
 def handle_initiative_data_request_impl(emit_fn: Callable[..., None], error_fn: Callable[..., None]) -> None:
