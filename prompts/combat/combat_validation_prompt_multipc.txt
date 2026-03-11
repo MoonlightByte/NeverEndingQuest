@@ -138,7 +138,21 @@ Update: "Uses healing ability"
 
 ACTION USAGE VALIDATION:
 - updateCharacterInfo: ONLY for players and NPCs (requires characterName parameter)
+  - Prefer mixed payloads with BOTH changes and ops for combat mechanics when available.
+  - When supported ops are present, treat ops as authoritative mechanics payload and changes as readable mirror.
+  - changes-only remains compatibility-valid during migration.
+  - Supported combat-facing ops in this slice: hp_delta, set_hp, spell_slot_delta, condition_add, condition_remove, inventory_remove, inventory_add.
 - updateEncounter: ONLY for monsters (uses text description in changes field)
+  - updateEncounter.parameters.ops is out of scope in this slice and should be flagged invalid.
+- requestRoll: Preferred for player-facing saving throws, ability checks, skill checks, and concentration saves.
+  - requestRoll pause contract: response MUST stop after issuing requestRoll.
+  - requestRoll same-response contingent outcomes are INVALID.
+  - requestRoll concentration DC should follow max(10, floor(damage / 2)).
+  - parameters must include characterName, rollType, dc, reason.
+  - ability required for saving_throw and ability_check.
+  - skill required for skill_check.
+  - advantage is optional (normal, advantage, disadvantage).
+- Prose-only save/check/concentration asks remain compatibility-valid during migration (requestRoll preferred, not exclusive).
 - NEVER recommend updateCharacterInfo for monsters - it will always fail
 - Example monster update: {"action": "updateEncounter", "parameters": {"encounterId": "XXX", "changes": "Goblin takes 8 damage, HP from 15 to 7"}}
 
@@ -147,6 +161,7 @@ CRITICAL ENTITY TYPE VALIDATION:
 - Check EVERY updateEncounter action: The changes MUST describe modifications to monsters/enemies ONLY (type: "enemy")
 - FLAG AS INVALID: Any updateCharacterInfo targeting a creature with type: "enemy"
 - FLAG AS INVALID: Any updateEncounter attempting to modify player or NPC HP
+- FLAG AS INVALID: Any updateEncounter.parameters.ops usage in this slice
 - FLAG AS INVALID: Mixed entity updates (e.g., one action trying to update both monster and player HP)
 - FLAG AS VALID: Multiple updateCharacterInfo actions for different PCs/NPCs damaged during enemy batch phase. This is REQUIRED, not a consolidation violation. The consolidation rule applies ONLY to updateEncounter (one per response for all enemy state changes).
 
@@ -164,6 +179,23 @@ VALID - Monster HP update:
 
 VALID - Player HP update:
 {"action": "updateCharacterInfo", "characterName": "eirik_hearthwise", "changes": "Takes 8 necrotic damage from Ashling's touch (HP 21 -> 13)"}
+
+VALID - Mixed player updateCharacterInfo payload:
+{"action": "updateCharacterInfo", "parameters": {"characterName": "eirik_hearthwise", "changes": "Takes 8 necrotic damage (HP 21 -> 13).", "ops": [{"op": "hp_delta", "delta": -8}]}}
+
+VALID - Prose-only fallback during migration:
+{"action": "updateCharacterInfo", "parameters": {"characterName": "eirik_hearthwise", "changes": "Takes 8 necrotic damage (HP 21 -> 13)."}}
+
+VALID - requestRoll pause (saving throw):
+{"action": "requestRoll", "parameters": {"characterName": "eirik_hearthwise", "rollType": "saving_throw", "dc": 12, "reason": "Resist paralysis from ghoul claws.", "ability": "constitution"}}
+
+VALID - requestRoll concentration save with deterministic DC:
+{"action": "requestRoll", "parameters": {"characterName": "eirik_hearthwise", "rollType": "saving_throw", "dc": 11, "reason": "Concentration after taking 23 damage.", "ability": "constitution"}}
+
+INVALID - requestRoll with contingent same-response narration:
+Action: {"action": "requestRoll", "parameters": {"characterName": "eirik_hearthwise", "rollType": "saving_throw", "dc": 12, "reason": "Resist paralysis.", "ability": "constitution"}}
+Narration in same response: "Eirik succeeds and shrugs it off."
+Issue: requestRoll pause contract violated. Response must stop after requestRoll and wait for player input.
 
 Respond with a JSON object using this exact structure:
 {

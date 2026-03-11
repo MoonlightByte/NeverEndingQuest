@@ -834,3 +834,192 @@ Combat should follow the same pattern, but with an explicit preservation clause:
 - make Python own the legality and accounting beneath that layer.
 
 That is the balance this plan is designed to achieve.
+
+## Post-Archive Builder Handoff (2026-03-11)
+
+Reference archive:
+
+- `openspec/changes/archive/2026-03-11-combat-runtime-authority-and-efficiency/`
+
+That archived change completed the first-wave combat hardening slice:
+
+- canonical compressed combat prompt authority,
+- combat contract parity coverage,
+- combat prompt slimming and runtime packet reduction,
+- combat validation telemetry and thresholded compression,
+- touched-combatant truth packs,
+- retry-local correction hygiene.
+
+It also explicitly deferred two follow-on slices that are now the safest next implementation path:
+
+1. `combat-structured-pc-allied-ops-pilot`
+2. `combat-save-concentration-contract`
+
+### Recommended Follow-On Order
+
+The next practical build order after the archived runtime-authority change is:
+
+1. deepen combat adoption of `updateCharacterInfo.ops` for PCs and allied NPCs,
+2. then align combat save/check/concentration pauses to the first-class `requestRoll` contract.
+
+This order is recommended because:
+
+- the runtime structured-ops path already exists and is working in `updates/update_character_info.py`,
+- combat currently still teaches mostly prose-era HP, slot, ammo, and condition updates,
+- `requestRoll` and concentration helpers already exist as scaffolding, but combat prompts still use older prose-only guidance,
+- save/concentration alignment becomes cleaner once combat PC/allied mechanics already prefer structured updates.
+
+### Follow-On Change 1 - `combat-structured-pc-allied-ops-pilot`
+
+#### Objective
+
+Adopt the existing additive `updateCharacterInfo.ops` contract inside combat prompt, validator, and combat-facing tests for PC and allied NPC mutations, while preserving prose fallback and deferring enemy-side `updateEncounter.ops`.
+
+#### Scope
+
+In scope:
+
+- combat prompt/validator contract updates for mixed `changes + ops` payloads,
+- combat preference for structured mechanics on PC/allied updates,
+- deterministic combat-facing tests for HP, spell slot, ammo, inventory, and condition updates,
+- fallback telemetry preservation when combat still uses prose-only updates.
+
+Out of scope:
+
+- enemy-side `updateEncounter.ops`,
+- full deprecation of prose `changes`,
+- save/check runtime flow redesign.
+
+#### Combat-Specific Ops Priority
+
+Combat should prefer `changes + ops` for:
+
+- `hp_delta`
+- `set_hp`
+- `spell_slot_delta`
+- `condition_add`
+- `condition_remove`
+- `inventory_remove` for ammo and consumable spend
+- `inventory_add` where combat resolution legitimately grants or returns an item
+
+#### File Targets
+
+- `prompts/combat/combat_sim_prompt_multipc_compressed.txt`
+- `prompts/combat/combat_validation_prompt_multipc_compressed.txt`
+- combat prompt mirror files as needed for parity/docs
+- `core/ai/action_handler.py` only for narrow combat-routing adjustments if required
+- `updates/update_character_info.py` only if combat reveals a missing supported op shape
+
+#### Required Contract Direction
+
+During this slice:
+
+- `changes` remains compatibility-valid,
+- `changes + ops` becomes the preferred combat PC/allied payload,
+- `ops` is the authoritative mechanic payload where present,
+- prose remains the mirror/fallback path,
+- enemy-side `updateEncounter` remains unchanged.
+
+#### Concrete Prompt Gaps To Close
+
+Current combat prompts still rely heavily on prose-era guidance such as:
+
+- slot spend written only in `changes`,
+- ammo spend written only in `changes`,
+- healing deferral described only through prose fields,
+- `updateCharacterInfo` examples that do not show mixed `changes + ops` payloads.
+
+This slice should update combat examples so the model sees structured mechanics as the preferred combat expression for PC/allied updates without breaking current fallback behavior.
+
+#### Recommended Tests
+
+Keep green:
+
+- `scripts/test_multi_pc_combat.py`
+- `scripts/c5_regression_combat.py`
+- `scripts/test_update_character_ops_contract.py`
+
+Add focused combat coverage:
+
+- `scripts/test_combat_structured_ops_contract.py`
+
+That suite should cover:
+
+- combat prompt/validator parity for `changes + ops`,
+- enemy-side `updateEncounter` still prose-only in this slice,
+- mixed payload acceptance for damaged PCs/allied NPCs,
+- ammo and slot-spend examples preferring ops,
+- unsupported ops falling back only when prose `changes` is also present.
+
+### Follow-On Change 2 - `combat-save-concentration-contract`
+
+#### Objective
+
+Move combat-facing save/check pauses onto the existing `requestRoll` contract and lock concentration requests to deterministic 5e DC handling.
+
+#### Why This Comes Second
+
+- the request scaffolding already exists in `core/managers/combat_manager.py` and `core/ai/action_handler.py`,
+- combat prompts currently still use prose-era guidance such as "concentration check required",
+- save/check pauses become easier to reason about once combat already prefers structured PC/allied state updates.
+
+#### Required Contract Direction
+
+Combat should prefer `requestRoll` for:
+
+- saving throws,
+- ability checks in combat,
+- skill checks in combat,
+- concentration saves.
+
+This slice should enforce:
+
+- stop-after-request semantics,
+- no contingent success/failure narration in the same response,
+- concentration DC formula `max(10, floor(damage / 2))`,
+- prose-only compatibility retained during migration.
+
+#### File Targets
+
+- `prompts/combat/combat_sim_prompt_multipc_compressed.txt`
+- `prompts/combat/combat_validation_prompt_multipc_compressed.txt`
+- combat prompt mirror files as needed for parity/docs
+- `core/managers/combat_manager.py` for narrow helper usage if needed
+- `core/ai/action_handler.py` only for narrow metadata handling if required
+
+#### Recommended Tests
+
+Keep green:
+
+- `scripts/test_multi_pc_combat.py`
+- `scripts/c5_regression_combat.py`
+- `scripts/test_save_concentration_contract.py`
+
+Add focused combat coverage:
+
+- `scripts/test_combat_save_concentration_contract.py`
+
+That suite should cover:
+
+- combat prompt/validator parity for `requestRoll`,
+- stop-after-request enforcement,
+- concentration hits producing deterministic DC expectations,
+- no same-response contingent outcome narration,
+- prose-only compatibility remaining valid during migration.
+
+### Recommended Builder Sequence
+
+Use the next builder passes in this order:
+
+1. scaffold and execute `combat-structured-pc-allied-ops-pilot`,
+2. verify combat regressions stay green,
+3. then scaffold and execute `combat-save-concentration-contract`,
+4. only after both are stable, revisit deferred combat deterministic guards or `updateEncounter.ops`.
+
+### Guardrails For Both Follow-On Slices
+
+- Do not widen to `updateEncounter.ops` yet.
+- Do not deprecate prose fallback yet.
+- Do not expand into full roll resolution.
+- Keep changes narrow, merge-safe, and additive.
+- Preserve vivid narration and enemy tactical competence while moving legality/accounting further into Python-owned structure.

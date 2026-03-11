@@ -1021,6 +1021,67 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Combat Save/Concentration Contract Alignment (COMPLETED - 2026-03-11)
+
+**Status:** COMPLETED - OpenSpec change archived and main specs synchronized
+
+**OpenSpec Archive:**
+- `openspec/changes/archive/2026-03-11-combat-save-concentration-contract/`
+
+**Objective:**
+Align multi-PC combat prompt and validator contracts to prefer first-class `requestRoll` for saves/checks/concentration pauses, keep pause-only semantics explicit, and lock deterministic concentration DC guidance.
+
+**Implementation Summary:**
+- Updated compressed combat sim and validation prompts to prefer `requestRoll` for player-facing saving throws, ability checks, skill checks, and concentration saves.
+- Explicitly enforced pause semantics: after `requestRoll`, stop and wait for player input; no same-response contingent outcome narration.
+- Added concentration DC rule guidance in combat contract language: `max(10, floor(damage / 2))`.
+- Preserved prose-only save/check/concentration compatibility during migration.
+- Updated uncompressed combat mirror prompts for contract parity.
+- Confirmed no runtime widening was required (`requestRoll` runtime path remains scaffold/pause-oriented).
+
+**Regression and Verification:**
+- `python3 scripts/test_combat_save_concentration_contract.py` -> PASS (18/18)
+- `python3 scripts/test_save_concentration_contract.py` -> PASS (28/28)
+- `python3 scripts/test_multi_pc_combat.py` -> PASS (43/43)
+- `python3 scripts/c5_regression_combat.py` -> PASS (32/32)
+- `python3 -m py_compile scripts/test_combat_save_concentration_contract.py scripts/test_save_concentration_contract.py` -> PASS
+- `openspec validate combat-save-concentration-contract` -> VALID
+
+**Spec Sync:**
+- `openspec/specs/tt-combat-request-roll-routing/spec.md` (new)
+- `openspec/specs/tt-combat-concentration-request-dc/spec.md` (new)
+
+**Notes:**
+- Repaired `scripts/test_save_concentration_contract.py` OpenSpec artifact path resolution to support archived-change layouts and main-spec canonical lookup.
+
+### Combat Structured PC/Allied Ops Pilot (COMPLETED - 2026-03-11)
+
+**Status:** COMPLETED - OpenSpec change archived and main specs synchronized
+
+**OpenSpec Archive:**
+- `openspec/changes/archive/2026-03-11-combat-structured-pc-allied-ops-pilot/`
+
+**Objective:**
+Deepen combat adoption of structured `updateCharacterInfo.ops` for PC/allied mechanics updates while preserving prose compatibility and deferring enemy-side `updateEncounter.ops`.
+
+**Implementation Summary:**
+- Added combat-specific contract tests for mixed `changes + ops` preference, prose fallback compatibility, and enemy-side `updateEncounter` deferral.
+- Updated compressed combat sim and validation prompts to prefer mixed payloads for PC/allied updates.
+- Explicitly retained enemy-side `updateEncounter` changes-text routing and no-ops guard in this slice.
+- Updated uncompressed combat mirror prompts for parity.
+- Confirmed runtime alignment was already sufficient and kept runtime scope unchanged.
+
+**Regression and Verification:**
+- `python3 scripts/test_combat_structured_ops_contract.py` -> PASS (16/16)
+- `python3 scripts/test_update_character_ops_contract.py` -> PASS (13/13)
+- `python3 scripts/test_multi_pc_combat.py` -> PASS (43/43)
+- `python3 scripts/c5_regression_combat.py` -> PASS (32/32)
+- `python3 -m py_compile scripts/test_combat_structured_ops_contract.py` -> PASS
+- `openspec validate combat-structured-pc-allied-ops-pilot` -> VALID
+
+**Spec Sync:**
+- `openspec/specs/tt-combat-structured-character-ops-routing/spec.md` (new)
+
 ### Combat Runtime Authority and Efficiency Refactor (COMPLETED - 2026-03-11)
 
 **Status:** COMPLETED - OpenSpec change archived and main specs synchronized

@@ -153,21 +153,31 @@
 }
 
 @ACTION_TYPES={
-  updateCharacterInfo: "PCs and allied/neutral NPCs ONLY (MUST use 'characterName' parameter, NOT 'character')",
-  updateEncounter: "Monsters/enemies ONLY (uses changes text)",
+  updateCharacterInfo: "PCs and allied/neutral NPCs ONLY (MUST use 'characterName' parameter, NOT 'character'). Prefer mixed payloads with BOTH changes and ops for combat mechanics; changes-only remains compatibility-valid during migration.",
+  updateEncounter: "Monsters/enemies ONLY (uses changes text; do not introduce updateEncounter.ops in this slice)",
+  requestRoll: "Preferred for player-facing saving throws, ability checks, skill checks, and concentration saves. Response MUST stop after issuing requestRoll.",
   never_cross: "Do not use updateCharacterInfo for monsters; do not use updateEncounter for PCs/NPCs",
   consolidation_rule: "EXACTLY ONE updateEncounter per response consolidating ALL enemy STATE changes (HP/status/conditions of enemies only). Multiple updateCharacterInfo actions for different PCs/NPCs damaged during the same enemy phase is VALID and REQUIRED.",
-  allied_npc_ammo: "If an allied NPC fires a ranged weapon, REQUIRE their updateCharacterInfo to include ammo expenditure in changes",
+  allied_npc_ammo: "If an allied NPC fires a ranged weapon, prefer inventory_remove ops for ammo expenditure and keep a prose mirror in changes",
+  ops_authority: "When supported ops are present on updateCharacterInfo, treat ops as authoritative mechanics payload and changes as readable mirror.",
+  supported_ops: ["hp_delta","set_hp","spell_slot_delta","condition_add","condition_remove","inventory_remove","inventory_add"],
   parameter_validation: {
-    updateCharacterInfo: "Invalid if uses 'character' instead of 'characterName' as parameter key",
-    updateEncounter: "Must use 'encounterId' and 'changes' as parameter keys"
+    updateCharacterInfo: "Invalid if uses 'character' instead of 'characterName' as parameter key. ops is optional and allowed.",
+    updateEncounter: "Must use 'encounterId' and 'changes' as parameter keys",
+    requestRoll: "Must include characterName, rollType, dc, reason. ability required for saving_throw/ability_check. skill required for skill_check. advantage optional."
   },
   accept_text_patterns: ["HP <old>-><new>", "Takes <num> <type>", "reduce hp by <num>"]
 }
 
 @ROUTING_RULES={
   valid_enemy_turn_pc_damage: "Enemy turn that only damages PCs/NPCs: updateEncounter may be housekeeping-only; PC/NPC HP MUST be in updateCharacterInfo.",
-  batch_enemy_phase: "When multiple enemies act in batch (after /end OR initiative-driven DM start), expect: ONE updateEncounter consolidating all enemy actions/state + SEPARATE updateCharacterInfo for EACH PC/NPC that took damage. Multiple updateCharacterInfo is correct here, not a consolidation violation."
+  batch_enemy_phase: "When multiple enemies act in batch (after /end OR initiative-driven DM start), expect: ONE updateEncounter consolidating all enemy actions/state + SEPARATE updateCharacterInfo for EACH PC/NPC that took damage. Multiple updateCharacterInfo is correct here, not a consolidation violation.",
+  mixed_payload_preferred: "For PC/allied updates, prefer updateCharacterInfo payloads that include both changes and supported ops.",
+  prose_fallback: "If supported ops are absent for a PC/allied update, changes-only updateCharacterInfo remains compatibility-valid during migration.",
+  request_roll_preferred: "For player-facing saves/checks/concentration pauses, prefer requestRoll over prose-only asks during combat.",
+  request_roll_pause_required: "If requestRoll is emitted, response must stop and wait for player input before contingent resolution.",
+  concentration_dc_rule: "Concentration requestRoll DC should follow max(10, floor(damage / 2)).",
+  prose_save_fallback: "Prose-only save/check/concentration asks remain compatibility-valid during migration."
 }
 
 @ENTITY_TYPE_VALIDATION={
@@ -180,6 +190,7 @@
     "updateEncounter.changes mentions a PC/allied NPC name AND any of ['HP','hp','damage','healed','condition','ammo','expended arrow','expended bolt']",
     "updateCharacterInfo applied to enemy",
     "updateEncounter changing PC/NPC HP",
+    "updateEncounter.parameters includes ops",
     "Multiple updateEncounter actions (must be consolidated into ONE)",
     "updateCharacterInfo using 'character' instead of 'characterName' parameter"
   ]
@@ -191,7 +202,8 @@
   incomplete_round: "Plan/narration shows NPCs remaining but AI stopped",
   premature_prompt: "Asked specific PC to act when it is not their turn (except saves/reactions)",
   order_fragmentation: "Processed 1-2 creatures then stopped and waited for 'continue'",
-  multiple_update_encounter: "More than ONE updateEncounter action per response (NOTE: multiple updateCharacterInfo for different PCs/NPCs is VALID, not a violation)"
+  multiple_update_encounter: "More than ONE updateEncounter action per response (NOTE: multiple updateCharacterInfo for different PCs/NPCs is VALID, not a violation)",
+  request_roll_contingent_outcome: "requestRoll emitted but narration also resolved contingent success/failure in same response"
 }
 
 @JSON_REQUIREMENTS={
@@ -236,7 +248,12 @@
     "Stopping at active PC's turn to request action",
     "Ending combat with exit when no enemies remain",
     "Updating HP/status immediately after damage",
-    "ONE updateEncounter with ALL enemy changes"
+    "ONE updateEncounter with ALL enemy changes",
+    "PC/allied updateCharacterInfo with mixed changes+ops payloads",
+    "PC/allied changes-only updateCharacterInfo as migration fallback",
+    "requestRoll used for player-facing saves/checks/concentration pauses",
+    "Concentration requestRoll using deterministic DC from max(10, floor(damage / 2))",
+    "Prose-only save/check asks retained as compatibility fallback during migration"
   ],
   not_ok: [
     "Dead creatures acting or being targeted",
@@ -247,7 +264,8 @@
     "Missing combat_round field",
     "Resolving PC action without actual roll input",
     "Multiple updateEncounter actions per response",
-    "Stopping mid-enemy-batch before reaching [>] PC"
+    "Stopping mid-enemy-batch before reaching [>] PC",
+    "Emitting requestRoll and then narrating contingent success/failure in the same response"
   ]
 }
 
@@ -306,6 +324,23 @@
       "negative": "",
       "recommendation": ""
     },
-    "note": "Example actions array: [updateEncounter(enemy attacks summary), updateCharacterInfo(PC1 takes X damage), updateCharacterInfo(PC2 takes Y damage)] -- this is VALID"
+    "note": "Example actions array: [updateEncounter(enemy attacks summary), updateCharacterInfo(PC1 changes+ops), updateCharacterInfo(PC2 changes+ops)] -- this is VALID; changes-only remains migration-compatible"
+  },
+  request_roll_pause_valid: {
+    "valid": true,
+    "feedback": {
+      "positive": "requestRoll used correctly for a player-facing save. Response paused after the request with no contingent outcome narration.",
+      "negative": "",
+      "recommendation": ""
+    },
+    "note": "Example action: {\"action\":\"requestRoll\",\"parameters\":{\"characterName\":\"Acheron\",\"rollType\":\"saving_throw\",\"dc\":11,\"reason\":\"Concentration after taking 23 damage.\",\"ability\":\"constitution\"}}"
+  },
+  request_roll_contingent_invalid: {
+    "valid": false,
+    "feedback": {
+      "positive": "requestRoll action shape was present.",
+      "negative": "Pause Contract Violation. You emitted requestRoll and also narrated contingent success/failure in the same response.",
+      "recommendation": "After requestRoll, stop immediately and wait for player input. Do not narrate contingent outcome until the next response."
+    }
   }
 }

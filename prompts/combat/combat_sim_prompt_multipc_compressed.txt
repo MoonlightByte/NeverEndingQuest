@@ -62,7 +62,7 @@
   plan_initiative: "At combat start (no actions taken yet), plan MUST echo the full initiative order exactly as in ROUND INFO",
   plan_window: "plan MUST echo the full turn_window list being processed this response as a flat ordered list",
   stop_reason: "When stopping, plan MUST state 'stopping because next actor is [PC_NAME]' OR 'end of round'",
-  plan_must_include: "List each affected target with the action type that will log their change: '[PC_NAME] takes 6 damage, HP Y->Z -> updateCharacterInfo'; 'Enemy_X attacks [PC_NAME] -> updateEncounter'; 'NPC_Ally shoots arrow -> updateCharacterInfo'. When [PC_NAME] casts leveled spell, note slot: '[PC_NAME] casts Fireball -> check [PC_NAME] slots, expend level 3'"
+  plan_must_include: "List each affected target with the action type that will log their change: '[PC_NAME] takes 6 damage, HP Y->Z -> updateCharacterInfo'; 'Enemy_X attacks [PC_NAME] -> updateEncounter'; 'NPC_Ally shoots arrow -> updateCharacterInfo'. Prefer mixed changes+ops for PC/allied updateCharacterInfo when mechanics change. When [PC_NAME] casts leveled spell, note slot: '[PC_NAME] casts Fireball -> check [PC_NAME] slots, expend level 3'"
 }
 
 @STRICTNESS={
@@ -79,6 +79,8 @@
     "Enemy damaged/healed/status change -> updateEncounter (ONE consolidated action per response)",
     "PC or allied NPC damaged/healed/status change -> updateCharacterInfo (one per affected character)"
   ],
+  mixed_payload_preferred: "For PC/allied updateCharacterInfo, prefer parameters with BOTH changes and ops. Keep changes as prose mirror; ops carries authoritative mechanics when present.",
+  prose_fallback: "If supported ops are unavailable for a specific PC/allied update, changes-only remains compatibility-valid during migration.",
   NEVER: [
     "Never log PC/NPC HP/conditions in updateEncounter",
     "Never log enemy HP/conditions in updateCharacterInfo"
@@ -126,23 +128,29 @@
   damage_source: "Use GENERIC DIE matching action.damageDice + bonus",
   dr_modifiers: "Apply vulnerabilities/resistances/immunities after base damage",
   consolidate: "Consolidate enemy STATE CHANGES into exactly ONE updateEncounter",
-  ammunition: "PCs/allies: log ammo in updateCharacterInfo. Enemies: log in updateEncounter."
+  ammunition: "PCs/allies: log ammo in updateCharacterInfo and prefer inventory_remove ops for ammo spend (keep prose mirror in changes). Enemies: log in updateEncounter."
 }
 
 @SAVE_PAUSE={
-  trigger: "A saving throw is required",
-  pc_save: "STOP and ask ACTIVE PC to roll for affected character(s). Example: 'Valor, roll DEX save!'",
+  trigger: "A saving throw, ability check, skill check, or concentration save is required",
+  pc_save: "Prefer requestRoll for player-facing save/check pauses. STOP after issuing the request.",
   npc_save: "Narrate preroll result; invite reaction from ACTIVE PC",
+  request_roll_contract: {
+    preference: "For player-facing saves/checks in combat, prefer action=requestRoll over prose-only ask lines.",
+    parameters: "Use characterName, rollType, dc, reason; include ability for saving_throw/ability_check and skill for skill_check; advantage optional.",
+    pause_only: "After emitting requestRoll, STOP and wait for player input before contingent resolution."
+  },
   flow: {
-    step1: "Narrate threat and declare save",
-    step2: "Pause output after declaration (and reaction if npc_save)",
+    step1: "Narrate threat and declare required save/check",
+    step2: "Emit requestRoll for player-facing save/check pauses, then STOP output (and reaction if npc_save)",
     step3: "On resume, incorporate reaction then resolve"
   },
   constraints: {
-    no_outcome_in_same_msg: "Declare only; resolve later",
+    no_outcome_in_same_msg: "Declare only; resolve later. Do not narrate contingent success/failure in same response after requestRoll.",
     no_round_change: "Pauses do not alter turn order or round tracking",
     multiple_pcs: "If multiple PCs affected, list ALL required saves then STOP"
-  }
+  },
+  prose_fallback: "Prose-only save/check asks remain compatibility-valid during migration, but requestRoll is preferred in combat."
 }
 
 @HOLDING={
@@ -313,20 +321,20 @@
   rule: "Process [PC_NAME]'s declared action; human DM has already approved validity",
   behavior: "Narrate action cinematically, ask for required dice rolls, update [PC_NAME]'s stats, then continue processing remaining NPCs/monsters",
   stop_when: "Stop if (a) next actor is a PC, OR (b) plan says 'WAITING for roll', OR (c) round end",
-  dice_handling: "ALWAYS ask [PC_NAME] to roll before applying effects. STOP for: attack rolls, damage rolls, saving throws, healing rolls. Prompt format: '[PC_NAME], roll [XdY+Z] for [purpose]'",
+  dice_handling: "ALWAYS ask [PC_NAME] to roll before applying effects. STOP for: attack rolls, damage rolls, saving throws, ability checks, skill checks, healing rolls. For saves/checks, prefer requestRoll and STOP before contingent outcome narration.",
   spell_sequence: "For ALL PC spells: 1) Declare target, 2) Ask for attack roll if needed, 3) Confirm hit/miss, 4) Ask for damage/effect roll if hit, 5) Apply results. NEVER narrate spell hitting before rolls",
   attack_spell_rolls: "Attack spells/cantrips (Fire Bolt, Eldritch Blast, Ray of Frost, etc.) ALWAYS require [PC_NAME] to roll attack FIRST. STOP and say: '[PC_NAME], roll d20+[bonus] for your [spell] attack.' Only after hit confirmation, ask for damage roll",
-  spell_slots_auto: "When [PC_NAME] casts a leveled spell (levels 1-9, not cantrips), ALWAYS expend the appropriate or higher spell slot in updateCharacterInfo. If lowest available slot > spell level, use lowest available and narrate upcasting. If no slots remain at any level >= spell's minimum, action fails with 'No spell slots available'",
-  healing_deferral: "When [PC_NAME] casts healing spell, set updateCharacterInfo.changes = 'Casting [spell], awaiting healing roll'. Do NOT apply healing until dice provided",
+  spell_slots_auto: "When [PC_NAME] casts a leveled spell (levels 1-9, not cantrips), ALWAYS expend the appropriate or higher spell slot in updateCharacterInfo. Prefer mixed payload with spell_slot_delta op plus prose mirror in changes. If lowest available slot > spell level, use lowest available and narrate upcasting. If no slots remain at any level >= spell's minimum, action fails with 'No spell slots available'",
+  healing_deferral: "When [PC_NAME] casts healing spell, set updateCharacterInfo.changes = 'Casting [spell], awaiting healing roll'. Keep payload compatible; do NOT apply healing until dice provided",
   spell_damage_timing: "IMMEDIATE spells: damage NOW on [PC_NAME]'s turn. ONGOING spells: damage on enemy's turn. Track which PC owns each ongoing spell separately",
   spiritual_weapon: "Spiritual Weapon is a bonus action spell (2nd level slot on cast). After casting, its attacks are bonus actions but do NOT consume additional spell slots",
-  ammo_tracking: "When [PC_NAME] fires ranged weapon, add 'Expended 1 [ammo]' to [PC_NAME]'s updateCharacterInfo changes"
+  ammo_tracking: "When [PC_NAME] fires ranged weapon, prefer mixed payload with inventory_remove op for the ammo and keep prose mirror in changes"
 }
 
 @SPELL_EFFECTS_TRACKING={
   ownership: "Each ongoing spell belongs to specific PC. Note caster in plan: 'Spirit Guardians (Valor)'",
   application: "Apply ongoing spell damage/effects on correct enemy turn. Example: 'Goblin starts turn near Valor, takes Spirit Guardians damage'",
-  concentration: "When [PC_NAME] takes damage while concentrating, narration mentions 'concentration check required'",
+  concentration: "When [PC_NAME] takes damage while concentrating, prefer requestRoll with rollType=saving_throw, ability=constitution, and dc=max(10, floor(damage / 2)); STOP after the request",
   cleanup: "Remove effects when they end. Note in plan: 'Bless (Elara) expired'"
 }
 
@@ -393,19 +401,21 @@
 
 @ACTIONS={
   pc_or_npc: "updateCharacterInfo (MUST use 'characterName')",
-  enemy: "updateEncounter",
+  enemy: "updateEncounter (enemy changes text only; do not add updateEncounter.ops in this slice)",
   exit: "MANDATORY when all enemies dead/unconscious/defeated (including fled creatures)",
   exit_rule: "Call exit when ALL enemies have status dead/unconscious/defeated - even for trivial encounters, training fights, or when creatures flee peacefully",
   flee_handling: "Creature that successfully escapes battlefield -> status='defeated' -> then call exit when all resolved",
   non_threatening: "Even harmless/training encounters (e.g., snow rat) MUST call exit when encounter concludes",
   npc_damage: "Allied NPCs: use updateCharacterInfo for HP/ammo",
+  request_roll: "Prefer requestRoll for player-facing saving throws, ability checks, skill checks, and concentration saves. Stop after issuing requestRoll.",
+  ops_preference: "For PC/allied updateCharacterInfo, prefer mixed changes+ops payloads; treat ops as authoritative mechanics payload when present; keep prose-only changes valid as migration fallback.",
   rules: {
     sync: "Narrated changes must appear in actions[]",
     status_vocab: ["alive","dead","unconscious","defeated"],
     status_flee: "Creature flees/escapes -> status='defeated' (not 'fled', 'fleeing', 'escaped')",
     undead: "Narration 'destroyed' -> status 'dead'",
     invalid: "Any PC/NPC update via updateEncounter is INVALID",
-    parameter_keys: "updateCharacterInfo uses 'characterName', updateEncounter uses 'encounterId'"
+    parameter_keys: "updateCharacterInfo uses 'characterName'. updateEncounter uses 'encounterId' + 'changes' only (no ops field in this slice)"
   },
   spell_slot_accounting: "When a PC casts a leveled spell, updateCharacterInfo.changes MUST include 'Expended level [N] spell slot' or 'Expended level [N] spell slot (upcasting from level [M])'",
   healing_deferral: "When a PC casts a healing spell, updateCharacterInfo.changes = 'Casting [spell name], awaiting healing roll'. Do NOT apply healing until dice provided"
@@ -421,14 +431,17 @@
   updateEncounter: {
     constraint: "ONE action only per response",
     format: "Consolidate ALL enemy changes into single changes field",
+    no_ops: "Do not include updateEncounter.parameters.ops in this slice",
     example: "Goblin-1 takes 8 damage (HP 15->7). Goblin-2 takes 12 damage and is now dead (HP 10->-2)."
   },
   updateCharacterInfo: {
     multiple_allowed: "Can have multiple for different PCs/NPCs",
     scope: "Player characters and allied NPCs only",
-    required_params: {"characterName": "exact name of PC/NPC", "changes": "ALL changes: HP damage/healing, status changes, conditions, AND ammunition expenditure"},
+    required_params: {"characterName": "exact name of PC/NPC", "changes": "ALL changes mirror: HP damage/healing, status changes, conditions, AND ammunition expenditure narrative", "ops": "optional list; preferred for deterministic mechanics updates in combat"},
+    ops_authority: "When supported ops are present, ops is the authoritative mechanics payload and changes is the readable mirror.",
+    supported_ops: ["hp_delta","set_hp","spell_slot_delta","condition_add","condition_remove","inventory_remove","inventory_add"],
     npc_requirement: "For NPCs taking damage or firing ranged weapons, MUST include BOTH HP changes AND ammo in same action",
-    example: {"action":"updateCharacterInfo","parameters":{"characterName":"Guard Marcus","changes":"Takes 7 damage (HP 36->29). Expended 1 arrow."}}
+    example: {"action":"updateCharacterInfo","parameters":{"characterName":"Guard Marcus","changes":"Takes 7 damage (HP 36->29). Expended 1 arrow.","ops":[{"op":"hp_delta","delta":-7},{"op":"inventory_remove","item_name":"arrow","quantity":1,"container":"ammunition"}]}}
   }
 }
 
@@ -510,7 +523,7 @@
       combat_round: 2,
       actions: [
         {"action":"updateEncounter","parameters":{"encounterId":"L05-E2","changes":"Skeleton_1 hits Valor. Skeleton_2 misses Elara."}},
-        {"action":"updateCharacterInfo","parameters":{"characterName":"Valor","changes":"Takes 6 damage."}}
+        {"action":"updateCharacterInfo","parameters":{"characterName":"Valor","changes":"Takes 6 damage.","ops":[{"op":"hp_delta","delta":-6}]}}
       ]
     }
   },
@@ -527,9 +540,11 @@
     input: "Ghoul claws Active PC -> DC 12 CON save",
     output_stop: {
       plan: "Pause for PC save per @SAVE_PAUSE",
-      narration: "Paralyzing chill surges -- make a DC 12 CON save",
+      narration: "Paralyzing chill surges -- Acheron must attempt a DC 12 Constitution save.",
       combat_round: 2,
-      actions: []
+      actions: [
+        {"action":"requestRoll","parameters":{"characterName":"Acheron","rollType":"saving_throw","dc":12,"reason":"Resist ghoul paralysis from claw hit.","ability":"constitution","advantage":"normal"}}
+      ]
     }
   },
   round_end_increment: {

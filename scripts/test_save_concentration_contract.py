@@ -43,6 +43,36 @@ REQUEST_ROLL_ALLOWED_TYPES = {
 }
 
 
+def _resolve_archived_or_live_change_root(change_slug: str) -> str:
+    """Resolve an OpenSpec change root from live or archived paths."""
+    live_root = os.path.join(REPO_ROOT, "openspec", "changes", change_slug)
+    if os.path.isdir(live_root):
+        return live_root
+
+    archive_root = os.path.join(REPO_ROOT, "openspec", "changes", "archive")
+    if os.path.isdir(archive_root):
+        for entry in sorted(os.listdir(archive_root), reverse=True):
+            if entry.endswith(change_slug):
+                candidate = os.path.join(archive_root, entry)
+                if os.path.isdir(candidate):
+                    return candidate
+
+    raise FileNotFoundError(f"OpenSpec change not found (live or archive): {change_slug}")
+
+
+def _resolve_main_or_delta_spec(spec_slug: str, change_root: str) -> str:
+    """Prefer main spec sync path; fall back to change-local delta spec."""
+    main_spec = os.path.join(REPO_ROOT, "openspec", "specs", spec_slug, "spec.md")
+    if os.path.exists(main_spec):
+        return main_spec
+
+    delta_spec = os.path.join(change_root, "specs", spec_slug, "spec.md")
+    if os.path.exists(delta_spec):
+        return delta_spec
+
+    raise FileNotFoundError(f"Spec not found in main or delta paths: {spec_slug}")
+
+
 def expected_concentration_dc(damage: int) -> int:
     """Deterministic concentration DC formula lock for 5e contract tests."""
     return max(10, damage // 2)
@@ -76,38 +106,19 @@ class TestSaveConcentrationOpenSpecContracts(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        change_root = _resolve_archived_or_live_change_root(
+            "prompt-validator-save-concentration-contract"
+        )
         cls.paths = {
-            "proposal": os.path.join(
-                REPO_ROOT,
-                "openspec",
-                "changes",
-                "prompt-validator-save-concentration-contract",
-                "proposal.md",
-            ),
-            "design": os.path.join(
-                REPO_ROOT,
-                "openspec",
-                "changes",
-                "prompt-validator-save-concentration-contract",
-                "design.md",
-            ),
-            "request_roll_spec": os.path.join(
-                REPO_ROOT,
-                "openspec",
-                "changes",
-                "prompt-validator-save-concentration-contract",
-                "specs",
+            "proposal": os.path.join(change_root, "proposal.md"),
+            "design": os.path.join(change_root, "design.md"),
+            "request_roll_spec": _resolve_main_or_delta_spec(
                 "tt-request-roll-contract",
-                "spec.md",
+                change_root,
             ),
-            "concentration_spec": os.path.join(
-                REPO_ROOT,
-                "openspec",
-                "changes",
-                "prompt-validator-save-concentration-contract",
-                "specs",
+            "concentration_spec": _resolve_main_or_delta_spec(
                 "tt-concentration-dc-contract",
-                "spec.md",
+                change_root,
             ),
         }
         cls.content = {}
