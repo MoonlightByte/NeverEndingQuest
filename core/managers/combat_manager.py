@@ -122,7 +122,12 @@ import subprocess
 # Add project root to sys.path for direct execution
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from model_config import USE_COMPRESSED_COMBAT, COMBAT_API_TIMEOUT_SECONDS
+from model_config import (
+    USE_COMPRESSED_COMBAT,
+    COMBAT_API_TIMEOUT_SECONDS,
+    COMPRESSION_ENABLED,
+    VALIDATION_COMPRESSION_MIN_CHARS,
+)
 from datetime import datetime
 from utils.xp import main as calculate_xp
 from utils.ai_client_factory import create_chat_client
@@ -157,6 +162,10 @@ from utils.file_operations import safe_write_json
 import core.ai.cumulative_summary as cumulative_summary
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
 from utils.save_roll_contract import calculate_concentration_dc
+from utils.validation_routing import (
+    get_validation_compression_decision,
+    build_validation_routing_telemetry,
+)
 # Import combat message compressor for optimizing conversation history
 from core.ai.combat_compressor import CombatUserMessageCompressor
 # Import inventory context matcher for enhancing player combat actions
@@ -743,6 +752,232 @@ def sanitize_unicode_for_logging(text):
     
     return text
 
+
+def _is_combat_inventory_or_ammo_change(changes_text):
+    """Return True when changes text implies inventory/ammo mutation."""
+    if not isinstance(changes_text, str) or not changes_text.strip():
+        return False
+
+    lower = changes_text.lower()
+    inventory_terms = (
+        "inventory",
+        "equipment",
+        "item",
+        "ammo",
+        "ammunition",
+        "arrow",
+        "bolt",
+        "quiver",
+        "coin",
+        "gold",
+        "silver",
+        "copper",
+        "expended",
+    )
+    non_inventory_terms = (
+        "hp",
+        "hit point",
+        "damage",
+        "healed",
+        "condition",
+        "death save",
+        "spell slot",
+        "slot",
+        "unconscious",
+        "stabil",
+    )
+
+    if any(term in lower for term in inventory_terms):
+        return True
+    if any(term in lower for term in non_inventory_terms):
+        return False
+    return False
+
+
+def _extract_touched_character_updates_from_response_json(response_json):
+    """Extract touched updateCharacterInfo targets and compact change metadata."""
+    if not isinstance(response_json, dict):
+        return {}
+
+    actions = response_json.get("actions", [])
+    if not isinstance(actions, list):
+        return {}
+
+    touched_updates = {}
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        if action.get("action") != "updateCharacterInfo":
+            continue
+
+        params = action.get("parameters", {})
+        if not isinstance(params, dict):
+            continue
+
+        character_name = str(params.get("characterName", "")).strip()
+        if not character_name:
+            continue
+
+        changes = params.get("changes", "")
+        if not isinstance(changes, str):
+            changes = ""
+
+        entry = touched_updates.setdefault(
+            character_name,
+            {"changes": [], "inventory_relevant": False},
+        )
+
+        if changes.strip():
+            entry["changes"].append(changes.strip())
+            if _is_combat_inventory_or_ammo_change(changes):
+                entry["inventory_relevant"] = True
+
+    return touched_updates
+
+
+def _build_compact_combat_truth_pack(response_json, encounter_data):
+    """Build compact touched-combatant truth packs for PC/allied NPC updates."""
+    touched_updates = _extract_touched_character_updates_from_response_json(response_json)
+    if not touched_updates:
+        return []
+
+    allowed_names = set()
+    creatures = encounter_data.get("creatures", [])
+    if isinstance(creatures, list):
+        for creature in creatures:
+            if not isinstance(creature, dict):
+                continue
+            creature_type = str(creature.get("type", "")).strip().lower()
+            if creature_type not in ("player", "npc"):
+                continue
+            creature_name = str(creature.get("name", "")).strip().lower()
+            if creature_name:
+                allowed_names.add(creature_name)
+
+    from utils.pc_manager import get_character_state
+
+    truth_packs = []
+    for character_name, meta in touched_updates.items():
+        normalized_name = character_name.strip().lower()
+        if allowed_names and normalized_name not in allowed_names:
+            continue
+
+        character_data = get_character_state(character_name)
+        if not isinstance(character_data, dict):
+            continue
+
+        hp = character_data.get("hitPoints", 0)
+        max_hp = character_data.get("maxHitPoints", 0)
+        try:
+            hp_value = int(hp or 0)
+        except (TypeError, ValueError):
+            hp_value = 0
+        try:
+            max_hp_value = int(max_hp or 0)
+        except (TypeError, ValueError):
+            max_hp_value = 0
+
+        conditions = character_data.get("condition_affected", [])
+        if not isinstance(conditions, list):
+            conditions = []
+
+        spell_slots_summary = {}
+        spell_slots = character_data.get("spellSlots", {})
+        if isinstance(spell_slots, dict):
+            for level, slot_data in spell_slots.items():
+                if not isinstance(slot_data, dict):
+                    continue
+                try:
+                    spell_slots_summary[str(level)] = {
+                        "current": int(slot_data.get("current", 0) or 0),
+                        "max": int(slot_data.get("max", 0) or 0),
+                    }
+                except (TypeError, ValueError):
+                    continue
+
+        death_saves_data = character_data.get("deathSaves")
+        if isinstance(death_saves_data, dict):
+            death_success = death_saves_data.get("successes", 0)
+            death_fail = death_saves_data.get("failures", 0)
+        else:
+            death_success = character_data.get("deathSaveSuccesses", 0)
+            death_fail = character_data.get("deathSaveFailures", 0)
+
+        try:
+            death_saves = {
+                "successes": int(death_success or 0),
+                "failures": int(death_fail or 0),
+            }
+        except (TypeError, ValueError):
+            death_saves = {"successes": 0, "failures": 0}
+
+        pack = {
+            "characterName": str(character_data.get("name") or character_name),
+            "hp": hp_value,
+            "maxHp": max_hp_value,
+            "conditions": [str(condition) for condition in conditions],
+            "spellSlots": spell_slots_summary,
+            "deathSaves": death_saves,
+            "touchedChanges": meta.get("changes", []),
+        }
+
+        features = character_data.get("classFeatures", [])
+        limited_resources = []
+        if isinstance(features, list):
+            for feature in features:
+                if not isinstance(feature, dict):
+                    continue
+                feature_name = str(feature.get("name", "")).strip()
+                if not feature_name:
+                    continue
+                if not any(key in feature for key in ("uses", "maxUses", "currentUses", "recharge")):
+                    continue
+                resource_item = {"name": feature_name}
+                for key in ("uses", "maxUses", "currentUses", "recharge"):
+                    if key in feature:
+                        resource_item[key] = feature.get(key)
+                limited_resources.append(resource_item)
+                if len(limited_resources) >= 8:
+                    break
+
+        if limited_resources:
+            pack["limitedResources"] = limited_resources
+
+        if meta.get("inventory_relevant", False):
+            inventory_block = {}
+
+            currency = character_data.get("currency", {})
+            if isinstance(currency, dict):
+                inventory_block["currency"] = {
+                    "gold": int(currency.get("gold", 0) or 0),
+                    "silver": int(currency.get("silver", 0) or 0),
+                    "copper": int(currency.get("copper", 0) or 0),
+                }
+
+            ammunition = character_data.get("ammunition", [])
+            ammo_summary = []
+            if isinstance(ammunition, list):
+                for ammo_item in ammunition[:10]:
+                    if not isinstance(ammo_item, dict):
+                        continue
+                    ammo_name = ammo_item.get("name", "Unknown")
+                    ammo_quantity = ammo_item.get("quantity", 0)
+                    ammo_summary.append(
+                        {
+                            "name": str(ammo_name),
+                            "quantity": ammo_quantity,
+                        }
+                    )
+            if ammo_summary:
+                inventory_block["ammunition"] = ammo_summary
+
+            if inventory_block:
+                pack["inventory"] = inventory_block
+
+        truth_packs.append(pack)
+
+    return truth_packs
+
 def validate_combat_response(response, encounter_data, user_input, conversation_history=None, multi_pc_manager=None):
     """
     Validate a combat response for accuracy in HP tracking, combat flow, etc.
@@ -799,12 +1034,9 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
     # Load validation prompt from file (using toggle for compressed vs original)
     from model_config import USE_COMPRESSED_COMBAT, COMBAT_API_TIMEOUT_SECONDS
     if multi_pc_manager:
-        if USE_COMPRESSED_COMBAT:
-            validation_prompt = read_prompt_from_file('combat/combat_validation_prompt_multipc_compressed.txt')
-            debug("Using compressed multi-pc validation prompt", category="combat_validation")
-        else:
-            validation_prompt = read_prompt_from_file('combat/combat_validation_prompt_multipc.txt')
-            debug("Using original multi-pc validation prompt", category="combat_validation")
+        # TABLETOP MODE: Multi-PC validation prompt authority is compressed-only.
+        validation_prompt = read_prompt_from_file('combat/combat_validation_prompt_multipc_compressed.txt')
+        debug("Using compressed multi-pc validation prompt", category="combat_validation")
     else:
         if USE_COMPRESSED_COMBAT:
             validation_prompt = read_prompt_from_file('combat/combat_validation_prompt_compressed.txt')
@@ -823,65 +1055,159 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
     num_creatures = len(encounter_data.get("creatures", []))
     debug(f"VALIDATION: Using fixed context ({context_pairs} pairs) for encounter with {num_creatures} creatures", category="combat_validation")
     
-    # Add previous user/assistant pairs for context with compression
+    # Add previous user/assistant pairs for context with threshold-based compression
+    context_messages = []
     if conversation_history and len(conversation_history) > (context_pairs * 2):
         # Get the last 12 messages (6 pairs)
         # +1 to exclude current user input since we'll add it separately
         recent_messages = conversation_history[-(context_pairs * 2 + 1):-1]
-        
+
         # Filter to only user/assistant messages (no system messages)
         context_messages = [
-            msg for msg in recent_messages 
+            msg for msg in recent_messages
             if msg["role"] in ["user", "assistant"]
         ][-(context_pairs * 2):]  # Ensure we only get exactly 12 messages
-        
-        # Apply compression to user messages except the last 2
-        compressed_context = []
-        user_message_count = 0
-        total_user_messages = sum(1 for msg in context_messages if msg["role"] == "user")
-        
-        for msg in context_messages:
-            if msg["role"] == "user":
-                user_message_count += 1
-                # Compress all user messages except the last 2
-                if user_message_count <= total_user_messages - 2:
-                    # Check if this is a combat message that should be compressed
-                    if combat_message_compressor.should_compress_user_message(msg, 0, 999):  # Use dummy index since we're just checking content
-                        compressed_content = combat_message_compressor.compress_message((0, msg["content"]))[1]
-                        compressed_context.append({
-                            "role": "user",
-                            "content": compressed_content
-                        })
-                        debug(f"VALIDATION: Compressed user message {user_message_count}/{total_user_messages}", category="combat_validation")
-                    else:
-                        # Not a combat message, keep as-is
-                        compressed_context.append(msg)
-                else:
-                    # Keep last 2 user messages uncompressed
-                    compressed_context.append(msg)
-                    debug(f"VALIDATION: Keeping user message {user_message_count}/{total_user_messages} uncompressed", category="combat_validation")
-            else:
-                # Keep assistant messages as-is
-                compressed_context.append(msg)
-        
-        # Add context header and compressed messages
-        validation_conversation.append({
-            "role": "system", 
-            "content": f"=== PREVIOUS COMBAT CONTEXT (last {context_pairs} exchanges with compression) ==="
-        })
-        validation_conversation.extend(compressed_context)
-    
-    # Add current validation data BEFORE the response to validate
-    validation_conversation.extend([
+
+    current_validation_entries = [
         {"role": "system", "content": "=== CURRENT VALIDATION DATA ==="},
-        {"role": "system", "content": f"Encounter Data:\n{json.dumps(encounter_data, indent=2)}"}
-    ])
-    
-    # Now add the user input and AI response to validate
-    validation_conversation.extend([
+        {"role": "system", "content": f"Encounter Data:\n{json.dumps(encounter_data, indent=2)}"},
         {"role": "user", "content": f"Player Input: {user_input}"},
-        {"role": "assistant", "content": response}
-    ])
+        {"role": "assistant", "content": response},
+    ]
+
+    truth_pack_entries = []
+    try:
+        response_json_for_truth_pack = parse_json_safely(response)
+        touched_truth_pack = _build_compact_combat_truth_pack(
+            response_json_for_truth_pack,
+            encounter_data,
+        )
+        if touched_truth_pack:
+            truth_pack_entries = [
+                {"role": "system", "content": "=== TOUCHED COMBATANT TRUTH PACK ==="},
+                {
+                    "role": "system",
+                    "content": json.dumps(touched_truth_pack, indent=2, ensure_ascii=True),
+                },
+            ]
+    except Exception as truth_pack_error:
+        debug(f"VALIDATION: Skipping truth pack due to error: {truth_pack_error}", category="combat_validation")
+
+    validation_preview = list(validation_conversation)
+    if context_messages:
+        validation_preview.append({
+            "role": "system",
+            "content": f"=== PREVIOUS COMBAT CONTEXT (last {context_pairs} exchanges) ===",
+        })
+        validation_preview.extend(context_messages)
+    validation_preview.extend(truth_pack_entries)
+    validation_preview.extend(current_validation_entries)
+
+    validation_payload_chars = sum(len(json.dumps(msg)) for msg in validation_preview)
+    use_validation_compression = False
+    compression_reason = "decision_helper_default_uncompressed"
+    try:
+        use_validation_compression, compression_reason = get_validation_compression_decision(
+            total_chars=validation_payload_chars,
+            compression_enabled=COMPRESSION_ENABLED,
+            threshold_chars=VALIDATION_COMPRESSION_MIN_CHARS,
+        )
+    except Exception as compression_decision_error:
+        use_validation_compression = False
+        compression_reason = "decision_helper_error_default_uncompressed"
+        debug(
+            f"VALIDATION: Compression decision helper failed; using uncompressed fallback. Error: {compression_decision_error}",
+            category="combat_validation",
+        )
+
+    used_validation_compression = False
+    if context_messages:
+        if use_validation_compression:
+            try:
+                # Compress user messages except the last two user turns.
+                compressed_context = []
+                user_message_count = 0
+                total_user_messages = sum(1 for msg in context_messages if msg["role"] == "user")
+
+                for msg in context_messages:
+                    if msg["role"] == "user":
+                        user_message_count += 1
+                        if user_message_count <= total_user_messages - 2:
+                            if combat_message_compressor.should_compress_user_message(msg, 0, 999):
+                                compressed_content = combat_message_compressor.compress_message((0, msg["content"]))[1]
+                                compressed_context.append({
+                                    "role": "user",
+                                    "content": compressed_content,
+                                })
+                                debug(
+                                    f"VALIDATION: Compressed user message {user_message_count}/{total_user_messages}",
+                                    category="combat_validation",
+                                )
+                            else:
+                                compressed_context.append(msg)
+                        else:
+                            compressed_context.append(msg)
+                            debug(
+                                f"VALIDATION: Keeping user message {user_message_count}/{total_user_messages} uncompressed",
+                                category="combat_validation",
+                            )
+                    else:
+                        compressed_context.append(msg)
+
+                validation_conversation.append({
+                    "role": "system",
+                    "content": f"=== PREVIOUS COMBAT CONTEXT (last {context_pairs} exchanges with compression) ===",
+                })
+                validation_conversation.extend(compressed_context)
+                used_validation_compression = True
+            except Exception as compression_apply_error:
+                compression_reason = "compression_apply_error_fallback_uncompressed"
+                use_validation_compression = False
+                used_validation_compression = False
+                debug(
+                    f"VALIDATION: Compression apply failed; falling back to uncompressed context. Error: {compression_apply_error}",
+                    category="combat_validation",
+                )
+                validation_conversation.append({
+                    "role": "system",
+                    "content": f"=== PREVIOUS COMBAT CONTEXT (last {context_pairs} exchanges) ===",
+                })
+                validation_conversation.extend(context_messages)
+        else:
+            validation_conversation.append({
+                "role": "system",
+                "content": f"=== PREVIOUS COMBAT CONTEXT (last {context_pairs} exchanges) ===",
+            })
+            validation_conversation.extend(context_messages)
+
+    validation_conversation.extend(truth_pack_entries)
+    validation_conversation.extend(current_validation_entries)
+
+    validation_routing_telemetry = {
+        "skip_llm_validation": False,
+        "skip_reason": "combat_full_validation",
+        "used_validation_compression": bool(used_validation_compression),
+        "compression_reason": str(compression_reason),
+        "validation_payload_chars": int(validation_payload_chars),
+    }
+    try:
+        validation_routing_telemetry = build_validation_routing_telemetry(
+            skip_llm_validation=False,
+            skip_reason="combat_full_validation",
+            used_validation_compression=used_validation_compression,
+            compression_reason=compression_reason,
+            validation_payload_chars=validation_payload_chars,
+        )
+    except Exception as telemetry_build_error:
+        validation_routing_telemetry["compression_reason"] = "telemetry_builder_error_fallback"
+        debug(
+            f"VALIDATION: Telemetry helper failed; using fallback telemetry payload. Error: {telemetry_build_error}",
+            category="combat_validation",
+        )
+    debug(
+        f"VALIDATION_ROUTING_TELEMETRY: {json.dumps(validation_routing_telemetry)}",
+        category="combat_validation",
+    )
 
     # Export validation conversation for review
     with open("validation_messages_to_api.json", "w", encoding="utf-8") as f:
@@ -2360,8 +2686,8 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
         is_multipc = MULTI_PC_COMBAT_AVAILABLE and is_multi_pc_combat_enabled()
         
         if is_multipc:
-            # Switch to the new rebuilt prompt for multi-PC
-            prompt_file = 'combat/combat_sim_prompt_multipc.txt'
+            # TABLETOP MODE: Multi-PC sim prompt authority is compressed-only.
+            prompt_file = 'combat/combat_sim_prompt_multipc_compressed.txt'
             debug(f"[COMBAT_MANAGER] Loading Multi-PC system prompt: {prompt_file}", category="combat_events")
 
         system_prompt = read_prompt_from_file(prompt_file)
@@ -2917,14 +3243,22 @@ Player: {initial_prompt_text}"""
             max_retries = 3
             initial_response = None
             initial_conversation_length = len(conversation_history)
+            initial_retry_feedback_note = None
             
             for attempt in range(max_retries):
                 try:
                     # Calculate temperature with attempt number for dynamic adjustment
                     temperature_used = get_combat_temperature(encounter_data, validation_attempt=attempt)
+
+                    retry_local_history = list(conversation_history)
+                    if initial_retry_feedback_note:
+                        retry_local_history.append({
+                            "role": "user",
+                            "content": initial_retry_feedback_note,
+                        })
                     
                     # Compress conversation history before sending to AI
-                    messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
+                    messages_to_send = combat_message_compressor.process_combat_conversation(retry_local_history)
                     
                     # Export compressed conversation for review
                     with open("debug/api_captures/combat_messages_to_api.json", "w", encoding="utf-8") as f:
@@ -2946,24 +3280,32 @@ Player: {initial_prompt_text}"""
                             pass
                     
                     initial_response = response.choices[0].message.content.strip()
-                    conversation_history.append({"role": "assistant", "content": initial_response})
+
+                    retry_validation_history = list(retry_local_history)
+                    retry_validation_history.append({"role": "assistant", "content": initial_response})
                     
                     if not is_valid_json(initial_response):
                         if attempt < max_retries - 1:
-                            conversation_history.append({"role": "user", "content": "Invalid JSON format. Please try again."})
+                            initial_retry_feedback_note = "Invalid JSON format. Please try again."
                             continue
                         else: break
 
                     # FIX: Use the correct variable for the user input parameter
                     # PASS MULTI-PC MANAGER FOR INITIAL VALIDATION
-                    validation_result = validate_combat_response(initial_response, encounter_data, initial_prompt_text, conversation_history, multi_pc_manager=multi_pc_manager)
+                    validation_result = validate_combat_response(
+                        initial_response,
+                        encounter_data,
+                        initial_prompt_text,
+                        retry_validation_history,
+                        multi_pc_manager=multi_pc_manager,
+                    )
                     
                     if validation_result is True:
+                        initial_retry_feedback_note = None
                         break
                     else:
                         if attempt < max_retries - 1:
-                            # validation_result is now the full feedback string
-                            conversation_history.append({"role": "user", "content": validation_result})
+                            initial_retry_feedback_note = validation_result
                             continue
                         else: break
                 except Exception as e:
@@ -3957,7 +4299,6 @@ DM_GROUP_ROLL: {dm_group_roll}
 PC_GROUP_ROLL: {pc_group_roll}
 WINNER: {initiative_winner}
 ROUND_STARTS_WITH: {round_starts_with}
-CURRENT_PHASE: {current_phase}
 
 === COMBAT PHASE STATE ===
 CURRENT_PHASE: {current_phase}
@@ -4016,37 +4357,44 @@ Rules:
        ai_response = None
        validation_attempts = []  # Store all validation attempts for logging
        initial_conversation_length = len(conversation_history)  # Mark where validation started
-       
+       retry_feedback_note = None
+
        for attempt in range(max_retries):
            try:
                print(f"[COMBAT_MANAGER] Making AI call for player action (attempt {attempt + 1}/{max_retries})")
                print(f"[COMBAT_MANAGER] Processing player input: {user_input_text[:50]}..." if len(user_input_text) > 50 else f"[COMBAT_MANAGER] Processing player input: {user_input_text}")
-               
+
+               retry_request_history = list(conversation_history)
+               if retry_feedback_note:
+                   retry_request_history.append({
+                       "role": "user",
+                       "content": retry_feedback_note,
+                   })
+
                # Update status to show AI is processing
                try:
                    from core.managers.status_manager import status_manager
                    status_manager.update_status("Combat AI processing your action...", is_processing=True)
                except Exception as e:
                    debug(f"Could not update status: {e}", category="status")
-               
+
                # Import GPT-5 config
                from config import USE_GPT5_MODELS, GPT5_MINI_MODEL, GPT5_USE_HIGH_REASONING_ON_RETRY
-               
+
                if USE_GPT5_MODELS:
                    # GPT-5: Always use mini model, but increase reasoning effort after first failure
                    combat_model = GPT5_MINI_MODEL
-                   
+
                    # After first failure, use high reasoning effort
                    if attempt >= 1 and GPT5_USE_HIGH_REASONING_ON_RETRY:
                        print(f"DEBUG: [COMBAT] GPT-5 - Using HIGH reasoning effort after {attempt} attempts")
-                       # Compress conversation history before sending to AI
-                       messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-                       
+                       messages_to_send = combat_message_compressor.process_combat_conversation(retry_request_history)
+
                        # Export compressed conversation for review
                        with open("combat_messages_to_api.json", "w", encoding="utf-8") as f:
                            json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
                        print(f"DEBUG: [COMBAT] Exported compressed messages to combat_messages_to_api.json")
-                       
+
                        response = client.chat.completions.create(
                            model=combat_model,
                            messages=messages_to_send,
@@ -4055,14 +4403,13 @@ Rules:
                    else:
                        # Default is medium reasoning (no need to specify)
                        print(f"DEBUG: [COMBAT] Using GPT-5 model: {combat_model} (default medium reasoning)")
-                       # Compress conversation history before sending to AI
-                       messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-                       
+                       messages_to_send = combat_message_compressor.process_combat_conversation(retry_request_history)
+
                        # Export compressed conversation for review
                        with open("combat_messages_to_api.json", "w", encoding="utf-8") as f:
                            json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
                        print(f"DEBUG: [COMBAT] Exported compressed messages to combat_messages_to_api.json")
-                       
+
                        response = client.chat.completions.create(
                            model=combat_model,
                            messages=messages_to_send
@@ -4070,54 +4417,49 @@ Rules:
                else:
                    # GPT-4.1: Keep existing temperature escalation
                    temperature_used = get_combat_temperature(encounter_data, validation_attempt=attempt)
-                   
+
                    print(f"DEBUG: [COMBAT] Using GPT-4.1 model: {COMBAT_MAIN_MODEL} (temp: {temperature_used})")
-                   # Compress conversation history before sending to AI
-                   messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-                   
+                   messages_to_send = combat_message_compressor.process_combat_conversation(retry_request_history)
+
                    # Export compressed conversation for review
                    with open("combat_messages_to_api.json", "w", encoding="utf-8") as f:
                        json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
                    print(f"DEBUG: [COMBAT] Exported compressed messages to combat_messages_to_api.json")
-                   
+
                    response = client.chat.completions.create(
                        model=COMBAT_MAIN_MODEL,
                        temperature=temperature_used,
                        messages=messages_to_send,
-                        timeout=COMBAT_API_TIMEOUT_SECONDS  # TABLETOP MODE: Prevent indefinite hang
+                       timeout=COMBAT_API_TIMEOUT_SECONDS  # TABLETOP MODE: Prevent indefinite hang
                    )
-               
+
                # Track usage
                if USAGE_TRACKING_AVAILABLE:
                    try:
                        track_response(response)
-                   except:
+                   except Exception:
                        pass  # Silently ignore tracking errors
-               
+
                ai_response = response.choices[0].message.content.strip()
-               
+
                print(f"[COMBAT_MANAGER] AI response received ({len(ai_response)} chars)")
-               
-               
+
                # Write raw response to debug file
                os.makedirs("debug", exist_ok=True)
                with open("debug/debug_ai_response.json", "w") as debug_file:
                    json.dump({"raw_ai_response": ai_response}, debug_file, indent=2)
-               
-               # Temporarily add AI response for validation context
-               conversation_history.append({"role": "assistant", "content": ai_response})
-               
+
+               # Keep retry context local (do not persist validation chatter in canonical history).
+               retry_validation_history = list(retry_request_history)
+               retry_validation_history.append({"role": "assistant", "content": ai_response})
+
                # Check if the response is valid JSON
                if not is_valid_json(ai_response):
                    debug(f"VALIDATION: Invalid JSON response from AI (Attempt {attempt + 1}/{max_retries})", category="combat_validation")
                    if attempt < max_retries - 1:
-                       # Add error feedback temporarily for next attempt
+                       # Keep invalid JSON correction local to retry flow.
                        error_msg = "Your previous response was not a valid JSON object with 'narration' and 'actions' fields. Please provide a valid JSON response."
-                       conversation_history.append({
-                           "role": "user",
-                           "content": error_msg
-                       })
-                       # Log this validation attempt
+                       retry_feedback_note = error_msg
                        validation_attempts.append({
                            "attempt": attempt + 1,
                            "assistant_response": ai_response,
@@ -4126,26 +4468,21 @@ Rules:
                            "temperature_used": temperature_used
                        })
                        continue
-                   else:
-                       warning("VALIDATION: Max retries exceeded for JSON validation. Skipping this response.", category="combat_validation")
-                       break
-               
+                   warning("VALIDATION: Max retries exceeded for JSON validation. Skipping this response.", category="combat_validation")
+                   break
+
                # Parse the JSON response
                parsed_response = json.loads(ai_response)
                narration = parsed_response["narration"]
                actions = parsed_response["actions"]
-               
+
                # Check for multiple updateEncounter actions
                if check_multiple_update_encounter(actions):
                    debug(f"VALIDATION: Multiple updateEncounter actions detected (Attempt {attempt + 1}/{max_retries})", category="combat_validation")
                    if attempt < max_retries - 1:
-                       # Add requery feedback for next attempt
+                       # Keep requery correction local to retry flow.
                        requery_msg = create_multiple_update_requery_prompt(parsed_response)
-                       conversation_history.append({
-                           "role": "user",
-                           "content": requery_msg
-                       })
-                       # Log this validation attempt
+                       retry_feedback_note = requery_msg
                        validation_attempts.append({
                            "attempt": attempt + 1,
                            "assistant_response": ai_response,
@@ -4154,19 +4491,18 @@ Rules:
                            "temperature_used": temperature_used
                        })
                        continue
-                   else:
-                       warning("VALIDATION: Max retries exceeded for multiple updateEncounter correction. Using last response.", category="combat_validation")
-               
+                   warning("VALIDATION: Max retries exceeded for multiple updateEncounter correction. Using last response.", category="combat_validation")
+
                # Validate the combat logic
                print(f"[COMBAT_MANAGER] Validating combat response (Attempt {attempt + 1}/{max_retries})")
-               
+
                # Update status to show validation is happening
                try:
                    from core.managers.status_manager import status_manager
                    status_manager.update_status("Validating combat actions...", is_processing=True)
                except Exception as e:
                    debug(f"Could not update status: {e}", category="status")
-               
+
                # ---------------------------------------------------------
                # NEW VALIDATION STEP: Combatant Integrity Check
                # ---------------------------------------------------------
@@ -4179,16 +4515,12 @@ Rules:
                    party_tracker_data=party_tracker_data,
                )
                if integrity_check is not True:
-                   # Integrity check failed
                    debug(f"VALIDATION: Combatant Integrity Failed (Attempt {attempt + 1}/{max_retries})", category="combat_validation")
                    debug(f"INTEGRITY_FAIL: {integrity_check}", category="combat_validation")
-                   
+
                    if attempt < max_retries - 1:
-                       # Add error feedback
-                       conversation_history.append({
-                           "role": "user",
-                           "content": integrity_check
-                       })
+                       # Keep integrity correction local to retry flow.
+                       retry_feedback_note = integrity_check
                        validation_attempts.append({
                            "attempt": attempt + 1,
                            "assistant_response": ai_response,
@@ -4197,53 +4529,51 @@ Rules:
                            "temperature_used": temperature_used
                        })
                        continue
-                   else:
-                       warning("VALIDATION: Max retries exceeded for Integrity Check. Skipping.", category="combat_validation")
-                       break
+                   warning("VALIDATION: Max retries exceeded for Integrity Check. Skipping.", category="combat_validation")
+                   break
                # ---------------------------------------------------------
 
                # PASS MULTI-PC MANAGER FOR VALIDATION GUARDRAIL
-               validation_result = validate_combat_response(ai_response, encounter_data, user_input_text, conversation_history, multi_pc_manager=multi_pc_manager)
-               
+               validation_result = validate_combat_response(
+                   ai_response,
+                   encounter_data,
+                   user_input_text,
+                   retry_validation_history,
+                   multi_pc_manager=multi_pc_manager,
+               )
+
                if validation_result is True:
                    valid_response = True
+                   retry_feedback_note = None
                    print(f"[COMBAT_MANAGER] Combat response validation PASSED on attempt {attempt + 1}")
                    debug(f"SUCCESS: Response validated successfully on attempt {attempt + 1}", category="combat_validation")
                    break
-               else:
-                   debug(f"VALIDATION: Response validation failed (Attempt {attempt + 1}/{max_retries})", category="combat_validation")
-                   
-                   # The validation result is now the full feedback string
-                   feedback = validation_result
-                   
-                   # Log the specific validation failure for debugging
-                   debug(f"VALIDATION_ATTEMPT: {attempt + 1} failed", category="combat_validation")
-                   
-                   if attempt < max_retries - 1:
-                       # Add error feedback temporarily for next attempt
-                       conversation_history.append({
-                           "role": "user",
-                           "content": feedback
-                       })
-                       # Log this validation attempt
-                       validation_attempts.append({
-                           "attempt": attempt + 1,
-                           "assistant_response": ai_response,
-                           "validation_error": feedback,
-                           "error_type": "combat_logic",
-                           "temperature_used": temperature_used
-                       })
-                       continue
-                   else:
-                       warning("VALIDATION: Max retries exceeded for combat validation. Using last response.", category="combat_validation")
-                       break
+
+               debug(f"VALIDATION: Response validation failed (Attempt {attempt + 1}/{max_retries})", category="combat_validation")
+               feedback = validation_result
+               debug(f"VALIDATION_ATTEMPT: {attempt + 1} failed", category="combat_validation")
+
+               if attempt < max_retries - 1:
+                   # Keep validation correction local to retry flow.
+                   retry_feedback_note = feedback
+                   validation_attempts.append({
+                       "attempt": attempt + 1,
+                       "assistant_response": ai_response,
+                       "validation_error": feedback,
+                       "error_type": "combat_logic",
+                       "temperature_used": temperature_used
+                   })
+                   continue
+
+               warning("VALIDATION: Max retries exceeded for combat validation. Using last response.", category="combat_validation")
+               break
+
            except Exception as e:
                error(f"FAILURE: Failed to get or validate AI response (Attempt {attempt + 1}/{max_retries})", exception=e, category="combat_events")
                if attempt < max_retries - 1:
                    continue
-               else:
-                   warning("VALIDATION: Max retries exceeded. Skipping this response.", category="combat_validation")
-                   break
+               warning("VALIDATION: Max retries exceeded. Skipping this response.", category="combat_validation")
+               break
        
        # Clean up conversation history based on validation outcome
        if valid_response or ai_response:

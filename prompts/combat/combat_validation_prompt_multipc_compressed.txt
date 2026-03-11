@@ -30,6 +30,21 @@
   plan_required: "Plan REQUIRED when turn_window present; must echo order and routing"
 }
 
+@VALIDATION_PRIORITY={
+  sequence: [
+    "1) JSON shape present and ASCII only",
+    "2) Required fields present",
+    "3) Initiative order adherence and [>] marker respect",
+    "4) Batch Enemy Phase completion (process all pending enemies before [>] PC)",
+    "5) Player interaction 2-step validated",
+    "6) HP/status/round accounting is consistent and not premature",
+    "7) Preroll usage is legal (correct pools, sequential, PCs never use prerolls)",
+    "8) Action routing and parameter keys are correct",
+    "9) Exit correctness (must exit when all enemies are resolved)",
+    "10) Exactly ONE updateEncounter consolidates enemy state changes"
+  ]
+}
+
 @MAJOR_ISSUES={
   hp_tracking: "Damage must be applied immediately and consistently; track until death",
   death_detection: "HP <= 0 -> creature is dead; it cannot act further",
@@ -209,14 +224,6 @@
   ]
 }
 
-@PREROLL_CHECKLIST={
-  npc_attack_saves: "Use d20 prerolls ONLY for NPC/monster attacks and saves",
-  npc_damage: "Use generic damage pools for NPC/monster damage",
-  pc_rolls: "PCs must provide all their rolls",
-  order: "Consume prerolls in order; do not reuse",
-  invalid: "Any PC action resolved with prerolls is INVALID"
-}
-
 @ROUND_EXAMPLES_GUIDE={
   invalid_advancement_example_multipc: "Round set to 2 when not all creatures (including all PCs) acted in Round 1",
   correct_advancement_example_multipc: "Round set to 3 only after every living creature (including all PCs) finished Round 2"
@@ -244,25 +251,8 @@
   ]
 }
 
-@CHECK_ORDER={
-  sequence: [
-    "1) JSON shape present and ASCII only",
-    "2) Required fields present",
-    "3) Plan aligns with known state (if present)",
-    "4) Initiative order adherence and [>] marker respect",
-    "5) Batch Enemy Phase completion (Process ALL pending enemies before [>] PC)",
-    "6) Player interaction 2-step validated",
-    "7) HP math correct after each damage; deaths flagged",
-    "8) Round tracking: no premature increment; boundary handled",
-    "9) Preroll usage: correct pools, sequential, PCs never use",
-    "10) Action typing and entity targeting correct",
-    "11) Exit correctness: MUST exit when all enemies dead/defeated; flag if missing",
-    "12) ONE updateEncounter rule: all enemy changes consolidated"
-  ]
-}
-
 @DECISION={
-  set_valid_true_if: "All checks in @CHECK_ORDER pass",
+  set_valid_true_if: "All checks in @VALIDATION_PRIORITY.sequence pass",
   else_false: "If any check fails, valid=false and include negative + recommendation"
 }
 

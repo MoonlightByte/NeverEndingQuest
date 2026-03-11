@@ -1021,6 +1021,46 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Combat Runtime Authority and Efficiency Refactor (COMPLETED - 2026-03-11)
+
+**Status:** COMPLETED - OpenSpec change archived and main specs synchronized
+
+**OpenSpec Archive:**
+- `openspec/changes/archive/2026-03-11-combat-runtime-authority-and-efficiency/`
+
+**Objective:**
+Apply narrator-style prompt/validator hardening patterns to combat manager runtime and validation flow while preserving vivid narration, tactical enemy competence, phase integrity, and 5e accounting.
+
+**Implementation Summary:**
+- Multi-PC combat prompt authority locked to compressed runtime sources in `core/managers/combat_manager.py`.
+- Added contract/regression test coverage for prompt authority, payload hygiene, validation routing telemetry, truth-pack behavior, and retry hygiene.
+- Reduced runtime payload duplication (single authoritative `CURRENT_PHASE` emission in multi-PC context).
+- Reordered/slimmed compressed combat sim and validation prompts so hard constraints/authority precede flavor guidance.
+- Added threshold-based validation compression routing and deterministic telemetry (`validation_payload_chars`, `compression_reason`, `validation_routing_telemetry`).
+- Added compact touched-combatant truth packs for PC/allied `updateCharacterInfo` validation context with inventory/ammo relevance gating.
+- Added fail-open helper fallbacks for truth-pack assembly, compression decision/apply, and telemetry construction.
+- Refactored retry flow so validation correction notes remain retry-local instead of persisting as canonical user turns in combat history.
+
+**Verification:**
+- `python3 scripts/test_combat_runtime_prompt_authority.py` -> PASS (7/7)
+- `python3 scripts/test_combat_payload_hygiene.py` -> PASS (4/4)
+- `python3 scripts/test_combat_validation_routing.py` -> PASS (11/11)
+- `python3 scripts/test_combat_truth_pack.py` -> PASS (5/5)
+- `python3 scripts/test_combat_retry_hygiene.py` -> PASS (3/3)
+- `python3 scripts/test_multi_pc_combat.py` -> PASS (43/43)
+- `python3 scripts/c5_regression_combat.py` -> PASS (32/32)
+- `openspec validate combat-runtime-authority-and-efficiency` -> VALID
+
+**Spec Sync:**
+- `openspec/specs/tt-combat-context-packet-efficiency/spec.md` (new)
+- `openspec/specs/tt-combat-runtime-prompt-authority/spec.md` (new)
+- `openspec/specs/tt-combat-validation-efficiency-routing/spec.md` (new)
+- `openspec/specs/tt-combat-validation-retry-hygiene/spec.md` (new)
+- `openspec/specs/tt-combat-validator-mechanical-truth-pack/spec.md` (new)
+
+**ADR Impact:**
+- No new ADR required. Changes harden existing combat runtime/validation contracts without introducing a new durable architecture decision boundary.
+
 ### Prompt/Validator Refactor Completion (A1-A8) (COMPLETED - 2026-03-10)
 
 **Status:** COMPLETED - OpenSpec change chain archived and specs synchronized
@@ -1036,7 +1076,7 @@ character_data["is_active_pc"] = True
 - `openspec/changes/archive/2026-03-10-prompt-validator-expanded-deterministic-guards/`
 
 **Objective:**
-Complete the phased prompt/validator hardening plan in `plans/prompt-validator-fix.md` by finishing canonical compressed-prompt authority, deterministic mechanics and guard rails, validator routing/performance controls, structured update contracts, and explicit save/concentration contracts.
+Complete the phased prompt/validator hardening plan in `plans/archive/prompt-validator-fix.md` by finishing canonical compressed-prompt authority, deterministic mechanics and guard rails, validator routing/performance controls, structured update contracts, and explicit save/concentration contracts.
 
 **Implementation Summary:**
 - Canonical runtime source enforced for compressed prompts and validation ordering hardened.
