@@ -22,17 +22,34 @@ The target end state is:
 ## Status
 
 - Status: Completed (implemented via archived OpenSpec workstreams through 2026-03-11)
+- Archive Status: Completed and archived (Workstream I archive: `openspec/changes/archive/2026-03-11-combat-encounter-ops-second-wave/`)
 - Priority: High
 - Scope: Multi-PC combat prompt, combat validator, combat runtime context assembly, combat validation routing, and structured PC/allied combat mechanics updates
 - Risk: Medium to High if attempted as one large patch
 - Recommended rollout: incremental, phase-gated
+
+### Completion Snapshot (2026-03-11)
+
+This refactor plan is fully implemented.
+
+- Workstream A-D/E runtime-authority + validation modernization completed and archived in the March combat change set.
+- Workstream F (`combat-structured-pc-allied-ops-pilot`) completed and archived.
+- Workstream G (`combat-save-concentration-contract`) completed and archived.
+- Workstream H (`combat-expanded-deterministic-guards`) completed and archived.
+- Workstream I (`combat-encounter-ops-second-wave`) completed and archived.
+
+Net result:
+
+- Python-owned legality/accounting contract is enforced for both PC/allied and enemy combat mutation routes.
+- Prompt/validator/runtime routing is aligned on mixed `changes + ops` preference with fail-open prose compatibility fallback.
+- Tactical narration flexibility remains LLM-owned within Python-defined combat reality.
 
 ## Explicit Scope Decision
 
 This plan adopts the recommended lower-risk path:
 
 - Phase 1 structured mechanics target: `updateCharacterInfo.ops`
-- Deferred target: `updateEncounter.ops`
+- Deferred target: `updateEncounter.ops` (completed in Workstream I archive)
 
 That means the first structured-mechanics slice focuses on:
 
@@ -558,19 +575,19 @@ Tighten combat legality only after telemetry confirms low false-positive rates.
 - lower mechanics hallucination surface,
 - preserved tactical/narrative freedom where explicit contradiction is absent.
 
-## Workstream I - Deferred Second-Wave Encounter Ops
+## Workstream I - Encounter Ops Second Wave (Completed)
 
-### Objective
+### Objective (Completed)
 
-Document the intentionally deferred follow-up slice.
+Complete the intentionally deferred follow-up slice.
 
-### Deferred Scope
+### Scope Implemented
 
 - additive `updateEncounter.ops`,
 - deterministic enemy state application,
 - further reduction of enemy-side prose update strings.
 
-### Why Deferred
+### Why It Was Deferred
 
 Because the highest-value first move is to:
 
@@ -750,9 +767,12 @@ Keep green:
 - add more bounded deterministic legality checks,
 - tighten only after telemetry confirms safe behavior.
 
-### Phase 7 - Deferred Second-Wave Encounter Ops
+### Phase 7 - Encounter Ops Second-Wave (Completed)
 
-- revisit `updateEncounter.ops` after the first-wave architecture is stable.
+- implemented mixed enemy `updateEncounter` payload preference (`changes + ops`),
+- implemented narrow deterministic enemy ops (`hp_delta`, `set_hp`, `condition_add`, `condition_remove`, `set_status`),
+- preserved prose compatibility fallback and strict routing separation,
+- archived as `openspec/changes/archive/2026-03-11-combat-encounter-ops-second-wave/`.
 
 ## Recommended First Build Slice
 
