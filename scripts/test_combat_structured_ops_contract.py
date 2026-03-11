@@ -33,26 +33,51 @@ SUPPORTED_COMBAT_OPS = {
 }
 
 
+def _resolve_archived_or_live_change_root(change_slug: str) -> str:
+    """Resolve an OpenSpec change root from live or archived paths."""
+    live_root = os.path.join(REPO_ROOT, "openspec", "changes", change_slug)
+    if os.path.isdir(live_root):
+        return live_root
+
+    archive_root = os.path.join(REPO_ROOT, "openspec", "changes", "archive")
+    if os.path.isdir(archive_root):
+        for entry in sorted(os.listdir(archive_root), reverse=True):
+            if entry.endswith(change_slug):
+                candidate = os.path.join(archive_root, entry)
+                if os.path.isdir(candidate):
+                    return candidate
+
+    raise FileNotFoundError(f"OpenSpec change not found (live or archive): {change_slug}")
+
+
+def _resolve_main_or_delta_spec(spec_slug: str, change_root: str) -> str:
+    """Prefer main synced spec path; fall back to change-local delta spec."""
+    main_spec = os.path.join(REPO_ROOT, "openspec", "specs", spec_slug, "spec.md")
+    if os.path.exists(main_spec):
+        return main_spec
+
+    delta_spec = os.path.join(change_root, "specs", spec_slug, "spec.md")
+    if os.path.exists(delta_spec):
+        return delta_spec
+
+    raise FileNotFoundError(f"Spec not found in main or delta paths: {spec_slug}")
+
+
 class TestCombatStructuredOpsOpenSpecContracts(unittest.TestCase):
     """Lock OpenSpec artifacts for the combat structured-ops pilot."""
 
     @classmethod
     def setUpClass(cls):
-        change_root = os.path.join(
-            REPO_ROOT,
-            "openspec",
-            "changes",
-            "combat-structured-pc-allied-ops-pilot",
+        change_root = _resolve_archived_or_live_change_root(
+            "combat-structured-pc-allied-ops-pilot"
         )
         cls.paths = {
             "proposal": os.path.join(change_root, "proposal.md"),
             "design": os.path.join(change_root, "design.md"),
             "tasks": os.path.join(change_root, "tasks.md"),
-            "spec": os.path.join(
-                change_root,
-                "specs",
+            "spec": _resolve_main_or_delta_spec(
                 "tt-combat-structured-character-ops-routing",
-                "spec.md",
+                change_root,
             ),
         }
         cls.content = {}
@@ -189,13 +214,10 @@ class TestCombatStructuredOpsCompatibilityContracts(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        change_tasks = os.path.join(
-            REPO_ROOT,
-            "openspec",
-            "changes",
-            "combat-structured-pc-allied-ops-pilot",
-            "tasks.md",
+        change_root = _resolve_archived_or_live_change_root(
+            "combat-structured-pc-allied-ops-pilot"
         )
+        change_tasks = os.path.join(change_root, "tasks.md")
         with open(change_tasks, "r", encoding="utf-8") as file_handle:
             cls.tasks_content = file_handle.read()
 

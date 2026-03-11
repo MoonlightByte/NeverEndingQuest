@@ -154,16 +154,18 @@
 
 @ACTION_TYPES={
   updateCharacterInfo: "PCs and allied/neutral NPCs ONLY (MUST use 'characterName' parameter, NOT 'character'). Prefer mixed payloads with BOTH changes and ops for combat mechanics; changes-only remains compatibility-valid during migration.",
-  updateEncounter: "Monsters/enemies ONLY (uses changes text; do not introduce updateEncounter.ops in this slice)",
+  updateEncounter: "Monsters/enemies ONLY. Prefer mixed payloads with BOTH changes and ops for supported enemy HP/status/condition mechanics; changes-only remains compatibility-valid during migration.",
   requestRoll: "Preferred for player-facing saving throws, ability checks, skill checks, and concentration saves. Response MUST stop after issuing requestRoll.",
   never_cross: "Do not use updateCharacterInfo for monsters; do not use updateEncounter for PCs/NPCs",
   consolidation_rule: "EXACTLY ONE updateEncounter per response consolidating ALL enemy STATE changes (HP/status/conditions of enemies only). Multiple updateCharacterInfo actions for different PCs/NPCs damaged during the same enemy phase is VALID and REQUIRED.",
   allied_npc_ammo: "If an allied NPC fires a ranged weapon, prefer inventory_remove ops for ammo expenditure and keep a prose mirror in changes",
   ops_authority: "When supported ops are present on updateCharacterInfo, treat ops as authoritative mechanics payload and changes as readable mirror.",
+  encounter_ops_authority: "When supported ops are present on updateEncounter, treat ops as authoritative mechanics payload and changes as readable mirror.",
   supported_ops: ["hp_delta","set_hp","spell_slot_delta","condition_add","condition_remove","inventory_remove","inventory_add"],
+  supported_encounter_ops: ["hp_delta","set_hp","condition_add","condition_remove","set_status"],
   parameter_validation: {
     updateCharacterInfo: "Invalid if uses 'character' instead of 'characterName' as parameter key. ops is optional and allowed.",
-    updateEncounter: "Must use 'encounterId' and 'changes' as parameter keys",
+    updateEncounter: "Must use 'encounterId' and 'changes' as parameter keys. ops is optional and preferred for supported enemy mechanics updates.",
     requestRoll: "Must include characterName, rollType, dc, reason. ability required for saving_throw/ability_check. skill required for skill_check. advantage optional."
   },
   accept_text_patterns: ["HP <old>-><new>", "Takes <num> <type>", "reduce hp by <num>"]
@@ -172,6 +174,9 @@
 @ROUTING_RULES={
   valid_enemy_turn_pc_damage: "Enemy turn that only damages PCs/NPCs: updateEncounter may be housekeeping-only; PC/NPC HP MUST be in updateCharacterInfo.",
   batch_enemy_phase: "When multiple enemies act in batch (after /end OR initiative-driven DM start), expect: ONE updateEncounter consolidating all enemy actions/state + SEPARATE updateCharacterInfo for EACH PC/NPC that took damage. Multiple updateCharacterInfo is correct here, not a consolidation violation.",
+  enemy_mixed_payload_preferred: "For enemy updateEncounter, prefer payloads that include both changes and supported ops.",
+  enemy_prose_fallback: "If supported ops are absent for an enemy update, changes-only updateEncounter remains compatibility-valid during migration.",
+  enemy_ops_fail_open: "Do not reject solely because enemy ops are unsupported/ambiguous if changes provides a valid enemy-state mirror and routing rules are satisfied.",
   mixed_payload_preferred: "For PC/allied updates, prefer updateCharacterInfo payloads that include both changes and supported ops.",
   prose_fallback: "If supported ops are absent for a PC/allied update, changes-only updateCharacterInfo remains compatibility-valid during migration.",
   request_roll_preferred: "For player-facing saves/checks/concentration pauses, prefer requestRoll over prose-only asks during combat.",
@@ -190,7 +195,6 @@
     "updateEncounter.changes mentions a PC/allied NPC name AND any of ['HP','hp','damage','healed','condition','ammo','expended arrow','expended bolt']",
     "updateCharacterInfo applied to enemy",
     "updateEncounter changing PC/NPC HP",
-    "updateEncounter.parameters includes ops",
     "Multiple updateEncounter actions (must be consolidated into ONE)",
     "updateCharacterInfo using 'character' instead of 'characterName' parameter"
   ]
@@ -249,6 +253,8 @@
     "Ending combat with exit when no enemies remain",
     "Updating HP/status immediately after damage",
     "ONE updateEncounter with ALL enemy changes",
+    "Enemy updateEncounter with mixed changes+ops payloads for supported enemy mechanics",
+    "Enemy changes-only updateEncounter as migration fallback",
     "PC/allied updateCharacterInfo with mixed changes+ops payloads",
     "PC/allied changes-only updateCharacterInfo as migration fallback",
     "requestRoll used for player-facing saves/checks/concentration pauses",

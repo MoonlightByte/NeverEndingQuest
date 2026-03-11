@@ -72,7 +72,7 @@ UNACCEPTABLE RESPONSES:
 - Using prerolls for player character actions (players always roll their own dice)
 - Not asking player for action confirmation when prerolls are available
 - Using deprecated updateNPCInfo instead of updateCharacterInfo
-- Using updateCharacterInfo for monsters (should use updateEncounter with text changes)
+- Using updateCharacterInfo for monsters (should use updateEncounter for enemy mutations, with mixed changes+ops preferred for supported enemy mechanics)
 - ROUND TRACKING VIOLATIONS: Incrementing combat_round before all creatures have acted
 - PREMATURE ROUND ADVANCEMENT: Moving to Round 2 when some creatures haven't acted in Round 1
 - INCONSISTENT ROUND NUMBERS: Round number not matching the actual number of completed initiative cycles
@@ -142,8 +142,12 @@ ACTION USAGE VALIDATION:
   - When supported ops are present, treat ops as authoritative mechanics payload and changes as readable mirror.
   - changes-only remains compatibility-valid during migration.
   - Supported combat-facing ops in this slice: hp_delta, set_hp, spell_slot_delta, condition_add, condition_remove, inventory_remove, inventory_add.
-- updateEncounter: ONLY for monsters (uses text description in changes field)
-  - updateEncounter.parameters.ops is out of scope in this slice and should be flagged invalid.
+- updateEncounter: ONLY for monsters/enemies
+  - Prefer mixed payloads with BOTH changes and ops for supported enemy HP/status/condition mechanics.
+  - When supported encounter ops are present, treat ops as authoritative mechanics payload and changes as readable mirror.
+  - changes-only remains compatibility-valid during migration.
+  - Supported enemy encounter ops in this slice: hp_delta, set_hp, condition_add, condition_remove, set_status.
+  - Unsupported or ambiguous encounter ops should preserve safe fallback behavior when changes provides a valid enemy-state mirror.
 - requestRoll: Preferred for player-facing saving throws, ability checks, skill checks, and concentration saves.
   - requestRoll pause contract: response MUST stop after issuing requestRoll.
   - requestRoll same-response contingent outcomes are INVALID.
@@ -155,13 +159,13 @@ ACTION USAGE VALIDATION:
 - Prose-only save/check/concentration asks remain compatibility-valid during migration (requestRoll preferred, not exclusive).
 - NEVER recommend updateCharacterInfo for monsters - it will always fail
 - Example monster update: {"action": "updateEncounter", "parameters": {"encounterId": "XXX", "changes": "Goblin takes 8 damage, HP from 15 to 7"}}
+- Example mixed monster update: {"action": "updateEncounter", "parameters": {"encounterId": "XXX", "changes": "Goblin takes 8 damage (HP 15 -> 7).", "ops": [{"op": "hp_delta", "creature": "Goblin", "delta": -8}]}}
 
 CRITICAL ENTITY TYPE VALIDATION:
 - Check EVERY updateCharacterInfo action: The characterName MUST match a player or NPC in the encounter (type: "player" or "npc")
-- Check EVERY updateEncounter action: The changes MUST describe modifications to monsters/enemies ONLY (type: "enemy")
+- Check EVERY updateEncounter action: The changes MUST describe modifications to monsters/enemies ONLY (type: "enemy"). If ops are present, validate only supported enemy encounter ops for this slice.
 - FLAG AS INVALID: Any updateCharacterInfo targeting a creature with type: "enemy"
 - FLAG AS INVALID: Any updateEncounter attempting to modify player or NPC HP
-- FLAG AS INVALID: Any updateEncounter.parameters.ops usage in this slice
 - FLAG AS INVALID: Mixed entity updates (e.g., one action trying to update both monster and player HP)
 - FLAG AS VALID: Multiple updateCharacterInfo actions for different PCs/NPCs damaged during enemy batch phase. This is REQUIRED, not a consolidation violation. The consolidation rule applies ONLY to updateEncounter (one per response for all enemy state changes).
 
@@ -176,6 +180,9 @@ CORRECT: Use updateEncounter for monsters
 
 VALID - Monster HP update:
 {"action": "updateEncounter", "changes": "Whispering Ashling takes 5 piercing damage from Kira's shortbow (HP 16 -> 11)"}
+
+VALID - Mixed monster updateEncounter payload:
+{"action": "updateEncounter", "parameters": {"encounterId": "Ashling_E1", "changes": "Whispering Ashling takes 5 piercing damage (HP 16 -> 11).", "ops": [{"op": "hp_delta", "creature": "Whispering Ashling", "delta": -5}]}}
 
 VALID - Player HP update:
 {"action": "updateCharacterInfo", "characterName": "eirik_hearthwise", "changes": "Takes 8 necrotic damage from Ashling's touch (HP 21 -> 13)"}

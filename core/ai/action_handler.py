@@ -1489,15 +1489,31 @@ Please use a valid location that exists in the current area ({current_area_id}) 
         debug("STATE_CHANGE: Processing updateEncounter action", category="combat_processing")
         encounter_id = parameters.get("encounterId")
         changes = parameters.get("changes")
-        
-        if encounter_id and changes:
+        ops = parameters.get("ops")
+
+        has_changes_payload = isinstance(changes, str) and bool(changes.strip())
+        has_ops_payload = ops is not None
+
+        if has_ops_payload and not isinstance(ops, list):
+            warning(
+                f"ENCOUNTER_OPS: Invalid ops payload type ({type(ops)}), falling back to changes-only path",
+                category="combat_processing",
+            )
+            ops = None
+            has_ops_payload = False
+
+        if encounter_id and (has_changes_payload or has_ops_payload):
             try:
                 # Import the update_encounter function
                 from updates.update_encounter import update_encounter
-                
+
                 # Update the encounter
-                updated_encounter = update_encounter(encounter_id, changes)
-                
+                updated_encounter = update_encounter(
+                    encounter_id,
+                    changes if has_changes_payload else None,
+                    ops=ops,
+                )
+
                 if updated_encounter:
                     info(f"SUCCESS: Encounter {encounter_id} updated successfully", category="combat_processing")
                     needs_conversation_history_update = True
@@ -1508,7 +1524,10 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 import traceback
                 traceback.print_exc()
         else:
-            print(f"ERROR: Missing required parameters for updateEncounter. encounterId: {encounter_id}, changes: {changes}")
+            print(
+                f"ERROR: Missing required parameters for updateEncounter. "
+                f"encounterId: {encounter_id}, changes: {changes}, ops: {ops}"
+            )
 
     elif action_type == ACTION_CREATE_NEW_MODULE:
         debug("STATE_CHANGE: Processing createNewModule action", category="module_management")

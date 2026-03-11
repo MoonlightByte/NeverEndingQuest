@@ -79,6 +79,8 @@
     "Enemy damaged/healed/status change -> updateEncounter (ONE consolidated action per response)",
     "PC or allied NPC damaged/healed/status change -> updateCharacterInfo (one per affected character)"
   ],
+  enemy_mixed_payload_preferred: "For enemy updateEncounter, prefer parameters with BOTH changes and ops. Keep changes as prose mirror; ops carries authoritative mechanics for supported enemy updates when present.",
+  enemy_prose_fallback: "If supported ops are unavailable for a specific enemy update, changes-only updateEncounter remains compatibility-valid during migration.",
   mixed_payload_preferred: "For PC/allied updateCharacterInfo, prefer parameters with BOTH changes and ops. Keep changes as prose mirror; ops carries authoritative mechanics when present.",
   prose_fallback: "If supported ops are unavailable for a specific PC/allied update, changes-only remains compatibility-valid during migration.",
   NEVER: [
@@ -401,7 +403,7 @@
 
 @ACTIONS={
   pc_or_npc: "updateCharacterInfo (MUST use 'characterName')",
-  enemy: "updateEncounter (enemy changes text only; do not add updateEncounter.ops in this slice)",
+  enemy: "updateEncounter (MUST use 'encounterId'; prefer mixed changes+ops for supported enemy HP/status/condition updates; changes-only remains compatibility-valid during migration)",
   exit: "MANDATORY when all enemies dead/unconscious/defeated (including fled creatures)",
   exit_rule: "Call exit when ALL enemies have status dead/unconscious/defeated - even for trivial encounters, training fights, or when creatures flee peacefully",
   flee_handling: "Creature that successfully escapes battlefield -> status='defeated' -> then call exit when all resolved",
@@ -415,7 +417,7 @@
     status_flee: "Creature flees/escapes -> status='defeated' (not 'fled', 'fleeing', 'escaped')",
     undead: "Narration 'destroyed' -> status 'dead'",
     invalid: "Any PC/NPC update via updateEncounter is INVALID",
-    parameter_keys: "updateCharacterInfo uses 'characterName'. updateEncounter uses 'encounterId' + 'changes' only (no ops field in this slice)"
+    parameter_keys: "updateCharacterInfo uses 'characterName'. updateEncounter uses 'encounterId' + 'changes'; ops is optional and preferred for supported enemy mechanics updates in this slice"
   },
   spell_slot_accounting: "When a PC casts a leveled spell, updateCharacterInfo.changes MUST include 'Expended level [N] spell slot' or 'Expended level [N] spell slot (upcasting from level [M])'",
   healing_deferral: "When a PC casts a healing spell, updateCharacterInfo.changes = 'Casting [spell name], awaiting healing roll'. Do NOT apply healing until dice provided"
@@ -430,9 +432,11 @@
 @UPDATE_RULES={
   updateEncounter: {
     constraint: "ONE action only per response",
-    format: "Consolidate ALL enemy changes into single changes field",
-    no_ops: "Do not include updateEncounter.parameters.ops in this slice",
-    example: "Goblin-1 takes 8 damage (HP 15->7). Goblin-2 takes 12 damage and is now dead (HP 10->-2)."
+    format: "Consolidate ALL enemy changes into single changes field, with optional supported ops for deterministic enemy mechanics updates",
+    required_params: {"encounterId": "exact encounter id", "changes": "ALL enemy changes mirror: HP/status/conditions for enemies", "ops": "optional list; preferred for deterministic enemy mechanics updates in combat"},
+    ops_authority: "When supported ops are present, ops is the authoritative mechanics payload and changes is the readable mirror.",
+    supported_ops: ["hp_delta","set_hp","condition_add","condition_remove","set_status"],
+    example: {"action":"updateEncounter","parameters":{"encounterId":"L05-E2","changes":"Goblin-1 takes 8 damage (HP 15->7). Goblin-2 takes 12 damage and is now dead (HP 10->-2).","ops":[{"op":"hp_delta","creature":"Goblin-1","delta":-8},{"op":"set_hp","creature":"Goblin-2","hp":0},{"op":"set_status","creature":"Goblin-2","status":"dead"}]}}
   },
   updateCharacterInfo: {
     multiple_allowed: "Can have multiple for different PCs/NPCs",

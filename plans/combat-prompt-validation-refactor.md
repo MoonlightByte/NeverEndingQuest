@@ -21,7 +21,7 @@ The target end state is:
 
 ## Status
 
-- Status: Planning only
+- Status: Completed (implemented via archived OpenSpec workstreams through 2026-03-11)
 - Priority: High
 - Scope: Multi-PC combat prompt, combat validator, combat runtime context assembly, combat validation routing, and structured PC/allied combat mechanics updates
 - Risk: Medium to High if attempted as one large patch
@@ -580,6 +580,131 @@ Because the highest-value first move is to:
 - use existing structured character ops for PCs/allies first.
 
 This gives most of the safety and efficiency benefit with lower change risk.
+
+### Completion Role
+
+If kept narrow, this is the capstone slice that completes the combat prompt/validation refactor as scoped in this plan.
+
+The goal is not a new encounter engine. The goal is to bring enemy-side combat mutation routing into the same structured, Python-owned legality model already established for:
+
+- combat prompt authority,
+- combat validation routing and truth packs,
+- PC/allied `updateCharacterInfo.ops`,
+- combat `requestRoll` save/concentration pauses,
+- bounded deterministic legality guards.
+
+When this slice lands successfully, monsters stop being the last major prose-heavy combat mutation path.
+
+### Recommended Narrow Scope
+
+Workstream I should stay focused on enemy-side combat mutation routing only.
+
+Recommended in scope:
+
+- `updateEncounter` payloads that include additive `changes + ops`,
+- deterministic application of supported enemy encounter ops,
+- prompt and validator preference for structured enemy-side mutations,
+- preservation of prose fallback while migration remains in progress,
+- preservation of PC/allied routing on `updateCharacterInfo`.
+
+### Recommended First Enemy Ops Surface
+
+The safest first enemy op family is:
+
+- `hp_delta`
+- `set_hp`
+- `condition_add`
+- `condition_remove`
+- `set_status`
+
+These cover the highest-value enemy-state mutations already expressed repeatedly in combat prose:
+
+- damage and healing,
+- bloodied to defeated transitions,
+- explicit dead/defeated/unconscious states,
+- condition application and removal.
+
+### Still Deferred Inside Workstream I
+
+Even in Workstream I, keep these deferred unless a later follow-up explicitly broadens scope:
+
+- creature spawn/despawn semantics,
+- initiative queue rebuilds or reorder operations,
+- encounter topology changes,
+- broad battlefield-state ops,
+- full enemy mechanics engine behavior,
+- removal of prose fallback.
+
+### Intended Architectural Outcome
+
+This slice should complete the combat refactor by making the architecture symmetrical:
+
+- PCs and allied NPCs prefer structured `updateCharacterInfo.ops`,
+- enemies prefer structured `updateEncounter.ops`,
+- Python owns legality and accounting for both domains,
+- the LLM remains free to supply tactics, target selection, pressure, pacing, and vivid narration within those Python-owned bounds.
+
+The expected result is:
+
+- lower enemy-side hallucination surface,
+- better prompt/validator/runtime contract symmetry,
+- cleaner combat state mutation semantics,
+- moderate additional token savings through reduced prose-heavy enemy mutation guidance,
+- preserved tactical creativity instead of sterile combat narration.
+
+### Primary Risks and Guardrails
+
+#### Risk 1 - Scope expands into an encounter engine rewrite
+
+Guardrail:
+
+- keep the first slice limited to enemy HP, status, and conditions.
+
+#### Risk 2 - Enemy ops drift into PC/allied routing semantics
+
+Guardrail:
+
+- preserve the boundary that enemy-side mutations stay on `updateEncounter` while PC/allied mutations stay on `updateCharacterInfo`.
+
+#### Risk 3 - Prompt examples teach unsupported encounter ops
+
+Guardrail:
+
+- lock examples to the approved first-wave enemy op family only.
+
+#### Risk 4 - Prose fallback is removed before runtime confidence exists
+
+Guardrail:
+
+- keep `changes` compatibility-valid throughout Workstream I.
+
+### Recommended Tests Before Runtime Widening
+
+Add a focused combat suite such as:
+
+- `scripts/test_combat_encounter_ops_contract.py`
+
+That suite should lock:
+
+- enemy-side mixed `changes + ops` preference,
+- preservation of prose-only fallback,
+- routing separation between `updateEncounter` for enemies and `updateCharacterInfo` for PCs/allies,
+- supported first-wave enemy ops (`hp_delta`, `set_hp`, `condition_add`, `condition_remove`, `set_status`),
+- fail-open behavior for partial, unsupported, or ambiguous enemy ops payloads.
+
+Keep green:
+
+- `scripts/test_multi_pc_combat.py`
+- `scripts/c5_regression_combat.py`
+- existing PC/allied structured-ops contract suites.
+
+### Practical Build Order For Workstream I
+
+1. Lock contract tests for enemy-side structured encounter ops.
+2. Update combat prompt and combat validator wording/examples to prefer enemy `changes + ops`.
+3. Inspect `core/ai/action_handler.py` and `updates/update_encounter.py` for the narrowest runtime wiring needed.
+4. Implement only the approved first-wave enemy ops.
+5. Verify existing combat regressions and spec validation before any further widening.
 
 ## Rollout Plan
 

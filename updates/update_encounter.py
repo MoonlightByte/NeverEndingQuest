@@ -9,6 +9,7 @@ from jsonschema import validate, ValidationError
 import time
 import re
 import copy
+from typing import Any, Dict, List, Optional, Tuple
 # Import model configuration from config.py
 from config import ENCOUNTER_UPDATE_MODEL
 
@@ -39,7 +40,221 @@ def load_encounter_schema():
     with open("schemas/encounter_schema.json", "r") as schema_file:
         return json.load(schema_file)
 
-def update_encounter(encounter_id, changes, max_retries=3):
+
+SUPPORTED_ENCOUNTER_OPS = {
+    "hp_delta",
+    "set_hp",
+    "condition_add",
+    "condition_remove",
+    "set_status",
+}
+
+ALLOWED_STATUS_VALUES = {"alive", "dead", "unconscious", "defeated"}
+
+
+def _normalize_name_key(value: str) -> str:
+    """Normalize creature names for deterministic encounter-op matching."""
+    return str(value).strip().lower().replace("_", " ").replace("-", " ")
+
+
+def _resolve_enemy_creature(
+    encounter_info: Dict[str, Any],
+    op_data: Dict[str, Any],
+) -> Tuple[Optional[Dict[str, Any]], str]:
+    """Resolve an enemy creature reference from an encounter op payload."""
+    reference = op_data.get("creature") or op_data.get("name") or op_data.get("target")
+    if not isinstance(reference, str) or not reference.strip():
+        return None, "missing_creature_reference"
+
+    normalized_ref = _normalize_name_key(reference)
+    for creature in encounter_info.get("creatures", []):
+        if creature.get("type") != "enemy":
+            continue
+        candidate_name = creature.get("name")
+        if not isinstance(candidate_name, str):
+            continue
+        if _normalize_name_key(candidate_name) == normalized_ref:
+            return creature, "ok"
+
+    return None, f"enemy_not_found:{reference}"
+
+
+def _prepare_supported_encounter_ops(
+    encounter_info: Dict[str, Any],
+    ops_payload: Any,
+) -> Tuple[Optional[List[Dict[str, Any]]], str]:
+    """Validate and prepare supported encounter ops for deterministic apply."""
+    if not isinstance(ops_payload, list):
+        return None, "ops_not_list"
+    if not ops_payload:
+        return None, "ops_empty"
+
+    prepared: List[Dict[str, Any]] = []
+
+    for index, op_item in enumerate(ops_payload):
+        if not isinstance(op_item, dict):
+            return None, f"op_not_object:{index}"
+
+        op_name = op_item.get("op")
+        if not isinstance(op_name, str):
+            return None, f"op_missing_name:{index}"
+        if op_name not in SUPPORTED_ENCOUNTER_OPS:
+            return None, f"unsupported_op:{op_name}"
+
+        creature, reason = _resolve_enemy_creature(encounter_info, op_item)
+        if creature is None:
+            return None, f"{reason}:{index}"
+
+        prepared_op: Dict[str, Any] = {
+            "op": op_name,
+            "creature": creature,
+            "index": index,
+        }
+
+        if op_name == "hp_delta":
+            delta = op_item.get("delta")
+            if not isinstance(delta, int):
+                return None, f"hp_delta_missing_int_delta:{index}"
+            prepared_op["delta"] = delta
+        elif op_name == "set_hp":
+            hp_value = op_item.get("hp")
+            if not isinstance(hp_value, int):
+                return None, f"set_hp_missing_int_hp:{index}"
+            prepared_op["hp"] = hp_value
+        elif op_name in {"condition_add", "condition_remove"}:
+            condition_value = op_item.get("condition")
+            if not isinstance(condition_value, str) or not condition_value.strip():
+                return None, f"{op_name}_missing_condition:{index}"
+            prepared_op["condition"] = condition_value.strip()
+        elif op_name == "set_status":
+            status_value = op_item.get("status")
+            if not isinstance(status_value, str):
+                return None, f"set_status_missing_status:{index}"
+            normalized_status = status_value.strip().lower()
+            if normalized_status not in ALLOWED_STATUS_VALUES:
+                return None, f"set_status_invalid_status:{status_value}"
+            prepared_op["status"] = normalized_status
+
+        prepared.append(prepared_op)
+
+    return prepared, "ok"
+
+
+def _apply_prepared_encounter_ops(
+    encounter_info: Dict[str, Any],
+    prepared_ops: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Apply prepared supported encounter ops to enemy creatures only."""
+    for op_data in prepared_ops:
+        creature = op_data["creature"]
+        op_name = op_data["op"]
+
+        if op_name == "hp_delta":
+            current_hp = creature.get("currentHitPoints", 0)
+            if not isinstance(current_hp, int):
+                current_hp = 0
+            creature["currentHitPoints"] = current_hp + op_data["delta"]
+        elif op_name == "set_hp":
+            creature["currentHitPoints"] = op_data["hp"]
+        elif op_name == "condition_add":
+            conditions = creature.get("conditions")
+            if not isinstance(conditions, list):
+                conditions = []
+            if op_data["condition"] not in conditions:
+                conditions.append(op_data["condition"])
+            creature["conditions"] = conditions
+        elif op_name == "condition_remove":
+            conditions = creature.get("conditions")
+            if not isinstance(conditions, list):
+                conditions = []
+            creature["conditions"] = [c for c in conditions if c != op_data["condition"]]
+        elif op_name == "set_status":
+            creature["status"] = op_data["status"]
+
+    return encounter_info
+
+
+def _sync_non_enemy_creatures(encounter_info: Dict[str, Any], path_manager: ModulePathManager) -> None:
+    """Sync player/NPC combat state from their source files."""
+    for creature in encounter_info.get("creatures", []):
+        if creature.get("type") == "player":
+            from updates.update_character_info import normalize_character_name
+
+            player_file = path_manager.get_character_path(normalize_character_name(creature["name"]))
+            try:
+                with open(player_file, "r") as file:
+                    player_data = json.load(file)
+                    creature["currentHitPoints"] = player_data.get("hitPoints", creature.get("currentHitPoints", 0))
+                    creature["maxHitPoints"] = player_data.get("maxHitPoints", creature.get("maxHitPoints", 0))
+                    creature["status"] = player_data.get("status", creature.get("status", "alive"))
+                    creature["conditions"] = player_data.get("condition_affected", [])
+                    if "armorClass" in player_data:
+                        creature["armorClass"] = player_data["armorClass"]
+            except Exception as e:
+                print(f"ERROR: Failed to sync player data from {player_file}: {str(e)}")
+
+        elif creature.get("type") == "npc":
+            from updates.update_character_info import find_character_file_fuzzy
+
+            matched_name = find_character_file_fuzzy(creature["name"])
+            if matched_name:
+                npc_file = path_manager.get_character_path(matched_name)
+                try:
+                    with open(npc_file, "r") as file:
+                        npc_data = json.load(file)
+                        creature["currentHitPoints"] = npc_data.get("hitPoints", creature.get("currentHitPoints", 0))
+                        creature["maxHitPoints"] = npc_data.get("maxHitPoints", creature.get("maxHitPoints", 0))
+                        creature["status"] = npc_data.get("status", creature.get("status", "alive"))
+                        creature["conditions"] = npc_data.get("condition_affected", [])
+                        if "armorClass" in npc_data:
+                            creature["armorClass"] = npc_data["armorClass"]
+                except Exception as e:
+                    print(f"ERROR: Failed to sync NPC data from {npc_file}: {str(e)}")
+            else:
+                print(f"WARNING: Could not find NPC file for '{creature['name']}' using fuzzy matching")
+
+
+def _normalize_creature_statuses(encounter_info: Dict[str, Any]) -> None:
+    """Normalize creature status values to schema-legal vocabulary."""
+    status_mapping = {
+        "destroyed": "dead",
+        "panicked": "alive",
+        "fled": "defeated",
+        "fleeing": "defeated",
+        "dying": "unconscious",
+    }
+
+    for creature in encounter_info.get("creatures", []):
+        current_status = creature.get("status", "alive")
+        if current_status in status_mapping:
+            print(
+                f"INFO: Normalizing invalid status '{current_status}' to '{status_mapping[current_status]}' "
+                f"for {creature.get('name', 'unknown')}"
+            )
+            creature["status"] = status_mapping[current_status]
+
+
+def _finalize_encounter_update(
+    encounter_info: Dict[str, Any],
+    original_info: Dict[str, Any],
+    schema: Dict[str, Any],
+    encounter_id: str,
+    path_manager: ModulePathManager,
+) -> Dict[str, Any]:
+    """Apply sync/normalization, validate, and persist encounter state."""
+    _sync_non_enemy_creatures(encounter_info, path_manager)
+    _normalize_creature_statuses(encounter_info)
+
+    validate(instance=encounter_info, schema=schema)
+    compare_json(original_info, encounter_info)
+    info("SUCCESS: Encounter update - PASS", category="encounter_updates")
+
+    with open(f"modules/encounters/encounter_{encounter_id}.json", "w") as file:
+        json.dump(encounter_info, file, indent=2)
+
+    return encounter_info
+
+def update_encounter(encounter_id, changes, ops=None, max_retries=3):
     # Load the current encounter info and schema
     # Get current module from party tracker for consistent path resolution
     try:
@@ -54,6 +269,51 @@ def update_encounter(encounter_id, changes, max_retries=3):
 
     original_info = copy.deepcopy(encounter_info)  # Keep a copy of the original info
     schema = load_encounter_schema()
+
+    has_changes_payload = isinstance(changes, str) and bool(changes.strip())
+
+    # TABLETOP MODE: Prefer deterministic enemy encounter ops when supported.
+    # Fail open to legacy prose-based encounter updates for ambiguous payloads.
+    if ops is not None:
+        prepared_ops, ops_reason = _prepare_supported_encounter_ops(encounter_info, ops)
+        if prepared_ops is not None:
+            try:
+                encounter_info = _apply_prepared_encounter_ops(encounter_info, prepared_ops)
+                info(
+                    "ENCOUNTER_OPS_ROUTE mode=ops reason=supported_ops_applied",
+                    category="encounter_updates",
+                )
+                return _finalize_encounter_update(
+                    encounter_info,
+                    original_info,
+                    schema,
+                    encounter_id,
+                    path_manager,
+                )
+            except ValidationError as e:
+                warning(
+                    f"ENCOUNTER_OPS_ROUTE mode=fallback reason=ops_validation_error detail={e}",
+                    category="encounter_updates",
+                )
+                encounter_info = copy.deepcopy(original_info)
+            except Exception as e:
+                warning(
+                    f"ENCOUNTER_OPS_ROUTE mode=fallback reason=ops_apply_exception detail={e}",
+                    category="encounter_updates",
+                )
+                encounter_info = copy.deepcopy(original_info)
+        else:
+            warning(
+                f"ENCOUNTER_OPS_ROUTE mode=fallback reason={ops_reason}",
+                category="encounter_updates",
+            )
+
+    if not has_changes_payload:
+        warning(
+            "ENCOUNTER_OPS_ROUTE mode=noop reason=missing_changes_and_no_supported_ops",
+            category="encounter_updates",
+        )
+        return original_info
 
     for attempt in range(max_retries):
         # Prepare the prompt for the AI
@@ -111,82 +371,16 @@ Remember to only update monster information and leave player and NPC data unchan
             updates = json.loads(ai_response)
 
             # Apply updates to the encounter_info
+            encounter_info = copy.deepcopy(original_info)
             encounter_info = update_nested_dict(encounter_info, updates)
 
-            # Now sync player and NPC information from their respective files
-            for creature in encounter_info["creatures"]:
-                if creature["type"] == "player":
-                    # Import normalize_character_name for consistent naming
-                    from updates.update_character_info import normalize_character_name
-                    player_file = path_manager.get_character_path(normalize_character_name(creature['name']))
-                    try:
-                        with open(player_file, "r") as file:
-                            player_data = json.load(file)
-                            # Only sync combat-relevant state
-                            creature["currentHitPoints"] = player_data.get("hitPoints", creature.get("currentHitPoints", 0))
-                            creature["maxHitPoints"] = player_data.get("maxHitPoints", creature.get("maxHitPoints", 0))
-                            creature["status"] = player_data.get("status", creature.get("status", "alive"))
-                            creature["conditions"] = player_data.get("condition_affected", [])
-                            # Copy armorClass if it exists in player data
-                            if "armorClass" in player_data:
-                                creature["armorClass"] = player_data["armorClass"]
-                    except Exception as e:
-                        print(f"ERROR: Failed to sync player data from {player_file}: {str(e)}")
-                        
-                elif creature["type"] == "npc":
-                    # Import the fuzzy matching function
-                    from updates.update_character_info import find_character_file_fuzzy
-                    
-                    # Use fuzzy matching to find the correct NPC file
-                    matched_name = find_character_file_fuzzy(creature['name'])
-                    if matched_name:
-                        npc_file = path_manager.get_character_path(matched_name)
-                        try:
-                            with open(npc_file, "r") as file:
-                                npc_data = json.load(file)
-                                # Only sync combat-relevant state
-                                creature["currentHitPoints"] = npc_data.get("hitPoints", creature.get("currentHitPoints", 0))
-                                creature["maxHitPoints"] = npc_data.get("maxHitPoints", creature.get("maxHitPoints", 0))
-                                creature["status"] = npc_data.get("status", creature.get("status", "alive"))
-                                creature["conditions"] = npc_data.get("condition_affected", [])
-                                # Copy armorClass if it exists in NPC data
-                                if "armorClass" in npc_data:
-                                    creature["armorClass"] = npc_data["armorClass"]
-                        except Exception as e:
-                            print(f"ERROR: Failed to sync NPC data from {npc_file}: {str(e)}")
-                    else:
-                        print(f"WARNING: Could not find NPC file for '{creature['name']}' using fuzzy matching")
-
-            # Normalize creature statuses before validation
-            # Map invalid statuses to valid ones
-            status_mapping = {
-                "destroyed": "dead",
-                "panicked": "alive",
-                "fled": "defeated",
-                "fleeing": "defeated",
-                "dying": "unconscious"
-            }
-            
-            for creature in encounter_info.get("creatures", []):
-                current_status = creature.get("status", "alive")
-                if current_status in status_mapping:
-                    print(f"INFO: Normalizing invalid status '{current_status}' to '{status_mapping[current_status]}' for {creature.get('name', 'unknown')}")
-                    creature["status"] = status_mapping[current_status]
-
-            # Validate the updated info against the schema
-            validate(instance=encounter_info, schema=schema)
-
-            # If we reach here, validation was successful
-
-            # Compare original and updated info (but don't print it)
-            diff = compare_json(original_info, encounter_info)
-            info(f"SUCCESS: Encounter update - PASS", category="encounter_updates")
-
-            # Save the updated encounter info
-            with open(f"modules/encounters/encounter_{encounter_id}.json", "w") as file:
-                json.dump(encounter_info, file, indent=2)
-
-            return encounter_info
+            return _finalize_encounter_update(
+                encounter_info,
+                original_info,
+                schema,
+                encounter_id,
+                path_manager,
+            )
 
         except json.JSONDecodeError as e:
             warning(f"VALIDATION: AI response is not valid JSON. Error: {e}. Retrying", category="encounter_updates")

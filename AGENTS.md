@@ -1021,6 +1021,40 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Combat Encounter Ops Second Wave (COMPLETED - 2026-03-11)
+
+**Status:** COMPLETED - OpenSpec change archived and main specs synchronized
+
+**OpenSpec Archive:**
+- `openspec/changes/archive/2026-03-11-combat-encounter-ops-second-wave/`
+
+**Objective:**
+Complete the deferred Workstream I capstone by bringing enemy-side combat mutation routing into additive structured `updateEncounter.ops` while preserving prose compatibility and strict routing separation from PC/allied `updateCharacterInfo`.
+
+**Implementation Summary:**
+- Updated compressed combat sim and validation prompts to prefer mixed enemy `changes + ops` payloads, with fail-open prose fallback during migration.
+- Updated uncompressed combat mirror prompts for parity with the new enemy mixed-payload contract.
+- Extended runtime routing in `core/ai/action_handler.py` to accept `encounterId + (changes or ops)` and forward `ops` to encounter updates.
+- Added narrow deterministic enemy encounter ops support in `updates/update_encounter.py` for: `hp_delta`, `set_hp`, `condition_add`, `condition_remove`, `set_status`.
+- Preserved strict routing boundary: enemies remain on `updateEncounter`; PCs/allies remain on `updateCharacterInfo`.
+- Preserved fail-open compatibility: unsupported/ambiguous enemy ops fall back safely to existing prose behavior.
+- Added Workstream I contract/runtime tests and archive-aware OpenSpec path resolution for combat structured-ops contract tests.
+
+**Verification:**
+- `python3 scripts/test_combat_encounter_ops_contract.py` -> PASS (27/27)
+- `python3 scripts/test_combat_structured_ops_contract.py` -> PASS (16/16)
+- `python3 scripts/test_multi_pc_combat.py` -> PASS (43/43)
+- `python3 scripts/c5_regression_combat.py` -> PASS (32/32)
+- `python3 -m py_compile core/ai/action_handler.py updates/update_encounter.py scripts/test_combat_encounter_ops_contract.py scripts/test_update_encounter_ops_runtime.py scripts/test_combat_structured_ops_contract.py` -> PASS
+- `openspec validate combat-encounter-ops-second-wave` -> VALID
+- `openspec validate tt-combat-structured-encounter-ops-routing` -> VALID
+
+**Notes:**
+- `scripts/test_update_encounter_ops_runtime.py` currently skips runtime execution in environments without `jsonschema`; contract and regression suites remain green.
+
+**Spec Sync:**
+- `openspec/specs/tt-combat-structured-encounter-ops-routing/spec.md` (new)
+
 ### Combat Expanded Deterministic Guards (COMPLETED - 2026-03-11)
 
 **Status:** COMPLETED - OpenSpec change archived and main specs synchronized

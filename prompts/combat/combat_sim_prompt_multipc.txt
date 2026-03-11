@@ -271,7 +271,10 @@ Always structure your responses in the following JSON format:
 +- For player/allied updateCharacterInfo, prefer mixed payloads with BOTH `changes` and `ops` when mechanics change.
 +- When supported ops are present, `ops` is the authoritative mechanics payload and `changes` is the readable mirror.
 +- If supported ops are unavailable for a specific player/allied update, `changes`-only remains compatibility-valid during migration.
-+- updateEncounter remains enemy changes text only in this slice (do NOT include updateEncounter.parameters.ops).
++- For enemy updateEncounter, prefer mixed payloads with BOTH `changes` and `ops` for supported enemy HP/status/condition mechanics.
++- When supported encounter ops are present, `ops` is the authoritative mechanics payload and `changes` is the readable mirror.
++- If supported encounter ops are unavailable for a specific enemy update, `changes`-only remains compatibility-valid during migration.
++- Supported enemy encounter ops in this slice: hp_delta, set_hp, condition_add, condition_remove, set_status.
 +- This is not optional. Using the wrong action will cause a system failure.
 +
 
@@ -542,7 +545,22 @@ NOTE: This is an excellent, multi-layered example. It shows an NPC being affecte
 
 UpdateEncounter Action:
 Use the updateEncounter action to record all changes to monsters, such as damage taken or status effects applied. This should be a consolidated summary of everything that happened to all enemies during the narrated turn(s). The changes field should be a clear, human-readable text description showing your calculations.
-Do not include updateEncounter.parameters.ops in this slice.
+
+Preferred mixed format for supported enemy mechanics updates (compatibility fallback still allowed):
+{
+  "action": "updateEncounter",
+  "parameters": {
+    "encounterId": "<encounter_id>",
+    "changes": "<readable mirror of enemy HP/status/condition changes>",
+    "ops": [
+      {"op": "hp_delta", "creature": "Goblin-1", "delta": -8}
+    ]
+  }
+}
+
+When supported encounter ops are present, `ops` is authoritative and `changes` is the readable mirror.
+Supported enemy encounter ops in this slice: hp_delta, set_hp, condition_add, condition_remove, set_status.
+If encounter ops are omitted, unsupported, or ambiguous for a specific enemy update, changes-only updateEncounter remains compatibility-valid during migration.
 
 IMPORTANT: When updating creature status, you MUST use one of these exact values: "alive", "dead", "unconscious", or "defeated". Never use "destroyed", "panicked", "fled", "fleeing" or any other status - use "dead" for creatures reduced to 0 HP.
 
@@ -950,6 +968,9 @@ CRITICAL ACTION DISTINCTION - NEVER CONFUSE THESE:
   
 - updateEncounter: Use ONLY for monsters/enemies in the encounter
   - These exist only within the encounter file
+  - Prefer mixed payloads with BOTH changes and supported ops for enemy HP/status/condition mechanics
+  - Supported enemy encounter ops in this slice: hp_delta, set_hp, condition_add, condition_remove, set_status
+  - changes-only remains compatibility-valid when supported encounter ops are unavailable
   - Example: updateEncounter describing "Goblin takes 10 damage, HP 15 -> 5"
 
 REMEMBER: The encounter file references player/NPC files but doesn't store their HP. Monster HP is stored directly in the encounter file.
