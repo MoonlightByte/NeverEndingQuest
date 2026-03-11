@@ -1021,6 +1021,36 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Combat Expanded Deterministic Guards (COMPLETED - 2026-03-11)
+
+**Status:** COMPLETED - OpenSpec change archived and main specs synchronized
+
+**OpenSpec Archive:**
+- `openspec/changes/archive/2026-03-11-combat-expanded-deterministic-guards/`
+
+**Objective:**
+Add bounded deterministic combat guard coverage for explicit mechanics and phase-integrity contradiction classes while preserving fail-open behavior for ambiguous text/state.
+
+**Implementation Summary:**
+- Added phase-integrity deterministic helper: `utils/combat_phase_integrity_precheck.py`.
+- Wired helper into combat validation flow in `core/managers/combat_manager.py` with fail-open exception handling.
+- Added contract locks and source-touchpoint tests: `scripts/test_combat_expanded_deterministic_guards_contract.py`.
+- Added guard behavior tests for forbidden actors, mid-batch stop, illegal exit, and illegal round increment: `scripts/test_combat_phase_integrity_precheck.py`.
+- Archived change and synced new main specs for both guard domains.
+
+**Verification:**
+- `python3 scripts/test_combat_expanded_deterministic_guards_contract.py` -> PASS (14/14)
+- `python3 scripts/test_combat_phase_integrity_precheck.py` -> PASS (10/10)
+- `python3 scripts/test_deterministic_mechanics_precheck.py` -> PASS (18/18)
+- `python3 scripts/test_multi_pc_combat.py` -> PASS (43/43)
+- `python3 scripts/c5_regression_combat.py` -> PASS (32/32)
+- `python3 -m py_compile core/managers/combat_manager.py utils/combat_phase_integrity_precheck.py scripts/test_combat_expanded_deterministic_guards_contract.py scripts/test_combat_phase_integrity_precheck.py` -> PASS
+- `openspec validate combat-expanded-deterministic-guards` -> VALID
+
+**Spec Sync:**
+- `openspec/specs/tt-combat-mechanics-contradiction-guards/spec.md` (new)
+- `openspec/specs/tt-combat-phase-integrity-guards/spec.md` (new)
+
 ### Combat Save/Concentration Contract Alignment (COMPLETED - 2026-03-11)
 
 **Status:** COMPLETED - OpenSpec change archived and main specs synchronized

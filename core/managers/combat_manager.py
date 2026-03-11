@@ -162,6 +162,7 @@ from utils.file_operations import safe_write_json
 import core.ai.cumulative_summary as cumulative_summary
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
 from utils.save_roll_contract import calculate_concentration_dc
+from utils.combat_phase_integrity_precheck import validate_combat_phase_integrity_precheck
 from utils.validation_routing import (
     get_validation_compression_decision,
     build_validation_routing_telemetry,
@@ -1017,6 +1018,44 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
         except Exception as e:
             debug(f"VALIDATION_ERROR: Error in Multi-PC guardrail: {e}", category="combat_validation")
             # Continue to standard validation if this check crashes (fail open vs closed? decided fail open to avoid deadlock, but log it)
+
+    # --- TABLETOP MODE: PHASE-INTEGRITY DETERMINISTIC PRECHECK ---
+    # Additive deterministic guard for explicit phase contradictions.
+    # Fail-open on ambiguity/errors to avoid combat deadlocks.
+    if multi_pc_manager:
+        try:
+            response_json = parse_json_safely(response)
+            if response_json and isinstance(response_json, dict):
+                current_round = encounter_data.get('combat_round', encounter_data.get('current_round', 1))
+                try:
+                    current_round = int(current_round)
+                except (TypeError, ValueError):
+                    current_round = 1
+
+                phase_state = {
+                    "current_phase": multi_pc_manager.combat_phase,
+                    "forbidden_actors": multi_pc_manager.get_forbidden_actors(),
+                    "pending_enemies": multi_pc_manager.get_remaining_enemies_for_round(),
+                    "pc_phase_complete": multi_pc_manager.pc_phase_complete,
+                    "current_round": current_round,
+                }
+
+                phase_ok, phase_reason = validate_combat_phase_integrity_precheck(
+                    response_json,
+                    encounter_data,
+                    phase_state=phase_state,
+                )
+                if not phase_ok:
+                    debug(
+                        f"VALIDATION_FAIL: Phase-integrity precheck rejected response: {phase_reason}",
+                        category="combat_validation",
+                    )
+                    return f"VALIDATION FAILURE: {phase_reason}"
+        except Exception as phase_precheck_error:
+            debug(
+                f"VALIDATION_ERROR: Phase-integrity precheck failed open due to error: {phase_precheck_error}",
+                category="combat_validation",
+            )
     # --- END MULTI-PC VALIDATION GUARDRAIL ---
 
     debug("VALIDATION: Validating combat response...", category="combat_validation")
