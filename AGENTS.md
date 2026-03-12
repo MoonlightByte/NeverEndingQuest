@@ -1021,6 +1021,37 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Scripts Audit and Commit Policy for Gametest (COMPLETED - 2026-03-13)
+
+**Status:** COMPLETED - dev-team script curation pass
+
+**Objective:**
+Reduce script noise in gametest push candidates while preserving high-signal developer tooling and deterministic regression guards.
+
+**Audit Outcome (for current push candidates):**
+- Kept and recommended for commit:
+  - `scripts/c5_regression_combat.py`
+  - `scripts/test_multi_pc_combat.py`
+  - `scripts/test_npc_arrival_state_sync.py`
+  - `scripts/test_narrator_prompt_validation_refactor.py`
+  - `scripts/test_combat_surrender_exit_flow.py`
+- `scripts/test_combat_surrender_exit_flow.py` was hardened for deterministic local execution:
+  - Uses fixture-only actor identities to avoid external character-file sync drift
+  - Includes schema-required NPC fields (`npcType`, `conditions`) so ops path remains deterministic
+  - Avoids provider-dependent fallback paths during normal regression execution
+
+**Team Recommendations:**
+- Commit scripts that are deterministic, repeatable, and enforce runtime/prompt contracts.
+- Keep `scripts/test_*.py` and contract smoke suites as first-class regression assets.
+- Avoid committing one-off ad hoc probes or environment-specific debug scripts unless promoted and documented.
+
+**Verification:**
+- `python3 scripts/test_combat_surrender_exit_flow.py` -> PASS (3/3)
+
+**Files Modified:**
+- `scripts/test_combat_surrender_exit_flow.py`
+- `AGENTS.md`
+
 ### Combat Encounter Sync + Enemy Batch Determinism (COMPLETED - 2026-03-13)
 
 **Status:** COMPLETED - targeted runtime hardening for `/end` enemy-batch flow
