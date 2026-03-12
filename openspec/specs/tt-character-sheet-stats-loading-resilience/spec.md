@@ -20,6 +20,11 @@ Character sheet stats rendering SHALL handle temporary null payloads without thr
 - **WHEN** stats response includes `error` text with null payload
 - **THEN** the stats panel displays concise error context while keeping retry path active
 
-### SHOULD Guidance
-- SHOULD preserve existing polling cadence as recovery mechanism.
-- SHOULD avoid broad layout/UI changes while implementing null-safety.
+### Requirement: Startup recovery scope SHALL remain minimally invasive
+
+Null-safety hardening SHALL preserve existing polling-based recovery behavior and SHALL avoid broad UI layout changes.
+
+#### Scenario: Recovery behavior remains compatible
+- **WHEN** null-safety handling is applied to startup stats races
+- **THEN** existing polling cadence remains functionally unchanged as the recovery path
+- **AND** changes remain scoped to stats-load resilience without broad layout refactors

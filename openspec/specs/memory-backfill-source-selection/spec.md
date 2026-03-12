@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define source-scoped memory backfill behavior, selector validation, and idempotent replay guarantees.
+
+## Requirements
 
 ### Requirement: Backfill tooling SHALL support explicit source selection
 The backfill CLI SHALL accept a source selector argument that allows targeted ingest from specific channels.

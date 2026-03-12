@@ -26,20 +26,23 @@ Correction data SHALL be held in validation-local state and discarded when retry
 
 ### Requirement: Retry correction context SHALL be bounded
 
-Retry correction context SHALL avoid recursive amplification.
+When a deterministic failure class has multiple legal repair paths, retry correction text SHALL avoid prescribing an impossible path only.
 
-#### Scenario: Multiple failed retries
-- **WHEN** several retries fail in sequence
-- **THEN** each retry SHALL receive current correction only
-- **AND** accumulated correction context SHALL remain bounded
+#### Scenario: Arrival-sync failure with non-party NPC reference
+- **GIVEN** deterministic failure reason indicates explicit-arrival state-sync mismatch
+- **AND** referenced NPC is not party-tracker-resolvable for the required action path
+- **WHEN** correction text is generated for retry
+- **THEN** correction SHALL include a legal alternative (for example, remove explicit arrival claim)
+- **AND** SHALL NOT force only an unsatisfiable mutation instruction
 
 ### Requirement: Existing retry limits SHALL remain stable
 
-Max retries and retry control behavior SHALL remain backward compatible.
+Retry loop SHALL short-circuit repeated deterministic impossible-correction cycles.
 
-#### Scenario: Retry ceiling preserved
-- **WHEN** repeated validation failures occur
-- **THEN** configured max retry count SHALL remain unchanged
+#### Scenario: Same impossible deterministic reason repeats
+- **GIVEN** the same deterministic impossible-correction reason repeats across retries
+- **WHEN** retry guard evaluates reason sequence
+- **THEN** loop SHALL short-circuit early with deterministic system guidance
 
 ### Requirement: Correction audit trail SHALL be separate
 

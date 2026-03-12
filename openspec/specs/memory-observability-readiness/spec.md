@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define observability and policy-audit readiness contracts for memory retrieval and controller-facing tuning.
+
+## Requirements
 
 ### Requirement: Retrieval operations SHALL emit structured audit records
 The system SHALL support structured retrieval audit logging that captures query scope, candidate count, selected event IDs, score component traces, and latency metrics.

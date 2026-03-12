@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define deterministic monster-reference integrity validation and startup preflight compatibility semantics.
+
+## Requirements
 
 ### Requirement: Module validation SHALL enforce monster reference integrity
 

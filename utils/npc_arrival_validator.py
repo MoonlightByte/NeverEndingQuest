@@ -38,6 +38,7 @@ _EXPLICIT_ARRIVAL_VERBS: Set[str] = {
     "come", "comes", "came", "coming",
     "step", "steps", "stepped", "stepping",
     "walk", "walks", "walked", "walking",
+    "gather", "gathers", "gathered", "gathering",
     "arrive from", "arrives from", "arrived from", "arriving from",
     "enter from", "enters from", "entered from", "entering from",
     "emerge from", "emerges from", "emerged from", "emerging from",
@@ -392,14 +393,13 @@ def validate_npc_arrival_state_sync(
             missing_actions.add(canonical_name)
 
     if missing_actions:
-        # TABLETOP MODE: Travel fail-soft for non-explicit arrivals
-        # If this is a travel-intent turn and no explicit arrival semantics found,
-        # fail-soft (allow) to prevent blocking legitimate travel narration
-        if is_travel_intent and not has_explicit_arrival:
-            # Log but allow - travel turns may reference distant NPCs incidentally
+        # TABLETOP MODE: Explicit-arrival-only enforcement.
+        # Incidental off-location mentions without explicit arrival semantics are valid,
+        # both in travel turns and non-travel turns.
+        if not has_explicit_arrival:
             return (True, "")
-        
-        # STANDARD PATH: Fail-closed for explicit arrivals without matching action
+
+        # STANDARD PATH: Fail-closed for explicit arrivals without matching action.
         reason = _format_failure_reason(sorted(missing_actions))
         return (False, reason)
 
@@ -676,7 +676,8 @@ def _format_failure_reason(missing_actions: List[str]) -> str:
             f"NPC arrival state sync failed: '{npc}' is mentioned in narration "
             f"but is not currently present at this location. "
             f"Required: Include either 'moveBackgroundNPC' action with npcName='{npc}' "
-            f"or 'updatePartyNPCs' operation='add' for this NPC."
+            f"or 'updatePartyNPCs' operation='add' for this NPC, "
+            f"or remove explicit arrival wording from narration."
         )
     else:
         npcs = ", ".join(f"'{n}'" for n in missing_actions)
@@ -684,7 +685,7 @@ def _format_failure_reason(missing_actions: List[str]) -> str:
             f"NPC arrival state sync failed: NPCs {npcs} are mentioned in narration "
             f"but are not currently present at this location. "
             f"Required: Include 'moveBackgroundNPC' or 'updatePartyNPCs add' actions "
-            f"for each arriving NPC."
+            f"for each arriving NPC, or remove explicit arrival wording for NPCs that do not arrive."
         )
 
 

@@ -900,9 +900,45 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
                 )
 
                 if normalized_name is None:
-                    # Could not resolve name - reject
-                    rejections.append(f"Action {i+1} (moveBackgroundNPC): '{original_name}' not in party tracker")
-                    print(f"[NPC_NORM] REJECT: '{original_name}' cannot be matched to party tracker")
+                    # TABLETOP MODE: moveBackgroundNPC is module-world routing, not party-only routing.
+                    # Try canonical identity resolution against module-known NPCs before rejecting.
+                    module_name = str(party_tracker_data.get('module', '') or '').strip()
+                    module_match = None
+                    module_ambiguous = False
+
+                    if module_name:
+                        try:
+                            from utils.npc_arrival_validator import resolve_npc_identity, load_module_npc_names
+
+                            module_npc_names = load_module_npc_names(module_name)
+                            if module_npc_names:
+                                module_resolve = resolve_npc_identity(original_name, module_npc_names)
+                                if module_resolve.status == "matched" and module_resolve.canonical_name:
+                                    module_match = module_resolve.canonical_name
+                                elif module_resolve.status == "ambiguous":
+                                    module_ambiguous = True
+                        except Exception as e:
+                            print(f"[NPC_NORM] INFO: Module NPC resolution degraded for '{original_name}': {e}")
+
+                    if module_match is not None:
+                        params['npcName'] = module_match
+                        corrections.append(
+                            f"Action {i+1} (moveBackgroundNPC): '{original_name}' -> '{module_match}'"
+                        )
+                        print(f"[NPC_NORM] CORRECTED (module NPC): '{original_name}' -> '{module_match}'")
+                    elif module_ambiguous:
+                        rejections.append(
+                            f"Action {i+1} (moveBackgroundNPC): '{original_name}' ambiguous in module NPC set"
+                        )
+                        print(f"[NPC_NORM] REJECT: '{original_name}' ambiguous in module NPC set")
+                    else:
+                        # Could not resolve in party or module canon - reject.
+                        rejections.append(
+                            f"Action {i+1} (moveBackgroundNPC): '{original_name}' not in party tracker or module NPC set"
+                        )
+                        print(
+                            f"[NPC_NORM] REJECT: '{original_name}' cannot be matched to party tracker or module NPC set"
+                        )
 
                 elif normalized_name != original_name:
                     # Name was normalized
@@ -2845,7 +2881,6 @@ def get_ai_response(conversation_history, validation_retry_count=0, transient_co
     # Track model selection decision for quality control
     print(f"DEBUG: Logging model selection - model={selected_model}, retry={validation_retry_count}")
     try:
-        import json  # Ensure json is available in this scope
         os.makedirs("debug/quality_control", exist_ok=True)
         model_selection_record = {
             "timestamp": datetime.now().isoformat(),
@@ -2871,7 +2906,6 @@ def get_ai_response(conversation_history, validation_retry_count=0, transient_co
     try:
         from model_config import COMPRESSION_ENABLED
         if COMPRESSION_ENABLED:
-            import json
             from pathlib import Path
 
             # Save conversation to temp file
@@ -2931,6 +2965,19 @@ def get_ai_response(conversation_history, validation_retry_count=0, transient_co
     for msg in messages_to_send:
         if isinstance(msg, dict) and "active_pc" in msg:
             del msg["active_pc"]
+
+    # TABLETOP MODE: Prompt singularity guard.
+    # Ensure exactly one canonical main system prompt in outbound payload,
+    # removing legacy prompt variants and duplicate canonical copies.
+    try:
+        with open("prompts/system_prompt_compressed.txt", "r", encoding="utf-8") as prompt_file:
+            canonical_prompt_text = prompt_file.read()
+        messages_to_send = dedupe_main_system_prompt_messages(messages_to_send, canonical_prompt_text)
+    except Exception as e:
+        warning(
+            f"PROMPT_GUARD: Failed to apply main prompt singularity dedupe; continuing fail-open: {e}",
+            category="conversation_management"
+        )
     
     # TABLETOP MODE: Step 3.2 - Inject transient correction note without polluting conversation history
     # This correction is passed to the AI for this request only, not persisted
@@ -3095,32 +3142,69 @@ def ensure_main_system_prompt(conversation_history, main_system_prompt_text):
     Ensure the main system prompt is first in the conversation history.
     This removes any existing instances of the main prompt and adds it at the beginning.
     """
-    # Remove all existing system prompts that appear to be the main system prompt
-    # We'll identify the main system prompt by checking if it starts with the first few words
-    # of the actual system prompt content
-    main_prompt_start = main_system_prompt_text[:50]  # First 50 characters as identifier
-    
-    # Also check for old format system prompts that we want to remove
-    old_prompt_identifiers = [
+    return dedupe_main_system_prompt_messages(conversation_history, main_system_prompt_text)
+
+
+def dedupe_main_system_prompt_messages(conversation_history, main_system_prompt_text):
+    """Deduplicate legacy/canonical main prompts and keep one canonical copy first."""
+    legacy_prompt_identifiers = [
         "These are Ashiralis's Sowhains' game rules",
-        "## Section 1: Core Foundation"  # In case the old format started differently
+        "## Section 1: Core Foundation",
+        "You are a world-class 5th edition Dungeon Master",
     ]
-    
-    # Filter out any system message that matches our criteria
-    filtered_history = []
+
+    canonical_prompt_start = ""
+    if isinstance(main_system_prompt_text, str) and main_system_prompt_text.strip():
+        canonical_prompt_start = main_system_prompt_text[:50]
+
+    fallback_canonical_start = "You are the Dungeon Master for the world's most popular roleplaying game, 5th Edition."
+
+    deduped_history = []
+    preserved_main_prompt = None
+
     for msg in conversation_history:
-        if msg["role"] == "system":
-            # Check if it's the current main prompt
-            if msg["content"].startswith(main_prompt_start):
-                continue  # Skip this message as it's our current main system prompt
-            # Check if it's an old format prompt
-            if any(msg["content"].startswith(old_id) for old_id in old_prompt_identifiers):
-                debug(f"Removing old format system prompt starting with: {msg['content'][:50]}...", category="conversation_management")
-                continue  # Skip old format prompts
-        filtered_history.append(msg)
-    
-    # Always place the main system prompt at the beginning
-    return [{"role": "system", "content": main_system_prompt_text}] + filtered_history
+        if not isinstance(msg, dict):
+            continue
+
+        if msg.get("role") != "system":
+            deduped_history.append(msg)
+            continue
+
+        content = msg.get("content", "")
+        if not isinstance(content, str):
+            deduped_history.append(msg)
+            continue
+
+        is_canonical_prompt = False
+        if canonical_prompt_start and content.startswith(canonical_prompt_start):
+            is_canonical_prompt = True
+        elif content.startswith(fallback_canonical_start[:50]):
+            is_canonical_prompt = True
+
+        is_legacy_prompt = any(content.startswith(prefix) for prefix in legacy_prompt_identifiers)
+
+        if is_canonical_prompt:
+            if preserved_main_prompt is None:
+                preserved_main_prompt = content
+            continue
+
+        if is_legacy_prompt:
+            debug(
+                f"Removing legacy main system prompt starting with: {content[:50]}...",
+                category="conversation_management"
+            )
+            continue
+
+        deduped_history.append(msg)
+
+    if isinstance(main_system_prompt_text, str) and main_system_prompt_text.strip():
+        canonical_prompt = main_system_prompt_text
+    elif preserved_main_prompt is not None:
+        canonical_prompt = preserved_main_prompt
+    else:
+        return deduped_history
+
+    return [{"role": "system", "content": canonical_prompt}] + deduped_history
 
 def order_conversation_messages(conversation_history, main_system_prompt_text):
     """Order conversation messages with main system prompt first, followed by other system prompts"""

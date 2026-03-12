@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Ensure rollback mode exposes a single canonical narration path without duplicate draft or stream-visible output.
+
+## Requirements
 
 ### Requirement: Single Visible Narration Path
 The system SHALL maintain a single visible narration output path per turn in rollback mode.

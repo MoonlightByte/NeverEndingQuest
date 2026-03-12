@@ -449,6 +449,48 @@ class TestTravelIntentDetectionContracts(unittest.TestCase):
                 self.assertEqual(result, expected, f"Input: '{input_text}'")
 
 
+class TestPromptSingularityContracts(unittest.TestCase):
+    """Contracts for single canonical narrator system prompt in outbound payload."""
+
+    def test_dedupe_helper_exists_in_main(self):
+        """main.py should define a dedicated prompt singularity helper."""
+        main_py_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'main.py'
+        )
+
+        with open(main_py_path, 'r') as f:
+            content = f.read()
+
+        self.assertIn(
+            "def dedupe_main_system_prompt_messages(",
+            content,
+            "Expected dedupe_main_system_prompt_messages helper in main.py"
+        )
+
+    def test_dedupe_helper_collapses_legacy_and_canonical(self):
+        """Legacy + canonical prompt inputs should collapse to one canonical prompt."""
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from main import dedupe_main_system_prompt_messages
+
+        canonical_prompt = "You are the Dungeon Master for the world's most popular roleplaying game, 5th Edition."
+        messages = [
+            {"role": "system", "content": "You are a world-class 5th edition Dungeon Master who excels in telling warm stories."},
+            {"role": "system", "content": canonical_prompt},
+            {"role": "system", "content": "WORLD STATE CONTEXT:\nCurrent module: Test"},
+            {"role": "user", "content": "hello"}
+        ]
+
+        deduped = dedupe_main_system_prompt_messages(messages, canonical_prompt)
+        prompt_count = sum(1 for m in deduped if m.get("role") == "system" and m.get("content", "").startswith(canonical_prompt[:50]))
+
+        self.assertEqual(prompt_count, 1, "Expected exactly one canonical prompt after dedupe")
+        self.assertEqual(deduped[0]["role"], "system")
+        self.assertTrue(deduped[0]["content"].startswith(canonical_prompt[:50]))
+
+
 if __name__ == "__main__":
     # Run tests with verbosity
     loader = unittest.TestLoader()
@@ -460,6 +502,7 @@ if __name__ == "__main__":
     suite.addTests(loader.loadTestsFromTestCase(TestCleanFollowupIsolation))
     suite.addTests(loader.loadTestsFromTestCase(TestNPCMoveFallbackContracts))
     suite.addTests(loader.loadTestsFromTestCase(TestTravelIntentDetectionContracts))
+    suite.addTests(loader.loadTestsFromTestCase(TestPromptSingularityContracts))
     
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define TTS playback behavior against canonical block narration output in rollback mode.
+
+## Requirements
 
 ### Requirement: TTS Uses Canonical Narration Blocks
 The system SHALL perform automatic narration TTS only on canonical block narration output in rollback mode.

@@ -85,9 +85,9 @@ def test_mixed_party_member_and_off_location_npc_only_flags_npc():
         "npcs": ["Oswin Peverell"],
     }
 
-    # AI mentions party member zeug (present) and off-location NPC
+    # AI mentions party member zeug (present) and off-location NPC with explicit arrival
     response_json = {
-        "narration": "Zeug points at the mysterious stranger lurking in the shadows.",
+        "narration": "Zeug points as the mysterious stranger arrives from the shadows.",
         "actions": [],  # No arrival action for mysterious stranger
     }
 

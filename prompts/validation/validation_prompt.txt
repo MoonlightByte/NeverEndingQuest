@@ -1007,7 +1007,7 @@ An NPC is considered "off-location" if they are NOT currently in the party roste
 ### Validation Rules:
 - **VALID**: Narration claims off-location NPC arrived + matching moveBackgroundNPC action present
 - **VALID**: Narration claims NPC joined party + matching updatePartyNPCs add action present
-- **VALID**: Off-location NPC mentioned during travel WITHOUT explicit arrival verbs + no action required (incidental mention)
+- **VALID**: Off-location NPC mentioned WITHOUT explicit arrival verbs + no action required (incidental mention; travel or non-travel)
 - **VALID**: NPC already present at location or in party requires NO additional action
 - **INVALID**: Narration claims off-location NPC arrived/joined but NO matching state action present
 

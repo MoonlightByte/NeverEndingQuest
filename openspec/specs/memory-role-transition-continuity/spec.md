@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define identity continuity and milestone retrieval behavior for PC/NPC role transitions across time.
+
+## Requirements
 
 ### Requirement: Role transitions SHALL preserve canonical identity
 The system SHALL represent retirement, return, and PC/NPC role changes as role-timeline updates on the same canonical entity identity.

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define rollback-mode narration behavior as block-only output while preserving dormant streaming foundations for future work.
+
+## Requirements
 
 ### Requirement: Stable Block Narration Output
 The system SHALL render player-facing narration via canonical block output only when rollback mode is active.

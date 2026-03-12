@@ -4,28 +4,29 @@ Define authoritative validation behavior for off-location NPC arrival state sync
 ## Requirements
 ### Requirement: Deterministic validator is authoritative for arrival sync
 
-Deterministic validation SHALL be the source of truth for off-location NPC arrival state sync checks.
+Off-location NPC mention SHALL require a state-sync action only when narration includes explicit physical-arrival semantics.
 
-#### Scenario: Off-location mention without action fails
-- **WHEN** narration mentions an off-location NPC and no matching state action exists in the same response
-- **THEN** deterministic validation SHALL fail with explicit required action
+#### Scenario: Off-location rumor mention without explicit arrival
+- **GIVEN** narration references an off-location known NPC in informational/social context
+- **AND** no explicit arrival verb semantics are present
+- **WHEN** deterministic arrival validation runs
+- **THEN** validation SHALL pass for arrival-sync dimension
 
-#### Scenario: Present NPC mention passes
-- **WHEN** narration mentions an NPC already present at current location
-- **THEN** deterministic validation SHALL pass without extra arrival action
+#### Scenario: Explicit off-location arrival without action
+- **GIVEN** narration explicitly states an off-location known NPC arrives/enters/joins/appears
+- **AND** no matching `moveBackgroundNPC` or `updatePartyNPCs add` action exists
+- **WHEN** deterministic arrival validation runs
+- **THEN** validation SHALL fail with required-action reason
 
 ### Requirement: LLM validator SHALL NOT re-litigate deterministic arrival results
 
-LLM validation SHALL respect deterministic arrival verdicts and only evaluate non-arrival semantics.
+LLM validation SHALL NOT reintroduce arrival-sync failure when deterministic arrival-sync pass condition is satisfied.
 
-#### Scenario: Deterministic pass respected
-- **WHEN** deterministic metadata indicates `deterministic_passed = true`
-- **THEN** LLM validation SHALL NOT fail on arrival-sync grounds
-
-#### Scenario: Deterministic fail remains blocking
-- **WHEN** deterministic metadata indicates `deterministic_passed = false`
-- **THEN** response SHALL remain failed for deterministic reason
-- **AND** LLM output SHALL NOT override to pass
+#### Scenario: Deterministic pass for non-explicit mention
+- **GIVEN** deterministic validator marks arrival-sync pass for a non-explicit off-location mention
+- **WHEN** LLM validation executes
+- **THEN** runtime SHALL keep arrival-sync as pass
+- **AND** SHALL evaluate only non-arrival semantic dimensions
 
 ### Requirement: Contradictory arrival guidance SHALL NOT be emitted
 

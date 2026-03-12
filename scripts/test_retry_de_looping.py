@@ -343,5 +343,26 @@ class TestBackwardsCompatibility(unittest.TestCase):
         )
 
 
+class TestDeterministicCorrectionPathContracts(unittest.TestCase):
+    """Contracts for deterministic correction wording to avoid impossible loops."""
+
+    def test_arrival_failure_reason_offers_remove_claim_alternative(self):
+        """Arrival failure reason should include legal rephrase option."""
+        validator_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'utils',
+            'npc_arrival_validator.py'
+        )
+
+        with open(validator_path, 'r') as f:
+            content = f.read()
+
+        self.assertIn(
+            "remove explicit arrival",
+            content.lower(),
+            "Arrival failure reason should include remove explicit arrival alternative"
+        )
+
+
 if __name__ == '__main__':
     unittest.main()

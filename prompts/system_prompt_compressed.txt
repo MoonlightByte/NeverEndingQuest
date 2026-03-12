@@ -175,7 +175,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
    canonical_identity: Short mention in narration is valid if action uses canonical NPC name (e.g., "Kira" + npc.name="Scout Kira").
    already_present: NPCs already at current location or in party require NO additional action.
    off_location_definition: NPC not currently in party roster AND not listed in current location's NPCs.
-   incidental_mention: Mentioning an off-location NPC without explicit arrival verbs during travel is ALLOWED (no action required).
+   incidental_mention: Mentioning an off-location NPC without explicit arrival verbs is ALLOWED (no action required), in both travel and non-travel turns.
    fail_closed: Missing state action for EXPLICIT off-location arrival claim = validation failure and retry.
 }
 

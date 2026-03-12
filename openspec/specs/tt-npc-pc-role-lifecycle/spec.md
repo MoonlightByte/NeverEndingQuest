@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define deterministic NPC -> PC promotion lifecycle behavior with identity continuity and party-state correctness.
+
+## Requirements
 
 ### Requirement: Add Existing SHALL support promotable NPC companion candidates
 Manage Party Add Existing SHALL provide a way to view promotable NPC companions and start explicit NPC -> PC promotion.

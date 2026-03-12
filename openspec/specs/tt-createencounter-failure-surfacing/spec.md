@@ -1,4 +1,8 @@
-## MODIFIED Requirements
+## Purpose
+
+Define explicit non-misleading failure surfacing when `createEncounter` cannot generate required combat data.
+
+## Requirements
 
 ### Requirement: createEncounter failure SHALL be explicit and non-misleading
 

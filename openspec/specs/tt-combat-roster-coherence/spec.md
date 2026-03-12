@@ -1,3 +1,9 @@
+## Purpose
+
+Define roster completeness and initiative visibility guarantees for party members in multi-PC combat encounters.
+
+## Requirements
+
 ### Requirement: Multi-PC Encounter Creation SHALL Include Full Party Roster
 In Multi-PC mode, encounter creation MUST include all `partyMembers` as player combatants.
 

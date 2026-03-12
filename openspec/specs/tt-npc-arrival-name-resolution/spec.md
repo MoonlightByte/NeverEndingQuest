@@ -53,29 +53,26 @@ Party members SHALL remain exempt from NPC arrival state sync enforcement even i
 
 ### Requirement: Action-name alias handling SHALL match mention alias handling
 
-Alias resolution for action payload names SHALL be consistent with alias resolution used for narration mentions in arrival-sync evaluation.
+State mutation actions with ambiguous canonical identity SHALL fail closed.
 
-#### Scenario: Short mention and short action name resolve to same canonical identity
-- **WHEN** narration references short NPC alias `Kira`
-- **AND** action payload also uses short alias `Kira`
-- **AND** canonical resolver maps both unambiguously to `Scout Kira`
-- **THEN** arrival-sync evaluation SHALL treat both as the same canonical NPC identity
-
-#### Scenario: Mention resolves but action alias is ambiguous
-- **WHEN** narration mention resolves unambiguously
-- **AND** action payload alias maps to multiple candidates
-- **THEN** arrival-sync evaluation SHALL fail closed for ambiguous action identity
-- **AND** SHALL require explicit disambiguated canonical action name
+#### Scenario: moveBackgroundNPC ambiguous candidate set
+- **GIVEN** `moveBackgroundNPC` npcName resolves to multiple module NPC candidates
+- **WHEN** preprocessing runs
+- **THEN** validation SHALL fail with explicit ambiguity reason
+- **AND** no mutation action SHALL execute
 
 ### Requirement: Canonical identity checks SHALL be action-type invariant
 
-Canonical identity matching SHALL behave consistently across `updatePartyNPCs` add and `moveBackgroundNPC` action paths.
+Canonical name resolution SHALL be scoped by action type to avoid impossible validation loops.
 
-#### Scenario: updatePartyNPCs canonical parity
-- **WHEN** `updatePartyNPCs` adds an NPC using a short alias
-- **THEN** canonical identity match SHALL use the same resolver semantics as mention parsing
+#### Scenario: updatePartyNPCs add uses party-tracker canonical identity
+- **GIVEN** an `updatePartyNPCs` action payload
+- **WHEN** canonical name preprocessing runs
+- **THEN** name resolution SHALL use party tracker canonical identities
 
-#### Scenario: moveBackgroundNPC canonical parity
-- **WHEN** `moveBackgroundNPC` provides `npcName` using a short alias
-- **THEN** canonical identity match SHALL use the same resolver semantics as mention parsing
+#### Scenario: moveBackgroundNPC uses module-known canonical identity
+- **GIVEN** a `moveBackgroundNPC` action payload
+- **WHEN** canonical name preprocessing runs
+- **THEN** name resolution SHALL use module-known NPC canonical identities
+- **AND** SHALL NOT be rejected solely for absence from party tracker
 

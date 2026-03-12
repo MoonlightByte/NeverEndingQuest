@@ -1071,7 +1071,7 @@ Examples of when to use moveBackgroundNPC:
 - Canonical identity matching is allowed:
   - Short mention in narration can pair with canonical action identity (example: "Kira" + npc.name="Scout Kira").
 - NPC already present at current location or already in party requires NO additional arrival action.
-- Incidental mention during travel without explicit arrival verbs is allowed without action.
+- Incidental mention without explicit arrival verbs is allowed without action (travel and non-travel turns).
 - Missing state action for explicit off-location arrival claim is a validation failure and retry.
 
 ## NPC Party Recruitment Guidelines

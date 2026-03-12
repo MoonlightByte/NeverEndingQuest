@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define deterministic ranked retrieval behavior and bounded packaging for memory context assembly.
+
+## Requirements
 
 ### Requirement: Timeline retrieval SHALL be deterministic and ranked
 The system SHALL provide `get_entity_timeline` retrieval that returns results in deterministic ranked order using explicit scoring factors.

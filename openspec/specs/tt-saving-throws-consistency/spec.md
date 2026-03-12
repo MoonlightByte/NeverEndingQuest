@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define consistent saving-throw proficiency normalization and parity between GUI rendering and PDF export.
+
+## Requirements
 
 ### Requirement: Saving throw proficiency matching SHALL be case-insensitive and canonical
 The system SHALL normalize saving throw proficiency values into canonical ability keys and treat equivalent forms as identical (for example `Intelligence`, `intelligence`, `INT`).

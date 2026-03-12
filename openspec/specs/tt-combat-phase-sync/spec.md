@@ -1,3 +1,9 @@
+## Purpose
+
+Define deterministic opening-phase and ongoing phase-contract synchronization for multi-PC combat turns.
+
+## Requirements
+
 ### Requirement: DM-Group Opening Batch SHALL Transition Back to PC Phase
 When `initiativeWinner` is `dmGroup` at combat start, the system MUST process exactly one opening enemy batch and then transition to `PC_PHASE` for player control unless combat has already ended.
 

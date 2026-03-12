@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define the foundational memory schema contract for migration safety, compatibility, and stable entity identity.
+
+## Requirements
 
 ### Requirement: Canonical memory schema SHALL be migration-managed and additive
 The system SHALL initialize and migrate a canonical SQLite memory schema that is idempotent, additive, and safe to run repeatedly without data loss.

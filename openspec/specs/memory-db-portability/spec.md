@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define portable memory DB export/import contracts with compatibility validation and safe default behavior.
+
+## Requirements
 
 ### Requirement: Memory DB export SHALL produce a portable package with manifest
 The system SHALL support exporting memory DB state into a portable package that includes DB artifact and manifest metadata.

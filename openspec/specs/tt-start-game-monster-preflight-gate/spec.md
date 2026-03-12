@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define start-game strict preflight gating for unresolved monster references with one deterministic remediation attempt.
+
+## Requirements
 
 ### Requirement: Start-game preflight SHALL run strict monster reference integrity gating
 

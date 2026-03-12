@@ -526,9 +526,10 @@ class TestTravelIntentFailSoft(unittest.TestCase):
         self.assertTrue(is_valid,
             f"Explicit arrival with matching action should be valid, got: {reason}")
 
-    def test_non_travel_strict_behavior_unchanged(self):
+    def test_non_travel_incidental_off_location_mention_valid(self):
         """
-        Task 5.1d: Non-travel strict behavior unchanged (is_travel_intent=False).
+        Task 5.1d: Non-travel + off-location mention + NO explicit-arrival + NO action => VALID.
+        Incidental mention should not require state action outside travel either.
         """
         from utils.npc_arrival_validator import validate_npc_arrival_state_sync
 
@@ -545,10 +546,56 @@ class TestTravelIntentFailSoft(unittest.TestCase):
             is_travel_intent=False,  # NOT a travel turn
             user_utterance="look around"
         )
-        
-        self.assertFalse(is_valid,
-            "Non-travel turns should fail-closed even without explicit arrival verbs")
+
+        self.assertTrue(is_valid,
+            f"Incidental off-location mention without explicit arrival should pass, got: {reason}")
+        self.assertEqual(reason, "")
+
+    def test_non_travel_explicit_arrival_still_fails_closed(self):
+        """
+        Non-travel + explicit arrival verb + no action => INVALID (fail-closed).
+        """
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": "Scout Elen arrives from the trail and steps into camp.",
+            "actions": []
+        }
+
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json,
+            self.party_tracker,
+            location_data=self.location_data,
+            module_npc_names=self.module_npcs,
+            is_travel_intent=False,
+            user_utterance="look around"
+        )
+
+        self.assertFalse(is_valid, "Explicit arrival without action must fail closed")
         self.assertIn("scout elen", reason.lower())
+
+    def test_failure_reason_includes_remove_arrival_claim_option(self):
+        """
+        Failure text should provide legal alternative path to avoid impossible retry loops.
+        """
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": "Scout Elen arrives from the trail and greets you.",
+            "actions": []
+        }
+
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json,
+            self.party_tracker,
+            location_data=self.location_data,
+            module_npc_names=self.module_npcs,
+            is_travel_intent=False,
+            user_utterance="look around"
+        )
+
+        self.assertFalse(is_valid)
+        self.assertIn("remove explicit arrival", reason.lower())
 
     def test_complex_travel_narration_multiple_npcs(self):
         """
@@ -809,6 +856,42 @@ class TestNPCNameNormalization(unittest.TestCase):
         parsed = json.loads(normalized)
         npc_name = parsed["actions"][0]["parameters"]["npcName"]
         self.assertEqual(npc_name, "Scout Kira", "Short name in moveBackgroundNPC should be canonicalized")
+
+    def test_moveBackgroundNPC_module_npc_not_rejected_by_party_only_set(self):
+        """
+        moveBackgroundNPC should resolve module-known NPC identity even when NPC is not in party tracker.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from main import normalize_character_names_in_response
+
+        response = json.dumps({
+            "narration": "Merchant Kael arrives from the south road.",
+            "actions": [
+                {
+                    "action": "moveBackgroundNPC",
+                    "parameters": {
+                        "npcName": "merchant kael",
+                        "context": "Arrives from road",
+                        "currentLocation": "RO01"
+                    }
+                }
+            ]
+        })
+
+        party_tracker_data = {
+            "module": "The_Thornwood_Watch",
+            "partyMembers": ["Acheron"],
+            "partyNPCs": [{"name": "Scout Kira", "role": "Scout"}]
+        }
+
+        normalized, message = normalize_character_names_in_response(response, party_tracker_data)
+
+        self.assertIsNotNone(normalized, f"Module-known moveBackgroundNPC should be accepted, got: {message}")
+        parsed = json.loads(normalized)
+        npc_name = parsed["actions"][0]["parameters"]["npcName"]
+        self.assertEqual(npc_name.lower(), "merchant kael")
 
     def test_string_npc_form_converted_to_dict(self):
         """

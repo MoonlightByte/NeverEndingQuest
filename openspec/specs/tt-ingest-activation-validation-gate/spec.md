@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define strict unresolved-monster-reference gating across ingest quarantine and module activation preflight.
+
+## Requirements
 
 ### Requirement: Ingest and activation SHALL block unresolved monster references
 

@@ -1021,6 +1021,58 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Narrator Arrival Deadlock Fix + Prompt Singularity Guard (COMPLETED - 2026-03-12)
+
+**Status:** COMPLETED - OpenSpec change archived and main specs synchronized
+
+**OpenSpec Archive:**
+- `openspec/changes/archive/2026-03-11-tt-narrator-arrival-deadlock-fix/`
+
+**Objective:**
+Resolve narrator validation retry deadlocks caused by strict off-location arrival enforcement + party-only move normalization, and prevent duplicate main-system-prompt payloads.
+
+**Implementation Summary:**
+- Added runtime main-prompt dedupe helper in `main.py` (`dedupe_main_system_prompt_messages`) and wired last-mile outbound payload singularity guard in `get_ai_response()`.
+- Updated deterministic arrival validation in `utils/npc_arrival_validator.py` to enforce missing-action failures only for explicit arrival semantics.
+- Preserved fail-closed behavior for explicit arrivals and party-member exemption behavior.
+- Added legal retry alternative language (`remove explicit arrival wording`) to prevent impossible correction loops.
+- Split `moveBackgroundNPC` normalization in `main.py` to allow module-canonical identity resolution (not party-tracker-only), while keeping ambiguity fail-closed.
+- Synced compressed/uncompressed system + validation prompt wording for explicit-arrival-only parity.
+
+**Verification:**
+- `python3 -m py_compile main.py utils/npc_arrival_validator.py core/ai/action_handler.py` -> PASS
+- `python3 scripts/test_npc_arrival_state_sync.py` -> PASS (40/40)
+- `python3 scripts/test_npc_arrival_party_exemption.py` -> PASS (9/9)
+- `python3 scripts/test_retry_de_looping.py` -> PASS (12/12)
+- `python3 scripts/test_narrator_prompt_validation_refactor.py` -> PASS (18/18)
+- `python3 scripts/test_validation_payload_hygiene.py` -> PASS (9/9)
+- `openspec validate tt-narrator-system-prompt-singularity` -> VALID
+- `openspec validate tt-narrator-validation-contract` -> VALID
+- `openspec validate tt-npc-arrival-name-resolution` -> VALID
+- `openspec validate tt-validation-retry-hygiene` -> VALID
+
+**Spec Sync:**
+- `openspec/specs/tt-narrator-system-prompt-singularity/spec.md` (new)
+- `openspec/specs/tt-narrator-validation-contract/spec.md` (updated)
+- `openspec/specs/tt-npc-arrival-name-resolution/spec.md` (updated)
+- `openspec/specs/tt-validation-retry-hygiene/spec.md` (updated)
+
+### OpenSpec Main-Spec Canonicalization Cleanup (COMPLETED - 2026-03-12)
+
+**Status:** COMPLETED - documentation hygiene pass for release readiness
+
+**Objective:**
+Bring main-spec corpus back to canonical OpenSpec format so `openspec validate --specs` is fully green for gametest branch push.
+
+**Implementation Summary:**
+- Added canonical `## Purpose` + `## Requirements` wrappers to main specs that were still in delta-style (`## ADDED Requirements` / `## MODIFIED Requirements`) or missing wrappers.
+- Fixed invalid requirement-shape issue in `tt-character-sheet-stats-loading-resilience` by replacing `### SHOULD Guidance` with a valid SHALL/MUST requirement + scenario.
+- Replaced placeholder Purpose text in `tt-narrator-system-prompt-singularity` with finalized purpose language.
+
+**Verification:**
+- `openspec validate --specs` -> PASS (125/125)
+- `openspec validate --all` -> PASS (125/125)
+
 ### Combat Encounter Ops Second Wave (COMPLETED - 2026-03-11)
 
 **Status:** COMPLETED - OpenSpec change archived and main specs synchronized

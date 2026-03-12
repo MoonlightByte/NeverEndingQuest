@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define idempotent, fail-tolerant memory ingestion semantics for journal and history sources.
+
+## Requirements
 
 ### Requirement: Journal ingest SHALL be idempotent by source and checksum
 The system SHALL deduplicate ingested journal records using source-type and checksum so repeated imports do not create duplicate entries.
