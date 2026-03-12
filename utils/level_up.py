@@ -9,6 +9,7 @@ import json
 from openai import OpenAI
 from config import OPENAI_API_KEY, LEVEL_UP_MODEL
 from .file_operations import safe_read_json
+from .xp_progression_utils import get_next_level_threshold
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -34,8 +35,8 @@ Ask the player about their choices:
 Once all decisions are made, use the updateCharacterInfo action to apply ALL changes at once. Include:
 - Set level to {new_level}
 - Update hit points and max hit points based on their choice
-- Set experience_points to 0
-- Set exp_required_for_next_level based on the leveling table
+- Preserve the current cumulative experience_points value
+- Set exp_required_for_next_level to the cumulative XP threshold for the NEXT level after {new_level}
 - Add any new class features
 - Update spell slots if applicable
 - Apply any other changes
@@ -68,8 +69,8 @@ The response must be a valid JSON object with these changes:
 - level: {new_level}
 - hitPoints: (new value)
 - maxHitPoints: (new value)  
-- experience_points: 0
-- exp_required_for_next_level: (from leveling table)
+- experience_points: keep the current cumulative XP value from the character data
+- exp_required_for_next_level: cumulative XP threshold for the NEXT level after {new_level}
 - classFeatures: (array of new features to ADD, not replace)
 - Any other fields that change
 
@@ -78,7 +79,7 @@ Example response format:
     "level": 2,
     "hitPoints": 18,
     "maxHitPoints": 18,
-    "experience_points": 0,
+    "experience_points": 300,
     "exp_required_for_next_level": 900,
     "classFeatures": [
         {{
@@ -115,6 +116,13 @@ Example response format:
         
         # Parse the changes
         changes = json.loads(ai_response)
+
+        # Preserve cumulative XP semantics and deterministically repair
+        # next-level threshold from the target level.
+        current_xp = character_data.get("experience_points", 0)
+        changes["experience_points"] = current_xp
+        changes["exp_required_for_next_level"] = get_next_level_threshold(new_level)
+        changes["level"] = new_level
         
         # Handle classFeatures properly - we need to merge with existing
         if "classFeatures" in changes and character_data.get("classFeatures"):

@@ -104,7 +104,7 @@ import os
 from datetime import datetime
 from jsonschema import validate, ValidationError
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Dict, Any, Optional, Set
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -133,6 +133,7 @@ from utils.character_ops_routing import (
     normalize_character_ops_payload,
     classify_character_update_payload,
 )
+from utils.xp_progression_utils import normalize_xp_progression
 from core.managers.world_observer import get_world_observer
 
 # Set script name for logging
@@ -1079,105 +1080,269 @@ def calculate_ability_modifier(score):
     except:
         return 0
 
+def _normalize_weapon_lookup_name(value: str) -> str:
+    """Normalize item names for weapon-database matching."""
+    text = str(value or "").strip().lower()
+    text = text.replace(",", " ")
+    text = text.replace("-", " ")
+    text = text.replace("_", " ")
+    text = re.sub(r"[^a-z0-9\s]", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def _get_weapon_database_entry(item_name: str) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    """Return best-matching weapon database entry for an item name."""
+    normalized_item_name = _normalize_weapon_lookup_name(item_name)
+    if not normalized_item_name:
+        return None, None
+
+    candidates: List[Tuple[int, str, Dict[str, Any]]] = []
+    for db_name, stats in WEAPON_DATABASE.items():
+        normalized_db_name = _normalize_weapon_lookup_name(db_name)
+        if not normalized_db_name:
+            continue
+
+        pattern = r"\b" + re.escape(normalized_db_name) + r"\b"
+        if re.search(pattern, normalized_item_name):
+            candidates.append((len(normalized_db_name), db_name, stats))
+
+    if not candidates:
+        return None, None
+
+    candidates.sort(reverse=True)
+    _, selected_name, selected_stats = candidates[0]
+    return selected_name, selected_stats
+
+
+def _parse_weapon_damage(damage_value: Any, fallback_dice: str, fallback_type: str) -> Tuple[str, str]:
+    """Parse damage into schema-safe damageDice and damageType values."""
+    if not isinstance(damage_value, str) or not damage_value.strip():
+        return fallback_dice, fallback_type
+
+    text = damage_value.strip().lower()
+    tokens = [token for token in text.split() if token]
+    if not tokens:
+        return fallback_dice, fallback_type
+
+    damage_dice = tokens[0]
+    damage_type = fallback_type
+    if len(tokens) > 1:
+        damage_type = tokens[1]
+    return damage_dice, damage_type
+
+
+def _infer_weapon_equipment_fields(item_name: str) -> Optional[Dict[str, Any]]:
+    """Infer weapon metadata for inventory items that match known weapon names."""
+    _, db_stats = _get_weapon_database_entry(item_name)
+    if not db_stats:
+        return None
+
+    properties = db_stats.get("properties", [])
+    weapon_type = "ranged" if "ammunition" in properties else "melee"
+
+    return {
+        "item_type": "weapon",
+        "item_subtype": "other",
+        "weapon_type": weapon_type,
+        "damage": db_stats.get("dice", "1d4"),
+        "attack_bonus": 0,
+        "description": f"A standard {item_name}.",
+        "equipped": False,
+        "magical": False,
+        "consumable": False,
+    }
+
+
 def synchronize_weapons(character_data):
     """
-    Ensure all equipped weapons in equipment have a corresponding entry in attacksAndSpellcasting.
-    Uses WEAPON_DATABASE to fill in missing details.
+    Keep equipment and attacksAndSpellcasting in sync for weapon-backed entries.
+
+    Rules:
+    - Promote known weapon-like equipment names to item_type="weapon".
+    - Build/repair attacks for carried weapon items (quantity > 0).
+    - Remove stale weapon attacks when no backing weapon remains.
+    - Preserve non-weapon attacks (spells, class features, natural attacks).
     """
-    if 'equipment' not in character_data or not isinstance(character_data['equipment'], list):
+    equipment = character_data.get("equipment")
+    if not isinstance(equipment, list):
         return character_data
-    
-    if 'attacksAndSpellcasting' not in character_data:
-        character_data['attacksAndSpellcasting'] = []
-    
-    # Get ability modifiers for bonus calculation
-    abilities = character_data.get('abilities', {})
-    str_mod = calculate_ability_modifier(abilities.get('strength', 10))
-    dex_mod = calculate_ability_modifier(abilities.get('dexterity', 10))
-    prof_bonus = character_data.get('proficiencyBonus', 2)
-    
-    equipped_weapons = [item for item in character_data['equipment'] 
-                       if item.get('item_type') == 'weapon' and item.get('equipped', False)]
-    
-    existing_attacks = {attack.get('name', '').lower(): attack for attack in character_data['attacksAndSpellcasting']}
-    
-    for weapon in equipped_weapons:
-        weapon_name = weapon.get('item_name', '')
+
+    attacks = character_data.get("attacksAndSpellcasting")
+    if not isinstance(attacks, list):
+        attacks = []
+        character_data["attacksAndSpellcasting"] = attacks
+
+    abilities = character_data.get("abilities", {})
+    str_mod = calculate_ability_modifier(abilities.get("strength", 10))
+    dex_mod = calculate_ability_modifier(abilities.get("dexterity", 10))
+    prof_bonus = character_data.get("proficiencyBonus", 2)
+
+    weapon_items: List[Dict[str, Any]] = []
+    for item in equipment:
+        if not isinstance(item, dict):
+            continue
+
+        quantity = item.get("quantity", 1)
+        try:
+            quantity_value = int(quantity)
+        except Exception:
+            quantity_value = 1
+        if quantity_value <= 0:
+            continue
+
+        item_name = str(item.get("item_name", "")).strip()
+        if not item_name:
+            continue
+
+        item_type = str(item.get("item_type", "")).strip().lower()
+        if item_type != "weapon":
+            inferred_fields = _infer_weapon_equipment_fields(item_name)
+            if inferred_fields:
+                item["item_type"] = "weapon"
+                if not item.get("item_subtype"):
+                    item["item_subtype"] = inferred_fields.get("item_subtype", "other")
+                if not item.get("weapon_type"):
+                    item["weapon_type"] = inferred_fields.get("weapon_type", "melee")
+                if not item.get("damage"):
+                    item["damage"] = inferred_fields.get("damage", "1d4")
+                if "attack_bonus" not in item:
+                    item["attack_bonus"] = inferred_fields.get("attack_bonus", 0)
+                if not item.get("description"):
+                    item["description"] = inferred_fields.get("description", f"A standard {item_name}.")
+                if "equipped" not in item:
+                    item["equipped"] = inferred_fields.get("equipped", False)
+                if "magical" not in item:
+                    item["magical"] = inferred_fields.get("magical", False)
+                if "consumable" not in item:
+                    item["consumable"] = inferred_fields.get("consumable", False)
+                item_type = "weapon"
+
+        if item_type == "weapon":
+            weapon_items.append(item)
+
+    weapon_name_lookup: Set[str] = set()
+    for item in weapon_items:
+        item_name = str(item.get("item_name", "")).strip().lower()
+        if item_name:
+            weapon_name_lookup.add(item_name)
+
+    existing_attack_by_name: Dict[str, Dict[str, Any]] = {}
+    for attack in attacks:
+        if not isinstance(attack, dict):
+            continue
+        attack_name = str(attack.get("name", "")).strip().lower()
+        if attack_name and attack_name not in existing_attack_by_name:
+            existing_attack_by_name[attack_name] = attack
+
+    rebuilt_weapon_attacks: Dict[str, Dict[str, Any]] = {}
+    for weapon in weapon_items:
+        weapon_name = str(weapon.get("item_name", "")).strip()
         if not weapon_name:
             continue
-            
-        name_lower = weapon_name.lower()
-        
-        # Check if attack exists but is incomplete (missing required schema fields)
-        attack_to_repair = None
-        if name_lower in existing_attacks:
-            attack_to_repair = existing_attacks[name_lower]
-            required_fields = ["name", "attackBonus", "damageDice", "damageBonus", "damageType", "type", "description"]
-            is_complete = all(field in attack_to_repair for field in required_fields)
-            if is_complete:
-                continue
-            else:
-                debug(f"SYNC: Repairing incomplete attack entry for: {weapon_name}", category="character_updates")
-            
-        # Try to find weapon stats in database
-        # Fuzzy match: check if weapon_name contains any key in WEAPON_DATABASE
-        db_stats = None
-        for db_name, stats in WEAPON_DATABASE.items():
-            if db_name in name_lower:
-                db_stats = stats
-                break
-        
-        # Default stats if not found
+
+        attack_name_key = weapon_name.lower()
+        _, db_stats = _get_weapon_database_entry(weapon_name)
         if not db_stats:
-            db_stats = {"dice": "1d4", "type": "bludgeoning", "category": "simple", "properties": []}
-            
-        # Determine attack type and modifiers
-        is_ranged = "ranged" in weapon.get('weapon_type', '').lower() or "ammunition" in db_stats.get('properties', [])
-        is_finesse = "finesse" in db_stats.get('properties', [])
-        is_thrown = "thrown" in db_stats.get('properties', [])
-        
-        # Logic for bonuses
+            db_stats = {"dice": "1d4", "type": "bludgeoning", "properties": []}
+
+        weapon_type_value = str(weapon.get("weapon_type", "")).strip().lower()
+        db_properties = db_stats.get("properties", [])
+        is_ranged = weapon_type_value == "ranged" or "ammunition" in db_properties
+        is_finesse = "finesse" in db_properties
+        is_thrown = "thrown" in db_properties
+
         if is_ranged and not is_thrown:
-            # Pure ranged weapons use DEX
             mod = dex_mod
-            atk_type = "ranged"
+            attack_type = "ranged"
         elif is_finesse:
-            # Finesse uses higher of STR or DEX
             mod = max(str_mod, dex_mod)
-            atk_type = "melee" # Usually melee
+            attack_type = "melee"
         else:
-            # Default to melee STR
             mod = str_mod
-            atk_type = "melee"
-            
-        # Construct attack entry
-        attack_entry = {
-            "name": weapon_name,
-            "attackBonus": mod + prof_bonus + weapon.get('attack_bonus', 0),
-            "damageDice": weapon.get('damage', db_stats['dice']),
-            "damageBonus": mod + weapon.get('attack_bonus', 0), # Simplified, usually damage bonus matches attack bonus without prof
-            "damageType": db_stats['type'],
-            "type": atk_type,
-            "description": weapon.get('description', f"A standard {weapon_name}.")
-        }
-        
-        # Final schema check: ensure all required fields present
-        required_fields = ["name", "attackBonus", "damageDice", "damageBonus", "damageType", "type", "description"]
-        for field in required_fields:
-            if field not in attack_entry:
-                # This shouldn't happen with the logic above but good as a safety
-                if field == "damageBonus": attack_entry[field] = 0
-                elif field == "attackBonus": attack_entry[field] = 0
-                else: attack_entry[field] = "None"
-        
-        if attack_to_repair:
-            # Update existing attack in place
-            attack_to_repair.update(attack_entry)
+            attack_type = "melee"
+
+        try:
+            weapon_attack_bonus = int(weapon.get("attack_bonus", 0) or 0)
+        except Exception:
+            weapon_attack_bonus = 0
+
+        attack_bonus = mod + prof_bonus + weapon_attack_bonus
+        damage_bonus = mod + weapon_attack_bonus
+        damage_dice, damage_type = _parse_weapon_damage(
+            weapon.get("damage"),
+            db_stats.get("dice", "1d4"),
+            db_stats.get("type", "bludgeoning"),
+        )
+
+        base_attack = copy.deepcopy(existing_attack_by_name.get(attack_name_key, {}))
+        if not isinstance(base_attack, dict):
+            base_attack = {}
+
+        base_attack.update(
+            {
+                "name": weapon_name,
+                "attackBonus": attack_bonus,
+                "damageDice": damage_dice,
+                "damageBonus": damage_bonus,
+                "damageType": damage_type,
+                "type": attack_type,
+                "description": weapon.get("description", f"A standard {weapon_name}."),
+            }
+        )
+        rebuilt_weapon_attacks[attack_name_key] = base_attack
+
+    non_weapon_attacks: List[Dict[str, Any]] = []
+    for attack in attacks:
+        if not isinstance(attack, dict):
+            continue
+        attack_name = str(attack.get("name", "")).strip()
+        attack_key = attack_name.lower()
+        if not attack_key:
+            non_weapon_attacks.append(attack)
+            continue
+
+        if attack_key in weapon_name_lookup:
+            continue
+
+        _, weapon_match = _get_weapon_database_entry(attack_name)
+        if weapon_match:
+            debug(f"SYNC: Removing stale weapon attack without inventory source: {attack_name}", category="character_updates")
+            continue
+
+        non_weapon_attacks.append(attack)
+
+    final_attacks: List[Dict[str, Any]] = []
+    appended_weapon_keys: Set[str] = set()
+
+    for attack in attacks:
+        if not isinstance(attack, dict):
+            continue
+        attack_key = str(attack.get("name", "")).strip().lower()
+        if not attack_key:
+            final_attacks.append(attack)
+            continue
+
+        if attack_key in rebuilt_weapon_attacks:
+            final_attacks.append(rebuilt_weapon_attacks[attack_key])
+            appended_weapon_keys.add(attack_key)
         else:
-            # Add new entry
-            character_data['attacksAndSpellcasting'].append(attack_entry)
-            debug(f"SYNC: Added missing attack entry for equipped weapon: {weapon_name}", category="character_updates")
-        
+            for preserved_attack in non_weapon_attacks:
+                if preserved_attack is attack:
+                    final_attacks.append(preserved_attack)
+                    break
+
+    for weapon in weapon_items:
+        weapon_key = str(weapon.get("item_name", "")).strip().lower()
+        if not weapon_key or weapon_key in appended_weapon_keys:
+            continue
+        rebuilt_attack = rebuilt_weapon_attacks.get(weapon_key)
+        if rebuilt_attack:
+            final_attacks.append(rebuilt_attack)
+            appended_weapon_keys.add(weapon_key)
+            debug(f"SYNC: Added missing weapon attack for carried item: {weapon.get('item_name')}", category="character_updates")
+
+    character_data["attacksAndSpellcasting"] = final_attacks
     return character_data
 
 def repair_character_data(character_data):
@@ -1199,6 +1364,14 @@ def repair_character_data(character_data):
 
     # Synchronize weapons with attacks
     character_data = synchronize_weapons(character_data)
+
+    # Preserve cumulative XP semantics and repair next-threshold drift
+    character_data, xp_diagnostics = normalize_xp_progression(character_data, preserve_level=True)
+    if xp_diagnostics.get("threshold_mismatch"):
+        debug(
+            f"REPAIR: Normalized XP threshold for level {character_data.get('level')} to {character_data.get('exp_required_for_next_level')}",
+            category="character_updates",
+        )
     
     # Ensure ammunition has descriptions
     if 'ammunition' in character_data and isinstance(character_data['ammunition'], list):
@@ -1416,7 +1589,11 @@ def _apply_character_ops_deterministic(character_data: Dict[str, Any], ops: List
                     else:
                         if quantity > current_qty:
                             return (False, character_data, f"cannot remove {quantity} {item_name}; only {current_qty} available", [])
-                        entry["quantity"] = current_qty - quantity
+                        new_qty = current_qty - quantity
+                        if new_qty <= 0:
+                            ammunition.remove(entry)
+                        else:
+                            entry["quantity"] = new_qty
             else:
                 equipment = updated_data.get("equipment", [])
                 if not isinstance(equipment, list):
@@ -1428,19 +1605,52 @@ def _apply_character_ops_deterministic(character_data: Dict[str, Any], ops: List
                     return (False, character_data, f"cannot remove equipment not present: {item_name}", [])
 
                 if entry is None:
+                    inferred_weapon_fields = _infer_weapon_equipment_fields(item_name)
+                    item_type_value = str(op.get("item_type", "miscellaneous")).strip().lower()
+                    if inferred_weapon_fields and item_type_value in ["", "miscellaneous", "equipment"]:
+                        item_type_value = "weapon"
+
                     equipment.append({
                         "item_name": item_name,
-                        "item_type": str(op.get("item_type", "miscellaneous")),
+                        "item_type": item_type_value,
                         "quantity": quantity,
                     })
+                    if inferred_weapon_fields and item_type_value == "weapon":
+                        equipment[-1].update(inferred_weapon_fields)
+                        equipment[-1]["item_name"] = item_name
+                        equipment[-1]["quantity"] = quantity
                 else:
                     current_qty = _to_int(entry.get("quantity", 0), "quantity", op_type)
                     if op_type == "inventory_add":
                         entry["quantity"] = current_qty + quantity
+                        if str(entry.get("item_type", "")).strip().lower() != "weapon":
+                            inferred_weapon_fields = _infer_weapon_equipment_fields(item_name)
+                            if inferred_weapon_fields:
+                                entry["item_type"] = "weapon"
+                                if not entry.get("item_subtype"):
+                                    entry["item_subtype"] = inferred_weapon_fields.get("item_subtype", "other")
+                                if not entry.get("weapon_type"):
+                                    entry["weapon_type"] = inferred_weapon_fields.get("weapon_type", "melee")
+                                if not entry.get("damage"):
+                                    entry["damage"] = inferred_weapon_fields.get("damage", "1d4")
+                                if "attack_bonus" not in entry:
+                                    entry["attack_bonus"] = inferred_weapon_fields.get("attack_bonus", 0)
+                                if not entry.get("description"):
+                                    entry["description"] = inferred_weapon_fields.get("description", f"A standard {item_name}.")
+                                if "equipped" not in entry:
+                                    entry["equipped"] = inferred_weapon_fields.get("equipped", False)
+                                if "magical" not in entry:
+                                    entry["magical"] = inferred_weapon_fields.get("magical", False)
+                                if "consumable" not in entry:
+                                    entry["consumable"] = inferred_weapon_fields.get("consumable", False)
                     else:
                         if quantity > current_qty:
                             return (False, character_data, f"cannot remove {quantity} {item_name}; only {current_qty} available", [])
-                        entry["quantity"] = current_qty - quantity
+                        new_qty = current_qty - quantity
+                        if new_qty <= 0:
+                            equipment.remove(entry)
+                        else:
+                            entry["quantity"] = new_qty
 
         elif op_type == "currency_delta":
             currency = updated_data.get("currency", {})

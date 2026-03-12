@@ -9,9 +9,9 @@ You will be provided with:
 CRITICAL VALIDATION POINTS:
 
 1. EXPERIENCE POINTS:
-   - Verify the XP threshold for the new level is correct
-   - Ensure the character has enough XP to level up
-   - Check XP requirements match the leveling_info.txt table
+   - Ensure the character has enough cumulative XP to level up
+   - Verify exp_required_for_next_level is the cumulative threshold for the NEXT level after leveling
+   - Reject any response that resets experience_points to 0 or to the floor XP for the new level
 
 2. HIT POINTS:
    - Fighters/Paladins/Rangers: 1d10 (or 6) + CON modifier

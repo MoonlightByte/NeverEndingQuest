@@ -58,6 +58,7 @@ from utils.file_operations import safe_read_json
 from updates.update_character_info import update_character_info, normalize_character_name
 from utils.encoding_utils import safe_json_dump
 from utils.module_path_manager import ModulePathManager
+from utils.xp_progression_utils import get_next_level_threshold
 
 # Token tracking import
 try:
@@ -144,17 +145,7 @@ class LevelUpSession:
 
             if is_valid:
                 changes = update_params.get("changes", "{}")
-                
-                # Strip experience_points from level-up changes to prevent XP bug
-                try:
-                    import json
-                    changes_dict = json.loads(changes)
-                    if "experience_points" in changes_dict:
-                        print(f"[Level Up Session] Removing experience_points from level-up changes")
-                        del changes_dict["experience_points"]
-                        changes = json.dumps(changes_dict)
-                except:
-                    pass  # If parsing fails, just pass through original
+                changes = self._normalize_final_level_up_changes(changes)
                 
                 if update_character_info(self.character_name, changes):
                     print(f"[Level Up Session] SUCCESS! {self.character_name} updated.")
@@ -275,6 +266,42 @@ class LevelUpSession:
             return f"Level Up: {narration}"
         except (json.JSONDecodeError, AttributeError):
             return "Level Up: The character has grown stronger and gained new abilities."
+
+    def _normalize_final_level_up_changes(self, raw_changes):
+        """Preserve cumulative XP semantics while keeping LLM choices intact."""
+        changes_dict = {}
+
+        try:
+            if isinstance(raw_changes, dict):
+                changes_dict = dict(raw_changes)
+            else:
+                changes_dict = json.loads(str(raw_changes or "{}"))
+        except Exception:
+            return raw_changes
+
+        current_xp = 0
+        try:
+            current_xp = int((self.character_data or {}).get("experience_points", 0))
+        except Exception:
+            current_xp = 0
+
+        incoming_xp = changes_dict.get("experience_points")
+        if incoming_xp is not None:
+            try:
+                incoming_xp_value = int(incoming_xp)
+            except Exception:
+                incoming_xp_value = current_xp
+
+            if incoming_xp_value != current_xp:
+                print(
+                    f"[Level Up Session] Preserving cumulative XP for {self.character_name}: "
+                    f"{incoming_xp_value} -> {current_xp}"
+                )
+            del changes_dict["experience_points"]
+
+        changes_dict["level"] = self.new_level
+        changes_dict["exp_required_for_next_level"] = get_next_level_threshold(self.new_level)
+        return json.dumps(changes_dict)
 
     @staticmethod
     def _load_system_prompts():

@@ -27,6 +27,7 @@ from jsonschema import Draft7Validator
 from model_config import DM_MINI_MODEL
 from utils.ai_client_factory import create_chat_client, get_model_config
 from utils.enhanced_logger import info, warning
+from utils.spell_slot_utils import normalize_character_spell_slots
 
 
 AUDIT_RESULT_SCHEMA_ERROR = "schema_error"
@@ -482,6 +483,10 @@ def _normalize_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         merged["alignment"] = "neutral"
     else:
         merged["alignment"] = alignment
+
+    # TABLETOP MODE: Normalize spell slot progression from class/level so
+    # creation/edit flows cannot persist all-zero slot blocks for spellcasters.
+    merged, _ = normalize_character_spell_slots(merged)
 
     return merged
 

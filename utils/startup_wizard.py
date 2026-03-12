@@ -32,6 +32,7 @@ from core.managers.status_manager import (
 )
 from utils.ai_client_factory import create_chat_client, get_chat_model_name
 from utils.character_creation_audit import AUDIT_RESULT_SUCCESS, audit_character_creation
+from utils.spell_slot_utils import normalize_character_spell_slots
 
 # Set script name for logging
 set_script_name("startup_wizard")
@@ -1456,7 +1457,8 @@ def calculate_derived_stats(character_data):
             "source": "Fighter feature"
         })
     elif class_name == 'wizard':
-        character_data['spellSlots'] = {"1": {"current": 2, "max": 2}}
+        # Spell-slot initialization is handled by shared slot normalizer below.
+        pass
     elif class_name == 'rogue':
         character_data['classFeatures'].append({
             "name": "Sneak Attack",
@@ -1465,6 +1467,11 @@ def calculate_derived_stats(character_data):
         })
     # Add more class features as needed...
     
+    # TABLETOP MODE: Normalize nested spell slots from class/level progression.
+    normalized_data, _ = normalize_character_spell_slots(character_data)
+    character_data.clear()
+    character_data.update(normalized_data)
+
     # Set alignment to neutral good by default
     character_data['alignment'] = "neutral good"
 
