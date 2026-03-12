@@ -776,6 +776,24 @@ class TestFastLaneInitiationContract(unittest.TestCase):
         self.assertIn('[prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Usage: /init <1-20>', source)
         self.assertIn('[prefill:/init ] Dungeon Master: [SYSTEM] Initiative pending. Enter /init <1-20> to begin combat.', source)
 
+    def test_initiative_lock_message_uses_readable_phase_text(self):
+        """Initiative lock system message should use spaces instead of underscores."""
+        source = self._load_combat_manager_source()
+        self.assertIn("DM GROUP", source)
+        self.assertIn("PC GROUP", source)
+        self.assertIn("phase_label_display", source)
+        self.assertIn("replace(\"_\", \" \")", source)
+
+    def test_pc_group_winner_followup_prompt_exists(self):
+        """PC-group initiative win should emit an immediate spoken turn prompt."""
+        source = self._load_combat_manager_source()
+        self.assertIn(
+            "Dungeon Master: Your party has the initiative and strikes first, ",
+            source
+        )
+        self.assertIn("what does {active_pc_name} do?", source)
+        self.assertIn("active_pc_name = (", source)
+
     def test_fast_lane_skips_initial_scene_bootstrap_contract(self):
         """Fast-lane must skip initial scene bootstrap and defer narration until phase starts."""
         source = self._load_combat_manager_source()

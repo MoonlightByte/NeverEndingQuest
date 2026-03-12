@@ -3586,15 +3586,26 @@ Player: {initial_prompt_text}"""
                f"phase={gate_result['phase_label']}",
                category="combat_events"
            )
+           phase_label_display = str(gate_result.get("phase_label", "")).replace("_", " ")
            print(
                f"Dungeon Master: [SYSTEM] Initiative locked. "
-               f"DM_GROUP {gate_result['dm_group_roll']} vs PC_GROUP {gate_result['pc_group_roll']}. "
-               f"Starting {gate_result['phase_label']}."
+               f"DM GROUP {gate_result['dm_group_roll']} vs PC GROUP {gate_result['pc_group_roll']}. "
+               f"Starting {phase_label_display}."
            )
            import sys
            sys.stdout.flush()
 
            if gate_result["winner"] == "pcGroup":
+               active_pc_name = (
+                   multi_pc_manager.current_pc_name
+                   or party_tracker_data.get("active_character")
+                   or "the active PC"
+               )
+               print(
+                   f"Dungeon Master: Your party has the initiative and strikes first, "
+                   f"what does {active_pc_name} do?"
+               )
+               sys.stdout.flush()
                # Wait for the facilitator's first PC action.
                continue
 

@@ -610,6 +610,23 @@ class WebOutputCapture:
                 # Check if this starts a Dungeon Master section
                 elif "Dungeon Master:" in clean_line:
                     try:
+                        # TABLETOP MODE: If a new Dungeon Master line arrives while
+                        # already buffering DM content, flush the prior DM message so
+                        # each DM line is emitted as a separate narration event.
+                        if self.in_dm_section and self.dm_buffer:
+                            combined_content = '\n'.join(self.dm_buffer)
+                            combined_content, skip_tts, prefill_input = extract_output_markers(combined_content)
+                            combined_content = combined_content.replace('Dungeon Master:', '', 1).strip()
+                            if combined_content.strip():
+                                message = {
+                                    'type': 'narration',
+                                    'content': combined_content,
+                                    'skipTTS': (skip_tts or self.tts_block_depth > 0),
+                                    'prefillInput': prefill_input
+                                }
+                                game_output_queue.put(message)
+                                add_to_message_cache(message)
+
                         # Start capturing DM content
                         self.in_dm_section = True
                         self.dm_buffer = [clean_line]
