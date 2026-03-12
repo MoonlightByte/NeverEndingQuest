@@ -328,7 +328,7 @@ class TestAliasResolution(unittest.TestCase):
         from utils.npc_arrival_validator import validate_npc_arrival_state_sync
 
         response_json = {
-            "narration": "Oswin walks in.",
+            "narration": "Oswin enters the room.",
             "actions": []
         }
         party_tracker_data = {"partyMembers": ["Zeug"], "partyNPCs": []}
@@ -340,6 +340,34 @@ class TestAliasResolution(unittest.TestCase):
         )
         self.assertFalse(is_valid, "Unambiguous short mention without action should be enforced")
         self.assertIn("oswin", reason.lower())
+
+    def test_descriptor_alias_prisoner_to_captured_matches_unique_identity(self):
+        """
+        Descriptor alias normalization should allow prisoner/captured identity match.
+        Scenario: narration/action use "Bandit Prisoner" while canonical NPC is "Captured Bandit".
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": "The bandit prisoner enters under guard.",
+            "actions": [
+                {
+                    "action": "moveBackgroundNPC",
+                    "parameters": {"npcName": "Bandit Prisoner", "currentLocation": "RO01"}
+                }
+            ]
+        }
+        party_tracker_data = {"partyMembers": ["Zeug"], "partyNPCs": []}
+        location_data = {"npcs": []}
+        module_npc_names = {"Captured Bandit", "Ranger Marcus"}
+
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json, party_tracker_data, location_data, module_npc_names
+        )
+        self.assertTrue(is_valid, f"Expected alias-aware match to pass, got: {reason}")
 
 
 class TestNegatedNpcMentions(unittest.TestCase):
@@ -373,7 +401,7 @@ class TestNegatedNpcMentions(unittest.TestCase):
         from utils.npc_arrival_validator import validate_npc_arrival_state_sync
 
         response_json = {
-            "narration": "The Harvest Witnesses gather at the road behind you.",
+            "narration": "The Harvest Witnesses appear at the road behind you.",
             "actions": []
         }
         party_tracker_data = {"partyMembers": ["Zeug"], "partyNPCs": []}
@@ -396,7 +424,7 @@ class TestNegatedNpcMentions(unittest.TestCase):
         response_json = {
             "narration": (
                 "There are no Harvest Witnesses at the altar, "
-                "but the Harvest Witnesses gather at the road behind you."
+                "but the Harvest Witnesses appear at the road behind you."
             ),
             "actions": []
         }

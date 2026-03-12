@@ -28,6 +28,14 @@ _NPC_MENTION_STOPWORDS: Set[str] = {
 }
 
 
+_NPC_TOKEN_EQUIVALENTS: Dict[str, str] = {
+    "prisoner": "captured",
+    "captive": "captured",
+    "detained": "captured",
+    "detainee": "captured",
+}
+
+
 _EXPLICIT_ARRIVAL_VERBS: Set[str] = {
     "arrive", "arrives", "arrived", "arriving",
     "enter", "enters", "entered", "entering",
@@ -35,10 +43,7 @@ _EXPLICIT_ARRIVAL_VERBS: Set[str] = {
     "appear", "appears", "appeared", "appearing",
     "emerge", "emerges", "emerged", "emerging",
     "approach", "approaches", "approached", "approaching",
-    "come", "comes", "came", "coming",
     "step", "steps", "stepped", "stepping",
-    "walk", "walks", "walked", "walking",
-    "gather", "gathers", "gathered", "gathering",
     "arrive from", "arrives from", "arrived from", "arriving from",
     "enter from", "enters from", "entered from", "entering from",
     "emerge from", "emerges from", "emerged from", "emerging from",
@@ -108,7 +113,10 @@ def _extract_name_tokens(name: str) -> Set[str]:
     
     normalized = _normalize_name_for_matching(name)
     
-    tokens = set(normalized.split())
+    tokens = set()
+    for token in normalized.split():
+        canonical_token = _NPC_TOKEN_EQUIVALENTS.get(token, token)
+        tokens.add(canonical_token)
     
     return tokens
 

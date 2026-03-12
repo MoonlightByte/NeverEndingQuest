@@ -298,6 +298,41 @@ class TestTurnQueueManager(unittest.TestCase):
 
         self.assertEqual(remaining, ["Goblin A", "Guard Ally"])
 
+    def test_get_remaining_enemies_ignores_current_turn_index(self):
+        """Enemy batch list must be invariant to queue pointer."""
+        self.turn_mgr.turn_queue = [
+            Combatant("Goblin A", CombatantType.ENEMY, 19, 7, 7, 15, "alive"),
+            Combatant("Acheron", CombatantType.PC, 16, 21, 21, 16, "alive"),
+            Combatant("Guard Ally", CombatantType.NPC, 14, 12, 12, 14, "alive"),
+            Combatant("Bandit B", CombatantType.ENEMY, 10, 11, 11, 12, "alive"),
+        ]
+
+        expected = ["Goblin A", "Guard Ally", "Bandit B"]
+
+        self.turn_mgr.current_turn_index = 0
+        self.assertEqual(self.turn_mgr.get_remaining_enemies_for_round(), expected)
+
+        self.turn_mgr.current_turn_index = 2
+        self.assertEqual(self.turn_mgr.get_remaining_enemies_for_round(), expected)
+
+        self.turn_mgr.current_turn_index = 3
+        self.assertEqual(self.turn_mgr.get_remaining_enemies_for_round(), expected)
+
+    def test_advance_turn_skips_defeated_and_unconscious_non_pc(self):
+        """Turn advancement must skip inactive non-PC actors."""
+        self.turn_mgr.current_turn_index = 0
+        self.turn_mgr.turn_queue = [
+            Combatant("Acheron", CombatantType.PC, 18, 21, 21, 16, "alive"),
+            Combatant("Captured Bandit", CombatantType.ENEMY, 15, 1, 11, 12, "defeated"),
+            Combatant("Downed Ally", CombatantType.NPC, 13, 0, 12, 14, "unconscious"),
+            Combatant("Goblin A", CombatantType.ENEMY, 10, 7, 7, 15, "alive"),
+        ]
+
+        next_actor, rolled_over = self.turn_mgr.advance_turn()
+
+        self.assertEqual(next_actor.name, "Goblin A")
+        self.assertFalse(rolled_over)
+
 
 class TestMultiPCCombatManagerFacade(unittest.TestCase):
     """Test MultiPCCombatManager facade and delegation."""

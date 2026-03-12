@@ -74,6 +74,13 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   compatibility: Prose-only save/check requests remain valid during migration if no explicit requestRoll action is emitted.
 }
 
+@UMPIRE_DIRECT_ANSWER_VALIDATION={
+  trigger: Direct DM/rules adjudication question from player (can we/can I/does this work/what roll/what DC/is this allowed).
+  valid: Response starts with clear ruling-first sentence (Yes/No/Requires [roll/check/save]) and may keep actions:[] when no state mutation is needed.
+  invalid: Purely atmospheric or evasive narration that omits a clear ruling while still trying to continue scene flow.
+  fail_reason: "Direct adjudication question requires a clear ruling-first answer (Yes/No/Requires roll/DC) before flavor."
+}
+
 @CREATEMODULE_VALIDATION={
   invalid_triggers: ["What next?","Where should we go?","Any ideas?","What happens next?","What's our next move?"]
   valid_triggers: ["Yes investigate barrow","We'll help villagers","Count us in","Let's go to Frostward Marches"]
@@ -164,7 +171,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 
 @NPC_ARRIVAL_VALIDATION={
    rule: EXPLICIT off-location known NPC arrival claims in narration MUST have matching state action in SAME response.
-   explicit_arrival_verbs: [arrives, enters, joins, appears, emerges, approaches, comes, steps, arrives from, enters from, appears from, steps out, comes from]
+   explicit_arrival_verbs: [arrives, enters, joins, appears, emerges, approaches, steps, arrives from, enters from, appears from, steps out, comes from]
    valid: Narration says "Scout Elen arrives from the trail" + moveBackgroundNPC with npcName="Scout Elen" = VALID (explicit arrival verb)
    valid: Narration says "Kira joins your party" + updatePartyNPCs add with npc.name="Scout Kira" = VALID (explicit join verb; canonical name identity match allowed)
    valid: Narration mentions "Scout Elen" WITHOUT explicit arrival verbs + NO action = VALID (incidental mention; travel or non-travel)
@@ -214,8 +221,10 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
    false_wrong_join_action: {"valid":false,"reason":"Used updateCharacterInfo to document NPC joining but missing updatePartyNPCs. When NPC joins party, MUST use updatePartyNPCs action. updateCharacterInfo is for stat/inventory changes, NOT party composition"}
    true_npc_arrival_with_action: {"valid":true,"reason":"Narration claims Scout Elen arrived from the trail and includes matching moveBackgroundNPC action with npcName='Scout Elen'. State sync maintained."}
    true_npc_join_with_action: {"valid":true,"reason":"Narration states Kira joins the party and includes matching updatePartyNPCs add action. Correct party composition update."}
-   false_npc_arrival_no_action: {"valid":false,"reason":"Narration claims 'Scout Elen emerges from the forest and greets you' but no moveBackgroundNPC or updatePartyNPCs action present. Off-location NPC arrival claims require matching state action. Add moveBackgroundNPC with npcName='Scout Elen' or remove arrival claim."}
-   true_already_present_npc: {"valid":true,"reason":"Narration mentions NPC already at current location requires no additional state action. Correct behavior."}
+    false_npc_arrival_no_action: {"valid":false,"reason":"Narration claims 'Scout Elen emerges from the forest and greets you' but no moveBackgroundNPC or updatePartyNPCs action present. Off-location NPC arrival claims require matching state action. Add moveBackgroundNPC with npcName='Scout Elen' or remove arrival claim."}
+    true_already_present_npc: {"valid":true,"reason":"Narration mentions NPC already at current location requires no additional state action. Correct behavior."}
+    true_umpire_direct_answer: {"valid":true,"reason":"Direct rules question answered with ruling-first sentence and actions:[] because no state mutation was required."}
+    false_umpire_no_ruling: {"valid":false,"reason":"Direct adjudication question received only atmospheric narration without a clear ruling-first answer."}
 }
 
 @CORRECT_ACTION_FORMAT={

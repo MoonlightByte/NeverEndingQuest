@@ -124,6 +124,37 @@ class TestC4Hardening(unittest.TestCase):
         remaining = manager.get_remaining_enemies_for_round()
         self.assertEqual(remaining, ["Goblin A", "Guard Ally"])
 
+    def test_enemy_phase_actor_filter_ignores_turn_pointer(self):
+        manager = TurnQueueManager()
+        manager.turn_queue = [
+            Combatant("Goblin A", CombatantType.ENEMY, 19, 7, 7, 15, "alive"),
+            Combatant("Acheron", CombatantType.PC, 16, 21, 21, 16, "alive"),
+            Combatant("Guard Ally", CombatantType.NPC, 14, 12, 12, 14, "alive"),
+            Combatant("Bandit B", CombatantType.ENEMY, 10, 11, 11, 12, "alive"),
+        ]
+
+        expected = ["Goblin A", "Guard Ally", "Bandit B"]
+
+        manager.current_turn_index = 0
+        self.assertEqual(manager.get_remaining_enemies_for_round(), expected)
+
+        manager.current_turn_index = 2
+        self.assertEqual(manager.get_remaining_enemies_for_round(), expected)
+
+    def test_advance_turn_skips_defeated_and_unconscious(self):
+        manager = TurnQueueManager()
+        manager.current_turn_index = 0
+        manager.turn_queue = [
+            Combatant("Acheron", CombatantType.PC, 18, 21, 21, 16, "alive"),
+            Combatant("Captured Bandit", CombatantType.ENEMY, 15, 1, 11, 12, "defeated"),
+            Combatant("Downed Ally", CombatantType.NPC, 13, 0, 12, 14, "unconscious"),
+            Combatant("Goblin A", CombatantType.ENEMY, 10, 7, 7, 15, "alive"),
+        ]
+
+        actor, rolled_over = manager.advance_turn()
+        self.assertEqual(actor.name, "Goblin A")
+        self.assertFalse(rolled_over)
+
     def test_integrity_accepts_non_active_pc_target(self):
         response = (
             '{"actions":[{"action":"updateCharacterInfo",'
@@ -307,6 +338,29 @@ class TestDmGroupOpeningPhaseTransitionContract(unittest.TestCase):
             'PHASE_MARKER: Cleared openingEnemyBatchPending via round-start pcGroup path',
             source
         )
+
+
+class TestCombatManagerEncounterSyncContracts(unittest.TestCase):
+    """Regression tests for encounter ops forwarding and fast-lane persistence."""
+
+    def _load_combat_manager_source(self):
+        cm_path = os.path.join(PROJECT_ROOT, "core/managers/combat_manager.py")
+        with open(cm_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def test_update_encounter_branch_reads_ops_parameter(self):
+        source = self._load_combat_manager_source()
+        self.assertIn('ops = parameters.get("ops")', source)
+
+    def test_update_encounter_branch_forwards_ops(self):
+        source = self._load_combat_manager_source()
+        self.assertIn('update_encounter.update_encounter(', source)
+        self.assertIn('ops=ops', source)
+
+    def test_fast_lane_log_path_persists_encounter_state(self):
+        source = self._load_combat_manager_source()
+        self.assertIn('STATE_PERSIST: Fast-lane encounter state persisted', source)
+        self.assertIn('safe_write_json(f"modules/encounters/encounter_{encounter_id}.json", encounter_data)', source)
 
 
 class TestEncounterRosterBackfillContract(unittest.TestCase):

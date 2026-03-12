@@ -428,7 +428,7 @@ class TurnQueueManager:
     def advance_turn(self) -> Tuple[Combatant, bool]:
         """
         Move to the next turn in the queue.
-        Skips dead combatants.
+        Skips inactive combatants.
 
         Returns:
             Tuple of (next_actor, round_rolled_over)
@@ -446,8 +446,8 @@ class TurnQueueManager:
 
             actor = self.turn_queue[self.current_turn_index]
 
-            # Skip dead combatants
-            if actor.status.lower() != "dead":
+            # Skip inactive combatants (dead/defeated/unconscious/etc.)
+            if not self._is_inactive_combatant(actor):
                 return actor, rolled_over
 
             # Infinite loop safety (if everyone is dead)
@@ -521,13 +521,18 @@ class TurnQueueManager:
                     state.mark_acted()
 
     @staticmethod
+    def _is_inactive_combatant(combatant: Combatant) -> bool:
+        """Return True if combatant should be skipped by turn progression."""
+        status = (combatant.status or "").strip().lower()
+        return status in ("dead", "defeated", "incapacitated", "unconscious", "stable")
+
+    @staticmethod
     def _is_valid_enemy_phase_actor(combatant: Combatant) -> bool:
         """Return True if combatant is a living non-PC actor for enemy phase."""
         if combatant.type not in (CombatantType.ENEMY, CombatantType.NPC):
             return False
 
-        status = (combatant.status or "").strip().lower()
-        return status not in ("dead", "defeated", "incapacitated", "unconscious", "stable")
+        return not TurnQueueManager._is_inactive_combatant(combatant)
     
     def get_remaining_enemies_for_round(self) -> List[str]:
         """Get list of enemies and allied NPCs who haven't acted this round."""
@@ -535,21 +540,19 @@ class TurnQueueManager:
             return []
 
         remaining = []
-        queue_size = len(self.turn_queue)
-        current_idx = self.current_turn_index if 0 <= self.current_turn_index < queue_size else 0
+        seen_names = set()
 
-        # Look ahead in queue
-        for i in range(queue_size):
-            idx = (current_idx + i) % len(self.turn_queue)
-            combatant = self.turn_queue[idx]
-
-            # Stop when we loop back
-            if i > 0 and idx == 0:
-                break
+        # DETERMINISM: Ignore current_turn_index and return all living non-PC
+        # actors in initiative order exactly once.
+        for combatant in self.turn_queue:
+            normalized_name = str(combatant.name).strip().lower()
+            if normalized_name in seen_names:
+                continue
 
             # TABLETOP MODE: C4.1 - Deterministic actor list for valid living non-PC actors
             if self._is_valid_enemy_phase_actor(combatant):
                 remaining.append(combatant.name)
+                seen_names.add(normalized_name)
 
         return remaining
 

@@ -4336,15 +4336,40 @@ def main_game_loop():
             current_plot_points = []
             all_active_plot_points = []
             if plot_data_for_note and "plotPoints" in plot_data_for_note:
+                plot_points = plot_data_for_note.get("plotPoints", [])
+                plot_status_by_id = {
+                    str(point.get("id", "")).strip(): str(point.get("status", "")).strip().lower()
+                    for point in plot_points
+                    if isinstance(point, dict) and point.get("id")
+                }
+
+                # TABLETOP MODE: Hide prerequisite-locked plot points from DM notes
+                # to avoid surfacing downstream hooks before required milestones complete.
+                def _is_plot_point_unlocked(point):
+                    prerequisites = point.get("prerequisites", [])
+                    if not isinstance(prerequisites, list):
+                        return True
+                    for prereq_id in prerequisites:
+                        prereq_key = str(prereq_id).strip()
+                        if not prereq_key:
+                            continue
+                        if plot_status_by_id.get(prereq_key) != "completed":
+                            return False
+                    return True
+
                 # Get plot points for current location
                 current_plot_points = [
-                    point for point in plot_data_for_note["plotPoints"]
-                    if point.get("location") == current_area_id and point["status"] != "completed"
+                    point for point in plot_points
+                    if (
+                        point.get("location") == current_area_id
+                        and point.get("status") != "completed"
+                        and _is_plot_point_unlocked(point)
+                    )
                 ]
                 # Get ALL active plot points in the module
                 all_active_plot_points = [
-                    point for point in plot_data_for_note["plotPoints"]
-                    if point["status"] != "completed"
+                    point for point in plot_points
+                    if point.get("status") != "completed" and _is_plot_point_unlocked(point)
                 ]
         
             # Format plot points - show current location plots first, then other active plots

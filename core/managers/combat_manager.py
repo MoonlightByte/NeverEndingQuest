@@ -3692,6 +3692,21 @@ Player: {initial_prompt_text}"""
                conversation_history.append({"role": "user", "content": log_msg})
                save_json_file(conversation_history_file, conversation_history)
                debug(f"[COMBAT_MANAGER] Injected system log: {log_msg}", category="combat_events")
+
+               # TABLETOP MODE: Persist latest encounter state after fast-lane command logs.
+               # This prevents stale on-disk encounter data from overwriting immediate
+               # /dmg HP/status changes before the next LLM updateEncounter call.
+               if encounter_id and encounter_data:
+                   if not safe_write_json(f"modules/encounters/encounter_{encounter_id}.json", encounter_data):
+                       warning(
+                           "STATE_PERSIST: Failed to persist fast-lane encounter state",
+                           category="combat_events"
+                       )
+                   else:
+                       debug(
+                           "STATE_PERSIST: Fast-lane encounter state persisted",
+                           category="combat_events"
+                       )
                
                # NOTE: We do NOT set fast_lane_action_occurred = True here anymore.
                # Auto-advancing breaks Multiattack. The user must manually end turn or rely on LLM logic.
@@ -4831,9 +4846,14 @@ Rules:
                # Encounter updates are separate and can be processed immediately.
                encounter_id_for_update = parameters.get("encounterId", encounter_id)
                changes = parameters.get("changes", "")
+               ops = parameters.get("ops")
                info(f"STATE_UPDATE: Processing immediate encounter update: {changes}", category="encounter_management")
                try:
-                   updated_encounter_data = update_encounter.update_encounter(encounter_id_for_update, changes)
+                   updated_encounter_data = update_encounter.update_encounter(
+                       encounter_id_for_update,
+                       changes,
+                       ops=ops,
+                   )
                    if updated_encounter_data:
                        encounter_data = normalize_encounter_status(updated_encounter_data)
                except Exception as e:

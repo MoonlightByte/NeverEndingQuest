@@ -991,6 +991,23 @@ Deterministic arrival-sync validation is authoritative.
 - If `deterministic_passed = false`: This response MUST remain failed for deterministic reason. Do NOT override to pass.
 - The LLM validator should still evaluate other semantic and structural quality checks.
 
+## DIRECT ADJUDICATION (UMPIRE) VALIDATION
+
+When the player asks a direct DM/rules adjudication question (for example: "Can I...", "Can we...", "Does this work?", "What roll?", "What DC?", "Is this allowed?"), the response must begin with a clear ruling-first sentence.
+
+### Validation Rules:
+- **VALID**: First sentence gives explicit ruling (Yes/No/Requires roll/check/save), then optional flavor.
+- **VALID**: `actions: []` is acceptable when the response is pure adjudication with no state mutation.
+- **INVALID**: Response is only atmospheric/evasive narration and omits a clear ruling.
+
+### Fail Reason:
+```json
+{
+  "valid": false,
+  "reason": "Direct adjudication question requires a clear ruling-first answer (Yes/No/Requires roll/DC) before flavor."
+}
+```
+
 ## NPC ARRIVAL STATE SYNCHRONIZATION VALIDATION RULES
 
 When the AI DM narrates that an NPC has arrived from an off-location or joined the party, the narration MUST be paired with a corresponding state action in the SAME response.

@@ -491,6 +491,47 @@ class TestPromptSingularityContracts(unittest.TestCase):
         self.assertTrue(deduped[0]["content"].startswith(canonical_prompt[:50]))
 
 
+class TestNarratorContractSourceGuards(unittest.TestCase):
+    """Source-level guard tests for narrator contract wiring."""
+
+    def test_system_prompt_has_umpire_direct_answer_block(self):
+        """Compressed system prompt should include direct adjudication guidance."""
+        prompt_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "prompts", "system_prompt_compressed.txt"
+        )
+        with open(prompt_path, "r") as f:
+            content = f.read()
+
+        self.assertIn("@UMPIRE_DIRECT_ANSWER={", content)
+        self.assertIn("ruling sentence", content)
+
+    def test_validation_prompt_has_umpire_direct_answer_validation_block(self):
+        """Compressed validation prompt should enforce ruling-first contract."""
+        prompt_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "prompts", "validation", "validation_prompt_compressed.txt"
+        )
+        with open(prompt_path, "r") as f:
+            content = f.read()
+
+        self.assertIn("@UMPIRE_DIRECT_ANSWER_VALIDATION={", content)
+        self.assertIn("clear ruling-first", content)
+
+    def test_main_has_prerequisite_locked_plot_filter(self):
+        """main.py should gate active plot visibility by prerequisites."""
+        main_py_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "main.py"
+        )
+
+        with open(main_py_path, "r") as f:
+            content = f.read()
+
+        self.assertIn("def _is_plot_point_unlocked(point):", content)
+        self.assertIn("plot_status_by_id", content)
+
+
 if __name__ == "__main__":
     # Run tests with verbosity
     loader = unittest.TestLoader()
@@ -503,6 +544,7 @@ if __name__ == "__main__":
     suite.addTests(loader.loadTestsFromTestCase(TestNPCMoveFallbackContracts))
     suite.addTests(loader.loadTestsFromTestCase(TestTravelIntentDetectionContracts))
     suite.addTests(loader.loadTestsFromTestCase(TestPromptSingularityContracts))
+    suite.addTests(loader.loadTestsFromTestCase(TestNarratorContractSourceGuards))
     
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

@@ -1021,6 +1021,73 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Combat Encounter Sync + Enemy Batch Determinism (COMPLETED - 2026-03-13)
+
+**Status:** COMPLETED - targeted runtime hardening for `/end` enemy-batch flow
+
+**Objective:**
+Fix remaining combat runtime drift where enemy batch execution and encounter updates could desync from persisted state, causing missing actors or stale updates in multi-PC combat.
+
+**Implementation Summary:**
+- Updated `core/managers/combat_manager.py`:
+  - Forwarded `parameters.ops` through immediate combat `updateEncounter` routing
+  - Persisted encounter state after fast-lane command log injection to avoid stale overwrite races
+- Updated `core/managers/multi_pc_combat.py`:
+  - Unified inactive combatant filtering for turn advancement (`dead/defeated/incapacitated/unconscious/stable`)
+  - Made enemy-phase actor collection deterministic and independent of `current_turn_index`
+- Added regression coverage:
+  - `scripts/test_multi_pc_combat.py` (enemy list invariance + inactive skip behavior)
+  - `scripts/c5_regression_combat.py` (ops-forwarding + fast-lane persistence source guards)
+
+**Verification:**
+- `python3 scripts/c5_regression_combat.py` -> PASS (39/39)
+
+**Files Modified:**
+- `core/managers/combat_manager.py`
+- `core/managers/multi_pc_combat.py`
+- `scripts/test_multi_pc_combat.py`
+- `scripts/c5_regression_combat.py`
+
+### Narrator Adjudication + NPC Alias/Plot Visibility Hardening (COMPLETED - 2026-03-13)
+
+**Status:** COMPLETED - runtime + prompt/validator alignment pass
+
+**Objective:**
+Resolve remaining narrator-side soft/hard failures after combat stabilization by improving direct adjudication behavior, hardening NPC alias matching for arrival/movement validation, and suppressing prerequisite-locked plot leakage in DM notes.
+
+**Implementation Summary:**
+- Added umpire-style direct adjudication contract:
+  - `prompts/system_prompt_compressed.txt` -> `@UMPIRE_DIRECT_ANSWER`
+  - `prompts/system_prompt.txt` -> ruling-first guidance for direct DM/rules questions
+- Added validator contract for direct adjudication:
+  - `prompts/validation/validation_prompt_compressed.txt` -> `@UMPIRE_DIRECT_ANSWER_VALIDATION`
+  - `prompts/validation/validation_prompt.txt` -> ruling-first validation section
+- Hardened NPC identity resolution in `utils/npc_arrival_validator.py`:
+  - Added descriptor-token equivalence map for identity normalization (`prisoner/captive/detained/detainee -> captured`)
+  - Narrowed explicit-arrival verb set to reduce false positives from broad movement language
+- Added prerequisite-aware active-plot filtering in `main.py` DM note assembly:
+  - Plot points with unmet `prerequisites` are excluded from active/current listing
+  - Prevents downstream hooks surfacing before required milestones complete
+- Added regression coverage:
+  - `scripts/test_npc_arrival_state_sync.py` (descriptor alias + explicit-arrival wording updates)
+  - `scripts/test_narrator_prompt_validation_refactor.py` (source guards for umpire block + prereq filter)
+
+**Verification:**
+- `python3 -m py_compile main.py utils/npc_arrival_validator.py` -> PASS
+- `python3 -m unittest scripts.test_npc_arrival_state_sync.TestNPCNameNormalization.test_moveBackgroundNPC_module_npc_not_rejected_by_party_only_set scripts.test_npc_arrival_state_sync.TestAliasResolution.test_descriptor_alias_prisoner_to_captured_matches_unique_identity scripts.test_narrator_prompt_validation_refactor.TestNarratorContractSourceGuards` -> PASS
+- `python3 scripts/test_npc_arrival_state_sync.py` -> PASS (41/41)
+- `python3 scripts/test_narrator_prompt_validation_refactor.py` -> PASS (21/21)
+
+**Files Modified:**
+- `main.py`
+- `utils/npc_arrival_validator.py`
+- `prompts/system_prompt_compressed.txt`
+- `prompts/system_prompt.txt`
+- `prompts/validation/validation_prompt_compressed.txt`
+- `prompts/validation/validation_prompt.txt`
+- `scripts/test_npc_arrival_state_sync.py`
+- `scripts/test_narrator_prompt_validation_refactor.py`
+
 ### Narrator Arrival Deadlock Fix + Prompt Singularity Guard (COMPLETED - 2026-03-12)
 
 **Status:** COMPLETED - OpenSpec change archived and main specs synchronized
