@@ -1021,6 +1021,54 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Character State Sync Hardening (Inventory + Spell Slots + XP Invariants) (COMPLETED - 2026-03-13)
+
+**Status:** COMPLETED - targeted gametest runtime/data consistency pass
+
+**Objective:**
+Resolve three live state-drift classes without replacing LLM-driven gameplay flows:
+- Inventory weapon/equipment drift (Silver Bracer / dagger swap cases)
+- Spell-slot zeroing drift (Vitreol-style 0/0 with leveled spells)
+- Level-up XP invariant drift (preserve cumulative XP semantics)
+
+**Implementation Summary:**
+- Inventory/equipment reconciliation in `updates/update_character_info.py`:
+  - Added weapon-name inference for inventory ops (`_infer_weapon_equipment_fields`)
+  - Upgraded `synchronize_weapons()` to bidirectional reconciliation (repair + stale removal)
+  - `inventory_remove` now removes zero-quantity equipment/ammunition entries
+- Spell-slot normalization:
+  - Added `utils/spell_slot_utils.py` with deterministic class/level slot progression
+  - Wired normalization into `utils/character_creation_audit.py` payload normalization
+  - Updated `utils/startup_wizard.py` to stop legacy top-level `spellSlots` writes and normalize nested slots
+- XP/level invariants (LLM interview preserved):
+  - Added `utils/xp_progression_utils.py` with cumulative XP threshold helpers
+  - Updated `core/managers/level_up_manager.py` to preserve cumulative XP and deterministically set `exp_required_for_next_level`
+  - Updated `utils/level_up.py` guidance/runtime to avoid XP reset and preserve cumulative XP
+  - Updated `prompts/leveling/leveling_info.txt` and `prompts/leveling/leveling_validation_prompt.txt` to cumulative XP semantics
+  - Added conservative XP threshold normalization in `updates/update_character_info.py` `repair_character_data()` (no auto-level)
+
+**Verification:**
+- `.venv/bin/python scripts/test_inventory_state_sync.py` -> PASS (4/4)
+- `.venv/bin/python scripts/test_spell_slot_normalization.py` -> PASS (4/4)
+- `.venv/bin/python scripts/test_level_up_xp_invariants.py` -> PASS (6/6)
+- `.venv/bin/python scripts/test_character_creation_audit.py` -> PASS
+
+**Files Added:**
+- `utils/spell_slot_utils.py`
+- `utils/xp_progression_utils.py`
+- `scripts/test_inventory_state_sync.py`
+- `scripts/test_spell_slot_normalization.py`
+- `scripts/test_level_up_xp_invariants.py`
+
+**Files Modified:**
+- `updates/update_character_info.py`
+- `utils/character_creation_audit.py`
+- `utils/startup_wizard.py`
+- `core/managers/level_up_manager.py`
+- `utils/level_up.py`
+- `prompts/leveling/leveling_info.txt`
+- `prompts/leveling/leveling_validation_prompt.txt`
+
 ### Scripts Audit and Commit Policy for Gametest (COMPLETED - 2026-03-13)
 
 **Status:** COMPLETED - dev-team script curation pass
