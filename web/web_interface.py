@@ -2876,6 +2876,26 @@ def handle_model_toggle(data):
         error(f"Error toggling model: {e}", exception=e, category="web_interface")
         emit('error', {'message': f"Failed to toggle model: {str(e)}"})
 
+@socketio.on('set_model_provider')
+def handle_set_provider(data):
+    """Handle provider selection from web UI settings dropdown."""
+    try:
+        import model_config
+        provider = data.get('provider', 'legacy')
+        model_config.set_provider(provider)
+        model_config.persist_provider(provider)
+
+        debug(f"Model provider set to: {provider}", category="web_interface")
+
+        emit('provider_changed', {'provider': provider}, broadcast=True)
+
+    except ValueError as e:
+        error(f"Invalid provider: {e}", category="web_interface")
+        emit('error', {'message': str(e)})
+    except Exception as e:
+        error(f"Error setting provider: {e}", exception=e, category="web_interface")
+        emit('error', {'message': f"Failed to set provider: {str(e)}"})
+
 @socketio.on('test_module_progress')
 def handle_test_module_progress():
     """Test handler to simulate module creation progress"""
