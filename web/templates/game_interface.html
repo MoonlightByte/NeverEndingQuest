@@ -4406,13 +4406,15 @@
                         </div>
                     </div>
                     <div class="settings-section">
-                        <div class="settings-section-title">Model</div>
-                        <div class="settings-item" id="model-toggle-label">
-                            <span id="model-toggle-text">GPT-4.1</span>
-                            <label class="settings-toggle">
-                                <input type="checkbox" id="model-toggle">
-                                <span class="settings-toggle-slider"></span>
-                            </label>
+                        <div class="settings-section-title">AI Provider</div>
+                        <div class="settings-item">
+                            <label for="model-provider-select">Provider</label>
+                            <select class="settings-select" id="model-provider-select">
+                                <option value="legacy">Legacy (GPT-4.1)</option>
+                                <option value="openai">OpenAI (GPT-5.x)</option>
+                                <option value="gemini">Gemini 3.1</option>
+                                <option value="lmstudio">LM Studio (Local)</option>
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -6874,41 +6876,22 @@
                 };
             }
             
-            // Initialize model toggle
-            const modelToggle = document.getElementById('model-toggle');
-            const modelToggleText = document.getElementById('model-toggle-text');
-            const modelToggleLabel = document.getElementById('model-toggle-label');
-            
-            // Create model tooltip
-            const modelTooltip = document.createElement('div');
-            modelTooltip.className = 'model-tooltip';
-            modelTooltip.innerHTML = `
-                <div class="model-tooltip-header">GPT-5 Model Information</div>
-                <div class="model-tooltip-content">
-                    <strong>Testing as GPT-4.1 replacement</strong><br>
-                    • Significant cost savings in token usage<br>
-                    • Slower response times (especially full model)<br>
-                    • More accurate and detailed responses<br>
-                    • Very structured, may break immersion
-                </div>
-                <div class="model-tooltip-warning">
-                    Warning: Untested - may have unpredictable results
-                </div>
-            `;
-            document.body.appendChild(modelTooltip);
-            
-            // Show tooltip on hover
-            modelToggleLabel.addEventListener('mouseenter', function(e) {
-                const rect = this.getBoundingClientRect();
-                modelTooltip.style.left = rect.left + 'px';
-                modelTooltip.style.top = (rect.bottom + 5) + 'px';
-                modelTooltip.classList.add('visible');
+            // Initialize provider dropdown
+            const providerSelect = document.getElementById('model-provider-select');
+
+            // Handle provider selection changes
+            providerSelect.addEventListener('change', function() {
+                const provider = this.value;
+                socket.emit('set_model_provider', { provider: provider });
+                console.log('Provider changed to:', provider);
             });
-            
-            modelToggleLabel.addEventListener('mouseleave', function() {
-                modelTooltip.classList.remove('visible');
+
+            // Listen for provider change confirmation from server
+            socket.on('provider_changed', function(data) {
+                console.log('Provider change confirmed:', data);
+                providerSelect.value = data.provider;
             });
-            
+
             // Create auto-play tooltip
             const autoplayTooltip = document.createElement('div');
             autoplayTooltip.className = 'autoplay-tooltip';
@@ -6931,35 +6914,6 @@
             
             autoplayToggleItem.addEventListener('mouseleave', function() {
                 autoplayTooltip.classList.remove('visible');
-            });
-            
-            // Handle model toggle changes
-            modelToggle.addEventListener('change', function() {
-                const useGPT5 = this.checked;
-                
-                // Show warning when enabling GPT-5
-                if (useGPT5) {
-                    const hasSeenWarning = localStorage.getItem('gpt5WarningShown');
-                    if (!hasSeenWarning) {
-                        showGPT5Warning();
-                        localStorage.setItem('gpt5WarningShown', 'true');
-                    }
-                }
-                
-                modelToggleText.textContent = useGPT5 ? 'GPT-5' : 'GPT-4.1';
-                
-                // Send toggle state to backend
-                socket.emit('toggle_model', { use_gpt5: useGPT5 });
-                
-                // Log the change
-                console.log('Model toggled to:', useGPT5 ? 'GPT-5' : 'GPT-4.1');
-            });
-            
-            // Listen for model toggle confirmation from server
-            socket.on('model_toggled', function(data) {
-                console.log('Model toggle confirmed:', data);
-                modelToggle.checked = data.use_gpt5;
-                modelToggleText.textContent = data.use_gpt5 ? 'GPT-5' : 'GPT-4.1';
             });
             
             // Listen for module creation progress updates
@@ -7308,14 +7262,6 @@
         function closeNPCDetails() { document.getElementById('npc-details-modal').style.display = 'none'; }
         
         // Full image display functions
-        function showGPT5Warning() {
-            document.getElementById('gpt5-warning-modal').style.display = 'block';
-        }
-        
-        function closeGPT5Warning() {
-            document.getElementById('gpt5-warning-modal').style.display = 'none';
-        }
-        
         function showNPCSpells(npcName, spellsData) {
             const modal = document.getElementById('npc-spells-modal');
             const title = document.getElementById('npc-spells-modal-title');
@@ -7517,50 +7463,6 @@
         </div>
     </div>
     
-    <!-- GPT-5 Warning Modal -->
-    <div id="gpt5-warning-modal" class="npc-details-modal" style="display: none;">
-        <div class="npc-details-modal-content" style="max-width: 600px;">
-            <div class="npc-details-header" style="border-bottom: 2px solid #FF6B35;">
-                <div class="npc-details-title" style="color: #FFA500;">GPT-5 Model Warning</div>
-                <span class="npc-details-close" onclick="closeGPT5Warning()">&times;</span>
-            </div>
-            <div class="npc-details-body" style="padding: 20px; line-height: 1.6;">
-                <p style="color: #4CAF50; font-weight: bold; margin-bottom: 15px;">
-                    GPT-5 mini is being tested as a replacement for GPT-4.1
-                </p>
-                <p style="margin-bottom: 15px;">
-                    This experimental model offers <strong style="color: #4CAF50;">significant cost savings</strong> in token utilization while potentially maintaining comparable performance.
-                </p>
-                <div style="background-color: #3a3a3a; padding: 15px; border-radius: 5px; border-left: 3px solid #4CAF50; margin: 15px 0;">
-                    <p style="color: #4CAF50; font-weight: bold; margin-bottom: 10px;">
-                        Performance Characteristics:
-                    </p>
-                    <ul style="margin: 0; padding-left: 20px;">
-                        <li><strong>Slower response times</strong> than GPT-4.1 (especially when using full model)</li>
-                        <li><strong>More accurate</strong> and detailed responses expected</li>
-                        <li>Please be patient while responses generate</li>
-                    </ul>
-                </div>
-                <div style="background-color: #3a3a3a; padding: 15px; border-radius: 5px; border-left: 3px solid #FFA500; margin: 15px 0;">
-                    <p style="color: #FFA500; font-weight: bold; margin-bottom: 10px;">
-                        IMPORTANT NOTICE:
-                    </p>
-                    <ul style="margin: 0; padding-left: 20px;">
-                        <li>This model is currently <strong>UNTESTED</strong> in production</li>
-                        <li>May produce <strong>unpredictable results</strong></li>
-                        <li>Combat and complex interactions may behave differently</li>
-                        <li>GPT-5 is very structured and may <strong>talk out of DM turn</strong>, breaking immersion</li>
-                        <li>Use at your own risk during this testing phase</li>
-                    </ul>
-                </div>
-                <p style="margin-top: 15px; text-align: center;">
-                    <button onclick="closeGPT5Warning()" style="background-color: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                        I Understand - Proceed
-                    </button>
-                </p>
-            </div>
-        </div>
-    </div>
     <div id="search-popup" class="search-popup"><div class="search-popup-content"><div class="search-popup-header"><div class="search-popup-title">Search Inventory</div><span class="search-popup-close" onclick="closeSearchPopup()">&times;</span></div><input type="text" class="search-popup-input" id="search-popup-input" placeholder="Search items..." onkeyup="performSearch()"></div></div>
     <div id="save-dialog-overlay" class="save-dialog-overlay">
         <div class="save-dialog enhanced-save-dialog">
