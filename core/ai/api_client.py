@@ -145,7 +145,6 @@ def _gemini_completion(messages, model, temperature, **kwargs):
         expects_json_output,
         model_supports_thinking,
     )
-    import time
 
     # --- Convert messages ---
     system_instruction, contents = convert_messages_to_gemini(messages)
