@@ -24,6 +24,7 @@ original_images/
 
 # Configuration files
 config.py
+user_settings.json
 
 # Logs
 *.log

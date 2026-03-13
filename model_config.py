@@ -1,5 +1,7 @@
 # Model Configuration Settings
 # This file contains all AI model configurations and can be safely committed to git
+import json
+import os
 
 # --- Main Game Logic Models (used in main.py) ---
 DM_MAIN_MODEL = "gpt-4.1-2025-04-14"
@@ -152,3 +154,44 @@ def set_provider(provider_name):
 def get_provider():
     """Return the current MODEL_PROVIDER value."""
     return MODEL_PROVIDER
+
+
+_USER_SETTINGS_FILE = "user_settings.json"
+
+
+def _load_user_settings():
+    """Load user settings from disk. Returns empty dict if file doesn't exist."""
+    if os.path.exists(_USER_SETTINGS_FILE):
+        try:
+            with open(_USER_SETTINGS_FILE, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return {}
+    return {}
+
+
+def _save_user_settings(settings):
+    """Save user settings to disk atomically."""
+    tmp_path = _USER_SETTINGS_FILE + ".tmp"
+    with open(tmp_path, 'w') as f:
+        json.dump(settings, f, indent=2)
+    os.replace(tmp_path, _USER_SETTINGS_FILE)
+
+
+def persist_provider(provider_name):
+    """Save provider choice to disk so it survives restarts."""
+    settings = _load_user_settings()
+    settings["model_provider"] = provider_name
+    _save_user_settings(settings)
+
+
+def load_persisted_provider():
+    """Load provider from disk and apply it. Call at startup."""
+    settings = _load_user_settings()
+    provider = settings.get("model_provider", "legacy")
+    if provider in PROVIDER_MODELS:
+        set_provider(provider)
+
+
+# Load persisted provider on import
+load_persisted_provider()
