@@ -75,3 +75,66 @@ TTS_SPEED = 1.0                                           # Speed: 0.25 to 4.0 (
 MULTI_MODEL_CAPTURE = True  # Set True to enable parallel cloud model testing (gpt-4.1, gpt-5.2, Gemini 3)
                              # Captures outputs to model_captures/ for comparison
                              # Note: Ignored when USE_LM_STUDIO = True (LM Studio is production runtime, not for testing)
+
+# --- Provider Selection ---
+# Single setting replaces USE_GPT5_MODELS and USE_LM_STUDIO
+MODEL_PROVIDER = "legacy"  # options: "legacy", "openai", "gemini", "lmstudio"
+
+PROVIDER_MODELS = {
+    "legacy": {
+        "full": "gpt-4.1-2025-04-14",
+        "mini": "gpt-4.1-mini-2025-04-14",
+    },
+    "openai": {
+        "full": "gpt-5.2",
+        "mini": "gpt-5-mini",
+    },
+    "gemini": {
+        "full": "gemini-3.1-pro-preview",
+        "mini": "gemini-3.1-flash-lite-preview",
+    },
+    "lmstudio": {
+        "full": "local-model",
+        "mini": "local-model",
+    },
+}
+
+# Maps each model variable to its tier (full or mini)
+MODEL_TIER_MAP = {
+    "DM_MAIN_MODEL": "full",
+    "DM_VALIDATION_MODEL": "full",
+    "DM_FULL_MODEL": "full",
+    "COMBAT_MAIN_MODEL": "full",
+    "CHARACTER_VALIDATOR_MODEL": "full",
+    "NPC_BUILDER_MODEL": "full",
+    "MONSTER_BUILDER_MODEL": "full",
+    "LEVEL_UP_MODEL": "full",
+    "ACTION_PREDICTION_MODEL": "full",
+    "LOCATION_COMPRESSION_MODEL": "full",
+    "DM_MINI_MODEL": "mini",
+    "DM_SUMMARIZATION_MODEL": "mini",
+    "NARRATIVE_COMPRESSION_MODEL": "mini",
+    "COMBAT_DIALOGUE_SUMMARY_MODEL": "mini",
+    "ADVENTURE_SUMMARY_MODEL": "mini",
+    "PLOT_UPDATE_MODEL": "mini",
+    "PLAYER_INFO_UPDATE_MODEL": "mini",
+    "NPC_INFO_UPDATE_MODEL": "mini",
+    "ENCOUNTER_UPDATE_MODEL": "mini",
+    "TRANSITION_VALIDATOR_MODEL": "mini",
+}
+
+
+def set_provider(provider_name):
+    """Switch all model variables to the specified provider's models."""
+    global MODEL_PROVIDER
+    if provider_name not in PROVIDER_MODELS:
+        raise ValueError(f"Unknown provider: {provider_name}. Valid: {list(PROVIDER_MODELS.keys())}")
+    MODEL_PROVIDER = provider_name
+    models = PROVIDER_MODELS[provider_name]
+    for var_name, tier in MODEL_TIER_MAP.items():
+        globals()[var_name] = models[tier]
+
+
+def get_provider():
+    """Return the current MODEL_PROVIDER value."""
+    return MODEL_PROVIDER
