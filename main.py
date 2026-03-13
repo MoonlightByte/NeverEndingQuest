@@ -2203,7 +2203,7 @@ def get_ai_response(conversation_history, validation_retry_count=0):
     # Import action predictor and config
     from utils.action_predictor import predict_actions_required, extract_actual_actions, log_prediction_accuracy
     from config import ENABLE_INTELLIGENT_ROUTING, DM_MINI_MODEL, DM_FULL_MODEL, MAX_VALIDATION_RETRIES
-    from config import USE_GPT5_MODELS, GPT5_MINI_MODEL, GPT5_FULL_MODEL
+    from model_config import MODEL_PROVIDER
     
     # Get the last user message for action prediction
     user_input = ""
@@ -2303,16 +2303,17 @@ def get_ai_response(conversation_history, validation_retry_count=0):
     print(f"DEBUG: [MAIN CONVERSATION] Exported conversation messages to main_conversation_messages_to_api.json")
     
     # Generate response with selected model
-    if USE_GPT5_MODELS:
-        # GPT-5: Always use mini, no temperature/max_tokens
-        selected_model = GPT5_MINI_MODEL
-        
-        # Handle retry logic for GPT-5 - switch to full model after failures
+    if MODEL_PROVIDER == "openai":
+        # OpenAI next-gen (gpt-5.2/gpt-5-mini): use mini, no temperature/max_tokens
+        # selected_model already resolved by set_provider() via config.DM_MINI_MODEL/DM_FULL_MODEL
+        selected_model = DM_MINI_MODEL
+
+        # Handle retry logic - switch to full model after failures
         if validation_retry_count >= 4:
-            selected_model = GPT5_FULL_MODEL
-            print(f"DEBUG: GPT-5 - Switching to full model after {validation_retry_count} retries")
-        
-        print(f"DEBUG: [MAIN.PY] Using GPT-5 model: {selected_model}")
+            selected_model = DM_FULL_MODEL
+            print(f"DEBUG: OpenAI next-gen - Switching to full model after {validation_retry_count} retries")
+
+        print(f"DEBUG: [MAIN.PY] Using OpenAI next-gen model: {selected_model}")
         response = capture_and_fanout("T068", client.chat.completions.create,
             messages=messages_to_send,  # Use potentially compressed messages
             model=selected_model
@@ -2322,7 +2323,7 @@ def get_ai_response(conversation_history, validation_retry_count=0):
         try:
             from utils.api_logger import log_api_call
             log_api_call("main_dm", messages_to_send, response,
-                        metadata={"retry_count": validation_retry_count, "branch": "gpt5"})
+                        metadata={"retry_count": validation_retry_count, "branch": "openai"})
         except Exception as e:
             print(f"[API_LOG] Warning: Failed to log main DM call: {e}")
 
@@ -2333,8 +2334,8 @@ def get_ai_response(conversation_history, validation_retry_count=0):
             except:
                 pass
     else:
-        # GPT-4.1: Use existing logic with temperature
-        print(f"DEBUG: [MAIN.PY] Using GPT-4.1 model: {selected_model}")
+        # Legacy (GPT-4.1) or other providers: Use existing logic with temperature
+        print(f"DEBUG: [MAIN.PY] Using model: {selected_model} (provider: {MODEL_PROVIDER})")
         response = capture_and_fanout("T067", client.chat.completions.create,
             messages=messages_to_send,  # Use potentially compressed messages
             model=selected_model,
@@ -2346,7 +2347,7 @@ def get_ai_response(conversation_history, validation_retry_count=0):
         try:
             from utils.api_logger import log_api_call
             log_api_call("main_dm", messages_to_send, response,
-                        metadata={"temperature": TEMPERATURE, "retry_count": validation_retry_count, "branch": "gpt4.1"})
+                        metadata={"temperature": TEMPERATURE, "retry_count": validation_retry_count, "branch": MODEL_PROVIDER})
         except Exception as e:
             print(f"[API_LOG] Warning: Failed to log main DM call: {e}")
 

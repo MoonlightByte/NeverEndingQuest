@@ -41,6 +41,7 @@ MAX_VALIDATION_RETRIES = 1                              # Retry with full model 
 
 # --- Model Provider Selection ---
 # Choose between cloud APIs (OpenAI/Gemini) or local LM Studio
+# DEPRECATED: Use MODEL_PROVIDER instead. Kept for backwards compatibility during transition.
 USE_LM_STUDIO = False                                   # Use local LM Studio on localhost:1234 (zero API costs)
                                                         # When True, all cloud model settings are ignored
                                                         # Requires LM Studio running with server started
@@ -49,6 +50,7 @@ USE_LM_STUDIO = False                                   # Use local LM Studio on
 # --- GPT-5 Model Configuration ---
 GPT5_MINI_MODEL = "gpt-5-mini-2025-08-07"              # GPT-5 mini model for testing
 GPT5_FULL_MODEL = "gpt-5-2025-08-07"                   # GPT-5 full model (kept for compatibility, not used)
+# DEPRECATED: Use MODEL_PROVIDER instead. Kept for backwards compatibility during transition.
 USE_GPT5_MODELS = False                                 # Toggle for GPT-5 models (default: GPT-4.1)
 GPT5_USE_HIGH_REASONING_ON_RETRY = True                # Use high reasoning effort after first failure (instead of model switch)
 
@@ -74,7 +76,7 @@ TTS_SPEED = 1.0                                           # Speed: 0.25 to 4.0 (
 # --- Multi-Model Capture Settings ---
 MULTI_MODEL_CAPTURE = True  # Set True to enable parallel cloud model testing (gpt-4.1, gpt-5.2, Gemini 3)
                              # Captures outputs to model_captures/ for comparison
-                             # Note: Ignored when USE_LM_STUDIO = True (LM Studio is production runtime, not for testing)
+                             # Note: Ignored when MODEL_PROVIDER = "lmstudio" (LM Studio is production runtime, not for testing)
 
 # --- Provider Selection ---
 # Single setting replaces USE_GPT5_MODELS and USE_LM_STUDIO

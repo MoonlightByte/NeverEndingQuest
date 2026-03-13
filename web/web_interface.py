@@ -2865,18 +2865,13 @@ def handle_user_exit():
 
 @socketio.on('toggle_model')
 def handle_model_toggle(data):
-    """Handle model toggle between GPT-4.1 and GPT-5"""
+    """Handle model toggle - legacy compatibility until UI is updated."""
     try:
-        import config
+        import model_config
         use_gpt5 = data.get('use_gpt5', False)
-        config.USE_GPT5_MODELS = use_gpt5
-        
-        # Log the change
-        debug(f"Model toggled to: {'GPT-5' if use_gpt5 else 'GPT-4.1'}", category="web_interface")
-        
-        # Send confirmation back to client
-        emit('model_toggled', {'use_gpt5': config.USE_GPT5_MODELS}, broadcast=True)
-        
+        model_config.set_provider('openai' if use_gpt5 else 'legacy')
+        debug(f"Model provider set to: {model_config.get_provider()}", category="web_interface")
+        emit('model_toggled', {'use_gpt5': use_gpt5}, broadcast=True)
     except Exception as e:
         error(f"Error toggling model: {e}", exception=e, category="web_interface")
         emit('error', {'message': f"Failed to toggle model: {str(e)}"})

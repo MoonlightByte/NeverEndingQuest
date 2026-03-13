@@ -2182,42 +2182,43 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
            debug("RESUME: Requesting AI re-engagement response", category="combat_events")
            print("DEBUG: [RESUME] About to call AI for re-engagement")
            # Use base temperature for re-engagement (no validation failures)
-           # Import GPT-5 config
-           from config import USE_GPT5_MODELS, GPT5_MINI_MODEL
-           
-           if USE_GPT5_MODELS:
-               # GPT-5: Use mini model for re-engagement
-               print(f"DEBUG: [COMBAT RE-ENGAGE] Using GPT-5 model: {GPT5_MINI_MODEL}")
+           # Import provider config
+           from model_config import MODEL_PROVIDER
+
+           if MODEL_PROVIDER == "openai":
+               # OpenAI next-gen: Use mini model for re-engagement (resolved by set_provider)
+               from config import DM_MINI_MODEL
+               print(f"DEBUG: [COMBAT RE-ENGAGE] Using OpenAI next-gen model: {DM_MINI_MODEL}")
                # Compress conversation history before sending to AI
                messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-               
+
                # Export compressed conversation for review
                with open("debug/api_captures/combat_messages_to_api.json", "w", encoding="utf-8") as f:
                    json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
                print(f"DEBUG: [COMBAT] Exported compressed messages to debug/api_captures/combat_messages_to_api.json")
-               
-               response = capture_and_fanout("T043", client.chat.completions.create, messages=messages_to_send, model=GPT5_MINI_MODEL)
+
+               response = capture_and_fanout("T043", client.chat.completions.create, messages=messages_to_send, model=DM_MINI_MODEL)
 
                # Log API call to master log
                try:
                    from utils.api_logger import log_api_call
                    log_api_call("combat", messages_to_send, response,
-                               metadata={"branch": "gpt5", "context": "re-engage"})
+                               metadata={"branch": "openai", "context": "re-engage"})
                except Exception as e:
                    print(f"[API_LOG] Warning: Failed to log combat call: {e}")
            else:
-               # GPT-4.1: Use temperature
+               # Legacy (GPT-4.1) or other providers: Use temperature
                temperature_used = get_combat_temperature(encounter_data, validation_attempt=0)
-               
-               print(f"DEBUG: [COMBAT RE-ENGAGE] Using GPT-4.1 model: {COMBAT_MAIN_MODEL} (temp: {temperature_used})")
+
+               print(f"DEBUG: [COMBAT RE-ENGAGE] Using model: {COMBAT_MAIN_MODEL} (temp: {temperature_used}, provider: {MODEL_PROVIDER})")
                # Compress conversation history before sending to AI
                messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-               
+
                # Export compressed conversation for review
                with open("debug/api_captures/combat_messages_to_api.json", "w", encoding="utf-8") as f:
                    json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
                print(f"DEBUG: [COMBAT] Exported compressed messages to debug/api_captures/combat_messages_to_api.json")
-               
+
                response = client.chat.completions.create(
                    model=COMBAT_MAIN_MODEL,
                    temperature=temperature_used,
@@ -2228,7 +2229,7 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
                try:
                    from utils.api_logger import log_api_call
                    log_api_call("combat", messages_to_send, response,
-                               metadata={"temperature": temperature_used, "branch": "gpt4.1", "context": "re-engage"})
+                               metadata={"temperature": temperature_used, "branch": MODEL_PROVIDER, "context": "re-engage"})
                except Exception as e:
                    print(f"[API_LOG] Warning: Failed to log combat call: {e}")
 
@@ -2839,53 +2840,54 @@ Rules:
                except Exception as e:
                    debug(f"Could not update status: {e}", category="status")
                
-               # Import GPT-5 config
-               from config import USE_GPT5_MODELS, GPT5_MINI_MODEL, GPT5_USE_HIGH_REASONING_ON_RETRY
-               
-               if USE_GPT5_MODELS:
-                   # GPT-5: Always use mini model, but increase reasoning effort after first failure
-                   combat_model = GPT5_MINI_MODEL
-                   
+               # Import provider config
+               from model_config import MODEL_PROVIDER
+               from config import GPT5_USE_HIGH_REASONING_ON_RETRY
+
+               if MODEL_PROVIDER == "openai":
+                   # OpenAI next-gen: Use mini model, increase reasoning effort after first failure
+                   from config import DM_MINI_MODEL as combat_model
+
                    # After first failure, use high reasoning effort
                    if attempt >= 1 and GPT5_USE_HIGH_REASONING_ON_RETRY:
-                       print(f"DEBUG: [COMBAT] GPT-5 - Using HIGH reasoning effort after {attempt} attempts")
+                       print(f"DEBUG: [COMBAT] OpenAI next-gen - Using HIGH reasoning effort after {attempt} attempts")
                        # Compress conversation history before sending to AI
                        messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-                       
+
                        # Export compressed conversation for review
                        with open("combat_messages_to_api.json", "w", encoding="utf-8") as f:
                            json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
                        print(f"DEBUG: [COMBAT] Exported compressed messages to combat_messages_to_api.json")
-                       
+
                        response = capture_and_fanout("T045", client.chat.completions.create, messages=messages_to_send, model=combat_model, reasoning={"effort": "high"})
                    else:
                        # Default is medium reasoning (no need to specify)
-                       print(f"DEBUG: [COMBAT] Using GPT-5 model: {combat_model} (default medium reasoning)")
+                       print(f"DEBUG: [COMBAT] Using OpenAI next-gen model: {combat_model} (default medium reasoning)")
                        # Compress conversation history before sending to AI
                        messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-                       
+
                        # Export compressed conversation for review
                        with open("combat_messages_to_api.json", "w", encoding="utf-8") as f:
                            json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
                        print(f"DEBUG: [COMBAT] Exported compressed messages to combat_messages_to_api.json")
-                       
+
                        response = client.chat.completions.create(
                            model=combat_model,
                            messages=messages_to_send
                        )
                else:
-                   # GPT-4.1: Keep existing temperature escalation
+                   # Legacy (GPT-4.1) or other providers: Keep existing temperature escalation
                    temperature_used = get_combat_temperature(encounter_data, validation_attempt=attempt)
-                   
-                   print(f"DEBUG: [COMBAT] Using GPT-4.1 model: {COMBAT_MAIN_MODEL} (temp: {temperature_used})")
+
+                   print(f"DEBUG: [COMBAT] Using model: {COMBAT_MAIN_MODEL} (temp: {temperature_used}, provider: {MODEL_PROVIDER})")
                    # Compress conversation history before sending to AI
                    messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-                   
+
                    # Export compressed conversation for review
                    with open("combat_messages_to_api.json", "w", encoding="utf-8") as f:
                        json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
                    print(f"DEBUG: [COMBAT] Exported compressed messages to combat_messages_to_api.json")
-                   
+
                    response = client.chat.completions.create(
                        model=COMBAT_MAIN_MODEL,
                        temperature=temperature_used,
