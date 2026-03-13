@@ -125,7 +125,12 @@ MODEL_TIER_MAP = {
 
 
 def set_provider(provider_name):
-    """Switch all model variables to the specified provider's models."""
+    """Switch all model variables to the specified provider's models.
+
+    Updates both model_config globals AND config module globals (since
+    config.py uses 'from model_config import *' which creates snapshot
+    bindings that won't see model_config changes otherwise).
+    """
     global MODEL_PROVIDER
     if provider_name not in PROVIDER_MODELS:
         raise ValueError(f"Unknown provider: {provider_name}. Valid: {list(PROVIDER_MODELS.keys())}")
@@ -133,6 +138,13 @@ def set_provider(provider_name):
     models = PROVIDER_MODELS[provider_name]
     for var_name, tier in MODEL_TIER_MAP.items():
         globals()[var_name] = models[tier]
+    # Also update config module if already imported (snapshot bindings)
+    import sys
+    if 'config' in sys.modules:
+        config_mod = sys.modules['config']
+        for var_name, tier in MODEL_TIER_MAP.items():
+            if hasattr(config_mod, var_name):
+                setattr(config_mod, var_name, models[tier])
 
 
 def get_provider():
