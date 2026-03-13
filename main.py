@@ -2338,7 +2338,8 @@ def get_ai_response(conversation_history, validation_retry_count=0):
         response = capture_and_fanout("T067", client.chat.completions.create,
             messages=messages_to_send,  # Use potentially compressed messages
             model=selected_model,
-            temperature=TEMPERATURE
+            temperature=TEMPERATURE,
+            response_format={"type": "json_object"}
         )
 
         # Log API call to master log

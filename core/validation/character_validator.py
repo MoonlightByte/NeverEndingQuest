@@ -64,13 +64,87 @@ import logging
 import os
 import hashlib
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Union
 from openai import OpenAI
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T051", "core/validation/character_validator.py", 963)
 register_callsite("T052", "core/validation/character_validator.py", 1049)
 register_callsite("T053", "core/validation/character_validator.py", 1625)
 register_callsite("T054", "core/validation/character_validator.py", 2015)
+
+CHARACTER_VALIDATOR_SCHEMA = {
+    "required": [
+        "validated_character_data",
+        "corrections_made",
+        "ac_calculation_breakdown",
+    ],
+    "properties": {
+        "validated_character_data": {"type": "object"},
+        "corrections_made": {"type": "array"},
+        "ac_calculation_breakdown": {
+            "type": "object",
+            "required": [
+                "base_armor",
+                "dex_modifier",
+                "shield_bonus",
+                "fighting_style_bonus",
+                "total_ac",
+            ],
+            "properties": {
+                "base_armor": {"type": "string"},
+                "dex_modifier": {"type": ["string", "integer", "number"]},
+                "shield_bonus": {"type": ["string", "integer", "number"]},
+                "fighting_style_bonus": {"type": ["string", "integer", "number"]},
+                "total_ac": {"type": ["string", "integer", "number"]},
+            },
+        },
+    },
+}
+
+
+def _is_valid_type(value: Any, expected_type: Union[str, list]) -> bool:
+    if isinstance(expected_type, list):
+        return any(_is_valid_type(value, t) for t in expected_type)
+
+    type_map = {
+        "object": dict,
+        "dict": dict,
+        "array": list,
+        "list": list,
+        "string": str,
+        "integer": int,
+        "number": (int, float),
+        "boolean": bool,
+    }
+
+    expected_python = type_map.get(expected_type)
+    if expected_python is None:
+        return True
+
+    if isinstance(expected_python, tuple):
+        return isinstance(value, expected_python)
+    return isinstance(value, expected_python)
+
+
+def validate_schema(data: Any, schema: dict, path: str = "root") -> list[str]:
+    errors: list[str] = []
+
+    if schema.get("type") and not _is_valid_type(data, schema["type"]):
+        errors.append(f"{path}: expected type {schema['type']}, got {type(data).__name__}")
+
+    if not isinstance(data, dict):
+        return errors
+
+    for field in schema.get("required", []):
+        if field not in data:
+            errors.append(f"{path}: missing required field '{field}'")
+
+    for field, subschema in schema.get("properties", {}).items():
+        if field in data:
+            nested = data[field]
+            errors.extend(validate_schema(nested, subschema, f"{path}.{field}"))
+
+    return errors
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -1274,7 +1348,12 @@ Provide the corrected character data with proper AC calculation."""
             if start_idx != -1 and end_idx != -1:
                 json_str = ai_response[start_idx:end_idx]
                 parsed_response = json.loads(json_str)
-                
+
+                schema_errors = validate_schema(parsed_response, CHARACTER_VALIDATOR_SCHEMA, path="response")
+                if schema_errors:
+                    self.logger.error("Character validator response schema violation: %s", schema_errors)
+                    return original_data
+
                 # Extract corrected character data
                 if 'validated_character_data' in parsed_response:
                     corrected_data = parsed_response['validated_character_data']

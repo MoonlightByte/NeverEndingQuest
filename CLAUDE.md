@@ -446,6 +446,19 @@ When analyzing model captures in `model_captures/*.json`, you MUST:
 4. **Note specific differences** - e.g., "baseline uses 'Removed' vs variant uses 'Decrease'"
 5. **DO NOT use Python scripts** - read JSON directly with Read tool
 
+### PROHIBITION: No Automated Search-and-Replace for API Callsites
+**NEVER use automated Python scripts (or any scripting) to search-and-replace API callsite code.**
+This approach was attempted previously and broke the codebase because callsites are not uniform -
+they have different parameters (temperature, reasoning_effort, response_format, kwargs).
+
+**Required process for API callsite changes:**
+1. Each of the 95 callsites must be individually visited and understood
+2. Changes are applied one at a time by a subagent (or by hand)
+3. A separate validation agent must verify each change is correct and complete
+4. The callsite must reference `model_config.py` variables for its model (no hardcoded strings)
+
+This is non-negotiable. No exceptions. No "just this once." No bulk operations.
+
 ## SRD 5.2.1 Compliance
 
 When implementing game mechanics:
