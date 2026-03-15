@@ -76,7 +76,7 @@ For contributor setup and workflow, see `CONTRIBUTING.md` and `DEV_SETUP.md`.
 
    - Double-click the downloaded `.bat` file
    - If Windows SmartScreen appears: Click **"More info"** → **"Run anyway"**
-   - Choose **Player Mode** (recommended, no Git needed) or **Developer Mode** (with Git)
+   - Choose **Player Mode** for simple ZIP installs, or **Developer Mode** (**recommended for testers and maintainers**) for faster incremental updates
 3. **Install Python if needed**:
 
    - If prompted, install Python from **Microsoft Store**:
@@ -103,6 +103,11 @@ The installer automatically:
 
 - Run `launch_game.bat` in `%USERPROFILE%\NeverEndingQuest-TTRPG`
 - Or double-click the desktop shortcut
+
+**Update guidance:**
+
+- **Developer Mode (Git clone):** Use in-app `[UPDATE] Fork Update` or run `git pull --ff-only origin main`
+- **Player Mode (ZIP install):** Re-run `install_neverendingquest_windows.bat` and choose `Update existing installation`
 
 ---
 

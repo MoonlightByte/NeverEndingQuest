@@ -8957,8 +8957,9 @@
     <!-- Update Dialog -->
     <div id="update-dialog-overlay" class="save-dialog-overlay">
         <div class="save-dialog">
-            <h3>Fork Update Available</h3>
+            <h3>Fork Update - Git Install Only</h3>
             <p id="update-version-info">A new fork-channel version is available!</p>
+            <p id="update-install-note" style="color: #ccc; font-size: 13px; margin-top: 6px;">In-app update requires a Git clone installation.</p>
             <div class="reset-warning-box">
                 <strong>Backup Recommended</strong>
                 <p>Before updating from your fork channel, back up saved games and custom modules.</p>
@@ -9871,7 +9872,14 @@
         }
 
         // --- AUTO-UPDATE FUNCTIONS ---
+        let updateSupportedByInstall = false;
+        let updateHintShownForZipInstall = false;
+
         function showUpdateDialog() {
+            if (!updateSupportedByInstall) {
+                alert('In-app update requires a Git clone install. For ZIP installs, rerun install_neverendingquest_windows.bat and choose Update existing installation.');
+                return;
+            }
             console.log('[UPDATE] Opening update dialog');
             document.getElementById('update-dialog-overlay').style.display = 'flex';
         }
@@ -9927,13 +9935,40 @@
         // --- AUTO-UPDATE SOCKET HANDLERS ---
         socket.on('version_status', function(data) {
             console.log('[UPDATE] Version status received:', data);
-            if (data.update_available) {
+            updateSupportedByInstall = !!data.update_supported;
+            const updateButton = document.getElementById('update-button');
+            const updateVersionInfo = document.getElementById('update-version-info');
+            const updateInstallNote = document.getElementById('update-install-note');
+
+            if (data.update_available && updateSupportedByInstall) {
                 console.log('[UPDATE] Update available, showing button');
-                document.getElementById('update-button').style.display = 'inline-block';
-                document.getElementById('update-version-info').textContent =
+                updateButton.style.display = 'inline-block';
+                updateVersionInfo.textContent =
                     data.message || ('A new fork-channel version is available: v' + data.local_version + ' -> v' + data.remote_version);
+                if (updateInstallNote) {
+                    updateInstallNote.textContent = data.install_hint || 'Git install detected. In-app updater is available.';
+                }
+            } else if (data.update_available && !updateSupportedByInstall) {
+                console.log('[UPDATE] Update available, but install mode is ZIP/non-git');
+                updateButton.style.display = 'none';
+                updateVersionInfo.textContent =
+                    data.message || ('A new fork-channel version is available: v' + data.local_version + ' -> v' + data.remote_version);
+                if (updateInstallNote) {
+                    updateInstallNote.textContent = data.install_hint || 'ZIP install detected. Rerun installer to update.';
+                }
+                if (!updateHintShownForZipInstall) {
+                    addMessage('game-output', {
+                        type: 'system',
+                        content: data.install_hint || 'Update available. ZIP install detected: rerun install_neverendingquest_windows.bat and choose Update existing installation.'
+                    });
+                    updateHintShownForZipInstall = true;
+                }
             } else {
                 console.log('[UPDATE] No update available');
+                updateButton.style.display = 'none';
+                if (updateInstallNote) {
+                    updateInstallNote.textContent = data.install_hint || 'In-app update requires a Git clone installation.';
+                }
             }
         });
 

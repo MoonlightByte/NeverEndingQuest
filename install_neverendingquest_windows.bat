@@ -97,15 +97,15 @@ echo ========================================
 echo   SELECT INSTALLATION METHOD
 echo ========================================
 echo.
-echo 1. Player Mode (Recommended)
+echo 1. Player Mode - No Git
 echo    - Download game as ZIP file
 echo    - No Git required
-echo    - Best for playing the game
+echo    - Best for simple one-time installs
 echo.
-echo 2. Developer Mode
+echo 2. Developer Mode - Recommended for testers
 echo    - Clone with Git for updates
 echo    - Requires Git installation
-echo    - Best for contributing code
+echo    - Fast incremental updates and GUI update support
 echo.
 
 choice /C 12 /N /M "Enter your choice (1 or 2): "

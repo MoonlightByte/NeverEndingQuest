@@ -2690,14 +2690,29 @@ def handle_connect():
 
     # Check for updates and notify client
     try:
-        from utils.version_checker import check_for_updates
+        from utils.version_checker import check_for_updates, resolve_update_target
         status, local_ver, remote_ver, message = check_for_updates(silent=True)
+        update_target = resolve_update_target(repo_path=os.getcwd())
+        update_supported = update_target is not None
+
+        if update_supported:
+            install_hint = (
+                f"Git install detected ({update_target['owner_repo']}@{update_target['branch']}). "
+                "Use [UPDATE] Fork Update for incremental updates."
+            )
+        else:
+            install_hint = (
+                "ZIP install detected. In-app [UPDATE] is unavailable. "
+                "Rerun install_neverendingquest_windows.bat and choose Update existing installation."
+            )
 
         emit('version_status', {
             'update_available': status == 'update_available',
+            'update_supported': update_supported,
             'local_version': local_ver,
             'remote_version': remote_ver,
-            'message': message
+            'message': message,
+            'install_hint': install_hint
         })
     except Exception as e:
         print(f"[VERSION_CHECK] Error checking for updates: {e}")
@@ -5644,7 +5659,10 @@ def handle_trigger_update():
         target = resolve_update_target(repo_path=repo_path)
         if not target:
             emit('update_error', {
-                'error': 'Could not resolve update source from origin remote. Update aborted.'
+                'error': (
+                    'In-app update unavailable for ZIP installs. '
+                    'Rerun install_neverendingquest_windows.bat and choose Update existing installation.'
+                )
             })
             return
 
