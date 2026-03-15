@@ -414,16 +414,15 @@ if exist "%INSTALL_DIR%\.git" (
         goto :eof
     )
 
-    set "DIRTY_TREE="
+    set "HAS_TRACKED_CHANGES="
     for /f "usebackq delims=" %%S in (`git status --porcelain 2^>nul`) do (
-        set "DIRTY_TREE=1"
-        goto DETECT_DIRTY_DONE
+        set "STATUS_CODE=%%S"
+        if not "!STATUS_CODE:~0,2!"=="??" set "HAS_TRACKED_CHANGES=1"
     )
 
-:DETECT_DIRTY_DONE
     popd
 
-    if defined DIRTY_TREE (
+    if defined HAS_TRACKED_CHANGES (
         set "INSTALL_STATE=dirty_git"
     ) else (
         set "INSTALL_STATE=healthy_git"
