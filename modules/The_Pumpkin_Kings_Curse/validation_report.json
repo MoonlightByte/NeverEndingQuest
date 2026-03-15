@@ -1,13 +1,81 @@
 {
-  "validation_date": "2025-09-21T21:54:51.193453",
-  "issues": [
-    "NPC 'Elric' is referenced in ['module:plotStages'] but not placed in any location",
-    "NPC 'The Pumpkin King' is referenced in ['module:plotStages'] but not placed in any location"
-  ],
-  "context_summary": {
-    "areas": 6,
-    "npcs": 16,
-    "locations": 0,
-    "plot_points": 4
+  "module": "The_Pumpkin_Kings_Curse",
+  "timestamp": "2026-03-15T16:42:30.584416",
+  "summary": {
+    "total_files": 36,
+    "total_passed": 37,
+    "total_failed": 0
+  },
+  "results": {
+    "area": {
+      "files": [
+        "VO001_BU.json (areas/)",
+        "VO001.json (areas/)",
+        "GRV001_BU.json (areas/)",
+        "HFG001_BU.json (areas/)",
+        "BOO001.json (areas/)",
+        "BOO001_BU.json (areas/)",
+        "HLF001.json (areas/)",
+        "CMS001.json (areas/)",
+        "HFG001.json (areas/)",
+        "GRV001.json (areas/)",
+        "CMS001_BU.json (areas/)",
+        "HLF001_BU.json (areas/)"
+      ],
+      "passed": 12,
+      "failed": 0,
+      "errors": []
+    },
+    "reference_integrity": {
+      "files": [],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "monster": {
+      "files": [
+        "pumpkin_stalkers.json",
+        "straw_blight.json",
+        "cornfield_shadow.json",
+        "straw_husk.json",
+        "shadow_creeper.json",
+        "noose_wraith.json",
+        "guardian_stone.json",
+        "bloodshadow.json",
+        "protective_shadow.json",
+        "animated_scarecrow.json",
+        "grain_wraith.json",
+        "lantern_husk.json",
+        "rune_scarred_vermin.json",
+        "shadow.json",
+        "the_pumpkin_king.json",
+        "swarm_of_field_rats.json",
+        "nest_lurker.json",
+        "stirge_swarm.json",
+        "blight_tendril.json",
+        "harvest_shade.json",
+        "rope_strangler.json",
+        "scarecrow_sentinel.json"
+      ],
+      "passed": 22,
+      "failed": 0,
+      "errors": []
+    },
+    "plot": {
+      "files": [
+        "module_plot.json"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "module_context": {
+      "files": [
+        "module_context.json"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    }
   }
 }

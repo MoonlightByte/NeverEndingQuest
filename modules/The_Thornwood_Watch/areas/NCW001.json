@@ -1,0 +1,579 @@
+{
+  "areaId": "NCW001",
+  "areaName": "Northern Corrupted Woods",
+  "areaType": "wilderness",
+  "areaDescription": "The Northern Corrupted Woods exist as the epicenter of Malarok's dark influence, where ancient trees have been twisted into grotesque forms by the sorcerer's Voidstone magic. Black-needled pines writhe skyward like grasping fingers, their trunks weeping dark sap that pulses with corrupt energy. The air hums with Malarok's power, making metal grow cold and thoughts sluggish. At the heart of this blighted grove lie the crumbling ruins where the sorcerer conducts his dark rituals, protected by magical wards and corrupted guardians.",
+  "dangerLevel": "high",
+  "recommendedLevel": 2,
+  "climate": "temperate - corrupted",
+  "terrain": "blighted forest",
+  "map": {
+    "mapId": "MAP_NCW001",
+    "mapName": "Corrupted Woods Map",
+    "totalRooms": 5,
+    "rooms": [
+      {
+        "id": "NC01",
+        "type": "cave",
+        "connections": [
+          "NC02",
+          "NC03"
+        ],
+        "coordinates": "X2Y2",
+        "name": "Gloomsap Cavern"
+      },
+      {
+        "id": "NC02",
+        "type": "grove",
+        "connections": [
+          "NC01",
+          "NC04",
+          "NC05"
+        ],
+        "coordinates": "X1Y2",
+        "name": "Twisted Briar Grove"
+      },
+      {
+        "id": "NC03",
+        "type": "cave",
+        "connections": [
+          "NC01",
+          "NC04",
+          "NC05"
+        ],
+        "coordinates": "X2Y3",
+        "name": "Hollow Shade Den"
+      },
+      {
+        "id": "NC04",
+        "type": "campsite",
+        "connections": [
+          "NC02",
+          "NC03"
+        ],
+        "coordinates": "X1Y3",
+        "name": "Forsaken Hearth Encampment"
+      },
+      {
+        "id": "NC05",
+        "type": "hilltop",
+        "connections": [
+          "NC02",
+          "NC03"
+        ],
+        "coordinates": "X1Y1",
+        "name": "Shrouded Sentinel Rise"
+      }
+    ],
+    "layout": [
+      [
+        "NC05",
+        "   "
+      ],
+      [
+        "NC02",
+        "NC01"
+      ],
+      [
+        "NC04",
+        "NC03"
+      ]
+    ]
+  },
+  "locations": [
+    {
+      "locationId": "NC01",
+      "name": "Corrupted Entry Cave",
+      "type": "cave",
+      "description": "The mouth of this limestone cavern weeps black sap corrupted by Malarok's Voidstone magic, pooling in unnatural patterns on the stone floor. Pale, sickly fungi cast an eerie glow throughout the twisted passages. The air tastes of dark magic and decay, and Malarok's corrupting influence can be felt even here at the forest's edge.",
+      "coordinates": "X2Y2",
+      "connectivity": [
+        "NC02",
+        "NC03"
+      ],
+      "areaConnectivity": [
+        "Thornwood Wilds"
+      ],
+      "areaConnectivityId": [
+        "TW05"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Corrupted Cave Fisher",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          },
+          "disposition": "predatory",
+          "strategy": "A CR 1 cave fisher enhanced with necrotic damage, this corrupted creature uses its web to trap prey from above."
+        },
+        {
+          "name": "Tainted Stirge",
+          "quantity": {
+            "min": 2,
+            "max": 4
+          },
+          "disposition": "bloodthirsty",
+          "strategy": "CR 1/8 stirges that carry disease from feeding on corrupted creatures, swarming victims in groups."
+        }
+      ],
+      "lootTable": [
+        "Vial of concentrated corruption essence",
+        "Cave fisher chitin plates warped by dark magic",
+        "Ancient warning tablets carved in Common and Sylvan"
+      ],
+      "plotHooks": [
+        "Ancient warning tablets describe the spread of corruption from Malarok's rituals in the ruins",
+        "The corrupted cave fisher was twisted by the sorcerer's Voidstone magic",
+        "Strange magical emanations lead toward Malarok's ritual site deeper in the grove",
+        "Claw marks show desperate attempts by wildlife to escape Malarok's spreading influence"
+      ],
+      "dmInstructions": "This serves as the entry point to Malarok's corrupted domain. The cave fisher represents the first serious supernatural threat twisted by the sorcerer's magic. Use the corruption effects to foreshadow Malarok's power and the Voidstone's influence.",
+      "doors": [],
+      "traps": [
+        {
+          "name": "Corrupted Spore Cloud",
+          "description": "Disturbing the tainted fungi releases a cloud of corrupting spores that sap strength and vitality. DC 14 Constitution save or have maximum hit points reduced by the damage taken.",
+          "detectDC": 16,
+          "disableDC": 14,
+          "triggerDC": 16,
+          "damage": "1d4 necrotic"
+        }
+      ],
+      "dcChecks": [
+        "Arcana DC 15: Understand the nature of the corruption affecting the cave and its creatures",
+        "Nature DC 13: Recognize that the cave ecosystem has been completely perverted by supernatural forces",
+        "Perception DC 12: Notice the whispers coming from deeper in the cave system"
+      ],
+      "accessibility": "Cave entrance from the southern approaches, connecting to the corrupted interior",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Weeping Stone Walls",
+          "description": "The limestone walls constantly weep black, tar-like corruption that pools on the cave floor in unnatural geometric patterns."
+        },
+        {
+          "name": "Phosphorescent Fungi",
+          "description": "Sickly pale mushrooms provide an eerie, pulsing light throughout the cave, their glow tainted with corruption."
+        },
+        {
+          "name": "Whisper Echoes",
+          "description": "Faint whispers in unknown languages echo from deeper in the cave system, growing stronger near areas of concentrated corruption."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": ""
+    },
+    {
+      "locationId": "NC02",
+      "name": "Blighted Thornbriar Grove",
+      "type": "grove",
+      "description": "What was once a sacred druidic grove now stands as a monument to corruption, where ancient oak trees bleed crimson sap and their branches writhe with malevolent life. Thorny briars have grown to massive proportions, forming twisted barriers that pulse with dark energy, while the ground beneath is carpeted with blackened leaves that crumble to ash at the slightest touch.",
+      "coordinates": "X1Y2",
+      "connectivity": [
+        "NC01",
+        "NC04",
+        "NC05"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Thorn-Touched Dryad Sylara",
+          "description": "Once the guardian spirit of this sacred grove, Sylara has been corrupted by the spreading taint. Her bark-like skin now bears veins of pulsing darkness, and her once-beautiful features have become gaunt and terrible. She still possesses fragments of her former memories and struggles against the corruption consuming her.",
+          "attitude": "Conflicted and tormented, sometimes lucid and desperate for help, other times consumed by corrupted rage. May fight or aid the party depending on their approach."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Twig Blight",
+          "quantity": {
+            "min": 2,
+            "max": 4
+          },
+          "disposition": "aggressive",
+          "strategy": "CR 1/8 plant creatures enhanced with necrotic thorns, attacking in groups and slashing with corrupted claws."
+        },
+        {
+          "name": "Awakened Shrub",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          },
+          "disposition": "hostile",
+          "strategy": "A CR 0 shrub corrupted by dark magic, attacking anything that disturbs the grove."
+        },
+        {
+          "name": "Corrupted Wolf",
+          "quantity": {
+            "min": 2,
+            "max": 4
+          },
+          "disposition": "protective",
+          "strategy": "CR 1/4 wolves that only appear if Sylara becomes hostile, defending her with supernatural ferocity."
+        }
+      ],
+      "lootTable": [
+        "Heartwood staff infused with corruption resistance",
+        "Vial of dryad tears with purification properties",
+        "Ancient druidic tome describing the corruption's origin",
+        "Seed of the World Tree (uncorrupted, extremely rare)"
+      ],
+      "plotHooks": [
+        "Sylara knows the source of the corruption and may reveal it if the party can reach her uncorrupted essence",
+        "The grove was the first place the corruption took hold, making it crucial to understanding the threat",
+        "Ancient druidic wards still function partially, suggesting a way to cleanse or contain the corruption",
+        "Sylara's corruption is spreading to other nature spirits throughout the region"
+      ],
+      "dmInstructions": "Sylara is the key NPC for this area. Her internal struggle between corruption and her true nature should drive the encounter. If the party can help her resist the corruption (through roleplay, magic, or completing her requests), she becomes a valuable ally. If they attack or fail to connect with her, she becomes a tragic boss fight.",
+      "doors": [],
+      "traps": [
+        {
+          "name": "Animated Thorn Barriers",
+          "description": "Massive briars that lash out at intruders, animated by the corruption flowing through the grove. DC 13 Constitution save or be poisoned for 1 hour.",
+          "detectDC": 14,
+          "disableDC": 16,
+          "triggerDC": 14,
+          "damage": "2d6 piercing"
+        }
+      ],
+      "dcChecks": [
+        "Religion DC 14: Recognize the signs of desecrated sacred ground and understand purification rituals",
+        "Nature DC 15: Understand how the corruption has perverted the natural druidic magic of the grove",
+        "Persuasion DC 16: Reach Sylara's uncorrupted essence and convince her to fight against the taint"
+      ],
+      "accessibility": "Central grove connected to multiple areas, but passage hindered by aggressive plant growth",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Bleeding Sacred Oaks",
+          "description": "Ancient oak trees that weep crimson sap, their branches moving with unnatural life as corruption flows through their heartwood."
+        },
+        {
+          "name": "Corrupted Fairy Rings",
+          "description": "Once-magical mushroom circles now pulse with dark energy, creating areas of concentrated corruption that twist reality."
+        },
+        {
+          "name": "Twisted Thorn Maze",
+          "description": "Massive briars form a maze-like barrier throughout the grove, their thorns dripping with corrupting toxins."
+        },
+        {
+          "name": "Desecrated Stone Circle",
+          "description": "An ancient druidic stone circle whose runes now glow with malevolent energy, the corruption's influence strongest here."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": ""
+    },
+    {
+      "locationId": "NC03",
+      "name": "Hollow of the Withered Hart",
+      "type": "cave",
+      "description": "A natural amphitheater formed by towering stone walls creates a sacred space where The Withered Hart makes its final stand against the corruption. Ancient petroglyphs covering the stone surfaces tell the story of the forest's guardians, while pools of pure spring water reflect starlight even in the depths of corruption. Here, the last vestige of the forest's original spirit fights a losing battle against the encroaching darkness.",
+      "coordinates": "X2Y3",
+      "connectivity": [
+        "NC01",
+        "NC04",
+        "NC05"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "The Withered Hart",
+          "description": "A magnificent white stag whose antlers once bore leaves of every season, now stands as the forest's last guardian against corruption. Though withered and bearing wounds that weep silver light, the Hart retains fragments of ancient wisdom and the power to cleanse corruption. Its eyes hold the sadness of watching an entire forest fall to darkness.",
+          "attitude": "Noble but weary, initially suspicious of mortals but grateful for genuine aid. Will test the party's intentions before offering assistance or knowledge."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Shadow Corrupted Wolf",
+          "quantity": {
+            "min": 2,
+            "max": 4
+          },
+          "disposition": "defensive",
+          "strategy": "CR 1/2 wolves enhanced with shadow magic, only attacking if the Hart is threatened and moving with unnatural silence."
+        },
+        {
+          "name": "Corrupted Owlbear",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          },
+          "disposition": "berserk",
+          "strategy": "A CR 3 owlbear driven mad by corruption, attacking everything it sees with terrifying fury."
+        }
+      ],
+      "lootTable": [
+        "Antler fragment with purification magic",
+        "Vial of Hart's tears (powerful healing potion)",
+        "Map to the corruption's source carved in ancient stone",
+        "Blessing of the Forest Guardian (permanent boon)"
+      ],
+      "plotHooks": [
+        "The Withered Hart knows the exact source of the corruption and can guide the party to it",
+        "The Hart's power is the only thing preventing the corruption from spreading beyond the northern woods",
+        "Ancient forest magic could be restored if the corruption's source is destroyed",
+        "The Hart will sacrifice itself to create a powerful ward if no other solution can be found"
+      ],
+      "dmInstructions": "The Withered Hart is the emotional and narrative climax of the module. This noble creature represents hope in the face of overwhelming corruption. The party's interaction with the Hart should feel significant and mythic. If treated with respect and aided in its struggle, the Hart can provide crucial assistance for the final confrontation with the corruption's source.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Animal Handling DC 15: Approach the Withered Hart without alarming it",
+        "Religion DC 14: Understand the sacred nature of this place and the Hart's role as guardian",
+        "Insight DC 13: Recognize the Hart's pain and the burden it carries as the forest's last defender"
+      ],
+      "accessibility": "Sacred hollow accessible through narrow stone passages, hidden from casual discovery",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Ancient Petroglyphs",
+          "description": "Stone walls covered in ancient carvings depicting the history of the forest guardians and the cycles of nature."
+        },
+        {
+          "name": "Sacred Spring Pools",
+          "description": "Crystal-clear pools of pure water that remain uncorrupted, reflecting starlight and providing sanctuary from the taint."
+        },
+        {
+          "name": "Guardian's Altar",
+          "description": "A natural stone formation where forest guardians once received blessings, now serving as the Hart's final refuge."
+        },
+        {
+          "name": "Pillar of Fading Light",
+          "description": "A column of pure white light emanating from the Hart's presence, the last beacon of hope in the corrupted woods."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": ""
+    },
+    {
+      "locationId": "NC04",
+      "name": "Doomed Explorer's Camp",
+      "type": "campsite",
+      "description": "The remains of a hastily abandoned campsite tell a grim story of corruption's advance. Torn tents flutter like funeral shrouds while a cold fire pit contains ashes that still whisper with unnatural voices. Personal belongings lie scattered as if their owners fled in terror, and the very ground beneath the camp pulses with a sickly corruption that spreads further each day. There is no sign of Thane here, only whispers of his tragic fate.",
+      "coordinates": "X1Y3",
+      "connectivity": [
+        "NC02",
+        "NC03"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Corrupted Ranger Thane",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          },
+          "disposition": "tormented",
+          "strategy": "A CR 2 veteran ranger with necrotic abilities, fighting with corrupted tactics while occasionally warning his foes in moments of lucidity."
+        },
+        {
+          "name": "Corrupted Wolf",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          },
+          "disposition": "savage",
+          "strategy": "Thane's former animal companion (CR 1/4), now twisted by corruption and attacking with feral rage."
+        }
+      ],
+      "lootTable": [
+        "Ranger's journal detailing the corruption's rapid spread",
+        "Partially corrupted healing potions (risky to use)",
+        "Map marking the epicenter of the corruption",
+        "Thane's family locket (uncorrupted, emotionally significant)"
+      ],
+      "plotHooks": [
+        "Thane's journal reveals the corruption's accelerating timeline and growing intelligence",
+        "The ranger was sent by a distant outpost, indicating the threat's wider recognition",
+        "Thane's transformation shows how the corruption affects those who linger too long",
+        "Evidence suggests the corruption is being deliberately spread rather than occurring naturally"
+      ],
+      "dmInstructions": "IMPORTANT: Start this encounter with Thane in a LUCID MOMENT, especially if any party members are down. Give the party a chance to speak before combat begins. Thane represents the tragic human cost of the corruption. His internal struggle should evoke sympathy while demonstrating the immediate danger. If approached with compassion (Persuasion DC 12), he may help stabilize downed party members before asking them to end his suffering. Only his corrupted wolf companion attacks immediately. If diplomacy fails or Thane loses control, combat begins. This encounter should emphasize the urgency of stopping the corruption's spread while providing a potential non-combat resolution.",
+      "doors": [],
+      "traps": [
+        {
+          "name": "Corrupted Campfire",
+          "description": "The cold ashes burst into unnatural flames when disturbed, spreading corrupting energy in a 10-foot radius. DC 14 Wisdom save or be frightened for 1 minute.",
+          "detectDC": 13,
+          "disableDC": 15,
+          "triggerDC": 13,
+          "damage": "2d4 necrotic"
+        }
+      ],
+      "dcChecks": [
+        "Medicine DC 14: Understand the nature of Thane's corruption and potential treatments",
+        "Investigation DC 12: Piece together the timeline of the camp's abandonment from scattered evidence",
+        "Insight DC 15: Recognize when Thane is lucid versus when the corruption is controlling him",
+        "Persuasion DC 12: Reach Thane's humanity during his lucid moments and convince him to help before combat"
+      ],
+      "accessibility": "Abandoned campsite in a small clearing, easily spotted but emanating obvious danger",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Abandoned Equipment",
+          "description": "Ranger gear and personal belongings scattered in haste, some items partially dissolved by corruption."
+        },
+        {
+          "name": "Whisper Ashes",
+          "description": "The campfire's cold ashes whisper fragments of Thane's memories and the horrors he witnessed."
+        },
+        {
+          "name": "Corruption Pools",
+          "description": "Small pools of dark liquid corruption seeping from the ground, growing larger with each passing hour."
+        },
+        {
+          "name": "Torn Research Notes",
+          "description": "Scattered pages from Thane's investigation into the corruption, partially legible but deeply disturbing."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": ""
+    },
+    {
+      "locationId": "NC05",
+      "name": "The Corrupted Nexus",
+      "type": "hilltop",
+      "description": "Atop this windswept hill stand the crumbling ruins where Malarok the Corruptor has established his dark sanctuary. At the center of the ancient stone circle, a massive Voidstone Shard pulses with corrupted starlight, amplifying the sorcerer's power. The very air around the altar shimmers with dark magic, and the ground radiates outward with veins of corruption. Ancient trees have become twisted by Malarok's rituals, their forms warped by the Voidstone's influence. A lingering sense of dread suggests a powerful evil influences the area, though its master is not here.",
+      "coordinates": "X1Y1",
+      "connectivity": [
+        "NC02",
+        "NC03"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Malarok the Corruptor",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          },
+          "disposition": "megalomaniacal",
+          "strategy": "A CR 3 human sorcerer enhanced by Voidstone power, casting dark spells while monologuing about his superiority."
+        },
+        {
+          "name": "Elite Bandit Bodyguard",
+          "quantity": {
+            "min": 2,
+            "max": 4
+          },
+          "disposition": "fanatical",
+          "strategy": "CR 1 bandits enhanced by Malarok's magic, fighting with unnatural coordination to protect their master."
+        },
+        {
+          "name": "Corrupted Wolf",
+          "quantity": {
+            "min": 2,
+            "max": 4
+          },
+          "disposition": "vicious",
+          "strategy": "CR 1/2 wolves twisted by the sorcerer's power, their eyes glowing with void energy as they savage intruders."
+        }
+      ],
+      "lootTable": [
+        "Fragment of the Voidstone Shard (dangerous but valuable to scholars)",
+        "Alien technology partially corrupted by the void energy",
+        "Crystal containing trapped souls of corruption victims",
+        "Ancient ritual components for purification magic"
+      ],
+      "plotHooks": [
+        "The Voidstone Shard is the source of all corruption in the region and must be destroyed",
+        "Malarok seeks to use the Voidstone's power to control the entire frontier",
+        "Destroying the Voidstone will begin healing the entire northern forest",
+        "Malarok deliberately sought out and bound himself to the fallen star fragment"
+      ],
+      "dmInstructions": "This is the climactic boss fight of the module. Malarok should be challenging but not impossible for a level 2 party, especially if they've gained allies and information from previous encounters. The fight should emphasize the sorcerer's arrogance and power while providing clear victory conditions. Success here should feel like a significant triumph that saves the entire region.",
+      "doors": [],
+      "traps": [
+        {
+          "name": "Void Energy Discharge",
+          "description": "The meteorite periodically releases waves of corrupting energy that affect the entire hilltop within 60 feet. DC 15 Constitution save for half damage.",
+          "detectDC": 17,
+          "disableDC": 18,
+          "triggerDC": 17,
+          "damage": "3d6 necrotic"
+        },
+        {
+          "name": "Reality Distortion Field",
+          "description": "The alien presence warps reality around the meteorite, creating dangerous spatial anomalies. Teleports creature to random location within 30 feet, DC 14 Wisdom save to resist.",
+          "detectDC": 15,
+          "disableDC": 16,
+          "triggerDC": 15,
+          "damage": "0 psychic"
+        }
+      ],
+      "dcChecks": [
+        "Arcana DC 18: Understand the nature of the Voidstone corruption and potential methods to destroy it",
+        "Religion DC 16: Invoke divine power to weaken Malarok's dark magic",
+        "Investigation DC 14: Find weak points in the Voidstone's crystalline structure"
+      ],
+      "accessibility": "Hilltop accessible from the grove below, but approach is hindered by reality distortions and void energy",
+      "dangerLevel": "Extreme",
+      "features": [
+        {
+          "name": "Voidstone Altar",
+          "description": "A massive shard of fallen star bound to an ancient stone altar, pulsing with dark energy that amplifies Malarok's sorcerous power."
+        },
+        {
+          "name": "Corruption Channels",
+          "description": "Veins of dark crystal spreading outward from the Voidstone, carved by Malarok's rituals to channel corrupting energy across the land."
+        },
+        {
+          "name": "Twisted Sentinel Trees",
+          "description": "Ancient trees transformed by Malarok's magic into spires of corrupted wood, their forms warped to serve as guardians of his ritual site."
+        },
+        {
+          "name": "Magic Distortion Fields",
+          "description": "Visible distortions in the air around the Voidstone where Malarok's powerful magic has warped the natural flow of energy."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": ""
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 2 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 2 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 2 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 2 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 2 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 2 parties"
+    }
+  ],
+  "areaFeatures": [
+    "animal dens",
+    "ancient trees",
+    "rock formations"
+  ],
+  "notes": "Weather and terrain should affect travel times. Random encounters keep exploration tense."
+}

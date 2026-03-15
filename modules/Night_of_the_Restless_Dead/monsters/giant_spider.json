@@ -1,0 +1,76 @@
+{
+  "name": "Giant Spider",
+  "size": "Large",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armorClass": 14,
+  "hitPoints": 26,
+  "maxHitPoints": 26,
+  "speed": 30,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 1,
+    "wisdom": 10,
+    "charisma": 2
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 7
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 10
+  },
+  "languages": "",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Spider Climb",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Web Sense",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Web Walker",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 3,
+      "damageType": "piercing"
+    },
+    {
+      "name": "Web",
+      "attackBonus": 5,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "restrain"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "A massive arachnid with venomous fangs and web-spinning abilities.",
+  "tags": ["beast", "spider"],
+  "source_file": "Night_of_the_Restless_Dead"
+}

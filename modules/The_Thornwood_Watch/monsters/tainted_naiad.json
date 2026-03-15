@@ -1,0 +1,70 @@
+{
+  "name": "Tainted Naiad",
+  "size": "Medium",
+  "type": "Fey",
+  "alignment": "Chaotic Evil",
+  "armorClass": 13,
+  "hitPoints": 9,
+  "maxHitPoints": 9,
+  "speed": 30,
+  "abilities": {
+    "strength": 10,
+    "dexterity": 15,
+    "constitution": 12,
+    "intelligence": 11,
+    "wisdom": 13,
+    "charisma": 14
+  },
+  "savingThrows": [],
+  "skills": {
+    "Stealth": 4,
+    "Perception": 3,
+    "Nature": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "cold"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "Sylvan, understands Common but can't speak",
+  "challengeRating": 0.25,
+  "specialAbilities": [
+    {
+      "name": "Amphibious",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Corrupted Waters",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "Poison"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Claw",
+      "attackBonus": 4,
+      "damageDice": "1d4",
+      "damageBonus": 2,
+      "damageType": "Slashing"
+    },
+    {
+      "name": "Tainted Touch",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "Poison"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

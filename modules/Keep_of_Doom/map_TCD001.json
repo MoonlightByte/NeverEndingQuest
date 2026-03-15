@@ -1,0 +1,94 @@
+{
+  "mapId": "MAP_TCD001",
+  "mapName": "Cursed Dungeons Map",
+  "totalRooms": 7,
+  "rooms": [
+    {
+      "id": "AN01",
+      "name": "Dungeon Entrance",
+      "type": "entrance",
+      "connections": [
+        "AN02",
+        "AN03"
+      ],
+      "coordinates": "X2Y1"
+    },
+    {
+      "id": "AN02",
+      "name": "The Gaol",
+      "type": "prison",
+      "connections": [
+        "AN01",
+        "AN04"
+      ],
+      "coordinates": "X1Y1"
+    },
+    {
+      "id": "AN03",
+      "name": "Torture Chamber",
+      "type": "chamber",
+      "connections": [
+        "AN01",
+        "AN05"
+      ],
+      "coordinates": "X3Y1"
+    },
+    {
+      "id": "AN04",
+      "name": "Guard Post",
+      "type": "garrison",
+      "connections": [
+        "AN02",
+        "AN06"
+      ],
+      "coordinates": "X1Y2"
+    },
+    {
+      "id": "AN05",
+      "name": "Storage Vaults",
+      "type": "storage",
+      "connections": [
+        "AN03",
+        "AN06"
+      ],
+      "coordinates": "X3Y2"
+    },
+    {
+      "id": "AN06",
+      "name": "Forgotten Ossuary",
+      "type": "crypt",
+      "connections": [
+        "AN04",
+        "AN05",
+        "AN07"
+      ],
+      "coordinates": "X2Y2"
+    },
+    {
+      "id": "AN07",
+      "name": "Relic Chamber",
+      "type": "ritual",
+      "connections": [
+        "AN06"
+      ],
+      "coordinates": "X2Y3"
+    }
+  ],
+  "layout": [
+    [
+      "AN02",
+      "AN01",
+      "AN03"
+    ],
+    [
+      "AN04",
+      "AN06",
+      "AN05"
+    ],
+    [
+      "   ",
+      "AN07",
+      "   "
+    ]
+  ]
+}

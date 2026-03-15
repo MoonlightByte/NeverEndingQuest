@@ -1,0 +1,71 @@
+{
+  "name": "Elite Bandit Bodyguard",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Any Non-Lawful Alignment",
+  "armorClass": 15,
+  "hitPoints": 18,
+  "maxHitPoints": 18,
+  "speed": 30,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 14,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 10,
+    "charisma": 11
+  },
+  "savingThrows": [
+    "STR",
+    "DEX"
+  ],
+  "skills": {
+    "Perception": 2,
+    "Athletics": 4,
+    "Intimidation": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "Common, one other language",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Parry",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Scimitar",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "Slashing"
+    },
+    {
+      "name": "Light Crossbow",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "Piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

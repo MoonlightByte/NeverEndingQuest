@@ -1,0 +1,998 @@
+{
+  "areaId": "BOO001",
+  "areaName": "Fields of Supplication",
+  "areaType": "mixed",
+  "areaDescription": "A patchwork of overgrown meadows and toppled shrines sprawls beneath a perpetually overcast sky, the air thick with the scent of damp earth and old blood. Whispers drift on the wind, echoing the desperate pleas of the vanished, and malign spirits linger among the deserted offerings, eager for new sacrifices.",
+  "dangerLevel": "high",
+  "recommendedLevel": 2,
+  "climate": "varied",
+  "terrain": "varied terrain",
+  "map": {
+    "mapId": "MAP_D_8",
+    "mapName": "Mixed Map",
+    "totalRooms": 8,
+    "rooms": [
+      {
+        "id": "V01",
+        "type": "room",
+        "connections": [
+          "V02",
+          "V03",
+          "V12"
+        ],
+        "coordinates": "X2Y2",
+        "directions": {
+          "west": "V02",
+          "north": "V03",
+          "south": "V12"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "high",
+        "name": "Withered Lantern Crossroads"
+      },
+      {
+        "id": "V02",
+        "type": "room",
+        "connections": [
+          "V01"
+        ],
+        "coordinates": "X1Y2",
+        "directions": {
+          "east": "V01"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Graven Scarecrow Hollow"
+      },
+      {
+        "id": "V03",
+        "type": "room",
+        "connections": [
+          "V01",
+          "V04"
+        ],
+        "coordinates": "X2Y1",
+        "directions": {
+          "south": "V01",
+          "east": "V04"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "high",
+        "name": "Harvest Warden's Path"
+      },
+      {
+        "id": "V04",
+        "type": "room",
+        "connections": [
+          "V03"
+        ],
+        "coordinates": "X3Y1",
+        "directions": {
+          "west": "V03"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Petitioner's Rest"
+      },
+      {
+        "id": "V12",
+        "type": "room",
+        "connections": [
+          "V01",
+          "V13"
+        ],
+        "coordinates": "X2Y3",
+        "directions": {
+          "north": "V01",
+          "south": "V13"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "high",
+        "name": "Threshing Floor"
+      },
+      {
+        "id": "V13",
+        "type": "room",
+        "connections": [
+          "V12",
+          "V14"
+        ],
+        "coordinates": "X2Y4",
+        "directions": {
+          "north": "V12",
+          "west": "V14"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Hanging Loft"
+      },
+      {
+        "id": "V14",
+        "type": "room",
+        "connections": [
+          "V13",
+          "V15"
+        ],
+        "coordinates": "X1Y4",
+        "directions": {
+          "east": "V13",
+          "west": "V15"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Stone Trough Altar"
+      },
+      {
+        "id": "V15",
+        "type": "room",
+        "connections": [
+          "V14"
+        ],
+        "coordinates": "X0Y4",
+        "directions": {
+          "east": "V14"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Hayrick Larder"
+      }
+    ],
+    "layout": [
+      [
+        "   ",
+        "V03",
+        "V04"
+      ],
+      [
+        "V02",
+        "V01",
+        "   "
+      ],
+      [
+        "   ",
+        "V12",
+        "   "
+      ],
+      [
+        "V15",
+        "V14",
+        "V13"
+      ]
+    ],
+    "startRoom": "V01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields"
+  },
+  "locations": [
+    {
+      "locationId": "V01",
+      "name": "Withered Lantern Crossroads",
+      "type": "room",
+      "description": "At the heart of the Fields of Supplication, four ancient footpaths intersect atop a patch of churned mud, scattered with the remains of broken lanterns whose pale embers sometimes gutter to life without warning. Faded sigils of bygone harvests are carved into toppled stones, and offerings--wilted flowers, shriveled gourds, and crude dolls--lie abandoned. The air is thick with the scent of wax and smoke, and ghostly whispers tug at the minds of the living.",
+      "coordinates": "X2Y2",
+      "connectivity": [
+        "V02",
+        "V03",
+        "V12"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Spirit of Supplication",
+          "description": "A translucent, sorrowful figure clad in tattered festival garb, eternally relighting lanterns and murmuring desperate prayers for deliverance. It attempts to guide visitors to make proper offerings, warning them of the dangers that stalk the fields.",
+          "attitude": "Anxious, hopeful for aid but wary of outsiders disrespecting the rituals."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Lantern Husk",
+          "description": "A twisted scarecrow animated by lingering magic and the resentment of the forgotten dead; it lashes at intruders with burning, waxy tendrils.",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          }
+        }
+      ],
+      "lootTable": [
+        "Lantern of Fading Hope (casts dim light in a 20-ft radius, reveals invisible spirits within 10 ft while lit)",
+        "Bundle of Sage Stalks (can be burned to repel minor undead)",
+        "Tarnished Silver Offering Coin (worth 5 gp but valuable for ritual use)"
+      ],
+      "plotHooks": [
+        "The Spirit asks for help to lay the other lost souls to rest, offering cryptic hints about the true nature of the curse.",
+        "A tangle of footprints in the mud suggests someone fled south recently, pursued by something inhuman.",
+        "The Spirit, if asked about the 'first keeper,' says: 'He tried to end it. He wrote the truth in ash. But the Bramble woman burned his words. Only the contract remains.'",
+        "A hidden offering, if found with Investigation DC 14, contains a silver pin matching the Bramble family crest - placed here by a terrified ancestor begging forgiveness."
+      ],
+      "dmInstructions": "This crossroads is a natural gathering point for spirits and lost travelers. Adjust the number of Lantern Husks for party size. The Spirit of Supplication may offer guidance or warnings, especially to those who make a respectful offering (DC 12 Religion or Insight to interpret rituals). If the party lingers or disturbs the offerings, spectral voices grow hostile.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Religion DC 12: Identify the correct offering to appease the spirits.",
+        "Investigation DC 10: Follow the tracks leading south and east.",
+        "Perception DC 13: Spot a hidden, unlit lantern with runes inside the mud.",
+        "History DC 15: Connect the Bramble crest pin to the family's role as pact-enforcers - they were supposed to ensure annual tithes.",
+        "Arcana DC 14: Detect that the unlit lantern's runes match those on the Gallows Oak - both are contract markers."
+      ],
+      "accessibility": "Paths are overgrown but navigable; no physical barriers.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "Stone markers and lanterns covered in lichen and moss, bearing inscriptions faded by decades of neglect."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "The crossroads is marked by converging low stone walls and sunken lantern pedestals, hinting at ancient ritual design."
+        },
+        {
+          "name": "Dust",
+          "description": "Fine gray dust covers everything, occasionally disturbed by unseen feet."
+        }
+      ],
+      "encounters": [
+        "A restless Lantern Husk emerges if offerings are disturbed.",
+        "A group of lost spirits gathers at midnight, seeking to repeat the failed harvest ritual."
+      ],
+      "adventureSummary": "The crossroads serves as a nexus of spiritual unrest, offering both danger and opportunities for insight into the curse plaguing the fields."
+    },
+    {
+      "locationId": "V02",
+      "name": "Graven Scarecrow Hollow",
+      "type": "room",
+      "description": "This sunken ring is surrounded by leaning, rotted fence posts from which tattered scarecrows dangle. The ground is churned and spongy, scattered with old bones and bits of ribbon. In the hollow's center stands a scarecrow twice as tall as the rest, its 'face' carved from a hollowed gourd etched with crude runes. The air here is colder, and the boundaries between the living and the dead are thin.",
+      "coordinates": "X1Y2",
+      "connectivity": [
+        "V01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Scarecrow Sentinel",
+          "description": "A menacing, runic-etched scarecrow animated by necromantic energy, it attacks anyone who approaches without making a proper offering.",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          }
+        },
+        {
+          "name": "Swarm of Field Rats",
+          "description": "Drawn by blood and carrion, these oversized rats scuttle from beneath the straw, attacking as a pack.",
+          "quantity": {
+            "min": 3,
+            "max": 6
+          }
+        }
+      ],
+      "lootTable": [
+        "Rune-Carved Gourd Mask (wearer gains advantage on saving throws against fear for 1 hour)",
+        "Handful of Silver Bells (worth 10 gp, also tinkle softly near undead)",
+        "Bundle of Withered Wheat (when burned, grants resistance to necrotic damage for 1 turn)"
+      ],
+      "plotHooks": [
+        "Scraps of a blood-stained festival banner hint at a forgotten ritual that went wrong here.",
+        "The runes on the central scarecrow reference a name--Elric--suggesting he was involved in binding or angering the spirits.",
+        "The runes, if fully deciphered with Arcana DC 16, reveal: 'Elric bound the keeper's power to the Bramble line. Only Bramble blood can unbind it. The King knows this. He takes their children to prevent the unbinding.'",
+        "A rusted key found in the hollow's mud matches the lock on the Keeper's Hollow gate mentioned in VO001."
+      ],
+      "dmInstructions": "The Scarecrow Sentinel animates and attacks if approached aggressively or if the central gourd is touched without a DC 12 Religion or Arcana check to perform a supplication (offering of wheat, coin, or blood). The rats emerge if there is combat or loud noise. The runes can be deciphered (DC 13 Arcana) to reveal a cryptic warning and Elric's name.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 12,
+          "disableDC": 12,
+          "triggerDC": 10,
+          "damage": "1d6 necrotic (a burst of shadowy thorns erupts from beneath the central scarecrow if the runes are tampered with)",
+          "name": "Necrotic Trap",
+          "description": "A trap that deals 1d6 necrotic (a burst of shadowy thorns erupts from beneath the central scarecrow if the runes are tampered with) damage (DC 12 to detect)."
+        }
+      ],
+      "dcChecks": [
+        "Religion DC 12: Perform the proper supplication to pacify the scarecrow.",
+        "Arcana DC 13: Decipher the runes to learn about Elric's role.",
+        "Perception DC 11: Notice the ground is unstable and may collapse if too many people enter at once."
+      ],
+      "accessibility": "Fenced ring can be entered easily but the ground is treacherous and muddy.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "A layer of black, oily dust covers the straw, carrying a faint scent of decay."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "The hollow's ring is lined with rickety posts, some carved with crude faces meant to ward off evil."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "The scarecrows' clothing is rotted and patched, remnants of decades-old harvest festivals."
+        }
+      ],
+      "encounters": [
+        "Combat with the Scarecrow Sentinel and field rats if the area is disturbed.",
+        "Visions of children weaving between the scarecrows, re-enacting a doomed festival rite."
+      ],
+      "adventureSummary": "A place of failed protection, this hollow holds clues to the curse and a dangerous guardian for the unwary."
+    },
+    {
+      "locationId": "V03",
+      "name": "Harvest Warden's Path",
+      "type": "room",
+      "description": "A narrow, winding trail lined by splintered wooden figurines and prayer ribbons faded to white. The path's muddy ruts are flecked with bright red berries and dark stains. Old windchimes tinkle whenever the wind blows, though no breeze stirs. At irregular intervals, toppled shrines with offerings in various states of decay can be found. The oppressive atmosphere grows heavier the further one walks.",
+      "coordinates": "X2Y1",
+      "connectivity": [
+        "V01",
+        "V04"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Wandering Supplicant",
+          "description": "A ragged, shell-shocked villager spirit who endlessly retraces the path, muttering lost prayers. They are desperate for rest but afraid to leave the path's protection.",
+          "attitude": "Fearful, will offer information in exchange for protection or a ritual item."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Harvest Shade",
+          "description": "A shadowy specter that stalks those who stray from the path, draining warmth and hope from its victims.",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          }
+        }
+      ],
+      "lootTable": [
+        "Prayer Ribbon of Protection (advantage vs. charm effects from undead while worn)",
+        "Red Berries of Remembrance (restores 1d4 HP when eaten, but imposes disadvantage on Wisdom saves until short rest)",
+        "Copper Amulet with cracked moonstone (worth 15 gp to the right collector)"
+      ],
+      "plotHooks": [
+        "The Supplicant recalls seeing Elric flee northward, pursued by something that left strange, clawed footprints.",
+        "One of the toppled shrines holds a hidden compartment containing a page from the original harvest pact.",
+        "The Supplicant, if asked about Willa, says: 'She was the last one Elric trusted. He gave her his final words. But she was too afraid to speak them. She still carries his guilt.'",
+        "The hidden pact page, if examined with History DC 15, contains the contract's weakness: 'Freely given, freely taken. If no fruit is freely given, the tree may be freely cut. But the axe must be wielded by the gardener.'"
+      ],
+      "dmInstructions": "The path is safe only for those who walk respectfully and do not disturb the shrines (DC 11 Religion or Insight to discern this). Straying or showing disrespect summons a Harvest Shade. The Wandering Supplicant can be persuaded to share what they know if offered a ribbon, coin, or berry.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 13,
+          "disableDC": 11,
+          "triggerDC": 10,
+          "damage": "1d4 psychic (if a shrine is disturbed, a spectral wail is triggered, stunning the nearest creature until the end of their next turn if they fail a DC 10 Wisdom save)",
+          "name": "Psychic Trap",
+          "description": "A trap that deals 1d4 psychic (if a shrine is disturbed, a spectral wail is triggered, stunning the nearest creature until the end of their next turn if they fail a DC 10 Wisdom save) damage (DC 13 to detect)."
+        }
+      ],
+      "dcChecks": [
+        "Religion DC 11: Learn the proper way to walk the path safely.",
+        "Insight DC 11: Realize the Supplicant can be trusted if given a ritual offering.",
+        "Investigation DC 13: Discover the hidden compartment in a shrine."
+      ],
+      "accessibility": "The path is passable but treacherous; stepping off invites danger.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "Miniature shrines are interspersed along the narrow path, each with unique carvings and decaying offerings."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "Wooden figurines are cracked and splintered, their painted faces all but erased."
+        }
+      ],
+      "encounters": [
+        "A Harvest Shade materializes if the party disrespects the path or shrines.",
+        "The Wandering Supplicant pleads for release or begs to be left alone, depending on the party's approach.",
+        {
+          "encounterId": "V03-E1",
+          "summary": "The battle against the Harvest Shade unfolded beneath the eerie silence of ancient shrines, where shadows writhed and chilling winds whispered of dread. Amanita Gorse’s initial arrow sailed wide, and the spectral foe’s scythe swung with ghostly menace, yet the party’s resolve did not falter. Edda Ravenscroft’s steady mace strikes and Oswin Peverell’s keen blade carved through the Shade’s shifting form, while Zeug’s longbow sang sharply, punctuated by Anselara’s icy blasts of Ray of Frost that glistened on the Shade’s shadowed flesh. Though the specter’s attacks landed with cold, searing pain—most cruelly on Zeug, staggering him with a chilling slice—the companions pressed on, their blows steadily whittling the Shade’s dreadful form from a terrifying 36 hit points down to a mere 3. In a last desperate flurry, the Shade’s scythe hissed through the air, but Edda’s prayerful cry accompanied a crushing mace blow that shattered the Shade’s essence, sending it dissolving into the ether. With the oppressive darkness lifted and the shrines standing solemnly silent once more, the party claimed victory, earning 450 experience points divided among the five brave souls who faced down the nightmare. The path lay clear, the air lighter, but the memory of that spectral dread would linger long in their hearts.  \n\n```json\n{\n  \"combat_round\": 4,\n  \"plan\": \"Resolve enemy and NPC actions in order: Harvest Shade, Edda Ravenscroft, Oswin Peverell. Then end round and await player actions.\",\n  \"narration\": \"The Harvest Shade's scythe arcs toward zeug, cutting deep and sending him crumpling behind Oswin's shield. Edda strides forward with a cry, her mace crashing through the specter's form. Shadows burst apart in a thunderous shudder as the Shade unravels, its deathly presence vanishing into the windless air. The oppressive gloom lifts, and the shrines stand silent once more.\",\n  \"actions\": [\n    {\n      \"actor\": \"Harvest Shade\",\n      \"action\": \"attack\",\n      \"target\": \"Zeug\",\n      \"result\": \"hit\",\n      \"damage\": \"chilling scythe strike\",\n      \"effects\": \"Zeug staggered and injured\"\n    },\n    {\n      \"actor\": \"Edda Ravenscroft\",\n      \"action\": \"attack\",\n      \"target\": \"Harvest Shade\",\n      \"result\": \"hit\",\n      \"damage\": \"mace strike\",\n      \"effects\": \"Harvest Shade destroyed\"\n    },\n    {\n      \"actor\": \"Oswin Peverell\",\n      \"action\": \"attack\",\n      \"target\": \"Harvest Shade\",\n      \"result\": \"none\",\n      \"damage\": null,\n      \"effects\": \"No further action as Shade is defeated\"\n    }\n  ]\n}\n```",
+          "impact": "To be determined",
+          "worldConditions": {
+            "year": 1492,
+            "month": "Springmonth",
+            "day": 2,
+            "time": "07:35:00"
+          }
+        }
+      ],
+      "adventureSummary": "This winding path provides both danger and critical information, rewarding respectful explorers with lore and minor boons."
+    },
+    {
+      "locationId": "V04",
+      "name": "Petitioner's Rest",
+      "type": "room",
+      "description": "A mist-shrouded glade marked by weathered gravestones and a crumbling altar steeped in history. The atmosphere is heavy with sorrow and ancient secrets, reflecting the weight of sacrifices made here. The once shadowed altar now feels less oppressive, though the echoes of the past linger in the soft earth and mossy stones.",
+      "coordinates": "X3Y1",
+      "connectivity": [
+        "V03"
+      ],
+      "areaConnectivity": [
+        "The Wailing Cornfields",
+        "The Old Graveyard"
+      ],
+      "areaConnectivityId": [
+        "X01",
+        "Z01"
+      ],
+      "npcs": [
+        {
+          "name": "Petitioning Shade",
+          "description": "The echo of a villager once bound to the altar, who now observes with a quieter demeanor after the pact was honored. It remains a guardian of ancient memories and offers insight if approached with respect.",
+          "attitude": "Respectful and solemn, no longer hostile after the pact was reaffirmed."
+        },
+        {
+          "name": "Anselara",
+          "description": "A steadfast leader guided by Mayor Bramble's blessing, determined to honor the ancient pact and bring peace to the glade.",
+          "attitude": "Resolute and respectful towards the spirits and the village's history."
+        },
+        {
+          "name": "Zeug",
+          "description": "A brave companion who led the party forward after the spirit's approval, emboldened by the lifting of the curse.",
+          "attitude": "Protective and confident."
+        },
+        {
+          "name": "Oswin",
+          "description": "A cautious warrior who lowered his shield in relief after the Bloodshadow dissipated.",
+          "attitude": "Guarded but hopeful."
+        },
+        {
+          "name": "Amanita",
+          "description": "A member of the party who exhaled deeply, relieved to move past the haunted glade.",
+          "attitude": "Calm and contemplative."
+        },
+        {
+          "name": "Edda",
+          "description": "A solemn figure who offered a blessing that helped soothe the spectral guardian, her quiet tears marking a moment of triumph.",
+          "attitude": "Solemn and compassionate."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Bloodshadow",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          }
+        }
+      ],
+      "lootTable": [
+        "Obsidian Ritual Dagger (counts as a +1 dagger vs. undead, but inflicts 1 psychic damage to the wielder when first drawn)",
+        "Bundle of Rare Moss (can be used in potion brewing, worth 25 gp)",
+        "Fragment of the Original Pact Scroll (contains a vital clue about the Pumpkin King's curse)",
+        "Locket of Miriam Bramble (contains a faded note: 'I give myself freely so the village may be spared. May my line bear this burden with honor.' - suggests the first tithe was voluntary sacrifice, not tyranny)"
+      ],
+      "plotHooks": [
+        "The fragment of the scroll here, if pieced together with others, reveals how to break the field's curse.",
+        "The Petitioning Shade hints that Elric was last seen making a desperate bargain at the altar, leading to his disappearance.",
+        "The Shade, if asked about the 'axe' mentioned in the contract, says: 'The gardener is the Bramble who leads the village. They were given the sacred sickle. But it was hidden when the taking began. It waits in the place where judgments are made.'",
+        "The pact fragment contains a name: 'Miriam Bramble, first of her line, signed in blood on behalf of the village.' This connects to Mayor Tilda's heritage.",
+        "Miriam Bramble's locket, if found among the altar remains, suggests the first tithe was a voluntary sacrifice to protect the village, complicating the narrative that the Brambles are simply tyrannical enforcers.",
+        "The Bloodshadow's dissolution suggests that acknowledging the ancient pact may grant access to the Harvest Warden's Path and the Pumpkin King's court."
+      ],
+      "dmInstructions": "If the party approaches with respect and invokes the pact (Religion DC 13), the Bloodshadow will dissolve peacefully, allowing safe passage. Attempting to move the altar or disturb the site without proper ceremony triggers the altar's necrotic fire trap (2d6 necrotic damage). On combat, call createEncounter with Bloodshadow (50 XP). On victory or successful pact invocation, grant XP and clear the way forward.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 14,
+          "disableDC": 13,
+          "triggerDC": 12,
+          "damage": "2d6 necrotic (if the altar is moved without a ritual, black fire erupts and engulfs the intruder)",
+          "name": "Fire Trap",
+          "description": "A trap that deals 2d6 necrotic damage if the altar is disturbed without performing the proper ritual. DC 14 to detect."
+        }
+      ],
+      "dcChecks": [
+        "Religion DC 13: Make an offering or invoke the pact to appease the Bloodshadow and Petitioning Shade.",
+        "Investigation DC 12: Find the hidden pact fragment beneath a mossy skull.",
+        "Arcana DC 14: Recognize the altar's lingering curse and avoid triggering it."
+      ],
+      "accessibility": "The glade remains misty and slick with mud but is now safer to traverse after the Bloodshadow was appeased. The path to the Harvest Warden's Path is open.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "Altar and benches are crumbling, covered in moss, and marked with faded bloodstains, though the oppressive aura has lessened."
+        },
+        {
+          "name": "Ruined Altar",
+          "description": "Blackened stone altar at the center of the glade, once guarded by the Bloodshadow spirit, now peacefully rests after the pact was honored."
+        }
+      ],
+      "encounters": [
+        {
+          "encounterId": "V04-E1",
+          "summary": "Tense negotiation with the Petitioning Shade who offers insight into the ancient pact and village history.",
+          "impact": "Provided vital clues and warnings to the party; set the tone for respectful interaction with the site.",
+          "worldConditions": {
+            "year": 1492,
+            "month": "Springmonth",
+            "day": 2,
+            "time": "07:00:00"
+          }
+        },
+        {
+          "encounterId": "V04-E2",
+          "summary": "Sudden hostile manifestation of the Bloodshadow when the altar was disturbed without respect.",
+          "impact": "Forced the party to either fight or appease the spirit; failure could have led to serious harm.",
+          "worldConditions": {
+            "year": 1492,
+            "month": "Springmonth",
+            "day": 2,
+            "time": "07:10:00"
+          }
+        },
+        {
+          "encounterId": "V04-E3",
+          "summary": "Anselara invoked the ancient pact in High Elvish, supported by Edda's blessing, causing the Bloodshadow to dissipate peacefully.",
+          "impact": "The oppressive spirit was placated, lifting the curse and opening the path forward toward the Harvest Warden's Path.",
+          "worldConditions": {
+            "year": 1492,
+            "month": "Springmonth",
+            "day": 2,
+            "time": "07:25:00"
+          }
+        }
+      ],
+      "adventureSummary": "The party uncovered vital relics and revealed that the original tithe to the Pumpkin King was an act of love rather than fear. After invoking the ancient pact and offering a solemn blessing, they pacified the spectral Bloodshadow guardian, clearing the way forward and deepening their understanding of the village's true history."
+    },
+    {
+      "locationId": "V12",
+      "name": "Threshing Floor",
+      "type": "room",
+      "description": "A wide, circular space paved with ancient stones, where grain was once separated from chaff during harvest seasons. The stones are now cracked and stained with dark patches that gleam wetly despite the absence of rain. Broken threshing tools lie scattered about--flails, sickles, and winnowing baskets--their handles worn smooth by countless hands. The air carries the phantom scent of wheat dust mixed with something more sinister.",
+      "coordinates": "X2Y3",
+      "connectivity": [
+        "V01",
+        "V13"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Thresher's Ghost",
+          "description": "The spirit of a master thresher who died during the harvest festival's darkest hour. He endlessly sorts phantom grain, occasionally pausing to warn travelers about the 'bitter harvest' that approaches.",
+          "attitude": "Melancholy but helpful; will share knowledge of proper harvest rituals if treated with respect."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Grain Wraith",
+          "description": "A swirling mass of spectral grain and chaff animated by the anger of spoiled harvests, it attacks by engulfing victims in a choking cloud of phantom wheat.",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          }
+        }
+      ],
+      "lootTable": [
+        "Blessed Sickle (functions as a +1 sickle, effective against plant creatures)",
+        "Bag of Ever-Fresh Grain (provides one day's sustenance when consumed)",
+        "Thresher's Token (carved wooden medallion that grants advantage on Survival checks related to agriculture)"
+      ],
+      "plotHooks": [
+        "The Thresher's Ghost mentions seeing strange figures carrying bundles toward the Hanging Loft during the last full moon.",
+        "Among the scattered tools, a peculiar scythe bears runes that match those found elsewhere in the curse-touched areas."
+      ],
+      "dmInstructions": "On entering room: Call createEncounter with 3-5 Skeletons (50 XP each) in waves.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 13,
+          "disableDC": 15,
+          "triggerDC": 11,
+          "damage": "1d6 slashing (ancient threshing mechanisms activate if pressure is applied to certain stones, swinging phantom flails)",
+          "name": "Trap 1",
+          "description": "A trap that deals 1d6 slashing (ancient threshing mechanisms activate if pressure is applied to certain stones, swinging phantom flails) damage (DC 13 to detect)."
+        }
+      ],
+      "dcChecks": [
+        "History DC 12: Recognize the significance of the threshing floor in harvest traditions.",
+        "Perception DC 13: Notice the runic scythe among the scattered tools.",
+        "Religion DC 11: Understand the proper rituals once performed here."
+      ],
+      "accessibility": "Open area with clear sight lines, but the uneven stone floor can be treacherous.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Ancient Stones",
+          "description": "Weathered paving stones arranged in a perfect circle, some bearing carved symbols related to the harvest."
+        },
+        {
+          "name": "Scattered Tools",
+          "description": "Broken and rusted farming implements telling the story of countless harvests past."
+        },
+        {
+          "name": "Phantom Grain",
+          "description": "Spectral wheat and chaff that appears and disappears, leaving behind the scent of long-dead harvests."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "roleplay",
+          "description": "Conversation with the Thresher's Ghost about proper harvest rituals and the curse's origins."
+        },
+        {
+          "type": "combat",
+          "description": "Grain Wraith attacks if the spectral grain or threshing stones are disturbed."
+        }
+      ],
+      "adventureSummary": "A place where honest labor once blessed the land, now corrupted by dark rituals and haunted by the memory of better times."
+    },
+    {
+      "locationId": "V13",
+      "name": "Hanging Loft",
+      "type": "room",
+      "description": "A raised wooden platform supported by weathered posts, where harvested grain was once hung to dry. Rope and chain still dangle from the rafters, some holding desiccated bundles of herbs and grain, others swaying empty in the still air. The floorboards creak ominously underfoot, and several have rotted through completely. From this elevated position, one can see across the entire Fields of Supplication, a view both commanding and deeply unsettling.",
+      "coordinates": "X2Y4",
+      "connectivity": [
+        "V12",
+        "V14"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Old Crone Willa",
+          "description": "Human, female, Celtic heritage. Wizened with pale freckled skin weathered like old leather, wild gray hair, gnarled hands, and bright green knowing eyes. She tends to bundles of dried herbs hanging from the loft's rafters. She claims to remember the old ways and knows the ancient chant needed to awaken the Ember Gourd's power. Her voice carries the weight of years and secret knowledge.",
+          "attitude": "Suspicious of strangers but willing to help those who prove their good intentions; fiercely protective of the old harvest traditions."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Rope Strangler",
+          "description": "Animate lengths of hemp rope that hang from the rafters, possessed by the spirits of those who met their end here. They attempt to entangle and strangle intruders.",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          }
+        }
+      ],
+      "lootTable": [
+        "Bundle of Dried Sage (when burned, provides protection from evil spirits for 10 minutes)",
+        "Willa's Herb Pouch (contains rare reagents worth 30 gp to an alchemist)",
+        "Ancient Harvest Almanac (provides detailed information about lunar cycles and harvest timing)"
+      ],
+      "plotHooks": [
+        "Willa knows the Ember Gourd chant but will only teach it to those who first help her complete a purification ritual.",
+        "She warns that the Stone Trough Altar below holds a dangerous artifact that must be claimed before the next new moon.",
+        "Willa, if pressed about Elric, finally confesses: 'He trusted me. He said the contract could be broken if the Bramble line willingly gave themselves. But I was a coward. I told the village what he planned. They turned on him. The King took him instead of me. I've carried his guilt for fifty years.'",
+        "The purification ritual, if examined with Religion DC 15, reveals it's actually an atonement ritual - Willa is trying to undo her betrayal."
+      ],
+      "dmInstructions": "For Willa's quest: Prompt for Animal Handling DC 10. On success: Teach Ember Gourd chant.",
+      "doors": [
+        {
+          "name": "Loft Access Ladder",
+          "description": "A rickety wooden ladder leading up to the hanging loft platform.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 12,
+          "disableDC": 14,
+          "triggerDC": 10,
+          "damage": "1d8 bludgeoning (rotted floorboards give way under weight, causing a fall to the ground below)",
+          "name": "Trap 1",
+          "description": "A trap that deals 1d8 bludgeoning (rotted floorboards give way under weight, causing a fall to the ground below) damage (DC 12 to detect)."
+        }
+      ],
+      "dcChecks": [
+        "Persuasion DC 15: Convince Willa to teach the Ember Gourd chant.",
+        "Insight DC 13: Recognize that Willa is testing the party's character and intentions.",
+        "Perception DC 11: Identify which floorboards are unsafe to step on."
+      ],
+      "accessibility": "Requires climbing a ladder to reach; the platform is partially unstable with several dangerous gaps.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Hanging Bundles",
+          "description": "Desiccated herbs and grain suspended from the rafters, some still potent with magical properties."
+        },
+        {
+          "name": "Rotted Floorboards",
+          "description": "Wooden planks weakened by age and weather, creating treacherous footing."
+        },
+        {
+          "name": "Panoramic View",
+          "description": "A commanding view of the Fields of Supplication, revealing the full scope of the curse's influence."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "roleplay",
+          "description": "Crucial conversation with Old Crone Willa about the Ember Gourd chant and curse-breaking rituals."
+        },
+        {
+          "type": "combat",
+          "description": "Rope Stranglers animate if the party shows hostility or greed."
+        }
+      ],
+      "adventureSummary": "A key location where the party can gain essential knowledge about breaking the curse, but only if they approach with respect and prove their worthy intentions."
+    },
+    {
+      "locationId": "V14",
+      "name": "Stone Trough Altar",
+      "type": "room",
+      "description": "A massive stone basin carved from a single block of granite sits at the center of this sacred space, its surface worn smooth by centuries of ritual use. The trough is filled with brackish water that never seems to evaporate, and strange symbols are etched around its rim. Three ritual stations surround the altar: a grain offering bowl, a blessed lantern holder, and a consecrated blood basin. Candles of various sizes have been placed around the altar, their wax having dripped into fantastic, otherworldly shapes over the years. The Ember Gourd rests within the trough, pulsing with inner fire.",
+      "coordinates": "X1Y4",
+      "connectivity": [
+        "V13",
+        "V15"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Altar Keeper's Shade",
+          "description": "The ghostly form of a former ritual priest who once tended this altar. He appears only when the Ember Gourd is present and speaks in cryptic riddles about its proper use.",
+          "attitude": "Mysterious and aloof; will provide guidance about the Ember Gourd's power if approached respectfully."
+        },
+        {
+          "name": "Sybil Nettlemire",
+          "description": "Human Bard, female, Romani heritage. Elderly with lined coppery skin, milk-white eyes, and long silver hair tied into a bun with bone pins. She wears layered shawls stitched with strange runes and hums in a low, wavering voice. If the player listens to her chant or shows patience, she smiles and declares she'll come along to 'see the Ember Gourd's tale through.'",
+          "attitude": "Cryptic and playful; often answers questions with rhymes or snippets of song."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Guardian Stone",
+          "description": "The altar itself can animate partially if threatened, striking out with stone appendages to protect the sacred Ember Gourd.",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          }
+        }
+      ],
+      "lootTable": [
+        "The Ember Gourd (key artifact needed to complete the curse-breaking ritual)",
+        "Ritual Chalice (silver cup worth 50 gp, required for certain blessing ceremonies)",
+        "Sacred Candle Set (when lit together, creates a protective circle against undead for 1 hour)"
+      ],
+      "plotHooks": [
+        "The Ember Gourd pulses with inner fire when touched by someone with good intentions.",
+        "The Altar Keeper's Shade appears when the ritual begins, providing cryptic guidance about the proper sequence.",
+        "The three ritual stations around the altar must be activated in the correct order: grain, lantern, blood.",
+        "Once awakened, the Ember Gourd becomes a powerful weapon against the Pumpkin King's magic.",
+        "The Shade, if asked about the contract, says: 'The Bramble blood is the key. The ritual requires the Ember Gourd, the chant, and the sacrifice of the gardener. But there is another way - if the contract itself is destroyed, the King loses his claim. It is hidden in his crown.'",
+        "A stone tablet, if found with Investigation DC 15, describes a counter-ritual: 'If the gardener refuses the sacrifice, the contract may be voided by the free will of all the village. But each must speak their refusal in the King's presence.'",
+        "Sybil Nettlemire, if asked about the 'first tithe,' recites an old rhyme: 'The first was given in peace, the Brambles bargained for release. But the King's hunger never ceased. He twisted the pact to feed his greed.' (This suggests the original tithe was voluntary and the Brambles were trying to protect the village, not enforce tyranny.)"
+      ],
+      "dmInstructions": "EMBER GOURD RITUAL: Requires 3-step sequence: 1) Grain offering (Religion DC 12), 2) Blessed lantern lighting (Performance DC 11), 3) Blood consecration (Constitution save DC 10, 1 HP sacrifice). Success on all three: Call updateCharacterInfo to add AWAKENED EMBER GOURD. Call updatePlot to mark ritual completion. Failure: Ritual must be restarted. On forcing altar: Trigger trap for 2d6 radiant damage.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 15,
+          "disableDC": 17,
+          "triggerDC": 12,
+          "damage": "2d6 radiant (holy energy erupts from the altar if it's defiled or approached with evil intent)",
+          "name": "Trap 1",
+          "description": "A trap that deals 2d6 radiant (holy energy erupts from the altar if it's defiled or approached with evil intent) damage (DC 15 to detect)."
+        }
+      ],
+      "dcChecks": [
+        "Religion DC 12: Understand the three-step ritual sequence for awakening the Ember Gourd.",
+        "Arcana DC 13: Recognize the Ember Gourd's magical properties and how to properly channel its power.",
+        "Investigation DC 12: Discover the detailed ritual instructions carved around the trough's rim.",
+        "Performance DC 11: Perform the ritual with proper solemnity and precision.",
+        "History DC 16: Connect the counter-ritual to the multiple endings: sacrifice (Bramble blood), contract destruction (find the crown), or collective refusal (rally the village).",
+        "Arcana DC 14: Recognize that the Ember Gourd alone is not enough - each ending requires additional components discovered throughout the module."
+      ],
+      "accessibility": "Open sacred space, but approaching the altar incorrectly can trigger protective magic.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Stone Trough",
+          "description": "A massive granite basin filled with sacred water that never evaporates or becomes foul. Contains the dormant Ember Gourd."
+        },
+        {
+          "name": "Grain Offering Bowl",
+          "description": "A small stone bowl for placing grain offerings as the first step of the ritual."
+        },
+        {
+          "name": "Blessed Lantern Holder",
+          "description": "A wrought iron stand for holding a consecrated lantern during the second ritual step."
+        },
+        {
+          "name": "Blood Consecration Basin",
+          "description": "A small silver basin where a drop of the ritualist's blood must be offered as the final step."
+        },
+        {
+          "name": "Sacred Inscriptions",
+          "description": "Ancient symbols and detailed ritual instructions carved into the stone around the altar's perimeter."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "ritual",
+          "description": "Three-step Ember Gourd awakening ritual requiring grain offering, lantern lighting, and blood consecration."
+        },
+        {
+          "type": "roleplay",
+          "description": "Interaction with the Altar Keeper's Shade to learn about the Ember Gourd's proper use."
+        },
+        {
+          "type": "combat",
+          "description": "Guardian Stone animates if the altar is threatened or desecrated."
+        }
+      ],
+      "adventureSummary": "The sacred repository of the Ember Gourd, a key artifact essential for breaking the curse that plagues the land."
+    },
+    {
+      "locationId": "V15",
+      "name": "Hayrick Larder",
+      "type": "room",
+      "description": "A storage area filled with towering stacks of hay and preserved grain, some reaching nearly to the ceiling. The air is thick with dust and the musty scent of old straw. Between the haystacks, narrow pathways wind like a maze, creating countless hiding spots and dead ends. Some of the hay bales show signs of disturbance, as if something large has been burrowing through them.",
+      "coordinates": "X0Y4",
+      "connectivity": [
+        "V14"
+      ],
+      "areaConnectivity": [
+        "The Hollow Field"
+      ],
+      "areaConnectivityId": [
+        "AD01"
+      ],
+      "npcs": [
+        {
+          "name": "Hay-Bound Spirit",
+          "description": "The essence of a storage keeper who was buried alive in a hay collapse years ago. The spirit is trapped within the straw and speaks in whispered warnings about hidden dangers.",
+          "attitude": "Fearful and desperate; eager to warn others but unable to leave the confines of the hayricks."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Straw Blight",
+          "description": "Corrupted hay animated by dark magic, forming into vaguely humanoid shapes that attack with grasping, scratching appendages made of twisted straw.",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          }
+        },
+        {
+          "name": "Nest Lurker",
+          "description": "A creature that has made its home deep within the hayricks, emerging only when its territory is threatened. Its exact nature is hidden by the shadows and straw.",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          }
+        }
+      ],
+      "lootTable": [
+        "Hidden Supply Cache (contains preserved food, rope, and a small bag of coins)",
+        "Masterwork Pitchfork (+1 trident, useful against hay-based creatures)",
+        "Farmer's Weather Glass (predicts weather accurately for the next 24 hours)"
+      ],
+      "plotHooks": [
+        "The Hay-Bound Spirit warns that something evil has been using the larder as a feeding ground.",
+        "Deep within the hayricks, strange symbols have been carved into hidden support beams, matching those found at other cursed sites.",
+        "The Spirit, if asked about the 'Keeper's Hollow,' says: 'It is beyond the gate. The last keeper's body lies there. His journal is with him. But the gate is locked, and the key was taken by a Bramble generations ago. Only the Bramble line can open it now.'",
+        "Carved into the hayrick walls, if found with Investigation DC 15: 'The seven children's names are written in the King's crown. Break the crown, free their names, break the contract.'"
+      ],
+      "dmInstructions": "On opening larder: Call createEncounter with 2-3 Ghouls (200 XP each). Warn of paralysis mechanic.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 14,
+          "disableDC": 12,
+          "triggerDC": 10,
+          "damage": "1d6 bludgeoning + buried (hayrick collapses when climbed incorrectly, potentially burying the character)",
+          "name": "Trap 1",
+          "description": "A trap that deals 1d6 bludgeoning + buried (hayrick collapses when climbed incorrectly, potentially burying the character) damage (DC 14 to detect)."
+        }
+      ],
+      "dcChecks": [
+        "Perception DC 13: Notice the carved symbols on hidden support beams.",
+        "Survival DC 12: Navigate the maze of haystacks without getting lost.",
+        "Investigation DC 14: Locate the hidden supply cache among the straw."
+      ],
+      "accessibility": "Maze-like layout makes navigation difficult; some areas require climbing over or through hay bales.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Towering Haystacks",
+          "description": "Massive piles of hay and straw creating a complex three-dimensional maze."
+        },
+        {
+          "name": "Hidden Pathways",
+          "description": "Narrow corridors between hay bales that wind unpredictably through the storage area."
+        },
+        {
+          "name": "Disturbed Areas",
+          "description": "Sections where something large has burrowed or nested, leaving obvious signs of occupation."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "roleplay",
+          "description": "Communication with the Hay-Bound Spirit to learn about the larder's hidden dangers."
+        },
+        {
+          "type": "combat",
+          "description": "Battle with Straw Blights and the Nest Lurker in the confined, maze-like space."
+        },
+        {
+          "type": "exploration",
+          "description": "Navigating the hayrick maze to find hidden treasures and uncover cursed symbols."
+        }
+      ],
+      "adventureSummary": "A storage facility turned into a dangerous maze where the party must navigate both physical hazards and supernatural threats while uncovering more clues about the spreading curse."
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 2 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 2 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 2 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 2 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 2 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 2 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 2 parties"
+    }
+  ],
+  "areaFeatures": [
+    "ruins",
+    "crossroads",
+    "landmarks"
+  ],
+  "notes": "Balance combat, exploration, and social encounters. Transitions between areas should feel natural."
+}

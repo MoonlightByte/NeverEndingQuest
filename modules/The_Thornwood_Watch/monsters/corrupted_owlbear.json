@@ -1,0 +1,77 @@
+{
+  "name": "Corrupted Owlbear",
+  "size": "Large",
+  "type": "Monstrosity",
+  "alignment": "Chaotic Evil",
+  "armorClass": 12,
+  "hitPoints": 48,
+  "maxHitPoints": 48,
+  "speed": 40,
+  "abilities": {
+    "strength": 20,
+    "dexterity": 12,
+    "constitution": 17,
+    "intelligence": 3,
+    "wisdom": 12,
+    "charisma": 7
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 3
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "necrotic"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "frightened"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "understands Common but can't speak",
+  "challengeRating": 3,
+  "specialAbilities": [
+    {
+      "name": "Corrupted Hide",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Reeking Aura",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "poison"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Beak",
+      "attackBonus": 7,
+      "damageDice": "1d10",
+      "damageBonus": 5,
+      "damageType": "piercing"
+    },
+    {
+      "name": "Claws",
+      "attackBonus": 7,
+      "damageDice": "2d8",
+      "damageBonus": 5,
+      "damageType": "slashing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

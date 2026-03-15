@@ -1,0 +1,54 @@
+{
+  "name": "Twig Blight",
+  "size": "Small",
+  "type": "Plant",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 4,
+  "maxHitPoints": 4,
+  "speed": 20,
+  "abilities": {
+    "strength": 6,
+    "dexterity": 13,
+    "constitution": 12,
+    "intelligence": 4,
+    "wisdom": 8,
+    "charisma": 3
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 3
+  },
+  "damageVulnerabilities": [
+    "fire"
+  ],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 9
+  },
+  "languages": "Understands Common but can't speak",
+  "challengeRating": 0.125,
+  "specialAbilities": [
+    {
+      "name": "False Appearance",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Claws",
+      "attackBonus": 3,
+      "damageDice": "1d4",
+      "damageBonus": 1,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

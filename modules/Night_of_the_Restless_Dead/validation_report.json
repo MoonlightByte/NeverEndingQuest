@@ -1,0 +1,59 @@
+{
+  "module": "Night_of_the_Restless_Dead",
+  "timestamp": "2026-03-15T16:42:30.452733",
+  "summary": {
+    "total_files": 7,
+    "total_passed": 8,
+    "total_failed": 0
+  },
+  "results": {
+    "area": {
+      "files": [
+        "NIG001.json (areas/)"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "reference_integrity": {
+      "files": [],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "monster": {
+      "files": [
+        "skeleton.json",
+        "zombie.json",
+        "giant_spider.json"
+      ],
+      "passed": 3,
+      "failed": 0,
+      "errors": []
+    },
+    "map": {
+      "files": [
+        "map_NIG001.json"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "plot": {
+      "files": [
+        "module_plot.json"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "module_context": {
+      "files": [
+        "module_context.json"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    }
+  }
+}

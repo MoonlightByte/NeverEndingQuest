@@ -1,0 +1,123 @@
+{
+  "name": "The Pumpkin King",
+  "size": "Large",
+  "type": "Undead",
+  "alignment": "Chaotic Evil",
+  "armorClass": 17,
+  "hitPoints": 350,
+  "maxHitPoints": 350,
+  "speed": 30,
+  "abilities": {
+    "strength": 20,
+    "dexterity": 14,
+    "constitution": 22,
+    "intelligence": 12,
+    "wisdom": 16,
+    "charisma": 18
+  },
+  "savingThrows": [
+    "Strength",
+    "Constitution",
+    "Charisma"
+  ],
+  "skills": {
+    "intimidation": 8,
+    "perception": 7
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "cold",
+    "fire",
+    "lightning",
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhausted",
+    "frightened",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 120,
+    "passivePerception": 17
+  },
+  "languages": "Understands all languages but speaks only in riddles",
+  "challengeRating": 10,
+  "specialAbilities": [
+    {
+      "name": "Aura of Fear",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Regeneration",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Magic Resistance",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": ""
+    },
+    {
+      "name": "Great Cleaving Scythe",
+      "attackBonus": 9,
+      "damageDice": "3d12",
+      "damageBonus": 5,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Terrifying Laugh",
+      "attackBonus": 8,
+      "damageDice": "4d8",
+      "damageBonus": 0,
+      "damageType": "psychic"
+    }
+  ],
+  "legendaryActions": [
+    {
+      "name": "Summon Minions",
+      "description": "The Pumpkin King summons 1d4 pumpkin stalkers.",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": ""
+    },
+    {
+      "name": "Read the Crown",
+      "description": "The King intones a name carved in his crown, imposing disadvantage on one creature's next save.",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": ""
+    }
+  ],
+  "condition": "Alive"
+}

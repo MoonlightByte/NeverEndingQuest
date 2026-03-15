@@ -1,0 +1,54 @@
+{
+  "name": "Pumpkin Stalkers",
+  "size": "Small",
+  "type": "Plant",
+  "alignment": "Unaligned",
+  "armorClass": 13,
+  "hitPoints": 16,
+  "maxHitPoints": 16,
+  "speed": 30,
+  "abilities": {
+    "strength": 12,
+    "dexterity": 14,
+    "constitution": 13,
+    "intelligence": 2,
+    "wisdom": 8,
+    "charisma": 1
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 4
+  },
+  "damageVulnerabilities": [
+    "fire"
+  ],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 8
+  },
+  "languages": "",
+  "challengeRating": 0.25,
+  "specialAbilities": [
+    {
+      "name": "False Appearance",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Claw",
+      "attackBonus": 4,
+      "damageDice": "1d4",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

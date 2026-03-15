@@ -1,0 +1,60 @@
+{
+  "name": "Lookout",
+  "size": "Small",
+  "type": "Humanoid",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 7,
+  "maxHitPoints": 7,
+  "speed": 30,
+  "abilities": {
+    "strength": 8,
+    "dexterity": 14,
+    "constitution": 10,
+    "intelligence": 10,
+    "wisdom": 12,
+    "charisma": 8
+  },
+  "savingThrows": [],
+  "skills": {
+    "Perception": 4,
+    "Stealth": 6
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "Common, Goblin",
+  "challengeRating": 0.25,
+  "specialAbilities": [
+    {
+      "name": "Nimble Escape",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Scimitar",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "Slashing"
+    },
+    {
+      "name": "Shortbow",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "Piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

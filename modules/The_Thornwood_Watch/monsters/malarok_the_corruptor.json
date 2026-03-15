@@ -1,0 +1,89 @@
+{
+  "name": "Malarok the Corruptor",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Chaotic Evil",
+  "armorClass": 13,
+  "hitPoints": 16,
+  "maxHitPoints": 16,
+  "speed": 30,
+  "abilities": {
+    "strength": 11,
+    "dexterity": 15,
+    "constitution": 12,
+    "intelligence": 14,
+    "wisdom": 12,
+    "charisma": 16
+  },
+  "savingThrows": [
+    "Wisdom",
+    "Charisma"
+  ],
+  "skills": {
+    "Arcana": 4,
+    "Deception": 5
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "necrotic"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 11
+  },
+  "languages": "Common, Abyssal",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Dark Corruption",
+      "attackBonus": 0,
+      "damageDice": "1d6",
+      "damageBonus": 0,
+      "damageType": "necrotic"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Corrupted Touch",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 3,
+      "damageType": "necrotic"
+    },
+    {
+      "name": "Dagger",
+      "attackBonus": 4,
+      "damageDice": "1d4",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "spellcasting": {
+    "ability": "Charisma",
+    "spellSaveDC": 13,
+    "spellAttackBonus": 5,
+    "spells": {
+      "cantrips": [
+        "Chill Touch",
+        "Minor Illusion",
+        "Prestidigitation"
+      ],
+      "level1": [
+        "Charm Person",
+        "Witch Bolt"
+      ],
+      "level2": [],
+      "level3": [],
+      "level4": [],
+      "level5": [],
+      "level6": [],
+      "level7": [],
+      "level8": [],
+      "level9": []
+    }
+  }
+}

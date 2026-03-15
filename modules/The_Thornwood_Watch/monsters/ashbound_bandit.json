@@ -1,0 +1,62 @@
+{
+  "name": "Ashbound Bandit",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Chaotic Neutral",
+  "armorClass": 13,
+  "hitPoints": 9,
+  "maxHitPoints": 9,
+  "speed": 30,
+  "abilities": {
+    "strength": 12,
+    "dexterity": 14,
+    "constitution": 11,
+    "intelligence": 10,
+    "wisdom": 10,
+    "charisma": 10
+  },
+  "savingThrows": [],
+  "skills": {
+    "Stealth": 4,
+    "Perception": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "fire"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 30,
+    "passivePerception": 12
+  },
+  "languages": "Common, Infernal",
+  "challengeRating": 0.25,
+  "specialAbilities": [
+    {
+      "name": "Ashen Step",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Scimitar",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Ashen Bolt",
+      "attackBonus": 4,
+      "damageDice": "1d4",
+      "damageBonus": 2,
+      "damageType": "fire"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

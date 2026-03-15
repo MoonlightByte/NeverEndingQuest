@@ -1,0 +1,80 @@
+{
+  "name": "Giant Spider",
+  "size": "Large",
+  "type": "Beast",
+  "alignment": "Unaligned",
+  "armorClass": 14,
+  "hitPoints": 26,
+  "maxHitPoints": 26,
+  "speed": 30,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 2,
+    "wisdom": 11,
+    "charisma": 4
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 7
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 10
+  },
+  "languages": "",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Spider Climb",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": ""
+    },
+    {
+      "name": "Web Sense",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": ""
+    },
+    {
+      "name": "Web Walker",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": ""
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 3,
+      "damageType": "piercing"
+    },
+    {
+      "name": "Bite (Poison)",
+      "attackBonus": 0,
+      "damageDice": "2d8",
+      "damageBonus": 0,
+      "damageType": "poison"
+    },
+    {
+      "name": "Web (Recharge 5-6)",
+      "attackBonus": 5,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": "restrained"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

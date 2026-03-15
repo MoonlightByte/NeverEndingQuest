@@ -1,0 +1,68 @@
+{
+  "name": "Guardian Stone",
+  "size": "Medium",
+  "type": "Elemental",
+  "alignment": "Unaligned",
+  "armorClass": 16,
+  "hitPoints": 52,
+  "maxHitPoints": 52,
+  "speed": 20,
+  "abilities": {
+    "strength": 18,
+    "dexterity": 8,
+    "constitution": 16,
+    "intelligence": 1,
+    "wisdom": 10,
+    "charisma": 1
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [
+    "thunder"
+  ],
+  "damageResistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "poison",
+    "psychic"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "frightened",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 10
+  },
+  "languages": "",
+  "challengeRating": 3,
+  "specialAbilities": [
+    {
+      "name": "False Appearance",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Slam",
+      "attackBonus": 6,
+      "damageDice": "2d8",
+      "damageBonus": 4,
+      "damageType": "bludgeoning"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

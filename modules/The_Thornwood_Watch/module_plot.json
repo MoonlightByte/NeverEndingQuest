@@ -1,0 +1,126 @@
+{
+  "plotTitle": "Crisis Beyond the Frontier",
+  "mainObjective": "Investigate the escalating bandit attacks on the Rangers' Outpost and stop the sorcerer who is corrupting the northern wilderness.",
+  "plotPoints": [
+    {
+      "id": "PP001",
+      "title": "Desperate Defense",
+      "description": "The party arrives at Rangers' Outpost to find it in crisis. Three caravans have been massacred in five days with unnatural precision. Ranger Elen, the outpost's commander, recruits the party. Her prime lead is the captured Bandit Leader, Rusk, a man now terrified of his new master. The party must interrogate Rusk to learn the location of the main bandit camp and the identity of the sorcerer, Malarok, who now commands them. IMPORTANT: This plot point should be marked COMPLETED immediately after Rusk reveals the bandit camp location (old watchtower in Thornwood) and Malarok's identity - do not wait for expedition planning or other preparations.",
+      "location": "RO001",
+      "nextPoints": [
+        "PP002"
+      ],
+      "status": "completed",
+      "plotImpact": "Rusk revealed the bandit camp location in the Thornwood Wilds and named Malarok as the true leader. The party gains the main lead to advance the plot.",
+      "sideQuests": [
+        {
+          "id": "SQ001",
+          "title": "Restore the Silver Bell Network",
+          "description": "The outpost's three silver bell towers, a magical long-range communication system, have been sabotaged by Malarok's agents. The North Tower's bell clapper was stolen. The East Tower is overgrown with magically enhanced, thorny vines. The West Tower's harmonic crystal has been shattered.",
+          "involvedLocations": [
+            "RO04",
+            "RO05",
+            "RO06"
+          ],
+          "status": "in progress",
+          "plotImpact": "First segment of the Silver Bell Network restored; Vitreol and Blairen have proven the sabotage can be undone and the magic repaired."
+        },
+        {
+          "id": "SQ002",
+          "title": "Merchant's Dilemma",
+          "description": "Trader Sila, the outpost's primary goods supplier, is packing to leave. Her cart of rare alchemical supplies was stolen in a raid. She asks the party to retrieve a specific iron-banded chest from a small bandit cache a few miles away. If they succeed, she'll stay.",
+          "involvedLocations": [
+            "RO001"
+          ],
+          "status": "not started",
+          "plotImpact": ""
+        }
+      ]
+    },
+    {
+      "id": "PP002",
+      "title": "Into the Thornwood",
+      "description": "Following leads from Rusk, the party ventures into the Thornwood Wilds to find the main bandit camp, located in an old, crumbling watchtower. They must overcome unnaturally aggressive wildlife and bandit patrols to reach the camp, rescue any surviving captives, and find clues about Malarok's ultimate goal.",
+      "location": "TW001",
+      "nextPoints": [
+        "PP003"
+      ],
+      "status": "not started",
+      "plotImpact": "",
+      "sideQuests": [
+        {
+          "id": "SQ003",
+          "title": "The Hermit's Warning",
+          "description": "The party can find a hidden cabin belonging to Maelo, a hermit who studies the forest's energies. He will only help if the party first cleanses a nearby spring he uses for scrying, which has been tainted by Malarok's magic. He can then perform a ritual to learn more about the threat. Reward: Maelo's Iron Charm (grows cold in the presence of dark magic, can potentially break enchantments).",
+          "involvedLocations": [
+            "TW001"
+          ],
+          "status": "not started",
+          "plotImpact": ""
+        },
+        {
+          "id": "SQ004",
+          "title": "Rescue the Lost",
+          "description": "The party follows tracks from the Ambush Site north to the Wolf's Den Cave where Wounded Ranger Gareth and Merchant Kael are making a desperate stand against corrupted wolves. Gareth has a partially completed map of the bandit camp's patrols. Kael overheard the bandits talking about 'gathering tributes for the master's ritual' at some 'forgotten altar'. Both survivors reveal they were being held as captives for a terrible sacrifice.",
+          "involvedLocations": [
+            "TW001",
+            "TW06"
+          ],
+          "status": "not started",
+          "plotImpact": ""
+        }
+      ]
+    },
+    {
+      "id": "PP003",
+      "title": "The Corrupted Grove",
+      "description": "The trail leads north to a blighted part of the forest where the trees are twisted and the air hums with dark energy. The party must navigate this dangerous grove to find the source of the sorcerer's power, following the increasing cold of the iron charm from Maelo.",
+      "location": "NCW001",
+      "nextPoints": [
+        "PP004"
+      ],
+      "status": "not started",
+      "plotImpact": "",
+      "sideQuests": [
+        {
+          "id": "SQ005",
+          "title": "The Withered Hart",
+          "description": "A magnificent, ancient hart, once a guardian of the forest, has been captured and twisted by Malarok's magic, serving as a powerful guard for the ruins. The party can either defeat it in combat or, if they learned about the iron's properties from Maelo, use it to try and break the spell controlling the beast.",
+          "involvedLocations": [
+            "NCW001"
+          ],
+          "status": "not started",
+          "plotImpact": ""
+        }
+      ]
+    },
+    {
+      "id": "PP004",
+      "title": "Confronting the Corruptor",
+      "description": "Deep within the ruins, the party finds Malarok the Corruptor. He is performing a dark ritual to absorb the power of a large, pulsating Voidstone Shard set upon an altar. He is a formidable spellcaster, protected by elite bodyguards and the stone's foul energy. The party must defeat Malarok and destroy the Voidstone to end his threat. The purified water in the Rune-etched Ritual Vial from Maelo may be crucial for cleansing the Voidstone's corruption. SPECIAL DM INSTRUCTION: When completing this plot point after Malarok's defeat, have Scout Kira suddenly receive an urgent magical message. She should explain that Commander Elen has gone missing in Harrow's Hollow under similar signs and urge the party to follow when ready. Remove Commander Elen from all location NPCs in this module.",
+      "location": "NCW001",
+      "nextPoints": [
+        "PP005"
+      ],
+      "status": "not started",
+      "plotImpact": "",
+      "sideQuests": []
+    },
+    {
+      "id": "PP005",
+      "title": "Report to Commander Elen (but she's gone!)",
+      "description": "When the party returns to Rangers' Outpost to report their success, they discover Commander Elen has vanished. Ranger Marcus explains that Elen received an urgent message about disappearances in Harrow's Hollow and departed immediately, leaving only a hastily scrawled note: 'Harrow's Hollow shows the same signs. I am going now. Tell Eirik to follow if he can. -E'. Ranger Marcus gives the party their rewards but is clearly worried about Elen. DM NOTE: This is a plot hook to the Keep of Doom module. After giving rewards and wrapping up this module's storylines, inform players that they can travel to Harrow's Hollow to find Elen and investigate the mysterious disappearances.",
+      "location": "RO001",
+      "nextPoints": [],
+      "prerequisites": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ],
+      "status": "in progress",
+      "plotImpact": "Party learned from Ranger Marcus that Commander Elen has departed for Harrow's Hollow to investigate disappearances, leaving instructions for the party to follow if they return.",
+      "sideQuests": []
+    }
+  ]
+}

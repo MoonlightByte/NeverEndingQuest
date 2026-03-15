@@ -1,0 +1,54 @@
+{
+  "name": "Rope Strangler",
+  "size": "Medium",
+  "type": "Plant",
+  "alignment": "Unaligned",
+  "armorClass": 12,
+  "hitPoints": 24,
+  "maxHitPoints": 24,
+  "speed": 20,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 10,
+    "constitution": 13,
+    "intelligence": 1,
+    "wisdom": 8,
+    "charisma": 1
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 3
+  },
+  "damageVulnerabilities": [
+    "fire"
+  ],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 8
+  },
+  "languages": "",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "False Appearance",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Constrict",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "bludgeoning"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

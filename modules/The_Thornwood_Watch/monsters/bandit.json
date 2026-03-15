@@ -1,0 +1,52 @@
+{
+  "name": "Bandit",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Any Non-Lawful Alignment",
+  "armorClass": 12,
+  "hitPoints": 11,
+  "maxHitPoints": 11,
+  "speed": 30,
+  "abilities": {
+    "strength": 11,
+    "dexterity": 12,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 10,
+    "charisma": 10
+  },
+  "savingThrows": [],
+  "skills": {
+    "athletics": 1,
+    "deception": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 0,
+    "passivePerception": 10
+  },
+  "languages": "Common",
+  "challengeRating": 0.125,
+  "specialAbilities": [],
+  "actions": [
+    {
+      "name": "Scimitar",
+      "attackBonus": 3,
+      "damageDice": "1d6",
+      "damageBonus": 1,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Light Crossbow",
+      "attackBonus": 3,
+      "damageDice": "1d8",
+      "damageBonus": 1,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

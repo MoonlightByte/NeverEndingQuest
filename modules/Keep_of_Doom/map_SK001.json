@@ -1,0 +1,109 @@
+{
+  "mapId": "MAP_SK001",
+  "mapName": "Shadowfall Keep Map",
+  "totalRooms": 8,
+  "rooms": [
+    {
+      "id": "AG01",
+      "name": "Outer Courtyard",
+      "type": "courtyard",
+      "connections": [
+        "AG02",
+        "AG03",
+        "AG08"
+      ],
+      "coordinates": "X2Y1"
+    },
+    {
+      "id": "AG02",
+      "name": "Gatehouse Ruins",
+      "type": "gatehouse",
+      "connections": [
+        "AG01",
+        "AG04"
+      ],
+      "coordinates": "X1Y1"
+    },
+    {
+      "id": "AG03",
+      "name": "The Ruined Chapel",
+      "type": "chapel",
+      "connections": [
+        "AG01",
+        "AG05"
+      ],
+      "coordinates": "X3Y1"
+    },
+    {
+      "id": "AG04",
+      "name": "Fallen Barracks",
+      "type": "barracks",
+      "connections": [
+        "AG02",
+        "AG06"
+      ],
+      "coordinates": "X1Y2"
+    },
+    {
+      "id": "AG05",
+      "name": "Great Hall",
+      "type": "hall",
+      "connections": [
+        "AG03",
+        "AG06",
+        "AG07"
+      ],
+      "coordinates": "X3Y2"
+    },
+    {
+      "id": "AG06",
+      "name": "Broken Tower",
+      "type": "tower",
+      "connections": [
+        "AG04",
+        "AG05"
+      ],
+      "coordinates": "X2Y2"
+    },
+    {
+      "id": "AG07",
+      "name": "Lord's Study",
+      "type": "study",
+      "connections": [
+        "AG05"
+      ],
+      "coordinates": "X3Y3"
+    },
+    {
+      "id": "AG08",
+      "name": "Secret Passage",
+      "type": "passage",
+      "connections": [
+        "AG01"
+      ],
+      "coordinates": "X1Y0"
+    }
+  ],
+  "layout": [
+    [
+      "AG08",
+      "   ",
+      "   "
+    ],
+    [
+      "AG02",
+      "AG01",
+      "AG03"
+    ],
+    [
+      "AG04",
+      "AG06",
+      "AG05"
+    ],
+    [
+      "   ",
+      "   ",
+      "AG07"
+    ]
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "name": "The Entity",
+  "size": "Medium",
+  "type": "Aberration",
+  "alignment": "Chaotic Evil",
+  "armorClass": 14,
+  "hitPoints": 27,
+  "maxHitPoints": 27,
+  "speed": 30,
+  "abilities": {
+    "strength": 10,
+    "dexterity": 16,
+    "constitution": 14,
+    "intelligence": 13,
+    "wisdom": 12,
+    "charisma": 14
+  },
+  "savingThrows": [
+    "Dexterity",
+    "Charisma"
+  ],
+  "skills": {
+    "Stealth": 5,
+    "Deception": 4,
+    "Perception": 3
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "psychic",
+    "necrotic"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed",
+    "frightened"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "Deep Speech, telepathy 120 ft.",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Ethereal Sight",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Unnerving Presence",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "psychic"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Mind Lash",
+      "attackBonus": 6,
+      "damageDice": "2d6",
+      "damageBonus": 2,
+      "damageType": "psychic"
+    },
+    {
+      "name": "Distorted Touch",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

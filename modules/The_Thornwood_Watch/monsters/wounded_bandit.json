@@ -1,0 +1,52 @@
+{
+  "name": "Wounded Bandit",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Chaotic Evil",
+  "armorClass": 12,
+  "hitPoints": 8,
+  "maxHitPoints": 8,
+  "speed": 30,
+  "abilities": {
+    "strength": 11,
+    "dexterity": 12,
+    "constitution": 10,
+    "intelligence": 10,
+    "wisdom": 10,
+    "charisma": 10
+  },
+  "savingThrows": [],
+  "skills": {
+    "Athletics": 2,
+    "Stealth": 3
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 0,
+    "passivePerception": 10
+  },
+  "languages": "Common",
+  "challengeRating": 0.125,
+  "specialAbilities": [],
+  "actions": [
+    {
+      "name": "Scimitar",
+      "attackBonus": 2,
+      "damageDice": "1d6",
+      "damageBonus": 0,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Light Crossbow",
+      "attackBonus": 2,
+      "damageDice": "1d8",
+      "damageBonus": 0,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

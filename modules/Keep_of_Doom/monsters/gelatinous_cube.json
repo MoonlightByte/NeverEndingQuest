@@ -1,0 +1,73 @@
+{
+  "name": "Gelatinous Cube",
+  "size": "Large",
+  "type": "Ooze",
+  "alignment": "Unaligned",
+  "armorClass": 6,
+  "hitPoints": 84,
+  "maxHitPoints": 84,
+  "speed": 15,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 3,
+    "constitution": 20,
+    "intelligence": 1,
+    "wisdom": 6,
+    "charisma": 1
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [
+    "acid"
+  ],
+  "conditionImmunities": [
+    "blinded",
+    "charmed",
+    "deafened",
+    "exhaustion",
+    "frightened",
+    "prone"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 8
+  },
+  "languages": "",
+  "challengeRating": 2,
+  "specialAbilities": [
+    {
+      "name": "Ooze Cube",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Transparent",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Pseudopod",
+      "attackBonus": 4,
+      "damageDice": "3d6",
+      "damageBonus": 2,
+      "damageType": "acid"
+    },
+    {
+      "name": "Engulf",
+      "attackBonus": 0,
+      "damageDice": "6d6",
+      "damageBonus": 0,
+      "damageType": "acid"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

@@ -1,0 +1,71 @@
+{
+  "name": "Tree Blight",
+  "size": "Huge",
+  "type": "Plant",
+  "alignment": "Neutral Evil",
+  "armorClass": 15,
+  "hitPoints": 59,
+  "maxHitPoints": 59,
+  "speed": 30,
+  "abilities": {
+    "strength": 23,
+    "dexterity": 8,
+    "constitution": 19,
+    "intelligence": 6,
+    "wisdom": 10,
+    "charisma": 7
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 2,
+    "stealth": -1
+  },
+  "damageVulnerabilities": [
+    "fire"
+  ],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "blinded"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "understands Common and Druidic but can't speak",
+  "challengeRating": 7,
+  "specialAbilities": [
+    {
+      "name": "False Appearance",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "bludgeoning"
+    },
+    {
+      "name": "Slam",
+      "attackBonus": 7,
+      "damageDice": "3d6",
+      "damageBonus": 6,
+      "damageType": "bludgeoning"
+    },
+    {
+      "name": "Bite",
+      "attackBonus": 7,
+      "damageDice": "1d8",
+      "damageBonus": 6,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

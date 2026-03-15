@@ -1,0 +1,93 @@
+{
+  "name": "Shadow Relic",
+  "size": "Small",
+  "type": "Construct",
+  "alignment": "Neutral Evil",
+  "armorClass": 14,
+  "hitPoints": 18,
+  "maxHitPoints": 18,
+  "speed": 30,
+  "abilities": {
+    "strength": 6,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 12,
+    "charisma": 8
+  },
+  "savingThrows": [
+    "Dexterity",
+    "Wisdom"
+  ],
+  "skills": {
+    "Stealth": 6,
+    "Perception": 3
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "necrotic",
+    "cold",
+    "bludgeoning",
+    "piercing",
+    "slashing (nonmagical)"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "blinded",
+    "charmed",
+    "exhaustion",
+    "frightened",
+    "paralyzed",
+    "petrified",
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "understands Common and one other language but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Shadow Stealth",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": ""
+    },
+    {
+      "name": "Sunlight Sensitivity",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": ""
+    },
+    {
+      "name": "Eerie Aura",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": ""
+    }
+  ],
+  "actions": [
+    {
+      "name": "Shadow Claw",
+      "attackBonus": 5,
+      "damageDice": "1d6",
+      "damageBonus": 3,
+      "damageType": "necrotic"
+    },
+    {
+      "name": "Relic Pulse (Recharge 5-6)",
+      "attackBonus": 0,
+      "damageDice": "2d6",
+      "damageBonus": 0,
+      "damageType": "psychic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

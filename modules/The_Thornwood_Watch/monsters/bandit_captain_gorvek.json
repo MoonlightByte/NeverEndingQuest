@@ -1,0 +1,79 @@
+{
+  "name": "Bandit Captain Gorvek",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Chaotic Neutral",
+  "armorClass": 15,
+  "hitPoints": 45,
+  "maxHitPoints": 45,
+  "speed": 30,
+  "abilities": {
+    "strength": 15,
+    "dexterity": 16,
+    "constitution": 14,
+    "intelligence": 14,
+    "wisdom": 11,
+    "charisma": 14
+  },
+  "savingThrows": [
+    "Dex +5",
+    "Con +4",
+    "Wis +2",
+    "Cha +4"
+  ],
+  "skills": {
+    "Athletics": 4,
+    "Deception": 4
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 0,
+    "passivePerception": 10
+  },
+  "languages": "Common, Thieves' Cant",
+  "challengeRating": 2,
+  "specialAbilities": [
+    {
+      "name": "Parry",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Scimitar",
+      "attackBonus": 5,
+      "damageDice": "1d6",
+      "damageBonus": 3,
+      "damageType": "Slashing"
+    },
+    {
+      "name": "Dagger",
+      "attackBonus": 5,
+      "damageDice": "1d4",
+      "damageBonus": 3,
+      "damageType": "Piercing"
+    },
+    {
+      "name": "Light Crossbow",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 3,
+      "damageType": "Piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

@@ -1,0 +1,52 @@
+{
+  "name": "Stirge Swarm",
+  "size": "Medium",
+  "type": "Beast",
+  "alignment": "Unaligned",
+  "armorClass": 13,
+  "hitPoints": 14,
+  "maxHitPoints": 14,
+  "speed": 10,
+  "abilities": {
+    "strength": 4,
+    "dexterity": 18,
+    "constitution": 10,
+    "intelligence": 2,
+    "wisdom": 8,
+    "charisma": 3
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 5
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 8
+  },
+  "languages": "",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Keen Smell",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Proboscis",
+      "attackBonus": 6,
+      "damageDice": "1d4",
+      "damageBonus": 3,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

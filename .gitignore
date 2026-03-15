@@ -355,6 +355,28 @@ modules/*/
 !modules/Keep_of_Doom/
 !modules/Night_of_the_Restless_Dead/
 !modules/The_Pumpkin_Kings_Curse/
+
+# Curated module core content for tester parity
+!modules/The_Thornwood_Watch/areas/*.json
+!modules/Keep_of_Doom/areas/*.json
+!modules/Night_of_the_Restless_Dead/areas/*.json
+!modules/The_Pumpkin_Kings_Curse/areas/*.json
+!modules/The_Thornwood_Watch/map_*.json
+!modules/Keep_of_Doom/map_*.json
+!modules/Night_of_the_Restless_Dead/map_*.json
+!modules/The_Pumpkin_Kings_Curse/map_*.json
+!modules/The_Thornwood_Watch/module_plot.json
+!modules/Keep_of_Doom/module_plot.json
+!modules/Night_of_the_Restless_Dead/module_plot.json
+!modules/The_Pumpkin_Kings_Curse/module_plot.json
+!modules/The_Thornwood_Watch/monsters/
+!modules/Keep_of_Doom/monsters/
+!modules/Night_of_the_Restless_Dead/monsters/
+!modules/The_Pumpkin_Kings_Curse/monsters/
+!modules/The_Thornwood_Watch/monsters/*.json
+!modules/Keep_of_Doom/monsters/*.json
+!modules/Night_of_the_Restless_Dead/monsters/*.json
+!modules/The_Pumpkin_Kings_Curse/monsters/*.json
 # Game state files - should NOT be tracked
 # modules/campaign.json
 # modules/world_registry.json

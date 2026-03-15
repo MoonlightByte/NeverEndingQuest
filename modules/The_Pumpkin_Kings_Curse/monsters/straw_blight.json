@@ -1,0 +1,54 @@
+{
+  "name": "Straw Blight",
+  "size": "Small",
+  "type": "Plant",
+  "alignment": "Unaligned",
+  "armorClass": 12,
+  "hitPoints": 10,
+  "maxHitPoints": 10,
+  "speed": 20,
+  "abilities": {
+    "strength": 8,
+    "dexterity": 12,
+    "constitution": 13,
+    "intelligence": 1,
+    "wisdom": 7,
+    "charisma": 1
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 3
+  },
+  "damageVulnerabilities": [
+    "fire"
+  ],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 6
+  },
+  "languages": "",
+  "challengeRating": 0.125,
+  "specialAbilities": [
+    {
+      "name": "False Appearance",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Rake",
+      "attackBonus": 3,
+      "damageDice": "1d4",
+      "damageBonus": 0,
+      "damageType": "slashing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

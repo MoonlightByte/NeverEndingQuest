@@ -1,0 +1,77 @@
+{
+  "name": "Shambling Mound",
+  "size": "Large",
+  "type": "Plant",
+  "alignment": "Neutral",
+  "armorClass": 15,
+  "hitPoints": 136,
+  "maxHitPoints": 136,
+  "speed": 20,
+  "abilities": {
+    "strength": 18,
+    "dexterity": 8,
+    "constitution": 16,
+    "intelligence": 5,
+    "wisdom": 10,
+    "charisma": 8
+  },
+  "savingThrows": [
+    "Constitution",
+    "Wisdom"
+  ],
+  "skills": {
+    "Perception": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "cold",
+    "fire"
+  ],
+  "damageImmunities": [
+    "lightning"
+  ],
+  "conditionImmunities": [
+    "blinded",
+    "deafened"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "Understands Common but can't speak",
+  "challengeRating": 5,
+  "specialAbilities": [
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Lightning Absorption",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Slam",
+      "attackBonus": 7,
+      "damageDice": "2d8",
+      "damageBonus": 4,
+      "damageType": "bludgeoning"
+    },
+    {
+      "name": "Engulf",
+      "attackBonus": 0,
+      "damageDice": "2d8",
+      "damageBonus": 4,
+      "damageType": "bludgeoning"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

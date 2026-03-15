@@ -1,0 +1,53 @@
+{
+  "name": "Zombie",
+  "size": "Medium",
+  "type": "undead",
+  "alignment": "neutral evil",
+  "armorClass": 8,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 20,
+  "abilities": {
+    "strength": 13,
+    "dexterity": 6,
+    "constitution": 16,
+    "intelligence": 3,
+    "wisdom": 6,
+    "charisma": 5
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": ["poison"],
+  "conditionImmunities": ["poisoned"],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 8
+  },
+  "languages": "understands all languages it knew in life but can't speak",
+  "challengeRating": 0.25,
+  "specialAbilities": [
+    {
+      "name": "Undead Fortitude",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Slam",
+      "attackBonus": 3,
+      "damageDice": "1d6",
+      "damageBonus": 1,
+      "damageType": "bludgeoning"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "A reanimated corpse, shuffling forward with hollow eyes and rotting flesh.",
+  "tags": ["undead", "zombie"],
+  "source_file": "Night_of_the_Restless_Dead"
+}

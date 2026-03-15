@@ -1,0 +1,80 @@
+{
+  "name": "Specter",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Chaotic Evil",
+  "armorClass": 12,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 0,
+  "abilities": {
+    "strength": 1,
+    "dexterity": 14,
+    "constitution": 11,
+    "intelligence": 10,
+    "wisdom": 10,
+    "charisma": 11
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [
+    "Force"
+  ],
+  "damageResistances": [
+    "Acid",
+    "Cold",
+    "Fire",
+    "Lightning",
+    "Thunder",
+    "Bludgeoning",
+    "Piercing",
+    "Slashing (from nonmagical attacks)"
+  ],
+  "damageImmunities": [
+    "Necrotic",
+    "Poison"
+  ],
+  "conditionImmunities": [
+    "Charmed",
+    "Exhaustion",
+    "Grappled",
+    "Paralyzed",
+    "Petrified",
+    "Poisoned",
+    "Prone",
+    "Restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 10
+  },
+  "languages": "Understands the languages it knew in life but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Incorporeal Movement",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Sunlight Sensitivity",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Life Drain",
+      "attackBonus": 4,
+      "damageDice": "3d6",
+      "damageBonus": 0,
+      "damageType": "Necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

@@ -1,0 +1,79 @@
+{
+  "name": "Corrupted Vine Blight",
+  "size": "Medium",
+  "type": "Plant",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 24,
+  "maxHitPoints": 24,
+  "speed": 10,
+  "abilities": {
+    "strength": 16,
+    "dexterity": 8,
+    "constitution": 15,
+    "intelligence": 5,
+    "wisdom": 10,
+    "charisma": 3
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 2
+  },
+  "damageVulnerabilities": [
+    "fire"
+  ],
+  "damageResistances": [
+    "cold"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "blinded"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 10
+  },
+  "languages": "understands Common and Sylvan but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "False Appearance",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Corrupted Aura",
+      "attackBonus": 0,
+      "damageDice": "1d4",
+      "damageBonus": 0,
+      "damageType": "poison"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Constrict",
+      "attackBonus": 5,
+      "damageDice": "2d6",
+      "damageBonus": 3,
+      "damageType": "bludgeoning"
+    },
+    {
+      "name": "Corrupting Touch",
+      "attackBonus": 3,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "necrotic"
+    },
+    {
+      "name": "Entangling Plants (Recharge 5-6)",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

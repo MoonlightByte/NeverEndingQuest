@@ -1,0 +1,75 @@
+{
+  "name": "Harvest Shade",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Unaligned",
+  "armorClass": 13,
+  "hitPoints": 36,
+  "maxHitPoints": 36,
+  "speed": 30,
+  "abilities": {
+    "strength": 12,
+    "dexterity": 16,
+    "constitution": 14,
+    "intelligence": 6,
+    "wisdom": 11,
+    "charisma": 8
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 5
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "acid",
+    "cold",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "exhaustion",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 10
+  },
+  "languages": "Understands languages known in life but cannot speak",
+  "challengeRating": 2,
+  "specialAbilities": [
+    {
+      "name": "Shadow Meld",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Harvest Scythe",
+      "attackBonus": 5,
+      "damageDice": "2d8",
+      "damageBonus": 3,
+      "damageType": "slashing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

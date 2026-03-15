@@ -1,0 +1,76 @@
+{
+  "name": "Noose Wraith",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Unaligned",
+  "armorClass": 13,
+  "hitPoints": 45,
+  "maxHitPoints": 45,
+  "speed": 0,
+  "abilities": {
+    "strength": 10,
+    "dexterity": 16,
+    "constitution": 15,
+    "intelligence": 6,
+    "wisdom": 12,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 5
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "acid",
+    "cold",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 11
+  },
+  "languages": "Understands languages known in life but cannot speak",
+  "challengeRating": 2,
+  "specialAbilities": [
+    {
+      "name": "Incorporeal Movement",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Strangling Noose",
+      "attackBonus": 5,
+      "damageDice": "2d8",
+      "damageBonus": 0,
+      "damageType": "necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

@@ -1,0 +1,84 @@
+{
+  "mapId": "MAP_TW001",
+  "mapName": "Thornwood Map",
+  "totalRooms": 6,
+  "rooms": [
+    {
+      "id": "TW01",
+      "type": "clearing",
+      "connections": [
+        "TW02",
+        "TW04"
+      ],
+      "coordinates": "X2Y2",
+      "name": "Ambush Site"
+    },
+    {
+      "id": "TW02",
+      "type": "path",
+      "connections": [
+        "TW01",
+        "TW03",
+        "TW05"
+      ],
+      "coordinates": "X3Y2",
+      "name": "Bandit Trail"
+    },
+    {
+      "id": "TW03",
+      "type": "clearing",
+      "connections": [
+        "TW02",
+        "TW04"
+      ],
+      "coordinates": "X3Y1",
+      "name": "Abandoned Camp"
+    },
+    {
+      "id": "TW04",
+      "type": "grove",
+      "connections": [
+        "TW01",
+        "TW03",
+        "TW06"
+      ],
+      "coordinates": "X2Y1",
+      "name": "Thornheart Grove"
+    },
+    {
+      "id": "TW05",
+      "type": "stronghold",
+      "connections": [
+        "TW02"
+      ],
+      "coordinates": "X3Y3",
+      "name": "Bandit Stronghold"
+    },
+    {
+      "id": "TW06",
+      "type": "cave",
+      "connections": [
+        "TW04"
+      ],
+      "coordinates": "X1Y1",
+      "name": "Wolf's Den Cave"
+    }
+  ],
+  "layout": [
+    [
+      "TW06",
+      "TW04",
+      "TW03"
+    ],
+    [
+      "   ",
+      "TW01",
+      "TW02"
+    ],
+    [
+      "   ",
+      "   ",
+      "TW05"
+    ]
+  ]
+}

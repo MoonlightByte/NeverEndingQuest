@@ -1,0 +1,89 @@
+{
+  "mapId": "MAP_RO001",
+  "mapName": "Rangers' Outpost Map",
+  "totalRooms": 6,
+  "rooms": [
+    {
+      "id": "RO01",
+      "type": "crossroads",
+      "connections": [
+        "RO02",
+        "RO03",
+        "RO04"
+      ],
+      "coordinates": "X2Y2",
+      "name": "Forked Trails Crossing"
+    },
+    {
+      "id": "RO02",
+      "type": "riverside",
+      "connections": [
+        "RO01",
+        "RO04"
+      ],
+      "coordinates": "X2Y3",
+      "name": "Moonlit Waters Edge"
+    },
+    {
+      "id": "RO03",
+      "type": "ruins",
+      "connections": [
+        "RO01",
+        "RO05",
+        "RO06"
+      ],
+      "coordinates": "X1Y2",
+      "name": "Shattered Sentinel Stones"
+    },
+    {
+      "id": "RO04",
+      "type": "riverside",
+      "connections": [
+        "RO01",
+        "RO02"
+      ],
+      "coordinates": "X3Y2",
+      "name": "Mistshadow Ford"
+    },
+    {
+      "id": "RO05",
+      "type": "ruins",
+      "connections": [
+        "RO03"
+      ],
+      "coordinates": "X1Y1",
+      "name": "Forgotten Waystation"
+    },
+    {
+      "id": "RO06",
+      "type": "ruins",
+      "connections": [
+        "RO03"
+      ],
+      "coordinates": "X1Y3",
+      "name": "North Tower Overlook"
+    }
+  ],
+  "layout": [
+    [
+      "RO05",
+      "   ",
+      "   "
+    ],
+    [
+      "RO03",
+      "RO01",
+      "RO04"
+    ],
+    [
+      "   ",
+      "RO02",
+      "   "
+    ],
+    [
+      "RO06",
+      "   ",
+      "   "
+    ]
+  ]
+}

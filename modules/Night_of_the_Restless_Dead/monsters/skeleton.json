@@ -1,0 +1,52 @@
+{
+  "name": "Skeleton",
+  "size": "Medium",
+  "type": "undead",
+  "alignment": "lawful evil",
+  "armorClass": 13,
+  "hitPoints": 13,
+  "maxHitPoints": 13,
+  "speed": 30,
+  "abilities": {
+    "strength": 10,
+    "dexterity": 14,
+    "constitution": 15,
+    "intelligence": 6,
+    "wisdom": 8,
+    "charisma": 5
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": ["bludgeoning"],
+  "damageResistances": [],
+  "damageImmunities": ["poison"],
+  "conditionImmunities": ["exhaustion", "poisoned"],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 9
+  },
+  "languages": "understands all languages it knew in life but can't speak",
+  "challengeRating": 0.25,
+  "specialAbilities": [],
+  "actions": [
+    {
+      "name": "Shortsword",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    },
+    {
+      "name": "Shortbow",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Animated bones of a humanoid, armed and armored as it was in life.",
+  "tags": ["undead", "skeleton"],
+  "source_file": "Night_of_the_Restless_Dead"
+}

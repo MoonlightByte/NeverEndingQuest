@@ -1,0 +1,55 @@
+{
+  "name": "Awakened Shrub",
+  "size": "Small",
+  "type": "Plant",
+  "alignment": "Unaligned",
+  "armorClass": 9,
+  "hitPoints": 10,
+  "maxHitPoints": 10,
+  "speed": 20,
+  "abilities": {
+    "strength": 3,
+    "dexterity": 8,
+    "constitution": 11,
+    "intelligence": 10,
+    "wisdom": 10,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [
+    "fire"
+  ],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "blinded",
+    "deafened"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 10
+  },
+  "languages": "one language known by its creator",
+  "challengeRating": 0,
+  "specialAbilities": [
+    {
+      "name": "False Appearance",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": ""
+    }
+  ],
+  "actions": [
+    {
+      "name": "Rake",
+      "attackBonus": 1,
+      "damageDice": "1d4",
+      "damageBonus": -1,
+      "damageType": "slashing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

@@ -1,0 +1,44 @@
+{
+  "name": "Sentry",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Lawful Neutral",
+  "armorClass": 16,
+  "hitPoints": 11,
+  "maxHitPoints": 11,
+  "speed": 30,
+  "abilities": {
+    "strength": 13,
+    "dexterity": 12,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 10,
+    "charisma": 10
+  },
+  "savingThrows": [],
+  "skills": {
+    "Perception": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 0,
+    "passivePerception": 12
+  },
+  "languages": "Common",
+  "challengeRating": 0.25,
+  "specialAbilities": [],
+  "actions": [
+    {
+      "name": "Spear",
+      "attackBonus": 3,
+      "damageDice": "1d6",
+      "damageBonus": 1,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

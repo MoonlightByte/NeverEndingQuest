@@ -1,0 +1,71 @@
+{
+  "mapId": "MAP_NCW001",
+  "mapName": "Corrupted Woods Map",
+  "totalRooms": 5,
+  "rooms": [
+    {
+      "id": "NC01",
+      "type": "cave",
+      "connections": [
+        "NC02",
+        "NC03"
+      ],
+      "coordinates": "X2Y2",
+      "name": "Gloomsap Cavern"
+    },
+    {
+      "id": "NC02",
+      "type": "grove",
+      "connections": [
+        "NC01",
+        "NC04",
+        "NC05"
+      ],
+      "coordinates": "X1Y2",
+      "name": "Twisted Briar Grove"
+    },
+    {
+      "id": "NC03",
+      "type": "cave",
+      "connections": [
+        "NC01",
+        "NC04"
+      ],
+      "coordinates": "X2Y3",
+      "name": "Hollow Shade Den"
+    },
+    {
+      "id": "NC04",
+      "type": "campsite",
+      "connections": [
+        "NC02",
+        "NC03"
+      ],
+      "coordinates": "X1Y3",
+      "name": "Forsaken Hearth Encampment"
+    },
+    {
+      "id": "NC05",
+      "type": "hilltop",
+      "connections": [
+        "NC02"
+      ],
+      "coordinates": "X1Y1",
+      "name": "Shrouded Sentinel Rise"
+    }
+  ],
+  "layout": [
+    [
+      "NC05",
+      "   "
+    ],
+    [
+      "NC02",
+      "NC01"
+    ],
+    [
+      "NC04",
+      "NC03"
+    ]
+  ]
+}

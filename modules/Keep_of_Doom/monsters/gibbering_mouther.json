@@ -1,0 +1,71 @@
+{
+  "name": "Gibbering Mouther",
+  "size": "Medium",
+  "type": "Aberration",
+  "alignment": "Neutral",
+  "armorClass": 9,
+  "hitPoints": 67,
+  "maxHitPoints": 67,
+  "speed": 10,
+  "abilities": {
+    "strength": 10,
+    "dexterity": 8,
+    "constitution": 16,
+    "intelligence": 3,
+    "wisdom": 10,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 10
+  },
+  "languages": "Understands Deep Speech but can't speak",
+  "challengeRating": 2,
+  "specialAbilities": [
+    {
+      "name": "Aberrant Ground",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Gibbering",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Bite",
+      "attackBonus": 2,
+      "damageDice": "5d6",
+      "damageBonus": 0,
+      "damageType": "Piercing"
+    },
+    {
+      "name": "Blinding Spittle (Recharge 5\u20136)",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "Acid"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

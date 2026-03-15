@@ -1,0 +1,91 @@
+{
+  "name": "Mimic",
+  "size": "Medium",
+  "type": "Monstrosity",
+  "alignment": "Neutral",
+  "armorClass": 12,
+  "hitPoints": 58,
+  "maxHitPoints": 58,
+  "speed": 15,
+  "abilities": {
+    "strength": 17,
+    "dexterity": 12,
+    "constitution": 15,
+    "intelligence": 5,
+    "wisdom": 13,
+    "charisma": 8
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 5
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [
+    "acid"
+  ],
+  "conditionImmunities": [
+    "prone"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 11
+  },
+  "languages": "\u2014",
+  "challengeRating": 2,
+  "specialAbilities": [
+    {
+      "name": "Shapechanger",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Adhesive",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "False Appearance",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Pseudopod",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 3,
+      "damageType": "bludgeoning"
+    },
+    {
+      "name": "Pseudopod (Acid)",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 3,
+      "damageType": "acid"
+    },
+    {
+      "name": "Bite",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 3,
+      "damageType": "piercing"
+    },
+    {
+      "name": "Bite (Acid)",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 3,
+      "damageType": "acid"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}
