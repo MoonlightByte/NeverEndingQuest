@@ -5,7 +5,23 @@ REM One-path installer for non-technical users
 REM Fork: https://github.com/zeug-zz/NeverEndingQuest-TTRPG
 REM ============================================================================
 
-SETLOCAL EnableDelayedExpansion
+verify other >nul 2>&1
+SETLOCAL EnableExtensions EnableDelayedExpansion
+if errorlevel 1 (
+    echo.
+    echo ========================================
+    echo   Windows CMD Setup Error
+    echo ========================================
+    echo.
+    echo This installer requires Windows command extensions.
+    echo Please run it from standard cmd.exe.
+    echo.
+    echo If you downloaded this file manually, re-download the raw .bat
+    echo from GitHub and do not re-save it from an editor first.
+    echo.
+    pause
+    exit /b 1
+)
 
 set REPO_OWNER=zeug-zz
 set REPO_NAME=NeverEndingQuest-TTRPG
@@ -18,6 +34,23 @@ set INSTALL_STATE=
 set UPDATE_RESULT=
 set REPAIR_REASON=
 set BACKUP_SOURCE=
+
+for %%L in (DetectInstallState UpdateHealthyGit CloneFresh BackupAndRepair RestoreRuntimeState VerifyRepositoryCheckout) do (
+    findstr /B /C:":%%L" "%~f0" >nul 2>&1
+    if errorlevel 1 (
+        echo.
+        echo ========================================
+        echo   Installer File Corruption Detected
+        echo ========================================
+        echo.
+        echo Missing internal label: %%L
+        echo This installer file appears incomplete or was modified during download.
+        echo Re-download install_neverendingquest_windows.bat from GitHub.
+        echo.
+        pause
+        exit /b 1
+    )
+)
 
 
 echo.
