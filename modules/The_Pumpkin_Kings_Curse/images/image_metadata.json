@@ -1,0 +1,23 @@
+{
+  "images": [
+    {
+      "filename": "img_20260303_122609_game_1492_Springmonth_2_062500_X01.png",
+      "prompt": "Epic fantasy RPG scene: Zeug checks the last stretch of the winding path, confirming that the way out of the Shrouded Stalk Maze is as clear as it can be in this haunted place. The party gathers Grella and Tom close, keeping the protective sigil in Anselara's hand at the group's center. Every footstep is cautious as they prepare to depart, eyes searching for any sign of motion among the corn or the telltale glint of tripwires. The Cornfield Shadow lingers far behind, but the air remains tense with the knowledge that the maze rarely lets go of its prey so easily. If the party is ready to leave, who takes point and what precautions are made as you exit into the open fields?. Medieval style, darker lighting, highly detailed fantasy art style, professional digital painting, atmospheric depth.",
+      "real_world_time": "2026-03-03T12:26:11.719899",
+      "game_time": {
+        "year": 1492,
+        "month": "Springmonth",
+        "day": 2,
+        "time": "06:25:00"
+      },
+      "location": {
+        "id": "X01",
+        "name": "Shrouded Stalk Maze",
+        "area": "The Wailing Cornfields",
+        "area_id": "CMS001"
+      },
+      "module": "The_Pumpkin_Kings_Curse",
+      "original_url": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-WyvHWSGKRCR4BZ5wzE6003Zp/user-dfXEE2dspweXI87DcXrG4ci5/img-CuRmI7Paw4lCfqZG9sfsV3NW.png?st=2026-03-02T22%3A26%3A09Z&se=2026-03-03T00%3A26%3A09Z&sp=r&sv=2026-02-06&sr=b&rscd=inline&rsct=image/png&skoid=7252282d-c412-4b10-a746-00f5af2a7888&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-03-02T18%3A38%3A23Z&ske=2026-03-03T18%3A38%3A23Z&sks=b&skv=2026-02-06&sig=%2Bx3INw1Q70ljkxUIp4AiaYCrVrXaKhM8MUzM8w9fchM%3D"
+    }
+  ]
+}

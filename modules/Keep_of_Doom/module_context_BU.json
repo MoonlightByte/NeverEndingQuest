@@ -1,0 +1,272 @@
+{
+  "campaign_name": "Keep of Doom",
+  "campaign_id": "Keep_of_Doom",
+  "areas": {
+    "HH001": {
+      "name": "Harrow's Hollow",
+      "type": "town",
+      "locations": [],
+      "npcs": [],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    }
+  },
+  "npcs": {
+    "elder_mirna_harrow_(village_elder)": {
+      "name": "Elder Mirna Harrow (village elder)",
+      "role": "",
+      "faction": "",
+      "appears_in": []
+    },
+    "old_tommen_(superstitious_herdsman)": {
+      "name": "Old Tommen (superstitious herdsman)",
+      "role": "",
+      "faction": "",
+      "appears_in": []
+    },
+    "cira_the_innkeeper": {
+      "name": "Cira the Innkeeper",
+      "role": "",
+      "faction": "",
+      "appears_in": []
+    },
+    "wandering_shade_(restless_spirit)": {
+      "name": "Wandering Shade (restless spirit)",
+      "role": "",
+      "faction": "",
+      "appears_in": []
+    },
+    "scout_elen_(missing_villager,_possibly_rescued)": {
+      "name": "Scout Elen (missing villager, possibly rescued)",
+      "role": "",
+      "faction": "",
+      "appears_in": []
+    },
+    "sir_garran_vael_(cursed_knight)": {
+      "name": "Sir Garran Vael (cursed knight)",
+      "role": "",
+      "faction": "",
+      "appears_in": []
+    },
+    "spectral_scribe_(ghostly_historian)": {
+      "name": "Spectral Scribe (ghostly historian)",
+      "role": "",
+      "faction": "",
+      "appears_in": []
+    },
+    "the_shadow_relic_(sentient_artifact,_communicates_telepathically)": {
+      "name": "The Shadow Relic (sentient artifact, communicates telepathically)",
+      "role": "",
+      "faction": "",
+      "appears_in": []
+    },
+    "sir_garran_vael": {
+      "name": "Sir Garran Vael",
+      "role": "",
+      "faction": "",
+      "appears_in": []
+    },
+    "the_shadow_relic": {
+      "name": "The Shadow Relic",
+      "role": "",
+      "faction": "",
+      "appears_in": []
+    },
+    "elder_mirna_harrow": {
+      "name": "Elder Mirna Harrow",
+      "role": "",
+      "faction": "",
+      "appears_in": []
+    },
+    "agents_of_the_black_banner_(optional_future_threat)": {
+      "name": "Agents of the Black Banner (optional future threat)",
+      "role": "",
+      "faction": "",
+      "appears_in": []
+    },
+    "dame_elira_dawnsworn": {
+      "name": "Dame Elira Dawnsworn",
+      "role": "",
+      "faction": "The Order of the Silver Vigil",
+      "appears_in": []
+    },
+    "brother_jorlan": {
+      "name": "Brother Jorlan",
+      "role": "",
+      "faction": "The Order of the Silver Vigil",
+      "appears_in": []
+    },
+    "sergeant_mara_feld": {
+      "name": "Sergeant Mara Feld",
+      "role": "",
+      "faction": "The Order of the Silver Vigil",
+      "appears_in": []
+    },
+    "varek_the_shade": {
+      "name": "Varek the Shade",
+      "role": "",
+      "faction": "The Black Banner",
+      "appears_in": []
+    },
+    "mistress_ilyra": {
+      "name": "Mistress Ilyra",
+      "role": "",
+      "faction": "The Black Banner",
+      "appears_in": []
+    },
+    "garrik_two-fingers": {
+      "name": "Garrik Two-Fingers",
+      "role": "",
+      "faction": "The Black Banner",
+      "appears_in": []
+    },
+    "magister_corvin_leth": {
+      "name": "Magister Corvin Leth",
+      "role": "",
+      "faction": "Council of Eldermere",
+      "appears_in": []
+    },
+    "lady_mirielle_d'ashe": {
+      "name": "Lady Mirielle d'Ashe",
+      "role": "",
+      "faction": "Council of Eldermere",
+      "appears_in": []
+    },
+    "envoy_torric": {
+      "name": "Envoy Torric",
+      "role": "",
+      "faction": "Council of Eldermere",
+      "appears_in": []
+    },
+    "druidess_halwen": {
+      "name": "Druidess Halwen",
+      "role": "",
+      "faction": "Circle of the Wild Heart",
+      "appears_in": []
+    },
+    "ranger_branik": {
+      "name": "Ranger Branik",
+      "role": "",
+      "faction": "Circle of the Wild Heart",
+      "appears_in": []
+    },
+    "feyfriend_lirael": {
+      "name": "Feyfriend Lirael",
+      "role": "",
+      "faction": "Circle of the Wild Heart",
+      "appears_in": []
+    }
+  },
+  "locations": {},
+  "plot_scopes": {
+    "PP001": "HH001",
+    "PP002": "HH001",
+    "PP003": "HH001",
+    "PP004": "HH001"
+  },
+  "references": {
+    "npc:Elder Mirna Harrow (village elder)": [
+      "campaign:plotStages"
+    ],
+    "npc:Old Tommen (superstitious herdsman)": [
+      "campaign:plotStages"
+    ],
+    "npc:Cira the Innkeeper": [
+      "campaign:plotStages"
+    ],
+    "npc:Wandering Shade (restless spirit)": [
+      "campaign:plotStages"
+    ],
+    "npc:Scout Elen (missing villager, possibly rescued)": [
+      "campaign:plotStages"
+    ],
+    "npc:Sir Garran Vael (cursed knight)": [
+      "campaign:plotStages"
+    ],
+    "npc:Spectral Scribe (ghostly historian)": [
+      "campaign:plotStages"
+    ],
+    "npc:The Shadow Relic (sentient artifact, communicates telepathically)": [
+      "campaign:plotStages"
+    ],
+    "npc:Sir Garran Vael": [
+      "campaign:plotStages"
+    ],
+    "npc:The Shadow Relic": [
+      "campaign:plotStages"
+    ],
+    "npc:Elder Mirna Harrow": [
+      "campaign:plotStages"
+    ],
+    "npc:Agents of the Black Banner (optional future threat)": [
+      "campaign:plotStages"
+    ],
+    "npc:Dame Elira Dawnsworn": [
+      "campaign:faction:The Order of the Silver Vigil"
+    ],
+    "npc:Brother Jorlan": [
+      "campaign:faction:The Order of the Silver Vigil"
+    ],
+    "npc:Sergeant Mara Feld": [
+      "campaign:faction:The Order of the Silver Vigil"
+    ],
+    "npc:Varek the Shade": [
+      "campaign:faction:The Black Banner"
+    ],
+    "npc:Mistress Ilyra": [
+      "campaign:faction:The Black Banner"
+    ],
+    "npc:Garrik Two-Fingers": [
+      "campaign:faction:The Black Banner"
+    ],
+    "npc:Magister Corvin Leth": [
+      "campaign:faction:Council of Eldermere"
+    ],
+    "npc:Lady Mirielle d'Ashe": [
+      "campaign:faction:Council of Eldermere"
+    ],
+    "npc:Envoy Torric": [
+      "campaign:faction:Council of Eldermere"
+    ],
+    "npc:Druidess Halwen": [
+      "campaign:faction:Circle of the Wild Heart"
+    ],
+    "npc:Ranger Branik": [
+      "campaign:faction:Circle of the Wild Heart"
+    ],
+    "npc:Feyfriend Lirael": [
+      "campaign:faction:Circle of the Wild Heart"
+    ]
+  },
+  "validation_issues": [
+    "NPC 'Elder Mirna Harrow (village elder)' is referenced in ['campaign:plotStages'] but not placed in any location",
+    "NPC 'Old Tommen (superstitious herdsman)' is referenced in ['campaign:plotStages'] but not placed in any location",
+    "NPC 'Cira the Innkeeper' is referenced in ['campaign:plotStages'] but not placed in any location",
+    "NPC 'Wandering Shade (restless spirit)' is referenced in ['campaign:plotStages'] but not placed in any location",
+    "NPC 'Scout Elen (missing villager, possibly rescued)' is referenced in ['campaign:plotStages'] but not placed in any location",
+    "NPC 'Sir Garran Vael (cursed knight)' is referenced in ['campaign:plotStages'] but not placed in any location",
+    "NPC 'Spectral Scribe (ghostly historian)' is referenced in ['campaign:plotStages'] but not placed in any location",
+    "NPC 'The Shadow Relic (sentient artifact, communicates telepathically)' is referenced in ['campaign:plotStages'] but not placed in any location",
+    "NPC 'Sir Garran Vael' is referenced in ['campaign:plotStages'] but not placed in any location",
+    "NPC 'The Shadow Relic' is referenced in ['campaign:plotStages'] but not placed in any location",
+    "NPC 'Elder Mirna Harrow' is referenced in ['campaign:plotStages'] but not placed in any location",
+    "NPC 'Agents of the Black Banner (optional future threat)' is referenced in ['campaign:plotStages'] but not placed in any location",
+    "NPC 'Dame Elira Dawnsworn' is referenced in ['campaign:faction:The Order of the Silver Vigil'] but not placed in any location",
+    "NPC 'Brother Jorlan' is referenced in ['campaign:faction:The Order of the Silver Vigil'] but not placed in any location",
+    "NPC 'Sergeant Mara Feld' is referenced in ['campaign:faction:The Order of the Silver Vigil'] but not placed in any location",
+    "NPC 'Varek the Shade' is referenced in ['campaign:faction:The Black Banner'] but not placed in any location",
+    "NPC 'Mistress Ilyra' is referenced in ['campaign:faction:The Black Banner'] but not placed in any location",
+    "NPC 'Garrik Two-Fingers' is referenced in ['campaign:faction:The Black Banner'] but not placed in any location",
+    "NPC 'Magister Corvin Leth' is referenced in ['campaign:faction:Council of Eldermere'] but not placed in any location",
+    "NPC 'Lady Mirielle d'Ashe' is referenced in ['campaign:faction:Council of Eldermere'] but not placed in any location",
+    "NPC 'Envoy Torric' is referenced in ['campaign:faction:Council of Eldermere'] but not placed in any location",
+    "NPC 'Druidess Halwen' is referenced in ['campaign:faction:Circle of the Wild Heart'] but not placed in any location",
+    "NPC 'Ranger Branik' is referenced in ['campaign:faction:Circle of the Wild Heart'] but not placed in any location",
+    "NPC 'Feyfriend Lirael' is referenced in ['campaign:faction:Circle of the Wild Heart'] but not placed in any location"
+  ],
+  "generated_at": "2025-05-16T00:56:54.735718"
+}

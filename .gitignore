@@ -352,6 +352,9 @@ modules/campaign_summaries/
 # Player-generated modules - only The_Thornwood_Watch is core
 modules/*/
 !modules/The_Thornwood_Watch/
+!modules/Keep_of_Doom/
+!modules/Night_of_the_Restless_Dead/
+!modules/The_Pumpkin_Kings_Curse/
 # Game state files - should NOT be tracked
 # modules/campaign.json
 # modules/world_registry.json

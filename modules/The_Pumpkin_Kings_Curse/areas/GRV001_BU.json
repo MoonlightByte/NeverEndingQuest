@@ -1,0 +1,176 @@
+{
+  "areaId": "GRV001",
+  "areaName": "The Old Graveyard",
+  "areaType": "mixed",
+  "areaDescription": "A forgotten cemetery shrouded in perpetual mist, where weathered headstones lean at odd angles and ancient mausoleums crumble beneath the weight of years. Gnarled trees with thorny branches reach toward a sky that never seems to brighten, and the air carries the scent of decay and old flowers. The very ground seems restless, as if the dead below refuse to sleep peacefully.",
+  "dangerLevel": "high",
+  "recommendedLevel": 3,
+  "climate": "temperate",
+  "terrain": "mixed terrain",
+  "map": {
+    "mapId": "MAP_G_1",
+    "mapName": "Mixed Map",
+    "totalRooms": 1,
+    "rooms": [
+      {
+        "id": "Z01",
+        "type": "room",
+        "connections": [],
+        "coordinates": "X1Y1",
+        "directions": {},
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Gallows Oak"
+      }
+    ],
+    "layout": [
+      [
+        "Z01"
+      ]
+    ],
+    "startRoom": "Z01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields"
+  },
+  "locations": [
+    {
+      "locationId": "Z01",
+      "name": "Gallows Oak",
+      "type": "room",
+      "description": "At the heart of the graveyard stands a massive, ancient oak tree whose gnarled branches reach skyward like skeletal fingers. From its lowest, thickest branch hangs a weathered noose that sways gently despite the absence of wind. The tree's bark is carved with hundreds of names and dates, marking those who met their end here in darker times. The ground around the oak is barren of grass, covered instead with a carpet of fallen leaves that never seem to decay. Spectral figures occasionally flicker in and out of sight among the headstones, drawn to this place of execution and judgment.",
+      "coordinates": "X1Y1",
+      "connectivity": [],
+      "areaConnectivity": [
+        "Fields of Supplication",
+        "The Hollow Field"
+      ],
+      "areaConnectivityId": [
+        "V04",
+        "AD01"
+      ],
+      "npcs": [
+        {
+          "name": "Ghost of the Last Judge",
+          "description": "The spirit of a stern magistrate who presided over the graveyard's final executions. He appears as a translucent figure in judicial robes, eternally reading from a scroll of the condemned. He speaks in riddles about justice and redemption.",
+          "attitude": "Solemn and cryptic; will provide guidance to those who prove they seek justice, but becomes hostile toward those with evil intentions."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Noose Wraith",
+          "description": "A powerful spectral entity born from the collective anguish of those executed at the Gallows Oak. It appears as a hooded figure with a rope noose around its neck, radiating an aura of despair and vengeance. The Wraith can manifest multiple spectral nooses to ensnare its victims and drains life force with its touch. At 50% health, it summons a spectral prisoner to aid it in combat.",
+          "stats": "AC 15, HP 58 (9d8+18), Speed 0 ft., fly 60 ft. (hover). FEAR AURA: All creatures within 30 ft must make WIS save DC 13 or be Frightened until start of next turn. PHASE ABILITY: At 50% HP (29 or below), summons Spectral Prisoner (AC 12, HP 22, Attack +4 1d6+2). Life Drain (2d6+3 necrotic), Spectral Noose (ranged grapple attack, reach 60 ft)",
+          "quantity": {
+            "min": 2,
+            "max": 2
+          }
+        }
+      ],
+      "lootTable": [
+        "Executioner's Axe (+1 battleaxe, deals extra damage to undead)",
+        "Judge's Gavel (magical focus that grants advantage on Intimidation checks)",
+        "Scroll of Last Rites (contains powerful turning undead spell)",
+        "Gallows Rope Fragment (can be used to bind or banish certain spirits)",
+        "Coins of the Condemned (ancient currency worth 100 gp total, cursed with minor misfortune)",
+        "Grave Courage Blessing (permanent buff: -1 DC to fear saves when facing the Pumpkin King)"
+      ],
+      "plotHooks": [
+        "The Ghost of the Last Judge mentions that the Pumpkin King was once judged at this very tree but escaped through dark bargains.",
+        "Names carved in the oak's bark include those of missing villagers from recent festivals, suggesting the Pumpkin King continues the graveyard's grim tradition.",
+        "The Noose Wraith whispers about a 'final judgment' that must take place in the Circle of Stalks to end the curse permanently.",
+        "Defeating the Noose Wraith grants the party courage that will aid them in facing the Pumpkin King's terror."
+      ],
+      "dmInstructions": "ENHANCED NOOSE WRAITH COMBAT: On approach: Call createEncounter with Noose Wraith (450 XP). FEAR AURA: Each turn, all PCs within 30 ft make WIS save DC 13 or Frightened until start of next turn. PHASE TRIGGER: At 50% HP (29 or below), wraith summons Spectral Prisoner (no action cost). Each grapple attempt: Prompt for STR/DEX save DC 13. On victory: Call updateCharacterInfo to grant GRAVE COURAGE buff (-1 DC to fear saves in finale). Call updatePlot to note wraith defeated.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 16,
+          "disableDC": 18,
+          "triggerDC": 14,
+          "damage": "2d8 necrotic + grappled (spectral nooses emerge from the ground to ensnare those who disturb the execution site without proper reverence)",
+          "name": "Necrotic Trap",
+          "description": "A trap that deals 2d8 necrotic + grappled (spectral nooses emerge from the ground to ensnare those who disturb the execution site without proper reverence) damage (DC 16 to detect)."
+        }
+      ],
+      "dcChecks": [
+        "Religion DC 15: Understand the proper rituals to appease the spirits of the executed and potentially reduce the Wraith's power.",
+        "History DC 14: Recognize some of the names carved in the oak as historical figures from the region.",
+        "Investigation DC 13: Discover hidden markings that indicate the Pumpkin King's connection to this place.",
+        "Insight DC 16: Interpret the Ghost of the Last Judge's cryptic warnings about the final confrontation.",
+        "Arcana DC 14: Understand the Wraith's phase ability and predict when it will summon aid."
+      ],
+      "accessibility": "The graveyard is accessible but treacherous; unstable ground and hidden graves create hazards for the unwary.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "The Gallows Oak",
+          "description": "A massive ancient tree with a noose hanging from its branches, covered in carved names of the executed."
+        },
+        {
+          "name": "Execution Ground",
+          "description": "The barren circle around the oak where countless condemned souls met their fate."
+        },
+        {
+          "name": "Spectral Manifestations",
+          "description": "Ghostly figures that appear and disappear among the headstones, remnants of those who died unjustly."
+        },
+        {
+          "name": "Weathered Headstones",
+          "description": "Ancient grave markers that lean at odd angles, many bearing names that match those carved in the oak."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "roleplay",
+          "description": "Crucial conversation with the Ghost of the Last Judge about the Pumpkin King's origins and the curse's true nature."
+        },
+        {
+          "type": "combat",
+          "description": "Enhanced mini-boss battle against the Noose Wraith with fear aura, phase mechanics at 50% HP, and spectral prisoner summoning."
+        },
+        {
+          "type": "exploration",
+          "description": "Investigating the carved names and hidden markings to uncover the connection between past executions and current disappearances."
+        }
+      ],
+      "adventureSummary": "The climactic mini-boss encounter where the party faces the Noose Wraith while learning crucial information about the Pumpkin King's past and the key to ending the curse forever."
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-20",
+      "encounter": "restless spirit",
+      "description": "A restless spirit appropriate for level 3 parties"
+    },
+    {
+      "roll": "21-40",
+      "encounter": "grave guardian",
+      "description": "A grave guardian appropriate for level 3 parties"
+    },
+    {
+      "roll": "41-60",
+      "encounter": "undead patrol",
+      "description": "An undead patrol appropriate for level 3 parties"
+    },
+    {
+      "roll": "61-80",
+      "encounter": "spectral phenomenon",
+      "description": "A spectral phenomenon appropriate for level 3 parties"
+    },
+    {
+      "roll": "81-100",
+      "encounter": "cursed ground",
+      "description": "Cursed ground effects appropriate for level 3 parties"
+    }
+  ],
+  "areaFeatures": [
+    "graves",
+    "monuments",
+    "cursed ground"
+  ],
+  "notes": "This area serves as the penultimate challenge before the final boss encounter. Emphasize the atmosphere of death and judgment while building toward the climactic confrontation."
+}

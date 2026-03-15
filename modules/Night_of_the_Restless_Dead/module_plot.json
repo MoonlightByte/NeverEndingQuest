@@ -1,0 +1,170 @@
+{
+  "plotTitle": "Night_of_the_Restless_Dead Adventure",
+  "mainObjective": "The hook and entry to the academy.",
+  "plotPoints": [
+    {
+      "id": "PP001",
+      "title": "Room 1: Ma's Watering Hole",
+      "description": "The party arrives at Ma's Watering Hole, a rural inn between Yatar and Waterdeep. Ma runs the inn and Blarg, a large half-orc, handles security.",
+      "location": "NIG01",
+      "nextPoints": [
+        "PP002"
+      ],
+      "status": "not started",
+      "plotImpact": "Introduction room progression",
+      "source_room_number": 1
+    },
+    {
+      "id": "PP002",
+      "title": "Room 2: Ruined Cathedral Main Hall",
+      "description": "The party reaches the ruined cathedral. Thick webs cover the entrance and the main hall is dark and damaged.",
+      "location": "NIG02",
+      "nextPoints": [
+        "PP003"
+      ],
+      "status": "not started",
+      "plotImpact": "Challenge room progression",
+      "source_room_number": 2
+    },
+    {
+      "id": "PP003",
+      "title": "Room 3: Cathedral Storage",
+      "description": "The storage room is mostly empty except for old barrels and dried blood. A web-wrapped figure hangs from the ceiling.",
+      "location": "NIG03",
+      "nextPoints": [
+        "PP004"
+      ],
+      "status": "not started",
+      "plotImpact": "Challenge room progression",
+      "source_room_number": 3
+    },
+    {
+      "id": "PP004",
+      "title": "Room 4: Priest's Lodging",
+      "description": "An old bed frame, fireplace, and a cellar door are in this room. Faint light shows through the cellar door edges.",
+      "location": "NIG04",
+      "nextPoints": [
+        "PP005"
+      ],
+      "status": "not started",
+      "plotImpact": "Challenge room progression",
+      "source_room_number": 4
+    },
+    {
+      "id": "PP005",
+      "title": "Room 5: Cellar Hallway",
+      "description": "A collapsed branching tunnel leads to a single large door with light leaking through. If the alarm was triggered, enemies prepare an ambush.\n\n**Exits:**\n- South: Room 4\n- North: Room 6",
+      "location": "NIG05",
+      "nextPoints": [
+        "PP006"
+      ],
+      "status": "not started",
+      "plotImpact": "Challenge room progression",
+      "source_room_number": 5
+    },
+    {
+      "id": "PP006",
+      "title": "Room 6: Dead End Ritual Chamber",
+      "description": "A cultist and Red argue about acquiring more experiments for a necromantic ring. They attack when alerted.",
+      "location": "NIG06",
+      "nextPoints": [
+        "PP007"
+      ],
+      "status": "not started",
+      "plotImpact": "Challenge room progression",
+      "source_room_number": 6
+    },
+    {
+      "id": "PP007",
+      "title": "Room 100: Conclusion",
+      "description": "The party returns to Ma's Watering Hole after ending the immediate threat. They receive lodging and reward, but larger cult activity may continue.\n\n**Exits:**\n- None",
+      "location": "NIG07",
+      "nextPoints": [],
+      "status": "not started",
+      "plotImpact": "Finale room progression",
+      "source_room_number": 100
+    }
+  ],
+  "branch_metadata": {
+    "branching_enabled": true,
+    "investigation_routes": [
+      {
+        "id": "secret_passage",
+        "name": "Ma's Hidden Cellar",
+        "trigger": "Insight check in NIG01",
+        "path": ["NIG01", "NIG04", "NIG05", "NIG06"],
+        "bypass": ["NIG02", "NIG03"],
+        "lore_gain": "Druid circle revelation earlier"
+      },
+      {
+        "id": "ledger_revelation",
+        "name": "Cathedral Tithe Investigation",
+        "trigger": "Investigation check in NIG02",
+        "path": ["NIG01", "NIG02", "NIG03", "NIG04", "NIG05", "NIG06"],
+        "lore_gain": "Bramble family connection; 170-year cult history"
+      }
+    ],
+    "confrontation_routes": [
+      {
+        "id": "standard_combat",
+        "name": "Direct Assault",
+        "path": ["NIG01", "NIG02", "NIG03", "NIG04", "NIG05", "NIG06"],
+        "difficulty": "standard"
+      },
+      {
+        "id": "blarg_blackmail",
+        "name": "Spy Exploitation",
+        "trigger": "Discover Blarg's letters in NIG01",
+        "path": ["NIG01", "NIG02", "NIG03", "NIG04", "NIG05", "NIG06"],
+        "difficulty": "reduced (intel advantage)"
+      }
+    ],
+    "climax_outcomes": {
+      "aid_cult": {
+        "enabled": true,
+        "name": "Break the Tithe",
+        "description": "Help Miriam complete counter-ritual to end Pumpkin King's curse",
+        "consequences": [
+          "Miriam teaches curse-breaking ritual",
+          "Ring fragment absorbed by party",
+          "Cultists scatter to avoid Pumpkin King wrath",
+          "Ma flees to warn Pumpkin King",
+          "Pumpkin King faction becomes hostile in future modules"
+        ],
+        "cross_module_impact": "Pumpkin King NPCs mention 'traitors who broke the circle'"
+      },
+      "oppose_cult": {
+        "enabled": true,
+        "name": "Destroy the Cult",
+        "description": "Side with Red to eliminate the cult",
+        "consequences": [
+          "Cult leadership killed or captured",
+          "Red rewards party with gold and Pumpkin King favor",
+          "Ring kept by Red",
+          "Cult survivors establish new cells elsewhere",
+          "Ma reveals Pumpkin King loyalty; Blarg reports party as 'proven worthy'"
+        ],
+        "cross_module_impact": "Miriam's ghost haunts later areas; cultists appear as undead"
+      },
+      "negotiate": {
+        "enabled": true,
+        "name": "The Third Path",
+        "description": "Negotiate with druid circle to absorb curse without sacrifice",
+        "prerequisite": "Father Aldric's lore OR druid artifacts from Thornwood",
+        "consequences": [
+          "Druid spirits absorb the curse into the land",
+          "Cathedral consecrated; no more undead",
+          "Both Miriam and Red leave peacefully",
+          "Ring given to druid spirits",
+          "Optional druid ally available in Thornwood"
+        ],
+        "cross_module_impact": "Druid spirit may assist in Thornwood Watch encounters"
+      }
+    }
+  },
+  "import_metadata": {
+    "source_title": "Night of the Restless Dead",
+    "room_count": 7,
+    "area_id": "NIG001"
+  }
+}

@@ -1,0 +1,534 @@
+{
+  "areaId": "HFG001",
+  "areaName": "Greenfields Vale",
+  "areaType": "town",
+  "areaDescription": "Nestled amid rolling emerald meadows and patchwork farms, Greenfields Vale hums with the gentle bustle of townsfolk preparing for their famed seasonal gatherings. The air is rich with the scents of ripe orchard fruit, fresh bread, and wildflowers, promising warmth and camaraderie beneath golden sunsets.",
+  "dangerLevel": "low",
+  "recommendedLevel": 1,
+  "climate": "temperate",
+  "terrain": "urban streets and buildings",
+  "map": {
+    "mapId": "MAP_A_5",
+    "mapName": "Town Map",
+    "totalRooms": 5,
+    "rooms": [
+      {
+        "id": "AB01",
+        "type": "market",
+        "connections": [
+          "AB02",
+          "AB03",
+          "AB04",
+          "AB05"
+        ],
+        "coordinates": "X2Y2",
+        "directions": {
+          "east": "AB02",
+          "west": "AB03",
+          "south": "AB04",
+          "north": "AB05"
+        },
+        "tags": [
+          "hub"
+        ],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "low",
+        "name": "Harvest Wraith Market"
+      },
+      {
+        "id": "AB02",
+        "type": "square",
+        "connections": [
+          "AB01"
+        ],
+        "coordinates": "X3Y2",
+        "directions": {
+          "west": "AB01"
+        },
+        "tags": [
+          "hub",
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "low",
+        "name": "Cursed Lantern Square"
+      },
+      {
+        "id": "AB03",
+        "type": "tavern",
+        "connections": [
+          "AB01"
+        ],
+        "coordinates": "X1Y2",
+        "directions": {
+          "east": "AB01"
+        },
+        "tags": [
+          "rest",
+          "dead_end"
+        ],
+        "purpose": "safe_haven",
+        "landmark": true,
+        "dangerLevel": "low",
+        "name": "The Withered Gourd"
+      },
+      {
+        "id": "AB04",
+        "type": "tavern",
+        "connections": [
+          "AB01"
+        ],
+        "coordinates": "X2Y3",
+        "directions": {
+          "north": "AB01"
+        },
+        "tags": [
+          "rest",
+          "dead_end"
+        ],
+        "purpose": "safe_haven",
+        "landmark": true,
+        "dangerLevel": "low",
+        "name": "Moonshadow Barrelhouse"
+      },
+      {
+        "id": "AB05",
+        "type": "shrine",
+        "connections": [
+          "AB01"
+        ],
+        "coordinates": "X2Y1",
+        "directions": {
+          "south": "AB01"
+        },
+        "tags": [
+          "rest",
+          "dead_end"
+        ],
+        "purpose": "safe_haven",
+        "landmark": true,
+        "dangerLevel": "low",
+        "name": "Churchyard Shrine"
+      }
+    ],
+    "layout": [
+      [
+        "   ",
+        "AB05",
+        "   "
+      ],
+      [
+        "AB03",
+        "AB01",
+        "AB02"
+      ],
+      [
+        "   ",
+        "AB04",
+        "   "
+      ]
+    ],
+    "startRoom": "AB01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields"
+  },
+  "locations": [
+    {
+      "locationId": "AB01",
+      "name": "Harvest Wraith Market",
+      "type": "market",
+      "description": "Bustling tents and carts cluster around the green, brimming with harvest goods, baked treats, woven crafts, and lanterns carved from gourds. The air carries the scent of spiced cider and laughter as townsfolk haggle, gossip, and prepare for the evening's festival. A scarecrow effigy, unusually detailed this year, looms at the market's edge.",
+      "coordinates": "X2Y2",
+      "connectivity": [
+        "AB02",
+        "AB03",
+        "AB04",
+        "AB05"
+      ],
+      "areaConnectivity": [
+        "The Tanglewood Verge"
+      ],
+      "areaConnectivityId": [
+        "AF02"
+      ],
+      "npcs": [
+        {
+          "name": "Mayor Tilda Bramble",
+          "description": "Halfling, female, South Asian heritage. Energetic and pragmatic with warm brown skin, thick black hair in a practical braid, and bright copper-brown eyes. The mayor of Greenfields Vale, she orchestrates festival arrangements, greets newcomers, and ensures everyone feels welcome. She hides hints of worry beneath her cheery demeanor, especially if the scarecrow effigy is mentioned.",
+          "attitude": "Friendly and hospitable, though distracted by festival pressures and recent omens."
+        },
+        {
+          "name": "Priest Ansel",
+          "description": "The gentle, silver-haired priest tends to the lanterns and comforts townsfolk wrestling with recent omens. He tries to maintain calm and faith, but shares whispered warnings about ancient spirits that stir during harvest time.",
+          "attitude": "Calm, compassionate, but quietly fearful of supernatural dangers."
+        },
+        {
+          "name": "Oswin Peverell",
+          "description": "Human Fighter, male, East Asian heritage. Tall, broad-shouldered, with straight black hair cut unevenly and sun-bronzed skin. Dirt-streaked hands. Always smells faintly of hay and sweat. Wears patched linen and leather arm wraps, carries a farmer's pitchfork strapped across his back. After the first scarecrow fight, if the player speaks to him, he says he can't abandon others and offers to fight alongside them.",
+          "attitude": "Stubborn but nervous; knocks three times on wooden surfaces before acting."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Basket of rare golden apples",
+        "Festival token (may grant favor for contests)",
+        "Handcrafted wooden flute"
+      ],
+      "plotHooks": [
+        "Mayor Tilda Bramble asks adventurers to keep an eye out for oddities, as a few townsfolk are missing.",
+        "A merchant complains their produce is mysteriously rotting faster than usual--could it be sabotage or a curse?",
+        "A child is convinced the scarecrow effigy moves when no one is looking.",
+        "Festival witnesses saw scarecrows moving at the field edge--pointing toward the Wailing Cornfields (CMS001)."
+      ],
+      "dmInstructions": "When party investigates scarecrow: Prompt for Perception DC 13. On success, reveal muddy footprints pointing toward CMS001.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Insight DC 12: Notice Mayor Bramble's concern when the festival's history is mentioned.",
+        "Perception DC 13: Spot fresh muddy footprints near the scarecrow effigy.",
+        "Investigation DC 14: Discover subtle sigils carved in the base of the effigy."
+      ],
+      "accessibility": "Open during daylight and evening festival hours. Easily found at the village center.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Display Tables",
+          "description": "Tables overflowing with pastries, jams, and prize vegetables, each representing a local family's pride."
+        },
+        {
+          "name": "Vendor Stalls",
+          "description": "Brightly painted booths where townsfolk sell crafts, farm goods, and oddities. A sense of friendly rivalry hangs in the air."
+        },
+        {
+          "name": "Scarecrow Effigy",
+          "description": "A life-sized, almost life-like scarecrow dressed in patchwork. Its eyes seem to follow passersby."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "A vibrant market central to the festival, where mysteries begin to unfold and the party can gather rumors, supplies, and their first hints of the curse."
+    },
+    {
+      "locationId": "AB02",
+      "name": "Cursed Lantern Square",
+      "type": "square",
+      "description": "The heart of Greenfields Vale's festivities, this cobbled square features hanging lanterns shaped like pumpkins and turnips, glowing with an inner, sometimes flickering, light. A large notice board stands at one end, covered in festival flyers and missing person notes. On festival night, the lanterns sometimes burn with a cold, unnatural light.",
+      "coordinates": "X3Y2",
+      "connectivity": [
+        "AB01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [],
+      "monsters": [],
+      "lootTable": [
+        "Blessed lantern (glows with soft warmth, repels minor undead)",
+        "Folded parchment with cryptic blessing",
+        "Bundle of festival candles"
+      ],
+      "plotHooks": [
+        "A new notice details another missing villager, last seen near the edge of the Tanglewood Verge at dusk.",
+        "A lantern suddenly extinguishes in cold breeze--was it a trick of the wind or something more?"
+      ],
+      "dmInstructions": "The square is a perfect scene for investigating disappearances or catching rumors. Subtle supernatural effects hint at the growing curse.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Religion DC 11: Recognize the lanterns as warding talismans from local folklore.",
+        "Perception DC 12: Notice a faint chill whenever certain lanterns gutter.",
+        "Investigation DC 13: Find a secret note pinned behind a missing person flyer."
+      ],
+      "accessibility": "Open and accessible to all, especially during festival gatherings.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Merchant Stalls",
+          "description": "Temporary stalls selling lanterns, wreaths, and festival keepsakes."
+        },
+        {
+          "name": "Notice Board",
+          "description": "A cluttered board covered in flyers for contests, dances, and increasingly urgent missing person notes."
+        },
+        {
+          "name": "Lantern Posts",
+          "description": "Rows of lanterns, some burning strong, others flickering with a blueish hue."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "A public square filled with festival energy and ominous signs, where clues about disappearances and the curse begin to crystallize."
+    },
+    {
+      "locationId": "AB03",
+      "name": "The Withered Gourd",
+      "type": "tavern",
+      "description": "This cozy old tavern sports walls lined with dried herbs, a roaring hearth, and shelves of local trophies. The air is thick with the scent of pumpkin bread and ale. Regulars share tales of past festivals, while the barkeep listens for rumors. One wall bears a faded mural depicting a harvest spirit, now looking more sinister than celebratory.",
+      "coordinates": "X1Y2",
+      "connectivity": [
+        "AB01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Farmhand Jo",
+          "description": "Half-Elf, non-binary (they/them), Indigenous heritage. Young with shoulder-length black hair, copper-tan skin dotted with freckles, and nervous hazel eyes. A nervous farmhand drinking away their nerves after witnessing something unnatural in the fields last night. Jo is eager to talk if plied with kindness or drink.",
+          "attitude": "Anxious, easily startled, but desperate for someone to believe them."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Flask of pumpkin-spice liquor",
+        "Lucky rabbit's foot",
+        "Folded map marked with 'strange lights' in the fields"
+      ],
+      "plotHooks": [
+        "Farmhand Jo begs the party to investigate the fields, convinced something is stalking the night.",
+        "A patron swears they saw strange lights flickering in the western cornfields after dusk.",
+        "The barkeep mentions the mural's eyes sometimes seem to follow patrons late at night."
+      ],
+      "dmInstructions": "Encourage roleplay with Jo and tavern regulars for local rumors and folklore. Jo's account can be a direct lead to the supernatural. The mural offers an atmospheric clue and the chance for a chilling moment.",
+      "doors": [
+        {
+          "name": "Front Door",
+          "description": "Sturdy oak door with aged iron hinges and a carved gourd motif.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 13,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Arcana DC 11: Sense a faint magical residue from the mural.",
+        "Persuasion DC 10: Get Jo to share what they saw.",
+        "Perception DC 13: Notice the mural's painted eyes shift subtly as light changes."
+      ],
+      "accessibility": "Open to the public from midday until late night. Easily accessible in the village center.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Trophy Display",
+          "description": "A wall of local contest ribbons and rustic trophies, each with a short tale."
+        },
+        {
+          "name": "Hearth",
+          "description": "A large stone hearth with a cheery--if sometimes flickering--fire."
+        },
+        {
+          "name": "Harvest Mural",
+          "description": "A faded mural depicting a horned figure presiding over a great harvest feast."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "A welcoming tavern where rumors, tales, and anxieties about the harvest curse are freely shared, and the first supernatural hints appear."
+    },
+    {
+      "locationId": "AB04",
+      "name": "Moonshadow Barrelhouse",
+      "type": "tavern",
+      "description": "A lively taproom renowned for its moonberry mead and pumpkin ale, the Barrelhouse is where villagers gather to celebrate, mourn, and sing into the night. Shadows seem deeper in the corners here, and the staff are on edge after finding withered stalks on their doorstep yesterday.",
+      "coordinates": "X2Y3",
+      "connectivity": [
+        "AB01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Miller Boren",
+          "description": "Dwarf, male, with dark umber skin and a thick black beard woven with grain charms. Burly and superstitious, he drowns his worries here, telling tall tales about restless spirits and warning of a coming blight. He knows old secrets about the festival's origins, but shares them only with those who earn his trust.",
+          "attitude": "Gruff, suspicious of outsiders, but softens with shared drinks or earned respect."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Sealed jug of moonberry mead",
+        "Wooden amulet carved with a harvest rune",
+        "Bundle of dried, blackened wheat stalks"
+      ],
+      "plotHooks": [
+        "Miller Boren challenges the party to beat him in a drinking contest for a story about the festival's darkest night.",
+        "Staff report finding blackened wheat stalks on the threshold--an omen in old village lore.",
+        "A drunken local dares someone to venture into the Wailing Cornfields at midnight."
+      ],
+      "dmInstructions": "Roleplay with Miller Boren can reveal more about the festival's history and the curse. The Barrelhouse is a good site for skill contests, rumors, and introducing omens of the Pumpkin King's return. The blackened wheat is the first direct physical clue of the curse's spread.",
+      "doors": [
+        {
+          "name": "Main Entrance",
+          "description": "Broad double doors reinforced with iron bands and painted crescent moons.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 14,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "History DC 12: Recall the significance of blackened wheat in local legend.",
+        "Performance DC 10: Impress the crowd or win the drinking contest.",
+        "Insight DC 13: Sense that Miller Boren's warnings are more than boozy paranoia."
+      ],
+      "accessibility": "Open to all, especially during the festival evenings. The crowd can make private conversation difficult.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Tables And Chairs",
+          "description": "Rough-hewn tables and benches, often crowded with laughing patrons and spilled drinks."
+        },
+        {
+          "name": "Barrel Wall",
+          "description": "A wall of stacked barrels, each branded with the year of a particularly good harvest."
+        },
+        {
+          "name": "Omen Stalks",
+          "description": "A bundle of dried, blackened wheat stalks left on the threshold, regarded with fear by staff."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "A jovial tavern with an undercurrent of dread, where omens manifest and the party can uncover lore or accept challenges tied to the curse."
+    },
+    {
+      "locationId": "AB05",
+      "name": "Churchyard Shrine",
+      "type": "shrine",
+      "description": "A modest stone shrine surrounded by ancient oaks and weathered headstones, dedicated to the harvest spirits and protective deities. Carved pumpkins and dried corn hang from the branches, and fresh offerings of bread and ale rest on the altar. The air here feels sacred, but recent disturbances have left claw marks on the shrine's base and scattered ashes from burnt offerings, suggesting the sacred ground has been defiled by dark forces.",
+      "coordinates": "X2Y1",
+      "connectivity": [
+        "AB01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Groundskeeper Hedwick",
+          "description": "Gnome, male, Middle Eastern heritage. Elderly with weathered olive-brown skin, a white beard, and sharp dark eyes. He tends the shrine and churchyard, armed with blessed tools and protective charms. He's seen strange shadows moving between the headstones at night and begs for help in sanctifying the grounds before the curse spreads further.",
+          "attitude": "Anxious but determined, grateful for any aid in protecting the sacred space."
+        },
+        {
+          "name": "Edda Ravenscroft",
+          "description": "Half-Orc Cleric, female. Heavyset with tusks that peek when she frowns, greenish-gray skin, and long black hair tied with strips of cloth. Her robe is patched with stitched pumpkin motifs. She carries a worn iron holy symbol. If the player interacts with her at the shrine, she insists on joining the fight against the curse, saying faith demands action.",
+          "attitude": "Deeply devout but anxious; mutters prayers at odd times, sometimes in a trembling voice."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Shadow",
+          "description": "Dark, incorporeal undead that drain strength from the living. Two shadows manifest if the consecration ritual fails, drawn by the weakened holy barriers.",
+          "quantity": {
+            "min": 2,
+            "max": 2
+          }
+        }
+      ],
+      "lootTable": [
+        "Copper Ward Bell (1/day: advantage on a single save vs. fear)",
+        "Blessed water vial (deals extra damage to undead)",
+        "Protective charm bracelet (+1 to saving throws vs. fear for one encounter)",
+        "Ancient prayer book (contains lore about harvest spirits and protective rites)"
+      ],
+      "plotHooks": [
+        "Hedwick desperately asks the party to help re-consecrate the shrine after it was defiled by shadowy creatures.",
+        "The consecration ritual requires specific steps that test the party's knowledge and devotion.",
+        "Carved symbols on headstones match those found on the scarecrow effigy in the market.",
+        "A hidden compartment in the shrine contains a map showing locations of other sacred sites in the region."
+      ],
+      "dmInstructions": "SKILL CHALLENGE: Consecration Ritual requires 3 successes before 2 failures. Suitable skills: Religion DC 12, Investigation DC 13, Performance DC 11, Arcana DC 14. Success: Shrine is restored, party gains blessing (+1 to next saving throw vs. fear). Failure: Call createEncounter with 2 Shadows (50 XP each). On acquiring Copper Ward Bell: Call updateCharacterInfo to add item. If party rests: Call updateTime with 10 minutes max.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Religion DC 12: Perform proper consecration rituals to restore the shrine's sanctity.",
+        "Investigation DC 13: Discover what specific defilement occurred and how to counter it.",
+        "Performance DC 11: Lead the party in sacred chants and ceremonial movements.",
+        "Arcana DC 14: Understand the magical nature of the defilement and dispel it.",
+        "Perception DC 11: Notice the claw marks match those found elsewhere in the village."
+      ],
+      "accessibility": "Open to respectful visitors at all times. The sacred ground provides some protection from supernatural threats.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Stone Altar",
+          "description": "A carved altar dedicated to harvest deities, topped with offerings of food and flowers."
+        },
+        {
+          "name": "Ancient Oaks",
+          "description": "Massive trees whose branches are hung with protective charms and seasonal decorations."
+        },
+        {
+          "name": "Sacred Headstones",
+          "description": "Old graves of village founders and respected elders, some bearing mysterious carved symbols."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "skill_challenge",
+          "description": "Consecration Ritual - The party must restore the shrine's sanctity through a skill challenge requiring 3 successes before 2 failures. Suggested skills: Religion DC 12, Investigation DC 13, Performance DC 11, or Arcana DC 14. Failure triggers combat with 2 Shadows (50 XP each)."
+        },
+        {
+          "type": "combat",
+          "description": "Combat-lite encounter with 2 Shadows if consecration ritual fails."
+        }
+      ],
+      "adventureSummary": "A peaceful shrine that offers sanctuary and religious context to the unfolding supernatural events, with clues connecting to the broader curse affecting the region."
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 1 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "wandering animal",
+      "description": "A wandering animal appropriate for level 1 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "wandering animal",
+      "description": "A wandering animal appropriate for level 1 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 1 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 1 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 1 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 1 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 1 parties"
+    },
+    {
+      "roll": "81-90",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 1 parties"
+    }
+  ],
+  "areaFeatures": [
+    "market square",
+    "guard posts",
+    "local tavern"
+  ],
+  "notes": "NPCs should have daily routines. Political factions create roleplay opportunities."
+}

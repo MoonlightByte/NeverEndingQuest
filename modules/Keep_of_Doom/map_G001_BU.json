@@ -1,0 +1,122 @@
+{
+  "mapId": "MAP_G001",
+  "mapName": "Gloamwood Trail Map",
+  "totalRooms": 9,
+  "rooms": [
+    {
+      "id": "AA01",
+      "name": "Witchlight Trailhead",
+      "type": "trail",
+      "connections": [
+        "AA02",
+        "AA03"
+      ],
+      "coordinates": "X2Y1"
+    },
+    {
+      "id": "AA02",
+      "name": "Abandoned Ranger Outpost",
+      "type": "outpost",
+      "connections": [
+        "AA01",
+        "AA04",
+        "AA08"
+      ],
+      "coordinates": "X3Y1"
+    },
+    {
+      "id": "AA03",
+      "name": "The Withered Shrine",
+      "type": "shrine",
+      "connections": [
+        "AA01",
+        "AA05",
+        "AA06"
+      ],
+      "coordinates": "X1Y2"
+    },
+    {
+      "id": "AA04",
+      "name": "Lost Ward Circle",
+      "type": "ritual",
+      "connections": [
+        "AA02",
+        "AA07"
+      ],
+      "coordinates": "X3Y2"
+    },
+    {
+      "id": "AA05",
+      "name": "Boggard Marsh",
+      "type": "marsh",
+      "connections": [
+        "AA03",
+        "AA06"
+      ],
+      "coordinates": "X1Y3"
+    },
+    {
+      "id": "AA06",
+      "name": "Spectral Clearing",
+      "type": "clearing",
+      "connections": [
+        "AA03",
+        "AA05",
+        "AA07"
+      ],
+      "coordinates": "X2Y3"
+    },
+    {
+      "id": "AA07",
+      "name": "Keeper's Cottage",
+      "type": "cottage",
+      "connections": [
+        "AA04",
+        "AA06"
+      ],
+      "coordinates": "X3Y3"
+    },
+    {
+      "id": "AA08",
+      "name": "Secret Forest Path",
+      "type": "path",
+      "connections": [
+        "AA02",
+        "AA09"
+      ],
+      "coordinates": "X4Y1"
+    },
+    {
+      "id": "AA09",
+      "name": "Hidden Keep Entrance",
+      "type": "entrance",
+      "connections": [
+        "AA08"
+      ],
+      "coordinates": "X5Y1"
+    }
+  ],
+  "layout": [
+    [
+      "   ",
+      "AA01",
+      "AA02",
+      "AA08",
+      "AA09"
+    ],
+    [
+      "AA03",
+      "   ",
+      "AA04",
+      "   ",
+      "   "
+    ],
+    [
+      "AA05",
+      "AA06",
+      "AA07",
+      "   ",
+      "   "
+    ]
+  ]
+}

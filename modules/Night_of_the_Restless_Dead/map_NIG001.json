@@ -1,0 +1,91 @@
+{
+  "mapName": "Night_of_the_Restless_Dead Map",
+  "mapId": "map_NIG001",
+  "totalRooms": 7,
+  "rooms": [
+    {
+      "id": "NIG01",
+      "name": "Room 1: Ma's Watering Hole",
+      "connections": [
+        "NIG02"
+      ],
+      "coordinates": "X0Y0"
+    },
+    {
+      "id": "NIG02",
+      "name": "Room 2: Ruined Cathedral Main Hall",
+      "connections": [
+        "NIG01",
+        "NIG03"
+      ],
+      "coordinates": "X1Y0"
+    },
+    {
+      "id": "NIG03",
+      "name": "Room 3: Cathedral Storage",
+      "connections": [
+        "NIG02",
+        "NIG04"
+      ],
+      "coordinates": "X2Y0"
+    },
+    {
+      "id": "NIG04",
+      "name": "Room 4: Priest's Lodging",
+      "connections": [
+        "NIG03",
+        "NIG05"
+      ],
+      "coordinates": "X3Y0"
+    },
+    {
+      "id": "NIG05",
+      "name": "Room 5: Cellar Hallway",
+      "connections": [
+        "NIG04",
+        "NIG06"
+      ],
+      "coordinates": "X4Y0"
+    },
+    {
+      "id": "NIG06",
+      "name": "Room 6: Dead End Ritual Chamber",
+      "connections": [
+        "NIG05",
+        "NIG07"
+      ],
+      "coordinates": "X5Y0"
+    },
+    {
+      "id": "NIG07",
+      "name": "Room 100: Conclusion",
+      "connections": [
+        "NIG06"
+      ],
+      "coordinates": "X6Y0"
+    }
+  ],
+  "layout": [
+    [
+      "NIG01"
+    ],
+    [
+      "NIG02"
+    ],
+    [
+      "NIG03"
+    ],
+    [
+      "NIG04"
+    ],
+    [
+      "NIG05"
+    ],
+    [
+      "NIG06"
+    ],
+    [
+      "NIG07"
+    ]
+  ]
+}

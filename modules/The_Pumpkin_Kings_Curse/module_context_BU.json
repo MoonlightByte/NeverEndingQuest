@@ -1,0 +1,387 @@
+{
+  "module_name": "The Pumpkin King's Curse",
+  "module_id": "The_Pumpkin_King's_Curse",
+  "areas": {
+    "HFG001": {
+      "name": "Harvest Festival Green",
+      "type": "town",
+      "locations": [],
+      "npcs": [
+        "Mayor Tilda Bramble",
+        "Priest Ansel",
+        "Farmhand Jo",
+        "Miller Boren"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "VO001": {
+      "name": "Village Outskirts",
+      "type": "town",
+      "locations": [],
+      "npcs": [
+        "Guildmaster Fenric Clay",
+        "Amanita Gorse",
+        "Gatewarden Silas Ember",
+        "Mistress Hedra Lanternwise"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "CMS001": {
+      "name": "Corn Maze of Screams",
+      "type": "mixed",
+      "locations": [],
+      "npcs": [
+        "Old Crone Willa",
+        "Widow Grella & Grandson Tom",
+        "Noose Wraith"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "BOO001": {
+      "name": "Barn of Offerings",
+      "type": "mixed",
+      "locations": [],
+      "npcs": [
+        "Spirit of Supplication",
+        "Wandering Supplicant",
+        "Petitioning Shade"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "TOG001": {
+      "name": "The Old Graveyard",
+      "type": "mixed",
+      "locations": [],
+      "npcs": [],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "HF001": {
+      "name": "Hollow Field",
+      "type": "town",
+      "locations": [],
+      "npcs": [
+        "Guildmaster Fenric Clay"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    }
+  },
+  "npcs": {
+    "mayor_tilda_bramble": {
+      "name": "Mayor Tilda Bramble",
+      "role": "",
+      "faction": "",
+      "description": "The energetic, pragmatic mayor of Greenfields Vale, orchestrating festival arrangements, greeting newcomers, and ensuring everyone feels welcome. She hides hints of worry beneath her cheery demeanor, especially if the scarecrow effigy is mentioned.",
+      "appears_in": [
+        {
+          "area": "HFG001",
+          "location": "AB01"
+        }
+      ],
+      "aliases": [
+        "Mayor Tilda Bramble",
+        "Mayor Tilda Bramble (aftermath)"
+      ]
+    },
+    "priest_ansel": {
+      "name": "Priest Ansel",
+      "role": "",
+      "faction": "",
+      "description": "The gentle, silver-haired priest tends to the lanterns and comforts townsfolk wrestling with recent omens. He tries to maintain calm and faith, but shares whispered warnings about ancient spirits that stir during harvest time.",
+      "appears_in": [
+        {
+          "area": "HFG001",
+          "location": "AB02"
+        }
+      ],
+      "aliases": [
+        "Priest Ansel",
+        "Priest Ansel (aftermath)"
+      ]
+    },
+    "farmhand_jo": {
+      "name": "Farmhand Jo",
+      "role": "",
+      "faction": "",
+      "description": "A young, nervous farmhand drinking away their nerves after witnessing something unnatural in the fields last night. Jo is eager to talk if plied with kindness--or drink.",
+      "appears_in": [
+        {
+          "area": "HFG001",
+          "location": "AB03"
+        }
+      ],
+      "aliases": [
+        "Farmhand Jo"
+      ]
+    },
+    "miller_boren": {
+      "name": "Miller Boren",
+      "role": "",
+      "faction": "",
+      "description": "The burly, superstitious miller drowns his worries here, telling tall tales about restless spirits and warning of a coming blight. He knows old secrets about the festival's origins, but shares them only with those who earn his trust.",
+      "appears_in": [
+        {
+          "area": "HFG001",
+          "location": "AB04"
+        }
+      ],
+      "aliases": [
+        "Miller Boren"
+      ]
+    },
+    "widow_grella_grandson_tom": {
+      "name": "Widow Grella & Grandson Tom",
+      "role": "",
+      "faction": "",
+      "description": "A gaunt, desperate woman clutching her trembling, mute grandson. Grella is frantic, convinced the Pumpkin King seeks Tom as a 'harvest tithe'.",
+      "appears_in": [
+        {
+          "area": "CMS001",
+          "location": "X03"
+        }
+      ],
+      "aliases": [
+        "Widow Grella & Grandson Tom"
+      ]
+    },
+    "elric": {
+      "name": "Elric",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Elric"
+      ]
+    },
+    "old_crone_willa": {
+      "name": "Old Crone Willa",
+      "role": "",
+      "faction": "",
+      "description": "A hunched, rag-clad woman with eyes like root knots, muttering protective charms while arranging wilted herbs. She tends the scarecrows, believing them to ward off the Pumpkin King.",
+      "appears_in": [
+        {
+          "area": "CMS001",
+          "location": "X02"
+        }
+      ],
+      "aliases": [
+        "Old Crone Willa (appearing later at the barn)",
+        "Old Crone Willa"
+      ]
+    },
+    "noose_wraith": {
+      "name": "Noose Wraith",
+      "role": "",
+      "faction": "",
+      "description": "A spectral figure with a corn-husk noose about its neck, drifting above the earth. Its face is obscured, and it weeps black ichor, whispering warnings about the Pumpkin King's hunger.",
+      "appears_in": [
+        {
+          "area": "CMS001",
+          "location": "X04"
+        }
+      ],
+      "aliases": [
+        "Noose Wraith"
+      ]
+    },
+    "the_pumpkin_king": {
+      "name": "The Pumpkin King",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "The Pumpkin King"
+      ]
+    },
+    "guildmaster_fenric_clay": {
+      "name": "Guildmaster Fenric Clay",
+      "role": "",
+      "faction": "",
+      "description": "A weathered halfling with mud-stained boots and a perpetual squint. Fenric knows every path through the Verge and fiercely protects his members.",
+      "appears_in": [
+        {
+          "area": "VO001",
+          "location": "AF01"
+        },
+        {
+          "area": "HF001",
+          "location": "F01"
+        }
+      ],
+      "aliases": [
+        "Guildmaster Fenric Clay"
+      ]
+    },
+    "amanita_gorse": {
+      "name": "Amanita Gorse",
+      "role": "",
+      "faction": "",
+      "description": "A young tiefling herbalist who serves as quartermaster, known for her dry wit and knowledge of the local flora--especially dangerous ones.",
+      "appears_in": [
+        {
+          "area": "VO001",
+          "location": "AF01"
+        }
+      ],
+      "aliases": [
+        "Amanita Gorse"
+      ]
+    },
+    "gatewarden_silas_ember": {
+      "name": "Gatewarden Silas Ember",
+      "role": "",
+      "faction": "",
+      "description": "A grizzled human wearing a patchwork leather cloak, Silas keeps a keen eye on all comings and goings. He knows the old stories and is quick to warn travelers about wandering after dark.",
+      "appears_in": [
+        {
+          "area": "VO001",
+          "location": "AF02"
+        }
+      ],
+      "aliases": [
+        "Gatewarden Silas Ember"
+      ]
+    },
+    "mistress_hedra_lanternwise": {
+      "name": "Mistress Hedra Lanternwise",
+      "role": "",
+      "faction": "",
+      "description": "An eccentric old gnome with wild, frizzy hair and a lopsided smile. Mistress Hedra is rumored to speak to the lanterns and claims they ward off the forest's gloom.",
+      "appears_in": [
+        {
+          "area": "VO001",
+          "location": "AF03"
+        }
+      ],
+      "aliases": [
+        "Mistress Hedra Lanternwise"
+      ]
+    },
+    "spirit_of_supplication": {
+      "name": "Spirit of Supplication",
+      "role": "",
+      "faction": "",
+      "description": "A translucent, sorrowful figure clad in tattered festival garb, eternally relighting lanterns and murmuring desperate prayers for deliverance. It attempts to guide visitors to make proper offerings, warning them of the dangers that stalk the fields.",
+      "appears_in": [
+        {
+          "area": "BOO001",
+          "location": "V01"
+        }
+      ],
+      "aliases": [
+        "Spirit of Supplication"
+      ]
+    },
+    "wandering_supplicant": {
+      "name": "Wandering Supplicant",
+      "role": "",
+      "faction": "",
+      "description": "A ragged, shell-shocked villager spirit who endlessly retraces the path, muttering lost prayers. They are desperate for rest but afraid to leave the path's protection.",
+      "appears_in": [
+        {
+          "area": "BOO001",
+          "location": "V03"
+        }
+      ],
+      "aliases": [
+        "Wandering Supplicant"
+      ]
+    },
+    "petitioning_shade": {
+      "name": "Petitioning Shade",
+      "role": "",
+      "faction": "",
+      "description": "The echo of a villager who once begged the spirits for mercy. Now bound to the collapsed altar, it offers riddles and warnings in exchange for tokens of remembrance.",
+      "appears_in": [
+        {
+          "area": "BOO001",
+          "location": "V04"
+        }
+      ],
+      "aliases": [
+        "Petitioning Shade"
+      ]
+    }
+  },
+  "locations": {},
+  "plot_scopes": {
+    "PP001": "HF001",
+    "PP002": "HF001",
+    "PP003": "HF001",
+    "PP004": "HF001"
+  },
+  "references": {
+    "npc:Mayor Tilda Bramble": [
+      "module:plotStages"
+    ],
+    "npc:Priest Ansel": [
+      "module:plotStages"
+    ],
+    "npc:Farmhand Jo": [
+      "module:plotStages"
+    ],
+    "npc:Miller Boren": [
+      "module:plotStages"
+    ],
+    "npc:Widow Grella & Grandson Tom": [
+      "module:plotStages"
+    ],
+    "npc:Elric": [
+      "module:plotStages"
+    ],
+    "npc:Old Crone Willa (appearing later at the barn)": [
+      "module:plotStages"
+    ],
+    "npc:Old Crone Willa": [
+      "module:plotStages"
+    ],
+    "npc:Noose Wraith": [
+      "module:plotStages"
+    ],
+    "npc:The Pumpkin King": [
+      "module:plotStages"
+    ],
+    "npc:Mayor Tilda Bramble (aftermath)": [
+      "module:plotStages"
+    ],
+    "npc:Priest Ansel (aftermath)": [
+      "module:plotStages"
+    ]
+  },
+  "validation_issues": [
+    "NPC 'Elric' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'The Pumpkin King' is referenced in ['module:plotStages'] but not placed in any location"
+  ],
+  "generated_at": "2025-09-21T21:54:51.192449"
+}

@@ -1,0 +1,81 @@
+{
+  "mapId": "MAP_TBM001",
+  "mapName": "Blighted Marches Map",
+  "totalRooms": 6,
+  "rooms": [
+    {
+      "id": "AL01",
+      "name": "The Sundered Causeway",
+      "type": "ruins",
+      "connections": [
+        "AL02",
+        "AL03"
+      ],
+      "coordinates": "X1Y1"
+    },
+    {
+      "id": "AL02",
+      "name": "The Mire of Echoes",
+      "type": "bog",
+      "connections": [
+        "AL01",
+        "AL04",
+        "AL05"
+      ],
+      "coordinates": "X2Y1"
+    },
+    {
+      "id": "AL03",
+      "name": "Abandoned Watchtower",
+      "type": "tower",
+      "connections": [
+        "AL01",
+        "AL06"
+      ],
+      "coordinates": "X1Y2"
+    },
+    {
+      "id": "AL04",
+      "name": "Black Banner Encampment",
+      "type": "camp",
+      "connections": [
+        "AL02",
+        "AL05"
+      ],
+      "coordinates": "X3Y1"
+    },
+    {
+      "id": "AL05",
+      "name": "Ancient Standing Stones",
+      "type": "ritual",
+      "connections": [
+        "AL02",
+        "AL04",
+        "AL06"
+      ],
+      "coordinates": "X2Y2"
+    },
+    {
+      "id": "AL06",
+      "name": "The Cursed Barrow",
+      "type": "tomb",
+      "connections": [
+        "AL03",
+        "AL05"
+      ],
+      "coordinates": "X3Y2"
+    }
+  ],
+  "layout": [
+    [
+      "AL01",
+      "AL02",
+      "AL04"
+    ],
+    [
+      "AL03",
+      "AL05",
+      "AL06"
+    ]
+  ]
+}

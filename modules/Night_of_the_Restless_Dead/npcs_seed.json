@@ -1,0 +1,66 @@
+{
+  "module_slug": "Night_of_the_Restless_Dead",
+  "generated_at": "2026-03-07T12:00:00.000000",
+  "source": "deterministic_import_extraction",
+  "narrative_expansion_version": "branching_horror_v1",
+  "npcs": {
+    "ma_thornfield": {
+      "name": "Ma (Margaret Thornfield)",
+      "role": "innkeeper",
+      "secret": "Disowned Bramble family member who fled cult 20 years ago",
+      "public_identity": "Kindly innkeeper providing shelter",
+      "private_fear": "Sister Miriam will find her; terrified of Pumpkin King",
+      "hook": "Offers hidden passage for promise to deal with cult",
+      "cross_module_ref": "Mayor Tilda Bramble's sister"
+    },
+    "blarg_half_orc": {
+      "name": "Blarg",
+      "role": "security",
+      "secret": "Pumpkin King spy ensuring no one interferes with cathedral",
+      "discovery_method": "Hidden letters from Greenfields Vale",
+      "branch_option": "Can be blackmailed for intel or killed",
+      "cross_module_ref": "Half-orc agents mentioned in other modules"
+    },
+    "father_aldric": {
+      "name": "Father Aldric",
+      "role": "hiding_priest",
+      "location": "NIG04 behind fireplace",
+      "lore": "Cathedral built over druid circle that made original pact",
+      "reward": "Third Path ending unlocked; druid circle revelation",
+      "cross_module_ref": "Druid circle connects to Thornwood Watch"
+    },
+    "sister_miriam_bramble": {
+      "name": "Sister Miriam Bramble",
+      "role": "cult_leader",
+      "origin": "Greenfields Vale, disowned Bramble family",
+      "moral_grayness": "Both victim (fled tithe) and perpetrator (experiments on innocents)",
+      "motivation": "Break Pumpkin King's pact using forbidden necromancy",
+      "willing_cost": "Sacrifice innocents to end larger curse",
+      "outcome_options": ["aid", "oppose", "negotiate"],
+      "cross_module_ref": "Mayor Tilda's sister; knows First Tithe lore"
+    },
+    "red_crimson_binder": {
+      "name": "Red (The Crimson Binder)",
+      "role": "pumpkin_king_enforcer",
+      "species": "Half-elf",
+      "appearance": "Crimson robes with Pumpkin King sigils",
+      "conflict": "Demands Miriam surrender; represents tithe continuation",
+      "outcome_options": ["side_with", "oppose", "kill_both"],
+      "cross_module_ref": "Crimson-robed messengers in Pumpkin King module"
+    },
+    "wandering_merchant": {
+      "name": "Traveling Trader",
+      "role": "rumor_source",
+      "origin": "Yatar",
+      "function": "Provides cross-module rumors",
+      "rumors": [
+        "Increased undead activity eastward",
+        "Thornwood corruption spreading",
+        "Pumpkin King agents asking about cathedral travelers"
+      ],
+      "side_quest": "Escort to Waterdeep for gold",
+      "cross_module_ref": "Appears in multiple modules as same character"
+    }
+  },
+  "count": 6
+}

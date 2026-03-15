@@ -1,0 +1,214 @@
+{
+  "plotTitle": "The Pumpkin King’s Curse: Harvest of Shadows",
+  "mainObjective": "Break the ancient harvest curse threatening Greenfields Vale and the surrounding lands by unraveling the secrets of the Pumpkin King, confronting folk-horror terrors, and restoring the balance between the living and the dead before the festival’s end.",
+  "plotPoints": [
+    {
+      "id": "PP001",
+      "title": "Arrival Amid the Harvest Revels",
+      "description": "The party arrives in Greenfields Vale as the annual harvest festival is reaching its peak. Festivities mask a growing unease—rumors circulate of shadowy figures in the fields and children plagued by nightmares. Mayor Tilda Bramble welcomes the adventurers but avoids discussing festival origins. As the party mingles, villagers approach with troubling tales, setting the stage for their investigation. Early choices here build trust or suspicion among the townsfolk, impacting later events across the region.",
+      "location": "HFG001",
+      "nextPoints": [
+        "PP002"
+      ],
+      "status": "not started",
+      "plotImpact": "Establishes the festival atmosphere, introduces key NPCs, and plants early clues about the curse. Player choices here shape villagers' trust and open or close investigative leads.",
+      "sideQuests": [
+        {
+          "id": "SQ001",
+          "title": "Bread and Secrets",
+          "description": "Miller Boren challenges the party to help judge the bread-baking contest. If they win his trust, he shares a secret about the festival’s origin and a hidden symbol on the oldest scarecrow in a nearby field.",
+          "involvedLocations": [
+            "HFG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Success earns Boren’s trust and a valuable clue; failure means the party must find clues elsewhere."
+        },
+        {
+          "id": "SQ002",
+          "title": "Comfort the Children",
+          "description": "Priest Ansel asks the party to comfort frightened children who have seen a shadowy figure in the orchards. A successful effort reveals cryptic warnings about a 'pumpkin-headed man.'",
+          "involvedLocations": [
+            "HFG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Grants early insight into the supernatural threat and builds goodwill among villagers."
+        }
+      ]
+    },
+    {
+      "id": "PP002",
+      "title": "Whispers on the Village Outskirts",
+      "description": "Investigating the outskirts of Greenfields Vale, the party learns from Guildmaster Fenric Clay, farmhands, and Amanita Gorse about blighted crops and shadowy trespassers. Evidence of ancient pacts and spirit tokens at the crossroads point to a curse affecting not just the Vale, but neighboring lands. This prompts a decision: investigate the creeping omens within the Vale or travel to nearby Tanglewood Verge to follow up on linked disturbances.",
+      "location": "VO001",
+      "nextPoints": [
+        "PP003"
+      ],
+      "status": "not started",
+      "plotImpact": "Presents social and investigative challenges. Players can choose whom to trust and what leads to pursue, influencing the town’s defenses and exposing the supernatural threat.",
+      "sideQuests": [
+        {
+          "id": "SQ003",
+          "title": "The Lantern’s Light",
+          "description": "Mistress Hedra Lanternwise claims her lanterns keep the worst at bay. She asks the party to help re-hang protective lanterns before full dark. Along the way, they face mischievous minor spirits—offering a test of guile or force.",
+          "involvedLocations": [
+            "VO001"
+          ],
+          "status": "not started",
+          "plotImpact": "Success secures safer passage for villagers; failure leads to more hauntings and emboldened spirits."
+        },
+        {
+          "id": "SQ004",
+          "title": "The Blighted Acre",
+          "description": "Amanita Gorse requests help investigating a plot of blighted crops. The party might discover a hexed scarecrow containing a clue or a minor spirit to battle.",
+          "involvedLocations": [
+            "VO001"
+          ],
+          "status": "not started",
+          "plotImpact": "Reveals a ritual component linked to the Pumpkin King and hints at how to break the curse."
+        }
+      ]
+    },
+    {
+      "id": "PP003",
+      "title": "Shadows Over Festival Green",
+      "description": "Ominous omens intensify as the Harvest Festival Green becomes a focal point for supernatural disturbances. The party conducts a deeper investigation at the festival grounds, encountering minor hauntings and uncovering evidence that the curse is spreading to the outlying Wailing Cornfields and Fields of Supplication. Villagers recall similar events in neighboring settlements, urging the party to pursue these leads before the curse erupts into catastrophe.",
+      "location": "CMS001",
+      "nextPoints": [
+        "PP004"
+      ],
+      "status": "not started",
+      "plotImpact": "Escalates the threat and compels the party to act quickly to prevent the curse from consuming the region.",
+      "sideQuests": [
+        {
+          "id": "SQ004A",
+          "title": "Lanternwise Charm",
+          "description": "Retrieve a blue-lantern charm at the Verge to gain advantage once on checks to avoid getting lost in the Cornfields.",
+          "involvedLocations": ["VO001", "CMS001"],
+          "status": "not started",
+          "plotImpact": "Smoother maze traversal; minor XP and a consumable routing boon."
+        }
+      ]
+    },
+    {
+      "id": "PP004",
+      "title": "Into the Corn Maze of Screams",
+      "description": "Following supernatural signs and villagers' pleas, the party ventures into the infamous Corn Maze of Screams bordering the Vale and the Wailing Cornfields. Inside, shifting paths and ghostly figures test their resolve. At the maze's heart, they find Widow Grella and her grandson Tom, pursued by a sinister shadow. Surviving the maze's illusions and vengeful spirits, the party learns that the Pumpkin King's annual tithe is imminent—and that the curse touches the Cornfields to the west.",
+      "location": "CMS001",
+      "nextPoints": [
+        "PP005"
+      ],
+      "status": "not started",
+      "plotImpact": "Serves as the adventure's exploration and supernatural challenge centerpiece. Player success determines who survives and what knowledge they gain about the curse's nature.",
+      "sideQuests": []
+    },
+    {
+      "id": "PP005",
+      "title": "Seeking the Ember Gourd",
+      "description": "Following clues gathered from the cornfields and the testimonies of witnesses, the party ventures into the Fields of Supplication to locate the legendary Ember Gourd. This sacred artifact is essential for breaking the Pumpkin King's curse, but it lies hidden in dangerous territory where malign spirits guard ancient secrets. The party must navigate treacherous ground, solve supernatural puzzles, and prove their worthiness to claim this powerful relic.",
+      "location": "BOO001",
+      "nextPoints": [
+        "PP006"
+      ],
+      "status": "not started",
+      "plotImpact": "Upon successfully acquiring the Ember Gourd and learning Old Crone Willa's chant, the DM should call levelUp action for each character to advance to Level 2. This represents their growing understanding of the supernatural threat and mastery of essential curse-breaking knowledge.",
+      "sideQuests": [
+        {
+          "id": "SQ032",
+          "title": "The Thresher's Wisdom",
+          "description": "The Thresher's Ghost in the Threshing Floor offers to teach ancient harvest protection rituals in exchange for completing his unfinished work.",
+          "involvedLocations": [
+            "BOO001"
+          ],
+          "status": "not started",
+          "plotImpact": "Grants magical protection and insight useful for surviving the Fields of Supplication."
+        },
+        {
+          "id": "SQ033",
+          "title": "Willa's Test",
+          "description": "Old Crone Willa challenges the party to prove their dedication by completing a purification ritual before she will teach them the Ember Gourd chant.",
+          "involvedLocations": [
+            "BOO001"
+          ],
+          "status": "not started",
+          "plotImpact": "Essential for learning the chant needed to activate the Ember Gourd's power in the final confrontation."
+        }
+      ]
+    },
+    {
+      "id": "PP006",
+      "title": "The Gallows Judgment",
+      "description": "Armed with the Ember Gourd and the knowledge to use it, the party follows the trail of the curse to its source: the Old Graveyard where executions once took place. Here they confront the Noose Wraith, a powerful manifestation of the injustices that first gave the Pumpkin King his power. Victory against this mini-boss provides crucial knowledge about the Pumpkin King's origins and reveals the location of his final stronghold.",
+      "location": "GRV001",
+      "nextPoints": [
+        "PP007"
+      ],
+      "status": "not started",
+      "plotImpact": "Serves as the major combat challenge that tests the party's preparation and readiness for the final confrontation. Reveals the Pumpkin King's true nature and the key to defeating him permanently. Defeating the Noose Wraith grants 'Grave Courage': reduce fear save DCs by 1 in the final encounter.",
+      "sideQuests": [
+        {
+          "id": "SQ034",
+          "title": "Names of the Condemned",
+          "description": "The Ghost of the Last Judge requests that the party read aloud the names carved in the Gallows Oak to give peace to the wrongfully executed.",
+          "involvedLocations": [
+            "GRV001"
+          ],
+          "status": "not started",
+          "plotImpact": "Weakens the Noose Wraith and gains the Judge's blessing for the final battle."
+        },
+        {
+          "id": "SQ035",
+          "title": "The Executioner's Guilt",
+          "description": "A hidden spirit begs the party to find and destroy the executioner's tools to free him from his eternal torment.",
+          "involvedLocations": [
+            "GRV001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides powerful blessed weapons effective against the Pumpkin King."
+        }
+      ]
+    },
+    {
+      "id": "PP007",
+      "title": "The Harvest's End",
+      "description": "In the climactic final confrontation, the party enters the Circle of Stalks where the Pumpkin King holds court. This epic battle tests everything they have learned, every alliance they have forged, and every magical aid they have gathered. Using the Ember Gourd, Willa's chant, blessed weapons, and their own courage, they must defeat the Pumpkin King and break the curse that has plagued the land. Victory brings peace to the region and freedom to all the trapped souls; failure means the curse spreads beyond the harvest lands.",
+      "location": "HLF001",
+      "nextPoints": [],
+      "status": "not started",
+      "plotImpact": "Upon defeating the Pumpkin King and breaking the curse, the DM should call levelUp action for each character to advance to Level 3. This represents their triumph over a significant supernatural threat and their growth as heroes. The curse's end brings lasting peace to the region and establishes the party's reputation as defenders of the innocent. On victory: Call levelUp for all characters to level 3. If the Throne of Stalks is destroyed before or during the fight, the Pumpkin King's regeneration is disabled.",
+      "sideQuests": [
+        {
+          "id": "SQ036",
+          "title": "The Witnesses' Plea",
+          "description": "The spectral Harvest Witnesses silently beg the party to free them from their eternal torment by breaking the curse permanently.",
+          "involvedLocations": [
+            "HLF001"
+          ],
+          "status": "not started",
+          "plotImpact": "Completing this during the final battle grants the aid of the witnesses, providing tactical advantages."
+        },
+        {
+          "id": "SQ037",
+          "title": "Throne of Stalks",
+          "description": "Destroying the Pumpkin King's throne before engaging him in combat prevents his regeneration abilities.",
+          "involvedLocations": [
+            "HLF001"
+          ],
+          "status": "not started",
+          "plotImpact": "Significantly reduces the difficulty of the final boss encounter by eliminating regeneration mechanics."
+        }
+      ]
+    }
+  ],
+  "activeQuests": [],
+  "completedQuests": [],
+  "failedQuests": [],
+  "worldEvents": [],
+  "dmNotes": [
+    "Level progression: Call levelUp action to advance characters to Level 2 after acquiring the Ember Gourd and learning Willa's chant (PP005); Call levelUp to Level 3 after defeating the Pumpkin King (PP007).",
+    "Fear boons do not stack. If multiple are present (Shrine bell, Cornfields token, Grave Courage), use the strongest source.",
+    "Ember Gourd counter: When a PC presents it within 10 ft of the Pumpkin King, impose disadvantage on the King's saving throws until end of that PC's next turn; if the King then takes fire damage before that turn ends, his regeneration is disabled on his next turn.",
+    "Boss phases: Spawn 2 Pumpkin Stalkers at ~70% HP and again at ~30% HP; enable fear aura in phase 2.",
+    "Corn Maze routing: If party holds the Lanternwise Charm, grant advantage once on 'avoid getting lost' checks in CMS001.",
+    "Noose Wraith win effect: apply 'Grave Courage' (-1 DC on fear saves) to the party during HLF001."
+  ]
+}

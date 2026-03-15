@@ -1,0 +1,3139 @@
+{
+  "module_slug": "Keep_of_Doom",
+  "manifest_version": "1.0.0",
+  "handle_count": 174,
+  "handles": [
+    {
+      "handle_id": "55335e36e782a9a4",
+      "kind": "npc_portrait",
+      "source_ref": "local:acolyte_therin.jpg",
+      "storage_relpath": "media/npcs/acolyte_therin.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "4a84a68f24d764cf2a5835854ea8a5b4796b0e4a36f8166ed3503d9b50e25c75",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "74ea36a5ae6bb3a6",
+      "kind": "npc_portrait",
+      "source_ref": "local:acolyte_therin_thumb.jpg",
+      "storage_relpath": "media/npcs/acolyte_therin_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "89536b3a556e59f194135d4076783a915500082ff421b9ffe8c351b697ead388",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "e5e79cd41a59ee81",
+      "kind": "npc_portrait",
+      "source_ref": "local:agents_of_the_black_banner_optional_future_threat.jpg",
+      "storage_relpath": "media/npcs/agents_of_the_black_banner_optional_future_threat.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "ab100e0e95325846012b6f9dc7f128fdc1666b980e936f4e0351eed472bcead1",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "f226b4a9d3254557",
+      "kind": "npc_portrait",
+      "source_ref": "local:agents_of_the_black_banner_optional_future_threat_thumb.jpg",
+      "storage_relpath": "media/npcs/agents_of_the_black_banner_optional_future_threat_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "1f4f9eb831264390dc7bb244e6328a2fa44b4560d553fdf5e6edeb3ace361e61",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "8d5eee8c530ba443",
+      "kind": "npc_portrait",
+      "source_ref": "local:baker_marta.jpg",
+      "storage_relpath": "media/npcs/baker_marta.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "68e96b10862be854745179e1cdee5da640684035c1b8a3ccba1fd5a5cef6344a",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "13e3661e8e486b78",
+      "kind": "npc_portrait",
+      "source_ref": "local:baker_marta_thumb.jpg",
+      "storage_relpath": "media/npcs/baker_marta_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "68c8e8c4822a3571e1b1da1643302d47d2641e78d400f4b78145ea0aaa1086ac",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "8cbca1fe466436b8",
+      "kind": "npc_portrait",
+      "source_ref": "local:blacksmith_goric.jpg",
+      "storage_relpath": "media/npcs/blacksmith_goric.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "d79ae4788f41219b0099bee6a80089ea5c1660757bdd4d646338a325d87d33f0",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "6ccba9203bf23b9f",
+      "kind": "npc_portrait",
+      "source_ref": "local:blacksmith_goric_thumb.jpg",
+      "storage_relpath": "media/npcs/blacksmith_goric_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "47850032ed8158d25a8a0981fa52a1630c3da7090ea30d0fc1b8754b4c4014cd",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "152889122d05c5cd",
+      "kind": "npc_portrait",
+      "source_ref": "local:brother_jorlan.jpg",
+      "storage_relpath": "media/npcs/brother_jorlan.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "c453f519f09aa2380798ca381a6b01d74817e7dc6c9454593702933dde266d33",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "42d0ea007e2e11cf",
+      "kind": "npc_portrait",
+      "source_ref": "local:brother_jorlan_thumb.jpg",
+      "storage_relpath": "media/npcs/brother_jorlan_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "bc1503dcaf0bbc6771b1334150d466a4e2a03f7dea9bdb38f34d203d03d3c64b",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "75ee2a0c297f3f54",
+      "kind": "npc_portrait",
+      "source_ref": "local:cira_the_innkeeper.jpg",
+      "storage_relpath": "media/npcs/cira_the_innkeeper.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "7d6e89ff826e75e6a580ac4bbde1880675e3d0ddf8ae40a37aeec89caa0a07fe",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "9b64df84293ac51f",
+      "kind": "npc_portrait",
+      "source_ref": "local:cira_the_innkeeper_thumb.jpg",
+      "storage_relpath": "media/npcs/cira_the_innkeeper_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "c9fc3c528643fecc244aafa6cd7ce3bddabf0c8317d28982c2745e5b0df1d3f0",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "27ac3db1bf11e9fc",
+      "kind": "npc_portrait",
+      "source_ref": "local:dame_elira_dawnsworn.jpg",
+      "storage_relpath": "media/npcs/dame_elira_dawnsworn.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "b7a52b85220c55f2a33afbb7bb29e740a74063c7c62f87bf374b4d32378de4c9",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "999137996e3d5597",
+      "kind": "npc_portrait",
+      "source_ref": "local:dame_elira_dawnsworn_thumb.jpg",
+      "storage_relpath": "media/npcs/dame_elira_dawnsworn_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "14face3e59a4418617736de3301f5928537ce4624c69eec14d677af1e36ce6e9",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "c7b1d3359b8cfe17",
+      "kind": "npc_portrait",
+      "source_ref": "local:druidess_halwen.jpg",
+      "storage_relpath": "media/npcs/druidess_halwen.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "91cf5c2e91ac48b84c64ddc3340de43ac5a17cf9b35bc8ba22b47fc3df1c5e49",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "84f1684666330aec",
+      "kind": "npc_portrait",
+      "source_ref": "local:druidess_halwen_thumb.jpg",
+      "storage_relpath": "media/npcs/druidess_halwen_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "21d79725933ecc12c995f8827486c8cb3cfa8e31b282d531eb85e336c927a770",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "458b323b764155aa",
+      "kind": "npc_portrait",
+      "source_ref": "local:dryad_sylara.jpg",
+      "storage_relpath": "media/npcs/dryad_sylara.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "e58a444189127339b358815a469ddcdb40addff123b2a5854ed24fb3343be2df",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "d765a792e96b40cc",
+      "kind": "npc_portrait",
+      "source_ref": "local:dryad_sylara_thumb.jpg",
+      "storage_relpath": "media/npcs/dryad_sylara_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "7906bda638802aad111379fc1762e8f9465d017c47d08ed5f03d555159bc0521",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "0cc32bfee6e8666c",
+      "kind": "npc_portrait",
+      "source_ref": "local:elder_mirna_harrow.jpg",
+      "storage_relpath": "media/npcs/elder_mirna_harrow.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "2807fea4b45e9eb74b150a6e5a65365447a54806989de6b8fb2a8d6063f6c1b7",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "da1406325b815faa",
+      "kind": "npc_portrait",
+      "source_ref": "local:elder_mirna_harrow_thumb.jpg",
+      "storage_relpath": "media/npcs/elder_mirna_harrow_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "1d26c643a1a69403db16b500c849d6e2a0dc6c07b7e15fd2a869e1817957cd09",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "e44ebe211e61aa57",
+      "kind": "npc_portrait",
+      "source_ref": "local:elder_mirna_harrow_village_elder.jpg",
+      "storage_relpath": "media/npcs/elder_mirna_harrow_village_elder.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "e409e8bbed56a6af08f83faeff8e21ee1e536f8fb6f53e7c0f9cce6b2674dd6d",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "76325a0444e857cb",
+      "kind": "npc_portrait",
+      "source_ref": "local:elder_mirna_harrow_village_elder_thumb.jpg",
+      "storage_relpath": "media/npcs/elder_mirna_harrow_village_elder_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "16c6cb8b49a907a79da1121f3a0b043d642a5d5a17b3be41839f8f0cc984c7c3",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "62e650d9f62e628d",
+      "kind": "npc_portrait",
+      "source_ref": "local:elderly_scholar_fenwick.jpg",
+      "storage_relpath": "media/npcs/elderly_scholar_fenwick.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "abab15742396d09c962aa0d6b00a1fbbac7a3bf7e6503563d02217fc4acf07d2",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "91bb211d1634e7ff",
+      "kind": "npc_portrait",
+      "source_ref": "local:elderly_scholar_fenwick_thumb.jpg",
+      "storage_relpath": "media/npcs/elderly_scholar_fenwick_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "27b04e6ae168e9ed8595720cf12b3102d32c5f984e1bd9dd8918c789e3ccf594",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "d1e6f385c100ffab",
+      "kind": "npc_portrait",
+      "source_ref": "local:envoy_torric.jpg",
+      "storage_relpath": "media/npcs/envoy_torric.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "8ddd5cd017201b317995470f428775a61474b0069316f78a8b181a35fe3c97b2",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "6df09a9df8a501d2",
+      "kind": "npc_portrait",
+      "source_ref": "local:envoy_torric_thumb.jpg",
+      "storage_relpath": "media/npcs/envoy_torric_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "fbe660a1d9daf9459083c80e5e93da2c913f411ab6121cec8b165849078cb24d",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "c98420ca789c35d5",
+      "kind": "npc_portrait",
+      "source_ref": "local:farmer_willem.jpg",
+      "storage_relpath": "media/npcs/farmer_willem.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "86b585de3ea500c2ebd889910ac367cf5d35d4eaf089d9971fc384ad40fb485a",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "a8b8b46e69f963e1",
+      "kind": "npc_portrait",
+      "source_ref": "local:farmer_willem_thumb.jpg",
+      "storage_relpath": "media/npcs/farmer_willem_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "edbe492a49ac18a5bb4cc76549045c9e69078efcd4008824f43dbae30309031d",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "6d9f6790d1ff3555",
+      "kind": "npc_portrait",
+      "source_ref": "local:father_aldren.jpg",
+      "storage_relpath": "media/npcs/father_aldren.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "e9ff9e2102f4bb75ec51d56212677a1471b3e731dfac395b3dd8a59f6448e2ab",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "f30bf8b8ddc656cc",
+      "kind": "npc_portrait",
+      "source_ref": "local:father_aldren_thumb.jpg",
+      "storage_relpath": "media/npcs/father_aldren_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "498ff72419aca0e3ad006f8dd01e4304d268b0a49d4ed6a89e22373a8507dc7b",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "cba47168ea2c7f7d",
+      "kind": "npc_portrait",
+      "source_ref": "local:festivus.jpg",
+      "storage_relpath": "media/npcs/festivus.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "457c4cea73f22691312b4fbd94d05cb5bd3059d7929ca33a8958ba15b51a5351",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "04fca692a6a95b6a",
+      "kind": "npc_portrait",
+      "source_ref": "local:festivus_thumb.jpg",
+      "storage_relpath": "media/npcs/festivus_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "8674b9bd8b1943cc3ff7f0a21111bafb42ea3a90018960c3be8986876f462de2",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "a3925f017c593b61",
+      "kind": "npc_portrait",
+      "source_ref": "local:feyfriend_lirael.jpg",
+      "storage_relpath": "media/npcs/feyfriend_lirael.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "63836f31b3b53cfcd69a785b74fc2b8c5569e1a5c1a1052318a2423de0e2407d",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "aaed1f277f5c7b65",
+      "kind": "npc_portrait",
+      "source_ref": "local:feyfriend_lirael_thumb.jpg",
+      "storage_relpath": "media/npcs/feyfriend_lirael_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "f5ca64d84aa82a84899aca786a47bfbc3f3f349fcdfa67ce6da2d79837334ad9",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "d8a2b9e4a890f256",
+      "kind": "npc_portrait",
+      "source_ref": "local:garrik_two_fingers.jpg",
+      "storage_relpath": "media/npcs/garrik_two_fingers.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "7245f16e85b1c0e65229b9676af2cf5acfcb3db679b8588b91279088e1bc10f8",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "fceec6a9bffb3491",
+      "kind": "npc_portrait",
+      "source_ref": "local:garrik_two_fingers_thumb.jpg",
+      "storage_relpath": "media/npcs/garrik_two_fingers_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "1209855245b08d14f0e17667b9dd7482e26690932d0db4f0ed3c8637ac347758",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "1a22ddb12e9ddcc8",
+      "kind": "npc_portrait",
+      "source_ref": "local:henry_andersen.jpg",
+      "storage_relpath": "media/npcs/henry_andersen.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "31969c4890e4721f946895a938060bb1919ae6843cbd06999a443c0925c12e34",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "5621c08271e29180",
+      "kind": "npc_portrait",
+      "source_ref": "local:henry_andersen_thumb.jpg",
+      "storage_relpath": "media/npcs/henry_andersen_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "5a60ed9419c00f79e401d3b018ad73334d25491b9ef0425248d224df3dbef427",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "ad6c8a3616fd377b",
+      "kind": "npc_portrait",
+      "source_ref": "local:keeper_morvath.jpg",
+      "storage_relpath": "media/npcs/keeper_morvath.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "6cab81f59edc718d7897b3ac9c0c788f3ba02a934c092c2629943e7031d1d69d",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "00b6d526f4422078",
+      "kind": "npc_portrait",
+      "source_ref": "local:keeper_morvath_thumb.jpg",
+      "storage_relpath": "media/npcs/keeper_morvath_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "537f85792bc8ec6470139fbdee517e10b8717cd02946e8545ef8bfb139f852a9",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "9052cf62ce9659f7",
+      "kind": "npc_portrait",
+      "source_ref": "local:lady_mirielle_d_ashe.jpg",
+      "storage_relpath": "media/npcs/lady_mirielle_d_ashe.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "51710f84efb866a401707e39c494e39574d8cecb01be0760abfacb240d247a22",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "78d7a5906f18dd1b",
+      "kind": "npc_portrait",
+      "source_ref": "local:lady_mirielle_d_ashe_thumb.jpg",
+      "storage_relpath": "media/npcs/lady_mirielle_d_ashe_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "5954976edccc0efe8127c7d40c453f9f7ded9d12ac400ebfb7c5da77099be0ad",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "8bd65da72127ccb5",
+      "kind": "npc_portrait",
+      "source_ref": "local:liri.jpg",
+      "storage_relpath": "media/npcs/liri.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "14e5452f9995fc3d54833a0f6832e32fe6c3e90440d2776cbb5be774a6dec50a",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "a342b284abfcd829",
+      "kind": "npc_portrait",
+      "source_ref": "local:liri_thumb.jpg",
+      "storage_relpath": "media/npcs/liri_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "ef13cf663d75da67f998aa025b6ef7f905483f0592fe7422e8521756ee05cb16",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "7bb3be4b0751aae4",
+      "kind": "npc_portrait",
+      "source_ref": "local:local_hunter_jorik.jpg",
+      "storage_relpath": "media/npcs/local_hunter_jorik.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "c1c9ff81c16b865d22044f7799049f9d631ed98f3fac9cd2d8c2c911de0fb268",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "3450616bbb92cb77",
+      "kind": "npc_portrait",
+      "source_ref": "local:local_hunter_jorik_thumb.jpg",
+      "storage_relpath": "media/npcs/local_hunter_jorik_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "d3bf9b724cbbe6a0b603a8a9b4aed7ec72482c0939beb7104452e016312cf14d",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "e1ceccfcee1c3afa",
+      "kind": "npc_portrait",
+      "source_ref": "local:magister_corvin_leth.jpg",
+      "storage_relpath": "media/npcs/magister_corvin_leth.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "0512f3bd2679de33e7ce3de5170a750b3dfb5d6d9a0471424e6716105532b4d0",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "22e0f432e84e7b3c",
+      "kind": "npc_portrait",
+      "source_ref": "local:magister_corvin_leth_thumb.jpg",
+      "storage_relpath": "media/npcs/magister_corvin_leth_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "52857eddf6106189edfb54c7da95abb6dab45f63ef7659f12ea6dd0f27be0747",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "b6852a71a9c3c91d",
+      "kind": "npc_portrait",
+      "source_ref": "local:magister_valen.jpg",
+      "storage_relpath": "media/npcs/magister_valen.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "1e9e0f5285ca48fdafba979e0964876d7478a0f2f4fa62361448604f3e7473e9",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "c28e785369004b5d",
+      "kind": "npc_portrait",
+      "source_ref": "local:magister_valen_thumb.jpg",
+      "storage_relpath": "media/npcs/magister_valen_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "4609eabbac0b69982f7ebffbe0b5c715480c21fe83fba67f0ad2d8005aa9a396",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "e45589a89c8f8d85",
+      "kind": "npc_portrait",
+      "source_ref": "local:merchant_aldric.jpg",
+      "storage_relpath": "media/npcs/merchant_aldric.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "d824e391dcc4cb9db07d33d39a4004c7341178dbbd5cd2cb22ca7a2628bb5d3f",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "f0670b82a36c06f9",
+      "kind": "npc_portrait",
+      "source_ref": "local:merchant_aldric_thumb.jpg",
+      "storage_relpath": "media/npcs/merchant_aldric_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "f75082631abb9bb226c391cfeadf14741387f97464710eff429e3148b2a7a4d1",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "7afddfc00817abfb",
+      "kind": "npc_portrait",
+      "source_ref": "local:mistress_ilyra.jpg",
+      "storage_relpath": "media/npcs/mistress_ilyra.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "00549b7f33294425c4adbdec9d839ef21bf86a47e3337123b803b39f9275a6c9",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "89294ad52ab789a8",
+      "kind": "npc_portrait",
+      "source_ref": "local:mistress_ilyra_thumb.jpg",
+      "storage_relpath": "media/npcs/mistress_ilyra_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "354d435ff761936d07b59c316baa856edb37228335cd577450f88b27be8f9bc4",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "ed0e08fc2f8fe853",
+      "kind": "npc_portrait",
+      "source_ref": "local:mournful_ghost.jpg",
+      "storage_relpath": "media/npcs/mournful_ghost.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "d36d41a22feac54273891a1fb4522440291f9f1461f22b7cf6e577a109d5690d",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "40e82c0dcf457fc2",
+      "kind": "npc_portrait",
+      "source_ref": "local:mournful_ghost_thumb.jpg",
+      "storage_relpath": "media/npcs/mournful_ghost_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "b4587228ca646128216f2537e0d4e99087d7eb0b18abc268781aa82990fddec7",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "2e22f100e985098a",
+      "kind": "npc_portrait",
+      "source_ref": "local:off_duty_militiaman_gareth.jpg",
+      "storage_relpath": "media/npcs/off_duty_militiaman_gareth.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "c75408c39798a2e91d6b0e571539ea09f4f6e894001a88f37293239f4669766b",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "3a9e67bf6e1e266d",
+      "kind": "npc_portrait",
+      "source_ref": "local:off_duty_militiaman_gareth_thumb.jpg",
+      "storage_relpath": "media/npcs/off_duty_militiaman_gareth_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "ddfd5eac1fc6938dd8c2cab91852df2244de6bf816a5371a6313cbff1a650cf5",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "617badb652ce94f3",
+      "kind": "npc_portrait",
+      "source_ref": "local:old_tommen.jpg",
+      "storage_relpath": "media/npcs/old_tommen.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "c1af3bd8af6e16e1e3a7d9e89158643d885f9eda9f87f3a7c8f78c736553a867",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "1cc584f42f4ddf1b",
+      "kind": "npc_portrait",
+      "source_ref": "local:old_tommen_superstitious_herdsman.jpg",
+      "storage_relpath": "media/npcs/old_tommen_superstitious_herdsman.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "9577bda270c9d7ba5775a703f4f9ed117e10da14ab94a9c78539c417a77a0306",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "04587617a3b7945e",
+      "kind": "npc_portrait",
+      "source_ref": "local:old_tommen_superstitious_herdsman_thumb.jpg",
+      "storage_relpath": "media/npcs/old_tommen_superstitious_herdsman_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "4a324b405e827a46bc1cb6e2f855cddffe8e5232244fc9a0c7f9f6de648f3a72",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "187a37094f5d4474",
+      "kind": "npc_portrait",
+      "source_ref": "local:old_tommen_thumb.jpg",
+      "storage_relpath": "media/npcs/old_tommen_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "db8e74db217e71b0a99aafdf5249b1c5c7106ac7fbc9953fb42a28b2376e96eb",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "b41c0550663f84b9",
+      "kind": "npc_portrait",
+      "source_ref": "local:ranger_branik.jpg",
+      "storage_relpath": "media/npcs/ranger_branik.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "dd4e79ff5502bea91b12131014fb2326365dd511210e86dad9676ee6fababd59",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "ebbd8bffefa3a04d",
+      "kind": "npc_portrait",
+      "source_ref": "local:ranger_branik_thumb.jpg",
+      "storage_relpath": "media/npcs/ranger_branik_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "e979a2cb7585dcd59c50f11d6fd56f28d5f652b0e3e21700df686c283c5d2196",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "1e2846823654909a",
+      "kind": "npc_portrait",
+      "source_ref": "local:scout_elen_missing_villager_possibly_rescued.jpg",
+      "storage_relpath": "media/npcs/scout_elen_missing_villager_possibly_rescued.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "971615de047f1b4086c4ec44d1807fa22f728124d76d286a009ad340f791e7f7",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "d10fa573e725173f",
+      "kind": "npc_portrait",
+      "source_ref": "local:scout_elen_missing_villager_possibly_rescued_thumb.jpg",
+      "storage_relpath": "media/npcs/scout_elen_missing_villager_possibly_rescued_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "0c8ba250cd8d0374c13105c11998435114f155583f2d275680cb522ef5775158",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "ab30f378e6e5576b",
+      "kind": "npc_portrait",
+      "source_ref": "local:sergeant_mara_feld.jpg",
+      "storage_relpath": "media/npcs/sergeant_mara_feld.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "c031c3930f364123a94753cc380770f29b00067c81e20626cc4b4cb2354dbd16",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "dc5223f620e5d9a4",
+      "kind": "npc_portrait",
+      "source_ref": "local:sergeant_mara_feld_thumb.jpg",
+      "storage_relpath": "media/npcs/sergeant_mara_feld_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "79a6d4cd845420b66759ab4b2d11ee291ddd69776191cec2f33710aeffb17047",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "8e3a3efea9fdf908",
+      "kind": "npc_portrait",
+      "source_ref": "local:sir_garran_vael.jpg",
+      "storage_relpath": "media/npcs/sir_garran_vael.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "2bb895e227acb3f76ec08add682af3f1dcc574aa4a1e3c0d6a0652bed7595463",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "e8ea667636e80d3a",
+      "kind": "npc_portrait",
+      "source_ref": "local:sir_garran_vael_cursed_knight.jpg",
+      "storage_relpath": "media/npcs/sir_garran_vael_cursed_knight.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "113e58bf60caa044367ba30f4922ace7c8672d272cd55222f0fd7e925db58135",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "05da941f7a4e5897",
+      "kind": "npc_portrait",
+      "source_ref": "local:sir_garran_vael_cursed_knight_thumb.jpg",
+      "storage_relpath": "media/npcs/sir_garran_vael_cursed_knight_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "c0aa918a0e08b3ba39752db54ff96a2dea4dff7c30fa6aec7c8d4388695ce91c",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "00066ce4f974264c",
+      "kind": "npc_portrait",
+      "source_ref": "local:sir_garran_vael_thumb.jpg",
+      "storage_relpath": "media/npcs/sir_garran_vael_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "7f990544a57484140c4cb5b7236ed8a161a380a2bab9d33c5061cd0dc5686a06",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "f2a5998f0e2832ab",
+      "kind": "npc_portrait",
+      "source_ref": "local:spectral_scribe_ghostly_historian.jpg",
+      "storage_relpath": "media/npcs/spectral_scribe_ghostly_historian.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "1a76f06340997ebce3d46ea992c18cc9d75de58b352a96ffd8cd4333a4f4c56f",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "820dd8364f602d33",
+      "kind": "npc_portrait",
+      "source_ref": "local:spectral_scribe_ghostly_historian_thumb.jpg",
+      "storage_relpath": "media/npcs/spectral_scribe_ghostly_historian_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "11d113332781c7114a7ecec0691cf7d01175b05a22e59583b94120b81d420bd1",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "aa299c5ef1879a64",
+      "kind": "npc_portrait",
+      "source_ref": "local:temporarius.jpg",
+      "storage_relpath": "media/npcs/temporarius.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "43cc4263f6f12d94ba0433d28c1ccce5e031ddb05dfd6d4590ada7c68e827d7d",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "e8d987a2166403a1",
+      "kind": "npc_portrait",
+      "source_ref": "local:temporarius_thumb.jpg",
+      "storage_relpath": "media/npcs/temporarius_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "1c36a6e40af0bd4e096df078268f750f114744b44c91db6b12447462e872c9b2",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "6c25d48ff0befb80",
+      "kind": "npc_portrait",
+      "source_ref": "local:the_bone_speaker.jpg",
+      "storage_relpath": "media/npcs/the_bone_speaker.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "988f463e3fa19b49c9e612eaa57e99f0404e21401060dd2fb2c54d34c26ace7e",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "08ac6f134e26a977",
+      "kind": "npc_portrait",
+      "source_ref": "local:the_bone_speaker_thumb.jpg",
+      "storage_relpath": "media/npcs/the_bone_speaker_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "56f3a4acb0066e1585de8540841f1b40164201e1975bd76166ad369cd815ebe5",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "e1fa03888b985b0a",
+      "kind": "npc_portrait",
+      "source_ref": "local:the_keeper.jpg",
+      "storage_relpath": "media/npcs/the_keeper.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "e4d4e5378906f9653e61e4d3f71a999608bf566e3c06a5f1ad1cfd201761070c",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "848e435aa7ab5245",
+      "kind": "npc_portrait",
+      "source_ref": "local:the_keeper_thumb.jpg",
+      "storage_relpath": "media/npcs/the_keeper_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "14efdc6b03f85fa237bc7ad1a1dd1314c20f832c7e1697d92c8ee2a7cd271931",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "331404f87f639d1b",
+      "kind": "npc_portrait",
+      "source_ref": "local:the_lingering_spirit.jpg",
+      "storage_relpath": "media/npcs/the_lingering_spirit.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "e140ac8be3fee69284d71c144663a274c7ca956ef96e22b886a8bf301c258742",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "30e6e7d3cc8de749",
+      "kind": "npc_portrait",
+      "source_ref": "local:the_lingering_spirit_thumb.jpg",
+      "storage_relpath": "media/npcs/the_lingering_spirit_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "91d541f02a5ffaeba230e4b0fce8a0ce6017e74fa43688290933be31d17414d7",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "f75ac40fd39b159b",
+      "kind": "npc_portrait",
+      "source_ref": "local:the_shadow_relic.jpg",
+      "storage_relpath": "media/npcs/the_shadow_relic.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "71c88db334c738ae6dd24d552b46323bb653c960b563112929b776b1d0502b60",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "243ce1b317761a37",
+      "kind": "npc_portrait",
+      "source_ref": "local:the_shadow_relic_sentient_artifact_communicates_telepathically.jpg",
+      "storage_relpath": "media/npcs/the_shadow_relic_sentient_artifact_communicates_telepathically.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "f4e3a158a5e1395b18bdaa9b193e1f58c9b250d0737cf0cc7bb2fe41019480fa",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "62ef221510f242a8",
+      "kind": "npc_portrait",
+      "source_ref": "local:the_shadow_relic_sentient_artifact_communicates_telepathically_thumb.jpg",
+      "storage_relpath": "media/npcs/the_shadow_relic_sentient_artifact_communicates_telepathically_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "a132972d4967547cadac4daf097d738930ebcf765aa6c8bcc02fb7e581e16458",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "271381b7e752abf5",
+      "kind": "npc_portrait",
+      "source_ref": "local:the_shadow_relic_thumb.jpg",
+      "storage_relpath": "media/npcs/the_shadow_relic_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "0a14f49fdac6805fb87991c29827c7c0785e328d009ce4646cefdf58a0d83a03",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "eac2efa57238c575",
+      "kind": "npc_portrait",
+      "source_ref": "local:the_spectral_scribe.jpg",
+      "storage_relpath": "media/npcs/the_spectral_scribe.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "8af774572f4e4db7d8640572e784434155b7f73e49f18b2aef9f94224762d69f",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "491a411faaf58fc9",
+      "kind": "npc_portrait",
+      "source_ref": "local:the_spectral_scribe_thumb.jpg",
+      "storage_relpath": "media/npcs/the_spectral_scribe_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "2b3700730aec656014fbbdf501f21dd46a8702ab2a02f226d28fe4a2c13a1839",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "724ce2ea591ff07d",
+      "kind": "npc_portrait",
+      "source_ref": "local:traveling_merchant_rosa.jpg",
+      "storage_relpath": "media/npcs/traveling_merchant_rosa.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "83e929b5cd86de376878635771f7ea390853856941e1946d9207949c4000d107",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "a0b3f96221bb6e8a",
+      "kind": "npc_portrait",
+      "source_ref": "local:traveling_merchant_rosa_thumb.jpg",
+      "storage_relpath": "media/npcs/traveling_merchant_rosa_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "045a3dcddacc52e36a20bb106c3f51e615159316f5adc49a058e6e1df1925d49",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "9efb577e50fdd488",
+      "kind": "npc_portrait",
+      "source_ref": "local:varek_the_shade.jpg",
+      "storage_relpath": "media/npcs/varek_the_shade.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "65b6071ae3fff2306670984f300f9f1bbf7688778da6ffc2623a1bcc0c8c4cb5",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "195da4a0757fec8e",
+      "kind": "npc_portrait",
+      "source_ref": "local:varek_the_shade_thumb.jpg",
+      "storage_relpath": "media/npcs/varek_the_shade_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "25a063bf430a21c1f0bc871ee452fb15cec954f68e2417a416dc1062cfee60a8",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "3c4cb2b48aed8242",
+      "kind": "npc_portrait",
+      "source_ref": "local:wandering_shade_restless_spirit.jpg",
+      "storage_relpath": "media/npcs/wandering_shade_restless_spirit.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "001b7b4187ed7ec81ff92774a8e7fd11d432faf637a601f7f5f72f1c1978bb6e",
+      "dimensions": {
+        "width": 256,
+        "height": 256
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "04debd717598a555",
+      "kind": "npc_portrait",
+      "source_ref": "local:wandering_shade_restless_spirit_thumb.jpg",
+      "storage_relpath": "media/npcs/wandering_shade_restless_spirit_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "3e2406c5b1854243c558c8774ddb8def9dca7957132883dbfb74338476355528",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "40cc7b6f34ef77a1",
+      "kind": "npc_portrait",
+      "source_ref": "local:watcher_morven.jpg",
+      "storage_relpath": "media/npcs/watcher_morven.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "a89be279e6235d6b19555523c07ef224525e857ff5dbd041700ed151284b7ca0",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "6f7fe56e67cb9bfd",
+      "kind": "npc_portrait",
+      "source_ref": "local:watcher_morven_thumb.jpg",
+      "storage_relpath": "media/npcs/watcher_morven_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "c9ae0861f5c57011036be4671e2716ddcc1a648c4a77aba300db7e1fef7fb886",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "0612cd749b032fbd",
+      "kind": "npc_portrait",
+      "source_ref": "local:worried_mother_eliza.jpg",
+      "storage_relpath": "media/npcs/worried_mother_eliza.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "fd95331cfd663bfa07110a8e5bcd932d5894eb0020d2306f91f0a6dcc120234c",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "d9f20b55a8a0b2e5",
+      "kind": "npc_portrait",
+      "source_ref": "local:worried_mother_eliza_thumb.jpg",
+      "storage_relpath": "media/npcs/worried_mother_eliza_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "82c4565384114084a0268e392d36164bd9de3a0fb3b0ed8c6efaf5876167ed99",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "ade20031d3833e22",
+      "kind": "npc_portrait",
+      "source_ref": "local:young_apprentice_tam.jpg",
+      "storage_relpath": "media/npcs/young_apprentice_tam.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "5d11d267f6250614217817dccb85791ad1acfe438109c37235dba82364222e21",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "2a64b2fd6b860977",
+      "kind": "npc_portrait",
+      "source_ref": "local:young_apprentice_tam_thumb.jpg",
+      "storage_relpath": "media/npcs/young_apprentice_tam_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "80e431dc626d8ccd52d7999fa657b7368a307e5abadeeef34fc21f9ae3ebabb6",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "0c3fa702162ec59b",
+      "kind": "monster_portrait",
+      "source_ref": "local:animated_armor.jpg",
+      "storage_relpath": "media/monsters/animated_armor.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "e0cd1e1b431c2d3798bc8e071f7b6645d980bcf59010e307d7cfa3d9b85cb0ee",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "7a7148f177e473fe",
+      "kind": "monster_portrait",
+      "source_ref": "local:animated_armor_thumb.jpg",
+      "storage_relpath": "media/monsters/animated_armor_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "058439a8017951db628bbee4d0aac612cba9d35fab8a7210528279cf5413815c",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "1f04e11a4e88ee19",
+      "kind": "monster_portrait",
+      "source_ref": "local:animated_torture_device.jpg",
+      "storage_relpath": "media/monsters/animated_torture_device.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "c8b278591e48c6735bd15a73fa2fb8297c986d635c377f29f698a5aa88d9afe3",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "82781f82652d506e",
+      "kind": "monster_portrait",
+      "source_ref": "local:animated_torture_device_thumb.jpg",
+      "storage_relpath": "media/monsters/animated_torture_device_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "6e5672c4fd17fad9cffdc599687fa87adbd2cf5150ac9478e8768e90a78b78f4",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "f97a2ab0be974697",
+      "kind": "monster_portrait",
+      "source_ref": "local:animated_weapon.jpg",
+      "storage_relpath": "media/monsters/animated_weapon.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "6c1a5f36df1d8b3c920da0a23aacfa7c20406fca96bf400cccde72ba2c977e9d",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "a530280cb0d0df9f",
+      "kind": "monster_portrait",
+      "source_ref": "local:animated_weapon_thumb.jpg",
+      "storage_relpath": "media/monsters/animated_weapon_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "eb3634ec8100989cdb96e13c491fdf845aa5ae35e6fa2c646f2c70866682a5f1",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "245686c6977a9932",
+      "kind": "monster_portrait",
+      "source_ref": "local:awakened_shrub.jpg",
+      "storage_relpath": "media/monsters/awakened_shrub.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "8a3a7def27224bf60f9e3ad23ecefe43388256f995099113de21ea3e32bb59c3",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "bb16787007822ed6",
+      "kind": "monster_portrait",
+      "source_ref": "local:awakened_shrub_thumb.jpg",
+      "storage_relpath": "media/monsters/awakened_shrub_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "6633349c2b4fc1a4aedabd4e1b221eaed189afe89c01cc4e93d188723a280da7",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "a8b4921b8e1241bb",
+      "kind": "monster_portrait",
+      "source_ref": "local:barrow_guardian.jpg",
+      "storage_relpath": "media/monsters/barrow_guardian.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "5a421e2600e18fa2f203e1e979aa5b9b10756040df96ef0a80a7c1bd45cdac2f",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "141b11dfd6ed08f6",
+      "kind": "monster_portrait",
+      "source_ref": "local:barrow_guardian_thumb.jpg",
+      "storage_relpath": "media/monsters/barrow_guardian_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "eb2c315326e7b4d16e592d13706090a8b3c07735c5d96e69af22aa42ec89f29b",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "18058e8bb8655316",
+      "kind": "monster_portrait",
+      "source_ref": "local:black_banner_guard.jpg",
+      "storage_relpath": "media/monsters/black_banner_guard.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "e86feddb068433aa88bbb93ef039303aa2382a9efc4a7027e77495f4a70a766c",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "c36f89159e2b424f",
+      "kind": "monster_portrait",
+      "source_ref": "local:black_banner_guard_thumb.jpg",
+      "storage_relpath": "media/monsters/black_banner_guard_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "cfad8d29ac347bb5f6b0932f296ad574169a32ac2bbde76910e6bf94f4220b6d",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "3a9d72417f140386",
+      "kind": "monster_portrait",
+      "source_ref": "local:bog_mummy.jpg",
+      "storage_relpath": "media/monsters/bog_mummy.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "25d47ee914de89ab89a70ddfef0f8f793ad957270d170092c9dec1641fde3937",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "44676ff3d4fd49c0",
+      "kind": "monster_portrait",
+      "source_ref": "local:bog_mummy_thumb.jpg",
+      "storage_relpath": "media/monsters/bog_mummy_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "c132a18cedbd5c47d75e5bad740eb8a79b3100db9a1ddaad5d55356475654f1e",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "573085660d36d820",
+      "kind": "monster_portrait",
+      "source_ref": "local:corrupted_vine_blight.jpg",
+      "storage_relpath": "media/monsters/corrupted_vine_blight.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "6b63336e037ae49452a18fff65a7c9dd3dc41c2750d3829166c389fb81cd7aef",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "a0db08b2deb185e9",
+      "kind": "monster_portrait",
+      "source_ref": "local:corrupted_vine_blight_thumb.jpg",
+      "storage_relpath": "media/monsters/corrupted_vine_blight_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "85accb75a7fa5f354eae11295870cae35c640ccdc727432b67e18bceb5b328b3",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "3ff1860680bc2454",
+      "kind": "monster_portrait",
+      "source_ref": "local:gargoyle.jpg",
+      "storage_relpath": "media/monsters/gargoyle.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "a70ec37e58095aaac2b01331479f8ace6566f2f204d84810aa324615d843f8ca",
+      "dimensions": {
+        "width": 640,
+        "height": 640
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "3640409d75a2e387",
+      "kind": "monster_portrait",
+      "source_ref": "local:gargoyle_thumb.jpg",
+      "storage_relpath": "media/monsters/gargoyle_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "c59bd55c24641f4ef68fe4f7807bef61dd85da1b8198def5114206b8c8ef6a3e",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "5c63630611e094d5",
+      "kind": "monster_portrait",
+      "source_ref": "local:gelatinous_cube.jpg",
+      "storage_relpath": "media/monsters/gelatinous_cube.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "ba0a3928603b8f6b7d2910f64b19ed5f1af32b3a4f772922342852fb4ef22932",
+      "dimensions": {
+        "width": 640,
+        "height": 640
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "13abb2da555e33ba",
+      "kind": "monster_portrait",
+      "source_ref": "local:gelatinous_cube_thumb.jpg",
+      "storage_relpath": "media/monsters/gelatinous_cube_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "3a30f80b3cbc3b1d4f977c0366a4d035b2d5b66b69400444a71604f605579122",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "bc3c9f73430a9191",
+      "kind": "monster_portrait",
+      "source_ref": "local:ghoul.jpg",
+      "storage_relpath": "media/monsters/ghoul.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "1d79ad8a36ad50459f12e2ed7b174f51b130c3917d6c9d1e4abd45b988b5436a",
+      "dimensions": {
+        "width": 640,
+        "height": 640
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "cb8ffd5a4818b194",
+      "kind": "monster_portrait",
+      "source_ref": "local:ghoul_thumb.jpg",
+      "storage_relpath": "media/monsters/ghoul_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "bdd3fa84ae03fb0278539f47c9517c6e4f19ca1d11dd0e3029e8c7c28409f861",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "8199834e29179f67",
+      "kind": "monster_portrait",
+      "source_ref": "local:giant_rat.jpg",
+      "storage_relpath": "media/monsters/giant_rat.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "cd833ee025d296775cc2dfbd4d08c8527d848a0e780e288d2fc409c83eac3474",
+      "dimensions": {
+        "width": 400,
+        "height": 400
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "b6c9eedfab11b548",
+      "kind": "monster_portrait",
+      "source_ref": "local:giant_rat_thumb.jpg",
+      "storage_relpath": "media/monsters/giant_rat_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "620de15c9e9a6533f3dd2e174f77e5f05ce90c8589c7673aa85bbc4a16bce5db",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "a6d9a88102ef5120",
+      "kind": "monster_portrait",
+      "source_ref": "local:giant_spider.jpg",
+      "storage_relpath": "media/monsters/giant_spider.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "e3a74cce3e6f0c89ee2dd4fd5780bdfbe222a20df082857cac0b08f1d11ba44e",
+      "dimensions": {
+        "width": 640,
+        "height": 640
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "67b556d92251401d",
+      "kind": "monster_portrait",
+      "source_ref": "local:giant_spider_thumb.jpg",
+      "storage_relpath": "media/monsters/giant_spider_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "ab3384d4a89af4515a07848cdb09a11cee5a932dbc4cd76fe6e0574bd0dd5ee9",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "27395a7f17b24bb4",
+      "kind": "monster_portrait",
+      "source_ref": "local:gibbering_mouther.jpg",
+      "storage_relpath": "media/monsters/gibbering_mouther.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "20657c1efe02af19df969eec021617cb2d34142d9c0d78b83a810b5e40e02219",
+      "dimensions": {
+        "width": 640,
+        "height": 640
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "727520e7364d6cff",
+      "kind": "monster_portrait",
+      "source_ref": "local:gibbering_mouther_thumb.jpg",
+      "storage_relpath": "media/monsters/gibbering_mouther_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "5d230f27484031a5d9cb39bcd433875d9a9d19ebc7e710b9dd1ff0f24f59e520",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "251f4b2755146ad9",
+      "kind": "monster_portrait",
+      "source_ref": "local:lord_thaddeus_greymont.jpg",
+      "storage_relpath": "media/monsters/lord_thaddeus_greymont.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "c2cd58c38766b273457c5e814ee64f8137ba8be252287cf211095148ddaab84d",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "e590239c1ff20456",
+      "kind": "monster_portrait",
+      "source_ref": "local:lord_thaddeus_greymont_thumb.jpg",
+      "storage_relpath": "media/monsters/lord_thaddeus_greymont_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "151dc3117aa27c6773a90235d1f644ff8dafc80d3f4595b1de4d333767ba9fe1",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "2bd2e19d41913b50",
+      "kind": "monster_portrait",
+      "source_ref": "local:mimic.jpg",
+      "storage_relpath": "media/monsters/mimic.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "2a728fd96cb295d65115ffc84e7de982fac4436e9a2e773c6936ed31c7dd8a44",
+      "dimensions": {
+        "width": 640,
+        "height": 640
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "1b5d7734a75443ef",
+      "kind": "monster_portrait",
+      "source_ref": "local:mimic_thumb.jpg",
+      "storage_relpath": "media/monsters/mimic_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "77b436ac7f1c746e6795424c4498a34b73e34bb30c261d25ba4b4672e0c74d66",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "6c90501d00dc203a",
+      "kind": "monster_portrait",
+      "source_ref": "local:phantom_servant.jpg",
+      "storage_relpath": "media/monsters/phantom_servant.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "6c98e819dee4d6e32842e2dd0c4cf33a8a49ce8a9370fc8ac9fb66b843858869",
+      "dimensions": {
+        "width": 640,
+        "height": 640
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "ef16e1db54f538e7",
+      "kind": "monster_portrait",
+      "source_ref": "local:phantom_servant_thumb.jpg",
+      "storage_relpath": "media/monsters/phantom_servant_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "daeb13e2905c99eef37a8ad9334a9089af6da85f84dc21fc65857ee00354367d",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "b436ee2d6a8e2348",
+      "kind": "monster_portrait",
+      "source_ref": "local:phantom_torturer.jpg",
+      "storage_relpath": "media/monsters/phantom_torturer.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "9dd7d38b4d4d1a54afe3e83b529c07ee6e2695347774ddf0a4105c794e9be0aa",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "d65e1e5179a4a00d",
+      "kind": "monster_portrait",
+      "source_ref": "local:phantom_torturer_thumb.jpg",
+      "storage_relpath": "media/monsters/phantom_torturer_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "5f14eadd53512021cf6991f2c761cb8031b3c129d586390e42043b3757840379",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "0a519186eb6f5a6e",
+      "kind": "monster_portrait",
+      "source_ref": "local:shadow.jpg",
+      "storage_relpath": "media/monsters/shadow.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "b2f47f7c79375fa9aa595a35e5384b595c5a0eb0c7b056aaff0eb63ef29d5e09",
+      "dimensions": {
+        "width": 640,
+        "height": 640
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "2bb03ad46b7eff08",
+      "kind": "monster_portrait",
+      "source_ref": "local:shadow_cage.jpg",
+      "storage_relpath": "media/monsters/shadow_cage.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "1ebf8a4938c5cbe4e462d316eec20809bfc16a191af0a70859e1e81cd2fe4cbe",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "d65e33f88eedc73a",
+      "kind": "monster_portrait",
+      "source_ref": "local:shadow_cage_thumb.jpg",
+      "storage_relpath": "media/monsters/shadow_cage_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "2bebff8fbb22d1355f744a606df64e8c85e427d388706737ad2a6e29495432a3",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "d306664ecdd4da01",
+      "kind": "monster_portrait",
+      "source_ref": "local:shadow_hound.jpg",
+      "storage_relpath": "media/monsters/shadow_hound.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "da28204e476b428f118050b87641cf33d06a1cb8fee0c594da7d3e631ece7eb2",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "98af02dc21a98615",
+      "kind": "monster_portrait",
+      "source_ref": "local:shadow_hound_thumb.jpg",
+      "storage_relpath": "media/monsters/shadow_hound_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "48d7db8282b472633f137cc678362ea0e3fcea4522ee6d266f64bf0ffbf8d19f",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "4cd7567a5272ae0a",
+      "kind": "monster_portrait",
+      "source_ref": "local:shadow_manifestation.jpg",
+      "storage_relpath": "media/monsters/shadow_manifestation.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "9d52ce4eddb50ebfd6b4e95c34c621a3df627452f055a60084f757e5982a65ba",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "a8b5ec50175813ff",
+      "kind": "monster_portrait",
+      "source_ref": "local:shadow_manifestation_thumb.jpg",
+      "storage_relpath": "media/monsters/shadow_manifestation_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "f17ee86400278a7f0ab2d1bdaff4826fa6f71c5e657669d7acb082c4c0d0d467",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "7a0b2b83162cba2c",
+      "kind": "monster_portrait",
+      "source_ref": "local:shadow_mastiff.jpg",
+      "storage_relpath": "media/monsters/shadow_mastiff.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "6d8d6df73cf6a9690e646958c559196d42080d84f6295aedc7d9e9477d208a5f",
+      "dimensions": {
+        "width": 640,
+        "height": 640
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "e1c18d1bb87ab9d1",
+      "kind": "monster_portrait",
+      "source_ref": "local:shadow_mastiff_thumb.jpg",
+      "storage_relpath": "media/monsters/shadow_mastiff_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "38eec323ce7884fce889269229f6c1d04e63e6340b7ff95b63d458daae0649f5",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "3a43dda5053d500d",
+      "kind": "monster_portrait",
+      "source_ref": "local:shadow_of_sir_garran.jpg",
+      "storage_relpath": "media/monsters/shadow_of_sir_garran.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "552ed3bff43bcaa28b27697111322666a841ac48157e4466498bfd833633e155",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "6c5c1e264c830f52",
+      "kind": "monster_portrait",
+      "source_ref": "local:shadow_of_sir_garran_thumb.jpg",
+      "storage_relpath": "media/monsters/shadow_of_sir_garran_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "48f7c625db6341ffd6d2af13af274947090d7029b12baebb258b67abe22988a2",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "a838c08648754c41",
+      "kind": "monster_portrait",
+      "source_ref": "local:shadow_relic.jpg",
+      "storage_relpath": "media/monsters/shadow_relic.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "36eab000e3671dbfac10e39e86b3388a6f785d95d9888952c5b690f966b96cb8",
+      "dimensions": {
+        "width": 640,
+        "height": 640
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "7c427c089f5b80e2",
+      "kind": "monster_portrait",
+      "source_ref": "local:shadow_relic_thumb.jpg",
+      "storage_relpath": "media/monsters/shadow_relic_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "39a01ddcbb81d0b8fb6c75a51d7a50b932576f6314d9ae0fbc6fe65d1b7f52a1",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "53094a0e71db62b3",
+      "kind": "monster_portrait",
+      "source_ref": "local:shadow_thumb.jpg",
+      "storage_relpath": "media/monsters/shadow_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "9d3364121fb712cb6f68d4746576f82d9e5235577a9e63377e21a198f3d30bba",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "3b60036d8b8131db",
+      "kind": "monster_portrait",
+      "source_ref": "local:shambling_mound.jpg",
+      "storage_relpath": "media/monsters/shambling_mound.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "0edaba9ab4eb6f88f1a3133e15274b4ac8a8eac06332fd59752e3e175ffeb0d3",
+      "dimensions": {
+        "width": 640,
+        "height": 640
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "2e2b95db77c742b4",
+      "kind": "monster_portrait",
+      "source_ref": "local:shambling_mound_thumb.jpg",
+      "storage_relpath": "media/monsters/shambling_mound_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "e48a7d781bd348694de340cb1f5026fd6dd8fcb2e1d26e97a994b1a49badae06",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "9d4e38d81fa62c4d",
+      "kind": "monster_portrait",
+      "source_ref": "local:skeletal_archer.jpg",
+      "storage_relpath": "media/monsters/skeletal_archer.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "57c055fcae8d50958b219cf4dd5d0a3017c612582d95739ef6e545cd1638f9ee",
+      "dimensions": {
+        "width": 400,
+        "height": 400
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "3418e1966a348bae",
+      "kind": "monster_portrait",
+      "source_ref": "local:skeletal_archer_thumb.jpg",
+      "storage_relpath": "media/monsters/skeletal_archer_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "8b87c8f757adbc25cb408e06923f557ed40a262017cbedc3fe50a7eacec1ac3f",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "d5ecf5de8f385c6d",
+      "kind": "monster_portrait",
+      "source_ref": "local:skeleton.jpg",
+      "storage_relpath": "media/monsters/skeleton.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "9c0bb611b2d0549fd98048ab0378c9607391a32440c5a956a19246c55b69e693",
+      "dimensions": {
+        "width": 640,
+        "height": 640
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "af2a8b292ac046eb",
+      "kind": "monster_portrait",
+      "source_ref": "local:skeleton_thumb.jpg",
+      "storage_relpath": "media/monsters/skeleton_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "70d5fa80da92a291416babee209c49b6bcc816baa7b67852f5c8e455620a1ed1",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "e0fc232c5638c457",
+      "kind": "monster_portrait",
+      "source_ref": "local:specter.jpg",
+      "storage_relpath": "media/monsters/specter.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "f897191f3b2bd6cfa67e3da08b994ce00c70cdc63f3e652949ca2da967b37bc0",
+      "dimensions": {
+        "width": 640,
+        "height": 640
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "cce5513b98b55ef3",
+      "kind": "monster_portrait",
+      "source_ref": "local:specter_thumb.jpg",
+      "storage_relpath": "media/monsters/specter_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "201ee5212e24db5a5f672b09e88c88e1f8d9b1a39886a718829987d6242de605",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "5f1f25f43d5c7fc1",
+      "kind": "monster_portrait",
+      "source_ref": "local:spectral_soldier.jpg",
+      "storage_relpath": "media/monsters/spectral_soldier.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "c5cd03197904fef3378aa046a5c80a225ef058410e08e2005150d9d044e4019b",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "30fb9de75ac60d98",
+      "kind": "monster_portrait",
+      "source_ref": "local:spectral_soldier_thumb.jpg",
+      "storage_relpath": "media/monsters/spectral_soldier_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "10f8f40341fd41d20c806747374f0e4959f9940c9dc75e34cfff5441e153ad47",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "26b7769a2038b0f4",
+      "kind": "monster_portrait",
+      "source_ref": "local:stone_guardian.jpg",
+      "storage_relpath": "media/monsters/stone_guardian.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "ed3c8ff9ab4a058c7ed8994fba2ea9b6c2a396f48d57458b202ecd3ac016840f",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "17d61ce80ab6f3fe",
+      "kind": "monster_portrait",
+      "source_ref": "local:stone_guardian_thumb.jpg",
+      "storage_relpath": "media/monsters/stone_guardian_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "47bb2146cc043e08f7f33bf9773928fd9c8de5838cb254b632d3fe0ddff7411a",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "699cbd666101daad",
+      "kind": "monster_portrait",
+      "source_ref": "local:swarm_of_spiders.jpg",
+      "storage_relpath": "media/monsters/swarm_of_spiders.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "11a8efedf4f53ff773da5ea38b634cc5f56f5bb4c0baae7dab1ebb6159989220",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "d872795c45bd3696",
+      "kind": "monster_portrait",
+      "source_ref": "local:swarm_of_spiders_thumb.jpg",
+      "storage_relpath": "media/monsters/swarm_of_spiders_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "678604afdaa5b50fbf3d313eb87ec1990e59a29787fd71f4d5979c5aebf36caf",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "12cc241410e8390e",
+      "kind": "monster_portrait",
+      "source_ref": "local:the_entity.jpg",
+      "storage_relpath": "media/monsters/the_entity.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "493bbba8671d2ff52cc3a996e9ac81066d20c01180bb0bb2c1194f6da204072a",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "c8c10d9b52cbab4d",
+      "kind": "monster_portrait",
+      "source_ref": "local:the_entity_thumb.jpg",
+      "storage_relpath": "media/monsters/the_entity_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "495ef0dd7aee8d5d42ce29271e64f82007daced33c24f0bd571e4291b11d3ebe",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "ece34b34a6b1f190",
+      "kind": "monster_portrait",
+      "source_ref": "local:twig_blight.jpg",
+      "storage_relpath": "media/monsters/twig_blight.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "700e9447569d8f6d3cc3c25788aeef890782f19c422607da4225cf866a9b7406",
+      "dimensions": {
+        "width": 400,
+        "height": 400
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "adc5e41b9d912c0c",
+      "kind": "monster_portrait",
+      "source_ref": "local:twig_blight_thumb.jpg",
+      "storage_relpath": "media/monsters/twig_blight_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "490c738fc9a414a4c3f0990144e163a80df515f865c362e4cea46926e9f64bc4",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "2f7daabb4c4f9d07",
+      "kind": "monster_portrait",
+      "source_ref": "local:will_o_wisp.jpg",
+      "storage_relpath": "media/monsters/will_o_wisp.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "24cddc0cd396b12fabd7db3d30af31f910a8ccb48f3aac9d21e57e23b2b3b7b6",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "1ab31ebcb1a678ee",
+      "kind": "monster_portrait",
+      "source_ref": "local:will_o_wisp_thumb.jpg",
+      "storage_relpath": "media/monsters/will_o_wisp_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "cdf839f1ffd5bd44c72f5d030ad9f0eeb8776d0a66f4db54597d9d5e8814d884",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "7fb2ff993e2e95b3",
+      "kind": "monster_portrait",
+      "source_ref": "local:wisps_of_memory.jpg",
+      "storage_relpath": "media/monsters/wisps_of_memory.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "4787bfaed228de70cd98bd5a3d846a97d027109b40f8779b77b8af40e85b0891",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "e1cacbfe2b6940d2",
+      "kind": "monster_portrait",
+      "source_ref": "local:wisps_of_memory_thumb.jpg",
+      "storage_relpath": "media/monsters/wisps_of_memory_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "d9fde416d48056f68d5f943ad94701d7e7e72a98fd14ffffabe87879dfe4850d",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "e8ce961b2dbfdba7",
+      "kind": "monster_portrait",
+      "source_ref": "local:zombie.jpg",
+      "storage_relpath": "media/monsters/zombie.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "d4e07c8ac794e4b30934c30df63d3f3075e7fa222095884bf59fb9ec888a8ddd",
+      "dimensions": {
+        "width": 640,
+        "height": 640
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    },
+    {
+      "handle_id": "8de6c3f1123b28bd",
+      "kind": "monster_portrait",
+      "source_ref": "local:zombie_thumb.jpg",
+      "storage_relpath": "media/monsters/zombie_thumb.jpg",
+      "download_status": "downloaded",
+      "checksum_sha256": "b830356cfb0c7ed3bcd1e313996f7e1ce7be74085281d8c12b1ac77bef88dce4",
+      "dimensions": {
+        "width": 60,
+        "height": 60
+      },
+      "linked_area_ids": [],
+      "linked_location_ids": [],
+      "future_use": {
+        "chat_title_candidate": false,
+        "map_tab_candidate": false
+      }
+    }
+  ]
+}

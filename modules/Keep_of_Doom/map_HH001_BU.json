@@ -1,0 +1,72 @@
+{
+  "mapId": "MAP_5",
+  "mapName": "Town Map",
+  "totalRooms": 5,
+  "rooms": [
+    {
+      "id": "AE01",
+      "name": "Harrow's Hollow General Store",
+      "type": "shop",
+      "connections": [
+        "AE02",
+        "AE03",
+        "AE04",
+        "AE05"
+      ],
+      "coordinates": "X2Y2"
+    },
+    {
+      "id": "AE02",
+      "name": "Harrow's Hollow Town Square",
+      "type": "square",
+      "connections": [
+        "AE01"
+      ],
+      "coordinates": "X3Y2"
+    },
+    {
+      "id": "AE03",
+      "name": "East Gate and Guardhouse",
+      "type": "gate",
+      "connections": [
+        "AE01"
+      ],
+      "coordinates": "X2Y3"
+    },
+    {
+      "id": "AE04",
+      "name": "Militia Barracks",
+      "type": "barracks",
+      "connections": [
+        "AE01"
+      ],
+      "coordinates": "X2Y1"
+    },
+    {
+      "id": "AE05",
+      "name": "The Wyrd Lantern Inn",
+      "type": "tavern",
+      "connections": [
+        "AE01"
+      ],
+      "coordinates": "X1Y2"
+    }
+  ],
+  "layout": [
+    [
+      "   ",
+      "AE04",
+      "   "
+    ],
+    [
+      "AE05",
+      "AE01",
+      "AE02"
+    ],
+    [
+      "   ",
+      "AE03",
+      "   "
+    ]
+  ]
+}

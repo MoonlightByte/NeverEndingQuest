@@ -1,0 +1,59 @@
+{
+  "module": "Keep_of_Doom",
+  "lastUpdated": "2026-02-15T00:05:29.793941",
+  "quests": {
+    "PP001": {
+      "id": "PP001",
+      "title": "Shadows Over Harrow's Hollow",
+      "playerDescription": "You arrive in Harrow's Hollow, a village gripped by fear and whispers of curses and spirits. Elder Mirna Harrow implores you to investigate the recent disappearances, including that of Scout Elen. Gain the villagers' trust and follow the leads to unravel the mystery.",
+      "originalDescription": "The party arrives in Harrow's Hollow, a small, anxious village gripped by fear. Elder Mirna Harrow asks the characters to investigate recent disappearances, including that of Scout Elen. Tensions run high as rumors of curses, spirits, and the haunted Keep of Doom swirl among the villagers. Players must gather information, win trust, and follow leads to piece together the mystery.",
+      "status": "in progress",
+      "type": "main",
+      "sideQuests": {}
+    },
+    "PP002": {
+      "id": "PP002",
+      "title": "The Road to Doom",
+      "playerDescription": "You must brave the haunted forest to reach the Keep of Doom, navigating treacherous terrain and spectral ambushes. The forest pulses with unnatural energy, and you may encounter both allies and foes along the way.",
+      "originalDescription": "Tracking clues and rumors, the party must brave the haunted forest and reach the Keep of Doom. Along the way, they navigate treacherous terrain, spectral ambushes, and lingering wards. The forest is alive with unnatural energies, and the party may encounter allies or enemies who help or hinder their journey.",
+      "status": "in progress",
+      "type": "main",
+      "sideQuests": {
+        "SQ003": {
+          "id": "SQ003",
+          "title": "The Lost Ward Circle",
+          "playerDescription": "You have restored the ancient protective ward circle in the forest, weakening the keep's dark influence and shielding Harrow's Hollow from spectral attacks.",
+          "status": "completed",
+          "type": "side"
+        }
+      }
+    },
+    "PP003": {
+      "id": "PP003",
+      "title": "Breach the Keep",
+      "playerDescription": "Your goal is to reach and enter the foreboding Keep of Doom by any means necessary, stepping into the heart of the darkness that plagues the land.",
+      "originalDescription": "The party must reach and enter the foreboding Keep of Doom. This quest completes when the party successfully enters the keep through any means.",
+      "status": "in progress",
+      "type": "main",
+      "sideQuests": {}
+    },
+    "PP004": {
+      "id": "PP004",
+      "title": "The Heart of Darkness",
+      "playerDescription": "Deep within the keep lies the source of the curse: the vengeful spirit of Lord Thaddeus Greymont, twisted by dark magic. You must confront him through combat, exorcism, or by fulfilling his final wish to bring peace.",
+      "originalDescription": "Within the keep's depths lies the source of the curse: the vengeful spirit of Lord Thaddeus Greymont, corrupted by dark magic. The party must confront him, either by combat, exorcism, or fulfilling his final wish to find peace.",
+      "status": "in progress",
+      "type": "main",
+      "sideQuests": {}
+    },
+    "PP005": {
+      "id": "PP005",
+      "title": "Resolution and Rewards",
+      "playerDescription": "You have returned to Harrow's Hollow after defeating or destroying the shadow relic within the keep, bringing hope and relief to the troubled village.",
+      "originalDescription": "Return to Harrow's Hollow after dealing with the shadow relic. This quest completes when the party returns to the village after defeating or destroying the shadow relic in the keep.",
+      "status": "completed",
+      "type": "main",
+      "sideQuests": {}
+    }
+  }
+}

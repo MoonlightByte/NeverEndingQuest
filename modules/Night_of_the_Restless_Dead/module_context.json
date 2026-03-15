@@ -1,0 +1,193 @@
+{
+  "module_name": "Night_of_the_Restless_Dead",
+  "module_id": "Night_of_the_Restless_Dead",
+  "areas": {
+    "NIG001": {
+      "name": "Night_of_the_Restless_Dead Main Area",
+      "type": "dungeon",
+      "locations": [
+        "NIG01",
+        "NIG02",
+        "NIG03",
+        "NIG04",
+        "NIG05",
+        "NIG06",
+        "NIG07"
+      ],
+      "npcs": [],
+      "plot_points": []
+    }
+  },
+  "npcs": {},
+  "locations": {
+    "NIG01": {
+      "name": "Room 1: Ma's Watering Hole",
+      "type": "room",
+      "description_preview": "The party arrives at Ma's Watering Hole, a rural inn between Yatar and Waterdeep. Ma runs the inn an",
+      "source_room_number": 1
+    },
+    "NIG02": {
+      "name": "Room 2: Ruined Cathedral Main Hall",
+      "type": "room",
+      "description_preview": "The party reaches the ruined cathedral. Thick webs cover the entrance and the main hall is dark and ",
+      "source_room_number": 2
+    },
+    "NIG03": {
+      "name": "Room 3: Cathedral Storage",
+      "type": "room",
+      "description_preview": "The storage room is mostly empty except for old barrels and dried blood. A web-wrapped figure hangs ",
+      "source_room_number": 3
+    },
+    "NIG04": {
+      "name": "Room 4: Priest's Lodging",
+      "type": "room",
+      "description_preview": "An old bed frame, fireplace, and a cellar door are in this room. Faint light shows through the cella",
+      "source_room_number": 4
+    },
+    "NIG05": {
+      "name": "Room 5: Cellar Hallway",
+      "type": "room",
+      "description_preview": "A collapsed branching tunnel leads to a single large door with light leaking through. If the alarm w",
+      "source_room_number": 5
+    },
+    "NIG06": {
+      "name": "Room 6: Dead End Ritual Chamber",
+      "type": "room",
+      "description_preview": "A cultist and Red argue about acquiring more experiments for a necromantic ring. They attack when al",
+      "source_room_number": 6
+    },
+    "NIG07": {
+      "name": "Room 100: Conclusion",
+      "type": "room",
+      "description_preview": "The party returns to Ma's Watering Hole after ending the immediate threat. They receive lodging and ",
+      "source_room_number": 100
+    }
+  },
+  "plot_scopes": {},
+  "references": {
+    "monsters": [
+      "Giant Spider",
+      "Skeleton",
+      "Zombie"
+    ]
+  },
+  "faction_context": {
+    "cult_leadership": {
+      "moral_grayness": "gray",
+      "leader_name": "Sister Miriam Bramble",
+      "origin": "Disowned Bramble family member from Greenfields Vale",
+      "motivation_notes": [
+        "Discovered Bramble family's tithe pact with Pumpkin King",
+        "Refused to sacrifice her child as required by pact",
+        "Fled with followers to break curse using forbidden necromancy",
+        "Desperate; multiple failed ritual attempts documented",
+        "Willing to sacrifice innocents to end larger curse"
+      ],
+      "harm_evidence": [
+        "Captive villagers in experimentation cells",
+        "Notes on unwilling test subjects",
+        "Dried blood and restraints in NIG03"
+      ],
+      "motive_evidence": [
+        "Journal entries about 'the sealed bargain'",
+        "References to Bramble family lineage",
+        "Research notes on curse reversal methods",
+        "Letters to Greenfields Vale seeking allies"
+      ]
+    },
+    "cult_victims": {
+      "identified": [
+        "Villagers from Ma's vicinity",
+        "Travelers on Yatar-Waterdeep road",
+        "Former Bramble family servants"
+      ],
+      "harm_evidence": [
+        "Experimentation cells in NIG06",
+        "Web-wrapped inquisitor in NIG03",
+        "Dried blood in multiple rooms"
+      ]
+    },
+    "cross_module_refs": {
+      "pumpkin_king": [
+        "Mayor Tilda Bramble (HFG001) mentions 'my sister who fled'",
+        "Cathedral altar inscription matches Churchyard Shrine (VO001)",
+        "Miriam is disowned Bramble; knows First Tithe lore",
+        "Red is Pumpkin King enforcer sent to stop cult"
+      ],
+      "thornwood": [
+        "Druid circle beneath cathedral same as corrupted woods (NCW001)",
+        "Father Aldric mentions 'brothers who fled east'",
+        "Third Path requires Thornwood artifacts OR druid lore",
+        "Withered Hart knows of 'the breakaway cult'"
+      ]
+    },
+    "ring_thread": {
+      "scope": "bounded",
+      "total_rings": 2,
+      "current_module_ring": "Necromantic ring in NIG06 (Miriam possesses)",
+      "future_module_placeholder": "Second ring in Thornwood Watch (corrupted druid spirit)",
+      "ring_purpose": "One of 2 rings needed to break Pumpkin King's pact",
+      "ring_lore": "Ancient druidic artifacts that can sever tithe bonds",
+      "meta_campaign_note": "Contained 2-module arc; not world-scale quest"
+    }
+  },
+  "validation_issues": [],
+  "generated_at": "2026-03-05T14:12:05.865708",
+  "import_source": {
+    "path": "/tmp/homebrew_ingest_staging/deterministic.json",
+    "title": "Night of the Restless Dead",
+    "room_count": 7
+  },
+  "continuity": {
+    "continuity_version": "v1",
+    "entry_state_variants": {
+      "cold_start": {
+        "summary": "Party enters Night_of_the_Restless_Dead with no prior continuity context. Present the opening conflict and immediate objective clearly."
+      },
+      "partial_context": {
+        "summary": "Party enters Night_of_the_Restless_Dead with partial prior context. Reinforce known clues before branch-critical decisions."
+      },
+      "late_arc": {
+        "summary": "Party enters Night_of_the_Restless_Dead in late-arc state. Provide compact recap and maintain path to a valid ending."
+      }
+    },
+    "cross_module_refs": [
+      {
+        "target_module": "The_Pumpkin_Kings_Curse",
+        "entity_id": "bramble_lineage",
+        "relation": "reference",
+        "confidence": "high",
+        "notes": "Bramble family lineage appears in linked module arcs."
+      },
+      {
+        "target_module": "The_Pumpkin_Kings_Curse",
+        "entity_id": "pumpkin_king",
+        "relation": "antagonist",
+        "confidence": "high",
+        "notes": "Pumpkin King and harvest pact are shared continuity anchors."
+      },
+      {
+        "target_module": "The_Thornwood_Watch",
+        "entity_id": "malarok",
+        "relation": "reference",
+        "confidence": "medium",
+        "notes": "Malarok/old debt threads bridge northern and southern arcs."
+      },
+      {
+        "target_module": "The_Thornwood_Watch",
+        "entity_id": "withered_hart",
+        "relation": "ally",
+        "confidence": "medium",
+        "notes": "Withered Hart lore links to wider covenant/debt continuity."
+      }
+    ],
+    "standalone_fallback": {
+      "enabled": true,
+      "clue_sources": [
+        "module_context",
+        "module_plot"
+      ],
+      "notes": "Night_of_the_Restless_Dead remains fully playable as a standalone module when cross-module continuity is unavailable."
+    }
+  }
+}

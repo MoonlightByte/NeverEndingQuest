@@ -1,0 +1,189 @@
+{
+  "areaId": "NIG001",
+  "areaName": "Night_of_the_Restless_Dead Main Area",
+  "areaDescription": "Imported adventure: Night of the Restless Dead",
+  "locations": [
+    {
+      "locationId": "NIG01",
+      "name": "Room 1: Ma's Watering Hole",
+      "description": "The party arrives at Ma's Watering Hole, a rural inn between Yatar and Waterdeep. Ma runs the inn and Blarg, a large half-orc, handles security.",
+      "source_room_number": 1,
+      "source_room_title": "Ma's Watering Hole",
+      "creatures": "Ma (commoner), Blarg (berserker), Crawling Claw, Zombie, Zombie.",
+      "investigation_hooks": [
+        {
+          "id": "ma_secret",
+          "trigger": "Insight DC 12",
+          "description": "Ma flinches when cathedral cult is mentioned; she knows more than she admits",
+          "reward": "Hidden cellar passage to Room 4 (bypass Rooms 2-3)",
+          "cross_module_ref": "Mayor Tilda Bramble (Pumpkin King) mentions 'my sister who fled'"
+        },
+        {
+          "id": "blarg_spy",
+          "trigger": "Investigation DC 14 (hidden letters)",
+          "description": "Letters from Greenfields Vale demanding reports on cathedral activity",
+          "reward": "Blarg is Pumpkin King spy; can be blackmailed for cathedral layout",
+          "consequence": "If discovered, Blarg offers intel to save his life"
+        }
+      ],
+      "branch_pivot": {
+        "investigation_first": {"leads_to": "NIG04", "bypass": ["NIG02", "NIG03"]},
+        "confrontation_first": {"leads_to": "NIG02", "standard_path": true}
+      }
+    },
+    {
+      "locationId": "NIG02",
+      "name": "Room 2: Ruined Cathedral Main Hall",
+      "description": "The party reaches the ruined cathedral. Thick webs cover the entrance and the main hall is dark and damaged.",
+      "source_room_number": 2,
+      "source_room_title": "Ruined Cathedral Main Hall",
+      "creatures": "Undead Giant Spider.",
+      "investigation_hooks": [
+        {
+          "id": "desecrated_altar",
+          "trigger": "Religion DC 12",
+          "description": "Altar defaced with Pumpkin King sigils; inscription mentions 'The First Keeper'",
+          "reward": "Lore connecting to Pumpkin King's First Tithe",
+          "cross_module_ref": "Matches inscription at Churchyard Shrine (Pumpkin King VO001)"
+        },
+        {
+          "id": "hidden_ledger",
+          "trigger": "Investigation DC 16",
+          "description": "Tithe payment log beneath loose altar stone: 1847, 1892, 1947, 2002, 2017",
+          "reward": "Reveals Bramble family payments; cult has operated for 170+ years"
+        }
+      ],
+      "environmental_storytelling": "Echoing ritual chanting from below suggests living occupants"
+    },
+    {
+      "locationId": "NIG03",
+      "name": "Room 3: Cathedral Storage",
+      "description": "The storage room is mostly empty except for old barrels and dried blood. A web-wrapped figure hangs from the ceiling.",
+      "source_room_number": 3,
+      "source_room_title": "Cathedral Storage",
+      "creatures": "Zombie.",
+      "investigation_hooks": [
+        {
+          "id": "paralyzed_victim",
+          "trigger": "Automatic",
+          "description": "Web-wrapped inquisitor from Waterdeep paralyzed but alive; Medicine DC 15 to save",
+          "choices": {
+            "save": "Inquisitor provides official sanction; opens Waterdeep ending path",
+            "kill": "Lose Waterdeep conspiracy information",
+            "ignore": "Victim dies after 24 hours; body looted by cultists"
+          }
+        }
+      ]
+    },
+    {
+      "locationId": "NIG04",
+      "name": "Room 4: Priest's Lodging",
+      "description": "An old bed frame, fireplace, and a cellar door are in this room. Faint light shows through the cellar door edges.",
+      "source_room_number": 4,
+      "source_room_title": "Priest's Lodging",
+      "investigation_hooks": [
+        {
+          "id": "hiding_priest",
+          "trigger": "Perception DC 12 or if inquisitor saved in NIG03",
+          "description": "Father Aldric hides behind fireplace, fears cult will find him",
+          "reward": "Reveals cathedral built over druid circle; shows druid carvings",
+          "choices": {
+            "help_escape": "Guides party to side path; Third Path ending unlocked",
+            "ignore": "Face harder ritual combat; no Third Path without Thornwood artifacts",
+            "kill": "If suspected cultist; lose druid revelation entirely"
+          }
+        },
+        {
+          "id": "druid_carvings",
+          "trigger": "Father Aldric reveals or Investigation DC 18",
+          "description": "Druid carvings behind fireplace show original pact agreement",
+          "reward": "Reveals Third Path: druid circle can absorb curse without sacrifices",
+          "cross_module_ref": "Corrupted druids in Thornwood (NCW001) are same circle"
+        }
+      ]
+    },
+    {
+      "locationId": "NIG05",
+      "name": "Room 5: Cellar Hallway",
+      "description": "A collapsed branching tunnel leads to a single large door with light leaking through. If the alarm was triggered, enemies prepare an ambush.\n\n**Exits:**\n- South: Room 4\n- North: Room 6",
+      "source_room_number": 5,
+      "source_room_title": "Cellar Hallway"
+    },
+    {
+      "locationId": "NIG06",
+      "name": "Room 6: Dead End Ritual Chamber",
+      "description": "A cultist and Red argue about acquiring more experiments for a necromantic ring. They attack when alerted.",
+      "source_room_number": 6,
+      "source_room_title": "Dead End Ritual Chamber",
+      "creatures": "Cultist, Red, Skeleton, Skeleton.",
+      "climax_scene": {
+        "faction_conflict": "Miriam (cult leader) vs Red (Pumpkin King enforcer)",
+        "dialog": [
+          "Miriam: 'We fled Greenfields Vale to break this curse! Sacrifices are necessary!'",
+          "Red: 'The Pumpkin King demands tribute. Surrender the ring or face His wrath.'"
+        ],
+        "moral_grayness_signals": {
+          "cult_harm": "Captive villagers in experimentation cells; notes on unwilling subjects",
+          "cult_motive": "Bramble family refugees fleeing tithe; notes on curse reversal attempts",
+          "cult_desperation": "Multiple failed ritual attempts documented; running out of time"
+        },
+        "outcome_choices": {
+          "aid_cult": {
+            "description": "Help Miriam complete counter-ritual",
+            "consequence": "Miriam teaches curse-breaking method; ring fragment absorbed; cultists scatter",
+            "cross_module_impact": "Pumpkin King NPCs hostile in future encounters; Ma flees to warn King",
+            "ring_status": "1 of 2 fragments obtained"
+          },
+          "oppose_cult": {
+            "description": "Side with Red, destroy cult",
+            "consequence": "Cult destroyed; Red rewards with gold; cult reforms elsewhere",
+            "cross_module_impact": "Miriam's ghost haunts later areas; cultists appear as undead",
+            "ring_status": "Ring kept by Red; Pumpkin King pleased"
+          },
+          "negotiate": {
+            "description": "Third Path: negotiate with druid circle",
+            "prerequisite": "Father Aldric's lore OR druid artifacts from Thornwood",
+            "consequence": "Druid circle absorbs curse; no sacrifices needed; both factions leave",
+            "cross_module_impact": "Minimal impact; optional druid spirit ally in future",
+            "ring_status": "Ring given to druid spirits"
+          },
+          "kill_both": {
+            "description": "Kill both Miriam and Red",
+            "consequence": "Cult broken, Pumpkin King angry, both rings lootable",
+            "cross_module_impact": "Both factions hunt party in other modules",
+            "ring_status": "Both rings obtainable"
+          }
+        }
+      }
+    },
+    {
+      "locationId": "NIG07",
+      "name": "Room 100: Conclusion",
+      "description": "The party returns to Ma's Watering Hole after ending the immediate threat. They receive lodging and reward, but larger cult activity may continue.\n\n**Exits:**\n- None",
+      "source_room_number": 100,
+      "source_room_title": "Conclusion",
+      "ending_variants": {
+        "tithe_paid": {
+          "trigger": "Oppose cult ending chosen",
+          "description": "Ma reveals Pumpkin King loyalty; Blarg reports party as 'proven worthy'",
+          "cross_module_hook": "Pumpkin King agents approach party in Thornwood or Greenfields"
+        },
+        "pact_broken": {
+          "trigger": "Aid cult ending chosen",
+          "description": "Ma horrified, flees to warn Pumpkin King; party becomes enemies of the tithe",
+          "cross_module_hook": "Pumpkin King NPCs mention 'traitors who broke the circle'"
+        },
+        "waterdeep_conspiracy": {
+          "trigger": "Save inquisitor in NIG03 and choose lawful resolution",
+          "description": "Inquisitor arrests everyone legally; cult disbanded, Miriam imprisoned",
+          "cross_module_hook": "Waterdeep bounty notices appear in future modules"
+        },
+        "druid_circle": {
+          "trigger": "Negotiate Third Path chosen",
+          "description": "Druid spirits absorb curse; cathedral consecrated; no ongoing threat",
+          "cross_module_hook": "Optional druid ally appears in Thornwood Watch"
+        }
+      }
+    }
+  ]
+}

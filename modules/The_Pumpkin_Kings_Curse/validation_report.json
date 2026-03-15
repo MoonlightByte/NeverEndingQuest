@@ -1,0 +1,13 @@
+{
+  "validation_date": "2025-09-21T21:54:51.193453",
+  "issues": [
+    "NPC 'Elric' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'The Pumpkin King' is referenced in ['module:plotStages'] but not placed in any location"
+  ],
+  "context_summary": {
+    "areas": 6,
+    "npcs": 16,
+    "locations": 0,
+    "plot_points": 4
+  }
+}

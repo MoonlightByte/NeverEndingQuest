@@ -1,0 +1,165 @@
+{
+  "areaId": "HLF001",
+  "areaName": "The Hollow Field",
+  "areaType": "mixed",
+  "areaDescription": "A vast, circular clearing where no crops grow and no grass sprouts, leaving only barren earth marked with strange symbols and ritual circles. At the center rises a massive ring of towering corn stalks, their leaves rustling with an otherworldly whisper despite the absence of wind. The air thrums with malevolent energy, and the very ground seems to pulse with a dark heartbeat. This is where the Pumpkin King holds court, and where the curse that plagues the land must finally be confronted.",
+  "dangerLevel": "extreme",
+  "recommendedLevel": 3,
+  "climate": "temperate",
+  "terrain": "mixed terrain",
+  "map": {
+    "mapId": "MAP_H_1",
+    "mapName": "Mixed Map",
+    "totalRooms": 1,
+    "rooms": [
+      {
+        "id": "AD01",
+        "type": "room",
+        "connections": [],
+        "coordinates": "X1Y1",
+        "directions": {},
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "boss_arena",
+        "landmark": true,
+        "dangerLevel": "extreme",
+        "name": "Circle of Stalks"
+      }
+    ],
+    "layout": [
+      [
+        "AD01"
+      ]
+    ],
+    "startRoom": "AD01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields"
+  },
+  "locations": [
+    {
+      "locationId": "AD01",
+      "name": "Circle of Stalks",
+      "type": "room",
+      "description": "A perfect circle of enormous corn stalks forms a natural arena in the heart of the Hollow Field. Each stalk towers twenty feet high, their leaves sharp as blades and their husks stained with dark, dried blood. Within the circle, the ground is carved with intricate ritual patterns that glow with sickly orange light. At the very center stands a throne made of woven stalks and decorated with countless pumpkins, their carved faces leering with malevolent intelligence. The throne appears sturdy but shows signs of age - perhaps it could be destroyed to weaken the Pumpkin King's power. The air is thick with the scent of rotting vegetation and ancient magic, and shadows dance between the stalks despite the absence of any light source to cast them.",
+      "coordinates": "X1Y1",
+      "connectivity": [],
+      "areaConnectivity": [
+        "The Old Graveyard",
+        "Fields of Supplication"
+      ],
+      "areaConnectivityId": [
+        "Z01",
+        "V15"
+      ],
+      "npcs": [
+        {
+          "name": "The Harvest Witnesses",
+          "description": "Spectral forms of all the villagers who have been claimed by the Pumpkin King's curse over the years. They stand silently around the circle's perimeter, their faces bearing expressions of sorrow and warning. They cannot speak, but their presence serves as a grim reminder of what's at stake.",
+          "attitude": "Mournful and desperate; they silently plead with the party to end the curse and free them from their eternal torment."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "The Pumpkin King",
+          "description": "A towering scarecrow-plant hybrid wreathed in smoke and flame, wielding a burning scythe. Its jack-o'lantern head blazes with unholy fire as it commands the cursed harvest.",
+          "stats": "AC 16, HP 95, Speed 30 ft. STR 18, DEX 10, CON 16, INT 10, WIS 12, CHA 14. Legendary Resistance (1/Day), Fear Aura (DC 13), Regeneration 10 HP/turn unless throne destroyed or fire damage taken after Ember Gourd presented.",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          }
+        },
+        {
+          "name": "Pumpkin Stalkers",
+          "description": "2-4 minions that spawn in waves at 70% and 30% HP. They explode on death dealing 1d6 piercing damage in 5 ft radius.",
+          "stats": "AC 13, HP 22 each, Speed 25 ft. Death Burst: DC 11 DEX save or 1d6 piercing.",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          }
+        }
+      ],
+      "lootTable": [
+        "Crown of the Harvest King (legendary item, grants control over plant creatures)",
+        "Scythe of Crystallized Moonlight (+2 scythe with special properties against evil)",
+        "Seeds of Redemption (can be planted to restore cursed lands)",
+        "Pumpkin King's Heart (magical artifact containing immense power)",
+        "Cloak of Autumn's End (magical cloak that grants resistance to necrotic damage)",
+        "Treasure hoard worth 500 gp (coins and gems from the Pumpkin King's victims)"
+      ],
+      "plotHooks": [
+        "The ritual circle can be disrupted using the Ember Gourd and Old Crone Willa's chant, weakening the Pumpkin King significantly.",
+        "The Harvest Witnesses will aid the party if they can prove their determination to break the curse permanently.",
+        "Destroying the throne of stalks will prevent the Pumpkin King from regenerating and reduce his combat effectiveness.",
+        "The Pumpkin King will summon waves of minions as he weakens, forcing the party to manage multiple threats."
+      ],
+      "dmInstructions": "ENHANCED PUMPKIN KING BOSS FIGHT: Call createEncounter with Pumpkin King (700 XP). THRONE OF STALKS: AC 12, HP 20, vulnerable to fire damage. If destroyed: King gets -2 to attacks/saves. LAIR ACTIONS (Initiative 20): Entangling Vines (STR DC 15 or restrained) OR Ash Gust (CON DC 14 or blinded). WAVE SPAWNS: At 70% HP (67 or below), spawn 2 Pumpkin Stalkers (100 XP each). At 30% HP (29 or below), spawn 2 more Pumpkin Stalkers. EMBER GOURD COUNTER: If party has Awakened Ember Gourd, King has disadvantage on fire saves and takes +1d6 fire damage from fire attacks. On victory: XP is automatically awarded. Call updatePlot to mark module complete.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 18,
+          "disableDC": 20,
+          "triggerDC": 15,
+          "damage": "3d8 necrotic + restrained (ritual circles activate when stepped on, draining life force and binding the victim with spectral vines)",
+          "name": "Necrotic Trap",
+          "description": "A trap that deals 3d8 necrotic + restrained (ritual circles activate when stepped on, draining life force and binding the victim with spectral vines) damage (DC 18 to detect)."
+        }
+      ],
+      "dcChecks": [
+        "Arcana DC 18: Understand how to disrupt the ritual circles using the Ember Gourd for maximum effect.",
+        "Religion DC 16: Recall the proper words to Willa's chant that can weaken the Pumpkin King.",
+        "Perception DC 15: Notice weak points in the throne structure that can be exploited.",
+        "Nature DC 14: Recognize which plants in the arena are natural and which are magically animated.",
+        "Tactics DC 13: Identify the optimal strategy for dealing with waves of minions while fighting the boss."
+      ],
+      "accessibility": "The arena is completely enclosed by the circle of stalks; the only way out is victory or defeat.",
+      "dangerLevel": "Extreme",
+      "features": [
+        {
+          "name": "Throne of Stalks (Destructible)",
+          "description": "A grotesque seat of power woven from corn stalks and decorated with leering jack-o'-lanterns. AC 12, HP 20, vulnerable to fire damage. Destroying it weakens the Pumpkin King significantly."
+        },
+        {
+          "name": "Ritual Circles",
+          "description": "Glowing magical patterns carved into the earth that channel the Pumpkin King's power and serve as targets for lair actions."
+        },
+        {
+          "name": "Towering Corn Wall",
+          "description": "Twenty-foot-tall corn stalks that form an impenetrable barrier around the arena, trapping combatants within."
+        },
+        {
+          "name": "Spectral Gallery",
+          "description": "The ghostly forms of the Pumpkin King's victims, standing as silent witnesses to the final confrontation."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "roleplay",
+          "description": "Final confrontation dialogue with the Pumpkin King, where the party can attempt to reason with him or taunt him into making mistakes."
+        },
+        {
+          "type": "combat",
+          "description": "Epic final boss battle with lair actions at initiative 20, wave spawns at 70% and 30% HP, destructible throne, and Ember Gourd special mechanics."
+        },
+        {
+          "type": "puzzle",
+          "description": "Using the Ember Gourd, Willa's chant, and tactical destruction of the throne to disrupt the Pumpkin King's power sources during combat."
+        }
+      ],
+      "adventureSummary": "The ultimate confrontation where the party faces the source of all the region's troubles and determines the fate of every soul caught in the curse's web."
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-100",
+      "encounter": "final test",
+      "description": "No random encounters - this area is dedicated entirely to the climactic final boss battle"
+    }
+  ],
+  "areaFeatures": [
+    "ritual circles",
+    "cursed ground",
+    "boss arena"
+  ],
+  "notes": "This area is the culmination of the entire module. Every choice the party has made, every ally they've gained, and every secret they've uncovered should factor into this final encounter. Victory here breaks the curse and frees the land; defeat means the curse spreads and the Pumpkin King's power grows."
+}

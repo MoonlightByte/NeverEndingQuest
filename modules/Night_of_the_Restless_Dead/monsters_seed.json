@@ -1,0 +1,11 @@
+{
+  "module_slug": "Night_of_the_Restless_Dead",
+  "generated_at": "2026-03-05T14:12:05.874822",
+  "source": "deterministic_import_extraction",
+  "monsters": [
+    "Giant Spider",
+    "Skeleton",
+    "Zombie"
+  ],
+  "count": 3
+}
