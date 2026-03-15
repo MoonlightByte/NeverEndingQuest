@@ -35,9 +35,12 @@ def expects_json_output(messages, caller_kwargs=None):
         True if JSON output is expected
     """
     # Explicit response_format from original call
-    if (caller_kwargs is not None
-            and caller_kwargs.get("response_format", {}).get("type") == "json_object"):
-        return True
+    if caller_kwargs is not None:
+        rf = caller_kwargs.get("response_format")
+        if isinstance(rf, dict) and rf.get("type") == "json_object":
+            return True
+        if rf is None and "response_format" in caller_kwargs:
+            return False  # Explicit None = plain text, skip heuristic
 
     # Check system prompt for JSON indicators
     for msg in messages:
@@ -106,7 +109,10 @@ def call_openai_variant(variant, messages, caller_temperature=None, caller_kwarg
 
     # Pass through response_format if original call used it
     if caller_kwargs and "response_format" in caller_kwargs:
-        params["response_format"] = caller_kwargs["response_format"]
+        rf = caller_kwargs["response_format"]
+        if rf is not None:
+            params["response_format"] = rf
+        # else: response_format=None means plain text -- don't add to params
     # Otherwise, auto-detect JSON-expecting calls and force JSON mode
     elif expects_json_output(messages, caller_kwargs):
         params["response_format"] = {"type": "json_object"}

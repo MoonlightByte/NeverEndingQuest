@@ -477,6 +477,45 @@ class TestResponseFormat(unittest.TestCase):
         rf = call_args.kwargs.get("response_format")
         self.assertEqual(rf, {"type": "json_object"})
 
+    @patch("core.ai.api_client._gemini_completion")
+    def test_gemini_json_mode_default(self, mock_gemini):
+        """Gemini path: no response_format -> JSON mode (default)."""
+        model_config.MODEL_PROVIDER = "gemini"
+        mock_gemini.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content='{"test": true}'))],
+            usage=MagicMock(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+        )
+
+        create_completion(
+            messages=[{"role": "user", "content": "test"}],
+            model="gemini-3.1-pro-preview",
+            temperature=0.7,
+        )
+
+        # _gemini_completion should be called with response_format=_UNSET
+        call_args = mock_gemini.call_args
+        from core.ai.api_client import _UNSET
+        self.assertIs(call_args.kwargs.get("response_format"), _UNSET)
+
+    @patch("core.ai.api_client._gemini_completion")
+    def test_gemini_json_mode_suppressed_when_none(self, mock_gemini):
+        """Gemini path: response_format=None -> no JSON mode."""
+        model_config.MODEL_PROVIDER = "gemini"
+        mock_gemini.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content='plain text'))],
+            usage=MagicMock(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+        )
+
+        create_completion(
+            messages=[{"role": "user", "content": "test"}],
+            model="gemini-3.1-pro-preview",
+            temperature=0.7,
+            response_format=None,
+        )
+
+        call_args = mock_gemini.call_args
+        self.assertIsNone(call_args.kwargs.get("response_format"))
+
 
 if __name__ == "__main__":
     unittest.main()

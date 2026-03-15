@@ -115,9 +115,12 @@ def expects_json_output(system_instruction, caller_kwargs=None):
         True if JSON output is expected
     """
     # Explicit response_format from original call
-    if (caller_kwargs is not None
-            and caller_kwargs.get("response_format", {}).get("type") == "json_object"):
-        return True
+    if caller_kwargs is not None:
+        rf = caller_kwargs.get("response_format")
+        if isinstance(rf, dict) and rf.get("type") == "json_object":
+            return True
+        if rf is None and "response_format" in caller_kwargs:
+            return False  # Explicit None = plain text, skip heuristic
 
     # Check system prompt for JSON indicators
     if system_instruction:

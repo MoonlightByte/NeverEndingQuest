@@ -323,10 +323,12 @@ def _gemini_completion(messages, model, temperature, response_format=_UNSET, **k
     # Temperature -- per CLAUDE.md, do NOT set temperature for Gemini.
     # Gemini defaults to 1.0 and is optimized for that.
 
-    # JSON mode: translate from OpenAI response_format convention
-    if response_format is _UNSET or response_format is not None:
+    # JSON mode: default ON (_UNSET), respect explicit JSON format, skip for None (plain text)
+    if response_format is _UNSET:
         config_kwargs["response_mime_type"] = "application/json"
-    # else: response_format=None means plain text (no JSON mode)
+    elif isinstance(response_format, dict) and response_format.get("type") in ("json_object", "json_schema"):
+        config_kwargs["response_mime_type"] = "application/json"
+    # else: response_format=None or unrecognized format means plain text (no JSON mode)
 
     # max_output_tokens (translated from max_tokens)
     if max_tokens is not None:
