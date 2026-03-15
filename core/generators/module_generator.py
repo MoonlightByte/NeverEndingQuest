@@ -407,18 +407,33 @@ def validate_module_structure(module_name):
     # Ensure module name uses underscores for directory path
     module_name_safe = module_name.replace(" ", "_")
     module_dir = f"modules/{module_name_safe}"
+
+    if not os.path.isdir(module_dir):
+        return [f"Missing module directory: {module_dir}"]
     
     # Check for required directories
-    for required_dir in ["npcs", "monsters"]:
-        if not os.path.exists(f"{module_dir}/{required_dir}"):
-            issues.append(f"Missing required directory: {required_dir}")
+    monsters_dir = os.path.join(module_dir, "monsters")
+    if not os.path.isdir(monsters_dir):
+        issues.append("Missing required directory: monsters")
     
-    # Check area files
+    # Check area files (primary layout: modules/<module>/areas/*.json)
     area_files = []
-    for file in os.listdir(module_dir):
-        if file.endswith(".json") and not file.startswith("map_") and not file.startswith("plot_"):
-            if file != f"{module_name.replace(' ', '_')}_module.json" and file != "party_tracker.json":
-                area_files.append(file)
+    area_dir = os.path.join(module_dir, "areas")
+    if os.path.isdir(area_dir):
+        for file in os.listdir(area_dir):
+            if not file.endswith(".json"):
+                continue
+            if file.endswith(".bak") or ".backup_" in file:
+                continue
+            area_files.append(file)
+    else:
+        # Legacy fallback: flat module root area files
+        for file in os.listdir(module_dir):
+            if file.endswith(".json") and not file.startswith("map_") and not file.startswith("plot_"):
+                if file != f"{module_name.replace(' ', '_')}_module.json" and file != "party_tracker.json":
+                    if file.endswith(".bak") or ".backup_" in file:
+                        continue
+                    area_files.append(file)
     
     if not area_files:
         issues.append("No area files found")
@@ -426,7 +441,8 @@ def validate_module_structure(module_name):
     # Check each area file
     for area_file in area_files:
         try:
-            with open(f"{module_dir}/{area_file}", "r") as f:
+            area_file_path = os.path.join(area_dir, area_file) if os.path.isdir(area_dir) else os.path.join(module_dir, area_file)
+            with open(area_file_path, "r") as f:
                 area_data = json.load(f)
                 
             # Check required fields
@@ -437,11 +453,6 @@ def validate_module_structure(module_name):
             # Check locations
             if "locations" in area_data and not area_data["locations"]:
                 issues.append(f"Area file {area_file} has empty locations array")
-            
-            # Check for corresponding map file
-            area_id = area_data.get("areaId", "")
-            if area_id and not os.path.exists(f"{module_dir}/map_{area_id}.json"):
-                issues.append(f"Missing map file for area: {area_id}")
             
             # Individual plot files no longer used - centralized module_plot.json handles all plots
             # Validation removed for individual plot files
