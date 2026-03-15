@@ -177,9 +177,60 @@ echo.
 REM Copy extracted contents to install directory
 echo [INFO] Installing to %INSTALL_DIR%...
 
-REM The extracted folder will be named like "NeverEndingQuest-TTRPG-main"
+REM Resolve extracted source folder (expected: NeverEndingQuest-TTRPG-main)
+set "EXTRACTED_SOURCE="
 for /d %%I in ("%TEMP_EXTRACT%\%REPO_NAME%-*") do (
-    xcopy /E /Y "%%I\*" "%INSTALL_DIR%\" >nul 2>&1
+    set "EXTRACTED_SOURCE=%%~fI"
+    goto :FOUND_EXTRACTED_SOURCE
+)
+
+:FOUND_EXTRACTED_SOURCE
+if not defined EXTRACTED_SOURCE (
+    echo ERROR: Could not locate extracted source folder in %TEMP_EXTRACT%
+    echo.
+    echo Extraction appears incomplete. Please rerun installer.
+    pause
+    exit /b 1
+)
+
+echo [INFO] Source folder: !EXTRACTED_SOURCE!
+
+REM Copy extracted files into install directory (non-destructive, no delete/mirror)
+where robocopy >nul 2>&1
+if %errorlevel% equ 0 (
+    echo [INFO] Copying files with robocopy...
+    robocopy "!EXTRACTED_SOURCE!" "%INSTALL_DIR%" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >nul
+    set "COPY_RC=!errorlevel!"
+    if !COPY_RC! geq 8 (
+        echo ERROR: File copy failed via robocopy (exit code !COPY_RC!).
+        pause
+        exit /b 1
+    )
+) else (
+    echo [INFO] Robocopy not available. Falling back to xcopy...
+    xcopy "!EXTRACTED_SOURCE!\*" "%INSTALL_DIR%\" /E /I /Y >nul
+    if %errorlevel% geq 1 (
+        echo ERROR: File copy failed via xcopy.
+        pause
+        exit /b 1
+    )
+)
+
+REM Verify required files exist before continuing
+set "MISSING_CORE_FILES="
+for %%F in (requirements.txt run_web.py VERSION config_template.py) do (
+    if not exist "%INSTALL_DIR%\%%F" (
+        set "MISSING_CORE_FILES=!MISSING_CORE_FILES! %%F"
+    )
+)
+
+if defined MISSING_CORE_FILES (
+    echo ERROR: Installation copy incomplete. Missing required files: !MISSING_CORE_FILES!
+    echo.
+    echo Install folder: %INSTALL_DIR%
+    echo Source folder: !EXTRACTED_SOURCE!
+    pause
+    exit /b 1
 )
 
 REM Cleanup temp files
