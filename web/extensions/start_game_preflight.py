@@ -13,6 +13,7 @@ Commercial competing use is prohibited for 2 years from release.
 See LICENSE file for full terms.
 """
 
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -38,6 +39,33 @@ def _build_payload(
     }
 
 
+def _build_bootstrap_payload(reason: str) -> Dict[str, Any]:
+    """Build pass payload for first-run startup bootstrap flow.
+
+    This allows Start Game to continue into startup wizard initialization
+    when campaign state is not yet established.
+    """
+    return _build_payload(
+        status="pass",
+        module_name="",
+        reference_failed=0,
+        reference_errors=[],
+        message=(
+            "[SYSTEM] Startup bootstrap required. "
+            f"Proceeding to setup wizard ({reason})."
+        ),
+    )
+
+
+def _normalize_character_filename(character_name: str) -> str:
+    """Return deterministic character filename slug for bootstrap checks."""
+    normalized = str(character_name or "").strip().lower()
+    normalized = normalized.replace("'", "_")
+    normalized = re.sub(r"[^a-z0-9]+", "_", normalized)
+    normalized = re.sub(r"_+", "_", normalized).strip("_")
+    return normalized
+
+
 def _run_module_validation(module_path: Path) -> tuple[int, List[str]]:
     """Run validation and return normalized reference_integrity result.
 
@@ -48,7 +76,19 @@ def _run_module_validation(module_path: Path) -> tuple[int, List[str]]:
     validator.run_all_validations()
 
     ref_int = validator.results.get("reference_integrity", {})
-    failed_count = int(ref_int.get("failed", 0) or 0)
+    if not isinstance(ref_int, dict):
+        ref_int = {}
+    failed_raw = ref_int.get("failed", 0)
+    failed_count = 0
+    if isinstance(failed_raw, int):
+        failed_count = failed_raw
+    elif isinstance(failed_raw, float):
+        failed_count = int(failed_raw)
+    elif isinstance(failed_raw, str):
+        try:
+            failed_count = int(failed_raw or "0")
+        except ValueError:
+            failed_count = 0
     errors = ref_int.get("errors", [])
 
     if not isinstance(errors, list):
@@ -106,11 +146,12 @@ def run_start_game_module_preflight() -> Dict[str, Any]:
     """Run module validation preflight for start_game with one remediation attempt.
 
     Terminal status contract (MUST):
-    - "pass": Initial validation success, no remediation needed.
+    - "pass": Initial validation success, no remediation needed, OR
+      startup bootstrap needed for first-run setup.
     - "repaired_pass": Initial validation failed, one remediation attempted,
       and re-validation passed.
-    - "fail": Any terminal failure condition including missing party tracker,
-      missing module, unresolved references after remediation, or unexpected errors.
+    - "fail": Terminal validation failures after campaign state is present,
+      unresolved references after remediation, or unexpected errors.
 
     Payload keys:
     - status: one of "pass" | "repaired_pass" | "fail"
@@ -128,31 +169,45 @@ def run_start_game_module_preflight() -> Dict[str, Any]:
     try:
         party_tracker = safe_read_json("party_tracker.json")
         if not party_tracker:
-            warning(
-                "Start-game preflight: party_tracker.json missing or unreadable",
+            info(
+                "Start-game preflight: startup bootstrap required (party_tracker missing)",
                 category="module_validation",
             )
-            return _build_payload(
-                status="fail",
-                module_name="",
-                reference_failed=0,
-                reference_errors=[],
-                message="[SYSTEM] Module preflight failed: party tracker missing or unreadable. Ensure a campaign is active.",
-            )
+            return _build_bootstrap_payload("missing party tracker")
 
         raw_module = str(party_tracker.get("module", "")).strip()
+        party_members = party_tracker.get("partyMembers", [])
+
         if not raw_module:
-            warning(
-                "Start-game preflight: no module set in party tracker",
+            info(
+                "Start-game preflight: startup bootstrap required (module missing)",
                 category="module_validation",
             )
-            return _build_payload(
-                status="fail",
-                module_name="",
-                reference_failed=0,
-                reference_errors=[],
-                message="[SYSTEM] Module preflight failed: no active module selected. Select a module in Settings before starting.",
+            return _build_bootstrap_payload("no active module")
+
+        if not isinstance(party_members, list) or len(party_members) == 0:
+            info(
+                "Start-game preflight: startup bootstrap required (party members missing)",
+                category="module_validation",
             )
+            return _build_bootstrap_payload("no party members")
+
+        primary_member = str(party_members[0]).strip()
+        if not primary_member:
+            info(
+                "Start-game preflight: startup bootstrap required (primary member empty)",
+                category="module_validation",
+            )
+            return _build_bootstrap_payload("invalid primary member")
+
+        primary_slug = _normalize_character_filename(primary_member)
+        primary_path = Path("characters") / f"{primary_slug}.json"
+        if not primary_slug or not primary_path.exists():
+            info(
+                "Start-game preflight: startup bootstrap required (primary character file missing)",
+                category="module_validation",
+            )
+            return _build_bootstrap_payload("missing primary character file")
 
         module_name = raw_module.replace(" ", "_")
         module_path = Path("modules") / module_name

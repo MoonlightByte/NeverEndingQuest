@@ -519,7 +519,7 @@ if not exist "%INSTALL_DIR%" (
 for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"`) do set "REPAIR_TS=%%i"
 if not defined REPAIR_TS set "REPAIR_TS=%date%_%time%"
 
-set "BACKUP_SOURCE=%REPAIR_BACKUP_ROOT%\repair_!REPAIR_TS!\full_install_backup"
+set "BACKUP_SOURCE=%REPAIR_BACKUP_ROOT%\repair_!REPAIR_TS!\runtime_state_backup"
 if not exist "%REPAIR_BACKUP_ROOT%" mkdir "%REPAIR_BACKUP_ROOT%"
 mkdir "%REPAIR_BACKUP_ROOT%\repair_!REPAIR_TS!" >nul 2>&1
 
@@ -529,13 +529,49 @@ echo Repair timestamp: !REPAIR_TS!> "%REPAIR_BACKUP_ROOT%\repair_!REPAIR_TS!\rep
 echo Install path: %INSTALL_DIR%>> "%REPAIR_BACKUP_ROOT%\repair_!REPAIR_TS!\repair_manifest.txt"
 echo Reason: !REPAIR_REASON!>> "%REPAIR_BACKUP_ROOT%\repair_!REPAIR_TS!\repair_manifest.txt"
 echo Repo: %REPO_URL%>> "%REPAIR_BACKUP_ROOT%\repair_!REPAIR_TS!\repair_manifest.txt"
+echo Backup scope: runtime_state_only>> "%REPAIR_BACKUP_ROOT%\repair_!REPAIR_TS!\repair_manifest.txt"
 
-robocopy "%INSTALL_DIR%" "!BACKUP_SOURCE!" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XD ".git" "venv" "__pycache__" ".pytest_cache" ".mypy_cache" ".ruff_cache" >nul
-set "BACKUP_RC=!errorlevel!"
-if !BACKUP_RC! geq 8 (
-    echo ERROR: Backup copy failed with robocopy exit code !BACKUP_RC!.
-    exit /b 1
+REM Backup important root runtime files
+for %%F in (config.py party_tracker.json current_location.json journal.json chronology.json player_storage.json training_data.json) do (
+    call :CopyFileIfExists "%INSTALL_DIR%\%%F" "!BACKUP_SOURCE!\%%F"
 )
+
+REM Backup conversation and encounter state directories
+call :CopyDirIfExists "%INSTALL_DIR%\characters" "!BACKUP_SOURCE!\characters"
+call :CopyDirIfExists "%INSTALL_DIR%\web\static\portraits" "!BACKUP_SOURCE!\web\static\portraits"
+call :CopyDirIfExists "%INSTALL_DIR%\modules\conversation_history" "!BACKUP_SOURCE!\modules\conversation_history"
+call :CopyDirIfExists "%INSTALL_DIR%\modules\encounters" "!BACKUP_SOURCE!\modules\encounters"
+call :CopyDirIfExists "%INSTALL_DIR%\modules\campaign_archives" "!BACKUP_SOURCE!\modules\campaign_archives"
+call :CopyDirIfExists "%INSTALL_DIR%\modules\campaign_summaries" "!BACKUP_SOURCE!\modules\campaign_summaries"
+
+REM Backup module-specific runtime state
+if exist "%INSTALL_DIR%\modules" (
+    for /d %%M in ("%INSTALL_DIR%\modules\*") do (
+        set "MOD_NAME=%%~nxM"
+
+        call :CopyDirIfExists "%%~fM\encounters" "!BACKUP_SOURCE!\modules\!MOD_NAME!\encounters"
+        call :CopyDirIfExists "%%~fM\saved_games" "!BACKUP_SOURCE!\modules\!MOD_NAME!\saved_games"
+        call :CopyDirIfExists "%%~fM\characters" "!BACKUP_SOURCE!\modules\!MOD_NAME!\characters"
+        call :CopyDirIfExists "%%~fM\portraits" "!BACKUP_SOURCE!\modules\!MOD_NAME!\portraits"
+
+        call :CopyFileIfExists "%%~fM\module_plot.json" "!BACKUP_SOURCE!\modules\!MOD_NAME!\module_plot.json"
+
+        if exist "%%~fM\areas" (
+            for %%A in ("%%~fM\areas\*.json") do (
+                if exist "%%~fA" call :CopyFileIfExists "%%~fA" "!BACKUP_SOURCE!\modules\!MOD_NAME!\areas\%%~nxA"
+            )
+        )
+
+        for %%Q in ("%%~fM\player_quests_*.json") do (
+            if exist "%%~fQ" call :CopyFileIfExists "%%~fQ" "!BACKUP_SOURCE!\modules\!MOD_NAME!\%%~nxQ"
+        )
+    )
+)
+
+REM Backup memory DB and sidecars
+call :CopyFileIfExists "%INSTALL_DIR%\data\memory.db" "!BACKUP_SOURCE!\data\memory.db"
+call :CopyFileIfExists "%INSTALL_DIR%\data\memory.db-wal" "!BACKUP_SOURCE!\data\memory.db-wal"
+call :CopyFileIfExists "%INSTALL_DIR%\data\memory.db-shm" "!BACKUP_SOURCE!\data\memory.db-shm"
 
 echo [OK] Repair backup complete
 exit /b 0
@@ -590,6 +626,17 @@ if exist "!BACKUP_SOURCE!\data\memory.db-wal" copy /Y "!BACKUP_SOURCE!\data\memo
 if exist "!BACKUP_SOURCE!\data\memory.db-shm" copy /Y "!BACKUP_SOURCE!\data\memory.db-shm" "%INSTALL_DIR%\data\memory.db-shm" >nul
 
 echo [OK] Runtime restore completed
+exit /b 0
+
+:CopyFileIfExists
+if not exist "%~1" exit /b 0
+for %%D in ("%~2") do (
+    if not exist "%%~dpD" mkdir "%%~dpD" >nul 2>&1
+)
+copy /Y "%~1" "%~2" >nul
+if errorlevel 1 (
+    echo [WARNING] Could not back up file: %~1
+)
 exit /b 0
 
 :CopyDirIfExists

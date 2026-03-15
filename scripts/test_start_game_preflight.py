@@ -10,7 +10,7 @@ Tests three terminal scenarios:
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -26,7 +26,7 @@ class TestStartGamePreflightOutcomes(unittest.TestCase):
 
     def _build_party_tracker(self, module: str = "TestModule") -> dict:
         """Build a mock party tracker with specified module."""
-        return {"module": module}
+        return {"module": module, "partyMembers": ["TestHero"]}
 
     @patch("web.extensions.start_game_preflight.Path")
     @patch("web.extensions.start_game_preflight.safe_read_json")
@@ -203,7 +203,7 @@ class TestStartGamePreflightPayloadContract(unittest.TestCase):
     @patch("web.extensions.start_game_preflight._run_module_validation")
     def test_payload_keys_present_in_pass(self, mock_validate, mock_read_json, mock_path):
         """Verify all payload keys present in pass scenario."""
-        mock_read_json.return_value = {"module": "TestMod"}
+        mock_read_json.return_value = {"module": "TestMod", "partyMembers": ["TestHero"]}
         mock_validate.return_value = (0, [])
         mock_path.return_value.exists.return_value = True
 
@@ -222,7 +222,7 @@ class TestStartGamePreflightPayloadContract(unittest.TestCase):
         self, mock_validate, mock_read_json, mock_path, mock_remediate
     ):
         """Verify all payload keys present in fail scenario (deterministic, no side effects)."""
-        mock_read_json.return_value = {"module": "TestMod"}
+        mock_read_json.return_value = {"module": "TestMod", "partyMembers": ["TestHero"]}
         # Return unresolved on both calls to trigger fail path
         mock_validate.side_effect = [(3, ["e1", "e2", "e3"]), (3, ["e1", "e2", "e3"])]
         mock_path.return_value.exists.return_value = True
@@ -251,7 +251,7 @@ class TestStartGamePreflightPayloadContract(unittest.TestCase):
         - Result: status="fail", but remediation called exactly once
         """
         # Arrange
-        mock_read_json.return_value = {"module": "TestMod"}
+        mock_read_json.return_value = {"module": "TestMod", "partyMembers": ["TestHero"]}
         initial_errors = ["a", "b", "c", "d"]
         remaining_errors = ["c", "d"]
         mock_validate.side_effect = [(4, initial_errors), (2, remaining_errors)]
@@ -322,6 +322,71 @@ class TestStartGameFailGateContract(unittest.TestCase):
         expected_fallback = "[SYSTEM] Module preflight failed. Combat startup blocked."
         self.assertIn(expected_fallback, self.source,
                       f"Fallback message contract must be present: {expected_fallback}")
+
+
+class TestStartGamePreflightBootstrapBypass(unittest.TestCase):
+    """Bootstrap-aware preflight tests for first-run setup states."""
+
+    @patch("web.extensions.start_game_preflight.safe_read_json")
+    @patch("web.extensions.start_game_preflight._run_module_validation")
+    def test_missing_party_tracker_allows_startup_bootstrap(self, mock_validate, mock_read_json):
+        """Missing tracker should bypass hard-fail and allow startup wizard."""
+        mock_read_json.return_value = None
+
+        from web.extensions.start_game_preflight import run_start_game_module_preflight
+
+        result = run_start_game_module_preflight()
+
+        self.assertEqual(result["status"], "pass")
+        self.assertIn("bootstrap", result["message"].lower())
+        mock_validate.assert_not_called()
+
+    @patch("web.extensions.start_game_preflight.safe_read_json")
+    @patch("web.extensions.start_game_preflight._run_module_validation")
+    def test_blank_module_allows_startup_bootstrap(self, mock_validate, mock_read_json):
+        """Blank module should bypass hard-fail and allow startup wizard."""
+        mock_read_json.return_value = {"module": "", "partyMembers": ["TestHero"]}
+
+        from web.extensions.start_game_preflight import run_start_game_module_preflight
+
+        result = run_start_game_module_preflight()
+
+        self.assertEqual(result["status"], "pass")
+        self.assertIn("bootstrap", result["message"].lower())
+        mock_validate.assert_not_called()
+
+    @patch("web.extensions.start_game_preflight.safe_read_json")
+    @patch("web.extensions.start_game_preflight._run_module_validation")
+    def test_empty_party_members_allows_startup_bootstrap(self, mock_validate, mock_read_json):
+        """Empty party should bypass hard-fail and allow startup wizard."""
+        mock_read_json.return_value = {"module": "TestModule", "partyMembers": []}
+
+        from web.extensions.start_game_preflight import run_start_game_module_preflight
+
+        result = run_start_game_module_preflight()
+
+        self.assertEqual(result["status"], "pass")
+        self.assertIn("bootstrap", result["message"].lower())
+        mock_validate.assert_not_called()
+
+    @patch("web.extensions.start_game_preflight.safe_read_json")
+    @patch("web.extensions.start_game_preflight._run_module_validation")
+    def test_missing_primary_character_file_allows_startup_bootstrap(
+        self, mock_validate, mock_read_json
+    ):
+        """Missing primary PC file should bypass hard-fail and allow startup wizard."""
+        mock_read_json.return_value = {
+            "module": "TestModule",
+            "partyMembers": ["DefinitelyMissingCharacterForBootstrapTest"],
+        }
+
+        from web.extensions.start_game_preflight import run_start_game_module_preflight
+
+        result = run_start_game_module_preflight()
+
+        self.assertEqual(result["status"], "pass")
+        self.assertIn("bootstrap", result["message"].lower())
+        mock_validate.assert_not_called()
 
 
 if __name__ == "__main__":
