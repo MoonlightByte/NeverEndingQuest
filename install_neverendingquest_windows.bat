@@ -365,10 +365,9 @@ echo.
 echo The game runs at: http://localhost:8357
 echo.
 
-echo Press any key to launch the game now...
+echo Press any key to start the server now...
 pause >nul
 
-start http://localhost:8357
 venv\Scripts\python run_web.py
 
 ENDLOCAL
