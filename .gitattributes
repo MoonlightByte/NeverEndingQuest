@@ -1,0 +1,10 @@
+# NeverEndingQuest - Git Attributes
+# Force Windows CRLF line endings for batch files (required by cmd.exe)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Treat shell scripts as LF (Unix standard)
+*.sh text eol=lf
+
+# Auto-detect text files (default behavior)
+* text=auto
