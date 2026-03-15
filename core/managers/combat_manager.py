@@ -2612,8 +2612,9 @@ Focus on mechanical accuracy for the actions. For narrative_highlights, extract 
                 {"role": "system", "content": "You are a combat log analyzer. Extract mechanical game information and key narrative moments. Always return valid JSON."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.1,
-            response_format={"type": "json_object"}
+            temperature=0.1
+            # Note: response_format removed for LM Studio compatibility
+            # The prompt already instructs the model to return JSON
         )
         
         # Track usage with context for telemetry

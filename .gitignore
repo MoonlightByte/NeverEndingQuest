@@ -198,6 +198,9 @@ test_*.py
 !scripts/legacy/
 !scripts/legacy/test_*.py
 
+# Reference documents (local working docs, do not commit)
+docs/reference/
+
 # Documentation files (keep core docs, exclude development plans)
 *_plan.md
 *_analysis.md
@@ -235,7 +238,7 @@ training_data.json
 
 # OpenAI capture and training scripts (working solution)
 openai_forwarder.py
-openai_patcher.py
+# openai_patcher.py - REMOVED FROM IGNORE: needed for LM Studio integration
 start_forwarder.sh
 run_game_with_capture.sh
 run_game_with_capture.bat
