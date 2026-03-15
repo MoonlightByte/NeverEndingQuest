@@ -33,6 +33,10 @@ from core.managers.status_manager import (
 from utils.ai_client_factory import create_chat_client, get_chat_model_name
 from utils.character_creation_audit import AUDIT_RESULT_SUCCESS, audit_character_creation
 from utils.spell_slot_utils import normalize_character_spell_slots
+from utils.runtime_hydration import (
+    hydrate_missing_live_area_files_from_bu,
+    hydrate_missing_module_plot_files_from_bu,
+)
 
 # Set script name for logging
 set_script_name("startup_wizard")
@@ -101,26 +105,35 @@ STARTUP_CONVERSATION_FILE = "modules/conversation_history/startup_conversation.j
 # ===== MAIN ORCHESTRATION =====
 
 def initialize_game_files_from_bu():
-    """Initialize game files from BU templates if they don't exist"""
+    """Initialize missing live files from BU templates.
+
+    Area hydration is handled first via deterministic helper logic.
+    Non-area BU hydration is retained for backward compatibility.
+    """
     initialized_count = 0
-    
-    # Find all BU files in modules directory
-    for bu_file in Path("modules").rglob("*_BU.json"):
-        # Skip files in saved_games directories
+
+    area_result = hydrate_missing_live_area_files_from_bu("modules")
+    initialized_count += int(area_result.get("restored", 0))
+
+    plot_result = hydrate_missing_module_plot_files_from_bu("modules")
+    initialized_count += int(plot_result.get("restored", 0))
+
+    # Preserve legacy non-area BU hydration behavior.
+    bu_files = sorted(Path("modules").rglob("*_BU.json"), key=lambda path: str(path).lower())
+    for bu_file in bu_files:
         if "saved_games" in str(bu_file):
             continue
-            
-        # Determine the corresponding live file name
+        if "areas" in bu_file.parts:
+            continue
+
         live_file = str(bu_file).replace("_BU.json", ".json")
-        
-        # Only copy if the live file doesn't exist
         if not os.path.exists(live_file):
             try:
                 shutil.copy2(bu_file, live_file)
                 initialized_count += 1
             except Exception as e:
                 warning(f"Failed to initialize {live_file}: {e}", category="startup")
-    
+
     return initialized_count
 
 def run_startup_sequence():

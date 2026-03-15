@@ -1021,6 +1021,96 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Module Data Git-Fix Runtime/Canonical Split + Update-Safe Verification (COMPLETED - 2026-03-15)
+
+**Status:** COMPLETED - OpenSpec change archived, plan moved to archive, and verification gates closed
+
+**OpenSpec Archive:**
+- `openspec/changes/archive/2026-03-15-module-data-git-fix/`
+
+**Objective:**
+Eliminate Git-install poisoning from gameplay-mutated module files by separating canonical shipped content (`*_BU`) from runtime live state, while proving startup/reset recovery and update workflows remain reliable.
+
+**Implementation Summary:**
+- Canonical backup completion:
+  - Added missing Night canonical backups and tracked them:
+    - `modules/Night_of_the_Restless_Dead/areas/NIG001_BU.json`
+    - `modules/Night_of_the_Restless_Dead/module_plot_BU.json`
+- Runtime hydration hardening:
+  - Added deterministic area/plot hydration helpers in `utils/runtime_hydration.py`
+  - Updated startup hydration orchestration in `utils/startup_wizard.py`
+  - Hardened derived quest projection regeneration in `utils/quest_player_formatter.py`
+  - Hardened plot data consumer fallback/regeneration path in `web/extensions/tabletop_socket_handlers.py`
+- Tracking-boundary cleanup:
+  - Updated `.gitignore` to treat live runtime module families as untracked (`areas/*.json`, `module_plot.json`, `player_quests_*.json`) while preserving `_BU` canonical exceptions
+  - Removed tracked live runtime module JSON families from index (kept files on disk)
+  - Confirmed no tracked root runtime cruft remained
+- Update-safe verification:
+  - Added deterministic regression/smoke suites:
+    - `scripts/test_module_data_git_fix_bootstrap_contract.py`
+    - `scripts/test_runtime_area_hydration.py`
+    - `scripts/test_player_quests_regeneration.py`
+    - `scripts/test_runtime_playable_state_recovery.py`
+    - `scripts/test_git_install_runtime_cleanliness.py`
+    - `scripts/test_git_update_workflow_ready.py`
+  - Verified local ff-only update remains available after ordinary runtime gameplay mutations in isolated Git topology
+
+**Verification:**
+- Step 5.1 regression gate: PASS
+- Step 5.2 fresh-clone cleanliness smoke: PASS
+- Step 5.3 ff-only update workflow verification: PASS
+- Final OpenSpec validation: PASS
+- New main specs validated:
+  - `git-install-runtime-state-separation`
+  - `git-install-update-safe-gameplay`
+  - `module-runtime-state-hydration`
+
+**Spec Sync:**
+- `openspec/specs/git-install-runtime-state-separation/spec.md` (new)
+- `openspec/specs/git-install-update-safe-gameplay/spec.md` (new)
+- `openspec/specs/module-runtime-state-hydration/spec.md` (new)
+
+**Plan Archive:**
+- Moved `plans/module-data-git-fix.md` -> `plans/archive/module-data-git-fix.md`
+
+### Windows Installer Rerun Reliability + Startup Bootstrap Gate Fixes (COMPLETED - 2026-03-15)
+
+**Status:** COMPLETED - gametester update path hardening and startup preflight bootstrap alignment
+
+**Objective:**
+Resolve two live operations blockers for non-technical Windows gametesters:
+- Installer rerun failures caused by unsafe batch-file line ending handling on download
+- Start Game hard-fail when campaign bootstrap state is missing after install/repair
+
+**Implementation Summary:**
+- Windows batch download safety:
+  - Added `.gitattributes` rules to preserve CRLF bytes for `*.bat` and `*.cmd` in-repo (`-text`) so GitHub raw downloads remain `cmd.exe` safe
+  - Normalized `install_neverendingquest_windows.bat` to CRLF and preserved command-extension startup guard
+- Startup preflight bootstrap behavior:
+  - Updated `web/extensions/start_game_preflight.py` to return bootstrap `pass` (not `fail`) for first-run conditions:
+    - missing/unreadable `party_tracker.json`
+    - missing module
+    - missing/empty `partyMembers`
+    - missing primary character file
+  - Added `_build_bootstrap_payload()` and deterministic character filename normalization for low-dependency bootstrap checks
+  - Preserved fail-closed behavior for actual module integrity failures after campaign state is present
+- Installer repair backup scope reduction:
+  - Replaced full-install backup clone pattern with runtime-state-only backup in `:CreateRepairBackup`
+  - Added `:CopyFileIfExists` helper and retained existing `:CopyDirIfExists`
+  - Backup manifest now records `Backup scope: runtime_state_only`
+  - Repair flow remains: backup runtime state -> fresh clone -> restore runtime state
+
+**Verification:**
+- `python3 scripts/test_start_game_preflight.py` -> PASS (15/15)
+- `git ls-files --eol install_neverendingquest_windows.bat` confirms `i/crlf w/crlf attr/-text`
+- Raw GitHub installer bytes verified CRLF-safe for Windows `cmd.exe`
+
+**Files Modified:**
+- `.gitattributes`
+- `install_neverendingquest_windows.bat`
+- `web/extensions/start_game_preflight.py`
+- `scripts/test_start_game_preflight.py`
+
 ### Character State Sync Hardening (Inventory + Spell Slots + XP Invariants) (COMPLETED - 2026-03-13)
 
 **Status:** COMPLETED - targeted gametest runtime/data consistency pass

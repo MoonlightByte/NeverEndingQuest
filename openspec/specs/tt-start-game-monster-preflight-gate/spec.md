@@ -14,6 +14,12 @@ Before launching gameplay, the start-game flow SHALL validate module monster ref
 - **THEN** gameplay startup SHALL continue unchanged
 - **AND** remediation SHALL NOT execute
 
+#### Scenario: First-run bootstrap bypasses strict module validation
+
+- **WHEN** start-game preflight detects startup bootstrap state (for example missing tracker, no active module, empty party, or missing primary character file)
+- **THEN** gameplay startup SHALL continue into startup wizard initialization
+- **AND** strict monster reference validation SHALL NOT block first-run setup
+
 #### Scenario: One remediation attempt before terminal decision
 
 - **WHEN** preflight detects unresolved monster references

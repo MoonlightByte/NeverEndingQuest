@@ -94,6 +94,7 @@ modules/**/party_tracker.json
 !modules/**/party_tracker_BU.json
 modules/**/module_plot.json
 !modules/**/module_plot_BU.json
+modules/**/player_quests_*.json
 modules/**/map_*.json
 !modules/**/map_*_BU.json
 
@@ -360,18 +361,10 @@ modules/*/
 !modules/The_Pumpkin_Kings_Curse/
 
 # Curated module core content for tester parity
-!modules/The_Thornwood_Watch/areas/*.json
-!modules/Keep_of_Doom/areas/*.json
-!modules/Night_of_the_Restless_Dead/areas/*.json
-!modules/The_Pumpkin_Kings_Curse/areas/*.json
 !modules/The_Thornwood_Watch/map_*.json
 !modules/Keep_of_Doom/map_*.json
 !modules/Night_of_the_Restless_Dead/map_*.json
 !modules/The_Pumpkin_Kings_Curse/map_*.json
-!modules/The_Thornwood_Watch/module_plot.json
-!modules/Keep_of_Doom/module_plot.json
-!modules/Night_of_the_Restless_Dead/module_plot.json
-!modules/The_Pumpkin_Kings_Curse/module_plot.json
 !modules/The_Thornwood_Watch/monsters/
 !modules/Keep_of_Doom/monsters/
 !modules/Night_of_the_Restless_Dead/monsters/
@@ -478,7 +471,6 @@ data/memory.db-wal
 data/world_surveillance.db
 NeverEndingQuest.code-workspace
 modules/The_Thornwood_Watch/images/image_metadata.json
-modules/The_Thornwood_Watch/player_quests_The_Thornwood_Watch.json
 # plans/  # NOTE: Commented out - plans/ should be committed for developer access
 
 # Personal documentation

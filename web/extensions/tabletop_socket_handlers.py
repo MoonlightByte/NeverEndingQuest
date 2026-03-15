@@ -601,37 +601,59 @@ def handle_plot_data_request_impl(emit_fn: Callable[..., None], debug_fn: Callab
             return
 
         from utils.module_path_manager import ModulePathManager
+        from utils.quest_player_formatter import ensure_player_quests_file
+
         path_manager = ModulePathManager(current_module)
+        ensure_result = ensure_player_quests_file(current_module)
+        player_quests_path = ensure_result.get(
+            "path",
+            os.path.join(path_manager.module_dir, f"player_quests_{current_module}.json"),
+        )
 
-        player_quests_path = os.path.join(path_manager.module_dir, f"player_quests_{current_module}.json")
+        if ensure_result.get("status") == "regenerated":
+            debug_fn(
+                f"WEB_INTERFACE: Regenerated player-friendly quests for {current_module}",
+                category="web_interface",
+            )
 
+        use_plot_fallback = False
         if os.path.exists(player_quests_path):
-            with open(player_quests_path, 'r', encoding='utf-8') as quests_file:
-                player_quests_data = json.load(quests_file)
+            try:
+                with open(player_quests_path, 'r', encoding='utf-8') as quests_file:
+                    player_quests_data = json.load(quests_file)
 
-            plot_data = {"plotPoints": []}
+                plot_data = {"plotPoints": []}
 
-            for quest_data in player_quests_data.get("quests", {}).values():
-                plot_point = {
-                    "id": quest_data.get("id"),
-                    "title": quest_data.get("title"),
-                    "description": quest_data.get("playerDescription", quest_data.get("originalDescription", "")),
-                    "status": quest_data.get("status"),
-                    "sideQuests": []
-                }
+                for quest_data in player_quests_data.get("quests", {}).values():
+                    plot_point = {
+                        "id": quest_data.get("id"),
+                        "title": quest_data.get("title"),
+                        "description": quest_data.get("playerDescription", quest_data.get("originalDescription", "")),
+                        "status": quest_data.get("status"),
+                        "sideQuests": []
+                    }
 
-                for sq_data in quest_data.get("sideQuests", {}).values():
-                    plot_point["sideQuests"].append({
-                        "id": sq_data.get("id"),
-                        "title": sq_data.get("title"),
-                        "description": sq_data.get("playerDescription", ""),
-                        "status": sq_data.get("status")
-                    })
+                    for sq_data in quest_data.get("sideQuests", {}).values():
+                        plot_point["sideQuests"].append({
+                            "id": sq_data.get("id"),
+                            "title": sq_data.get("title"),
+                            "description": sq_data.get("playerDescription", ""),
+                            "status": sq_data.get("status")
+                        })
 
-                plot_data["plotPoints"].append(plot_point)
+                    plot_data["plotPoints"].append(plot_point)
 
-            debug_fn(f"WEB_INTERFACE: Using player-friendly quests for {current_module}", category="web_interface")
+                debug_fn(f"WEB_INTERFACE: Using player-friendly quests for {current_module}", category="web_interface")
+            except Exception as player_quests_error:
+                debug_fn(
+                    f"WEB_INTERFACE: Player quest load failed for {current_module}, falling back to module plot ({player_quests_error})",
+                    category="web_interface",
+                )
+                use_plot_fallback = True
         else:
+            use_plot_fallback = True
+
+        if use_plot_fallback:
             plot_file_path = path_manager.get_plot_path()
 
             if not os.path.exists(plot_file_path):
@@ -642,7 +664,7 @@ def handle_plot_data_request_impl(emit_fn: Callable[..., None], debug_fn: Callab
                 plot_data = json.load(plot_file)
 
             debug_fn(
-                f"WEB_INTERFACE: Using original plot data for {current_module} (no player quests file)",
+                f"WEB_INTERFACE: Using original plot data for {current_module} (player quests unavailable)",
                 category="web_interface"
             )
 

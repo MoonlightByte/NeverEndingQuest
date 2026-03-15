@@ -12,6 +12,7 @@ Uses AI to convert DM-oriented quest descriptions into immersive player-friendly
 import json
 import os
 from datetime import datetime
+from typing import Any, Dict
 from openai import OpenAI
 from config import OPENAI_API_KEY
 from model_config import DM_MINI_MODEL
@@ -54,6 +55,109 @@ Do not include any markdown formatting or code blocks.
 
 Example input: "The party arrives at Marrow's Rest Village (MRV001), shrouded in dense mist. This sets the stage for the adventure."
 Example output: {"description": "You find yourself in the mist-shrouded village of Marrow's Rest, where an unsettling quiet hangs in the air."}"""
+
+
+def _normalize_module_name(module_name: str) -> str:
+    """Normalize module names to repository path convention."""
+    return str(module_name or "").strip().replace(" ", "_")
+
+
+def _get_player_quests_path(module_name: str) -> str:
+    """Return deterministic player_quests path for module."""
+    normalized_module = _normalize_module_name(module_name)
+    path_manager = ModulePathManager(normalized_module)
+    return os.path.join(path_manager.module_dir, f"player_quests_{normalized_module}.json")
+
+
+def _build_player_quests_from_plot(module_name: str, plot_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Build deterministic player_quests payload from module_plot data."""
+    normalized_module = _normalize_module_name(module_name)
+    player_quests: Dict[str, Any] = {
+        "module": normalized_module,
+        "lastUpdated": datetime.now().isoformat(),
+        "quests": {},
+    }
+
+    for plot_point in plot_data.get("plotPoints", []):
+        quest_id = plot_point.get("id")
+        if not quest_id:
+            continue
+
+        side_quests = {}
+        for side_quest in plot_point.get("sideQuests", []):
+            side_id = side_quest.get("id")
+            if not side_id:
+                continue
+            side_quests[side_id] = {
+                "id": side_id,
+                "title": sanitize_text(side_quest.get("title", "")),
+                "playerDescription": sanitize_text(side_quest.get("description", "")),
+                "status": side_quest.get("status", "not started"),
+                "type": "side",
+            }
+
+        player_quests["quests"][quest_id] = {
+            "id": quest_id,
+            "title": sanitize_text(plot_point.get("title", "")),
+            "playerDescription": sanitize_text(plot_point.get("description", "")),
+            "originalDescription": sanitize_text(plot_point.get("description", "")),
+            "status": plot_point.get("status", "not started"),
+            "type": "main",
+            "sideQuests": side_quests,
+        }
+
+    return player_quests
+
+
+def regenerate_player_quests_from_plot(module_name: str) -> bool:
+    """Regenerate derived player_quests file directly from module_plot.json."""
+    normalized_module = _normalize_module_name(module_name)
+    path_manager = ModulePathManager(normalized_module)
+    plot_path = path_manager.get_plot_path()
+
+    plot_data = safe_read_json(plot_path)
+    if not plot_data:
+        warning(
+            f"QUEST_FORMAT: Cannot regenerate player quests, plot missing or unreadable: {plot_path}",
+            category="quest_formatting",
+        )
+        return False
+
+    player_quests = _build_player_quests_from_plot(normalized_module, plot_data)
+    player_quests_path = _get_player_quests_path(normalized_module)
+
+    os.makedirs(path_manager.module_dir, exist_ok=True)
+    if safe_write_json(player_quests_path, player_quests):
+        info(
+            f"SUCCESS: Regenerated player-friendly quests to {player_quests_path}",
+            category="quest_formatting",
+        )
+        return True
+
+    warning(
+        f"QUEST_FORMAT: Failed to regenerate player quests to {player_quests_path}",
+        category="quest_formatting",
+    )
+    return False
+
+
+def ensure_player_quests_file(module_name: str) -> Dict[str, Any]:
+    """Ensure derived player_quests file exists; regenerate from plot when missing.
+
+    Returns a structured status dictionary with keys:
+    - status: exists | regenerated | failed
+    - path: resolved player_quests path
+    """
+    normalized_module = _normalize_module_name(module_name)
+    player_quests_path = _get_player_quests_path(normalized_module)
+
+    if os.path.exists(player_quests_path):
+        return {"status": "exists", "path": player_quests_path}
+
+    if regenerate_player_quests_from_plot(normalized_module):
+        return {"status": "regenerated", "path": player_quests_path}
+
+    return {"status": "failed", "path": player_quests_path}
 
 
 def format_quest_batch(quests_to_format):
@@ -124,20 +228,24 @@ def format_quests_for_player(module_name):
         bool: Success or failure
     """
     try:
-        info(f"STATE_CHANGE: Starting quest formatting for module {module_name}", category="quest_formatting")
-        
+        normalized_module = _normalize_module_name(module_name)
+        info(
+            f"STATE_CHANGE: Starting quest formatting for module {normalized_module}",
+            category="quest_formatting",
+        )
+
         # Load the module plot data
-        path_manager = ModulePathManager(module_name)
+        path_manager = ModulePathManager(normalized_module)
         plot_path = path_manager.get_plot_path()
         
         plot_data = safe_read_json(plot_path)
         if not plot_data:
-            error(f"FAILURE: Could not load plot data for {module_name}", category="quest_formatting")
+            error(f"FAILURE: Could not load plot data for {normalized_module}", category="quest_formatting")
             return False
         
         # Prepare the player quest structure
         player_quests = {
-            "module": module_name,
+            "module": normalized_module,
             "lastUpdated": datetime.now().isoformat(),
             "quests": {}
         }
@@ -160,7 +268,7 @@ def format_quests_for_player(module_name):
         if not quests_to_format:
             debug("No active or completed quests to format", category="quest_formatting")
             # Still save an empty player quests file
-            player_quests_path = os.path.join(path_manager.module_dir, f"player_quests_{module_name}.json")
+            player_quests_path = _get_player_quests_path(normalized_module)
             return safe_write_json(player_quests_path, player_quests)
         
         debug(f"Found {len(quests_to_format)} quests to format", category="quest_formatting")
@@ -219,7 +327,7 @@ def format_quests_for_player(module_name):
         os.makedirs(path_manager.module_dir, exist_ok=True)
         
         # Save the player quests file
-        player_quests_path = os.path.join(path_manager.module_dir, f"player_quests_{module_name}.json")
+        player_quests_path = _get_player_quests_path(normalized_module)
         
         if safe_write_json(player_quests_path, player_quests):
             info(f"SUCCESS: Saved player-friendly quests to {player_quests_path}", category="quest_formatting")

@@ -2,9 +2,11 @@
 
 ## Status
 
-- Lifecycle state: Planned
+- Lifecycle state: Completed and archived
 - Priority: High
 - Goal: Remove runtime gameplay state from tracked module content so Git installs remain update-safe
+- OpenSpec archive: `openspec/changes/archive/2026-03-15-module-data-git-fix/`
+- Verification artifact: `openspec/changes/archive/2026-03-15-module-data-git-fix/coverage_audit.md`
 
 ## Problem Statement
 
@@ -83,26 +85,21 @@ The codebase already has most of the right architectural shape:
 
 This means the repo can move toward a clean split without inventing a new persistence model from scratch.
 
-## Current Module Audit
+## Module Audit (Final)
 
-### Modules with usable `_BU` coverage already present
+Canonical `_BU` coverage for live area and plot families is complete across shipped modules:
 
-- `The_Thornwood_Watch`
 - `Keep_of_Doom`
-- `The_Pumpkin_Kings_Curse`
-
-These modules already have tracked `_BU` files for live area and plot content, so they are good candidates for the first cleanup pass.
-
-### Module that still needs canonical backup coverage
-
 - `Night_of_the_Restless_Dead`
+- `The_Pumpkin_Kings_Curse`
+- `The_Thornwood_Watch`
 
-This module currently lacks `_BU` coverage for:
+Night canonical coverage completed and tracked:
 
-- `modules/Night_of_the_Restless_Dead/areas/NIG001.json`
-- `modules/Night_of_the_Restless_Dead/module_plot.json`
+- `modules/Night_of_the_Restless_Dead/areas/NIG001_BU.json`
+- `modules/Night_of_the_Restless_Dead/module_plot_BU.json`
 
-That missing coverage must be added before untracking the live copies.
+No remaining canonical backup blockers were found before tracking cleanup.
 
 ## Implementation Plan
 
@@ -199,6 +196,15 @@ Some generated JSON files may need a second pass to clarify whether they are can
 Mitigation:
 
 - explicitly classify each tracked JSON family during implementation
+
+## Execution Outcome
+
+- `.gitignore` runtime boundary aligned for live area, module plot, and player quest runtime files.
+- Targeted live runtime module JSON families are untracked from index.
+- Canonical `_BU` backups remain tracked, including Night backups.
+- Startup/reset/runtime hydration + derived quest regeneration hardening implemented and verified.
+- Fresh-clone runtime cleanliness smoke and local ff-only update workflow verification both pass.
+- OpenSpec final validation: valid; change is archive-ready.
 
 ## Deliverables
 
