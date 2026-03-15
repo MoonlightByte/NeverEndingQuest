@@ -180,13 +180,28 @@ echo [INFO] Installing to %INSTALL_DIR%...
 REM Resolve extracted source folder (expected: NeverEndingQuest-TTRPG-main)
 set "EXTRACTED_SOURCE="
 for /d %%I in ("%TEMP_EXTRACT%\%REPO_NAME%-*") do (
-    set "EXTRACTED_SOURCE=%%~fI"
-    goto :FOUND_EXTRACTED_SOURCE
+    if not defined EXTRACTED_SOURCE set "EXTRACTED_SOURCE=%%~fI"
 )
 
-:FOUND_EXTRACTED_SOURCE
+REM Fallback 1: first extracted top-level directory (name may vary)
+if not defined EXTRACTED_SOURCE (
+    for /d %%I in ("%TEMP_EXTRACT%\*") do (
+        if /I not "%%~nxI"=="__MACOSX" (
+            if not defined EXTRACTED_SOURCE set "EXTRACTED_SOURCE=%%~fI"
+        )
+    )
+)
+
+REM Fallback 2: some environments extract files directly into destination root
+if not defined EXTRACTED_SOURCE (
+    if exist "%TEMP_EXTRACT%\requirements.txt" if exist "%TEMP_EXTRACT%\run_web.py" set "EXTRACTED_SOURCE=%TEMP_EXTRACT%"
+)
+
 if not defined EXTRACTED_SOURCE (
     echo ERROR: Could not locate extracted source folder in %TEMP_EXTRACT%
+    echo.
+    echo Top-level extracted entries:
+    dir /B "%TEMP_EXTRACT%"
     echo.
     echo Extraction appears incomplete. Please rerun installer.
     pause
