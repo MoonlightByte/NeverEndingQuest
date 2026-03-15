@@ -76,7 +76,7 @@ For contributor setup and workflow, see `CONTRIBUTING.md` and `DEV_SETUP.md`.
 
    - Double-click the downloaded `.bat` file
    - If Windows SmartScreen appears: Click **"More info"** → **"Run anyway"**
-   - Installer uses a single Git-based install path with built-in update support
+   - Installer uses a single Git-based install path with built-in update support and auto-repair
 3. **Install Python if needed**:
 
    - If prompted, install Python from **Microsoft Store**:
@@ -92,6 +92,7 @@ The installer automatically:
 - ✅ Checks for Python (opens Microsoft Store if missing)
 - ✅ Checks for Git and opens official Git for Windows download if missing
 - ✅ Clones or updates the game from the fork repository
+- ✅ Auto-backs up and repairs broken/dirty installs before updating
 - ✅ Creates a virtual environment
 - ✅ Installs all dependencies
 - ✅ Sets up configuration with API key dialog
