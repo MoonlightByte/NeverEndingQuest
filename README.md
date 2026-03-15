@@ -76,7 +76,7 @@ For contributor setup and workflow, see `CONTRIBUTING.md` and `DEV_SETUP.md`.
 
    - Double-click the downloaded `.bat` file
    - If Windows SmartScreen appears: Click **"More info"** → **"Run anyway"**
-   - Choose **Player Mode** for simple ZIP installs, or **Developer Mode** (**recommended for testers and maintainers**) for faster incremental updates
+   - Installer uses a single Git-based install path with built-in update support
 3. **Install Python if needed**:
 
    - If prompted, install Python from **Microsoft Store**:
@@ -90,7 +90,8 @@ For contributor setup and workflow, see `CONTRIBUTING.md` and `DEV_SETUP.md`.
 The installer automatically:
 
 - ✅ Checks for Python (opens Microsoft Store if missing)
-- ✅ Downloads and installs the game from the fork repository
+- ✅ Checks for Git and opens official Git for Windows download if missing
+- ✅ Clones or updates the game from the fork repository
 - ✅ Creates a virtual environment
 - ✅ Installs all dependencies
 - ✅ Sets up configuration with API key dialog
@@ -106,8 +107,7 @@ The installer automatically:
 
 **Update guidance:**
 
-- **Developer Mode (Git clone):** Use in-app `[UPDATE] Fork Update` or run `git pull --ff-only origin main`
-- **Player Mode (ZIP install):** Re-run `install_neverendingquest_windows.bat` and choose `Update existing installation`
+- Use in-app `[UPDATE] Fork Update` or run `git pull --ff-only origin main`
 
 ---
 

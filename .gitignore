@@ -201,6 +201,9 @@ test_*.py
 # Reference documents (local working docs, do not commit)
 docs/reference/
 
+# Ignore accidental structured error-dump filenames at repo root
+{'issues':*
+
 # Documentation files (keep core docs, exclude development plans)
 *_plan.md
 *_analysis.md
