@@ -27,7 +27,7 @@ echo.
 REM Check if already installed in target directory
 if exist "%INSTALL_DIR%" (
     echo [INFO] Installation directory already exists: %INSTALL_DIR%
-    choice /C YN /N /M "Update existing installation? (Y/N): "
+    choice /C YN /N /M "Update existing installation Y/N: "
     if errorlevel 2 (
         echo Installation cancelled.
         pause
@@ -36,10 +36,24 @@ if exist "%INSTALL_DIR%" (
     echo.
 )
 
-REM Step 1: Check for Python
+REM Step 1: Check for Python interpreter/launcher
 echo Step 1: Checking for Python...
+set "PY_CMD="
+
 python --version >nul 2>&1
-if %errorlevel% neq 0 (
+if %errorlevel% equ 0 (
+    set "PY_CMD=python"
+) else (
+    py -3.11 --version >nul 2>&1
+    if %errorlevel% equ 0 (
+        set "PY_CMD=py -3.11"
+    ) else (
+        py -3 --version >nul 2>&1
+        if %errorlevel% equ 0 set "PY_CMD=py -3"
+    )
+)
+
+if not defined PY_CMD (
     echo.
     echo ========================================
     echo   Python Not Found - Install Required
@@ -47,7 +61,7 @@ if %errorlevel% neq 0 (
     echo.
     echo Python 3.9 or higher is required to run NeverEndingQuest-TTRPG.
     echo.
-    echo OPTION 1 - Microsoft Store (Recommended):
+    echo OPTION 1 - Microsoft Store - Recommended:
     echo   1. Open Microsoft Store
     echo   2. Search for "Python 3.11"
     echo   3. Click "Get" to install
@@ -71,8 +85,9 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-python --version
-echo [OK] Python found!
+for /f "usebackq delims=" %%i in (`!PY_CMD! --version 2^>^&1`) do set "PY_VERSION=%%i"
+echo !PY_VERSION!
+echo [OK] Python found via !PY_CMD!
 echo.
 
 REM Step 2: Choose Install Mode
@@ -188,14 +203,14 @@ if %errorlevel% neq 0 (
     echo.
     echo Git is required for Developer Mode.
     echo.
-    echo OPTION 1 - Microsoft Store (Recommended):
+    echo OPTION 1 - Microsoft Store - Recommended:
     echo   Search "Git" in Microsoft Store
     echo   Or visit: https://apps.microsoft.com/search?query=Git
     echo.
     echo OPTION 2 - Download from git-scm.com:
     echo   Visit: https://git-scm.com/download/win
     echo.
-    echo OPTION 3 - Install via winget (if available):
+    echo OPTION 3 - Install via winget - if available:
     echo   Run: winget install --id Git.Git
     echo.
     echo After installing Git, run this installer again.
@@ -267,9 +282,10 @@ REM Step 4: Create virtual environment
 echo.
 echo Step 4: Creating Python virtual environment...
 if not exist "venv" (
-    python -m venv venv
+    !PY_CMD! -m venv venv
     if %errorlevel% neq 0 (
         echo ERROR: Failed to create virtual environment
+        echo Attempted command: !PY_CMD! -m venv venv
         pause
         exit /b 1
     )
@@ -285,9 +301,14 @@ echo This may take a few minutes...
 echo.
 
 call venv\Scripts\activate.bat
+if %errorlevel% neq 0 (
+    echo ERROR: Failed to activate virtual environment
+    pause
+    exit /b 1
+)
 
-python -m pip install --upgrade pip
-pip install -r requirements.txt
+venv\Scripts\python -m pip install --upgrade pip
+venv\Scripts\python -m pip install -r requirements.txt
 
 if %errorlevel% neq 0 (
     echo ERROR: Failed to install dependencies
@@ -322,10 +343,10 @@ if %errorlevel% equ 0 (
     echo ========================================
     echo.
     echo Choose your setup method:
-    echo   1. Enter API key now (recommended)
+    echo   1. Enter API key now - recommended
     echo   2. Skip and add manually later
     echo.
-    choice /C 12 /N /M "Enter your choice (1 or 2): "
+    choice /C 12 /N /M "Enter your choice 1 or 2: "
 
     if errorlevel 2 (
         REM User chose to skip
@@ -384,7 +405,7 @@ REM Create launch_game.bat in the repo folder
 echo @echo off > launch_game.bat
 echo cd /d "%%~dp0" >> launch_game.bat
 echo call venv\Scripts\activate.bat >> launch_game.bat
-echo python run_web.py >> launch_game.bat
+echo venv\Scripts\python run_web.py >> launch_game.bat
 echo pause >> launch_game.bat
 
 echo [OK] Created launch_game.bat
@@ -429,7 +450,7 @@ echo   Option 2: Double-click the desktop shortcut
 echo   Option 3: Run manually:
 echo            cd %CD%
 echo            venv\Scripts\activate
-echo            python run_web.py
+echo            venv\Scripts\python run_web.py
 echo.
 echo The game will open at: http://localhost:8357
 echo.
@@ -448,6 +469,6 @@ pause >nul
 REM Launch the game
 call venv\Scripts\activate.bat
 start http://localhost:8357
-python run_web.py
+venv\Scripts\python run_web.py
 
 :END
