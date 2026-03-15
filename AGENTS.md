@@ -1021,6 +1021,31 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Startup Wizard Module Scan Hygiene (COMPLETED - 2026-03-16)
+
+**Status:** COMPLETED - suppressed false module warnings on clean installs
+
+**Objective:**
+Prevent startup wizard module discovery from analyzing runtime/system directories under `modules/`, which produced noisy warnings like `No areas/ folder found` for non-module folders (`backups`, `conversation_history`, `logs`).
+
+**Implementation Summary:**
+- Updated `utils/startup_wizard.py` module discovery path:
+  - Added `STARTUP_NON_MODULE_DIRS` allowlist exclusions for known runtime/system directories
+  - Added `_is_module_candidate_directory()` to gate module candidates before stitcher analysis
+  - Required `modules/<name>/areas/` existence before calling `ModuleStitcher.analyze_module()`
+- Added focused regression coverage:
+  - `scripts/test_startup_module_scan_hygiene.py`
+  - Verifies non-module directories are skipped before analysis
+  - Verifies directories without `areas/` are ignored
+
+**Verification:**
+- `python3 -m py_compile utils/startup_wizard.py scripts/test_startup_module_scan_hygiene.py` -> PASS
+- `python3 scripts/test_startup_module_scan_hygiene.py` -> PASS (2/2)
+
+**Files Modified:**
+- `utils/startup_wizard.py`
+- `scripts/test_startup_module_scan_hygiene.py`
+
 ### Module Data Git-Fix Runtime/Canonical Split + Update-Safe Verification (COMPLETED - 2026-03-15)
 
 **Status:** COMPLETED - OpenSpec change archived, plan moved to archive, and verification gates closed

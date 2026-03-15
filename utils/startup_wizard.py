@@ -102,6 +102,29 @@ client = create_chat_client()
 # Conversation file for character creation (separate from main game)
 STARTUP_CONVERSATION_FILE = "modules/conversation_history/startup_conversation.json"
 
+# Directories under modules/ that are runtime/system storage, not playable modules.
+STARTUP_NON_MODULE_DIRS = {
+    "backups",
+    "campaign_archives",
+    "campaign_summaries",
+    "conversation_history",
+    "encounters",
+    "ingest",
+    "logs",
+}
+
+
+def _is_module_candidate_directory(module_name: str, module_path: str) -> bool:
+    """Return True when a modules/ directory is a playable module candidate."""
+    if module_name.startswith("."):
+        return False
+
+    if module_name in STARTUP_NON_MODULE_DIRS:
+        return False
+
+    areas_path = os.path.join(module_path, "areas")
+    return os.path.isdir(areas_path)
+
 # ===== MAIN ORCHESTRATION =====
 
 def initialize_game_files_from_bu():
@@ -274,14 +297,12 @@ def scan_available_modules():
     for item in os.listdir("modules"):
         module_path = f"modules/{item}"
         if os.path.isdir(module_path):
-            # Skip system directories
-            if item in ['campaign_archives', 'campaign_summaries']:
+            if not _is_module_candidate_directory(item, module_path):
                 continue
             
             # Use module_stitcher detection method (current architecture)
             module_data = None
             try:
-                from core.generators.module_stitcher import ModuleStitcher
                 stitcher = ModuleStitcher()
                 detected_data = stitcher.analyze_module(item)
                 
