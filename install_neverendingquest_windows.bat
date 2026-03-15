@@ -71,11 +71,11 @@ if not defined PY_CMD (
     echo Python 3.9 or higher is required.
     echo.
     echo Install from:
-    echo   https://www.python.org/downloads/
+    echo   https://www.python.org/downloads/windows/
     echo.
     echo After installing Python, run this installer again.
     echo.
-    start https://www.python.org/downloads/
+    start https://www.python.org/downloads/windows/
     pause
     exit /b 1
 )

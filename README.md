@@ -79,9 +79,8 @@ For contributor setup and workflow, see `CONTRIBUTING.md` and `DEV_SETUP.md`.
    - Installer uses a single Git-based install path with built-in update support and auto-repair
 3. **Install Python if needed**:
 
-   - If prompted, install Python from **Microsoft Store**:
-     - Open Microsoft Store → Search "Python 3.11" → Click "Get"
-   - Or download from: https://www.python.org/downloads/
+   - If prompted, install Python from the official Python website:
+     - https://www.python.org/downloads/windows/
    - **Important**: Check "Add Python to PATH" during install
    - Re-run the installer after Python is installed
 4. **Add your OpenAI API key**: Enter your API key in the popup dialog (get one at https://platform.openai.com/api-keys)
@@ -89,7 +88,7 @@ For contributor setup and workflow, see `CONTRIBUTING.md` and `DEV_SETUP.md`.
 
 The installer automatically:
 
-- ✅ Checks for Python (opens Microsoft Store if missing)
+- ✅ Checks for Python (opens official Python download page if missing)
 - ✅ Checks for Git and opens official Git for Windows download if missing
 - ✅ Clones or updates the game from the fork repository
 - ✅ Auto-backs up and repairs broken/dirty installs before updating
