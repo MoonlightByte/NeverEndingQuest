@@ -71,11 +71,11 @@ if not defined PY_CMD (
     echo Python 3.9 or higher is required.
     echo.
     echo Install from:
-    echo   https://www.python.org/downloads/windows/
+    echo   https://apps.microsoft.com/detail/9nq7512cxl7t
     echo.
     echo After installing Python, run this installer again.
     echo.
-    start https://www.python.org/downloads/windows/
+    start https://apps.microsoft.com/detail/9nq7512cxl7t
     pause
     exit /b 1
 )
@@ -255,7 +255,7 @@ if %errorlevel% equ 0 (
         echo [SKIPPED] Add API key later in config.py
         echo Get key at: https://platform.openai.com/api-keys
     ) else (
-        for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "Add-Type -AssemblyName Microsoft.VisualBasic; $key = [Microsoft.VisualBasic.Interaction]::InputBox('Enter your OpenAI API key (starts with sk-):\n\nGet your key at https://platform.openai.com/api-keys\n\nLeave blank to skip.', 'NeverEndingQuest-TTRPG - API Key Setup', ''); if ($key) { Write-Output $key } else { Write-Output 'SKIP_BLANK' }"`) do set API_KEY=%%i
+        for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "$nl=[Environment]::NewLine; Add-Type -AssemblyName Microsoft.VisualBasic; $msg='Enter your OpenAI API key (starts with sk-):'+$nl+$nl+'Get your key at https://platform.openai.com/api-keys'+$nl+$nl+'Leave blank to skip.'; $key=[Microsoft.VisualBasic.Interaction]::InputBox($msg,'NeverEndingQuest-TTRPG - API Key Setup',''); if ($key) { Write-Output $key } else { Write-Output 'SKIP_BLANK' }"`) do set API_KEY=%%i
 
         if "!API_KEY!"=="SKIP_BLANK" (
             echo [SKIPPED] Add API key later in config.py
