@@ -44,6 +44,24 @@ def test_ai_interview_uses_shared_finalization_contract() -> None:
     assert "return None" in function_source, "Startup interview should fail closed on shared finalizer error"
 
 
+def test_ai_interview_only_prints_raw_response_for_non_candidates() -> None:
+    source = _load_startup_source()
+    function_source = _extract_function(
+        source,
+        "def ai_character_interview(conversation, module, retry_count=0):",
+        "def load_text_file(filename):",
+    )
+
+    assert 'if finalize_status != "not_candidate":' in function_source, (
+        "Startup interview should only print raw AI output for non-candidate responses"
+    )
+    finalize_index = function_source.find("finalize_character_creation_candidate(")
+    raw_print_index = function_source.find('print(f"\\nDungeon Master: {response}")')
+    assert finalize_index != -1 and raw_print_index != -1 and finalize_index < raw_print_index, (
+        "Startup interview must finalize-check before printing raw AI output"
+    )
+
+
 def test_create_new_character_uses_shared_persistence_contract() -> None:
     source = _load_startup_source()
     function_source = _extract_function(
@@ -75,6 +93,9 @@ def main() -> None:
 
     test_ai_interview_uses_shared_finalization_contract()
     print("[PASS] startup interview uses shared finalization contract")
+
+    test_ai_interview_only_prints_raw_response_for_non_candidates()
+    print("[PASS] startup interview suppresses raw final JSON output")
 
     test_create_new_character_uses_shared_persistence_contract()
     print("[PASS] startup create_new_character uses shared persistence contract")

@@ -243,6 +243,91 @@ class TestStartupIncompleteResumeContracts(unittest.TestCase):
             finally:
                 os.chdir(original_cwd)
 
+    def test_update_party_tracker_preserves_existing_active_character_when_valid(self):
+        """Existing valid active_character should survive resume-progress updates."""
+        assert startup_wizard is not None
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(temp_dir)
+
+                existing_party = {
+                    "module": "test_module",
+                    "partyMembers": ["alpha", "beta"],
+                    "active_character": "beta",
+                    "partyNPCs": [],
+                    "worldConditions": {
+                        "year": 1492,
+                        "month": "Springmonth",
+                        "day": 1,
+                        "time": "09:00:00",
+                        "weather": "Clear skies",
+                        "season": "Spring",
+                        "dayNightCycle": "Day",
+                        "moonPhase": "New Moon",
+                        "currentLocation": "",
+                        "currentLocationId": "",
+                        "currentArea": "",
+                        "currentAreaId": "",
+                        "majorEventsUnderway": [],
+                        "politicalClimate": "",
+                        "activeEncounter": "",
+                        "activeCombatEncounter": "",
+                    },
+                }
+                Path("party_tracker.json").write_text(
+                    startup_wizard.json.dumps(existing_party),
+                    encoding="utf-8",
+                )
+
+                startup_wizard.update_party_tracker(
+                    "test_module",
+                    ["alpha", "beta", "gamma"],
+                    startup_incomplete=True,
+                )
+
+                updated_data = startup_wizard.safe_json_load("party_tracker.json")
+                self.assertEqual(updated_data.get("partyMembers"), ["alpha", "beta", "gamma"])
+                self.assertEqual(updated_data.get("active_character"), "beta")
+            finally:
+                os.chdir(original_cwd)
+
+
+class TestStartupInterviewOutputContracts(unittest.TestCase):
+    """Focused tests for startup interview output suppression and input normalization."""
+
+    def setUp(self):
+        if not STARTUP_WIZARD_AVAILABLE:
+            self.skipTest(f"startup_wizard unavailable: {STARTUP_IMPORT_ERROR}")
+
+    def test_normalize_startup_prompt_input_strips_tabletop_prefix(self):
+        assert startup_wizard is not None
+        self.assertEqual(startup_wizard._normalize_startup_prompt_input("[xorn]: y"), "y")
+        self.assertEqual(startup_wizard._normalize_startup_prompt_input("[xorn]: yes"), "yes")
+        self.assertEqual(startup_wizard._normalize_startup_prompt_input("  n  "), "n")
+
+    def test_ai_interview_does_not_print_raw_final_json_on_success(self):
+        assert startup_wizard is not None
+        final_response = '{"name": "Xorn", "class": "Cleric"}'
+
+        with patch.object(startup_wizard, "safe_json_load", return_value={"type": "object"}), \
+             patch.object(startup_wizard, "build_dm_creation_prompt_bundle", return_value={
+                 "system_prompt": "system",
+                 "kickoff_user_prompt": "kickoff",
+             }), \
+             patch.object(startup_wizard, "get_ai_response", return_value=final_response), \
+             patch.object(startup_wizard, "finalize_character_creation_candidate", return_value={
+                 "status": "success",
+                 "character_data": {"name": "Xorn"},
+             }), \
+             patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            result = startup_wizard.ai_character_interview([], {"name": "test_module"})
+            output = mock_stdout.getvalue()
+
+        self.assertEqual(result, {"name": "Xorn"})
+        self.assertIn("Character data received! Finalizing your hero...", output)
+        self.assertNotIn(final_response, output)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

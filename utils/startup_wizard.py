@@ -129,6 +129,14 @@ def _is_module_candidate_directory(module_name: str, module_path: str) -> bool:
     areas_path = os.path.join(module_path, "areas")
     return os.path.isdir(areas_path)
 
+
+def _normalize_startup_prompt_input(raw_input):
+    """Normalize startup wizard prompt input for console and web flows."""
+    normalized = str(raw_input or "").strip()
+    if normalized.startswith("[") and "]:" in normalized:
+        normalized = normalized.split("]:", 1)[1].strip()
+    return normalized.lower()
+
 # ===== MAIN ORCHESTRATION =====
 
 def initialize_game_files_from_bu():
@@ -202,7 +210,7 @@ def run_startup_sequence():
         while True:
             # Emit prompt line first for web visibility, then collect input
             print("Dungeon Master: Add another player character? (y/n):")
-            add_more = input().strip().lower()
+            add_more = _normalize_startup_prompt_input(input())
             
             # Strict yes/no parser: reprompt on blank or invalid input
             if add_more in ["y", "yes"]:
@@ -229,7 +237,7 @@ def run_startup_sequence():
             print("Dungeon Master: Additional player creation failed.")
             # TABLETOP MODE: Secondary retry decision with explicit-exit contract
             print("Dungeon Master: Retry creating another player? (y/n):")
-            retry_secondary = input().strip().lower()
+            retry_secondary = _normalize_startup_prompt_input(input())
             
             if retry_secondary in ["y", "yes"]:
                 # Retry character creation
@@ -874,7 +882,6 @@ def ai_character_interview(conversation, module, retry_count=0):
             try:
                 # Get AI response
                 response = get_ai_response(creation_conversation)
-                print(f"\nDungeon Master: {response}")
 
                 # TABLETOP MODE: Shared finalization contract (startup adapter)
                 finalize_result = finalize_character_creation_candidate(
@@ -917,6 +924,12 @@ def ai_character_interview(conversation, module, retry_count=0):
                     finalize_error = str(finalize_result.get("error_message", "unknown error")).strip()
                     print(f"\nError: Character finalization failed: {finalize_error}")
                     return None
+
+                if finalize_status != "not_candidate":
+                    print(f"\nError: Unexpected character finalization status: {finalize_status}")
+                    return None
+
+                print(f"\nDungeon Master: {response}")
                 
                 # Add AI response to conversation immediately
                 creation_conversation.append({"role": "assistant", "content": response})
@@ -1652,8 +1665,12 @@ def update_party_tracker(module_name, character_name, startup_incomplete=None):
                 existing_members.append(member)
         party_data["partyMembers"] = existing_members
 
+        existing_active_character = str(party_data.get("active_character", "")).strip()
         if existing_members:
-            party_data["active_character"] = existing_members[0]
+            if existing_active_character in existing_members:
+                party_data["active_character"] = existing_active_character
+            else:
+                party_data["active_character"] = existing_members[0]
 
         # TABLETOP MODE: Optional persisted startup lifecycle metadata.
         # Backward-compatible default is no change for existing callers.

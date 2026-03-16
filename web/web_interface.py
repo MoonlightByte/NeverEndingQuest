@@ -2786,9 +2786,20 @@ def handle_user_input(data):
     """Handle input from the user"""
     user_input = data.get('input', '')
     character_name = data.get('character')
-    
-    # In multi-PC mode, tag the input so the LLM knows who is acting
-    if character_name:
+
+    # TABLETOP MODE: Startup wizard prompts expect raw terminal-style input.
+    # Do not tag onboarding answers like y/n with active character prefixes.
+    startup_incomplete = False
+    try:
+        from utils.encoding_utils import safe_json_load
+        party_tracker = safe_json_load("party_tracker.json") or {}
+        startup_incomplete = party_tracker.get("startup_incomplete") is True
+    except Exception:
+        startup_incomplete = False
+
+    # In multi-PC mode, tag the input so the LLM knows who is acting.
+    # Skip tagging during startup onboarding.
+    if character_name and not startup_incomplete:
         tagged_input = f"[{character_name}]: {user_input}"
         user_input_queue.put(tagged_input)
     else:
