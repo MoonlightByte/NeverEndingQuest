@@ -556,7 +556,10 @@ if exist "%INSTALL_DIR%\modules" (
 
         if exist "%%~fM\areas" (
             for %%A in ("%%~fM\areas\*.json") do (
-                if exist "%%~fA" call :CopyFileIfExists "%%~fA" "!BACKUP_SOURCE!\modules\!MOD_NAME!\areas\%%~nxA"
+                set "AREA_NAME=%%~nA"
+                if /I not "!AREA_NAME:~-3!"=="_BU" (
+                    if exist "%%~fA" call :CopyFileIfExists "%%~fA" "!BACKUP_SOURCE!\modules\!MOD_NAME!\areas\%%~nxA"
+                )
             )
         )
 
@@ -607,7 +610,10 @@ if exist "!BACKUP_SOURCE!\modules" (
         if exist "%INSTALL_DIR%\modules\!MOD_NAME!\areas" (
             if exist "%%~fM\areas" (
                 for %%A in ("%%~fM\areas\*.json") do (
-                    if exist "%%~fA" copy /Y "%%~fA" "%INSTALL_DIR%\modules\!MOD_NAME!\areas\%%~nxA" >nul
+                    set "AREA_NAME=%%~nA"
+                    if /I not "!AREA_NAME:~-3!"=="_BU" (
+                        if exist "%%~fA" copy /Y "%%~fA" "%INSTALL_DIR%\modules\!MOD_NAME!\areas\%%~nxA" >nul
+                    )
                 )
             )
         )
