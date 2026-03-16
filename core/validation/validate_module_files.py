@@ -29,6 +29,7 @@ from pathlib import Path
 from collections import defaultdict
 from datetime import datetime
 import sys
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 # jsonschema is optional at import time to allow --help to work without deps
 # Individual validators will raise clear errors if called without jsonschema
@@ -57,6 +58,7 @@ class ModuleValidator:
         self.schema_dir = Path(schema_dir)
         self.results = defaultdict(lambda: {"files": [], "passed": 0, "failed": 0, "errors": []})
         self.schemas = {}
+        self._verbose = False
         
     def load_schemas(self):
         """Load all available schemas"""
@@ -74,18 +76,22 @@ class ModuleValidator:
             "random_encounter": "random_encounter_schema.json"
         }
         
-        print("Loading schemas...")
+        if self._verbose:
+            print("Loading schemas...")
         for file_type, schema_file in schema_mappings.items():
             schema_path = self.schema_dir / "schemas" / schema_file
             if schema_path.exists():
                 try:
                     with open(schema_path, 'r') as f:
                         self.schemas[file_type] = json.load(f)
-                    print(f"  [OK] Loaded {file_type} schema from {schema_file}")
+                    if self._verbose:
+                        print(f"  [OK] Loaded {file_type} schema from {schema_file}")
                 except Exception as e:
-                    print(f"  [ERROR] Failed to load {file_type} schema: {e}")
+                    if self._verbose:
+                        print(f"  [ERROR] Failed to load {file_type} schema: {e}")
             else:
-                print(f"  - Schema not found: {schema_file}")
+                if self._verbose:
+                    print(f"  - Schema not found: {schema_file}")
                 
     def validate_file(self, file_path, schema_type):
         """Validate a single file against its schema"""
@@ -299,7 +305,8 @@ class ModuleValidator:
             # Mark as passed since it's an internal file that doesn't need validation
             self.results["module_context"]["files"].append("module_context.json")
             self.results["module_context"]["passed"] += 1
-            print("  - Skipping module_context.json (internal tracking file)")
+            if self._verbose:
+                print("  - Skipping module_context.json (internal tracking file)")
                 
     def validate_encounter_files(self):
         """Validate encounter files"""
@@ -511,9 +518,557 @@ class ModuleValidator:
 
         return len(errors) == 0, errors
 
+    @staticmethod
+    def _is_excluded_json_file(path: Path) -> bool:
+        """Return True when the JSON file is backup/temp data."""
+        name = path.name
+        exclude_patterns = ("_BU.json", ".bak", ".backup", ".tmp", "_backup.json")
+        return any(pattern in name for pattern in exclude_patterns)
+
+    @staticmethod
+    def _location_display_name(location: Dict[str, Any]) -> str:
+        """Get a readable location name with safe fallbacks."""
+        return (
+            location.get("name")
+            or location.get("locationName")
+            or location.get("locationId")
+            or "Unknown Location"
+        )
+
+    @staticmethod
+    def _bfs_reachable(start_room: str, edges: Dict[str, Set[str]]) -> Set[str]:
+        """Breadth-first reachability for deterministic graph checks."""
+        visited: Set[str] = set()
+        queue: List[str] = [start_room]
+
+        while queue:
+            current = queue.pop(0)
+            if current in visited:
+                continue
+            visited.add(current)
+            for neighbor in sorted(edges.get(current, set())):
+                if neighbor not in visited:
+                    queue.append(neighbor)
+        return visited
+
+    def _load_active_area_records(self) -> Dict[str, Dict[str, Any]]:
+        """Load active area files keyed by areaId."""
+        records: Dict[str, Dict[str, Any]] = {}
+        areas_dir = self.module_path / "areas"
+        if not areas_dir.exists():
+            return records
+
+        for file_path in sorted(areas_dir.glob("*.json")):
+            if self._is_excluded_json_file(file_path):
+                continue
+            try:
+                with open(file_path, "r", encoding="utf-8") as handle:
+                    data = json.load(handle)
+            except Exception:
+                continue
+
+            area_id = data.get("areaId")
+            if not area_id:
+                continue
+            records[area_id] = {"path": file_path, "data": data}
+
+        return records
+
+    def _build_runtime_location_graph(
+        self,
+        area_records: Dict[str, Dict[str, Any]],
+    ) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Set[str]]]:
+        """Build runtime-aligned location graph from area data."""
+        location_index: Dict[str, Dict[str, Any]] = {}
+        edges: Dict[str, Set[str]] = defaultdict(set)
+        name_to_id: Dict[str, str] = {}
+
+        for area_id, area_record in area_records.items():
+            area_data = area_record["data"]
+            for location in area_data.get("locations", []):
+                location_id = location.get("locationId")
+                if not location_id:
+                    continue
+                location_index[location_id] = {
+                    "area_id": area_id,
+                    "file_path": area_record["path"],
+                    "name": self._location_display_name(location),
+                    "raw": location,
+                }
+                name_to_id[self._location_display_name(location)] = location_id
+
+        for location_id, location_info in location_index.items():
+            raw = location_info["raw"]
+
+            for target_id in raw.get("connectivity", []):
+                if isinstance(target_id, str) and target_id:
+                    edges[location_id].add(target_id)
+
+            # Match runtime behavior: external links are bidirectional.
+            for target_id in raw.get("areaConnectivityId", []):
+                if isinstance(target_id, str) and target_id in location_index:
+                    edges[location_id].add(target_id)
+                    edges[target_id].add(location_id)
+
+            for target_name in raw.get("areaConnectivity", []):
+                if not isinstance(target_name, str):
+                    continue
+                target_id = name_to_id.get(target_name)
+                if target_id and target_id in location_index:
+                    edges[location_id].add(target_id)
+                    edges[target_id].add(location_id)
+
+        for location_id in location_index:
+            edges.setdefault(location_id, set())
+
+        return location_index, edges
+
+    def _resolve_module_start_location(
+        self,
+        plot_data: Dict[str, Any],
+        location_index: Dict[str, Dict[str, Any]],
+    ) -> Optional[str]:
+        """Resolve deterministic module start location for plot validation."""
+        registry_path = self.schema_dir / "modules" / "world_registry.json"
+        module_slug = self.module_path.name
+
+        try:
+            if registry_path.exists():
+                with open(registry_path, "r", encoding="utf-8") as handle:
+                    world_registry = json.load(handle)
+                module_data = world_registry.get("modules", {}).get(module_slug, {})
+                registry_start = (
+                    module_data.get("startingLocation", {}).get("locationId")
+                    if isinstance(module_data, dict)
+                    else None
+                )
+                if isinstance(registry_start, str) and registry_start:
+                    return registry_start
+        except Exception:
+            pass
+
+        plot_points = plot_data.get("plotPoints", [])
+        if plot_points and isinstance(plot_points[0], dict):
+            first_location = plot_points[0].get("location")
+            if isinstance(first_location, str) and first_location:
+                return first_location
+
+        if location_index:
+            return sorted(location_index.keys())[0]
+
+        return None
+
+    def _get_area_location_ids(self, area_record: Dict[str, Any]) -> List[str]:
+        """Return ordered room IDs for one area record."""
+        location_ids: List[str] = []
+        for location in area_record.get("data", {}).get("locations", []):
+            location_id = location.get("locationId")
+            if isinstance(location_id, str) and location_id:
+                location_ids.append(location_id)
+        return location_ids
+
+    def _resolve_area_entry_room(
+        self,
+        area_id: str,
+        area_records: Dict[str, Dict[str, Any]],
+    ) -> Optional[str]:
+        """Resolve deterministic entry room for an area reference."""
+        area_record = area_records.get(area_id)
+        if not area_record:
+            return None
+
+        location_ids = self._get_area_location_ids(area_record)
+        if not location_ids:
+            return None
+
+        map_path = self.module_path / f"map_{area_id}.json"
+        if map_path.exists() and not self._is_excluded_json_file(map_path):
+            try:
+                with open(map_path, "r", encoding="utf-8") as handle:
+                    map_data = json.load(handle)
+                start_room = map_data.get("startRoom")
+                if isinstance(start_room, str) and start_room in location_ids:
+                    return start_room
+            except Exception:
+                pass
+
+        return location_ids[0]
+
+    def _resolve_room_reference(
+        self,
+        reference: str,
+        location_index: Dict[str, Dict[str, Any]],
+        area_records: Dict[str, Dict[str, Any]],
+    ) -> Tuple[Optional[str], str]:
+        """Resolve room or area reference to runtime room ID."""
+        if reference in location_index:
+            return reference, "room"
+        if reference in area_records:
+            resolved = self._resolve_area_entry_room(reference, area_records)
+            if resolved:
+                return resolved, "area"
+            return None, "area"
+        return None, "unknown"
+
+    def _extract_branch_paths(self, branch_metadata: Any) -> List[Dict[str, Any]]:
+        """Extract explicit branch path arrays for deterministic step checks."""
+        extracted: List[Dict[str, Any]] = []
+
+        def walk(node: Any, path: str) -> None:
+            if isinstance(node, dict):
+                branch_id = node.get("id") or node.get("endingId") or node.get("name")
+                for key, value in node.items():
+                    child_path = f"{path}.{key}" if path else key
+                    if key in {"path", "bypass"} and isinstance(value, list):
+                        if all(isinstance(step, str) for step in value):
+                            extracted.append(
+                                {
+                                    "kind": key,
+                                    "steps": value,
+                                    "context": child_path,
+                                    "branch_id": branch_id,
+                                }
+                            )
+                        continue
+                    walk(value, child_path)
+            elif isinstance(node, list):
+                for idx, item in enumerate(node):
+                    walk(item, f"{path}[{idx}]")
+
+        walk(branch_metadata, "branch_metadata")
+        return extracted
+
+    @staticmethod
+    def _has_explicit_prerequisite(plot_point: Dict[str, Any]) -> bool:
+        """Check whether a plot point has explicit gate metadata."""
+        for key in ("prerequisites", "prerequisite", "requires", "requiredPlotPoints"):
+            value = plot_point.get(key)
+            if isinstance(value, list) and value:
+                return True
+            if isinstance(value, str) and value.strip():
+                return True
+        return False
+
+    @staticmethod
+    def _is_conclusion_or_finale(plot_point: Dict[str, Any]) -> bool:
+        """Detect explicit finale/conclusion beats from deterministic fields."""
+        tokens = " ".join(
+            [
+                str(plot_point.get("id", "")),
+                str(plot_point.get("title", "")),
+                str(plot_point.get("plotImpact", "")),
+            ]
+        ).lower()
+        return ("conclusion" in tokens) or ("finale" in tokens)
+
+    def validate_runtime_room_reachability(self):
+        """Validate intra-area room reachability from authored runtime connectivity."""
+        area_records = self._load_active_area_records()
+        if not area_records:
+            return
+
+        for area_id, area_record in sorted(area_records.items()):
+            area_path = area_record["path"]
+            area_data = area_record["data"]
+            locations = area_data.get("locations", [])
+            location_ids = [
+                location.get("locationId")
+                for location in locations
+                if isinstance(location.get("locationId"), str) and location.get("locationId")
+            ]
+
+            result = self.results["runtime_room_reachability"]
+            result["files"].append(str(area_path.relative_to(self.module_path)))
+
+            if len(location_ids) <= 1:
+                result["passed"] += 1
+                continue
+
+            local_edges: Dict[str, Set[str]] = defaultdict(set)
+            known_rooms = set(location_ids)
+            area_errors: List[str] = []
+
+            for location in locations:
+                source_id = location.get("locationId")
+                if source_id not in known_rooms:
+                    continue
+                for target_id in location.get("connectivity", []):
+                    if not isinstance(target_id, str) or not target_id:
+                        continue
+                    local_edges[source_id].add(target_id)
+                    if target_id not in known_rooms:
+                        area_errors.append(
+                            f"{area_path}: room {source_id} connectivity references unknown room {target_id}"
+                        )
+
+            for room_id in known_rooms:
+                local_edges.setdefault(room_id, set())
+
+            start_room = location_ids[0]
+            reachable = self._bfs_reachable(start_room, local_edges)
+            unreachable_rooms = sorted(known_rooms - reachable)
+
+            if unreachable_rooms:
+                area_errors.append(
+                    f"{area_path}: start room {start_room} cannot reach rooms {', '.join(unreachable_rooms)}"
+                )
+
+            if area_errors:
+                result["failed"] += 1
+                result["errors"].extend(area_errors)
+            else:
+                result["passed"] += 1
+
+    def validate_map_area_parity(self):
+        """Validate room-graph parity between area files and map files."""
+        area_records = self._load_active_area_records()
+        if not area_records:
+            return
+
+        for area_id, area_record in sorted(area_records.items()):
+            map_path = self.module_path / f"map_{area_id}.json"
+            if not map_path.exists() or self._is_excluded_json_file(map_path):
+                continue
+
+            try:
+                with open(map_path, "r", encoding="utf-8") as handle:
+                    map_data = json.load(handle)
+            except Exception as exc:
+                parity_result = self.results["map_area_parity"]
+                parity_result["files"].append(f"{area_record['path'].name} <-> {map_path.name}")
+                parity_result["failed"] += 1
+                parity_result["errors"].append(
+                    f"{map_path}: failed to parse map JSON for parity check ({exc})"
+                )
+                continue
+
+            area_edges: Dict[str, Set[str]] = {}
+            for location in area_record["data"].get("locations", []):
+                location_id = location.get("locationId")
+                if not isinstance(location_id, str) or not location_id:
+                    continue
+                targets = {
+                    target
+                    for target in location.get("connectivity", [])
+                    if isinstance(target, str) and target
+                }
+                area_edges[location_id] = targets
+
+            map_edges: Dict[str, Set[str]] = {}
+            for room in map_data.get("rooms", []):
+                room_id = room.get("id")
+                if not isinstance(room_id, str) or not room_id:
+                    continue
+                targets = {
+                    target
+                    for target in room.get("connections", [])
+                    if isinstance(target, str) and target
+                }
+                map_edges[room_id] = targets
+
+            parity_result = self.results["map_area_parity"]
+            parity_result["files"].append(f"{area_record['path'].name} <-> {map_path.name}")
+
+            area_rooms = set(area_edges.keys())
+            map_rooms = set(map_edges.keys())
+            shared_rooms = sorted(area_rooms & map_rooms)
+            parity_errors: List[str] = []
+
+            for room_id in sorted(map_rooms - area_rooms):
+                parity_errors.append(
+                    f"{area_record['path']} vs {map_path}: room {room_id} exists in map but not in area"
+                )
+
+            for room_id in sorted(area_rooms - map_rooms):
+                parity_errors.append(
+                    f"{area_record['path']} vs {map_path}: room {room_id} exists in area but not in map"
+                )
+
+            for room_id in shared_rooms:
+                area_targets = area_edges.get(room_id, set())
+                map_targets = map_edges.get(room_id, set())
+
+                missing_in_area = sorted(map_targets - area_targets)
+                missing_in_map = sorted(area_targets - map_targets)
+
+                if missing_in_area:
+                    parity_errors.append(
+                        f"{area_record['path']} vs {map_path}: room {room_id} missing area edges {', '.join(missing_in_area)}"
+                    )
+                if missing_in_map:
+                    parity_errors.append(
+                        f"{area_record['path']} vs {map_path}: room {room_id} missing map edges {', '.join(missing_in_map)}"
+                    )
+
+            if parity_errors:
+                parity_result["failed"] += 1
+                parity_result["errors"].extend(parity_errors)
+            else:
+                parity_result["passed"] += 1
+
+    def validate_plot_progression_paths(self):
+        """Validate deterministic plot progression against runtime graph."""
+        plot_files = [
+            plot_file
+            for plot_file in sorted(self.module_path.glob("*_plot.json"))
+            if not self._is_excluded_json_file(plot_file)
+        ]
+        if not plot_files:
+            return
+
+        area_records = self._load_active_area_records()
+        location_index, runtime_edges = self._build_runtime_location_graph(area_records)
+
+        for plot_file in plot_files:
+            progression_result = self.results["plot_progression"]
+            progression_result["files"].append(plot_file.name)
+            file_errors: List[str] = []
+
+            try:
+                with open(plot_file, "r", encoding="utf-8") as handle:
+                    plot_data = json.load(handle)
+            except Exception as exc:
+                progression_result["failed"] += 1
+                progression_result["errors"].append(
+                    f"{plot_file}: failed to parse plot JSON ({exc})"
+                )
+                continue
+
+            plot_points = plot_data.get("plotPoints", [])
+            start_reference = self._resolve_module_start_location(plot_data, location_index)
+
+            if not start_reference:
+                progression_result["failed"] += 1
+                progression_result["errors"].append(
+                    f"{plot_file}: unable to resolve module starting location"
+                )
+                continue
+
+            start_location, _ = self._resolve_room_reference(
+                start_reference,
+                location_index,
+                area_records,
+            )
+            if not start_location:
+                progression_result["failed"] += 1
+                progression_result["errors"].append(
+                    f"{plot_file}: starting location {start_reference} not found in area room graph"
+                )
+                continue
+
+            reachable_from_start = self._bfs_reachable(start_location, runtime_edges)
+
+            for plot_point in plot_points:
+                if not isinstance(plot_point, dict):
+                    continue
+                plot_id = plot_point.get("id", "<unknown_plot_id>")
+                location_ref = plot_point.get("location")
+                if not isinstance(location_ref, str) or not location_ref:
+                    continue
+
+                location_id, location_kind = self._resolve_room_reference(
+                    location_ref,
+                    location_index,
+                    area_records,
+                )
+                if not location_id:
+                    file_errors.append(
+                        f"{plot_file}: plot {plot_id} location {location_ref} not found in room graph"
+                    )
+                    continue
+                if location_id not in reachable_from_start:
+                    if location_kind == "area":
+                        file_errors.append(
+                            f"{plot_file}: plot {plot_id} location {location_ref} (entry {location_id}) unreachable from start {start_reference}"
+                        )
+                    else:
+                        file_errors.append(
+                            f"{plot_file}: plot {plot_id} location {location_id} unreachable from start {start_location}"
+                        )
+
+            for branch in self._extract_branch_paths(plot_data.get("branch_metadata", {})):
+                steps = branch.get("steps", [])
+                context = branch.get("context", "branch_metadata")
+                branch_id = branch.get("branch_id")
+                context_label = f"{context} ({branch_id})" if branch_id else context
+
+                if len(steps) < 2:
+                    continue
+
+                for index in range(len(steps) - 1):
+                    source_ref = steps[index]
+                    target_ref = steps[index + 1]
+                    source_id, source_kind = self._resolve_room_reference(
+                        source_ref,
+                        location_index,
+                        area_records,
+                    )
+                    target_id, target_kind = self._resolve_room_reference(
+                        target_ref,
+                        location_index,
+                        area_records,
+                    )
+
+                    if not source_id:
+                        file_errors.append(
+                            f"{plot_file}: {context_label} references unknown room {source_ref}"
+                        )
+                        continue
+                    if not target_id:
+                        file_errors.append(
+                            f"{plot_file}: {context_label} references unknown room {target_ref}"
+                        )
+                        continue
+
+                    # Strict edge check for room-id steps; path-existence check for area-id aliases.
+                    if source_kind == "room" and target_kind == "room":
+                        if target_id not in runtime_edges.get(source_id, set()):
+                            file_errors.append(
+                                f"{plot_file}: {context_label} broken step {source_ref} -> {target_ref}"
+                            )
+                        continue
+
+                    reachable_from_source = self._bfs_reachable(source_id, runtime_edges)
+                    if target_id not in reachable_from_source:
+                        file_errors.append(
+                            f"{plot_file}: {context_label} broken step {source_ref} -> {target_ref}"
+                        )
+
+            incoming_edges: Dict[str, Set[str]] = defaultdict(set)
+            for plot_point in plot_points:
+                if not isinstance(plot_point, dict):
+                    continue
+                source_id = plot_point.get("id")
+                if not isinstance(source_id, str) or not source_id:
+                    continue
+                for target_id in plot_point.get("nextPoints", []):
+                    if isinstance(target_id, str) and target_id:
+                        incoming_edges[target_id].add(source_id)
+
+            for plot_point in plot_points:
+                if not isinstance(plot_point, dict):
+                    continue
+                if not self._is_conclusion_or_finale(plot_point):
+                    continue
+
+                plot_id = plot_point.get("id", "<unknown_plot_id>")
+                upstream = sorted(incoming_edges.get(plot_id, set()))
+                if not upstream:
+                    continue
+                if not self._has_explicit_prerequisite(plot_point):
+                    file_errors.append(
+                        f"{plot_file}: conclusion/finale plot {plot_id} missing explicit prerequisite gate (upstream: {', '.join(upstream)})"
+                    )
+
+            if file_errors:
+                progression_result["failed"] += 1
+                progression_result["errors"].extend(file_errors)
+            else:
+                progression_result["passed"] += 1
+
     def validate_all_files(self):
         """Validate all files and return results (required by module_stitcher)"""
-        self.run_all_validations()
+        self.execute_full_validation(verbose=False)
         return self.results
     
     def get_success_rate(self):
@@ -539,6 +1094,9 @@ class ModuleValidator:
         self.validate_party_tracker()
         self.validate_module_context()
         self.validate_encounter_files()
+        self.validate_runtime_room_reachability()
+        self.validate_map_area_parity()
+        self.validate_plot_progression_paths()
 
         # Run connectivity validation
         success, errors = self.validate_area_connectivity()
@@ -547,26 +1105,24 @@ class ModuleValidator:
         else:
             self.results["connectivity"]["failed"] = 1
             self.results["connectivity"]["errors"] = errors
+
+    def execute_full_validation(self, verbose: bool = False):
+        """Canonical full validation execution path for all output modes."""
+        self._verbose = verbose
+        if verbose:
+            print(f"\nValidating module: {self.module_path}")
+            print("=" * 80)
+
+        self.load_schemas()
+
+        if verbose:
+            print("\nRunning validations...")
+
+        self.run_all_validations()
                 
     def run_validation(self):
-        """Run all validations"""
-        print(f"\nValidating module: {self.module_path}")
-        print("=" * 80)
-        
-        self.load_schemas()
-        print("\nRunning validations...")
-        
-        # Run all validation methods
-        self.validate_module_files()
-        self.validate_area_files()
-        self.validate_monster_references()
-        self.validate_character_files()
-        self.validate_monster_files()
-        self.validate_map_files()
-        self.validate_plot_files()
-        self.validate_party_tracker()
-        self.validate_module_context()
-        self.validate_encounter_files()
+        """Backward-compatible wrapper around canonical execution path."""
+        self.execute_full_validation(verbose=True)
         
     def print_report(self):
         """Print comprehensive validation report"""
@@ -593,8 +1149,22 @@ class ModuleValidator:
         print("DETAILED RESULTS BY FILE TYPE:")
         print("-" * 80)
         
-        file_type_order = ["module", "area", "reference_integrity", "character", "monster", "map", "plot",
-                          "party", "module_context", "encounter", "connectivity"]
+        file_type_order = [
+            "module",
+            "area",
+            "reference_integrity",
+            "character",
+            "monster",
+            "map",
+            "plot",
+            "party",
+            "module_context",
+            "encounter",
+            "runtime_room_reachability",
+            "map_area_parity",
+            "plot_progression",
+            "connectivity",
+        ]
         
         for file_type in file_type_order:
             if file_type not in self.results:
@@ -739,6 +1309,30 @@ def _discover_all_modules():
     return candidates
 
 
+def _is_module_like_path(path: Path) -> bool:
+    """Return True when a path looks like a module directory."""
+    if not path.exists() or not path.is_dir():
+        return False
+
+    areas_dir = path / "areas"
+    if areas_dir.exists() and any(areas_dir.glob("*.json")):
+        return True
+
+    # Legacy fallback: area JSON at module root.
+    for candidate in path.glob("*.json"):
+        if ModuleValidator._is_excluded_json_file(candidate):
+            continue
+        try:
+            with open(candidate, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            if isinstance(data, dict) and data.get("areaId") and data.get("locations"):
+                return True
+        except Exception:
+            continue
+
+    return False
+
+
 def main():
     """Main execution with argparse"""
     parser = argparse.ArgumentParser(
@@ -776,11 +1370,15 @@ def main():
         p = Path(args.module_path)
         if not p.exists():
             parser.error(f"Module path does not exist: {args.module_path}")
+        if not _is_module_like_path(p):
+            parser.error(f"Module path is not module-like: {args.module_path}")
         targets.append(p)
     elif args.module:
         base = Path(__file__).parent.parent.parent / "modules" / args.module
         if not base.exists():
             parser.error(f"Module not found: modules/{args.module}")
+        if not _is_module_like_path(base):
+            parser.error(f"Module is not module-like: modules/{args.module}")
         targets.append(base)
     elif args.all_modules:
         targets = [Path(__file__).parent.parent.parent / "modules" / name for name in _discover_all_modules()]
@@ -804,7 +1402,7 @@ def main():
     for module_path in targets:
         validator = ModuleValidator(module_path, schema_dir)
         try:
-            validator.run_validation()
+            validator.execute_full_validation(verbose=not args.json)
         except RuntimeError as e:
             # Unwrap dependency errors clearly for operators
             if "jsonschema" in str(e).lower():
