@@ -707,11 +707,6 @@ def is_allied_companion_check(
                 f"MISSING_MEDIA_AUTOGEN: {char_identity} is allied companion - allowing generation",
                 category="missing_media_autogen"
             )
-        else:
-            debug(
-                f"MISSING_MEDIA_AUTOGEN: {char_identity} is not allied companion - skipping",
-                category="missing_media_autogen"
-            )
         
         return is_allied
         

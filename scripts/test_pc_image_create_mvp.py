@@ -145,6 +145,25 @@ class TestMissingMediaWarningThrottle(unittest.TestCase):
         self.assertTrue(result_a1, "First miss for key A should emit")
         self.assertTrue(result_b1, "First miss for key B should also emit (different key)")
 
+    def test_missing_media_warning_npc_variants_share_identity_key(self):
+        """NPC image variants should share one throttle identity key."""
+        # Arrange
+        self.wi_module._missing_media_warning_timestamps.clear()
+        self.wi_module._missing_media_throttle_enabled = True
+        self.wi_module._missing_media_throttle_seconds = 300
+
+        # First variant emits
+        result_first = self.wi_module._should_emit_missing_media_warning("npcs", "pella_vireen_thumb.jpg")
+
+        # Other variants of same NPC should be suppressed in-window
+        result_second = self.wi_module._should_emit_missing_media_warning("npcs", "pella_vireen.jpg")
+        result_third = self.wi_module._should_emit_missing_media_warning("npcs", "pella_vireen.png")
+
+        # Assert
+        self.assertTrue(result_first, "First miss should emit warning")
+        self.assertFalse(result_second, "Variant miss should be suppressed for same NPC identity")
+        self.assertFalse(result_third, "Additional variant miss should be suppressed for same NPC identity")
+
 
 class TestEnqueueDedupeAndCooldown(unittest.TestCase):
     """Test suite for missing media autogen queue dedupe and cooldown."""

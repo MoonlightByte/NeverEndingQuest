@@ -181,6 +181,28 @@ except ImportError:
 _missing_media_throttle_enabled = MISSING_MEDIA_WARNING_THROTTLE_ENABLED
 _missing_media_throttle_seconds = MISSING_MEDIA_WARNING_THROTTLE_SECONDS
 
+
+def _canonicalize_missing_media_warning_key(media_type: str, filename: str) -> str:
+    """Build a throttle key for missing-media warnings.
+
+    TABLETOP MODE: For NPC portraits, collapse extension/thumbnail variants
+    (for example: .jpg/.png/_thumb.jpg) to one identity key so repeated
+    misses for the same NPC do not spam logs.
+    """
+    normalized_media_type = str(media_type or "").lower().replace(" ", "_").replace("-", "_")
+    normalized_filename = str(filename or "").lower().replace(" ", "_").replace("-", "_")
+
+    if normalized_media_type == "npcs":
+        npc_identity = normalized_filename
+        npc_identity = npc_identity.replace("_thumb", "")
+        npc_identity = npc_identity.replace(".jpg", "")
+        npc_identity = npc_identity.replace(".jpeg", "")
+        npc_identity = npc_identity.replace(".png", "")
+        return f"{normalized_media_type}/{npc_identity}"
+
+    return f"{normalized_media_type}/{normalized_filename}"
+
+
 def _should_emit_missing_media_warning(media_type: str, filename: str) -> bool:
     """
     Determine if a missing media warning should be emitted.
@@ -201,9 +223,8 @@ def _should_emit_missing_media_warning(media_type: str, filename: str) -> bool:
     if not _missing_media_throttle_enabled:
         return True
     
-    # Normalize key: lowercase, replace special chars with underscore
-    key = f"{media_type}/{filename}".lower()
-    key = key.replace(' ', '_').replace('-', '_')
+    # Normalize key with NPC variant collapsing
+    key = _canonicalize_missing_media_warning_key(media_type, filename)
     
     current_time = time.time()
     
@@ -1002,10 +1023,9 @@ def serve_module_media(media_type, filename):
         return send_file(static_media_path, mimetype=mimetype)
     
     # TABLETOP MODE: Apply per-key warning throttle to prevent log spam
-    if _should_emit_missing_media_warning(media_type, filename):
+    should_emit_missing_warning = _should_emit_missing_media_warning(media_type, filename)
+    if should_emit_missing_warning:
         warning(f"Media file not found in any location: {media_type}/{filename}")
-    else:
-        debug(f"Media miss throttled (suppressed warning): {media_type}/{filename}", category="web_interface")
     
     # TABLETOP MODE: Enqueue auto-generation for allied NPC companion portraits (non-blocking)
     # MVP policy: Only allied companions get auto-generated; non-allied NPCs and monsters skip
@@ -1038,10 +1058,11 @@ def serve_module_media(media_type, filename):
 
                 # Check allied policy before enqueueing (MVP: allied companions only)
                 if not is_allied_companion_check(policy_task):
-                    debug(
-                        f"MISSING_MEDIA_AUTOGEN: Skipped non-allied NPC {filename}",
-                        category="web_interface"
-                    )
+                    if should_emit_missing_warning:
+                        debug(
+                            f"MISSING_MEDIA_AUTOGEN: Skipped non-allied NPC {filename}",
+                            category="web_interface"
+                        )
                 else:
                     # Allied companion - proceed with enqueue
                     result = enqueue_missing_media_autogen_task(

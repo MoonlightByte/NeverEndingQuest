@@ -1096,7 +1096,9 @@ Respond with JSON:
             # Use the existing validator
             from core.validation.validate_module_files import ModuleValidator
             
-            validator = ModuleValidator(module_path, "schemas")
+            # TABLETOP MODE: ModuleValidator expects repo root and appends /schemas internally.
+            # Passing "schemas" here caused lookup at schemas/schemas/*.json and false missing-schema logs.
+            validator = ModuleValidator(module_path, self.root_dir)
             validator.load_schemas()
             
             # Run validation (suppress output)
