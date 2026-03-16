@@ -4,7 +4,7 @@
             <div class="character-tab-wrapper" style="position: relative; display: inline-block;">
                 <button class="character-tab {{ 'active' if member == active_character else '' }}" 
                         data-character="{{ member }}">
-                    {{ member }}
+                    {{ member|replace('_', ' ') }}
                 </button>
                 <span class="retire-character-btn" 
                       data-character="{{ member }}"

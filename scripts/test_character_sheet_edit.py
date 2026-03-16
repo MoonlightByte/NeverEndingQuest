@@ -370,6 +370,38 @@ class TestCharacterSheetEditUIContracts(unittest.TestCase):
         self.assertIn('response.party_members', source,
                       "Tab sync should use party_members from payload")
 
+    def test_character_tab_template_displays_spaces_but_preserves_raw_data_attribute(self):
+        """Test: tab template shows space-friendly labels while preserving canonical data-character values."""
+        html_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "templates", "partials", "character_tabs.html"
+        )
+
+        with open(html_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+
+        self.assertIn('data-character="{{ member }}"', source,
+                      "Tab data-character should preserve canonical member value")
+        self.assertIn("{{ member|replace('_', ' ') }}", source,
+                      "Tab label should replace underscores with spaces")
+
+    def test_character_tab_js_uses_display_formatter_and_preserves_raw_identifier(self):
+        """Test: runtime tab rebuild formats label text but keeps canonical data-character identifier."""
+        js_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "static", "js", "tabletop_mode.js"
+        )
+
+        with open(js_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+
+        self.assertIn('function formatTabLabel(characterName)', source,
+                      "formatTabLabel helper should exist")
+        self.assertIn("tabButton.setAttribute('data-character', memberName);", source,
+                      "Runtime tab rebuild should preserve canonical data-character value")
+        self.assertIn('tabButton.textContent = formatTabLabel(memberName);', source,
+                      "Runtime tab rebuild should display formatted tab label")
+
     def test_forms_have_autocomplete_off(self):
         """Test: Roll Your Own and Manage PC forms disable browser autofill."""
         html_path = os.path.join(

@@ -73,6 +73,16 @@ function updateTabUI(activeName) {
 }
 
 /**
+ * TABLETOP MODE: Format tab label for display only.
+ * Keeps canonical character identifiers unchanged for routing/state.
+ * @param {string} characterName
+ * @returns {string}
+ */
+function formatTabLabel(characterName) {
+    return String(characterName || '').replace(/_/g, ' ');
+}
+
+/**
  * TABLETOP MODE: Reconcile character tab DOM from backend party payload.
  * Keeps tabs in sync during startup creation queue without requiring page reload.
  * @param {Object} response - party_data_response payload
@@ -117,7 +127,7 @@ function syncCharacterTabsFromPartyResponse(response) {
         const tabButton = document.createElement('button');
         tabButton.className = `character-tab${memberName === resolvedActive ? ' active' : ''}`;
         tabButton.setAttribute('data-character', memberName);
-        tabButton.textContent = memberName;
+        tabButton.textContent = formatTabLabel(memberName);
 
         const retireButton = document.createElement('span');
         retireButton.className = 'retire-character-btn';
