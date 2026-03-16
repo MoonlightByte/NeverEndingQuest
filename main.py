@@ -1214,7 +1214,10 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
             input_lower = user_input.lower()
             
             # PHASE 1: Check for directional movement verbs (required)
-            directional_verbs = ["go", "travel", "head", "move", "walk", "run", "proceed"]
+            directional_verbs = [
+                "go", "travel", "head", "move", "walk", "run", "proceed",
+                "enter", "leave", "exit", "return", "follow", "climb", "descend",
+            ]
             has_directional_verb = any(
                 re.search(r'\b' + verb + r'\b', input_lower) for verb in directional_verbs
             )
@@ -1258,6 +1261,35 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
             # Travel intent = directional verb AND destination AND NOT inquiry-only
             is_travel_intent = has_directional_verb and has_destination and not is_inquiry_only
         
+        # TABLETOP MODE: Travel state sync guard
+        # Reject clear travel narration without transitionLocation, while allowing
+        # explicit blocker/clarifier responses that keep party at current location.
+        try:
+            from utils.travel_state_sync_guard import evaluate_travel_state_sync_guard
+
+            known_location_names = []
+            if isinstance(area_data, dict):
+                for loc in area_data.get("locations", []):
+                    if isinstance(loc, dict):
+                        loc_name = loc.get("name", "")
+                        if isinstance(loc_name, str) and loc_name.strip():
+                            known_location_names.append(loc_name)
+
+            travel_sync_valid, travel_sync_reason = evaluate_travel_state_sync_guard(
+                response_json=response_json,
+                is_travel_intent=is_travel_intent,
+                current_location_name=party_tracker_data["worldConditions"].get("currentLocation", ""),
+                known_location_names=known_location_names,
+            )
+
+            if not travel_sync_valid:
+                print(f"ERROR: Travel state sync guard failed - {travel_sync_reason}")
+                return (False, travel_sync_reason)
+        except Exception as e:
+            error_msg = f"Travel state sync guard error: {str(e)}"
+            print(f"ERROR: {error_msg}")
+            return (False, error_msg)
+
         # Run NPC arrival state sync validation
         is_sync_valid, sync_reason = validate_npc_arrival_state_sync(
             response_json,
@@ -5228,6 +5260,7 @@ def main_game_loop():
                 # Use shorter, stable correction message to reduce token bloat
                 is_deterministic = (
                     "npc arrival state sync" in normalized_reason or
+                    "travel state sync guard" in normalized_reason or
                     "transition pre-validation" in normalized_reason or
                     "validation failed" in normalized_reason
                 )

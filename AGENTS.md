@@ -1021,6 +1021,42 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Travel-Intent State Sync Guard (COMPLETED - 2026-03-16)
+
+**Status:** COMPLETED - runtime guard added to prevent narration-only travel desync loops
+
+**OpenSpec Change:**
+- `openspec/changes/tt-travel-intent-state-sync-guard/`
+
+**Objective:**
+Stop clear travel-intent turns from accepting arrival narration without a matching `transitionLocation` action, which caused apparent "location magic" snap-backs to stale current location state.
+
+**Implementation Summary:**
+- Added deterministic travel state-sync guard helper:
+  - `utils/travel_state_sync_guard.py`
+  - Rejects clear arrival/commitment travel narration when `transitionLocation` is missing.
+  - Allows explicit blocker/clarifier turns to remain action-free when party stays at current location.
+  - Rejects explicit contradictory mixed-location narration in one response.
+  - Fails open on ambiguous prose.
+- Wired guard into narrator validation path in `main.py` (before NPC arrival guard).
+- Expanded travel-intent directional verb coverage (`enter`, `leave`, `exit`, `return`, `follow`, `climb`, `descend`) for reliable trigger detection.
+- Added deterministic retry classification for travel guard failures so retries use concise correction notes.
+- Added focused regression suite:
+  - `scripts/test_travel_state_sync_guard.py`
+
+**Verification:**
+- `python3 -m py_compile main.py utils/travel_state_sync_guard.py scripts/test_travel_state_sync_guard.py` -> PASS
+- `python3 scripts/test_travel_state_sync_guard.py` -> PASS (9/9)
+- `.venv/bin/python scripts/test_retry_de_looping.py` -> PASS (18/18)
+- `.venv/bin/python scripts/test_npc_arrival_state_sync.py` -> PASS (41/41)
+- `openspec validate tt-travel-intent-state-sync-guard` -> VALID
+
+**Files Modified:**
+- `main.py`
+- `utils/travel_state_sync_guard.py`
+- `scripts/test_travel_state_sync_guard.py`
+- `openspec/changes/tt-travel-intent-state-sync-guard/*`
+
 ### Night of the Restless Dead Tunnel Loop Fix (COMPLETED - 2026-03-16)
 
 **Status:** COMPLETED - module movement graph and plot gating hardening for NIG tunnel progression
