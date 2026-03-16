@@ -162,11 +162,14 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 }
 
 @DETERMINISTIC_HANDOFF={
-   rule: Deterministic validator result is authoritative for arrival-sync checks.
-   fields: deterministic_passed, deterministic_reason, deterministic_required_action
-   deterministic_passed=true: LLM validator MUST NOT fail on arrival-sync grounds; respect the pass.
-   deterministic_passed=false: LLM validator MUST fail using deterministic_reason; do not override to pass.
-   note: Deterministic validator handles strict off-location arrival detection; LLM validator focuses on semantic/narrative quality.
+   rule: Deterministic handoff is domain-scoped and authoritative for passed domains.
+   payload_v1_domains: [travel_state_sync, npc_state_sync, mechanics_precheck]
+   domain_fields: [passed, authoritative, reconciled, mode, reason, required_action]
+   summary_fields: [all_authoritative_domains_passed, authoritative_failures, reconciled_domains]
+   pass_rule: If an authoritative domain has passed, LLM validator MUST NOT fail solely on that domain.
+   mixed_rule: If validator complaint includes unreconciled domain(s), keep failure for remaining domain(s).
+   fail_rule: If authoritative domain failed deterministically, validator MUST keep failure and not override to valid.
+   note: Deterministic runtime resolves travel/NPC state sync. LLM validator still checks unreconciled semantic and structure quality.
 }
 
 @NPC_ARRIVAL_VALIDATION={

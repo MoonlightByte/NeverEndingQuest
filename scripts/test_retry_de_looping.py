@@ -138,7 +138,7 @@ class TestRetryDeLoopingContracts(unittest.TestCase):
 
     def test_deterministic_detection_logic(self):
         """
-        Test 5: Deterministic guard detection logic exists.
+        Test 5: Deterministic guard detection uses domain classification helper.
         """
         main_py_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -148,11 +148,23 @@ class TestRetryDeLoopingContracts(unittest.TestCase):
         with open(main_py_path, 'r') as f:
             content = f.read()
         
-        # Check for deterministic guard detection
+        # Check for domain-based deterministic guard detection
         self.assertIn(
-            '"npc arrival state sync" in normalized_reason',
+            "classify_validator_failure_domains",
             content,
-            "main.py should detect NPC arrival state sync as deterministic"
+            "main.py should classify retry failures by domain"
+        )
+
+        self.assertIn(
+            "deterministic_domains = {",
+            content,
+            "main.py should define deterministic domain allowlist for retry notes"
+        )
+
+        self.assertNotIn(
+            '"validation failed" in normalized_reason',
+            content,
+            "main.py should not use overly broad deterministic reason bucket"
         )
 
     def test_exhaustion_behavior_preserved(self):

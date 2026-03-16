@@ -53,6 +53,31 @@ _EXPLICIT_ARRIVAL_VERBS: Set[str] = {
 }
 
 
+_JOIN_SEMANTICS_PATTERNS = [
+    r"\bjoin(?:s|ed|ing)?\s+(?:the\s+)?party\b",
+    r"\btravel(?:s|ed|ing)?\s+with\s+(?:you|us|the\s+party)\b",
+    r"\bcome(?:s|ing)?\s+with\s+(?:you|us)\b",
+    r"\baccompany(?:ies|ied|ing)?\s+(?:you|us|the\s+party)\b",
+    r"\bfollow(?:s|ed|ing)?\s+(?:you|us|the\s+party)\b",
+]
+
+
+_SCENE_PRESENCE_USER_CUE_PATTERNS = [
+    r"\bcall\b",
+    r"\bcall\s+out\b",
+    r"\bhail\b",
+    r"\bspeak\b",
+    r"\btalk\b",
+    r"\bask\b",
+    r"\blook\s+for\b",
+    r"\bfind\b",
+    r"\bseek\b",
+    r"\bwhere\s+is\b",
+    r"\bhermit\b",
+    r"\brefuge\b",
+]
+
+
 class IdentityResolutionResult:
     """
     Result container for NPC identity resolution.
@@ -281,55 +306,77 @@ def _has_explicit_arrival_semantics(narration: str, npc_mentions: Set[str]) -> b
     return False
 
 
-def validate_npc_arrival_state_sync(
+def _has_join_semantics(narration: str) -> bool:
+    """Return True when narration implies durable party membership semantics."""
+    narration_lower = narration.lower()
+    return any(re.search(pattern, narration_lower) for pattern in _JOIN_SEMANTICS_PATTERNS)
+
+
+def _has_scene_presence_user_cue(user_utterance: Optional[str]) -> bool:
+    """Return True when user input indicates local NPC interaction intent."""
+    if not isinstance(user_utterance, str):
+        return False
+    utterance_lower = user_utterance.lower().strip()
+    if not utterance_lower:
+        return False
+    return any(re.search(pattern, utterance_lower) for pattern in _SCENE_PRESENCE_USER_CUE_PATTERNS)
+
+
+def _build_scene_presence_inferred_action(
+    canonical_npc_name: str,
+    current_location_hint: str,
+) -> Dict[str, Any]:
+    """Build inferred move action for safe scene-presence reconciliation."""
+    return {
+        "action": "moveBackgroundNPC",
+        "parameters": {
+            "npcName": canonical_npc_name,
+            "context": "Reconcile-first scene presence inferred from narration",
+            "currentLocation": current_location_hint,
+        },
+    }
+
+
+def evaluate_npc_arrival_state_sync_decision(
     response_json: Dict[str, Any],
     party_tracker_data: Dict[str, Any],
     location_data: Optional[Dict[str, Any]] = None,
     module_npc_names: Optional[Set[str]] = None,
     is_travel_intent: bool = False,
-    user_utterance: Optional[str] = None
-) -> Tuple[bool, str]:
-    """
-    Validate that narration does not introduce off-location known NPCs
-    without accompanying state synchronization actions.
-
-    Args:
-        response_json: Parsed AI response with 'narration' and 'actions' fields
-        party_tracker_data: Current party tracker state
-        location_data: Current location data with npcs list (optional)
-        module_npc_names: Set of all canonical NPC names in the module (optional)
-        is_travel_intent: Whether this is a travel/transition turn (fail-soft for non-explicit arrivals)
-        user_utterance: Optional raw user utterance for detecting travel intent
-
-    Returns:
-        Tuple of (is_valid, reason_message)
-        - is_valid: True if validation passes, False if failed
-        - reason_message: Empty string if valid, actionable error message if invalid
-    """
+    user_utterance: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Evaluate deterministic NPC state-sync decision with optional reconciliation."""
     narration = response_json.get("narration", "")
     actions = response_json.get("actions", [])
 
-    party_members_lower = _build_party_member_set(party_tracker_data)
+    if not isinstance(narration, str):
+        narration = str(narration or "")
+    if not isinstance(actions, list):
+        actions = []
+
     party_members_canonical = _build_party_member_canonical_set(party_tracker_data)
-    
-    present_npcs_lower = _build_present_npc_set(party_tracker_data, location_data)
+
     present_npcs_canonical = _build_present_npc_canonical_set(party_tracker_data, location_data)
-    
+
     known_npcs_lower = _build_known_npc_set(party_tracker_data, location_data, module_npc_names)
     known_npcs_canonical = _build_known_npc_canonical_set(party_tracker_data, location_data, module_npc_names)
 
     mentioned_npcs_lower = _extract_npc_mentions(narration, known_npcs_lower)
-
     if not mentioned_npcs_lower:
-        return (True, "")
+        return {
+            "valid": True,
+            "reason": "",
+            "inferred_actions": [],
+            "reconciliation": "none",
+            "missing_actions": [],
+        }
 
-    # TABLETOP MODE: Travel fail-soft detection
-    # Check for explicit arrival semantics BEFORE processing exemptions
     has_explicit_arrival = _has_explicit_arrival_semantics(narration, mentioned_npcs_lower)
+    has_join_semantics = _has_join_semantics(narration)
 
     missing_actions: Set[str] = set()
     ambiguous_mentions = set()
-    
+
     for mentioned_lower in mentioned_npcs_lower:
         for party_member in party_members_canonical:
             if party_member.lower() == mentioned_lower:
@@ -344,7 +391,7 @@ def validate_npc_arrival_state_sync(
             if mentioned_tokens and party_tokens and party_tokens.issubset(mentioned_tokens):
                 mentioned_lower = None
                 break
-        
+
         if mentioned_lower is None:
             continue
 
@@ -356,12 +403,12 @@ def validate_npc_arrival_state_sync(
             if result.status == "matched":
                 mentioned_lower = None
                 break
-        
+
         if mentioned_lower is None:
             continue
 
         resolve_result = resolve_npc_identity(mentioned_lower, known_npcs_canonical)
-        
+
         if resolve_result.status == "ambiguous":
             ambiguous_mentions.add(mentioned_lower)
             continue
@@ -387,31 +434,112 @@ def validate_npc_arrival_state_sync(
             if canonical_tokens and party_tokens and party_tokens.issubset(canonical_tokens):
                 exempt = True
                 break
-        
+
         if exempt:
             continue
-        
+
         has_action = _has_arrival_action_for_npc(
-            canonical_name, 
-            actions, 
-            known_npcs_canonical
+            canonical_name,
+            actions,
+            known_npcs_canonical,
         )
-        
+
         if not has_action:
             missing_actions.add(canonical_name)
 
-    if missing_actions:
-        # TABLETOP MODE: Explicit-arrival-only enforcement.
-        # Incidental off-location mentions without explicit arrival semantics are valid,
-        # both in travel turns and non-travel turns.
+    missing_sorted = sorted(missing_actions)
+
+    if missing_sorted:
         if not has_explicit_arrival:
-            return (True, "")
+            return {
+                "valid": True,
+                "reason": "",
+                "inferred_actions": [],
+                "reconciliation": "mention_only",
+                "missing_actions": missing_sorted,
+            }
 
-        # STANDARD PATH: Fail-closed for explicit arrivals without matching action.
-        reason = _format_failure_reason(sorted(missing_actions))
-        return (False, reason)
+        # TABLETOP MODE: G3 narrow reconcile-first gate for scene-compatible
+        # explicit presence (not durable party joins).
+        can_reconcile_scene_presence = (
+            len(missing_sorted) == 1
+            and not ambiguous_mentions
+            and not is_travel_intent
+            and not has_join_semantics
+            and _has_scene_presence_user_cue(user_utterance)
+        )
 
-    return (True, "")
+        if can_reconcile_scene_presence:
+            current_location_hint = ""
+            if isinstance(party_tracker_data, dict):
+                world_conditions = party_tracker_data.get("worldConditions", {})
+                if isinstance(world_conditions, dict):
+                    current_location_hint = str(world_conditions.get("currentLocationId", "") or "").strip()
+
+            inferred_action = _build_scene_presence_inferred_action(
+                canonical_npc_name=missing_sorted[0],
+                current_location_hint=current_location_hint,
+            )
+            return {
+                "valid": True,
+                "reason": "",
+                "inferred_actions": [inferred_action],
+                "reconciliation": "scene_presence_autocommit",
+                "missing_actions": missing_sorted,
+            }
+
+        reason = _format_failure_reason(missing_sorted)
+        return {
+            "valid": False,
+            "reason": reason,
+            "inferred_actions": [],
+            "reconciliation": "none",
+            "missing_actions": missing_sorted,
+        }
+
+    return {
+        "valid": True,
+        "reason": "",
+        "inferred_actions": [],
+        "reconciliation": "none",
+        "missing_actions": [],
+    }
+
+
+def validate_npc_arrival_state_sync(
+    response_json: Dict[str, Any],
+    party_tracker_data: Dict[str, Any],
+    location_data: Optional[Dict[str, Any]] = None,
+    module_npc_names: Optional[Set[str]] = None,
+    is_travel_intent: bool = False,
+    user_utterance: Optional[str] = None
+) -> Tuple[bool, str]:
+    """
+    Validate that narration does not introduce off-location known NPCs
+    without accompanying state synchronization actions.
+
+    Args:
+        response_json: Parsed AI response with 'narration' and 'actions' fields
+        party_tracker_data: Current party tracker state
+        location_data: Current location data with npcs list (optional)
+        module_npc_names: Set of all canonical NPC names in the module (optional)
+        is_travel_intent: Whether this is a travel/transition turn (fail-soft for non-explicit arrivals)
+        user_utterance: Optional raw user utterance for detecting travel intent
+
+    Returns:
+        Tuple of (is_valid, reason_message)
+        - is_valid: True if validation passes, False if failed
+        - reason_message: Empty string if valid, actionable error message if invalid
+    """
+    decision = evaluate_npc_arrival_state_sync_decision(
+        response_json=response_json,
+        party_tracker_data=party_tracker_data,
+        location_data=location_data,
+        module_npc_names=module_npc_names,
+        is_travel_intent=is_travel_intent,
+        user_utterance=user_utterance,
+    )
+    return bool(decision.get("valid", True)), str(decision.get("reason", "") or "")
 
 
 def _build_party_member_set(party_tracker_data: Dict[str, Any]) -> Set[str]:

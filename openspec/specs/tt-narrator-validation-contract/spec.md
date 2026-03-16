@@ -4,19 +4,18 @@ Define authoritative validation behavior for off-location NPC arrival state sync
 ## Requirements
 ### Requirement: Deterministic validator is authoritative for arrival sync
 
-Off-location NPC mention SHALL require a state-sync action only when narration includes explicit physical-arrival semantics.
+Off-location NPC mention SHALL require a state-sync action only when narration includes explicit physical-arrival semantics, except where deterministic scene-presence reconciliation safely normalizes current-scene presence.
 
-#### Scenario: Off-location rumor mention without explicit arrival
-- **GIVEN** narration references an off-location known NPC in informational/social context
-- **AND** no explicit arrival verb semantics are present
-- **WHEN** deterministic arrival validation runs
-- **THEN** validation SHALL pass for arrival-sync dimension
+#### Scenario: Deterministic scene-presence reconcile blocks LLM re-litigation
+- **GIVEN** deterministic runtime classifies one NPC mention as safe scene presence eligible for reconciliation
+- **WHEN** narrator validation executes
+- **THEN** runtime SHALL preserve the deterministic reconcile result for that NPC-presence dimension
+- **AND** LLM validation SHALL NOT reintroduce a missing-arrival failure solely because explicit movement plumbing was omitted
 
-#### Scenario: Explicit off-location arrival without action
-- **GIVEN** narration explicitly states an off-location known NPC arrives/enters/joins/appears
-- **AND** no matching `moveBackgroundNPC` or `updatePartyNPCs add` action exists
-- **WHEN** deterministic arrival validation runs
-- **THEN** validation SHALL fail with required-action reason
+#### Scenario: Explicit join remains unreconciled by scene-presence path
+- **GIVEN** narration crosses from scene presence into durable party-join semantics
+- **WHEN** deterministic runtime evaluates the response
+- **THEN** scene-presence reconciliation SHALL NOT bypass explicit party-membership requirements
 
 ### Requirement: LLM validator SHALL NOT re-litigate deterministic arrival results
 
@@ -112,4 +111,42 @@ Validation and system prompt examples SHALL not contradict runtime canonical-nam
 - **WHEN** prompt examples describe `updatePartyNPCs` join behavior
 - **THEN** examples SHALL use canonical NPC action names or explicit canonicalization guidance
 - **AND** SHALL NOT present short-name action examples that conflict with full-name validation rules
+
+### Requirement: Packet-enabled validation handoff SHALL consume authoritative packet truth
+For domains enabled by this foundation slice, narrator validation assembly SHALL use authoritative state packet fields as the canonical truth handoff instead of reconstructing those truths independently from multiple ad hoc sources.
+
+#### Scenario: Packet-enabled validation uses shared state surface
+- **WHEN** narrator validation assembles current location, party roster, party NPC roster, or touched topology context for a packet-enabled turn
+- **THEN** the assembly path SHALL consume those truths from the authoritative state packet
+- **AND** it SHALL avoid rebuilding different values for the same overlapping truths from separate ad hoc sources
+
+### Requirement: Packet handoff SHALL remain additive during migration
+The packet-enabled validation handoff SHALL remain additive during this migration slice and SHALL NOT require immediate replacement of every legacy validation context source.
+
+#### Scenario: Legacy context remains available outside packet-enabled domains
+- **WHEN** validation still requires non-packet legacy context outside the domains covered by this change
+- **THEN** runtime MAY include that additional context
+- **AND** packet-enabled overlapping truths SHALL still come from the authoritative state packet
+
+### Requirement: Travel-intent validation SHALL prefer reconciliation over rejection when movement is legal
+For turns classified as travel intent, narrator validation SHALL prefer runtime reconciliation over missing-action rejection when narrated movement is legal, topology-safe, and safely resolvable.
+
+#### Scenario: Legal narrated movement without explicit travel action
+- **WHEN** a turn is classified as travel intent
+- **AND** narrated movement is legal and safely resolvable
+- **AND** explicit `transitionLocation` is missing
+- **THEN** validation SHALL allow runtime travel reconciliation to proceed
+- **AND** the turn SHALL NOT fail solely for missing explicit travel action
+
+#### Scenario: Illegal travel remains blocking
+- **WHEN** a turn is classified as travel intent
+- **AND** narrated movement is topology-illegal or unsafe to resolve
+- **THEN** validation SHALL continue to block the travel commit
+- **AND** runtime SHALL NOT treat reconcile-first behavior as a bypass for impossible movement
+
+#### Scenario: Ambiguous travel requests clarification instead of wrong commit
+- **WHEN** a turn is classified as travel intent
+- **AND** narrated movement cannot be resolved safely to one destination or one progress interpretation
+- **THEN** validation SHALL preserve safe current truth or request clarification
+- **AND** SHALL NOT require an arbitrary exact destination commit
 

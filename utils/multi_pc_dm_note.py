@@ -24,6 +24,7 @@ from utils.enhanced_logger import debug, info, warning
 from utils.encoding_utils import safe_json_load
 from utils.module_path_manager import ModulePathManager
 from utils.pc_manager import should_use_abstraction_layer
+from utils.authoritative_state_packet import build_authoritative_state_packet
 
 
 def should_use_multi_pc_dm_note(party_tracker_data: Optional[Dict[str, Any]]) -> bool:
@@ -378,9 +379,19 @@ def build_multi_pc_dm_note(
     Returns:
         Complete DM Note string with multi-PC enhancements
     """
-    # Get party composition
-    party_members = party_tracker_data.get('partyMembers', [])
-    active_pc = party_tracker_data.get('active_character')
+    # TABLETOP MODE: Build authoritative packet so DM Note and validator use
+    # the same overlapping location/party/party-NPC truth surface.
+    authoritative_state_packet = build_authoritative_state_packet(party_tracker_data)
+    packet_world = authoritative_state_packet.get("world", {})
+    packet_party = authoritative_state_packet.get("party", {})
+    packet_module = authoritative_state_packet.get("module", {})
+
+    # Get party composition from packet truth first.
+    party_members = packet_party.get("party_members", [])
+    if not isinstance(party_members, list) or not party_members:
+        party_members = party_tracker_data.get('partyMembers', [])
+
+    active_pc = packet_party.get("active_character") or party_tracker_data.get('active_character')
     
     # Load all character data
     characters_data = load_party_character_data(party_tracker_data)
@@ -390,8 +401,15 @@ def build_multi_pc_dm_note(
         active_pc = party_members[0]
     
     # Get party NPCs
-    party_npcs = party_tracker_data.get('partyNPCs', [])
+    party_npcs = packet_party.get("party_npcs", [])
+    if not isinstance(party_npcs, list):
+        party_npcs = party_tracker_data.get('partyNPCs', [])
     party_npcs_str = format_party_npcs(party_npcs)
+
+    effective_module_name = packet_module.get("name") or current_module_name
+    effective_location_name = packet_world.get("current_location_name") or current_location_name
+    effective_location_id = packet_world.get("current_location_id") or current_location_id
+    effective_area_name = packet_world.get("current_area_name") or current_area_name
     
     # Start building DM Note
     dm_note_parts = []
@@ -399,8 +417,8 @@ def build_multi_pc_dm_note(
     # --- WORLD STATE SECTION ---
     dm_note_parts.append("--- WORLD STATE ---")
     dm_note_parts.append(f"Current date and time: {date_time_str}, {current_season} season")
-    dm_note_parts.append(f"Current module: {current_module_name}")
-    dm_note_parts.append(f"Current location: {current_location_name} ({current_location_id}) in the {current_area_name} area")
+    dm_note_parts.append(f"Current module: {effective_module_name}")
+    dm_note_parts.append(f"Current location: {effective_location_name} ({effective_location_id}) in the {effective_area_name} area")
     dm_note_parts.append(f"Adjacent locations: {connected_locations_str}")
     dm_note_parts.append("")  # Blank line
     
@@ -481,7 +499,7 @@ def build_multi_pc_dm_note(
     # Check if current location has been peacefully resolved
     world_conditions = party_tracker_data.get("worldConditions", {})
     resolved_map = world_conditions.get("resolvedHostilesByLocation", {})
-    is_resolved_here = resolved_map.get(current_location_id, False) if isinstance(resolved_map, dict) else False
+    is_resolved_here = resolved_map.get(effective_location_id, False) if isinstance(resolved_map, dict) else False
     
     if is_resolved_here:
         dm_note_parts.append("Resolved Hostile State: Hostile guardian at this location has been appeased. Do not re-initiate this threat unless the party provokes it.")

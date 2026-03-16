@@ -60,6 +60,10 @@ class TestValidationRoutingTelemetryBehavior(unittest.TestCase):
             used_validation_compression=False,
             compression_reason="below_threshold",
             validation_payload_chars=850,
+            authoritative_domain_conflict=True,
+            suppressed_domains=["travel_state_sync"],
+            remaining_failure_domains=[],
+            deterministic_payload_version="v1",
         )
 
         self.assertEqual(set(telemetry.keys()), {
@@ -68,11 +72,19 @@ class TestValidationRoutingTelemetryBehavior(unittest.TestCase):
             "used_validation_compression",
             "compression_reason",
             "validation_payload_chars",
+            "authoritative_domain_conflict",
+            "suppressed_domains",
+            "remaining_failure_domains",
+            "deterministic_payload_version",
         })
         self.assertTrue(telemetry["skip_llm_validation"])
         self.assertEqual(telemetry["skip_reason"], "narration_only")
         self.assertEqual(telemetry["compression_reason"], "below_threshold")
         self.assertEqual(telemetry["validation_payload_chars"], 850)
+        self.assertTrue(telemetry["authoritative_domain_conflict"])
+        self.assertEqual(telemetry["suppressed_domains"], ["travel_state_sync"])
+        self.assertEqual(telemetry["remaining_failure_domains"], [])
+        self.assertEqual(telemetry["deterministic_payload_version"], "v1")
 
 
 class TestValidationRoutingTelemetrySourceContract(unittest.TestCase):

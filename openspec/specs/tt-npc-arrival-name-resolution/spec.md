@@ -22,14 +22,13 @@ NPC arrival state sync validation SHALL treat unambiguous short and full name va
 
 ### Requirement: Ambiguous NPC Alias Mentions SHALL Fail Open
 
-When a short NPC alias maps to multiple possible identities, validation SHALL NOT hard-fail solely on that ambiguous mapping.
+When scene-presence reconciliation is introduced, a short NPC alias that maps to multiple possible identities SHALL remain ambiguity-safe and SHALL NOT be auto-committed to one canonical NPC.
 
-#### Scenario: Ambiguous short alias
-
-- **WHEN** narration mentions `oswin`
-- **AND** candidate identities include multiple distinct NPCs matching `oswin`
-- **THEN** validation SHALL classify the alias as ambiguous
-- **AND** SHALL NOT add that mention to hard-fail missing-arrival errors by itself
+#### Scenario: Ambiguous alias blocks auto-commit under scene presence
+- **WHEN** narration explicitly presents an NPC in-scene using an alias that resolves to multiple canonical candidates
+- **AND** deterministic scene-presence reconciliation evaluates that mention
+- **THEN** runtime SHALL preserve ambiguity safety
+- **AND** SHALL NOT silently choose one canonical identity for reconciliation
 
 ### Requirement: Unambiguous Missing Arrivals SHALL Still Fail Closed
 
@@ -75,4 +74,13 @@ Canonical name resolution SHALL be scoped by action type to avoid impossible val
 - **WHEN** canonical name preprocessing runs
 - **THEN** name resolution SHALL use module-known NPC canonical identities
 - **AND** SHALL NOT be rejected solely for absence from party tracker
+
+### Requirement: Unambiguous canonical identity SHALL gate safe reconciliation
+
+Scene-presence reconciliation SHALL proceed only when identity resolution produces one safe canonical NPC.
+
+#### Scenario: Unambiguous hermit identity enables reconcile-first path
+- **WHEN** narration explicitly presents `Maelo` in-scene
+- **AND** canonical identity resolution uniquely maps that mention to `Spirit-Touched Hermit Maelo`
+- **THEN** deterministic runtime MAY use that canonical identity for scene-presence reconciliation
 

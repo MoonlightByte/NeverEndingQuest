@@ -6,7 +6,7 @@ Verifies that:
 1. Travel-intent + off-location NPC mention + NO explicit-arrival semantics + NO action => VALID (fail-soft)
 2. Travel-intent + explicit-arrival semantics + NO action => INVALID (fail-closed)
 3. Travel-intent + explicit-arrival semantics + matching action => VALID
-4. Non-travel turn behavior remains unchanged (strict checks)
+4. Non-travel incidental off-location mention remains VALID when no explicit arrival semantics are present
 5. All existing exemptions preserved (party member, alias resolution, negated mentions)
 """
 
@@ -196,11 +196,12 @@ class TestTravelFailSoftBehavior(unittest.TestCase):
         self.assertTrue(is_valid,
             f"Explicit arrival with matching action should be valid, got: {reason}")
 
-    def test_non_travel_strict_check_no_action(self):
+    def test_non_travel_incidental_mention_no_action_is_valid(self):
         """
-        Test 4: Non-travel turn + off-location NPC mention + NO action => INVALID (strict).
+        Test 4: Non-travel turn + off-location NPC mention + NO action => VALID.
         
-        Non-travel turns should remain strict - fail-soft only applies to travel.
+        Contract parity: incidental mention without explicit-arrival semantics
+        remains valid in both travel and non-travel turns.
         """
         response_json = {
             "narration": "You notice that Elen is watching from the outpost.",
@@ -216,9 +217,9 @@ class TestTravelFailSoftBehavior(unittest.TestCase):
             user_utterance="look around"
         )
         
-        self.assertFalse(is_valid,
-            "Non-travel turns should fail-closed even without explicit arrival verbs")
-        self.assertIn("scout elen", reason.lower())
+        self.assertTrue(is_valid,
+            f"Non-travel incidental mention without explicit-arrival should pass, got: {reason}")
+        self.assertEqual(reason, "")
 
     def test_travel_with_party_npc_exempt(self):
         """
@@ -333,11 +334,12 @@ class TestTravelFailSoftBehavior(unittest.TestCase):
 
 
 class TestBackwardCompatibility(unittest.TestCase):
-    """Test backward compatibility - no travel intent defaults to strict."""
+    """Test backward compatibility for no-travel-intent calls."""
 
-    def test_no_travel_intent_defaults_to_strict(self):
+    def test_no_travel_intent_defaults_to_incidental_mention_valid(self):
         """
-        Test 9: Default behavior (no is_travel_intent parameter) remains strict.
+        Test 9: Default behavior (no is_travel_intent parameter) remains
+        explicit-arrival-only for incidental off-location mentions.
         """
         party_tracker = {
             "partyMembers": ["Zeug"],
@@ -364,9 +366,9 @@ class TestBackwardCompatibility(unittest.TestCase):
             module_npc_names=module_npcs
         )
         
-        self.assertFalse(is_valid,
-            "Default behavior should be strict (fail-closed)")
-        self.assertIn("scout elen", reason.lower())
+        self.assertTrue(is_valid,
+            f"Default behavior should allow incidental mention without explicit-arrival, got: {reason}")
+        self.assertEqual(reason, "")
 
 
 if __name__ == '__main__':

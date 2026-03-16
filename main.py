@@ -146,6 +146,7 @@ from core.managers.status_manager import (
 # Import atomic file operations
 from utils.file_operations import safe_write_json, safe_read_json
 from utils.module_path_manager import ModulePathManager
+from utils.authoritative_state_packet import build_authoritative_state_packet
 from core.managers.campaign_manager import CampaignManager
 from core.ai.inventory_context_integration import build_enhanced_dm_note
 
@@ -561,12 +562,20 @@ def parse_json_safely(text):
     # If we still can't parse it, raise an exception
     raise json.JSONDecodeError("Unable to parse JSON from the given text", text, 0)
 
-def create_module_validation_context(party_tracker_data, path_manager):
+def create_module_validation_context(party_tracker_data, path_manager, state_packet=None):
     """Create module data context for validation system to check location/NPC references"""
     try:
-        current_area_id = party_tracker_data["worldConditions"]["currentAreaId"]
-        current_location_id = party_tracker_data["worldConditions"]["currentLocationId"]
-        current_module = party_tracker_data.get("module", "Unknown")
+        packet_world = {}
+        packet_party = {}
+        packet_module = {}
+        if isinstance(state_packet, dict):
+            packet_world = state_packet.get("world", {}) if isinstance(state_packet.get("world", {}), dict) else {}
+            packet_party = state_packet.get("party", {}) if isinstance(state_packet.get("party", {}), dict) else {}
+            packet_module = state_packet.get("module", {}) if isinstance(state_packet.get("module", {}), dict) else {}
+
+        current_area_id = packet_world.get("current_area_id") or party_tracker_data["worldConditions"]["currentAreaId"]
+        current_location_id = packet_world.get("current_location_id") or party_tracker_data["worldConditions"]["currentLocationId"]
+        current_module = packet_module.get("name") or party_tracker_data.get("module", "Unknown")
         
         validation_context = f"MODULE VALIDATION DATA:\nCurrent Module: {current_module}\nCurrent Area: {current_area_id}\nCurrent Location: {current_location_id}\n\n"
         
@@ -599,9 +608,20 @@ def create_module_validation_context(party_tracker_data, path_manager):
                         current_location_npcs = location_npcs.copy()  # Start with location NPCs
             
             # Add party NPCs to current location (they travel with the party)
-            party_npcs = party_tracker_data.get("partyNPCs", [])
-            for party_npc in party_npcs:
-                npc_name = party_npc.get("name", "")
+            packet_party_npc_names = packet_party.get("party_npc_names", [])
+            if not isinstance(packet_party_npc_names, list):
+                packet_party_npc_names = []
+
+            party_npc_names = [name for name in packet_party_npc_names if isinstance(name, str) and name]
+            if not party_npc_names:
+                party_npcs = party_tracker_data.get("partyNPCs", [])
+                for party_npc in party_npcs:
+                    if isinstance(party_npc, dict):
+                        npc_name = party_npc.get("name", "")
+                        if npc_name:
+                            party_npc_names.append(npc_name)
+
+            for npc_name in party_npc_names:
                 if npc_name and npc_name not in current_location_npcs:
                     current_location_npcs.append(npc_name)
             
@@ -1158,12 +1178,34 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         print(f"INFO: Auto-corrected NPC names - {npc_normalization_message}")
         response_to_validate = npc_normalized_response
 
+    # TABLETOP MODE: Authoritative packet placeholders used by travel/NPC
+    # guards first, then reused in downstream validation context assembly.
+    authoritative_state_packet = {}
+    packet_world = {}
+    packet_location = {}
+    packet_topology = {}
+    packet_party = {}
+    packet_module = {}
+    travel_sync_decision = {"valid": True, "reason": "", "inferred_actions": [], "reconciliation": "none"}
+    npc_sync_decision = {"valid": True, "reason": "", "inferred_actions": [], "reconciliation": "none"}
+    mechanics_ok = True
+    mechanics_reason = ""
+    deterministic_handoff = {
+        "payload_version": "",
+        "domains": {},
+        "summary": {
+            "all_authoritative_domains_passed": True,
+            "authoritative_failures": [],
+            "reconciled_domains": [],
+        },
+    }
+
     # TABLETOP MODE: NPC Arrival State Sync Validation (Tasks 1.1-1.4)
     # Validate that narration cannot introduce off-location known NPCs
     # unless the same response includes a matching state action
     # STRICT FAIL-CLOSED: All context loading must succeed or validation fails
     try:
-        from utils.npc_arrival_validator import validate_npc_arrival_state_sync, load_module_npc_names
+        from utils.npc_arrival_validator import evaluate_npc_arrival_state_sync_decision, load_module_npc_names
         
         # Parse the response JSON for validation
         try:
@@ -1202,6 +1244,19 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
             error_msg = f"NPC arrival state sync validation error: location '{current_location_id}' not found in area '{current_area_id}'"
             print(f"ERROR: {error_msg}")
             return (False, error_msg)
+
+        # TABLETOP MODE: Build authoritative packet as soon as strict location
+        # context is loaded so travel and NPC validation read shared truth.
+        authoritative_state_packet = build_authoritative_state_packet(
+            party_tracker_data,
+            area_data=area_data,
+            location_data=location_data,
+        )
+        packet_world = authoritative_state_packet.get("world", {})
+        packet_location = authoritative_state_packet.get("location", {})
+        packet_topology = authoritative_state_packet.get("topology", {})
+        packet_party = authoritative_state_packet.get("party", {})
+        packet_module = authoritative_state_packet.get("module", {})
         
         # Load all module NPC names for comprehensive known NPC detection
         module_npc_names = load_module_npc_names(module_name)
@@ -1261,37 +1316,72 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
             # Travel intent = directional verb AND destination AND NOT inquiry-only
             is_travel_intent = has_directional_verb and has_destination and not is_inquiry_only
         
-        # TABLETOP MODE: Travel state sync guard
-        # Reject clear travel narration without transitionLocation, while allowing
-        # explicit blocker/clarifier responses that keep party at current location.
+        # TABLETOP MODE: Travel reconcile-first state sync guard
+        # Prefer deterministic reconciliation for legal travel-intent narration
+        # while preserving explicit transitionLocation precedence and topology safety.
         try:
-            from utils.travel_state_sync_guard import evaluate_travel_state_sync_guard
+            from utils.travel_state_sync_guard import evaluate_travel_state_sync_decision
 
-            known_location_names = []
-            if isinstance(area_data, dict):
+            known_location_names = packet_topology.get("known_location_names", [])
+            if not isinstance(known_location_names, list):
+                known_location_names = []
+            if not known_location_names and isinstance(area_data, dict):
                 for loc in area_data.get("locations", []):
                     if isinstance(loc, dict):
                         loc_name = loc.get("name", "")
                         if isinstance(loc_name, str) and loc_name.strip():
                             known_location_names.append(loc_name)
 
-            travel_sync_valid, travel_sync_reason = evaluate_travel_state_sync_guard(
+            known_locations = []
+            if isinstance(area_data, dict):
+                for loc in area_data.get("locations", []):
+                    if not isinstance(loc, dict):
+                        continue
+                    loc_id = str(loc.get("locationId", "") or "").strip()
+                    loc_name = str(loc.get("name", "") or "").strip()
+                    if loc_id and loc_name:
+                        known_locations.append({
+                            "id": loc_id,
+                            "name": loc_name,
+                            "area_id": packet_world.get("current_area_id") or party_tracker_data["worldConditions"].get("currentAreaId", ""),
+                        })
+
+            travel_sync_decision = evaluate_travel_state_sync_decision(
                 response_json=response_json,
                 is_travel_intent=is_travel_intent,
-                current_location_name=party_tracker_data["worldConditions"].get("currentLocation", ""),
+                current_location_name=packet_world.get("current_location_name") or party_tracker_data["worldConditions"].get("currentLocation", ""),
+                current_location_id=packet_world.get("current_location_id") or party_tracker_data["worldConditions"].get("currentLocationId", ""),
                 known_location_names=known_location_names,
+                known_locations=known_locations,
+                adjacent_location_ids=packet_location.get("adjacent_location_ids", []),
+                reachable_location_ids=packet_topology.get("known_location_ids", []),
             )
+
+            travel_sync_valid = bool(travel_sync_decision.get("valid", True))
+            travel_sync_reason = str(travel_sync_decision.get("reason", "") or "")
 
             if not travel_sync_valid:
                 print(f"ERROR: Travel state sync guard failed - {travel_sync_reason}")
                 return (False, travel_sync_reason)
+
+            inferred_actions = travel_sync_decision.get("inferred_actions", [])
+            reconciliation_mode = str(travel_sync_decision.get("reconciliation", "none") or "none")
+            if isinstance(inferred_actions, list) and inferred_actions:
+                if not isinstance(response_json.get("actions"), list):
+                    response_json["actions"] = []
+                response_json["actions"].extend(inferred_actions)
+                response_to_validate = json.dumps(response_json, ensure_ascii=False)
+                info(
+                    f"STATE_SYNC: Travel reconcile-first injected {len(inferred_actions)} inferred action(s) mode={reconciliation_mode}",
+                    category="location_transitions",
+                )
         except Exception as e:
             error_msg = f"Travel state sync guard error: {str(e)}"
             print(f"ERROR: {error_msg}")
             return (False, error_msg)
 
         # Run NPC arrival state sync validation
-        is_sync_valid, sync_reason = validate_npc_arrival_state_sync(
+        npc_sync_decision = evaluate_npc_arrival_state_sync_decision(
             response_json,
             party_tracker_data,
             location_data=location_data,
@@ -1299,14 +1389,21 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
             is_travel_intent=is_travel_intent,
             user_utterance=user_input
         )
-        
-        # TABLETOP MODE: Step 3.1 - Capture deterministic result as structured metadata
-        # This metadata is passed to LLM validator so it does not re-litigate deterministic pass/fail
-        deterministic_result = {
-            "deterministic_passed": is_sync_valid,
-            "deterministic_reason": sync_reason if not is_sync_valid else "",
-            "deterministic_required_action": sync_reason if not is_sync_valid else ""
-        }
+
+        is_sync_valid = bool(npc_sync_decision.get("valid", True))
+        sync_reason = str(npc_sync_decision.get("reason", "") or "")
+
+        inferred_npc_actions = npc_sync_decision.get("inferred_actions", [])
+        npc_reconciliation_mode = str(npc_sync_decision.get("reconciliation", "none") or "none")
+        if is_sync_valid and isinstance(inferred_npc_actions, list) and inferred_npc_actions:
+            if not isinstance(response_json.get("actions"), list):
+                response_json["actions"] = []
+            response_json["actions"].extend(inferred_npc_actions)
+            response_to_validate = json.dumps(response_json, ensure_ascii=False)
+            info(
+                f"STATE_SYNC: NPC reconcile-first injected {len(inferred_npc_actions)} inferred action(s) mode={npc_reconciliation_mode}",
+                category="character_updates",
+            )
         
         if not is_sync_valid:
             print(f"ERROR: NPC arrival state sync validation failed - {sync_reason}")
@@ -1335,6 +1432,22 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         print(f"ERROR: {error_msg}")
         return (False, error_msg)
 
+    # TABLETOP MODE: Domain-scoped deterministic handoff for validator authority.
+    try:
+        from utils.validation_routing import build_authoritative_domain_handoff
+
+        deterministic_handoff = build_authoritative_domain_handoff(
+            travel_sync_decision=travel_sync_decision,
+            npc_sync_decision=npc_sync_decision,
+            mechanics_ok=mechanics_ok,
+            mechanics_reason=mechanics_reason,
+            payload_version="v1",
+        )
+    except Exception as e:
+        error_msg = f"Deterministic handoff payload error: {str(e)}"
+        print(f"ERROR: {error_msg}")
+        return (False, error_msg)
+
     skip_llm_validation = False
     skip_reason = "not_evaluated"
     validation_routing_telemetry = {
@@ -1343,6 +1456,10 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         "used_validation_compression": False,
         "compression_reason": "not_evaluated",
         "validation_payload_chars": 0,
+        "authoritative_domain_conflict": False,
+        "suppressed_domains": [],
+        "remaining_failure_domains": [],
+        "deterministic_payload_version": str(deterministic_handoff.get("payload_version", "")),
     }
 
     # TABLETOP MODE: Conservative low-risk validator skip routing.
@@ -1352,7 +1469,10 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
 
         skip_llm_validation, skip_reason = should_skip_llm_validation(
             response_json=response_json,
-            deterministic_passed=deterministic_result.get("deterministic_passed", False),
+            deterministic_passed=bool(
+                deterministic_handoff.get("summary", {}).get("all_authoritative_domains_passed", False)
+            ),
+            reconciled_domains=deterministic_handoff.get("summary", {}).get("reconciled_domains", []),
         )
         validation_routing_telemetry = build_validation_routing_telemetry(
             skip_llm_validation=skip_llm_validation,
@@ -1360,6 +1480,7 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
             used_validation_compression=False,
             compression_reason="not_evaluated",
             validation_payload_chars=0,
+            deterministic_payload_version=str(deterministic_handoff.get("payload_version", "")),
         )
         if skip_llm_validation:
             debug(
@@ -1417,6 +1538,7 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
     module_name = party_tracker_data.get("module", "").replace(" ", "_")
     path_manager = ModulePathManager(module_name)
     area_file = path_manager.get_area_path(current_area_id)
+    area_data = None
     try:
         with open(area_file, "r", encoding="utf-8") as file:
             area_data = json.load(file)
@@ -1424,8 +1546,25 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
     except (FileNotFoundError, json.JSONDecodeError):
         location_data = None
 
-    # Create the location details message
-    if location_data:
+    # TABLETOP MODE: Build authoritative packet for shared validation truth surface.
+    authoritative_state_packet = build_authoritative_state_packet(
+        party_tracker_data,
+        area_data=area_data,
+        location_data=location_data,
+    )
+
+    packet_world = authoritative_state_packet.get("world", {})
+    packet_location = authoritative_state_packet.get("location", {})
+    packet_topology = authoritative_state_packet.get("topology", {})
+    packet_party = authoritative_state_packet.get("party", {})
+    packet_module = authoritative_state_packet.get("module", {})
+
+    # Create the location details message from packet truth when available.
+    location_description = packet_location.get("description", "")
+    location_dm_instructions = packet_location.get("dm_instructions", "")
+    if location_description:
+        location_details = f"Location Details: {location_description} {location_dm_instructions}".strip()
+    elif location_data:
         location_details = f"Location Details: {location_data['description']} {location_data.get('dmInstructions', '')}"
     else:
         location_details = "Location Details: Not available."
@@ -1478,7 +1617,11 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
     user_input_context = f"VALIDATION CONTEXT: The user input that triggered this assistant response was: '{user_input}'"
     
     # Create module data context for location/NPC validation
-    module_data_context = create_module_validation_context(party_tracker_data, path_manager)
+    module_data_context = create_module_validation_context(
+        party_tracker_data,
+        path_manager,
+        state_packet=authoritative_state_packet,
+    )
     
     # Build compact mechanics-first truth packs for touched updateCharacterInfo actions.
     character_truth_pack_context = ""
@@ -1510,13 +1653,17 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
     try:
         from core.ai.build_npc_context import build_npc_validation_context
         
-        # Get party NPCs from party tracker data
-        party_npc_names = [npc.get('name') for npc in party_tracker_data.get('partyNPCs', [])]
+        # Get party NPCs from authoritative packet when available
+        party_npc_names = packet_party.get("party_npc_names", [])
+        if not isinstance(party_npc_names, list):
+            party_npc_names = []
+        if not party_npc_names:
+            party_npc_names = [npc.get('name') for npc in party_tracker_data.get('partyNPCs', []) if isinstance(npc, dict)]
         
         # Build compressed NPC context
         npc_validation_context = build_npc_validation_context(
-            current_module=party_tracker_data.get('module', 'Unknown'),
-            current_location=party_tracker_data.get('worldConditions', {}).get('currentLocationId', 'Unknown'),
+            current_module=packet_module.get("name") or party_tracker_data.get('module', 'Unknown'),
+            current_location=packet_world.get("current_location_id") or party_tracker_data.get('worldConditions', {}).get('currentLocationId', 'Unknown'),
             party_npcs=party_npc_names
         )
     except Exception as e:
@@ -1526,13 +1673,15 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
     
     # TABLETOP MODE: Step 3.1 - Add deterministic result metadata to validation context
     # This ensures LLM validator knows deterministic pass/fail and does not re-litigate
-    deterministic_metadata_msg = json.dumps(deterministic_result)
+    deterministic_metadata_msg = json.dumps(deterministic_handoff)
+    state_packet_msg = json.dumps(authoritative_state_packet, ensure_ascii=True)
     
     validation_conversation = [
         {"role": "system", "content": validation_prompt_text},
         {"role": "system", "content": structure_validation_note},
         {"role": "system", "content": f"DETERMINISTIC_VALIDATION_RESULT: {deterministic_metadata_msg}"},
         {"role": "system", "content": f"VALIDATION_ROUTING_TELEMETRY: {json.dumps(validation_routing_telemetry)}"},
+        {"role": "system", "content": f"AUTHORITATIVE_STATE_PACKET: {state_packet_msg}"},
         {"role": "system", "content": npc_validation_context},  # Always include, even if empty
         {"role": "system", "content": location_details},
         {"role": "system", "content": user_input_context},
@@ -1585,6 +1734,7 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         used_validation_compression=use_validation_compression,
         compression_reason=compression_reason,
         validation_payload_chars=validation_payload_size,
+        deterministic_payload_version=str(deterministic_handoff.get("payload_version", "")),
     )
 
     for msg in validation_conversation:
@@ -1719,30 +1869,46 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
             except Exception as e:
                 debug(f"Failed to log validation pair: {e}", category="ai_validation")
 
-            # TABLETOP MODE: Step 3.1 - Deterministic hard-gate for arrival-sync
-            # If deterministic validator passed, LLM validator MUST NOT fail on arrival-sync grounds
-            # This enforces spec: deterministic validator is sole source of truth for arrival sync
-            arrival_sync_override = False
-            if is_valid:
-                # Already valid - no override needed
-                pass
-            elif deterministic_result.get("deterministic_passed", False):
-                # Deterministic passed but LLM failed - check if it's arrival-sync related
-                arrival_sync_keywords = [
-                    "arrival", "arrives", "arrived", "arriving",
-                    "moveBackgroundNPC", "updatePartyNPCs",
-                    "off-location", "not currently present",
-                    "NPC arrival state sync"
-                ]
-                reason_lower = reason.lower()
-                is_arrival_sync_failure = any(kw in reason_lower for kw in arrival_sync_keywords)
-                
-                if is_arrival_sync_failure:
-                    # HARD-GATE: Override LLM failure, respect deterministic pass
-                    warning(f"VALIDATION: LLM validator attempted arrival-sync failure but deterministic validator passed. Overriding to VALID. Reason: {reason}", category="ai_validation")
-                    debug(f"DETERMINISTIC_GATE: Arrival-sync failure suppressed, respecting deterministic_passed=true", category="ai_validation")
-                    is_valid = True
-                    arrival_sync_override = True
+            # TABLETOP MODE: G4 domain-based deterministic authority deconfliction.
+            domain_suppression_applied = False
+            if not is_valid:
+                from utils.validation_routing import apply_authoritative_domain_deconfliction
+
+                deconfliction = apply_authoritative_domain_deconfliction(
+                    is_valid=is_valid,
+                    reason=reason,
+                    deterministic_handoff=deterministic_handoff,
+                )
+                is_valid = bool(deconfliction.get("is_valid", False))
+                reason = str(deconfliction.get("reason", reason) or reason)
+                domain_suppression_applied = bool(deconfliction.get("suppression_applied", False))
+
+                suppressed_domains = deconfliction.get("suppressed_domains", [])
+                remaining_domains = deconfliction.get("remaining_failure_domains", [])
+                authoritative_conflict = bool(deconfliction.get("authoritative_domain_conflict", False))
+
+                validation_routing_telemetry = build_validation_routing_telemetry(
+                    skip_llm_validation=skip_llm_validation,
+                    skip_reason=skip_reason,
+                    used_validation_compression=use_validation_compression,
+                    compression_reason=compression_reason,
+                    validation_payload_chars=validation_payload_size,
+                    authoritative_domain_conflict=authoritative_conflict,
+                    suppressed_domains=suppressed_domains,
+                    remaining_failure_domains=remaining_domains,
+                    deterministic_payload_version=str(deterministic_handoff.get("payload_version", "")),
+                )
+
+                if domain_suppression_applied:
+                    warning(
+                        f"VALIDATION: Suppressed LLM failure for authoritative domains {suppressed_domains}. Reason: {reason}",
+                        category="ai_validation",
+                    )
+                elif authoritative_conflict and remaining_domains:
+                    debug(
+                        f"VALIDATION: Authoritative domain conflict detected but remaining domains still blocking: {remaining_domains}",
+                        category="ai_validation",
+                    )
             
             # Log only failed validations to prompt_validation.json
             if not is_valid:
@@ -1761,8 +1927,8 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
 
                 return (False, reason)  # Return tuple with failure status and reason
             else:
-                if arrival_sync_override:
-                    debug("SUCCESS: Validation passed via deterministic hard-gate (LLM arrival-sync failure suppressed)", category="ai_validation")
+                if domain_suppression_applied:
+                    debug("SUCCESS: Validation passed via domain-based deterministic handoff suppression", category="ai_validation")
                 else:
                     debug("SUCCESS: Validation passed successfully", category="ai_validation")
                 # Return the fixed/validated response content
@@ -5258,11 +5424,21 @@ def main_game_loop():
                 
                 # TABLETOP MODE: Task 3.2 - Concise normalized correction note
                 # Use shorter, stable correction message to reduce token bloat
-                is_deterministic = (
-                    "npc arrival state sync" in normalized_reason or
-                    "travel state sync guard" in normalized_reason or
-                    "transition pre-validation" in normalized_reason or
-                    "validation failed" in normalized_reason
+                # while avoiding reconciled-domain re-priming.
+                try:
+                    from utils.validation_routing import classify_validator_failure_domains
+                    failure_domains = classify_validator_failure_domains(normalized_reason)
+                except Exception:
+                    failure_domains = ["unknown"]
+
+                deterministic_domains = {
+                    "travel_state_sync",
+                    "npc_state_sync",
+                    "mechanics_precheck",
+                }
+                unresolved_domains = [d for d in failure_domains if d != "unknown"]
+                is_deterministic = bool(unresolved_domains) and all(
+                    d in deterministic_domains for d in unresolved_domains
                 )
                 
                 if is_deterministic:

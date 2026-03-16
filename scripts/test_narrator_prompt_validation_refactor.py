@@ -518,6 +518,36 @@ class TestNarratorContractSourceGuards(unittest.TestCase):
         self.assertIn("@UMPIRE_DIRECT_ANSWER_VALIDATION={", content)
         self.assertIn("clear ruling-first", content)
 
+    def test_validation_prompt_has_domain_scoped_deterministic_handoff(self):
+        """Compressed validation prompt should define domain-scoped handoff fields."""
+        prompt_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "prompts", "validation", "validation_prompt_compressed.txt"
+        )
+        with open(prompt_path, "r") as f:
+            content = f.read()
+
+        self.assertIn("@DETERMINISTIC_HANDOFF={", content)
+        self.assertIn("payload_v1_domains", content)
+        self.assertIn("travel_state_sync", content)
+        self.assertIn("npc_state_sync", content)
+        self.assertIn("mechanics_precheck", content)
+        self.assertIn("mixed_rule", content)
+
+    def test_uncompressed_validation_prompt_has_domain_handoff_examples(self):
+        """Uncompressed validation prompt should include domain-handshake examples."""
+        prompt_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "prompts", "validation", "validation_prompt.txt"
+        )
+        with open(prompt_path, "r") as f:
+            content = f.read()
+
+        self.assertIn("## DETERMINISTIC DOMAIN HANDOFF", content)
+        self.assertIn("VALID - Travel Domain Already Reconciled", content)
+        self.assertIn("VALID - NPC Scene Presence Domain Already Reconciled", content)
+        self.assertIn("INVALID - Mixed-Domain Failure", content)
+
     def test_main_has_prerequisite_locked_plot_filter(self):
         """main.py should gate active plot visibility by prerequisites."""
         main_py_path = os.path.join(

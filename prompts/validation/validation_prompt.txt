@@ -982,14 +982,41 @@ Narration: "The Bloodshadow yields but then attacks without warning!"
 Actions: [{"action":"createEncounter","parameters":{...}}]
 Result: VALID - combat trigger justifies hostile re-engagement.
 
-## DETERMINISTIC ARRIVAL HANDOFF
+## DETERMINISTIC DOMAIN HANDOFF
 
-Deterministic arrival-sync validation is authoritative.
+Deterministic narrator validation handoff is domain-scoped and authoritative.
+
+### Payload Contract (v1):
+- Domains: `travel_state_sync`, `npc_state_sync`, `mechanics_precheck`
+- Per-domain fields: `passed`, `authoritative`, `reconciled`, `mode`, `reason`, `required_action`
+- Summary fields: `all_authoritative_domains_passed`, `authoritative_failures`, `reconciled_domains`
 
 ### Handoff Rules:
-- If `deterministic_passed = true`: Do NOT fail this response on arrival-sync grounds. Respect deterministic pass.
-- If `deterministic_passed = false`: This response MUST remain failed for deterministic reason. Do NOT override to pass.
-- The LLM validator should still evaluate other semantic and structural quality checks.
+- If an authoritative domain is `passed=true`, do NOT fail solely on that domain.
+- If an authoritative domain is `passed=false`, the response MUST remain failed for that deterministic reason.
+- If validator output includes both reconciled-domain complaints and unreconciled issues, keep failure only for unreconciled domains.
+- The validator should still evaluate semantic and structural quality outside already-passed authoritative domains.
+
+### Domain Examples:
+
+**VALID - Travel Domain Already Reconciled:**
+- Deterministic payload marks `travel_state_sync` as passed/reconciled.
+- Validator complaint only repeats missing travel action plumbing.
+- Result: VALID (do not re-litigate reconciled travel domain).
+
+**VALID - NPC Scene Presence Domain Already Reconciled:**
+- Deterministic payload marks `npc_state_sync` as passed/reconciled.
+- Validator complaint only repeats missing NPC move action plumbing.
+- Result: VALID (do not re-litigate reconciled NPC state domain).
+
+**INVALID - Mixed-Domain Failure:**
+- Travel/NPC domains are reconciled and passed.
+- Validator reports an unrelated unreconciled action-schema or semantic failure.
+- Result: INVALID (remain blocked on unreconciled domain).
+
+**INVALID - Authoritative Mechanics Failure:**
+- Deterministic payload marks `mechanics_precheck` as failed.
+- Result: INVALID (authoritative deterministic fail cannot be overridden).
 
 ## DIRECT ADJUDICATION (UMPIRE) VALIDATION
 

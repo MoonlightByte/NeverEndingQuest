@@ -26,14 +26,27 @@ Correction data SHALL be held in validation-local state and discarded when retry
 
 ### Requirement: Retry correction context SHALL be bounded
 
-When a deterministic failure class has multiple legal repair paths, retry correction text SHALL avoid prescribing an impossible path only.
+Retry correction text SHALL not be generated for failures whose only invalidation source is an already-reconciled authoritative domain.
 
-#### Scenario: Arrival-sync failure with non-party NPC reference
-- **GIVEN** deterministic failure reason indicates explicit-arrival state-sync mismatch
-- **AND** referenced NPC is not party-tracker-resolvable for the required action path
-- **WHEN** correction text is generated for retry
-- **THEN** correction SHALL include a legal alternative (for example, remove explicit arrival claim)
-- **AND** SHALL NOT force only an unsatisfiable mutation instruction
+#### Scenario: Reconciled travel-only complaint produces no retry correction
+- **GIVEN** deterministic runtime already reconciled travel state sync successfully
+- **AND** the LLM validator complains only about travel action plumbing
+- **WHEN** retry handling evaluates the failure
+- **THEN** runtime SHALL suppress that complaint
+- **AND** SHALL NOT generate retry correction text for that domain
+
+#### Scenario: Reconciled NPC-only complaint produces no retry correction
+- **GIVEN** deterministic runtime already reconciled NPC scene presence successfully
+- **AND** the LLM validator complains only about NPC arrival movement plumbing
+- **WHEN** retry handling evaluates the failure
+- **THEN** runtime SHALL suppress that complaint
+- **AND** SHALL NOT generate retry correction text for that domain
+
+#### Scenario: Mixed-domain failure still generates bounded correction
+- **GIVEN** an LLM failure includes both reconciled-domain complaints and unreconciled failures
+- **WHEN** retry handling evaluates the result
+- **THEN** correction text SHALL reference only the unreconciled failure
+- **AND** SHALL exclude already-reconciled domain complaints
 
 ### Requirement: Existing retry limits SHALL remain stable
 
