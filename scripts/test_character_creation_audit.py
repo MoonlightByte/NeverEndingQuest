@@ -25,6 +25,7 @@ from utils.character_creation_audit import (
     get_mechanical_snapshot,
     diff_mechanical_snapshot,
 )
+from utils import pc_manager
 
 
 def _base_payload() -> dict:
@@ -241,6 +242,38 @@ def test_backstory_completeness() -> None:
     print("[PASS] backstory completeness validation")
 
 
+def test_character_creation_prompt_formatting() -> None:
+    """Regression test: DM interview prompt formats without leaking raw placeholders."""
+    party_tracker = {
+        "partyMembers": ["Blairen", "Vitreol", "Chronos"],
+        "worldConditions": {
+            "currentLocation": "Rangers' Command Post",
+            "currentArea": "Rangers' Outpost",
+        },
+    }
+
+    prompt = pc_manager.get_character_creation_prompt(
+        module_name="The_Thornwood_Watch",
+        character_name="Valerius",
+        party_tracker=party_tracker,
+        level=1,
+        is_mid_campaign=True,
+        active_pc="Blairen",
+        current_location="Rangers' Command Post",
+    )
+
+    assert prompt, "Character creation prompt should not be empty"
+    assert not prompt.startswith("# SPDX"), "SPDX header should be stripped from model prompt"
+    assert "{module_name}" not in prompt, "module_name placeholder should be formatted"
+    assert "{level_context}" not in prompt, "level_context placeholder should be formatted"
+    assert "{experience_points}" not in prompt, "experience_points placeholder should be formatted"
+    assert "{exp_next}" not in prompt, "exp_next placeholder should be formatted"
+    assert "spellSlots {}" not in prompt, "Literal format braces should not leak into the prompt"
+    assert "Begin by asking what kind of hero they want to become!" in prompt, "Prompt body should remain intact"
+
+    print("[PASS] character creation prompt formatting validated")
+
+
 def main() -> None:
     good_payload = _base_payload()
     success_result = audit_character_creation(good_payload, source="test", enable_enrichment=False)
@@ -266,7 +299,10 @@ def main() -> None:
     
     # Run backstory completeness test
     test_backstory_completeness()
-    
+
+    # Run DM interview prompt formatting regression test
+    test_character_creation_prompt_formatting()
+
     # Run readiness repair regression tests
     test_readiness_repair_regression()
 

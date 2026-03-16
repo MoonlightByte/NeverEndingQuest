@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.enhanced_logger import info, error, debug
+from utils.character_creation_prompt_builder import build_dm_creation_prompt_bundle
 
 PARTY_TRACKER_FILE = "party_tracker.json"
 
@@ -560,120 +561,39 @@ def get_character_creation_prompt(
     Returns:
         Formatted prompt string with context
     """
-    # Local wealth guidance function to avoid circular imports
-    def get_wealth_guidance_text_local(target_level: int) -> str:
-        if target_level <= 2:
-            return "STARTING EQUIPMENT: Use standard class starting equipment plus background gear. No additional gold."
-        elif target_level <= 4:
-            gp = {3: 150, 4: 375}.get(target_level, 150)
-            return f"STARTING EQUIPMENT: Standard gear plus {gp}gp for additional equipment."
-        elif target_level <= 7:
-            gp = {5: 650, 6: 900, 7: 1200}.get(target_level, 650)
-            return f"STARTING EQUIPMENT: Standard gear plus {gp}gp. Consider uncommon magic items."
-        elif target_level <= 10:
-            gp = {8: 1650, 9: 2250, 10: 3000}.get(target_level, 1650)
-            return f"STARTING EQUIPMENT: Standard gear plus {gp}gp. Should have rare magic items (2-3)."
-        elif target_level <= 14:
-            gp = {11: 4000, 12: 5250, 13: 6750, 14: 8750}.get(target_level, 4000)
-            return f"STARTING EQUIPMENT: Standard gear plus {gp}gp. Should have very rare items (3-4)."
-        else:
-            gp = {15: 11250, 16: 14500, 17: 18750, 18: 24250, 19: 31250, 20: 40000}.get(target_level, 11250)
-            return f"STARTING EQUIPMENT: Standard gear plus {gp}gp. Should have legendary items (4-5)."
-    
-    prompt_file = "prompts/character_creation/dm_interview_prompt.txt"
-    
-    # Fallback if prompt file doesn't exist
-    if not os.path.exists(prompt_file):
-        return (
-            f"[SYSTEM] A new player '{character_name}' is joining the table at Level {level}! "
-            f"Please guide them through 5e character creation. "
-            f"Ask for Race, Class, Background, Ability Scores, Skills, Equipment, and Personality. "
-            f"When complete, output the full character as JSON."
-        )
-    
     try:
-        with open(prompt_file, 'r', encoding='utf-8') as f:
-            template = f.read()
-    except Exception as e:
-        error(f"Failed to load character creation prompt: {e}")
-        return (
-            f"[SYSTEM] A new player '{character_name}' is joining the table at Level {level}! "
-            f"Please guide them through 5e character creation."
-        )
-    
-    # Get context from party tracker
-    world = party_tracker.get("worldConditions", {})
-    party_members = party_tracker.get("partyMembers", [])
-    
-    # Filter out the new character from party list (they haven't joined yet)
-    existing_members = [m for m in party_members if m.lower().replace(' ', '_') != character_name.lower().replace(' ', '_')]
-    
-    # Get recent summary for context
-    recent_summary = "The adventure continues..."
-    try:
-        summary_file = "modules/conversation_history/conversation_history.json"
-        if os.path.exists(summary_file):
-            history = safe_read_json(summary_file)
-            if history and isinstance(history, list):
-                for msg in reversed(history):
-                    if isinstance(msg, dict):
-                        content = str(msg.get("content", ""))
-                        if "=== LOCATION SUMMARY ===" in content or "=== MODULE SUMMARY ===" in content:
-                            recent_summary = content[:500] + "..." if len(content) > 500 else content
-                            break
-    except Exception:
-        pass
-    
-    # Build level-specific context
-    xp_for_level = XP_BY_LEVEL.get(level, 0)
-    xp_next = XP_BY_LEVEL.get(level + 1, XP_BY_LEVEL[20]) if level < 20 else 0
-    
-    level_context = f"""
-CHARACTER LEVEL: {level}
-EXPERIENCE POINTS: {xp_for_level} (minimum for level {level})
-EXPERIENCE FOR NEXT LEVEL: {xp_next}
-"""
-    
-    # Add equipment guidance for levels above 1
-    equipment_guidance = ""
-    if is_mid_campaign and level > 1:
-        equipment_guidance = get_wealth_guidance_text_local(level)
-        level_context += f"\n{equipment_guidance}"
-    
-    # Add mid-campaign specific instructions
-    mid_campaign_context = ""
-    if is_mid_campaign:
-        mid_campaign_context = f"""
-MID-CAMPAIGN ADDITION:
-This character is joining an ongoing adventure. The party currently consists of: {', '.join(existing_members) if existing_members else 'no one yet'}.
-
-{active_pc} is currently the active party member at {current_location or world.get('currentLocation', 'the current location')}.
-
-CONNECTION OPPORTUNITY:
-During creation, ask if {character_name} recognizes any existing party members from their past (friend, rival, former comrade, etc.) or if they are a complete stranger. This will be woven into their entrance narrative.
-
-IMPORTANT: This character is NOT exhausted, injured, or debilitated. They are fresh and ready for adventure at full capacity.
-"""
-    
-    # Format the prompt
-    try:
-        formatted_prompt = template.format(
-            character_name=character_name,
+        prompt_bundle = build_dm_creation_prompt_bundle(
+            mode="mid_campaign",
             module_name=module_name,
-            location_name=current_location or world.get("currentLocation", "the current location"),
-            area_name=world.get("currentArea", "the current area"),
-            party_members=", ".join(existing_members) if existing_members else "none yet",
+            character_name=character_name,
             level=level,
-            recent_summary=recent_summary,
-            level_context=level_context,
-            mid_campaign_context=mid_campaign_context,
-            active_pc=active_pc or "The party",
+            party_tracker=party_tracker,
+            is_mid_campaign=is_mid_campaign,
+            active_pc=active_pc,
+            current_location=current_location,
         )
-        return formatted_prompt
+        return prompt_bundle.get("system_prompt", "")
     except Exception as e:
-        error(f"Failed to format character creation prompt: {e}")
-        # Return unformatted template as fallback
-        return template
+        error(f"Failed to build shared character creation prompt: {e}")
+        world = party_tracker.get("worldConditions", {}) if isinstance(party_tracker, dict) else {}
+        party_members = party_tracker.get("partyMembers", []) if isinstance(party_tracker, dict) else []
+        existing_members = [
+            m for m in party_members
+            if m.lower().replace(" ", "_") != character_name.lower().replace(" ", "_")
+        ]
+        existing_party_text = ", ".join(existing_members) if existing_members else "none yet"
+        xp_for_level = XP_BY_LEVEL.get(level, 0)
+        xp_next = XP_BY_LEVEL.get(level + 1, XP_BY_LEVEL[20]) if level < 20 else 0
+        return (
+            f"You are a friendly and knowledgeable character creation guide for 5th edition fantasy adventures. "
+            f"Help create '{character_name}' for the {module_name} adventure at level {level}. "
+            f"Current location: {current_location or world.get('currentLocation', 'the current location')}. "
+            f"Existing party members: {existing_party_text}. "
+            f"Ask one question at a time, guide the player through race, class, background, abilities, skills, "
+            f"equipment, personality, and backstory, and only output a complete JSON character sheet when the "
+            f"player says they are ready to finalize. "
+            f"Set experience_points to {xp_for_level} and exp_required_for_next_level to {xp_next}."
+        )
 
 if __name__ == "__main__":
     # Test script

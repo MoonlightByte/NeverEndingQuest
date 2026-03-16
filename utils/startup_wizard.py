@@ -31,8 +31,9 @@ from core.managers.status_manager import (
     status_loading, status_ready, status_saving
 )
 from utils.ai_client_factory import create_chat_client, get_chat_model_name
-from utils.character_creation_audit import AUDIT_RESULT_SUCCESS, audit_character_creation
+from utils.character_creator import finalize_character_creation_candidate, persist_dm_created_character
 from utils.spell_slot_utils import normalize_character_spell_slots
+from utils.character_creation_prompt_builder import build_dm_creation_prompt_bundle
 from utils.runtime_hydration import (
     hydrate_missing_live_area_files_from_bu,
     hydrate_missing_module_plot_files_from_bu,
@@ -615,58 +616,26 @@ def create_new_character(conversation, module):
                 print("Error: Character creation failed after multiple attempts.")
                 return None
         
-        # Shared creation audit pipeline
-        audit_result = audit_character_creation(
-            character_data,
-            source="startup_wizard",
-            enable_enrichment=True,
-        )
-        if audit_result.result_type != AUDIT_RESULT_SUCCESS:
-            retry_count += 1
-            missing_paths = ", ".join(audit_result.missing_paths[:12]) if audit_result.missing_paths else "unknown"
-            if retry_count < max_retries:
-                print(f"Character audit failed: {audit_result.result_type} ({missing_paths})")
-                print(f"Attempting to fix and retry... (Attempt {retry_count + 1}/{max_retries})")
-                conversation.append({
-                    "role": "system",
-                    "content": (
-                        "Previous character creation failed shared audit. "
-                        f"Result: {audit_result.result_type}. Missing/invalid: {missing_paths}. "
-                        "Please produce a complete schema-valid character JSON."
-                    ),
-                })
-                continue
-
-            print(f"Error: Character audit failed after {max_retries} attempts: {audit_result.result_type}")
-            print("Dungeon Master: Let me try creating a simple backup character for you...")
-            fallback_character = create_fallback_character(module)
-            if fallback_character:
-                character_name = fallback_character['name']
-                success = save_character_to_module(fallback_character, module['name'])
-                if success:
-                    print(f"Dungeon Master: I've created a basic {fallback_character['class']} character named {character_name} for you!")
-                    print("You can always create a new character later when the system is working better.")
-                    from updates.update_character_info import normalize_character_name
-                    return normalize_character_name(character_name)
-
-            print("Error: All character creation methods failed. Please try again later.")
-            return None
-
-        character_data = audit_result.normalized_data
+        # Character data is already normalized by shared finalization service
+        # inside ai_character_interview(). Keep local schema recovery checks.
 
         # Validate character data with detailed error reporting
         valid, error = validate_character_with_recovery(character_data)
         if valid:
-            # Save character to module
             character_name = character_data['name']
-            success = save_character_to_module(character_data, module['name'])
-            
-            if success:
+            persist_result = persist_dm_created_character(character_data)
+
+            if persist_result.get("success"):
                 print(f"Dungeon Master: Character {character_name} created successfully!")
+                filename = str(persist_result.get("filename", ""))
+                character_slug = os.path.splitext(filename)[0] if filename.endswith(".json") else filename
+                if character_slug:
+                    return character_slug
                 from updates.update_character_info import normalize_character_name
                 return normalize_character_name(character_name)
             else:
-                print(f"Error: Failed to save character {character_name}")
+                persist_error = str(persist_result.get("error", "unknown persistence error"))
+                print(f"Error: Failed to save character {character_name}: {persist_error}")
                 return None
         else:
             retry_count += 1
@@ -876,72 +845,25 @@ def ai_character_interview(conversation, module, retry_count=0):
         if not schema:
             print("Error: Could not load character schema")
             return None
-        
-        leveling_info = load_text_file("prompts/leveling/leveling_info.txt")
-        npc_rules = load_text_file("prompts/generators/npc_builder_prompt.txt")
-        
-        # Build the character creation system prompt
-        base_system_content = """You are a friendly and knowledgeable character creation guide for 5th edition fantasy adventures, using only SRD 5.2.1-compliant rules. You help players build their 1st-level characters step by step by asking questions, offering helpful choices, and reflecting their answers clearly. You do not assume anything without asking. You do not create the character sheet until the player explicitly confirms their choices.
 
-You will eventually output a finalized character sheet in a JSON format matching the provided schema, but ONLY after the player says they are ready.
+        # TABLETOP MODE: Shared startup-aligned prompt bundle used by both adapters.
+        prompt_bundle = build_dm_creation_prompt_bundle(
+            mode="startup",
+            module_name=module.get("display_name", module.get("name", "the current adventure")),
+            character_name="",
+            level=1,
+        )
+        enhanced_system_prompt = prompt_bundle.get("system_prompt", "")
+        kickoff_user_prompt = prompt_bundle.get("kickoff_user_prompt", "")
 
-You MUST:
-1. Engage the player in a brief conversation to learn what kind of character they want to play (fantasy archetype, theme, race, class, personality, etc).
-2. Ask targeted follow-up questions to flesh out their background, class, abilities, race, and goals.
-3. Present summaries of each part of the character as it becomes clear, so the player can confirm or revise.
-4. Once the player explicitly confirms all choices and says they are ready, then and ONLY then, proceed to create the character using the provided JSON schema.
-
-NEVER output the final JSON unless the player says they are ready. If you're unsure of a choice, ask. Focus on helping the player make decisions they're excited about. Encourage fun, story-driven, rules-compliant choices. Keep it immersive, but not overwhelming."""
-        enhanced_system_prompt = f"""{base_system_content}
-
-IMPORTANT FORMATTING RULES:
-- Do NOT use emojis or special characters in any responses
-- Write in plain text only
-- When generating the final JSON, use ONLY standard ASCII characters
-- Do NOT include any Unicode characters, emojis, or special symbols
-- Keep all text responses clean and readable without special formatting
-
-Use the following SRD 5.2.1 rules information when helping create the character:
-
-LEVELING INFORMATION:
-{leveling_info}
-
-RACE AND CLASS RULES:
-{npc_rules}
-
-JSON OUTPUT REQUIREMENTS:
-When the player confirms they are ready to finalize their character, you MUST respond with ONLY a valid JSON object that matches the provided character schema exactly. 
-
-SKILL PROFICIENCY REQUIREMENTS:
-- The "skills" field MUST be an array of skill names, NOT an object with bonuses
-- Format example: ["Athletics", "Perception", "Stealth", "Arcana"]
-- Include ONLY skills the character is proficient in
-- During the interview, help the player select:
-  * Background skills (each background grants 2 specific skills)
-  * Class skills (number varies by class - Fighter: 2, Rogue: 4, Ranger: 3, Bard: 3, etc.)
-- Present skill choices naturally during character creation conversation
-- Example: "As a Fighter, you can choose 2 skills from: Acrobatics, Animal Handling, Athletics, History, Insight, Intimidation, Perception, or Survival. What skills would fit your character?"
-
-CRITICAL JSON FORMATTING RULES:
-- Use ONLY standard ASCII characters in the JSON
-- No emojis, Unicode symbols, or special characters anywhere in the JSON
-- No markdown formatting or additional text - just the raw JSON
-- All string values must use only plain text
-- Ensure all required schema fields are populated
-- Use proper JSON syntax with correct quotes and brackets
-- The "skills" field MUST be an array format: ["Skill1", "Skill2"]
-
-The character must be level 1 and have experience_points set to 0.
-The character should be marked as character_role: "player" and character_type: "player".
-All required schema fields must be populated appropriately.
-
-CHARACTER SCHEMA:
-{json.dumps(schema, indent=2)}"""
+        if not enhanced_system_prompt or not kickoff_user_prompt:
+            print("Error: Could not assemble startup character creation prompt")
+            return None
 
         # Start the character creation conversation
         creation_conversation = [
             {"role": "system", "content": enhanced_system_prompt},
-            {"role": "user", "content": f"You are helping a new player create their first level 1 character for the {module['display_name']} adventure. Welcome them to the adventure, set an immersive tone that brings them into the game world, and begin the character creation process. Start by finding out what kind of hero they want to become. Use phrases like 'Let's get you started by finding out a little bit about you' to engage them in the process."}
+            {"role": "user", "content": kickoff_user_prompt}
         ]
         
         print("\nDungeon Master: Starting character creation with AI assistant...")
@@ -953,35 +875,48 @@ CHARACTER SCHEMA:
                 # Get AI response
                 response = get_ai_response(creation_conversation)
                 print(f"\nDungeon Master: {response}")
-                
-                # Check if response looks like JSON (character finalization)
-                if response.strip().startswith('{') and response.strip().endswith('}'):
-                    try:
-                        import re
-                        # Clean up any markdown formatting
-                        cleaned_response = re.sub(r'^```json\s*|\s*```$', '', response.strip(), flags=re.MULTILINE)
-                        
-                        # Additional JSON sanitization for safe character data
-                        cleaned_response = sanitize_json_string(cleaned_response)
-                        
-                        character_data = json.loads(cleaned_response)
-                        
-                        # Further sanitize the loaded character data
-                        character_data = sanitize_character_data(character_data)
-                        
+
+                # TABLETOP MODE: Shared finalization contract (startup adapter)
+                finalize_result = finalize_character_creation_candidate(
+                    response,
+                    source="startup_wizard",
+                )
+                finalize_status = str(finalize_result.get("status", "")).strip().lower()
+
+                if finalize_status == "success":
+                    character_data = finalize_result.get("character_data")
+                    if isinstance(character_data, dict):
                         print("\nDungeon Master: Character data received! Finalizing your hero...")
                         return character_data
-                    except json.JSONDecodeError as e:
-                        print(f"\nError: Invalid JSON received: {e}")
-                        print("Asking AI to try again...")
-                        creation_conversation.append({"role": "assistant", "content": response})
-                        creation_conversation.append({"role": "user", "content": "That didn't look like valid JSON. Please provide the character as a properly formatted JSON object with only standard ASCII characters and no emojis or special symbols."})
-                        continue
-                    except Exception as e:
-                        print(f"\nError: Error processing character data: {e}")
-                        creation_conversation.append({"role": "assistant", "content": response})
-                        creation_conversation.append({"role": "user", "content": "There was an error processing the character data. Please provide a clean JSON object with only standard ASCII characters."})
-                        continue
+
+                    print("\nError: Character finalization returned invalid data. Retrying...")
+                    creation_conversation.append({"role": "assistant", "content": response})
+                    creation_conversation.append({
+                        "role": "user",
+                        "content": (
+                            "Character finalization returned invalid data. "
+                            "Please output a complete JSON object with all required fields."
+                        ),
+                    })
+                    continue
+
+                if finalize_status == "needs_retry":
+                    corrective_note = str(finalize_result.get("corrective_guidance", "")).strip()
+                    if not corrective_note:
+                        corrective_note = (
+                            "Character JSON was incomplete or invalid. "
+                            "Please output one corrected JSON object with all required fields."
+                        )
+
+                    print("\nDungeon Master: Character JSON needs corrections. Asking for a corrected final sheet...")
+                    creation_conversation.append({"role": "assistant", "content": response})
+                    creation_conversation.append({"role": "user", "content": corrective_note})
+                    continue
+
+                if finalize_status == "error":
+                    finalize_error = str(finalize_result.get("error_message", "unknown error")).strip()
+                    print(f"\nError: Character finalization failed: {finalize_error}")
+                    return None
                 
                 # Add AI response to conversation immediately
                 creation_conversation.append({"role": "assistant", "content": response})

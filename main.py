@@ -117,11 +117,9 @@ from utils.character_creator import (
     calculate_starting_wealth,
     generate_ambiguous_transition,
     restore_conversation_history,
+    finalize_character_creation_candidate,
+    persist_dm_created_character,
     CHARACTER_CREATION_MARKER,
-)
-from utils.character_creation_audit import (
-    AUDIT_RESULT_SUCCESS,
-    audit_character_creation,
 )
 from utils import pc_manager
 from utils.save_roll_contract import calculate_concentration_dc
@@ -2275,63 +2273,85 @@ def handle_character_creation_response(response, party_tracker_data, conversatio
         conversation_history: Current conversation history
         
     Returns:
-        True if character creation was finalized, False otherwise
+        One of:
+        - "not_candidate": response is not a final character JSON candidate
+        - "needs_retry": final JSON was detected but requires correction
+        - "finalized": character creation completed successfully
+        - "error": finalization failed closed
     """
     try:
         response_text = response.strip()
         if not response_text:
-            return False
+            return "not_candidate"
 
-        candidate_json = None
-        cleaned_response = extract_json_from_codeblock(response_text)
-        if cleaned_response.startswith("{") and cleaned_response.endswith("}"):
-            candidate_json = cleaned_response
-        elif response_text.startswith("{") and response_text.endswith("}"):
-            candidate_json = response_text
-
-        if candidate_json is None:
-            return False
-
-        character_data = json.loads(candidate_json)
-
-        audit_result = audit_character_creation(
-            character_data,
+        finalize_result = finalize_character_creation_candidate(
+            response_text,
             source="main_dm_interview_finalize",
-            enable_enrichment=True,
         )
+        finalize_status = str(finalize_result.get("status", "")).strip().lower()
 
-        if audit_result.result_type != AUDIT_RESULT_SUCCESS:
-            missing_paths_text = ", ".join(audit_result.missing_paths[:12]) if audit_result.missing_paths else "unknown"
-            corrective_note = (
-                "Character creation final JSON failed validation. "
-                f"Result: {audit_result.result_type}. "
-                f"Missing/invalid paths: {missing_paths_text}. "
-                "Output a single corrected JSON object with all required fields completed."
-            )
+        if finalize_status == "not_candidate":
+            return "not_candidate"
+
+        if finalize_status == "needs_retry":
+            corrective_note = finalize_result.get("corrective_guidance", "").strip()
+            if not corrective_note:
+                missing_paths = finalize_result.get("missing_paths") or []
+                missing_paths_text = ", ".join(missing_paths[:12]) if missing_paths else "unknown"
+                result_type = finalize_result.get("audit_result_type", "unknown")
+                corrective_note = (
+                    "Character creation final JSON failed validation. "
+                    f"Result: {result_type}. "
+                    f"Missing/invalid paths: {missing_paths_text}. "
+                    "Output a single corrected JSON object with all required fields completed."
+                )
+
             conversation_history.append({"role": "user", "content": corrective_note})
             save_conversation_history(conversation_history)
+
+            result_type = finalize_result.get("audit_result_type", "unknown")
             warning(
-                f"CHARACTER_CREATION: Audit blocked finalization ({audit_result.result_type})",
+                f"CHARACTER_CREATION: Audit blocked finalization ({result_type})",
                 category="character_creation",
             )
             print(colored("[SYSTEM]", "yellow"), colored("Character JSON incomplete. Creation mode remains active.", "yellow"))
-            return True
-        
-        # This looks like a character JSON! Process it.
-        character_data = audit_result.normalized_data
+            return "needs_retry"
+
+        if finalize_status == "error":
+            finalize_error = finalize_result.get("error_message", "unknown error")
+            error(
+                f"CHARACTER_CREATION: Shared finalizer failed: {finalize_error}",
+                category="character_creation",
+            )
+            return "error"
+
+        if finalize_status != "success":
+            warning(
+                f"CHARACTER_CREATION: Unexpected finalizer status '{finalize_status}'",
+                category="character_creation",
+            )
+            return "error"
+
+        character_data = finalize_result.get("character_data")
+        if not isinstance(character_data, dict):
+            warning(
+                "CHARACTER_CREATION: Shared finalizer returned success without character data",
+                category="character_creation",
+            )
+            return "error"
+
         info(f"CHARACTER_CREATION: Detected character JSON for {character_data.get('name')}", category="character_creation")
-        
-        character_name = character_data.get('name', 'Unknown')
-        
-        # Save character file
-        char_filename = normalize_character_name(character_name) + ".json"
-        char_path = os.path.join('characters', char_filename)
-        
-        if os.path.exists(char_path):
-            warning(f"CHARACTER_CREATION: Character file {char_filename} already exists!", category="character_creation")
-            return False
-        
-        safe_json_dump(character_data, char_path)
+
+        persist_result = persist_dm_created_character(character_data)
+        if not persist_result.get("success"):
+            persist_error = persist_result.get("error", "unknown persistence error")
+            warning(
+                f"CHARACTER_CREATION: Failed to persist character file ({persist_error})",
+                category="character_creation",
+            )
+            return "error"
+
+        character_name = persist_result.get("character_name") or character_data.get("name", "Unknown")
         info(f"CHARACTER_CREATION: Saved character file for {character_name}", category="character_creation")
         
         # Get creation context
@@ -2372,14 +2392,14 @@ def handle_character_creation_response(response, party_tracker_data, conversatio
         print(colored("\n[SYSTEM]", "yellow"), colored(f"Character '{character_name}' created successfully!", "green"))
         print(colored("[SYSTEM]", "yellow"), colored("Narrative thread resumed.\n", "green"))
         
-        return True
+        return "finalized"
         
     except json.JSONDecodeError:
         # Not valid JSON, not a character creation completion
-        return False
+        return "not_candidate"
     except Exception as e:
         error(f"CHARACTER_CREATION: Error processing character creation response: {e}", exception=e, category="character_creation")
-        return False
+        return "error"
 
 
 def process_ai_response(response, party_tracker_data, location_data, conversation_history):
@@ -2387,10 +2407,13 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
     
     # TABLETOP MODE: Check if we're in character creation mode and this is the final JSON
     if is_creation_mode_active():
-        creation_finalized = handle_character_creation_response(response, party_tracker_data, conversation_history)
-        if creation_finalized:
-            # Character creation complete, return to normal flow
+        creation_status = handle_character_creation_response(response, party_tracker_data, conversation_history)
+        if creation_status == "finalized":
             return {"role": "assistant", "content": response}
+        if creation_status == "needs_retry":
+            return "creation_retry"
+        if creation_status == "error":
+            return "creation_error"
     
     try:
         json_content = extract_json_from_codeblock(response)
@@ -5054,6 +5077,24 @@ def main_game_loop():
                     print("\n[SYSTEM] Restarting game with restored save...\n")
                     main_game_loop()
                     return
+                elif final_result == "creation_retry":
+                    info(
+                        "CHARACTER_CREATION: Retrying corrected final JSON in active creation mode",
+                        category="character_creation",
+                    )
+                    retry_count += 1
+                    valid_response_received = False
+                    if retry_count >= 5:
+                        error(
+                            "CHARACTER_CREATION: Final JSON correction retries exhausted",
+                            category="character_creation",
+                        )
+                        status_ready()
+                        continue
+                    continue
+                elif final_result == "creation_error":
+                    status_ready()
+                    continue
                 elif isinstance(final_result, dict) and final_result.get("status") == "enter_levelup_mode":
                     # Enter the level up sub-loop
                     level_up_session = final_result["session"]

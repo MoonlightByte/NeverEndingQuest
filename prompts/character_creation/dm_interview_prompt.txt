@@ -98,7 +98,7 @@ You MUST cover ALL of the following:
      * Druid: 2 cantrips
      * Warlock: 2 cantrips
    - For higher level casters, ensure spellbook/prepared spells match their level
-   - Note: spellcasting object with ability, spellSaveDC, spellAttackBonus, spells {}, spellSlots {}
+   - Note: spellcasting object with ability, spellSaveDC, spellAttackBonus, spells object, spellSlots object
 
 10. **HIT POINTS & COMBAT STATS**
     - Calculate: maxHitPoints based on hit dice and constitution modifier (average rolls for levels above 1)
@@ -114,7 +114,7 @@ You MUST cover ALL of the following:
     - Note this connection for the transition narrative
 
 === FINAL OUTPUT - COMPLETE JSON ===
-ONLY when the player explicitly says they are ready to finalize their character, output a COMPLETE JSON object containing ALL character data. Do not use updateCharacterInfo actions—output the entire character as one JSON object.
+ONLY when the player explicitly says they are ready to finalize their character, output a COMPLETE JSON object containing ALL character data. Do not use updateCharacterInfo actions - output the entire character as one JSON object.
 
 The JSON MUST include ALL of these fields:
 - name: character name

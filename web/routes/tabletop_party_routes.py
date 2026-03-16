@@ -14,6 +14,7 @@ See LICENSE file for full terms.
 """
 
 import os
+import json
 from copy import deepcopy
 from datetime import datetime
 from typing import Any, Dict, List
@@ -25,9 +26,11 @@ from updates.update_character_info import normalize_character_name
 from utils.character_creator import (
     CHARACTER_CREATION_MARKER,
     backup_conversation_history,
+    finalize_character_creation_candidate,
     generate_ambiguous_transition,
     get_party_level,
     is_creation_mode_active,
+    persist_dm_created_character,
     restore_conversation_history,
 )
 from utils.character_creation_audit import (
@@ -351,28 +354,50 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
             if not character_json:
                 return jsonify({'error': 'Character data required'}), 400
 
-            audit_result = audit_character_creation(
-                character_json,
+            if isinstance(character_json, str):
+                raw_response = character_json
+            elif isinstance(character_json, dict):
+                raw_response = json.dumps(character_json)
+            else:
+                return jsonify({'error': 'Character data must be JSON object or JSON string'}), 400
+
+            finalize_result = finalize_character_creation_candidate(
+                raw_response,
                 source="tabletop_route_finalize_creation",
-                enable_enrichment=True,
             )
-            if audit_result.result_type != AUDIT_RESULT_SUCCESS:
+            finalize_status = str(finalize_result.get("status", "")).strip().lower()
+
+            if finalize_status in ("not_candidate", "needs_retry"):
                 return jsonify({
                     'error': 'Character data failed validation',
-                    'result_type': audit_result.result_type,
-                    'errors': audit_result.errors,
-                    'missing_paths': audit_result.missing_paths,
+                    'result_type': finalize_result.get('audit_result_type', 'invalid_character_data'),
+                    'missing_paths': finalize_result.get('missing_paths', []),
+                    'corrective_guidance': finalize_result.get('corrective_guidance', ''),
                 }), 400
 
-            character_data = audit_result.normalized_data
-            character_name = character_data.get('name', 'Unknown')
+            if finalize_status == "error":
+                return jsonify({
+                    'error': 'Character data processing failed',
+                    'details': finalize_result.get('error_message', 'unknown error'),
+                }), 500
 
-            char_filename = normalize_character_name(character_name) + ".json"
-            char_path = os.path.join('characters', char_filename)
+            if finalize_status != "success":
+                return jsonify({
+                    'error': f'Unexpected finalization status: {finalize_status}',
+                }), 500
 
-            success = safe_write_json(char_path, character_data)
-            if not success:
-                return jsonify({'error': 'Failed to save character file'}), 500
+            character_data = finalize_result.get('character_data')
+            if not isinstance(character_data, dict):
+                return jsonify({'error': 'Finalized character payload missing or invalid'}), 500
+
+            persist_result = persist_dm_created_character(character_data)
+            if not persist_result.get('success'):
+                return jsonify({
+                    'error': 'Failed to save character file',
+                    'details': persist_result.get('error', 'unknown persistence error'),
+                }), 500
+
+            character_name = str(persist_result.get('character_name') or character_data.get('name', 'Unknown')).strip()
 
             pc_manager.add_pc(character_name)
 

@@ -28,8 +28,19 @@ from pathlib import Path
 # Import utilities
 from utils.file_operations import safe_write_json
 from utils.encoding_utils import safe_json_dump, safe_json_load
-from utils.startup_wizard import sanitize_json_string
 from utils.enhanced_logger import debug, info, warning, error
+try:
+    from utils.character_creation_audit import AUDIT_RESULT_SUCCESS, audit_character_creation
+    _imported_audit_character_creation = audit_character_creation
+    AUDIT_PIPELINE_AVAILABLE = True
+except Exception as audit_import_error:
+    AUDIT_RESULT_SUCCESS = "success"
+    _imported_audit_character_creation = None
+    AUDIT_PIPELINE_AVAILABLE = False
+    warning(
+        f"Character creation audit pipeline unavailable: {audit_import_error}",
+        category="character_creation",
+    )
 
 # Constants
 CONVERSATION_HISTORY_FILE = "modules/conversation_history/conversation_history.json"
@@ -146,6 +157,225 @@ DISTINCTIVE_FEATURES = [
     "Their silhouette's profile",
     "The rhythm of their stride",
 ]
+
+# Shared finalization result statuses
+FINALIZE_STATUS_SUCCESS = "success"
+FINALIZE_STATUS_NEEDS_RETRY = "needs_retry"
+FINALIZE_STATUS_ERROR = "error"
+FINALIZE_STATUS_NOT_CANDIDATE = "not_candidate"
+
+
+def _normalize_character_filename(character_name: str) -> str:
+    """Normalize character display name to deterministic JSON filename slug."""
+    normalized_name = str(character_name or "").strip().lower()
+    normalized_name = normalized_name.replace(" ", "_")
+    normalized_name = normalized_name.replace("'", "_")
+    normalized_name = re.sub(r"[^a-z0-9_]", "_", normalized_name)
+    normalized_name = re.sub(r"_+", "_", normalized_name)
+    return normalized_name.strip("_")
+
+
+def _extract_json_candidate_from_response(response_text: str) -> Optional[str]:
+    """Extract a JSON candidate from raw or fenced LLM output."""
+    if not response_text:
+        return None
+
+    text = response_text.strip()
+    if not text:
+        return None
+
+    code_block_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+    if code_block_match:
+        candidate = code_block_match.group(1).strip()
+        if candidate.startswith("{") and candidate.endswith("}"):
+            return candidate
+
+    if text.startswith("{") and text.endswith("}"):
+        return text
+
+    return None
+
+
+def _build_creation_corrective_guidance(result_type: str, missing_paths: Optional[List[str]] = None) -> str:
+    """Build deterministic corrective guidance for failed creation finalization."""
+    truncated_paths = (missing_paths or [])[:12]
+    missing_paths_text = ", ".join(truncated_paths) if truncated_paths else "unknown"
+    return (
+        "Character creation final JSON failed validation. "
+        f"Result: {result_type}. "
+        f"Missing/invalid paths: {missing_paths_text}. "
+        "Output a single corrected JSON object with all required fields completed."
+    )
+
+
+def _sanitize_json_candidate(json_text: str) -> str:
+    """Remove problematic zero-width and control Unicode from JSON candidate text."""
+    return re.sub(r"[\u200b-\u200f\u2028-\u202f\ufeff]", "", json_text)
+
+
+def finalize_character_creation_candidate(
+    raw_response: str,
+    source: str = "shared_dm_creation",
+) -> Dict[str, Any]:
+    """Finalize a DM-creation JSON candidate into structured success/retry/error results.
+
+    This helper is persistence-neutral by design. It validates and normalizes
+    candidate character JSON without writing files or mutating party state.
+    """
+    try:
+        response_text = str(raw_response or "").strip()
+        if not response_text:
+            return {
+                "status": FINALIZE_STATUS_NOT_CANDIDATE,
+                "character_data": None,
+                "corrective_guidance": "",
+                "audit_result_type": "",
+                "missing_paths": [],
+                "error_message": "",
+            }
+
+        candidate_json = _extract_json_candidate_from_response(response_text)
+        if candidate_json is None:
+            return {
+                "status": FINALIZE_STATUS_NOT_CANDIDATE,
+                "character_data": None,
+                "corrective_guidance": "",
+                "audit_result_type": "",
+                "missing_paths": [],
+                "error_message": "",
+            }
+
+        sanitized_candidate = _sanitize_json_candidate(candidate_json)
+        parsed_character = json.loads(sanitized_candidate)
+
+        if _imported_audit_character_creation is None:
+            raise RuntimeError("character_creation_audit import failed; audit pipeline is unavailable in this environment")
+
+        audit_result = _imported_audit_character_creation(
+            parsed_character,
+            source=source,
+            enable_enrichment=True,
+        )
+
+        if audit_result.result_type != AUDIT_RESULT_SUCCESS:
+            missing_paths = list(audit_result.missing_paths or [])
+            return {
+                "status": FINALIZE_STATUS_NEEDS_RETRY,
+                "character_data": None,
+                "corrective_guidance": _build_creation_corrective_guidance(
+                    audit_result.result_type,
+                    missing_paths,
+                ),
+                "audit_result_type": audit_result.result_type,
+                "missing_paths": missing_paths,
+                "error_message": "",
+            }
+
+        return {
+            "status": FINALIZE_STATUS_SUCCESS,
+            "character_data": audit_result.normalized_data,
+            "corrective_guidance": "",
+            "audit_result_type": audit_result.result_type,
+            "missing_paths": [],
+            "error_message": "",
+        }
+
+    except json.JSONDecodeError as json_error:
+        parse_result_type = "json_decode_error"
+        return {
+            "status": FINALIZE_STATUS_NEEDS_RETRY,
+            "character_data": None,
+            "corrective_guidance": _build_creation_corrective_guidance(parse_result_type, ["$"]),
+            "audit_result_type": parse_result_type,
+            "missing_paths": ["$"],
+            "error_message": str(json_error),
+        }
+    except Exception as finalize_error:
+        error(
+            f"Failed to finalize character creation candidate: {finalize_error}",
+            exception=finalize_error,
+            category="character_creation",
+        )
+        return {
+            "status": FINALIZE_STATUS_ERROR,
+            "character_data": None,
+            "corrective_guidance": "",
+            "audit_result_type": "",
+            "missing_paths": [],
+            "error_message": str(finalize_error),
+        }
+
+
+def persist_dm_created_character(
+    character_data: Dict[str, Any],
+    characters_dir: str = "characters",
+) -> Dict[str, Any]:
+    """Persist a finalized DM-created character using deterministic path and atomic JSON utility.
+
+    This helper intentionally performs file persistence only. It does not mutate
+    party state, conversation state, or character-creation markers.
+    """
+    character_name = str(character_data.get("name", "")).strip() if isinstance(character_data, dict) else ""
+    if not character_name:
+        return {
+            "success": False,
+            "character_name": "",
+            "filename": "",
+            "path": "",
+            "error": "invalid_character_name",
+        }
+
+    filename_slug = _normalize_character_filename(character_name)
+    if not filename_slug:
+        return {
+            "success": False,
+            "character_name": character_name,
+            "filename": "",
+            "path": "",
+            "error": "invalid_character_name",
+        }
+
+    filename = f"{filename_slug}.json"
+    save_path = os.path.join(characters_dir, filename)
+
+    try:
+        os.makedirs(characters_dir, exist_ok=True)
+    except Exception as create_dir_error:
+        return {
+            "success": False,
+            "character_name": character_name,
+            "filename": filename,
+            "path": save_path,
+            "error": f"save_directory_error:{create_dir_error}",
+        }
+
+    if os.path.exists(save_path):
+        return {
+            "success": False,
+            "character_name": character_name,
+            "filename": filename,
+            "path": save_path,
+            "error": "character_file_exists",
+        }
+
+    try:
+        safe_json_dump(character_data, save_path)
+    except Exception as write_error:
+        return {
+            "success": False,
+            "character_name": character_name,
+            "filename": filename,
+            "path": save_path,
+            "error": f"save_failed:{write_error}",
+        }
+
+    return {
+        "success": True,
+        "character_name": character_name,
+        "filename": filename,
+        "path": save_path,
+        "error": "",
+    }
 
 
 def backup_conversation_history() -> bool:
@@ -615,4 +845,6 @@ __all__ = [
     'generate_ambiguous_transition',
     'get_level_appropriate_spell_guidance',
     'sanitize_character_data',
+    'finalize_character_creation_candidate',
+    'persist_dm_created_character',
 ]
