@@ -12,7 +12,7 @@ An AI-powered Dungeon Master for running SRD 5.2.1 compatible tabletop RPG campa
 
 ## 🎮 Get Started | 💬 Join the Community
 
-**Ready to play?** → [Quick Start Guide](#quick-start) | [Download Windows Installer](install_neverendingquest_windows.bat)
+**Ready to play?** → [Quick Start Guide](#quick-start) | [Download Windows Installer](install_neverendingquest_windows.bat) | [Download macOS Installer](install_neverendingquest_macos.sh)
 
 **Need help or want to share your adventures?** → [r/NeverEndingQuest on Reddit](https://www.reddit.com/r/NeverEndingQuest/)
 
@@ -108,6 +108,52 @@ The installer automatically:
 **Update guidance:**
 
 - Use in-app `[UPDATE] Fork Update` or run `git pull --ff-only origin main`
+
+---
+
+### 🍎 One-Click macOS Installer (Recommended)
+
+**For non-technical users on macOS:**
+
+1. **Download the installer**:
+
+   - Click here: [install_neverendingquest_macos.sh](https://github.com/zeug-zz/NeverEndingQuest-TTRPG/raw/main/install_neverendingquest_macos.sh)
+   - **Right-click** -> **"Save Link As..."** and save to Downloads
+2. **Run the installer**:
+
+   - Open Terminal
+   - Run: `/bin/bash ~/Downloads/install_neverendingquest_macos.sh`
+   - If prompted for an admin password, this is for writing the launcher app to `/Applications`
+3. **Install Python if needed**:
+
+   - If prompted, install Python 3.9+ from:
+     - https://www.python.org/downloads/macos/
+4. **Add your OpenAI API key**:
+
+   - Edit `~/NeverEndingQuest-TTRPG/config.py`
+   - Replace `your_openai_api_key_here` with your key (https://platform.openai.com/api-keys)
+5. **Launch the game**:
+
+   - Open `/Applications/NeverEndingQuest Server.app`
+
+The installer automatically:
+
+- [OK] Checks for Python and Git
+- [OK] Clones or updates the game from the fork repository
+- [OK] Creates `.venv` and installs dependencies
+- [OK] Creates `config.py` and initial runtime files
+- [OK] Installs `NeverEndingQuest Server.app` in `/Applications`
+- [OK] Applies the custom NEQ app icon when `dm_logo.png` is present
+
+**Installation location:** `~/NeverEndingQuest-TTRPG`
+
+**To restart the game later:**
+
+- Launch `/Applications/NeverEndingQuest Server.app`
+
+**Update guidance:**
+
+- Run the same installer again, or run `git pull --ff-only origin main` in `~/NeverEndingQuest-TTRPG`
 
 ---
 

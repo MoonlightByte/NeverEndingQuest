@@ -1021,6 +1021,30 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### macOS One-Click Installer + Applications Launcher (COMPLETED - 2026-03-16)
+
+**Status:** COMPLETED - added macOS install parity with Applications launcher flow
+
+**Objective:**
+Provide a non-technical macOS install/update path comparable to the Windows batch installer, including creation of a reusable `/Applications/NeverEndingQuest Server.app` launcher.
+
+**Implementation Summary:**
+- Added macOS Git installer script: `install_neverendingquest_macos.sh`
+  - Clones or updates `NeverEndingQuest-TTRPG` to `~/NeverEndingQuest-TTRPG`
+  - Creates `.venv`, installs requirements, and initializes `config.py` + `party_tracker.json`
+  - Generates `launch_game.command` for direct terminal launch fallback
+  - Compiles AppleScript launcher app and installs it to `/Applications/NeverEndingQuest Server.app`
+  - Applies custom icon from `dm_logo.png` when present
+- Added dedicated AppleScript source template: `scripts/start_neverendingquest_server.applescript`
+  - Launches Terminal, enters repo directory, and runs `run_web.py` via `.venv/bin/python` (fallback `python3`)
+- Updated Quick Start docs in `README.md`
+  - Added macOS installer link in the top quick-start callout
+  - Added full "One-Click macOS Installer" section alongside the Windows flow
+
+**Verification:**
+- `bash -n install_neverendingquest_macos.sh` -> PASS
+- `osacompile` path exercised successfully during local launcher build to `/Applications/NeverEndingQuest Server.app`
+
 ### Startup Interrupted PC Creation Recovery (COMPLETED - 2026-03-16)
 
 **Status:** COMPLETED - archived OpenSpec change with targeted runtime/UI/test hardening
