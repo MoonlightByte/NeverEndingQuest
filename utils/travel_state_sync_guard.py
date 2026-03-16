@@ -60,6 +60,17 @@ _DEPARTURE_PATTERNS = [
 ]
 
 
+_SCENE_LOCATION_SYNC_VERBS = [
+    r"\bhail\b",
+    r"\bcall\b",
+    r"\bspeak\b",
+    r"\btalk\b",
+    r"\bask\b",
+    r"\bparlay\b",
+    r"\bapproach\b",
+]
+
+
 _BLOCKER_OR_ABORT_PATTERNS = [
     r"\bblocked\b",
     r"\bcannot\b",
@@ -138,11 +149,13 @@ def _build_location_catalog(known_locations: Optional[List[Dict[str, Any]]], kno
 
             location_id = str(location.get("id", "") or "").strip()
             area_id = str(location.get("area_id", "") or "").strip()
+            area_name = str(location.get("area_name", "") or "").strip()
 
             catalog[normalized_name] = {
                 "name": raw_name,
                 "id": location_id,
                 "area_id": area_id,
+                "area_name": area_name,
             }
 
     for location_name in known_location_names or []:
@@ -155,6 +168,7 @@ def _build_location_catalog(known_locations: Optional[List[Dict[str, Any]]], kno
                 "name": raw_name,
                 "id": "",
                 "area_id": "",
+                "area_name": "",
             }
 
     return catalog
@@ -353,6 +367,189 @@ def _is_current_location_blocker_or_clarifier(normalized_narration: str) -> bool
         return True
 
     return False
+
+
+def _has_explicit_location_commit_action(response_json: Dict[str, Any]) -> bool:
+    """Return True when response already includes explicit location commit action."""
+    actions = response_json.get("actions", [])
+    if not isinstance(actions, list):
+        return False
+
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        action_type = action.get("action")
+        if action_type == "transitionLocation":
+            return True
+        if action_type == "updatePartyTracker":
+            parameters = action.get("parameters", {})
+            if isinstance(parameters, dict) and parameters.get("currentLocationId"):
+                return True
+    return False
+
+
+def evaluate_narrated_location_arrival_decision(
+    response_json: Dict[str, Any],
+    current_location_id: str,
+    known_location_names: Optional[List[str]] = None,
+    module_locations: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Infer party location commit from explicit narrated arrival into one known location."""
+    if _has_explicit_location_commit_action(response_json):
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    narration = str(response_json.get("narration", "") or "")
+    normalized_narration = _normalize_text(narration)
+    if not normalized_narration:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    if not _contains_any_pattern(normalized_narration, _ARRIVAL_PATTERNS):
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    location_catalog = _build_location_catalog(module_locations, known_location_names)
+    if not location_catalog:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    mentions = _extract_location_mentions(normalized_narration, list(location_catalog.keys()))
+    if len(mentions) != 1:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    candidate_ids: List[str] = []
+    for mention in mentions:
+        location_entry = location_catalog.get(mention, {})
+        location_id = str(location_entry.get("id", "") or "").strip()
+        if not location_id or location_id == current_location_id:
+            continue
+        candidate_ids.append(location_id)
+
+    unique_ids = sorted(set(candidate_ids))
+    if len(unique_ids) != 1:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    destination_id = unique_ids[0]
+    destination_entry = None
+    for _, entry in location_catalog.items():
+        if str(entry.get("id", "") or "").strip() == destination_id:
+            destination_entry = entry
+            break
+
+    if not isinstance(destination_entry, dict):
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    destination_name = str(destination_entry.get("name", "") or "").strip()
+    destination_area_id = str(destination_entry.get("area_id", "") or "").strip()
+    destination_area_name = str(destination_entry.get("area_name", "") or "").strip()
+    if not destination_name:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    inferred_action = {
+        "action": "updatePartyTracker",
+        "parameters": {
+            "currentLocationId": destination_id,
+            "currentLocation": destination_name,
+            "currentAreaId": destination_area_id,
+            "currentArea": destination_area_name,
+        },
+    }
+    return {
+        "valid": True,
+        "inferred_actions": [inferred_action],
+        "reconciliation": "narrated_location_arrival_sync",
+    }
+
+
+def _user_addresses_npc_in_scene(user_utterance: str, npc_name: str) -> bool:
+    """Return True when the player directly addresses or calls to the NPC."""
+    normalized_utterance = _normalize_text(user_utterance)
+    normalized_npc_name = _normalize_text(npc_name)
+    if not normalized_utterance or not normalized_npc_name:
+        return False
+
+    last_token = normalized_npc_name.split()[-1] if normalized_npc_name.split() else ""
+    mentions_npc = (
+        f" {normalized_npc_name} " in f" {normalized_utterance} " or
+        (len(last_token) >= 3 and f" {last_token} " in f" {normalized_utterance} ")
+    )
+    if not mentions_npc:
+        return False
+    return _contains_any_pattern(normalized_utterance, _SCENE_LOCATION_SYNC_VERBS)
+
+
+def evaluate_scene_location_sync_decision(
+    response_json: Dict[str, Any],
+    user_utterance: str,
+    current_location_id: str,
+    module_locations: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Infer current-scene location sync from explicit NPC scene interaction."""
+    actions = response_json.get("actions", [])
+    if not isinstance(actions, list):
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    has_transition = any(isinstance(action, dict) and action.get("action") == "transitionLocation" for action in actions)
+    has_location_update = any(
+        isinstance(action, dict)
+        and action.get("action") == "updatePartyTracker"
+        and isinstance(action.get("parameters"), dict)
+        and action.get("parameters", {}).get("currentLocationId")
+        for action in actions
+    )
+    if has_transition or has_location_update:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    module_location_map: Dict[str, Dict[str, str]] = {}
+    for entry in module_locations or []:
+        if not isinstance(entry, dict):
+            continue
+        location_id = str(entry.get("id", "") or "").strip()
+        if not location_id:
+            continue
+        module_location_map[location_id] = {
+            "name": str(entry.get("name", "") or "").strip(),
+            "area_id": str(entry.get("area_id", "") or "").strip(),
+            "area_name": str(entry.get("area_name", "") or "").strip(),
+        }
+
+    candidate_targets: List[Tuple[str, str]] = []
+    for action in actions:
+        if not isinstance(action, dict) or action.get("action") != "moveBackgroundNPC":
+            continue
+        parameters = action.get("parameters", {})
+        if not isinstance(parameters, dict):
+            continue
+        target_location_id = str(parameters.get("currentLocation", "") or "").strip()
+        npc_name = str(parameters.get("npcName", "") or "").strip()
+        if not target_location_id or not npc_name or target_location_id == current_location_id:
+            continue
+        if target_location_id not in module_location_map:
+            continue
+        if not _user_addresses_npc_in_scene(user_utterance, npc_name):
+            continue
+        candidate_targets.append((target_location_id, npc_name))
+
+    unique_target_ids = sorted({target_id for target_id, _ in candidate_targets})
+    if len(unique_target_ids) != 1:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    target_id = unique_target_ids[0]
+    target_entry = module_location_map.get(target_id, {})
+    if not target_entry.get("name"):
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    inferred_action = {
+        "action": "updatePartyTracker",
+        "parameters": {
+            "currentLocationId": target_id,
+            "currentLocation": target_entry.get("name", ""),
+            "currentAreaId": target_entry.get("area_id", ""),
+            "currentArea": target_entry.get("area_name", ""),
+        },
+    }
+    return {
+        "valid": True,
+        "inferred_actions": [inferred_action],
+        "reconciliation": "scene_location_sync",
+    }
 
 
 def evaluate_travel_state_sync_guard(

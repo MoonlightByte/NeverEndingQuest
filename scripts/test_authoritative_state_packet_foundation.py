@@ -90,6 +90,7 @@ class TestAuthoritativeStatePacketShape(unittest.TestCase):
         self.assertEqual(packet["party"]["party_npc_names"], ["Scout Kira"])
         self.assertIn("TW02", packet["topology"]["known_location_ids"])
         self.assertIn("Forest Trail", packet["topology"]["known_location_names"])
+        self.assertIn("module_locations", packet["topology"])
 
     def test_packet_builder_is_read_only_for_input_payload(self):
         before = copy.deepcopy(self.party_tracker)

@@ -125,23 +125,34 @@ class TestNpcScenePresenceReconcileFirstContracts(unittest.TestCase):
 
 
 class TestNpcScenePresenceSourceContracts(unittest.TestCase):
-    """Source-contract checks for the new OpenSpec change scaffolding."""
+    """Source-contract checks for the archived OpenSpec change artifacts."""
 
-    def test_change_directory_exists(self):
-        change_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    def _resolve_change_path(self, *parts):
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        active_path = os.path.join(
+            repo_root,
             "openspec",
             "changes",
             "npc-scene-presence-reconcile-first",
+            *parts,
         )
+        if os.path.exists(active_path):
+            return active_path
+        return os.path.join(
+            repo_root,
+            "openspec",
+            "changes",
+            "archive",
+            "2026-03-16-npc-scene-presence-reconcile-first",
+            *parts,
+        )
+
+    def test_change_directory_exists(self):
+        change_dir = self._resolve_change_path()
         self.assertTrue(os.path.isdir(change_dir))
 
     def test_change_spec_mentions_scene_presence(self):
-        spec_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "openspec",
-            "changes",
-            "npc-scene-presence-reconcile-first",
+        spec_path = self._resolve_change_path(
             "specs",
             "tt-npc-scene-presence-reconcile-first",
             "spec.md",

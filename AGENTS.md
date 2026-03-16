@@ -1046,6 +1046,31 @@ character_data["is_active_pc"] = True
 - `.venv/bin/python scripts/test_retry_de_looping.py` -> PASS
 - `.venv/bin/python scripts/test_narrator_prompt_validation_refactor.py` -> PASS
 
+### Narrated Location Arrival Sync (COMPLETED - 2026-03-16)
+
+**Status:** COMPLETED - archived targeted reconcile-first fix for narrated-arrival location drift.
+
+**OpenSpec Archive:**
+- `openspec/changes/archive/2026-03-16-narrated-location-arrival-sync/`
+
+**Objective:**
+Ensure canonical party location commits when narration explicitly places the party at a known in-module destination (Hermit's Refuge lock case), even when `transitionLocation` is omitted.
+
+**Implementation Summary:**
+- Extended authoritative packet topology with module-wide location catalog (`module_locations`) for safe cross-area destination resolution.
+- Added narrated-arrival reconciliation helper in `utils/travel_state_sync_guard.py` to infer `updatePartyTracker` location commits only when one known destination is uniquely resolved and explicit location actions are absent.
+- Wired narrated-arrival reconciliation into `main.py` before conversation-history/UI refresh so stale location state is not rehydrated after clear arrival narration.
+- Preserved explicit action precedence and ambiguity/progress fail-open behavior.
+- Added regression coverage for Hermit's Refuge narrated-arrival commit, progress-only no-commit, ambiguity no-commit, and explicit transition precedence.
+
+**Verification:**
+- `python3 scripts/test_scene_location_sync.py` -> PASS (8/8)
+- `python3 scripts/test_authoritative_state_packet_foundation.py` -> PASS (6/6)
+- `python3 scripts/test_travel_state_sync_guard.py` -> PASS (12/12)
+- `python3 scripts/test_npc_scene_presence_reconcile_first.py` -> PASS (7/7)
+- `.venv/bin/python scripts/test_retry_de_looping.py` -> PASS (18/18)
+- `.venv/bin/python scripts/test_narrator_prompt_validation_refactor.py` -> PASS (23/23)
+
 ### Module Runtime Progression Validation (COMPLETED - 2026-03-16)
 
 **Status:** COMPLETED - archived runtime module progression/validator path hardening.

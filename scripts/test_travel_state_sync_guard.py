@@ -250,9 +250,14 @@ class TestTravelStateSyncGuardSourceContracts(unittest.TestCase):
             content = handle.read()
 
         self.assertIn(
-            '"travel state sync guard" in normalized_reason',
+            "classify_validator_failure_domains",
             content,
-            "main.py should classify travel-state guard failures as deterministic",
+            "main.py should classify travel-state guard failures through domain helper",
+        )
+        self.assertIn(
+            '"travel_state_sync"',
+            content,
+            "main.py should treat travel_state_sync as deterministic domain",
         )
 
 

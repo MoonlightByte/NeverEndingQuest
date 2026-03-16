@@ -1320,7 +1320,11 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         # Prefer deterministic reconciliation for legal travel-intent narration
         # while preserving explicit transitionLocation precedence and topology safety.
         try:
-            from utils.travel_state_sync_guard import evaluate_travel_state_sync_decision
+            from utils.travel_state_sync_guard import (
+                evaluate_narrated_location_arrival_decision,
+                evaluate_scene_location_sync_decision,
+                evaluate_travel_state_sync_decision,
+            )
 
             known_location_names = packet_topology.get("known_location_names", [])
             if not isinstance(known_location_names, list):
@@ -1332,8 +1336,10 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
                         if isinstance(loc_name, str) and loc_name.strip():
                             known_location_names.append(loc_name)
 
-            known_locations = []
-            if isinstance(area_data, dict):
+            known_locations = packet_topology.get("module_locations", [])
+            if not isinstance(known_locations, list):
+                known_locations = []
+            if not known_locations and isinstance(area_data, dict):
                 for loc in area_data.get("locations", []):
                     if not isinstance(loc, dict):
                         continue
@@ -1344,6 +1350,7 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
                             "id": loc_id,
                             "name": loc_name,
                             "area_id": packet_world.get("current_area_id") or party_tracker_data["worldConditions"].get("currentAreaId", ""),
+                            "area_name": packet_world.get("current_area_name") or party_tracker_data["worldConditions"].get("currentArea", ""),
                         })
 
             travel_sync_decision = evaluate_travel_state_sync_decision(
@@ -1373,6 +1380,42 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
                 response_to_validate = json.dumps(response_json, ensure_ascii=False)
                 info(
                     f"STATE_SYNC: Travel reconcile-first injected {len(inferred_actions)} inferred action(s) mode={reconciliation_mode}",
+                    category="location_transitions",
+                )
+
+            narrated_arrival_sync = evaluate_narrated_location_arrival_decision(
+                response_json=response_json,
+                current_location_id=packet_world.get("current_location_id") or party_tracker_data["worldConditions"].get("currentLocationId", ""),
+                known_location_names=known_location_names,
+                module_locations=known_locations,
+            )
+            narrated_arrival_actions = narrated_arrival_sync.get("inferred_actions", [])
+            narrated_arrival_mode = str(narrated_arrival_sync.get("reconciliation", "none") or "none")
+            if isinstance(narrated_arrival_actions, list) and narrated_arrival_actions:
+                if not isinstance(response_json.get("actions"), list):
+                    response_json["actions"] = []
+                response_json["actions"].extend(narrated_arrival_actions)
+                response_to_validate = json.dumps(response_json, ensure_ascii=False)
+                info(
+                    f"STATE_SYNC: Narrated location arrival injected {len(narrated_arrival_actions)} inferred action(s) mode={narrated_arrival_mode}",
+                    category="location_transitions",
+                )
+
+            scene_location_sync = evaluate_scene_location_sync_decision(
+                response_json=response_json,
+                user_utterance=user_input or "",
+                current_location_id=packet_world.get("current_location_id") or party_tracker_data["worldConditions"].get("currentLocationId", ""),
+                module_locations=known_locations,
+            )
+            scene_location_actions = scene_location_sync.get("inferred_actions", [])
+            scene_location_mode = str(scene_location_sync.get("reconciliation", "none") or "none")
+            if isinstance(scene_location_actions, list) and scene_location_actions:
+                if not isinstance(response_json.get("actions"), list):
+                    response_json["actions"] = []
+                response_json["actions"].extend(scene_location_actions)
+                response_to_validate = json.dumps(response_json, ensure_ascii=False)
+                info(
+                    f"STATE_SYNC: Scene location sync injected {len(scene_location_actions)} inferred action(s) mode={scene_location_mode}",
                     category="location_transitions",
                 )
         except Exception as e:

@@ -100,6 +100,45 @@ def _extract_known_locations(
     return {"ids": known_ids, "names": known_names}
 
 
+def _extract_module_locations(module_name: str) -> List[Dict[str, Any]]:
+    """Extract module-wide location catalog for cross-area reconciliation."""
+    module_locations: List[Dict[str, Any]] = []
+    if not module_name:
+        return module_locations
+
+    try:
+        path_manager = ModulePathManager(module_name.replace(" ", "_"))
+        for area_id in path_manager.get_area_ids():
+            area_path = path_manager.get_area_path(area_id)
+            area_payload = safe_json_load(area_path)
+            if not isinstance(area_payload, dict):
+                continue
+
+            area_name = _safe_string(area_payload.get("name", ""))
+            for location in area_payload.get("locations", []):
+                if not isinstance(location, dict):
+                    continue
+                location_id = _safe_string(location.get("locationId", ""))
+                location_name = _safe_string(location.get("name", ""))
+                if not location_id or not location_name:
+                    continue
+                module_locations.append(
+                    {
+                        "id": location_id,
+                        "name": location_name,
+                        "area_id": area_id,
+                        "area_name": area_name,
+                    }
+                )
+    except Exception as exc:
+        debug(
+            f"AUTHORITATIVE_STATE_PACKET: module location extraction degraded for module='{module_name}': {exc}",
+            category="ai_validation",
+        )
+
+    return module_locations
+
+
 def _extract_adjacent_location_ids(location_data: Optional[Dict[str, Any]]) -> List[str]:
     """Extract adjacent/connected location IDs from current location payload."""
     adjacent: List[str] = []
@@ -172,6 +211,7 @@ def build_authoritative_state_packet(
         current_location_name = location_name_from_area
 
     known_locations = _extract_known_locations(resolved_area_data)
+    module_locations = _extract_module_locations(module_name)
     adjacent_location_ids = _extract_adjacent_location_ids(resolved_location_data)
 
     party_members = _safe_list_of_strings(party_tracker_data.get("partyMembers", []))
@@ -219,5 +259,6 @@ def build_authoritative_state_packet(
         "topology": {
             "known_location_ids": known_locations.get("ids", []),
             "known_location_names": known_locations.get("names", []),
+            "module_locations": module_locations,
         },
     }
