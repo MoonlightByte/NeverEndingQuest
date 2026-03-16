@@ -87,6 +87,22 @@ def test_startup_incomplete_lifecycle_contract_remains_present() -> None:
     )
 
 
+def test_update_party_tracker_uses_atomic_boolean_write_contract() -> None:
+    source = _load_startup_source()
+    function_source = _extract_function(
+        source,
+        "def update_party_tracker(module_name, character_name, startup_incomplete=None):",
+        "# ===== CONVERSATION MANAGEMENT =====",
+    )
+
+    assert 'safe_write_json("party_tracker.json", party_data)' in function_source, (
+        "startup tracker updates should use atomic JSON writes"
+    )
+    assert "return bool(success)" in function_source, (
+        "startup tracker should return an explicit boolean success contract"
+    )
+
+
 def main() -> None:
     test_startup_imports_shared_finalization_and_persistence_services()
     print("[PASS] startup imports shared finalization and persistence services")
@@ -102,6 +118,9 @@ def main() -> None:
 
     test_startup_incomplete_lifecycle_contract_remains_present()
     print("[PASS] startup incomplete lifecycle contract remains present")
+
+    test_update_party_tracker_uses_atomic_boolean_write_contract()
+    print("[PASS] startup tracker uses atomic boolean write contract")
 
     print("[PASS] startup character creation adapter wiring checks")
 

@@ -24,6 +24,7 @@ from core.generators.module_stitcher import ModuleStitcher
 
 import config
 from utils.encoding_utils import safe_json_load, safe_json_dump
+from utils.file_operations import safe_write_json
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from core.managers.status_manager import (
@@ -1709,8 +1710,8 @@ def update_party_tracker(module_name, character_name, startup_incomplete=None):
         #     party_data["activeQuests"] = []
         
         # Save updated party tracker
-        success = safe_json_dump(party_data, "party_tracker.json")
-        return success
+        success = safe_write_json("party_tracker.json", party_data)
+        return bool(success)
         
     except Exception as e:
         print(f"Error: Error updating party tracker: {e}")

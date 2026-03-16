@@ -222,7 +222,7 @@ class TestStartupIncompleteResumeContracts(unittest.TestCase):
                     ["alpha", "beta"],
                     startup_incomplete=True,
                 )
-                self.assertIsNone(first_update)
+                self.assertTrue(first_update)
 
                 first_data = startup_wizard.safe_json_load("party_tracker.json")
                 self.assertEqual(first_data.get("partyMembers"), ["alpha", "beta"])
@@ -234,7 +234,7 @@ class TestStartupIncompleteResumeContracts(unittest.TestCase):
                     ["alpha", "beta"],
                     startup_incomplete=False,
                 )
-                self.assertIsNone(second_update)
+                self.assertTrue(second_update)
 
                 second_data = startup_wizard.safe_json_load("party_tracker.json")
                 self.assertEqual(second_data.get("partyMembers"), ["alpha", "beta"])
@@ -280,11 +280,12 @@ class TestStartupIncompleteResumeContracts(unittest.TestCase):
                     encoding="utf-8",
                 )
 
-                startup_wizard.update_party_tracker(
+                update_result = startup_wizard.update_party_tracker(
                     "test_module",
                     ["alpha", "beta", "gamma"],
                     startup_incomplete=True,
                 )
+                self.assertTrue(update_result)
 
                 updated_data = startup_wizard.safe_json_load("party_tracker.json")
                 self.assertEqual(updated_data.get("partyMembers"), ["alpha", "beta", "gamma"])
