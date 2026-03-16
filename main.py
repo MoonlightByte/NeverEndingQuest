@@ -3434,6 +3434,204 @@ def get_noncombat_guard_message(raw_input_text, active_combat_encounter):
     return "[skipTTS] Dungeon Master: [SYSTEM] That command is only available during active combat."
 
 
+def _get_new_pc_creation_guidance_message():
+    """Return deterministic guidance for dedicated player-character creation flow."""
+    return (
+        "[skipTTS] Dungeon Master: [SYSTEM] Brand-new player characters cannot be created "
+        "through normal gameplay chat. Use the dedicated creation flow instead. In the web "
+        "UI, open Manage Party and choose Create with DM or Roll Your Own."
+    )
+
+
+def extract_novel_update_party_npc_names(response_text, party_tracker_data):
+    """Extract novel identity names from updatePartyNPCs actions in an AI response."""
+    try:
+        response_data = json.loads(response_text)
+    except (TypeError, json.JSONDecodeError):
+        return []
+
+    actions = response_data.get("actions", [])
+    if not isinstance(actions, list):
+        return []
+
+    known_names = set()
+    for member in (party_tracker_data or {}).get("partyMembers", []):
+        member_name = str(member).strip().lower()
+        if member_name:
+            known_names.add(member_name)
+
+    for party_npc in (party_tracker_data or {}).get("partyNPCs", []):
+        if isinstance(party_npc, dict):
+            npc_name = str(party_npc.get("name", "")).strip().lower()
+        else:
+            npc_name = str(party_npc).strip().lower()
+        if npc_name:
+            known_names.add(npc_name)
+
+    novel_names = []
+    seen_novel = set()
+
+    for action in actions:
+        if not isinstance(action, dict) or action.get("action") != "updatePartyNPCs":
+            continue
+
+        params = action.get("parameters", {})
+        if not isinstance(params, dict):
+            continue
+
+        candidate_names = []
+
+        npc_param = params.get("npc")
+        if isinstance(npc_param, dict):
+            candidate_names.append(npc_param.get("name"))
+        elif isinstance(npc_param, str):
+            candidate_names.append(npc_param)
+
+        add_param = params.get("add")
+        if isinstance(add_param, str):
+            candidate_names.append(add_param)
+        elif isinstance(add_param, list):
+            for item in add_param:
+                if isinstance(item, str):
+                    candidate_names.append(item)
+                elif isinstance(item, dict):
+                    candidate_names.append(item.get("name"))
+
+        for candidate in candidate_names:
+            normalized_candidate = str(candidate or "").strip().lower()
+            if not normalized_candidate:
+                continue
+            if normalized_candidate in known_names:
+                continue
+            if normalized_candidate in seen_novel:
+                continue
+
+            seen_novel.add(normalized_candidate)
+            novel_names.append(str(candidate).strip())
+
+    return novel_names
+
+
+def get_new_pc_creation_guard_message(raw_input_text, party_tracker_data):
+    """Return deterministic system guidance for brand-new PC creation requests in gameplay chat."""
+    if is_creation_mode_active():
+        return None
+
+    clean_input = _normalize_combat_command_input(raw_input_text)
+    if not clean_input:
+        return None
+
+    text = clean_input.lower()
+
+    # TABLETOP MODE: Conservative exclusion list so NPC recruitment remains unaffected.
+    npc_recruitment_markers = [
+        "join us",
+        "who can you spare",
+        "can anyone help",
+        "anyone help",
+        "need backup",
+        "npc",
+        "companion",
+        "hireling",
+        "follower",
+    ]
+    if any(marker in text for marker in npc_recruitment_markers):
+        return None
+
+    # TABLETOP MODE: Explicit high-confidence phrases for brand-new player creation intent.
+    explicit_new_pc_phrases = [
+        "create another player character",
+        "create a new player character",
+        "add another player character",
+        "add a new player character",
+        "make another player character",
+        "make a new player character",
+        "create another pc",
+        "create a new pc",
+        "add another pc",
+        "add a new pc",
+        "make another pc",
+        "make a new pc",
+        "roll up another player character",
+        "roll up a new player character",
+        "roll up another pc",
+        "roll up a new pc",
+    ]
+    if any(phrase in text for phrase in explicit_new_pc_phrases):
+        return _get_new_pc_creation_guidance_message()
+
+    # TABLETOP MODE: Fallback detection requires explicit creation verbs plus explicit PC terms.
+    has_creation_verb = bool(re.search(r"\b(create|add|make|build|generate|roll\s+up)\b", text))
+    has_pc_target = bool(
+        re.search(
+            r"\b(player\s+character|pc|new\s+character|another\s+character|new\s+player|another\s+player)\b",
+            text,
+        )
+    )
+    if has_creation_verb and has_pc_target:
+        # If any known character is named directly, treat this as likely existing-character context.
+        known_party_members = [
+            str(name).lower() for name in (party_tracker_data or {}).get("partyMembers", []) if name
+        ]
+        if any(member_name in text for member_name in known_party_members):
+            return None
+
+        return _get_new_pc_creation_guidance_message()
+
+    return None
+
+
+def get_new_pc_creation_retry_guard_message(user_input_text, ai_response_content, party_tracker_data):
+    """Detect retry-loop new-PC misroutes and return deterministic creation guidance."""
+    if is_creation_mode_active():
+        return None
+
+    novel_names = extract_novel_update_party_npc_names(ai_response_content, party_tracker_data)
+    if not novel_names:
+        return None
+
+    # Reuse explicit Step 3.1 guard first.
+    primary_guard_msg = get_new_pc_creation_guard_message(user_input_text, party_tracker_data)
+    if primary_guard_msg:
+        return primary_guard_msg
+
+    text = _normalize_combat_command_input(user_input_text).lower()
+    if not text:
+        return None
+
+    # Keep NPC-recruitment intents out of this redirect path.
+    npc_recruitment_markers = [
+        "join us",
+        "who can you spare",
+        "can anyone help",
+        "anyone help",
+        "need backup",
+        "npc",
+        "companion",
+        "hireling",
+        "follower",
+    ]
+    if any(marker in text for marker in npc_recruitment_markers):
+        return None
+
+    # Step 3.2: Catch player-identity conversion language that can still misroute.
+    has_pc_term = bool(re.search(r"\b(player\s+character|pc)\b", text))
+    has_creation_or_conversion_verb = bool(
+        re.search(r"\b(create|add|make|build|generate|roll\s+up|turn|convert|promote|become)\b", text)
+    )
+    has_identity_conversion_phrase = (
+        "as a player character" in text
+        or "into a player character" in text
+        or "as a pc" in text
+        or "into a pc" in text
+    )
+
+    if has_pc_term and (has_creation_or_conversion_verb or has_identity_conversion_phrase):
+        return _get_new_pc_creation_guidance_message()
+
+    return None
+
+
 def get_validation_retry_exhaustion_message():
     """Return deterministic fail-closed message for validation retry exhaustion."""
     return (
@@ -4127,14 +4325,25 @@ def main_game_loop():
             # TABLETOP MODE: C2 - Combat-only command routing guards
             # Block combat-only commands when no active combat encounter is present
             clean_input = _normalize_combat_command_input(user_input_text)
+            party_tracker_for_input_guards = load_json_file("party_tracker.json") or {}
             if _is_combat_only_command(clean_input):
-                party_tracker_for_combat_check = load_json_file("party_tracker.json")
-                active_combat = party_tracker_for_combat_check.get("worldConditions", {}).get("activeCombatEncounter", "")
+                active_combat = party_tracker_for_input_guards.get("worldConditions", {}).get("activeCombatEncounter", "")
                 guard_msg = get_noncombat_guard_message(user_input_text, active_combat)
                 if guard_msg:
                     print(colored(guard_msg, "yellow"))
                     sys.stdout.flush()
                     continue
+
+            # TABLETOP MODE: Step 3.1 - Fail-closed guard for brand-new PC creation requests
+            # outside dedicated character creation flows.
+            new_pc_guard_msg = get_new_pc_creation_guard_message(
+                user_input_text,
+                party_tracker_for_input_guards,
+            )
+            if new_pc_guard_msg:
+                print(colored(new_pc_guard_msg, "yellow"))
+                sys.stdout.flush()
+                continue
     
         party_tracker_data = load_json_file("party_tracker.json") 
     
@@ -4672,6 +4881,9 @@ def main_game_loop():
         
         # TABLETOP MODE: Step 3.2 - Retry-local correction note (not persisted to conversation history)
         retry_correction_note = None
+
+        # TABLETOP MODE: Step 3.2 - Track deterministic redirect for new-PC creation misroutes.
+        new_pc_creation_redirected = False
     
         while retry_count < 5 and not valid_response_received:
             # Pass validation retry count for intelligent model escalation
@@ -4908,6 +5120,23 @@ def main_game_loop():
                 # Validation failed with a reason
                 debug(f"VALIDATION: Validation failed. Reason: {validation_reason}", category="ai_validation")
                 status_retrying(retry_count + 1, 5)
+
+                # TABLETOP MODE: Step 3.2 - Short-circuit novel updatePartyNPCs retry loops.
+                redirect_msg = get_new_pc_creation_retry_guard_message(
+                    user_input_text,
+                    ai_response_content,
+                    party_tracker_data,
+                )
+                if redirect_msg:
+                    info(
+                        "VALIDATION: Redirecting novel updatePartyNPCs identity to dedicated creation flow",
+                        category="ai_validation",
+                    )
+                    print(colored(redirect_msg, "yellow"))
+                    sys.stdout.flush()
+                    retry_correction_note = None
+                    new_pc_creation_redirected = True
+                    break
                 
                 # TABLETOP MODE: Task 3.3 - Repeated reason short-circuit detection
                 # Check if this is the same deterministic reason as last time
@@ -4951,6 +5180,11 @@ def main_game_loop():
                 warning(f"VALIDATION: Unexpected validation result: is_valid={is_valid}, reason={validation_reason}. Retrying.", category="ai_validation")
                 retry_count += 1
     
+        # TABLETOP MODE: Step 3.2 - Creation-flow redirect is terminal for this turn.
+        if new_pc_creation_redirected:
+            status_ready()
+            continue
+
         # TABLETOP MODE C1.1: Fail-closed - do NOT execute invalid responses after validation exhaustion
         if not valid_response_received:
             error("FAILURE: Failed to generate a valid response after 5 attempts. STOPPING to prevent desync.", category="ai_validation")

@@ -1021,6 +1021,41 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Startup Interrupted PC Creation Recovery (COMPLETED - 2026-03-16)
+
+**Status:** COMPLETED - archived OpenSpec change with targeted runtime/UI/test hardening
+
+**OpenSpec Archive:**
+- `openspec/changes/archive/2026-03-16-startup-interrupted-pc-creation-recovery/`
+
+**Objective:**
+Keep startup onboarding resumable after first-PC persistence, preserve one-PC tabletop recovery access to Manage Party, and fail-closed new-PC chat requests to dedicated creation flows.
+
+**Implementation Summary:**
+- Startup lifecycle persistence in `utils/startup_wizard.py`:
+  - Added persisted `startup_incomplete` state metadata.
+  - Immediate first-PC persistence remains intact.
+  - `startup_incomplete=True` during onboarding loop; clears only on explicit successful completion.
+- Startup resume detection:
+  - `startup_required(...)` now forces startup wizard resume when `startup_incomplete` is true.
+- One-PC tabletop recovery visibility:
+  - Added backend context in `web/web_interface.py`: `startup_incomplete`, `show_one_pc_tabletop_recovery`.
+  - Updated template gates in `web/templates/game_interface.html` and `web/templates/partials/character_tabs.html` so Manage Party remains visible in valid one-PC recovery states.
+- New-PC fail-closed routing in `main.py`:
+  - Added deterministic pre-AI guard for explicit brand-new PC creation requests outside creation mode.
+  - Added retry-loop short-circuit for novel `updatePartyNPCs` identities to emit deterministic creation guidance and skip generic validation-exhaustion append for that redirect path.
+- Regression coverage:
+  - `scripts/test_startup_multipc_reprompt.py`
+  - `scripts/test_character_sheet_edit.py`
+  - `scripts/test_retry_de_looping.py`
+
+**Verification:**
+- `python3 -m py_compile main.py utils/startup_wizard.py web/web_interface.py config_template.py` -> PASS
+- `python3 scripts/test_startup_multipc_reprompt.py` -> PASS (7/7)
+- `python3 scripts/test_character_sheet_edit.py` -> PASS (31/31)
+- `python3 scripts/test_retry_de_looping.py` -> PASS (18/18)
+- `openspec validate startup-interrupted-pc-creation-recovery` -> PASS
+
 ### Startup Wizard Module Scan Hygiene (COMPLETED - 2026-03-16)
 
 **Status:** COMPLETED - suppressed false module warnings on clean installs

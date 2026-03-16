@@ -4860,7 +4860,7 @@
             
             <div class="panel-content" id="game-output"></div>
             
-            {% if multiplayer_mode or party_members|length > 1 %}
+            {% if multiplayer_mode or party_members|length > 1 or show_one_pc_tabletop_recovery %}
                 {% include 'partials/character_tabs.html' %}
             {% endif %}
 

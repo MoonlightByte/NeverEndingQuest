@@ -13,6 +13,8 @@ Verifies that:
 import unittest
 import sys
 import os
+import json
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -297,6 +299,222 @@ class TestRetryLoopBehavioralRegression(unittest.TestCase):
             "continue",
             exhaustion_section,
             "Should skip turn processing on exhaustion (continue to next iteration)"
+        )
+
+
+class TestNewPcCreationRetryRedirectContracts(unittest.TestCase):
+    """Contracts for Step 3.3 new-PC retry redirection behavior."""
+
+    def _build_party_tracker_fixture(self):
+        return {
+            "partyMembers": ["Acheron"],
+            "partyNPCs": [{"name": "Scout Kira"}],
+        }
+
+    def test_extract_novel_update_party_npc_names_detects_supported_forms(self):
+        """Novel identity extraction supports all updatePartyNPCs payload forms."""
+        from main import extract_novel_update_party_npc_names
+
+        party_tracker_data = self._build_party_tracker_fixture()
+        response_payload = {
+            "narration": "Test payload",
+            "actions": [
+                {
+                    "action": "updatePartyNPCs",
+                    "parameters": {
+                        "operation": "add",
+                        "npc": {"name": "Xorn"},
+                    },
+                },
+                {
+                    "action": "updatePartyNPCs",
+                    "parameters": {
+                        "operation": "add",
+                        "npc": "Nyx",
+                    },
+                },
+                {
+                    "action": "updatePartyNPCs",
+                    "parameters": {
+                        "operation": "add",
+                        "add": "Rook",
+                    },
+                },
+                {
+                    "action": "updatePartyNPCs",
+                    "parameters": {
+                        "operation": "add",
+                        "add": ["Scout Kira", "Bram"],
+                    },
+                },
+                {
+                    "action": "updatePartyNPCs",
+                    "parameters": {
+                        "operation": "add",
+                        "add": [{"name": "Acheron"}, {"name": "Mara"}],
+                    },
+                },
+            ],
+        }
+
+        novel_names = extract_novel_update_party_npc_names(
+            json.dumps(response_payload),
+            party_tracker_data,
+        )
+
+        self.assertEqual(
+            set(novel_names),
+            {"Xorn", "Nyx", "Rook", "Bram", "Mara"},
+            "Should detect only novel names across all supported updatePartyNPCs forms",
+        )
+
+    def test_extract_novel_update_party_npc_names_ignores_known_identities(self):
+        """Known party members/NPCs are not flagged as novel."""
+        from main import extract_novel_update_party_npc_names
+
+        party_tracker_data = self._build_party_tracker_fixture()
+        response_payload = {
+            "narration": "Known recruitment payload",
+            "actions": [
+                {
+                    "action": "updatePartyNPCs",
+                    "parameters": {
+                        "operation": "add",
+                        "npc": {"name": "Scout Kira"},
+                    },
+                },
+                {
+                    "action": "updatePartyNPCs",
+                    "parameters": {
+                        "operation": "add",
+                        "add": [{"name": "Acheron"}],
+                    },
+                },
+            ],
+        }
+
+        novel_names = extract_novel_update_party_npc_names(
+            json.dumps(response_payload),
+            party_tracker_data,
+        )
+
+        self.assertEqual(novel_names, [], "Known identities should not be treated as novel")
+
+    def test_retry_guard_redirects_xorn_style_new_pc_request(self):
+        """Xorn-style new-PC misroute returns deterministic creation guidance."""
+        from main import (
+            get_new_pc_creation_retry_guard_message,
+            _get_new_pc_creation_guidance_message,
+        )
+
+        party_tracker_data = self._build_party_tracker_fixture()
+        response_payload = {
+            "narration": "I add Xorn to the party.",
+            "actions": [
+                {
+                    "action": "updatePartyNPCs",
+                    "parameters": {
+                        "operation": "add",
+                        "npc": {"name": "Xorn", "level": "1", "class": "Fighter"},
+                    },
+                }
+            ],
+        }
+
+        with patch("main.is_creation_mode_active", return_value=False):
+            redirect_msg = get_new_pc_creation_retry_guard_message(
+                "Turn Xorn into a player character.",
+                json.dumps(response_payload),
+                party_tracker_data,
+            )
+
+        self.assertEqual(
+            redirect_msg,
+            _get_new_pc_creation_guidance_message(),
+            "Retry guard should emit shared deterministic creation guidance",
+        )
+        self.assertNotIn("Error Note:", redirect_msg)
+
+    def test_retry_guard_allows_known_npc_recruitment(self):
+        """Known NPC recruitment should not be redirected as new-PC creation."""
+        from main import get_new_pc_creation_retry_guard_message
+
+        party_tracker_data = self._build_party_tracker_fixture()
+        response_payload = {
+            "narration": "Scout Kira joins your group.",
+            "actions": [
+                {
+                    "action": "updatePartyNPCs",
+                    "parameters": {
+                        "operation": "add",
+                        "npc": {"name": "Scout Kira", "level": "4", "class": "Scout"},
+                    },
+                }
+            ],
+        }
+
+        with patch("main.is_creation_mode_active", return_value=False):
+            redirect_msg = get_new_pc_creation_retry_guard_message(
+                "Scout Kira joins us.",
+                json.dumps(response_payload),
+                party_tracker_data,
+            )
+
+        self.assertIsNone(
+            redirect_msg,
+            "Known NPC recruitment should not trigger new-PC creation redirect",
+        )
+
+    def test_main_retry_loop_sets_redirect_flag_and_breaks(self):
+        """main.py retry loop should set redirect flag and break on redirect."""
+        main_py_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'main.py'
+        )
+
+        with open(main_py_path, 'r') as file_handle:
+            content = file_handle.read()
+
+        self.assertIn(
+            "redirect_msg = get_new_pc_creation_retry_guard_message(",
+            content,
+            "Retry failure branch should call new-PC retry guard helper",
+        )
+        self.assertIn(
+            "new_pc_creation_redirected = True",
+            content,
+            "Retry failure branch should set redirect flag",
+        )
+        self.assertIn(
+            "break",
+            content,
+            "Retry failure branch should break retry loop on redirect",
+        )
+
+    def test_main_redirect_path_skips_generic_exhaustion_append(self):
+        """Redirect path should continue before generic exhaustion append path."""
+        main_py_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'main.py'
+        )
+
+        with open(main_py_path, 'r') as file_handle:
+            content = file_handle.read()
+
+        redirect_check = "if new_pc_creation_redirected:"
+        exhaustion_check = "if not valid_response_received:"
+
+        self.assertIn(redirect_check, content)
+        self.assertIn(exhaustion_check, content)
+        self.assertLess(
+            content.index(redirect_check),
+            content.index(exhaustion_check),
+            "Redirect continue check must run before generic exhaustion handling",
+        )
+        self.assertIn(
+            "error_message = get_validation_retry_exhaustion_message()",
+            content,
+            "Generic exhaustion handling should remain available for non-redirect failures",
         )
 
 

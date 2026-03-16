@@ -113,6 +113,9 @@ STARTUP_NON_MODULE_DIRS = {
     "logs",
 }
 
+# TABLETOP MODE: Persisted startup lifecycle key for interrupted onboarding recovery.
+STARTUP_INCOMPLETE_STATE_KEY = "startup_incomplete"
+
 
 def _is_module_candidate_directory(module_name: str, module_path: str) -> bool:
     """Return True when a modules/ directory is a playable module candidate."""
@@ -189,7 +192,8 @@ def run_startup_sequence():
 
         # TABLETOP MODE: Persist startup party state immediately after first PC creation.
         # This enables web UI tab/sheet hydration while add-more prompt loop is still active.
-        update_party_tracker(selected_module['name'], created_characters)
+        # Keep startup marked incomplete until facilitator explicitly finishes add-more loop.
+        update_party_tracker(selected_module['name'], created_characters, startup_incomplete=True)
 
         # TABLETOP MODE: Optional multi-PC startup loop.
         # Exit contract: loop terminates ONLY on explicit 'n'/'no' from either decision point.
@@ -216,7 +220,8 @@ def run_startup_sequence():
                 created_characters.append(next_character)
                 # TABLETOP MODE: Persist each successful queued PC immediately so
                 # frontend party data reflects additions without waiting for explicit loop exit.
-                update_party_tracker(selected_module['name'], created_characters)
+                # Keep startup incomplete until explicit loop completion finalizes state.
+                update_party_tracker(selected_module['name'], created_characters, startup_incomplete=True)
                 print(f"Dungeon Master: Added player {next_character} to startup party.")
                 continue
 
@@ -236,8 +241,15 @@ def run_startup_sequence():
                 print("Dungeon Master: Please enter 'y' for yes or 'n' for no.")
                 continue
         
-        # Step 3: Update party tracker
-        update_party_tracker(selected_module['name'], created_characters)
+        # Step 3: Finalize party tracker and clear startup-incomplete state.
+        finalization_success = update_party_tracker(
+            selected_module['name'],
+            created_characters,
+            startup_incomplete=False
+        )
+        if not finalization_success:
+            print("Error: Failed to finalize startup party tracker state.")
+            return False
         
         # Cleanup
         cleanup_startup_conversation()
@@ -257,6 +269,12 @@ def startup_required(party_file="party_tracker.json"):
     try:
         party_data = safe_json_load(party_file)
         if not party_data:
+            return True
+
+        # TABLETOP MODE: Interrupted startup lifecycle recovery.
+        # If startup was persisted as incomplete, force startup wizard resume
+        # even when module and one or more party members already exist.
+        if party_data.get(STARTUP_INCOMPLETE_STATE_KEY) is True:
             return True
         
         # Check if module is missing or empty
@@ -1679,8 +1697,8 @@ def save_character_to_module(character_data, module_name):
         print(f"Error: Error saving character: {e}")
         return False
 
-def update_party_tracker(module_name, character_name):
-    """Update party_tracker.json with module and character selections"""
+def update_party_tracker(module_name, character_name, startup_incomplete=None):
+    """Update party_tracker.json with module/character selections and optional startup state."""
     try:
         # Load existing party tracker or create new one
         party_data = safe_json_load("party_tracker.json") or {}
@@ -1701,6 +1719,11 @@ def update_party_tracker(module_name, character_name):
 
         if existing_members:
             party_data["active_character"] = existing_members[0]
+
+        # TABLETOP MODE: Optional persisted startup lifecycle metadata.
+        # Backward-compatible default is no change for existing callers.
+        if startup_incomplete is not None:
+            party_data[STARTUP_INCOMPLETE_STATE_KEY] = bool(startup_incomplete)
         
         # Initialize other required fields if they don't exist
         if "partyNPCs" not in party_data:

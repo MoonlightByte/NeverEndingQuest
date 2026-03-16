@@ -869,12 +869,19 @@ def index():
 
     # Get party info from pc_manager
     try:
-        party_data = pc_manager.get_party_tracker()
+        party_data = pc_manager.get_party_tracker() or {}
         party_members = party_data.get('partyMembers', [])
         active_character = party_data.get('active_character')
     except:
+        party_data = {}
         party_members = []
         active_character = None
+
+    # TABLETOP MODE: Expose startup recovery state for one-PC tabletop visibility.
+    startup_incomplete = party_data.get('startup_incomplete') is True
+    show_one_pc_tabletop_recovery = bool(
+        MULTIPLAYER_MODE and startup_incomplete and len(party_members) == 1
+    )
 
     # Get status sync debug flag
     try:
@@ -883,14 +890,16 @@ def index():
         DEBUG_STATUS_SYNC = False
 
     return render_template('game_interface.html', 
-                         version=version, 
-                         party_members=party_members, 
-                         active_character=active_character,
-                         multiplayer_mode=MULTIPLAYER_MODE,
-                         DEBUG_STATUS_SYNC=DEBUG_STATUS_SYNC,
-                         ENABLE_CHAT_STREAMING=ENABLE_CHAT_STREAMING,
-                         ENABLE_BROWSER_TTS_STREAM_SYNC=ENABLE_BROWSER_TTS_STREAM_SYNC,
-                         ENABLE_BROWSER_WORD_SYNC=ENABLE_BROWSER_WORD_SYNC,
+                          version=version, 
+                          party_members=party_members, 
+                          active_character=active_character,
+                          multiplayer_mode=MULTIPLAYER_MODE,
+                          startup_incomplete=startup_incomplete,
+                          show_one_pc_tabletop_recovery=show_one_pc_tabletop_recovery,
+                          DEBUG_STATUS_SYNC=DEBUG_STATUS_SYNC,
+                          ENABLE_CHAT_STREAMING=ENABLE_CHAT_STREAMING,
+                          ENABLE_BROWSER_TTS_STREAM_SYNC=ENABLE_BROWSER_TTS_STREAM_SYNC,
+                          ENABLE_BROWSER_WORD_SYNC=ENABLE_BROWSER_WORD_SYNC,
                          ENABLE_TTS_ESTIMATED_TIMING=ENABLE_TTS_ESTIMATED_TIMING)
 
 @app.route('/static/media/videos/<path:filename>')

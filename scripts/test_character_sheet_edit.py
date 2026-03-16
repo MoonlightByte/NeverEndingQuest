@@ -569,6 +569,72 @@ class TestLanguagesFieldMapping(unittest.TestCase):
                       "Update should set proficiencies.languages")
 
 
+class TestOnePcRecoveryVisibilityContracts(unittest.TestCase):
+    """Source contracts for one-PC tabletop recovery visibility."""
+
+    @staticmethod
+    def _project_root() -> str:
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def test_web_interface_exposes_startup_recovery_context(self):
+        """Web index route exposes startup recovery booleans for templates."""
+        source_path = os.path.join(self._project_root(), "web", "web_interface.py")
+        with open(source_path, 'r', encoding='utf-8') as file_handle:
+            source = file_handle.read()
+
+        self.assertIn("startup_incomplete = party_data.get('startup_incomplete') is True", source,
+                      "index route should compute startup_incomplete")
+        self.assertIn("show_one_pc_tabletop_recovery = bool(", source,
+                      "index route should compute one-PC tabletop recovery visibility")
+        self.assertIn("MULTIPLAYER_MODE and startup_incomplete and len(party_members) == 1", source,
+                      "one-PC recovery visibility should remain conservative")
+        self.assertIn("startup_incomplete=startup_incomplete,", source,
+                      "startup_incomplete should be passed to template context")
+        self.assertIn("show_one_pc_tabletop_recovery=show_one_pc_tabletop_recovery,", source,
+                      "recovery visibility boolean should be passed to template context")
+
+    def test_game_interface_character_tabs_include_allows_recovery(self):
+        """Character tabs include gate should allow one-PC tabletop recovery state."""
+        source_path = os.path.join(self._project_root(), "web", "templates", "game_interface.html")
+        with open(source_path, 'r', encoding='utf-8') as file_handle:
+            source = file_handle.read()
+
+        self.assertIn(
+            "{% if multiplayer_mode or party_members|length > 1 or show_one_pc_tabletop_recovery %}",
+            source,
+            "Character tabs include should allow one-PC tabletop recovery",
+        )
+
+    def test_character_tabs_outer_container_allows_recovery(self):
+        """Character tabs container hidden guard should allow one-PC recovery visibility."""
+        source_path = os.path.join(self._project_root(), "web", "templates", "partials", "character_tabs.html")
+        with open(source_path, 'r', encoding='utf-8') as file_handle:
+            source = file_handle.read()
+
+        self.assertIn(
+            "{% if not (multiplayer_mode or party_members|length > 1 or show_one_pc_tabletop_recovery) %}",
+            source,
+            "Character tabs container should remain visible during one-PC recovery",
+        )
+
+    def test_unrelated_tabletop_asset_gates_remain_unchanged(self):
+        """CSS/JS tabletop asset gates remain scoped to existing multiplayer condition."""
+        source_path = os.path.join(self._project_root(), "web", "templates", "game_interface.html")
+        with open(source_path, 'r', encoding='utf-8') as file_handle:
+            source = file_handle.read()
+
+        self.assertIn(
+            "{% if multiplayer_mode or party_members|length > 1 %}\n    <link rel=\"stylesheet\" href=\"{{ url_for('static', filename='css/tabletop_mode.css') }}\">",
+            source,
+            "Top-level tabletop CSS gate should remain unchanged",
+        )
+        self.assertIn(
+            "{% if multiplayer_mode or party_members|length > 1 %}\n    <script src=\"{{ url_for('static', filename='js/tabletop_mode.js') }}\"></script>",
+            source,
+            "tabletop_mode.js include gate should remain unchanged",
+        )
+
+
 if __name__ == '__main__':
     # Run with verbosity
     unittest.main(verbosity=2)

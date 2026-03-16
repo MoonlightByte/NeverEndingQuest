@@ -1,4 +1,4 @@
-<div class="character-tabs-container" id="character-tabs-container" {% if not (multiplayer_mode or party_members|length > 1) %}style="display: none;"{% endif %}>
+<div class="character-tabs-container" id="character-tabs-container" {% if not (multiplayer_mode or party_members|length > 1 or show_one_pc_tabletop_recovery) %}style="display: none;"{% endif %}>
     <div class="character-tabs-scroll" id="character-tabs-list" style="display: flex; gap: 5px;">
         {% for member in party_members %}
             <div class="character-tab-wrapper" style="position: relative; display: inline-block;">
