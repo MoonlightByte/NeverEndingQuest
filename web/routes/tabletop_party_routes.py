@@ -25,6 +25,7 @@ import utils.pc_manager as pc_manager
 from updates.update_character_info import normalize_character_name
 from utils.character_creator import (
     CHARACTER_CREATION_MARKER,
+    abort_character_creation_session,
     backup_conversation_history,
     finalize_character_creation_candidate,
     generate_ambiguous_transition,
@@ -270,6 +271,7 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
     @app.route('/api/party/create_player', methods=['POST'])
     def create_party_player() -> Any:
         """Create a new player character with DM assistance."""
+        creation_marker_written = False
         try:
             data = request.get_json(silent=True) or {}
             name = data.get('name', '').strip()
@@ -321,7 +323,7 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
                     "When complete, output the full character as JSON."
                 )
 
-            safe_write_json(CHARACTER_CREATION_MARKER, {
+            marker_saved = safe_write_json(CHARACTER_CREATION_MARKER, {
                 "active": True,
                 "character_name": name,
                 "target_level": target_level,
@@ -329,6 +331,14 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
                 "active_pc": active_pc,
                 "current_location": current_location,
             })
+            if not marker_saved:
+                error(
+                    "TABLETOP MODE: Failed to persist character creation marker; aborting Create-with-DM activation",
+                    category="character_creation",
+                )
+                return jsonify({'error': 'Failed to activate character creation mode. Please try again.'}), 500
+
+            creation_marker_written = True
 
             user_input_queue.put(creation_prompt)
 
@@ -341,12 +351,44 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
                 'target_level': target_level,
             })
         except Exception as route_error:
+            if creation_marker_written:
+                try:
+                    cleanup_result = abort_character_creation_session(reason="web_create_player_route_error")
+                    warning(
+                        "TABLETOP MODE: Create-with-DM activation failed after marker write; "
+                        f"cleanup marker_removed={cleanup_result.get('marker_removed', False)}",
+                        category="character_creation",
+                    )
+                except Exception as cleanup_error:
+                    error(
+                        f"TABLETOP MODE: Failed to abort stale Create-with-DM session after route error: {cleanup_error}",
+                        exception=cleanup_error,
+                        category="character_creation",
+                    )
             error(f"TABLETOP: Failed to start player creation: {route_error}")
             return jsonify({'error': str(route_error)}), 500
 
     @app.route('/api/party/finalize_creation', methods=['POST'])
     def finalize_character_creation() -> Any:
         """Finalize character creation after LLM outputs JSON."""
+        def _abort_terminal_creation_failure(reason: str) -> None:
+            """Abort stale creation session on terminal finalize failures."""
+            if not is_creation_mode_active():
+                return
+            try:
+                cleanup_result = abort_character_creation_session(reason=reason)
+                warning(
+                    "TABLETOP MODE: Finalize creation terminal failure triggered abort; "
+                    f"reason={reason} marker_removed={cleanup_result.get('marker_removed', False)}",
+                    category="character_creation",
+                )
+            except Exception as cleanup_error:
+                error(
+                    f"TABLETOP MODE: Failed to abort stale creation session after finalize terminal failure: {cleanup_error}",
+                    exception=cleanup_error,
+                    category="character_creation",
+                )
+
         try:
             data = request.get_json(silent=True) or {}
             character_json = data.get('character_data')
@@ -376,22 +418,26 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
                 }), 400
 
             if finalize_status == "error":
+                _abort_terminal_creation_failure("web_finalize_creation_terminal_error")
                 return jsonify({
                     'error': 'Character data processing failed',
                     'details': finalize_result.get('error_message', 'unknown error'),
                 }), 500
 
             if finalize_status != "success":
+                _abort_terminal_creation_failure("web_finalize_creation_unexpected_status")
                 return jsonify({
                     'error': f'Unexpected finalization status: {finalize_status}',
                 }), 500
 
             character_data = finalize_result.get('character_data')
             if not isinstance(character_data, dict):
+                _abort_terminal_creation_failure("web_finalize_creation_missing_character_payload")
                 return jsonify({'error': 'Finalized character payload missing or invalid'}), 500
 
             persist_result = persist_dm_created_character(character_data)
             if not persist_result.get('success'):
+                _abort_terminal_creation_failure("web_finalize_creation_persist_failure")
                 return jsonify({
                     'error': 'Failed to save character file',
                     'details': persist_result.get('error', 'unknown persistence error'),
@@ -429,6 +475,8 @@ def register_tabletop_party_routes(app: Flask, user_input_queue: Any) -> None:
                 'transition_injected': True,
             })
         except Exception as route_error:
+            if is_creation_mode_active():
+                _abort_terminal_creation_failure("web_finalize_creation_route_exception")
             error(f"TABLETOP: Failed to finalize character creation: {route_error}")
             return jsonify({'error': str(route_error)}), 500
 

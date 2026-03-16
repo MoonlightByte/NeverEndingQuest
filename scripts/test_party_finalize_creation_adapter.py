@@ -29,6 +29,7 @@ def test_route_imports_shared_services() -> None:
     source = _load_route_source()
     assert "finalize_character_creation_candidate" in source, "Route module should import shared finalization service"
     assert "persist_dm_created_character" in source, "Route module should import shared persistence helper"
+    assert "abort_character_creation_session" in source, "Route module should import shared creation abort helper"
 
 
 def test_finalize_route_uses_shared_services() -> None:
@@ -37,6 +38,25 @@ def test_finalize_route_uses_shared_services() -> None:
 
     assert "finalize_character_creation_candidate(" in function_source, "Finalize route should call shared finalizer"
     assert "persist_dm_created_character(" in function_source, "Finalize route should call shared persistence helper"
+    assert "_abort_terminal_creation_failure(" in function_source, "Finalize route should include terminal abort helper"
+
+
+def test_finalize_route_preserves_retry_and_aborts_terminal_failures() -> None:
+    source = _load_route_source()
+    function_source = _extract_finalize_route_function(source)
+
+    assert 'if finalize_status in ("not_candidate", "needs_retry"):' in function_source, (
+        "Finalize route should keep repairable retry behavior"
+    )
+    assert '_abort_terminal_creation_failure("web_finalize_creation_terminal_error")' in function_source, (
+        "Finalize route should abort on shared finalizer terminal error"
+    )
+    assert '_abort_terminal_creation_failure("web_finalize_creation_unexpected_status")' in function_source, (
+        "Finalize route should abort on unexpected terminal finalize status"
+    )
+    assert '_abort_terminal_creation_failure("web_finalize_creation_persist_failure")' in function_source, (
+        "Finalize route should abort on persistence failure"
+    )
 
 
 def test_finalize_route_removed_duplicate_inline_ownership() -> None:
@@ -65,6 +85,9 @@ def main() -> None:
 
     test_finalize_route_uses_shared_services()
     print("[PASS] finalize route uses shared finalizer and persistence helper")
+
+    test_finalize_route_preserves_retry_and_aborts_terminal_failures()
+    print("[PASS] finalize route preserves retry behavior and aborts terminal failures")
 
     test_finalize_route_removed_duplicate_inline_ownership()
     print("[PASS] finalize route removed duplicate inline ownership")

@@ -45,7 +45,12 @@ except Exception as audit_import_error:
 # Constants
 CONVERSATION_HISTORY_FILE = "modules/conversation_history/conversation_history.json"
 CONVERSATION_BACKUP_FILE = "modules/conversation_history/conversation_history_backup.json"
+CHAT_HISTORY_FILE = "modules/conversation_history/chat_history.json"
 CHARACTER_CREATION_MARKER = "modules/conversation_history/creation_mode_active.json"
+
+CREATION_RETRY_GUIDANCE_PREFIX = "Character creation final JSON failed validation."
+CREATION_WORLD_STATE_PREFIX = "--- WORLD STATE ---"
+POISONED_CREATION_RETRY_THRESHOLD = 2
 
 # DMG Wealth by Level table (for starting equipment above level 1)
 WEALTH_BY_LEVEL = {
@@ -194,6 +199,215 @@ def _extract_json_candidate_from_response(response_text: str) -> Optional[str]:
         return text
 
     return None
+
+
+def _is_creation_retry_guidance_message(content: str) -> bool:
+    """Return True for deterministic character-creation retry guidance messages."""
+    text = str(content or "").strip()
+    return text.startswith(CREATION_RETRY_GUIDANCE_PREFIX)
+
+
+def _load_message_history(filepath: str) -> List[Dict[str, Any]]:
+    """Load a JSON message history file, returning an empty list on failure."""
+    try:
+        data = safe_json_load(filepath)
+        if isinstance(data, list):
+            return data
+    except Exception as history_error:
+        warning(
+            f"Failed to load message history for cleanup ({filepath}): {history_error}",
+            category="character_creation",
+        )
+    return []
+
+
+def _save_message_history(filepath: str, messages: List[Dict[str, Any]]) -> bool:
+    """Persist a message history file using the existing JSON dump utility."""
+    try:
+        safe_json_dump(messages, filepath)
+        return True
+    except Exception as save_error:
+        error(
+            f"Failed to save message history ({filepath}): {save_error}",
+            exception=save_error,
+            category="character_creation",
+        )
+        return False
+
+
+def _prune_creation_retry_artifacts(messages: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
+    """Remove deterministic retry-poison messages from a conversation history."""
+    pruned_messages: List[Dict[str, Any]] = []
+    removed_count = 0
+    suppress_following_world_state = False
+
+    for message in messages:
+        if not isinstance(message, dict):
+            pruned_messages.append(message)
+            suppress_following_world_state = False
+            continue
+
+        role = str(message.get("role", "")).strip().lower()
+        content = str(message.get("content", "")).strip()
+
+        if role == "user" and _is_creation_retry_guidance_message(content):
+            removed_count += 1
+            suppress_following_world_state = True
+            continue
+
+        if suppress_following_world_state and role == "user" and content.startswith(CREATION_WORLD_STATE_PREFIX):
+            removed_count += 1
+            suppress_following_world_state = False
+            continue
+
+        suppress_following_world_state = False
+        pruned_messages.append(message)
+
+    return pruned_messages, removed_count
+
+
+def _prune_creation_retry_artifacts_in_file(filepath: str) -> int:
+    """Prune deterministic retry artifacts from a message-history JSON file."""
+    if not os.path.exists(filepath):
+        return 0
+
+    messages = _load_message_history(filepath)
+    pruned_messages, removed_count = _prune_creation_retry_artifacts(messages)
+    if removed_count <= 0:
+        return 0
+
+    if _save_message_history(filepath, pruned_messages):
+        info(
+            f"CHARACTER_CREATION: Pruned {removed_count} retry artifact messages from {filepath}",
+            category="character_creation",
+        )
+        return removed_count
+
+    return 0
+
+
+def _count_creation_retry_guidance_messages(messages: List[Dict[str, Any]]) -> int:
+    """Count deterministic creation retry guidance messages in a history list."""
+    count = 0
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        if str(message.get("role", "")).strip().lower() != "user":
+            continue
+        if _is_creation_retry_guidance_message(message.get("content", "")):
+            count += 1
+    return count
+
+
+def _read_marker_context() -> Dict[str, Any]:
+    """Read the current character-creation marker as a dictionary."""
+    marker_data = safe_json_load(CHARACTER_CREATION_MARKER) or {}
+    return marker_data if isinstance(marker_data, dict) else {}
+
+
+def abort_character_creation_session(
+    reason: str,
+    restore_backup: bool = True,
+    prune_retry_artifacts: bool = True,
+) -> Dict[str, Any]:
+    """Fail closed by clearing character-creation state and restoring prior narrative."""
+    result = {
+        "reason": str(reason or "unknown"),
+        "backup_present": os.path.exists(CONVERSATION_BACKUP_FILE),
+        "conversation_restored": False,
+        "conversation_pruned_count": 0,
+        "chat_pruned_count": 0,
+        "marker_removed": False,
+        "error": "",
+    }
+    error_messages: List[str] = []
+
+    try:
+        if restore_backup and result["backup_present"]:
+            shutil.copy2(CONVERSATION_BACKUP_FILE, CONVERSATION_HISTORY_FILE)
+            result["conversation_restored"] = True
+        elif restore_backup:
+            warning(
+                "CHARACTER_CREATION: No conversation backup found during session abort; proceeding with targeted cleanup",
+                category="character_creation",
+            )
+
+        if prune_retry_artifacts:
+            result["conversation_pruned_count"] = _prune_creation_retry_artifacts_in_file(CONVERSATION_HISTORY_FILE)
+            result["chat_pruned_count"] = _prune_creation_retry_artifacts_in_file(CHAT_HISTORY_FILE)
+
+    except Exception as cleanup_error:
+        error_messages.append(str(cleanup_error))
+        error(
+            f"CHARACTER_CREATION: Session abort cleanup failed: {cleanup_error}",
+            exception=cleanup_error,
+            category="character_creation",
+        )
+    finally:
+        try:
+            if os.path.exists(CHARACTER_CREATION_MARKER):
+                os.remove(CHARACTER_CREATION_MARKER)
+                result["marker_removed"] = True
+        except Exception as marker_error:
+            error_messages.append(f"marker_remove_failed:{marker_error}")
+            error(
+                f"CHARACTER_CREATION: Failed to remove creation marker: {marker_error}",
+                exception=marker_error,
+                category="character_creation",
+            )
+
+    if error_messages:
+        result["error"] = "; ".join(error_messages)
+
+    info(
+        "CHARACTER_CREATION: Abort session complete "
+        f"reason={result['reason']} restored={result['conversation_restored']} "
+        f"conversation_pruned={result['conversation_pruned_count']} "
+        f"chat_pruned={result['chat_pruned_count']} marker_removed={result['marker_removed']}",
+        category="character_creation",
+    )
+    return result
+
+
+def detect_poisoned_creation_session() -> Dict[str, Any]:
+    """Detect a stale character-creation session poisoned by repeated retry prompts."""
+    marker_exists = os.path.exists(CHARACTER_CREATION_MARKER)
+    marker_context = _read_marker_context() if marker_exists else {}
+    conversation_retry_count = _count_creation_retry_guidance_messages(_load_message_history(CONVERSATION_HISTORY_FILE))
+    chat_retry_count = _count_creation_retry_guidance_messages(_load_message_history(CHAT_HISTORY_FILE))
+    retry_count = max(conversation_retry_count, chat_retry_count)
+
+    return {
+        "marker_exists": marker_exists,
+        "character_name": str(marker_context.get("character_name", "")).strip(),
+        "started_at": str(marker_context.get("started_at", "")).strip(),
+        "conversation_retry_count": conversation_retry_count,
+        "chat_retry_count": chat_retry_count,
+        "retry_count": retry_count,
+        "is_poisoned": marker_exists and retry_count >= POISONED_CREATION_RETRY_THRESHOLD,
+    }
+
+
+def recover_poisoned_creation_session_on_startup() -> Dict[str, Any]:
+    """Recover previously poisoned character-creation state during startup."""
+    detection = detect_poisoned_creation_session()
+    recovery_result = {
+        **detection,
+        "recovered": False,
+        "cleanup": {},
+    }
+
+    if not detection.get("is_poisoned"):
+        return recovery_result
+
+    cleanup = abort_character_creation_session(
+        reason="startup_poison_recovery",
+        restore_backup=True,
+        prune_retry_artifacts=True,
+    )
+    recovery_result["recovered"] = bool(cleanup.get("marker_removed") or cleanup.get("conversation_restored"))
+    recovery_result["cleanup"] = cleanup
+    return recovery_result
 
 
 def _build_creation_corrective_guidance(result_type: str, missing_paths: Optional[List[str]] = None) -> str:
@@ -439,6 +653,12 @@ def restore_conversation_history() -> bool:
             return True
         else:
             warning("No conversation history backup found to restore", category="character_creation")
+            if os.path.exists(CHARACTER_CREATION_MARKER):
+                os.remove(CHARACTER_CREATION_MARKER)
+                warning(
+                    "CHARACTER_CREATION: Removed stale creation marker without backup during restore",
+                    category="character_creation",
+                )
             return False
     except Exception as e:
         error(f"Failed to restore conversation history: {e}", exception=e, category="character_creation")
@@ -838,6 +1058,9 @@ def load_text_file(filename: str) -> str:
 __all__ = [
     'backup_conversation_history',
     'restore_conversation_history',
+    'abort_character_creation_session',
+    'detect_poisoned_creation_session',
+    'recover_poisoned_creation_session_on_startup',
     'is_creation_mode_active',
     'get_party_level',
     'calculate_starting_wealth',

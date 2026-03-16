@@ -30,6 +30,8 @@ def test_main_imports_shared_creation_services() -> None:
     source = _load_main_source()
     assert "finalize_character_creation_candidate" in source, "main.py should import shared finalization service"
     assert "persist_dm_created_character" in source, "main.py should import shared persistence helper"
+    assert "abort_character_creation_session" in source, "main.py should import shared creation abort helper"
+    assert "recover_poisoned_creation_session_on_startup" in source, "main.py should import startup recovery helper"
 
 
 def test_handle_creation_uses_shared_finalizer_and_persistence() -> None:
@@ -75,7 +77,24 @@ def test_main_loop_reenters_creation_retry_flow() -> None:
 
     assert 'elif final_result == "creation_retry":' in source, "Main loop should recognize creation retry signal"
     assert 'valid_response_received = False' in source, "Creation retry should re-open the outer AI loop"
+    assert 'abort_character_creation_session(reason="final_json_retry_exhausted")' in source, (
+        "Retry exhaustion should abort and clean the creation session"
+    )
     assert 'elif final_result == "creation_error":' in source, "Main loop should recognize creation error signal"
+    assert 'abort_character_creation_session(reason="creation_terminal_error")' in source, (
+        "Terminal creation errors should abort and clean the creation session"
+    )
+
+
+def test_main_game_loop_recovers_poisoned_creation_session_on_startup() -> None:
+    source = _load_main_source()
+
+    assert 'recovery_result = recover_poisoned_creation_session_on_startup()' in source, (
+        "main_game_loop should run poisoned creation recovery during startup"
+    )
+    assert 'if recovery_result.get("recovered"):' in source, (
+        "main_game_loop should branch on successful poisoned-session recovery"
+    )
 
 
 def main() -> None:
@@ -96,6 +115,9 @@ def main() -> None:
 
     test_main_loop_reenters_creation_retry_flow()
     print("[PASS] main loop re-enters creation retry flow")
+
+    test_main_game_loop_recovers_poisoned_creation_session_on_startup()
+    print("[PASS] main game loop recovers poisoned creation sessions on startup")
 
     print("[PASS] main character creation adapter wiring checks")
 

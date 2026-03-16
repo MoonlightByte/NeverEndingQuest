@@ -1021,6 +1021,43 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Web Create-with-DM Session Hardening (COMPLETED - 2026-03-16)
+
+**Status:** COMPLETED - OpenSpec change implemented, validated, and archived
+
+**OpenSpec Archive:**
+- `openspec/changes/archive/2026-03-16-web-dm-creation-session-hardening/`
+
+**Objective:**
+Eliminate remaining web-route creation lifecycle drift so Create-with-DM activation/finalization fail closed on terminal errors and do not leave stale `creation_mode_active.json` traps.
+
+**Implementation Summary:**
+- Hardened `POST /api/party/create_player` in `web/routes/tabletop_party_routes.py`:
+  - Marker write is now mandatory for success (`safe_write_json(...)` return checked)
+  - If post-marker activation fails, route aborts stale session via `abort_character_creation_session(reason="web_create_player_route_error")`
+- Hardened `POST /api/party/finalize_creation` in `web/routes/tabletop_party_routes.py`:
+  - Retryable invalid-final statuses (`not_candidate`, `needs_retry`) remain active and non-terminal
+  - Terminal failures (`error`, unexpected status, missing finalized payload, persistence failure, route exception with active creation mode) now abort stale session via shared helper
+- Added/extended regression coverage:
+  - `scripts/test_party_create_player_adapter.py` (new source-contract checks)
+  - `scripts/test_party_finalize_creation_adapter.py` (terminal-vs-retry source-contract checks)
+  - `scripts/test_web_creation_route_recovery.py` (new runtime route-recovery tests)
+
+**Verification:**
+- `python3 -m py_compile web/routes/tabletop_party_routes.py scripts/test_party_finalize_creation_adapter.py scripts/test_party_create_player_adapter.py scripts/test_web_creation_route_recovery.py` -> PASS
+- `python3 scripts/test_party_finalize_creation_adapter.py` -> PASS
+- `python3 scripts/test_party_create_player_adapter.py` -> PASS
+- `.venv/bin/python scripts/test_web_creation_route_recovery.py` -> PASS (6/6)
+- `openspec validate web-dm-creation-session-hardening` -> VALID
+
+**Files Modified:**
+- `web/routes/tabletop_party_routes.py`
+- `scripts/test_party_finalize_creation_adapter.py`
+- `scripts/test_party_create_player_adapter.py`
+- `scripts/test_web_creation_route_recovery.py`
+- `openspec/changes/archive/2026-03-16-web-dm-creation-session-hardening/*`
+- `openspec/specs/tt-web-creation-session-recovery/spec.md`
+
 ### macOS One-Click Installer + Applications Launcher (COMPLETED - 2026-03-16)
 
 **Status:** COMPLETED - added macOS install parity with Applications launcher flow

@@ -117,9 +117,11 @@ from utils.character_creator import (
     calculate_starting_wealth,
     generate_ambiguous_transition,
     restore_conversation_history,
+    abort_character_creation_session,
     finalize_character_creation_candidate,
     persist_dm_created_character,
     CHARACTER_CREATION_MARKER,
+    recover_poisoned_creation_session_on_startup,
 )
 from utils import pc_manager
 from utils.save_roll_contract import calculate_concentration_dc
@@ -3728,6 +3730,21 @@ def main_game_loop():
         error(f"FAILURE: Startup wizard failed", exception=e, category="startup")
         return
 
+    # TABLETOP MODE: Recover previously poisoned character-creation sessions
+    # so restart does not re-enter a dead correction loop.
+    try:
+        recovery_result = recover_poisoned_creation_session_on_startup()
+        if recovery_result.get("recovered"):
+            info(
+                "CHARACTER_CREATION: Recovered poisoned creation session on startup",
+                category="character_creation",
+            )
+    except Exception as e:
+        warning(
+            f"CHARACTER_CREATION: Startup recovery check failed: {e}",
+            category="character_creation",
+        )
+
     # --- START: COMBAT RESUMPTION LOGIC ---
     party_tracker_data = load_json_file("party_tracker.json")
     combat_was_resumed = False  # Track if we resumed from combat
@@ -5085,14 +5102,24 @@ def main_game_loop():
                     retry_count += 1
                     valid_response_received = False
                     if retry_count >= 5:
+                        abort_character_creation_session(reason="final_json_retry_exhausted")
                         error(
                             "CHARACTER_CREATION: Final JSON correction retries exhausted",
                             category="character_creation",
                         )
+                        print(colored("[SYSTEM]", "yellow"), colored(
+                            "Character creation failed after repeated correction attempts. Creation mode was closed and the prior narrative state was restored.",
+                            "yellow",
+                        ))
                         status_ready()
                         continue
                     continue
                 elif final_result == "creation_error":
+                    abort_character_creation_session(reason="creation_terminal_error")
+                    print(colored("[SYSTEM]", "yellow"), colored(
+                        "Character creation failed and was closed. Prior narrative state was restored.",
+                        "yellow",
+                    ))
                     status_ready()
                     continue
                 elif isinstance(final_result, dict) and final_result.get("status") == "enter_levelup_mode":
