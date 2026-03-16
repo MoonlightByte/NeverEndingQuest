@@ -1,13 +1,41 @@
 # LLM Wants To Be Free - Narrative Sovereignty Within Python Mechanics
 
-Status: Ready for review
+Status: Archived planning record - Lane 1 complete (G1-G4 archived); Lane 2 handed off to version-2 continuation
 Owner: OpenCode planning pass
-Target: `plans/llm-wants-to-be-free.md`
+Target: `plans/archive/llm-wants-to-be-free.md`
 Scope: Reframe narrator/runtime architecture so the Narrator LLM remains a sovereign DM for world and story discovery, while Python remains the constitutional authority for 5e mechanics, persistence, and hard legality. Runtime should auto-commit narrator-declared world changes when they are compatible with Python truth instead of rejecting turns over brittle state-sync wording mismatches.
 
 ## Immediate release context
 
 This plan is intentionally larger than the current gametest need.
+
+## Implementation status update (2026-03-16)
+
+The minimum gametest slice defined in this document is now complete:
+
+- G1 `narrative-sovereignty-state-packet-foundation` archived
+- G2 `travel-reconcile-first-autocommit` archived
+- G3 `npc-scene-presence-reconcile-first` archived
+- G4 `validator-authority-deconfliction` archived
+
+That means Lane 1 is no longer an active implementation plan. It is now a completed stabilization record.
+
+The remaining work in this document belongs to Lane 2 and should be treated as post-gametest version-2 architecture.
+
+Active continuation path:
+
+- `plans/version-2/narrative-sovereignty-post-gametest.md`
+
+Sequencing decision:
+
+- complete the post-gametest narrative-sovereignty continuation on the stable OpenAI runtime baseline first,
+- then proceed to the OpenRouter router re-architecture.
+
+Why this order:
+
+- it isolates runtime authority/prompt-contract work from provider-routing variance,
+- it keeps event-ledger and prompt-reset validation on the known-good gametest runtime,
+- it reduces the chance of debugging architecture and provider migration at the same time.
 
 The immediate priority is NOT to complete the full architecture rebuild before inviting testers to the GitHub fork. The immediate priority is to stabilize the current gametest build by removing Python/runtime bugs that repeatedly interrupt immersive gameplay, especially bugs that trap the Narrator LLM in retry loops, state-sync dead ends, or brittle validator conflicts.
 
@@ -759,11 +787,12 @@ Verification gate:
 - in-transit/progress state is persisted when arrival is not exact,
 - same-location and impossible-jump protections remain intact.
 
-##### Change G3: `npc-scene-presence-reconcile-first` (conditional)
+##### Change G3: `npc-scene-presence-reconcile-first` (completed in gametest slice)
 
 Builder target:
 
-- only implement this before tester invite if post-G2 transcripts still show NPC presence retry loops materially harming immersion.
+- this change was initially conditional,
+- it was implemented before tester invite because post-G2 review still justified it.
 
 MUST scope:
 
@@ -790,9 +819,10 @@ The following SHOULD be deferred until after testers are playing unless a blocki
 - full event ledger,
 - Titans/EGO runtime integration,
 - broad prompt reset,
-- global validator authority rewrite,
 - planner/narrator split,
 - non-essential combat architecture changes.
+
+Deferred items now belong to the version-2 continuation plan at `plans/version-2/narrative-sovereignty-post-gametest.md`.
 
 #### Builder stop points
 
@@ -907,8 +937,8 @@ Key verification:
 
 Current status note:
 
-- runtime foundation is now in place: domain-scoped deterministic handoff, generic deconfliction, and telemetry fields for suppressed vs remaining domains;
-- remaining G4 closeout is prompt/retry alignment so validator instructions and retry notes match the new runtime authority model.
+- runtime foundation is now in place: domain-scoped deterministic handoff, generic deconfliction, telemetry fields for suppressed vs remaining domains, and prompt/retry closeout.
+- Change 4 is complete for the gametest lane and archived; future follow-on work should build on the archived G4 contract rather than reopening this slice.
 
 ### Change 5: `turn-event-ledger-titans-ready`
 
@@ -927,6 +957,12 @@ Key verification:
 - committed events are durable,
 - event stream is suitable for future Titans/EGO consumption.
 
+Current status note:
+
+- deferred from the gametest lane,
+- promoted to the version-2 continuation plan at `plans/version-2/narrative-sovereignty-post-gametest.md`,
+- intended to execute before OpenRouter router re-architecture.
+
 ### Change 6: `prompt-contract-reconcile-first-reset`
 
 Purpose:
@@ -944,6 +980,13 @@ Key verification:
 
 - prompt language no longer over-requires explicit action plumbing for soft world changes,
 - hard mechanics contract remains strict.
+
+Current status note:
+
+- partially advanced indirectly by G4 validation prompt updates,
+- still open as a broader system-prompt/runtime philosophy cleanup,
+- promoted to the version-2 continuation plan at `plans/version-2/narrative-sovereignty-post-gametest.md`,
+- intended to execute before OpenRouter router re-architecture.
 
 ---
 

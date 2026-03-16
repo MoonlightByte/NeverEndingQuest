@@ -2,7 +2,7 @@
 
 Travel is currently the clearest immersive-play failure domain. The narrator may describe movement naturally, but if the assistant omits or mis-shapes `transitionLocation`, the runtime and validator stack can reject the turn or allow narration/state drift. Upstream MoonlightByte tolerated more narrator breathing room, but it still relied too heavily on perfect manual action emission. The current gametest build swung too far toward reject-first policing.
 
-This change follows the intended direction established in `plans/llm-wants-to-be-free.md`: not an upstream rollback, and not a deterministic script engine. The target is narrator-loose, reconcile-first, mechanically strict travel handling.
+This change follows the intended direction established in `plans/archive/llm-wants-to-be-free.md`: not an upstream rollback, and not a deterministic script engine. The target is narrator-loose, reconcile-first, mechanically strict travel handling.
 
 This slice is expected to build on the narrow authoritative packet foundation from `narrative-sovereignty-state-packet-foundation`. If that foundation is not yet implemented, this design SHOULD still preserve a clean handoff so travel reconciliation can consume packet truth as soon as it exists.
 

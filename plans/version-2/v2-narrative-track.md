@@ -98,6 +98,8 @@ Phase 5: Governance and Observability Hardening (PLANNED)
   - Owns: interpreted world model architecture and copyright-safe narrative store.
 - `plans/version-2/memory.md`
   - Owns: retrieval/storage contracts and memory-layer integration with continuity quality signals.
+- `plans/version-2/narrative-sovereignty-post-gametest.md`
+  - Owns: post-gametest continuation of reconcile-first runtime architecture after G1-G4, including event-ledger and prompt-reset sequencing before OpenRouter migration.
 - `plans/version-2/CNS build/EGO.md`
   - Owns: bounded adaptive control architecture and write-surface policy.
 - `plans/version-2/titan-integration.md`
@@ -113,9 +115,11 @@ Phase 5: Governance and Observability Hardening (PLANNED)
 2. creative ingest lane (raw prose -> structured draft + seed atoms) ->
 3. approval gate + Ralph loop validation ->
 4. world-narrative + memory interpreted contracts ->
-5. EGO/Titan runtime bridge ->
-6. module-builder continuity pressure integration ->
-7. governance hardening.
+5. post-gametest narrative-sovereignty continuation (event ledger + prompt reset) ->
+6. OpenRouter router re-architecture ->
+7. EGO/Titan runtime bridge ->
+8. module-builder continuity pressure integration ->
+9. governance hardening.
 
 ## Creative Ingest Execution Plan (v2)
 

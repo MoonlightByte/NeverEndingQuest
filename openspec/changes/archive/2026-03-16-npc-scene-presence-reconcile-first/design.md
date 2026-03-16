@@ -1,6 +1,6 @@
 ## Context
 
-The current NPC validator is still organized around arrival policing. It allows foreshadowing and incidental references, but when narration explicitly presents a known NPC in-scene without matching `moveBackgroundNPC` or `updatePartyNPCs`, runtime hard-fails immediately. That is still too brittle for the gametest target balance defined in `plans/llm-wants-to-be-free.md`: narrator-loose, reconcile-first, mechanically strict.
+The current NPC validator is still organized around arrival policing. It allows foreshadowing and incidental references, but when narration explicitly presents a known NPC in-scene without matching `moveBackgroundNPC` or `updatePartyNPCs`, runtime hard-fails immediately. That is still too brittle for the gametest target balance defined in `plans/archive/llm-wants-to-be-free.md`: narrator-loose, reconcile-first, mechanically strict.
 
 G3 should therefore be the smallest possible conversion from arrival policing to scene-presence reconciliation. It should not become a full world-delta system. It should only cover the worst immersion-breaking loops where one clear canonical NPC is presented as physically present in the current scene, identity is safe, and durable party membership is not implied.
 

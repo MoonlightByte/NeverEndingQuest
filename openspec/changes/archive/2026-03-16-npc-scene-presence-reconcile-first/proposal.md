@@ -1,6 +1,6 @@
 ## Why
 
-G2 fixed the most visible travel desync loops, but the runtime still treats explicit off-location NPC scene presence as a reject-first validation problem instead of a reconcile-first world-state problem. That keeps immersive turns brittle in the exact domain called out as conditional G3 work in `plans/llm-wants-to-be-free.md`.
+G2 fixed the most visible travel desync loops, but the runtime still treats explicit off-location NPC scene presence as a reject-first validation problem instead of a reconcile-first world-state problem. That keeps immersive turns brittle in the exact domain called out as conditional G3 work in `plans/archive/llm-wants-to-be-free.md`.
 
 We now have both prerequisites for a safe narrow G3 slice:
 - the authoritative packet foundation exists,

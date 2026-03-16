@@ -15,6 +15,8 @@
 
 **Current Priority:** The codebase is reverted to OpenAI as LLM provider. The incomplete OpenRouter migration code remains in place but is inactive (`LLM_PROVIDER = "openai"`). The immediate priority is finalizing the Tabletop Mode build and pushing to a personal fork for testers. This router plan will be implemented **after** the OpenAI-based TT build is stable and shipped.
 
+**Updated sequencing note (2026-03-16):** The post-gametest narrative-sovereignty continuation now has priority over router work. See `plans/version-2/narrative-sovereignty-post-gametest.md`. The recommended order is: stable OpenAI gametest baseline -> event-ledger/prompt-reset continuation -> OpenRouter router re-architecture.
+
 ## Titan v2 Alignment Stub
 
 - Umbrella reference: `plans/version-2/titan-integration.md`
