@@ -80,6 +80,9 @@
       "description": "The party returns to Ma's Watering Hole after ending the immediate threat. They receive lodging and reward, but larger cult activity may continue.\n\n**Exits:**\n- None",
       "location": "NIG07",
       "nextPoints": [],
+      "prerequisites": [
+        "PP006"
+      ],
       "status": "not started",
       "plotImpact": "Finale room progression",
       "source_room_number": 100

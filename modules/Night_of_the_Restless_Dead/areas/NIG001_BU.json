@@ -9,6 +9,10 @@
       "description": "The party arrives at Ma's Watering Hole, a rural inn between Yatar and Waterdeep. Ma runs the inn and Blarg, a large half-orc, handles security.",
       "source_room_number": 1,
       "source_room_title": "Ma's Watering Hole",
+      "connectivity": [
+        "NIG02",
+        "NIG04"
+      ],
       "creatures": "Ma (commoner), Blarg (berserker), Crawling Claw, Zombie, Zombie.",
       "investigation_hooks": [
         {
@@ -37,6 +41,10 @@
       "description": "The party reaches the ruined cathedral. Thick webs cover the entrance and the main hall is dark and damaged.",
       "source_room_number": 2,
       "source_room_title": "Ruined Cathedral Main Hall",
+      "connectivity": [
+        "NIG01",
+        "NIG03"
+      ],
       "creatures": "Undead Giant Spider.",
       "investigation_hooks": [
         {
@@ -61,6 +69,10 @@
       "description": "The storage room is mostly empty except for old barrels and dried blood. A web-wrapped figure hangs from the ceiling.",
       "source_room_number": 3,
       "source_room_title": "Cathedral Storage",
+      "connectivity": [
+        "NIG02",
+        "NIG04"
+      ],
       "creatures": "Zombie.",
       "investigation_hooks": [
         {
@@ -78,9 +90,14 @@
     {
       "locationId": "NIG04",
       "name": "Room 4: Priest's Lodging",
-      "description": "An old bed frame, fireplace, and a cellar door are in this room. Faint light shows through the cellar door edges.",
+      "description": "An old bed frame, fireplace, and a cellar door are in this room. Faint light shows through the cellar door edges. This chamber is beneath the ruined cathedral, and the hidden bypass from Ma's inn links here before continuing deeper into the catacombs.",
       "source_room_number": 4,
       "source_room_title": "Priest's Lodging",
+      "connectivity": [
+        "NIG01",
+        "NIG03",
+        "NIG05"
+      ],
       "investigation_hooks": [
         {
           "id": "hiding_priest",
@@ -107,7 +124,11 @@
       "name": "Room 5: Cellar Hallway",
       "description": "A collapsed branching tunnel leads to a single large door with light leaking through. If the alarm was triggered, enemies prepare an ambush.\n\n**Exits:**\n- South: Room 4\n- North: Room 6",
       "source_room_number": 5,
-      "source_room_title": "Cellar Hallway"
+      "source_room_title": "Cellar Hallway",
+      "connectivity": [
+        "NIG04",
+        "NIG06"
+      ]
     },
     {
       "locationId": "NIG06",
@@ -115,6 +136,10 @@
       "description": "A cultist and Red argue about acquiring more experiments for a necromantic ring. They attack when alerted.",
       "source_room_number": 6,
       "source_room_title": "Dead End Ritual Chamber",
+      "connectivity": [
+        "NIG05",
+        "NIG07"
+      ],
       "creatures": "Cultist, Red, Skeleton, Skeleton.",
       "climax_scene": {
         "faction_conflict": "Miriam (cult leader) vs Red (Pumpkin King enforcer)",
@@ -162,6 +187,9 @@
       "description": "The party returns to Ma's Watering Hole after ending the immediate threat. They receive lodging and reward, but larger cult activity may continue.\n\n**Exits:**\n- None",
       "source_room_number": 100,
       "source_room_title": "Conclusion",
+      "connectivity": [
+        "NIG06"
+      ],
       "ending_variants": {
         "tithe_paid": {
           "trigger": "Oppose cult ending chosen",

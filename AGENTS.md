@@ -1021,6 +1021,40 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Night of the Restless Dead Tunnel Loop Fix (COMPLETED - 2026-03-16)
+
+**Status:** COMPLETED - module movement graph and plot gating hardening for NIG tunnel progression
+
+**Objective:**
+Stop repeated narration snaps back to Ma's Watering Hole after players intentionally take the cellar/tunnel route toward the cathedral.
+
+**Root Cause:**
+- `modules/Night_of_the_Restless_Dead/areas/NIG001.json` lacked per-location `connectivity` edges, while runtime pathing uses area `connectivity` (not map-only links) for transition validation.
+- `PP007` (return/conclusion beat) had no prerequisite gate, so conclusion flavor could surface too early.
+
+**Implementation Summary:**
+- Added explicit room-to-room `connectivity` in:
+  - `modules/Night_of_the_Restless_Dead/areas/NIG001.json`
+  - `modules/Night_of_the_Restless_Dead/areas/NIG001_BU.json`
+- Aligned bypass intent with graph links (`NIG01 -> NIG04`) and synced map parity in `modules/Night_of_the_Restless_Dead/map_NIG001.json`.
+- Added prerequisite gate for conclusion progression:
+  - `modules/Night_of_the_Restless_Dead/module_plot.json`
+  - `modules/Night_of_the_Restless_Dead/module_plot_BU.json`
+  - `PP007.prerequisites = ["PP006"]`
+- Clarified `NIG04` narrative text to reinforce cathedral-underlevel context and reduce false return-to-inn cueing.
+
+**Verification:**
+- `python3 -m utils.location_path_finder NIG01 NIG02` -> PASS
+- `python3 -m utils.location_path_finder NIG01 NIG06` -> PASS (resolves through bypass path)
+- `.venv/bin/python core/validation/validate_module_files.py --module Night_of_the_Restless_Dead` -> PASS (100%)
+
+**Files Modified:**
+- `modules/Night_of_the_Restless_Dead/areas/NIG001.json`
+- `modules/Night_of_the_Restless_Dead/areas/NIG001_BU.json`
+- `modules/Night_of_the_Restless_Dead/map_NIG001.json`
+- `modules/Night_of_the_Restless_Dead/module_plot.json`
+- `modules/Night_of_the_Restless_Dead/module_plot_BU.json`
+
 ### Web Create-with-DM Session Hardening (COMPLETED - 2026-03-16)
 
 **Status:** COMPLETED - OpenSpec change implemented, validated, and archived
