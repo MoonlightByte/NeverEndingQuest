@@ -60,8 +60,9 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 
 @STRUCTURED_OPS={
   additive_contract: updateCharacterInfo may include optional `ops` alongside legacy `changes`.
+  canonical_shape: Each ops entry MUST be a flat object with explicit `op` key; nested wrappers like {"inventory_remove":{...}} are non-canonical.
   fallback_rule: `changes`-only remains valid for backward compatibility.
-  supported_initial: [set_hp, hp_delta, spell_slot_delta, inventory_add, inventory_remove, currency_delta, condition_add, condition_remove]
+  supported_initial: [set_hp, hp_delta, spell_slot_delta, inventory_add, inventory_remove, currency_delta, condition_add, condition_remove, feature_usage_delta, feature_usage_set]
 }
 
 @REQUEST_ROLL_VALIDATION={

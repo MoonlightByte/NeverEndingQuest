@@ -30,6 +30,8 @@ INITIAL_OPS = {
     "currency_delta",
     "condition_add",
     "condition_remove",
+    "feature_usage_delta",
+    "feature_usage_set",
 }
 
 
@@ -59,8 +61,16 @@ class TestOpsContractPromptParity(unittest.TestCase):
                 "currency_delta",
                 "condition_add",
                 "condition_remove",
+                "feature_usage_delta",
+                "feature_usage_set",
             },
         )
+
+    def test_prompts_document_canonical_flat_op_shape(self):
+        self.assertIn("canonical_shape", self.content["system_compressed"])
+        self.assertIn("explicit `op` key", self.content["system_compressed"])
+        self.assertIn("canonical_shape", self.content["validation_compressed"])
+        self.assertIn("explicit `op` key", self.content["validation_compressed"])
 
     def test_system_prompt_documents_additive_ops(self):
         pattern = re.compile(
@@ -159,6 +169,24 @@ class TestOpsRoutingBehaviorContracts(unittest.TestCase):
         result = classify_character_update_payload("Spent 10 gold", "not-a-list")
         self.assertEqual(result["mode"], "prose_fallback")
         self.assertEqual(result["reason"], "ops_invalid_with_changes_fallback")
+
+    def test_nested_legacy_wrapper_is_normalized_to_flat_op(self):
+        from utils.character_ops_routing import normalize_character_ops_payload
+
+        normalized = normalize_character_ops_payload(
+            [{"inventory_remove": {"item": "Healing Potion", "quantity": 1}}]
+        )
+        self.assertIsInstance(normalized, list)
+        self.assertEqual(normalized[0].get("op"), "inventory_remove")
+        self.assertEqual(normalized[0].get("item"), "Healing Potion")
+        self.assertEqual(normalized[0].get("quantity"), 1)
+
+    def test_scalar_nested_hp_delta_is_normalized(self):
+        from utils.character_ops_routing import normalize_character_ops_payload
+
+        normalized = normalize_character_ops_payload([{"hp_delta": 7}])
+        self.assertEqual(normalized[0].get("op"), "hp_delta")
+        self.assertEqual(normalized[0].get("delta"), 7)
 
 
 if __name__ == "__main__":

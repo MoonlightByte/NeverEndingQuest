@@ -310,8 +310,9 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
 
 @CHARACTER_OPS={
   additive: `updateCharacterInfo.parameters.ops` is optional and may be sent with `changes`.
+  canonical_shape: Each ops entry MUST be a flat object with explicit `op` key (for example: {"op":"inventory_remove","item":"Healing Potion","quantity":1}).
   fallback: If ops is absent, unsupported, or partial, legacy `changes` path remains valid.
-  supported_initial: [set_hp, hp_delta, spell_slot_delta, inventory_add, inventory_remove, currency_delta, condition_add, condition_remove]
+  supported_initial: [set_hp, hp_delta, spell_slot_delta, inventory_add, inventory_remove, currency_delta, condition_add, condition_remove, feature_usage_delta, feature_usage_set]
 }
 
 @NORMALIZE={

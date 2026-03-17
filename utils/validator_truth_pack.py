@@ -74,6 +74,16 @@ def _is_inventory_relevant_change(change_text: str) -> bool:
 
 def _summarize_spell_slots(character_data: Dict[str, Any]) -> Dict[str, Dict[str, int]]:
     spell_slots = character_data.get("spellSlots", {})
+    if not isinstance(spell_slots, dict):
+        spell_slots = {}
+
+    # TABLETOP MODE: Prefer canonical nested spellcasting slots when present.
+    spellcasting = character_data.get("spellcasting")
+    if isinstance(spellcasting, dict):
+        nested_slots = spellcasting.get("spellSlots")
+        if isinstance(nested_slots, dict):
+            spell_slots = nested_slots
+
     summary: Dict[str, Dict[str, int]] = {}
     if isinstance(spell_slots, dict):
         for level, slot_data in spell_slots.items():
@@ -122,6 +132,18 @@ def _summarize_class_features(character_data: Dict[str, Any]) -> List[Dict[str, 
         if not isinstance(name, str) or not name.strip():
             continue
         item: Dict[str, Any] = {"name": name.strip()}
+        usage = feature.get("usage")
+        if isinstance(usage, dict):
+            usage_item: Dict[str, Any] = {}
+            if usage.get("current") is not None:
+                usage_item["current"] = usage.get("current")
+            if usage.get("max") is not None:
+                usage_item["max"] = usage.get("max")
+            if usage.get("refreshOn"):
+                usage_item["refreshOn"] = usage.get("refreshOn")
+            if usage_item:
+                item["usage"] = usage_item
+
         for key in ("uses", "maxUses", "currentUses", "recharge"):
             if key in feature:
                 item[key] = feature.get(key)

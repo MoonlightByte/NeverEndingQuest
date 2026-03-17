@@ -8017,12 +8017,13 @@
                 partyContainer.style.display = 'flex';
                 
                 if (!response || ((!response.members || response.members.length === 0) && 
-                    (!response.location_npcs || response.location_npcs.length === 0))) {
+                    (!response.location_npcs || response.location_npcs.length === 0) &&
+                    (!response.location_hostiles || response.location_hostiles.length === 0))) {
                     partyContainer.style.display = 'none';
                     return;
                 }
                 
-                const renderMember = (member, isLocationNpc = false) => {
+                const renderMember = (member, isLocationNpc = false, isLocationHostile = false) => {
                     const item = document.createElement('div');
                     item.classList.add(isLocationNpc ? 'location-npc-item' : 'party-member-item', member.type);
                     
@@ -8114,7 +8115,12 @@
                     
                     item.appendChild(textSpan);
 
-                    let hpText = isLocationNpc ? ' (In Location)' : '';
+                    let hpText = '';
+                    if (isLocationHostile) {
+                        hpText = ' (Hostile Presence)';
+                    } else if (isLocationNpc) {
+                        hpText = ' (In Location)';
+                    }
                     if (member.currentHp !== undefined && member.maxHp !== undefined) {
                         hpText += ` - HP: ${member.currentHp}/${member.maxHp}`;
                     }
@@ -8152,6 +8158,7 @@
 
                 if (response.members) response.members.forEach(member => renderMember(member, false));
                 if (response.location_npcs) response.location_npcs.forEach(npc => renderMember(npc, true));
+                if (response.location_hostiles) response.location_hostiles.forEach(hostile => renderMember(hostile, true, true));
             } else {
                 // Hide party display during combat
                 partyContainer.style.display = 'none';

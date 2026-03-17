@@ -59,18 +59,37 @@ def get_notable_items(pc_data: Dict[str, Any]) -> List[str]:
         List of notable item descriptions
     """
     notable_items = []
+    inventory_items = []
+
     inventory = pc_data.get('inventory', {})
-    
-    if not inventory or 'items' not in inventory:
+    if isinstance(inventory, dict):
+        nested_items = inventory.get('items', [])
+        if isinstance(nested_items, list):
+            inventory_items.extend(nested_items)
+
+    equipment = pc_data.get('equipment', [])
+    if isinstance(equipment, list):
+        inventory_items.extend(equipment)
+
+    ammunition = pc_data.get('ammunition', [])
+    if isinstance(ammunition, list):
+        for ammo in ammunition:
+            if not isinstance(ammo, dict):
+                continue
+            ammo_copy = dict(ammo)
+            ammo_copy.setdefault('item_type', 'ammunition')
+            inventory_items.append(ammo_copy)
+
+    if not inventory_items:
         return notable_items
-    
-    items = inventory.get('items', [])
+
+    items = inventory_items
     
     for item in items:
         if not isinstance(item, dict):
             continue
             
-        item_name = item.get('name', '')
+        item_name = str(item.get('item_name') or item.get('name') or '')
         quantity = item.get('quantity', 1)
         
         # Check for quest items
@@ -84,7 +103,7 @@ def get_notable_items(pc_data: Dict[str, Any]) -> List[str]:
             continue
         
         # Check for consumables
-        item_type = item.get('type', '').lower()
+        item_type = str(item.get('type') or item.get('item_type') or '').lower()
         if item_type in ['potion', 'scroll', 'consumable']:
             notable_items.append(f"{item_name} x{quantity}")
             continue
@@ -96,6 +115,48 @@ def get_notable_items(pc_data: Dict[str, Any]) -> List[str]:
             continue
     
     return notable_items
+
+
+def _summarize_limited_resources(pc_data: Dict[str, Any], limit: int = 3) -> List[str]:
+    """Return compact class feature usage summary for limited-use features."""
+    summaries: List[str] = []
+    class_features = pc_data.get('classFeatures', [])
+    if not isinstance(class_features, list):
+        return summaries
+
+    for feature in class_features:
+        if not isinstance(feature, dict):
+            continue
+        feature_name = str(feature.get('name') or '').strip()
+        if not feature_name:
+            continue
+
+        usage = feature.get('usage')
+        current = None
+        maximum = None
+        if isinstance(usage, dict):
+            current = usage.get('current')
+            maximum = usage.get('max')
+        else:
+            if feature.get('currentUses') is not None:
+                current = feature.get('currentUses')
+            elif feature.get('uses') is not None:
+                current = feature.get('uses')
+            if feature.get('maxUses') is not None:
+                maximum = feature.get('maxUses')
+
+        if current is None and maximum is None:
+            continue
+
+        if maximum is None:
+            summaries.append(f"{feature_name}:{current}")
+        else:
+            summaries.append(f"{feature_name}:{current}/{maximum}")
+
+        if len(summaries) >= limit:
+            break
+
+    return summaries
 
 
 def format_pc_full_stats(pc_data: Dict[str, Any], pc_name: str, is_active: bool = False) -> str:
@@ -184,14 +245,30 @@ def format_pc_full_stats(pc_data: Dict[str, Any], pc_name: str, is_active: bool 
     
     # Full inventory for Active PC
     if is_active:
+        inventory_count = 0
         inventory = pc_data.get('inventory', {})
-        items = inventory.get('items', [])
-        if items:
-            parts.append(f"  Inventory: {len(items)} items")
-            # Show notable items first
+        if isinstance(inventory, dict):
+            nested_items = inventory.get('items', [])
+            if isinstance(nested_items, list):
+                inventory_count += len(nested_items)
+
+        equipment = pc_data.get('equipment', [])
+        if isinstance(equipment, list):
+            inventory_count += len(equipment)
+
+        ammunition = pc_data.get('ammunition', [])
+        if isinstance(ammunition, list):
+            inventory_count += len(ammunition)
+
+        if inventory_count > 0:
+            parts.append(f"  Inventory: {inventory_count} entries")
             notable = get_notable_items(pc_data)
             if notable:
                 parts.append(f"    Notable: {', '.join(notable[:5])}")
+
+        limited_resources = _summarize_limited_resources(pc_data, limit=4)
+        if limited_resources:
+            parts.append(f"  Resources: {', '.join(limited_resources)}")
         
         # Backstory (bounded for DM note context)
         backstory = pc_data.get('backstory', '')
@@ -255,6 +332,10 @@ def format_pc_condensed(pc_data: Dict[str, Any], pc_name: str) -> str:
     notable = get_notable_items(pc_data)
     if notable:
         parts.append(f"  Items: {', '.join(notable[:3])}")
+
+    limited_resources = _summarize_limited_resources(pc_data, limit=2)
+    if limited_resources:
+        parts.append(f"  Res: {', '.join(limited_resources)}")
     
     return '\n'.join(parts)
 

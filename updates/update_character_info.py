@@ -1431,6 +1431,8 @@ SUPPORTED_CHARACTER_OPS = {
     "currency_delta",
     "condition_add",
     "condition_remove",
+    "feature_usage_delta",
+    "feature_usage_set",
 }
 
 _last_ops_routing_marker = {
@@ -1501,6 +1503,83 @@ def _to_int(value: Any, field_name: str, op_type: str) -> int:
         return int(value)
     except Exception:
         raise ValueError(f"Invalid integer for {op_type}.{field_name}: {value}")
+
+
+def _find_class_feature_entry(class_features: List[Dict[str, Any]], feature_name: str) -> Optional[Dict[str, Any]]:
+    target = feature_name.strip().lower()
+    if not target:
+        return None
+
+    exact_match: Optional[Dict[str, Any]] = None
+    contains_match: Optional[Dict[str, Any]] = None
+
+    for feature in class_features:
+        if not isinstance(feature, dict):
+            continue
+        existing_name = str(feature.get("name") or "").strip().lower()
+        if not existing_name:
+            continue
+        if existing_name == target:
+            exact_match = feature
+            break
+        if target in existing_name and contains_match is None:
+            contains_match = feature
+
+    return exact_match or contains_match
+
+
+def _read_feature_usage(feature: Dict[str, Any]) -> Tuple[int, Optional[int], str]:
+    """Read class-feature usage from nested or legacy flat shape.
+
+    Returns:
+      (current, max_or_none, source_shape)
+      source_shape in {"nested", "legacy_flat", "none"}
+    """
+    usage_obj = feature.get("usage")
+    if isinstance(usage_obj, dict):
+        current = _to_int(usage_obj.get("current", 0), "usage.current", "feature_usage")
+        max_value_raw = usage_obj.get("max")
+        max_value: Optional[int] = None
+        if max_value_raw is not None:
+            max_value = _to_int(max_value_raw, "usage.max", "feature_usage")
+        return (current, max_value, "nested")
+
+    has_legacy = any(key in feature for key in ("currentUses", "maxUses", "uses"))
+    if has_legacy:
+        current_legacy = feature.get("currentUses", feature.get("uses", 0))
+        current = _to_int(current_legacy, "currentUses", "feature_usage")
+        max_raw = feature.get("maxUses")
+        max_value = _to_int(max_raw, "maxUses", "feature_usage") if max_raw is not None else None
+        return (current, max_value, "legacy_flat")
+
+    return (0, None, "none")
+
+
+def _write_feature_usage(
+    feature: Dict[str, Any],
+    current_value: int,
+    max_value: Optional[int],
+    source_shape: str,
+    refresh_on: Optional[str] = None,
+) -> None:
+    """Write feature usage while preserving existing schema shape when possible."""
+    if source_shape == "legacy_flat":
+        feature["currentUses"] = current_value
+        feature["uses"] = current_value
+        if max_value is not None:
+            feature["maxUses"] = max_value
+        return
+
+    usage = feature.get("usage")
+    if not isinstance(usage, dict):
+        usage = {}
+        feature["usage"] = usage
+
+    usage["current"] = current_value
+    if max_value is not None:
+        usage["max"] = max_value
+    if refresh_on:
+        usage["refreshOn"] = refresh_on
 
 
 def _apply_character_ops_deterministic(character_data: Dict[str, Any], ops: List[Dict[str, Any]]) -> Tuple[bool, Dict[str, Any], str, List[str]]:
@@ -1699,6 +1778,45 @@ def _apply_character_ops_deterministic(character_data: Dict[str, Any], ops: List
 
             updated_data["condition_affected"] = conditions
             updated_data["condition"] = conditions[0] if conditions else "none"
+
+        elif op_type in ["feature_usage_delta", "feature_usage_set"]:
+            feature_name = str(op.get("feature") or op.get("feature_name") or op.get("name") or "").strip()
+            if not feature_name:
+                return (False, character_data, f"{op_type} missing feature name", [])
+
+            class_features = updated_data.get("classFeatures", [])
+            if not isinstance(class_features, list):
+                return (False, character_data, "classFeatures missing or invalid", [])
+
+            feature_entry = _find_class_feature_entry(class_features, feature_name)
+            if feature_entry is None:
+                return (False, character_data, f"unknown class feature: {feature_name}", [])
+
+            current_usage, max_usage, usage_shape = _read_feature_usage(feature_entry)
+
+            if op_type == "feature_usage_delta":
+                delta = _to_int(op.get("delta"), "delta", op_type)
+                new_current = current_usage + delta
+                if new_current < 0:
+                    return (False, character_data, f"feature usage underflow for {feature_name}: {current_usage}+{delta}", [])
+                if max_usage is not None and new_current > max_usage:
+                    return (False, character_data, f"feature usage overflow for {feature_name}: {current_usage}+{delta}>{max_usage}", [])
+                _write_feature_usage(feature_entry, new_current, max_usage, usage_shape)
+            else:
+                new_current = _to_int(op.get("current"), "current", op_type)
+                provided_max = op.get("max")
+                max_value = max_usage
+                if provided_max is not None:
+                    max_value = _to_int(provided_max, "max", op_type)
+
+                if new_current < 0:
+                    return (False, character_data, f"feature usage underflow for {feature_name}: {new_current}", [])
+                if max_value is not None and new_current > max_value:
+                    return (False, character_data, f"feature usage overflow for {feature_name}: {new_current}>{max_value}", [])
+
+                refresh_on = op.get("refreshOn")
+                refresh_text = str(refresh_on).strip() if refresh_on is not None else None
+                _write_feature_usage(feature_entry, new_current, max_value, usage_shape, refresh_text)
 
     return (True, updated_data, "", [])
 

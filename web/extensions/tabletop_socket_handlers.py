@@ -157,6 +157,7 @@ def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Calla
             emit_fn('party_data_response', {
                 'members': [],
                 'location_npcs': [],
+                'location_hostiles': [],
                 'party_members': [],
                 'active_character': None,
             })
@@ -345,9 +346,11 @@ def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Calla
             })
 
         location_npcs = []
+        location_hostiles = []
         world_conditions = party_tracker.get("worldConditions", {})
         current_area_id = world_conditions.get("currentAreaId")
         current_location_id = world_conditions.get("currentLocationId")
+        active_encounter_id = world_conditions.get("activeCombatEncounter")
 
         if current_module and current_area_id and current_location_id:
             areas_dir = os.path.join("modules", current_module, "areas")
@@ -393,9 +396,32 @@ def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Calla
                                     npc_data_dict['image_version'] = location_npc_image_meta.get('image_version')
                                     location_npcs.append(npc_data_dict)
 
+                    # TABLETOP MODE: Surface hostile scene presence pre-combat.
+                    if not active_encounter_id and current_location_data and 'monsters' in current_location_data:
+                        for monster_entry in current_location_data.get('monsters', []):
+                            monster_name = ''
+                            if isinstance(monster_entry, dict):
+                                monster_name = str(monster_entry.get('name') or '').strip()
+                            elif isinstance(monster_entry, str):
+                                monster_name = monster_entry.strip()
+
+                            if not monster_name:
+                                continue
+
+                            monster_data_dict = {
+                                'name': monster_name,
+                                'type': 'location_hostile',
+                            }
+                            hostile_slug = _normalize_character_slug(monster_name)
+                            hostile_image_meta = _build_image_metadata(hostile_slug, current_module)
+                            monster_data_dict['image_slug'] = hostile_image_meta.get('image_slug')
+                            monster_data_dict['image_version'] = hostile_image_meta.get('image_version')
+                            location_hostiles.append(monster_data_dict)
+
         emit_fn('party_data_response', {
             'members': party_members,
             'location_npcs': location_npcs,
+            'location_hostiles': location_hostiles,
             'party_members': party_tracker.get('partyMembers', []),
             'active_character': party_tracker.get('active_character'),
         })
@@ -405,6 +431,7 @@ def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Calla
         emit_fn('party_data_response', {
             'members': [],
             'location_npcs': [],
+            'location_hostiles': [],
             'party_members': [],
             'active_character': None,
         })

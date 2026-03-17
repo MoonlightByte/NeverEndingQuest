@@ -14,6 +14,61 @@ Helpers for classifying additive structured ops payloads.
 from typing import Any, Dict, List, Optional
 
 
+_LEGACY_NESTED_OP_KEYS = {
+    "set_hp",
+    "hp_delta",
+    "spell_slot_delta",
+    "inventory_add",
+    "inventory_remove",
+    "currency_delta",
+    "condition_add",
+    "condition_remove",
+    "feature_usage_delta",
+    "feature_usage_set",
+}
+
+
+def _normalize_legacy_nested_op(op: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize legacy one-key nested op wrapper into canonical flat op.
+
+    Example:
+      {"inventory_remove": {"item": "Healing Potion", "quantity": 1}}
+      -> {"op": "inventory_remove", "item": "Healing Potion", "quantity": 1}
+    """
+    if "op" in op or "type" in op:
+        return op
+
+    if len(op) != 1:
+        return op
+
+    op_name, payload = next(iter(op.items()))
+    if not isinstance(op_name, str):
+        return op
+
+    normalized_name = op_name.strip().lower()
+    if normalized_name not in _LEGACY_NESTED_OP_KEYS:
+        return op
+
+    normalized_op: Dict[str, Any] = {"op": normalized_name}
+    if isinstance(payload, dict):
+        normalized_op.update(payload)
+        return normalized_op
+
+    # Scalar payload fallback for common wrappers.
+    if normalized_name == "hp_delta":
+        normalized_op["delta"] = payload
+    elif normalized_name == "set_hp":
+        normalized_op["value"] = payload
+    elif normalized_name == "feature_usage_delta":
+        normalized_op["delta"] = payload
+    elif normalized_name == "feature_usage_set":
+        normalized_op["current"] = payload
+    else:
+        return op
+
+    return normalized_op
+
+
 def normalize_character_ops_payload(ops: Any) -> Optional[List[Dict[str, Any]]]:
     """Normalize ops payload into list[dict] or None.
 
@@ -30,7 +85,7 @@ def normalize_character_ops_payload(ops: Any) -> Optional[List[Dict[str, Any]]]:
     normalized: List[Dict[str, Any]] = []
     for op in ops:
         if isinstance(op, dict):
-            normalized.append(op)
+            normalized.append(_normalize_legacy_nested_op(op))
     return normalized
 
 

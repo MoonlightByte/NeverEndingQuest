@@ -1,9 +1,11 @@
-# tt-structured-character-ops-contract Specification
-
 ## Purpose
-TBD - created by archiving change prompt-validator-structured-ops-pilot. Update Purpose after archive.
+
+Define a deterministic structured operations contract for `updateCharacterInfo` that supports canonical flat op records, normalizes legacy nested wrappers for backward compatibility, and includes class-feature usage updates—all while preserving prose fallback behavior.
+
 ## Requirements
+
 ### Requirement: `updateCharacterInfo` SHALL support additive structured ops
+
 `updateCharacterInfo.parameters` SHALL support an additive `ops` field without breaking legacy `changes` support.
 
 #### Scenario: Legacy prose payload remains valid
@@ -15,10 +17,27 @@ TBD - created by archiving change prompt-validator-structured-ops-pilot. Update 
 - **THEN** the payload SHALL remain valid
 - **AND** the structured `ops` contract SHALL be recognized
 
-### Requirement: Initial supported ops set SHALL be explicit
-The initial supported structured ops set SHALL be documented consistently across prompts, validator, and runtime tests.
+### Requirement: Structured ops SHALL use a canonical flat record shape
+
+Structured ops SHALL use canonical flat records with an explicit `op` field at runtime.
+
+#### Scenario: Canonical flat op shape recognized
+- **WHEN** the narrator emits an op such as `{"op":"inventory_remove","item":"Healing Potion","quantity":1}`
+- **THEN** runtime SHALL recognize and classify that op deterministically
+
+### Requirement: Runtime SHALL normalize unambiguous legacy nested op wrappers
+
+Runtime SHALL normalize legacy single-key nested wrappers into canonical flat ops when the intended op type is unambiguous.
+
+#### Scenario: Nested inventory remove wrapper normalized
+- **WHEN** the narrator emits an op shaped like `{"inventory_remove":{"item":"Healing Potion","quantity":1}}`
+- **THEN** runtime SHALL normalize it to the canonical flat `inventory_remove` op before deterministic application
+- **AND** SHALL preserve fail-safe behavior for malformed wrappers that are not safely normalizable
+
+### Requirement: Supported ops set SHALL include deterministic class-feature usage updates
+
+The documented and runtime-supported structured ops set SHALL include deterministic class-feature usage updates.
 
 #### Scenario: Supported ops set documented
 - **WHEN** the contract is reviewed
-- **THEN** it SHALL explicitly include `set_hp`, `hp_delta`, `spell_slot_delta`, `inventory_add`, `inventory_remove`, `currency_delta`, `condition_add`, and `condition_remove`
-
+- **THEN** it SHALL explicitly include `set_hp`, `hp_delta`, `spell_slot_delta`, `inventory_add`, `inventory_remove`, `currency_delta`, `condition_add`, `condition_remove`, `feature_usage_delta`, and `feature_usage_set`

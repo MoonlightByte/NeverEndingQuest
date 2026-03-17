@@ -884,6 +884,13 @@ def _build_compact_combat_truth_pack(response_json, encounter_data):
 
         spell_slots_summary = {}
         spell_slots = character_data.get("spellSlots", {})
+        if not isinstance(spell_slots, dict):
+            spell_slots = {}
+        spellcasting = character_data.get("spellcasting")
+        if isinstance(spellcasting, dict):
+            nested_slots = spellcasting.get("spellSlots")
+            if isinstance(nested_slots, dict):
+                spell_slots = nested_slots
         if isinstance(spell_slots, dict):
             for level, slot_data in spell_slots.items():
                 if not isinstance(slot_data, dict):
@@ -931,9 +938,24 @@ def _build_compact_combat_truth_pack(response_json, encounter_data):
                 feature_name = str(feature.get("name", "")).strip()
                 if not feature_name:
                     continue
-                if not any(key in feature for key in ("uses", "maxUses", "currentUses", "recharge")):
+                nested_usage = feature.get("usage")
+                has_nested_usage = isinstance(nested_usage, dict) and (
+                    nested_usage.get("current") is not None or nested_usage.get("max") is not None
+                )
+                has_flat_usage = any(key in feature for key in ("uses", "maxUses", "currentUses", "recharge"))
+                if not has_nested_usage and not has_flat_usage:
                     continue
                 resource_item = {"name": feature_name}
+                if has_nested_usage:
+                    usage_block = {}
+                    if nested_usage.get("current") is not None:
+                        usage_block["current"] = nested_usage.get("current")
+                    if nested_usage.get("max") is not None:
+                        usage_block["max"] = nested_usage.get("max")
+                    if nested_usage.get("refreshOn"):
+                        usage_block["refreshOn"] = nested_usage.get("refreshOn")
+                    if usage_block:
+                        resource_item["usage"] = usage_block
                 for key in ("uses", "maxUses", "currentUses", "recharge"):
                     if key in feature:
                         resource_item[key] = feature.get(key)
@@ -971,6 +993,23 @@ def _build_compact_combat_truth_pack(response_json, encounter_data):
                     )
             if ammo_summary:
                 inventory_block["ammunition"] = ammo_summary
+
+            equipment = character_data.get("equipment", [])
+            equipment_summary = []
+            if isinstance(equipment, list):
+                for equipment_item in equipment[:12]:
+                    if not isinstance(equipment_item, dict):
+                        continue
+                    equipment_name = equipment_item.get("item_name") or equipment_item.get("name") or "Unknown"
+                    equipment_quantity = equipment_item.get("quantity", 1)
+                    equipment_summary.append(
+                        {
+                            "name": str(equipment_name),
+                            "quantity": equipment_quantity,
+                        }
+                    )
+            if equipment_summary:
+                inventory_block["equipment"] = equipment_summary
 
             if inventory_block:
                 pack["inventory"] = inventory_block

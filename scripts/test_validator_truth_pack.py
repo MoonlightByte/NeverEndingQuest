@@ -100,6 +100,39 @@ class TestValidatorTruthPackBehavior(unittest.TestCase):
         self.assertIn("inventory", packs[0])
         self.assertIn("ammunition", packs[0]["inventory"])
 
+    def test_nested_feature_usage_is_included_in_class_feature_summary(self):
+        from utils.validator_truth_pack import build_touched_character_truth_pack
+
+        response_json = {
+            "actions": [
+                {
+                    "action": "updateCharacterInfo",
+                    "parameters": {
+                        "characterName": "Chronos",
+                        "changes": "Rage usage 2->1",
+                    }
+                }
+            ]
+        }
+        loader = _loader_factory({
+            "chronos": {
+                "name": "Chronos",
+                "hitPoints": 14,
+                "maxHitPoints": 14,
+                "classFeatures": [
+                    {"name": "Rage", "usage": {"current": 1, "max": 2, "refreshOn": "longRest"}}
+                ],
+            }
+        })
+
+        packs = build_touched_character_truth_pack(response_json, character_loader=loader)
+        self.assertEqual(len(packs), 1)
+        features = packs[0].get("class_features", [])
+        self.assertEqual(len(features), 1)
+        self.assertIn("usage", features[0])
+        self.assertEqual(features[0]["usage"].get("current"), 1)
+        self.assertEqual(features[0]["usage"].get("max"), 2)
+
     def test_inventory_omitted_for_clear_non_inventory_change(self):
         from utils.validator_truth_pack import build_touched_character_truth_pack
 

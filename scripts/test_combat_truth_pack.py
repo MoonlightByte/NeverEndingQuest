@@ -130,6 +130,10 @@ class TestCombatTruthPackSourceContract(unittest.TestCase):
             self.combat_manager_source,
         )
 
+    def test_truth_pack_supports_nested_feature_usage_and_equipment(self):
+        self.assertIn("resource_item[\"usage\"]", self.combat_manager_source)
+        self.assertIn("inventory_block[\"equipment\"]", self.combat_manager_source)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
