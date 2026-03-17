@@ -30,6 +30,12 @@ The combat phase value, required-response instructions, and turn-control behavio
 - **THEN** required-response instructions SHALL allow only the active player-controlled turn resolution path
 - **AND** enemy actions SHALL NOT be generated unless an explicit enemy-phase trigger is present (`/end` or deterministic opening-batch trigger)
 
+#### Scenario: Active encounter ownership remains stable after initiative lock
+- **WHEN** a tabletop encounter has already accepted a valid `/init` and locked `initiativeWinner`
+- **AND** subsequent player combat commands such as `/att` are processed
+- **THEN** the runtime SHALL continue routing those commands to the same active encounter owner
+- **AND** the system SHALL NOT regress to `Initiative pending` for a different duplicate encounter unless the owned encounter itself still requires `/init`
+
 ### Requirement: Existing Initiative Start Modes SHALL Remain Backward Compatible
 The phase sync fix MUST preserve behavior for `pcGroup` starts and existing non-phase1 encounters.
 

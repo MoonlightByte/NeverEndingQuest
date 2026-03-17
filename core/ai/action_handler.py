@@ -702,6 +702,34 @@ def get_travel_narration(target_module: str) -> str:
     except:
         return f"The party travels to the {target_module} region, where new adventures await."
 
+
+def _is_tabletop_multi_pc_guard_active(party_tracker_data: Dict[str, Any]) -> bool:
+    """Return True when tabletop multi-PC combat ownership guard should apply."""
+    if not (MULTI_PC_COMBAT_AVAILABLE and is_multi_pc_combat_enabled()):
+        return False
+
+    party_members = party_tracker_data.get("partyMembers", []) if isinstance(party_tracker_data, dict) else []
+    return len(party_members) > 1
+
+
+def _get_active_combat_owner(party_tracker_data: Dict[str, Any]) -> str:
+    """Resolve active combat encounter owner from in-memory or persisted tracker."""
+    try:
+        if isinstance(party_tracker_data, dict):
+            world_conditions = party_tracker_data.get("worldConditions", {})
+            owner = str(world_conditions.get("activeCombatEncounter", "")).strip()
+            if owner:
+                return owner
+
+        tracker_data = safe_json_load("party_tracker.json") or {}
+        world_conditions = tracker_data.get("worldConditions", {})
+        owner = str(world_conditions.get("activeCombatEncounter", "")).strip()
+        return owner
+    except Exception as e:
+        debug(f"TABLETOP MODE: Could not resolve active combat owner: {e}", category="combat_processing")
+        return ""
+
+
 def process_action(action, party_tracker_data, location_data, conversation_history):
     """Process an action based on its type
     
@@ -773,6 +801,25 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                     print(f"[DEBUG ACTION_HANDLER] TABLETOP MODE: Filtered party members from NPCs: {removed_party_members}")
         except Exception as e:
             debug(f"TABLETOP MODE: Error filtering party members from NPCs: {e}", category="combat_processing")
+
+        # TABLETOP MODE: Single active encounter ownership guard.
+        # Prevent duplicate createEncounter startups while another unresolved
+        # encounter already owns facilitator combat input.
+        if _is_tabletop_multi_pc_guard_active(party_tracker_data):
+            active_owner = _get_active_combat_owner(party_tracker_data)
+            if active_owner:
+                warning(
+                    f"TABLETOP MODE: Duplicate createEncounter blocked. Active encounter owner='{active_owner}'",
+                    category="combat_processing"
+                )
+                print(
+                    f"[DEBUG ACTION_HANDLER] TABLETOP MODE: Blocked duplicate createEncounter while "
+                    f"active combat owner is '{active_owner}'"
+                )
+                return {
+                    "status": "error",
+                    "error_message": "Combat is already active. Continue the current encounter before starting a new one."
+                }
         
         # Update status to lock input during encounter building
         try:
@@ -919,6 +966,21 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                     error(f"FAILURE: Could not update status for combat start", exception=e, category="combat_processing")
                 
                 dialogue_summary, updated_player_info = run_combat_simulation(encounter_id, party_tracker_data, reloaded_location_data)
+
+                if dialogue_summary is None and updated_player_info is None:
+                    error(
+                        f"TABLETOP MODE: Combat simulation startup failed for encounter '{encounter_id}'",
+                        category="combat_processing"
+                    )
+                    try:
+                        from core.managers.status_manager import status_ready
+                        status_ready()
+                    except Exception:
+                        pass
+                    return {
+                        "status": "error",
+                        "error_message": "Combat could not start because another combat session is already active. Continue the current encounter."
+                    }
                 
                 print(f"[DEBUG ACTION_HANDLER] Combat simulation returned. Type of result: {type(dialogue_summary)}")
                 print(f"[DEBUG ACTION_HANDLER] Dialogue summary preview: {str(dialogue_summary)[:200]}...")

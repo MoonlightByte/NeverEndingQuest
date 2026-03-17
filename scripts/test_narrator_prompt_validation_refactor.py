@@ -562,6 +562,54 @@ class TestNarratorContractSourceGuards(unittest.TestCase):
         self.assertIn("plot_status_by_id", content)
 
 
+class TestNarratorSceneContextHygieneContracts(unittest.TestCase):
+    """Source-contract checks for narrator scene payload hygiene and rejected-turn logging."""
+
+    def _load_main_source(self):
+        main_py_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "main.py"
+        )
+        with open(main_py_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def test_narrator_payload_hygiene_helpers_exist(self):
+        source = self._load_main_source()
+        self.assertIn("def _sanitize_narrator_payload(messages_to_send):", source)
+        self.assertIn("def _compact_plot_status_for_narrator(plot_content):", source)
+        self.assertIn("def _is_historical_location_context_message(message):", source)
+        self.assertIn("def _is_full_module_world_atlas_message(message):", source)
+
+    def test_narrator_payload_filters_location_history_and_atlas(self):
+        source = self._load_main_source()
+        self.assertIn("=== LOCATION SUMMARY ===", source)
+        self.assertIn("=== LOCATION CHRONICLE ===", source)
+        self.assertIn("=== COMPLETE MODULE WORLD ATLAS ===", source)
+        self.assertIn("messages_to_send = _sanitize_narrator_payload(messages_to_send)", source)
+
+    def test_plot_compaction_preserves_active_upcoming_and_omits_completed_prose(self):
+        source = self._load_main_source()
+        self.assertIn("[COMPLETED]:", source)
+        self.assertIn("[ACTIVE]:", source)
+        self.assertIn("[UPCOMING]:", source)
+        self.assertIn("Details omitted for live narration", source)
+
+    def test_rejected_turn_logging_wiring_exists(self):
+        source = self._load_main_source()
+        self.assertIn("def log_rejected_narrator_turn(", source)
+        self.assertIn("debug/quality_control/rejected_narrator_turns.jsonl", source)
+        self.assertIn("\"module\": module_name", source)
+        self.assertIn("\"location_id\": location_id", source)
+        self.assertIn("\"retry_state\": retry_state or {}", source)
+
+    def test_retry_exhaustion_message_is_non_technical(self):
+        source = self._load_main_source()
+        self.assertIn("I could not process that turn right now", source)
+        self.assertIn("try the action again in a simpler sentence", source)
+        self.assertNotIn("Unable to generate a valid response", source)
+        self.assertNotIn("game state may be inconsistent", source)
+
+
 if __name__ == "__main__":
     # Run tests with verbosity
     loader = unittest.TestLoader()
@@ -575,6 +623,7 @@ if __name__ == "__main__":
     suite.addTests(loader.loadTestsFromTestCase(TestTravelIntentDetectionContracts))
     suite.addTests(loader.loadTestsFromTestCase(TestPromptSingularityContracts))
     suite.addTests(loader.loadTestsFromTestCase(TestNarratorContractSourceGuards))
+    suite.addTests(loader.loadTestsFromTestCase(TestNarratorSceneContextHygieneContracts))
     
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

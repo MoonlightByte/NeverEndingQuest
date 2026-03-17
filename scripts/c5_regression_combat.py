@@ -363,6 +363,46 @@ class TestCombatManagerEncounterSyncContracts(unittest.TestCase):
         self.assertIn('safe_write_json(f"modules/encounters/encounter_{encounter_id}.json", encounter_data)', source)
 
 
+class TestCombatSingleActiveSessionContracts(unittest.TestCase):
+    """Regression tests for single-active-session combat ownership guardrails."""
+
+    def _load_action_handler_source(self):
+        ah_path = os.path.join(PROJECT_ROOT, "core/ai/action_handler.py")
+        with open(ah_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def _load_combat_manager_source(self):
+        cm_path = os.path.join(PROJECT_ROOT, "core/managers/combat_manager.py")
+        with open(cm_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def test_action_handler_declares_tabletop_ownership_helpers(self):
+        source = self._load_action_handler_source()
+        self.assertIn("def _is_tabletop_multi_pc_guard_active(", source)
+        self.assertIn("def _get_active_combat_owner(", source)
+
+    def test_action_handler_blocks_duplicate_createencounter(self):
+        source = self._load_action_handler_source()
+        self.assertIn("Duplicate createEncounter blocked", source)
+        self.assertIn(
+            "Combat is already active. Continue the current encounter before starting a new one.",
+            source,
+        )
+        self.assertIn("if _is_tabletop_multi_pc_guard_active(party_tracker_data):", source)
+
+    def test_combat_manager_wraps_simulation_with_session_claim(self):
+        source = self._load_combat_manager_source()
+        self.assertIn("def run_combat_simulation(encounter_id, party_tracker_data, location_info):", source)
+        self.assertIn("_enter_combat_session(effective_encounter_id)", source)
+        self.assertIn("_run_combat_simulation_internal(effective_encounter_id, party_tracker_data, location_info)", source)
+        self.assertIn("_exit_combat_session(effective_encounter_id)", source)
+
+    def test_combat_manager_prefers_durable_owner_on_mismatch(self):
+        source = self._load_combat_manager_source()
+        self.assertIn("COMBAT_SESSION_MISMATCH:", source)
+        self.assertIn("effective_encounter_id = durable_owner", source)
+
+
 class TestEncounterRosterBackfillContract(unittest.TestCase):
     """Regression tests for encounter roster backfill and duplicate-prevention."""
 

@@ -118,6 +118,7 @@ import time
 import re
 import random
 import subprocess
+import threading
 
 # Add project root to sys.path for direct execution
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -483,6 +484,35 @@ def save_json_file(file_path, data):
         safe_write_json(file_path, data)
     except Exception as e:
         error(f"FILE_OP: Failed to save {file_path}: {str(e)}", category="file_operations")
+
+
+class CombatSessionAlreadyActiveError(RuntimeError):
+    """Raised when a second combat loop attempts to start concurrently."""
+
+
+_combat_session_lock = threading.Lock()
+_active_combat_session_id = None
+
+
+def _enter_combat_session(encounter_id):
+    """Claim the single active combat loop slot for this process."""
+    global _active_combat_session_id
+
+    with _combat_session_lock:
+        if _active_combat_session_id is not None:
+            raise CombatSessionAlreadyActiveError(
+                f"Combat session already active for encounter '{_active_combat_session_id}'"
+            )
+        _active_combat_session_id = encounter_id
+
+
+def _exit_combat_session(encounter_id):
+    """Release the active combat loop slot after combat exits."""
+    global _active_combat_session_id
+
+    with _combat_session_lock:
+        if _active_combat_session_id == encounter_id:
+            _active_combat_session_id = None
 
 def clean_combat_state_blocks(conversation_history):
     """
@@ -2673,6 +2703,43 @@ Focus on mechanical accuracy for the actions. For narrative_highlights, extract 
         return None
 
 def run_combat_simulation(encounter_id, party_tracker_data, location_info):
+    """Run combat simulation with single-session ownership safeguards."""
+    effective_encounter_id = str(encounter_id).strip()
+    durable_owner = ""
+
+    # TABLETOP MODE: Prefer durable encounter owner from party tracker if the
+    # caller passed a mismatched encounter id.
+    try:
+        durable_tracker = safe_json_load("party_tracker.json") or {}
+        world_conditions = durable_tracker.get("worldConditions", {})
+        durable_owner = str(world_conditions.get("activeCombatEncounter", "")).strip()
+    except Exception as e:
+        warning(
+            f"COMBAT_SESSION_GUARD: Could not read durable combat owner, continuing fail-open: {e}",
+            category="combat_events"
+        )
+
+    if durable_owner and durable_owner != effective_encounter_id:
+        warning(
+            f"COMBAT_SESSION_MISMATCH: Requested encounter '{effective_encounter_id}' does not match "
+            f"durable owner '{durable_owner}'. Preferring durable owner.",
+            category="combat_events"
+        )
+        effective_encounter_id = durable_owner
+
+    try:
+        _enter_combat_session(effective_encounter_id)
+    except CombatSessionAlreadyActiveError as e:
+        error(f"COMBAT_SESSION_GUARD: {e}", category="combat_events")
+        return None, None
+
+    try:
+        return _run_combat_simulation_internal(effective_encounter_id, party_tracker_data, location_info)
+    finally:
+        _exit_combat_session(effective_encounter_id)
+
+
+def _run_combat_simulation_internal(encounter_id, party_tracker_data, location_info):
    """Main function to run the combat simulation"""
    print(f"\n[COMBAT_MANAGER] ========== COMBAT SIMULATION START ==========")
    print(f"[COMBAT_MANAGER] Encounter ID: {encounter_id}")

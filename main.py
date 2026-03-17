@@ -3093,6 +3093,131 @@ def save_conversation_history(history):
     except Exception as e:
         error(f"FAILURE: Failed to save conversation history", exception=e, category="file_operations")
 
+def _is_historical_location_context_message(message):
+    """Return True for historical location summary/chronicle assistant blocks."""
+    if not isinstance(message, dict):
+        return False
+    if message.get("role") != "assistant":
+        return False
+
+    content = str(message.get("content", ""))
+    return (
+        "=== LOCATION SUMMARY ===" in content
+        or "=== LOCATION CHRONICLE ===" in content
+    )
+
+
+def _is_full_module_world_atlas_message(message):
+    """Return True for full module atlas system packets."""
+    if not isinstance(message, dict):
+        return False
+    if message.get("role") != "system":
+        return False
+
+    content = str(message.get("content", ""))
+    return "=== COMPLETE MODULE WORLD ATLAS ===" in content
+
+
+def _compact_plot_status_for_narrator(plot_content):
+    """Compact completed plot prose while preserving active/upcoming pressure."""
+    if not isinstance(plot_content, str) or "=== ADVENTURE PLOT STATUS ===" not in plot_content:
+        return plot_content
+
+    lines = plot_content.splitlines()
+    adventure_line = ""
+    main_goal_line = ""
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("ADVENTURE:") and not adventure_line:
+            adventure_line = stripped
+        elif stripped.startswith("MAIN GOAL:") and not main_goal_line:
+            main_goal_line = stripped
+
+    active_lines = []
+    upcoming_lines = []
+    completed_count = 0
+    current_bucket = None
+
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped.startswith("[COMPLETED]:"):
+            completed_count += 1
+            current_bucket = None
+            continue
+        if stripped.startswith("[ACTIVE]:"):
+            current_bucket = active_lines
+            if len(current_bucket) < 40:
+                current_bucket.append(line)
+            continue
+        if stripped.startswith("[UPCOMING]:"):
+            current_bucket = upcoming_lines
+            if len(current_bucket) < 40:
+                current_bucket.append(line)
+            continue
+        if stripped.startswith("[") and "]:" in stripped:
+            current_bucket = None
+            continue
+
+        if current_bucket is not None and len(current_bucket) < 40:
+            current_bucket.append(line)
+
+    compact_lines = ["=== ADVENTURE PLOT STATUS (NARRATOR COMPACT) ===", ""]
+    if adventure_line:
+        compact_lines.append(adventure_line)
+    if main_goal_line:
+        compact_lines.append(main_goal_line)
+
+    compact_lines.append("")
+    compact_lines.append("STORY PRESSURE:")
+    compact_lines.append(
+        f"[COMPLETED]: {completed_count} prior plot beat(s) recorded. Details omitted for live narration."
+    )
+
+    if active_lines:
+        compact_lines.extend(active_lines)
+    else:
+        compact_lines.append("[ACTIVE]: No active plot beats listed.")
+
+    if upcoming_lines:
+        compact_lines.extend(upcoming_lines)
+    else:
+        compact_lines.append("[UPCOMING]: No upcoming plot beats listed.")
+
+    return "\n".join(compact_lines)
+
+
+def _sanitize_narrator_payload(messages_to_send):
+    """Sanitize outbound narrator payload without mutating canonical history."""
+    sanitized_messages = []
+
+    for message in messages_to_send:
+        if not isinstance(message, dict):
+            continue
+
+        if _is_historical_location_context_message(message):
+            continue
+        if _is_full_module_world_atlas_message(message):
+            continue
+
+        sanitized_message = dict(message)
+        if "active_pc" in sanitized_message:
+            del sanitized_message["active_pc"]
+
+        content = sanitized_message.get("content", "")
+        if (
+            sanitized_message.get("role") == "system"
+            and isinstance(content, str)
+            and "=== ADVENTURE PLOT STATUS ===" in content
+        ):
+            sanitized_message["content"] = _compact_plot_status_for_narrator(content)
+
+        sanitized_messages.append(sanitized_message)
+
+    return sanitized_messages
+
+
 def get_ai_response(conversation_history, validation_retry_count=0, transient_correction=None):
     global should_inject_creation_prompt
     status_processing_ai()
@@ -3210,12 +3335,6 @@ def get_ai_response(conversation_history, validation_retry_count=0, transient_co
             # Compress using selected compressor
             messages_to_send = compressor.process_conversation_history(str(temp_file))
             
-            # TABLETOP MODE: Strip active_pc from messages before API call to avoid provider compatibility issues
-            # The active_pc field is used for multi-PC compression but should not be sent to the API
-            for msg in messages_to_send:
-                if isinstance(msg, dict) and "active_pc" in msg:
-                    del msg["active_pc"]
-            
             # Clean up temp file
             if temp_file.exists():
                 temp_file.unlink()
@@ -3228,11 +3347,9 @@ def get_ai_response(conversation_history, validation_retry_count=0, transient_co
         print(f"WARNING: Compression failed: {e}")
         messages_to_send = conversation_history
     
-    # TABLETOP MODE: Ensure active_pc is stripped from all messages before API call
-    # This covers both the non-compression path and the exception fallback path
-    for msg in messages_to_send:
-        if isinstance(msg, dict) and "active_pc" in msg:
-            del msg["active_pc"]
+    # TABLETOP MODE: Narrator payload hygiene pass.
+    # This pass is outbound-only and does not mutate canonical conversation history.
+    messages_to_send = _sanitize_narrator_payload(messages_to_send)
 
     # TABLETOP MODE: Prompt singularity guard.
     # Ensure exactly one canonical main system prompt in outbound payload,
@@ -3901,11 +4018,44 @@ def get_new_pc_creation_retry_guard_message(user_input_text, ai_response_content
 
 
 def get_validation_retry_exhaustion_message():
-    """Return deterministic fail-closed message for validation retry exhaustion."""
+    """Return player-facing fail-closed guidance for retry exhaustion."""
     return (
-        "[SYSTEM] Unable to generate a valid response after multiple attempts. "
-        "The game state may be inconsistent. Please try a different action or restart the session."
+        "[SYSTEM] I could not process that turn right now. "
+        "Please try the action again in a simpler sentence, or try a different action."
     )
+
+
+def log_rejected_narrator_turn(user_input, rejected_response, rejection_reason, retry_state=None, party_tracker_data=None):
+    """Append rejected narrator-turn diagnostics to a dedicated JSONL channel."""
+    try:
+        os.makedirs("debug/quality_control", exist_ok=True)
+
+        module_name = ""
+        location_id = ""
+        location_name = ""
+        if isinstance(party_tracker_data, dict):
+            module_name = str(party_tracker_data.get("module", ""))
+            world_conditions = party_tracker_data.get("worldConditions", {})
+            location_id = str(world_conditions.get("currentLocationId", ""))
+            location_name = str(world_conditions.get("currentLocation", ""))
+
+        record = {
+            "timestamp": datetime.now().isoformat(),
+            "user_input": user_input,
+            "rejection_reason": rejection_reason,
+            "rejected_response": rejected_response,
+            "module": module_name,
+            "location_id": location_id,
+            "location_name": location_name,
+            "retry_state": retry_state or {},
+        }
+
+        rejected_log_path = "debug/quality_control/rejected_narrator_turns.jsonl"
+        with open(rejected_log_path, "a", encoding="utf-8") as rejected_log_file:
+            json.dump(record, rejected_log_file, ensure_ascii=False)
+            rejected_log_file.write("\n")
+    except Exception as e:
+        debug(f"Failed to log rejected narrator turn: {e}", category="ai_validation")
 
 
 # TABLETOP MODE: TTS scope marker helpers for suppressing TTS in non-narrative flows
@@ -5458,6 +5608,18 @@ def main_game_loop():
                 # Validation failed with a reason
                 debug(f"VALIDATION: Validation failed. Reason: {validation_reason}", category="ai_validation")
                 status_retrying(retry_count + 1, 5)
+                log_rejected_narrator_turn(
+                    user_input_text,
+                    ai_response_content,
+                    validation_reason,
+                    retry_state={
+                        "attempt": retry_count + 1,
+                        "max_attempts": 5,
+                        "phase": "retry",
+                        "exhausted": False,
+                    },
+                    party_tracker_data=party_tracker_data,
+                )
 
                 # TABLETOP MODE: Step 3.2 - Short-circuit novel updatePartyNPCs retry loops.
                 redirect_msg = get_new_pc_creation_retry_guard_message(
@@ -5537,6 +5699,18 @@ def main_game_loop():
         # TABLETOP MODE C1.1: Fail-closed - do NOT execute invalid responses after validation exhaustion
         if not valid_response_received:
             error("FAILURE: Failed to generate a valid response after 5 attempts. STOPPING to prevent desync.", category="ai_validation")
+            log_rejected_narrator_turn(
+                user_input_text,
+                ai_response_content,
+                last_validation_reason or "validation_retries_exhausted",
+                retry_state={
+                    "attempt": retry_count,
+                    "max_attempts": 5,
+                    "phase": "exhausted",
+                    "exhausted": True,
+                },
+                party_tracker_data=party_tracker_data,
+            )
             # C1.A1: No code path executes invalid combat response as canonical progression
             # Add deterministic error instead of executing invalid response
             error_message = get_validation_retry_exhaustion_message()
