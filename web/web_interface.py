@@ -846,31 +846,26 @@ class WebInput:
                 print(f"[DEBUG_STATUS] status_ready() call failed: {e}")
             pass
         
-        # Wait for input from the web interface
-        retry_count = 0
-        max_retries = 1000  # Prevent infinite loops
-        
-        while retry_count < max_retries:
+        # TABLETOP MODE: Block on real web input instead of synthesizing empty turns.
+        while True:
             try:
-                user_input = self.queue.get(timeout=0.1)
+                user_input = self.queue.get()
                 # Ensure input is a string and handle encoding issues
                 if isinstance(user_input, str):
                     return user_input + '\n'
-                else:
-                    # Convert to string if needed
-                    return str(user_input) + '\n'
+                # Convert non-string payloads defensively
+                return str(user_input) + '\n'
             except queue.Empty:
-                retry_count += 1
+                # No timeout is used, but preserve defensive behavior.
                 continue
             except (BrokenPipeError, OSError, IOError):
-                # Handle pipe errors gracefully
-                return '\n'  # Return empty input to keep game running
+                # Keep waiting for real input; do not emit synthetic blank turns.
+                time.sleep(0.05)
+                continue
             except Exception:
-                # Handle any other unexpected errors
-                return '\n'
-        
-        # If we've retried too many times, return empty input
-        return '\n'
+                # Fail open for runtime stability while avoiding empty-input churn.
+                time.sleep(0.05)
+                continue
 
 @app.route('/')
 def index():

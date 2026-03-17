@@ -147,6 +147,7 @@ from core.managers.status_manager import (
 from utils.file_operations import safe_write_json, safe_read_json
 from utils.module_path_manager import ModulePathManager
 from utils.authoritative_state_packet import build_authoritative_state_packet
+from utils.turn_time_sync import apply_turn_time_sync
 from core.managers.campaign_manager import CampaignManager
 from core.ai.inventory_context_integration import build_enhanced_dm_note
 
@@ -1386,6 +1387,7 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
             narrated_arrival_sync = evaluate_narrated_location_arrival_decision(
                 response_json=response_json,
                 current_location_id=packet_world.get("current_location_id") or party_tracker_data["worldConditions"].get("currentLocationId", ""),
+                current_area_id=packet_world.get("current_area_id") or party_tracker_data["worldConditions"].get("currentAreaId", ""),
                 known_location_names=known_location_names,
                 module_locations=known_locations,
             )
@@ -2662,7 +2664,7 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
         json_content = extract_json_from_codeblock(response)
         parsed_response = json.loads(json_content)
         actions = parsed_response.get("actions", [])
-        
+
         # --- START OF FIX: Detect levelUp action before printing narration ---
         is_levelup_action = any(action.get("action") == "levelUp" for action in actions)
 
@@ -4598,6 +4600,33 @@ def main_game_loop():
         else:
             # Reset counter on valid input
             empty_input_count = 0
+
+            # TABLETOP MODE: Turn-synced wall-clock advancement.
+            # Apply bounded world-time sync for accepted non-empty turns.
+            try:
+                turn_sync_result = apply_turn_time_sync()
+                applied_minutes = int(turn_sync_result.get("applied_minutes", 0) or 0)
+                if applied_minutes > 0:
+                    elapsed_minutes = int(turn_sync_result.get("elapsed_minutes", applied_minutes) or applied_minutes)
+                    info(
+                        f"STATE_SYNC: Applied turn-synced world time +{applied_minutes}m (elapsed={elapsed_minutes}m)",
+                        category="time_sync",
+                    )
+                elif turn_sync_result.get("status") in {"seeded", "updated_marker"}:
+                    info(
+                        f"STATE_SYNC: Updated turn-sync marker status={turn_sync_result.get('status')}",
+                        category="time_sync",
+                    )
+                elif turn_sync_result.get("status") not in {"no_op", "applied"}:
+                    warning(
+                        f"STATE_SYNC: Turn-sync degraded status={turn_sync_result.get('status')}",
+                        category="time_sync",
+                    )
+            except Exception as turn_sync_error:
+                warning(
+                    f"STATE_SYNC: Turn-sync failed open: {turn_sync_error}",
+                    category="time_sync",
+                )
 
             # Check for local commands
             if handle_local_command(user_input_text):

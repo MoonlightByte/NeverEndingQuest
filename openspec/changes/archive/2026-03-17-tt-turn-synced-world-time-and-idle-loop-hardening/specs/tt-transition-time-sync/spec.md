@@ -1,8 +1,5 @@
-# tt-transition-time-sync Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change tt-transition-time-failopen-sync. Update Purpose after archive.
-## Requirements
 ### Requirement: Transition Travel Bundles MUST Pair Location and Time
 
 Narrative movement responses SHALL result in both travel-state commitment and time advancement in the same effective commit cycle. This SHALL apply both to explicit `transitionLocation` bundles and to legal travel state committed by runtime reconciliation.
@@ -27,4 +24,3 @@ If travel state is committed without explicit time advancement, runtime SHALL pr
 - **WHEN** actions already include explicit `updateTime`
 - **THEN** runtime SHALL NOT inject additional synthetic `updateTime`
 - **AND** existing explicit time behavior SHALL remain unchanged
-

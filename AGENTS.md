@@ -1021,6 +1021,28 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Turn-Synced World Time + Idle Input Hardening (COMPLETED - 2026-03-17)
+
+**Status:** COMPLETED - archived OpenSpec change for idle web-loop stability and realistic turn-synced world-time progression.
+
+**OpenSpec Archive:**
+- `openspec/changes/archive/2026-03-17-tt-turn-synced-world-time-and-idle-loop-hardening/`
+
+**Implementation Summary:**
+- Updated `web/web_interface.py` `WebInput.readline()` to block on real queued input and stop synthetic empty-turn churn.
+- Added `utils/turn_time_sync.py` helper for bounded real-minute -> world-minute progression using persisted `worldConditions.lastRealInputTimestamp`.
+- Wired turn-sync application in `main.py` for accepted non-empty turns with fail-open marker reset behavior.
+- Extended narrated-arrival reconcile-first logic in `utils/travel_state_sync_guard.py` to include deterministic inferred `updateTime` when explicit time action is absent.
+- Updated `scripts/test_scene_location_sync.py` for narrated-arrival time parity and explicit `updateTime` precedence; added new regression suite `scripts/test_turn_time_sync.py`.
+
+**Verification:**
+- `python3 -m py_compile web/web_interface.py main.py utils/turn_time_sync.py utils/travel_state_sync_guard.py scripts/test_turn_time_sync.py scripts/test_scene_location_sync.py` -> PASS
+- `python3 scripts/test_turn_time_sync.py` -> PASS
+- `python3 scripts/test_scene_location_sync.py` -> PASS
+- `python3 scripts/test_travel_state_sync_guard.py` -> PASS
+- `python3 scripts/test_transition_time_failopen.py` -> PASS
+- `openspec validate tt-turn-synced-world-time-and-idle-loop-hardening` -> VALID
+
 ### Narrative Sovereignty Stabilization Chain (G1-G4) (COMPLETED - 2026-03-16)
 
 **Status:** COMPLETED - archived four-step runtime authority hardening chain for narrator validation stability.

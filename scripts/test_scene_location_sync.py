@@ -52,15 +52,18 @@ class TestNarratedLocationArrivalSyncDecision(unittest.TestCase):
         decision = evaluate_narrated_location_arrival_decision(
             response_json=response_json,
             current_location_id="RO01",
+            current_area_id="RO001",
             known_location_names=["Hermit's Refuge", "Rangers' Command Post"],
             module_locations=self.module_locations,
         )
 
         self.assertEqual(decision.get("reconciliation"), "narrated_location_arrival_sync")
         inferred_actions = decision.get("inferred_actions", [])
-        self.assertEqual(len(inferred_actions), 1)
-        self.assertEqual(inferred_actions[0].get("action"), "updatePartyTracker")
-        params = inferred_actions[0].get("parameters", {})
+        self.assertEqual(len(inferred_actions), 2)
+        self.assertEqual(inferred_actions[0].get("action"), "updateTime")
+        self.assertEqual(inferred_actions[0].get("parameters", {}).get("timeEstimate"), 20)
+        self.assertEqual(inferred_actions[1].get("action"), "updatePartyTracker")
+        params = inferred_actions[1].get("parameters", {})
         self.assertEqual(params.get("currentLocationId"), "TW04")
         self.assertEqual(params.get("currentLocation"), "Hermit's Refuge")
 
@@ -73,6 +76,7 @@ class TestNarratedLocationArrivalSyncDecision(unittest.TestCase):
         decision = evaluate_narrated_location_arrival_decision(
             response_json=response_json,
             current_location_id="RO01",
+            current_area_id="RO001",
             known_location_names=["Hermit's Refuge", "Rangers' Command Post"],
             module_locations=self.module_locations,
         )
@@ -92,6 +96,7 @@ class TestNarratedLocationArrivalSyncDecision(unittest.TestCase):
         decision = evaluate_narrated_location_arrival_decision(
             response_json=response_json,
             current_location_id="RO01",
+            current_area_id="RO001",
             known_location_names=["Hermit's Refuge", "Rangers' Command Post"],
             module_locations=self.module_locations,
         )
@@ -112,11 +117,35 @@ class TestNarratedLocationArrivalSyncDecision(unittest.TestCase):
         decision = evaluate_narrated_location_arrival_decision(
             response_json=response_json,
             current_location_id="RO01",
+            current_area_id="RO001",
             known_location_names=["Hermit's Refuge", "Rangers' Command Post"],
             module_locations=self.module_locations,
         )
 
         self.assertEqual(decision.get("inferred_actions"), [])
+
+    def test_explicit_update_time_is_authoritative_for_arrival_sync(self):
+        response_json = {
+            "narration": "You step into Hermit's Refuge.",
+            "actions": [
+                {
+                    "action": "updateTime",
+                    "parameters": {"timeEstimate": 12},
+                }
+            ],
+        }
+
+        decision = evaluate_narrated_location_arrival_decision(
+            response_json=response_json,
+            current_location_id="RO01",
+            current_area_id="RO001",
+            known_location_names=["Hermit's Refuge", "Rangers' Command Post"],
+            module_locations=self.module_locations,
+        )
+
+        inferred_actions = decision.get("inferred_actions", [])
+        self.assertEqual(len(inferred_actions), 1)
+        self.assertEqual(inferred_actions[0].get("action"), "updatePartyTracker")
 
 
 class TestSceneLocationSyncDecision(unittest.TestCase):

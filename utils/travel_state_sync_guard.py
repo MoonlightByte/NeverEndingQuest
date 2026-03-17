@@ -388,9 +388,24 @@ def _has_explicit_location_commit_action(response_json: Dict[str, Any]) -> bool:
     return False
 
 
+def _has_explicit_update_time_action(response_json: Dict[str, Any]) -> bool:
+    """Return True when response already includes explicit updateTime."""
+    actions = response_json.get("actions", [])
+    if not isinstance(actions, list):
+        return False
+
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        if action.get("action") == "updateTime":
+            return True
+    return False
+
+
 def evaluate_narrated_location_arrival_decision(
     response_json: Dict[str, Any],
     current_location_id: str,
+    current_area_id: str = "",
     known_location_names: Optional[List[str]] = None,
     module_locations: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
@@ -442,6 +457,22 @@ def evaluate_narrated_location_arrival_decision(
     if not destination_name:
         return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
 
+    inferred_actions: List[Dict[str, Any]] = []
+    if not _has_explicit_update_time_action(response_json):
+        is_same_area = bool(
+            current_area_id
+            and destination_area_id
+            and current_area_id == destination_area_id
+        )
+        inferred_actions.append(
+            {
+                "action": "updateTime",
+                "parameters": {
+                    "timeEstimate": 10 if is_same_area else 20,
+                },
+            }
+        )
+
     inferred_action = {
         "action": "updatePartyTracker",
         "parameters": {
@@ -451,9 +482,10 @@ def evaluate_narrated_location_arrival_decision(
             "currentArea": destination_area_name,
         },
     }
+    inferred_actions.append(inferred_action)
     return {
         "valid": True,
-        "inferred_actions": [inferred_action],
+        "inferred_actions": inferred_actions,
         "reconciliation": "narrated_location_arrival_sync",
     }
 
