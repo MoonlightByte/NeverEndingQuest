@@ -26,6 +26,27 @@ Human memory inspiration (fragile + robust) is explicitly modeled:
 - Identity, relationships, major events, and repeated patterns persist.
 - Multiple retrieval pathways (social, procedural, episodic, sensory cue proxies) increase recall robustness.
 
+### Conservative rollout note: narrator hygiene before DB retrieval
+
+The current live narrator stack still relies primarily on file-backed conversation history, compression outputs, campaign summaries, and companion-memory packets. It does **not** yet use general bounded retrieval from `data/memory.db` during ordinary turn narration.
+
+Because of that, prompt contamination must be handled in two phases:
+
+1. **Prompt-plane hygiene first**: reduce off-location bleed by making live narrator payloads scene-first, leaner, and higher-signal.
+2. **DB-backed retrieval second**: once the prompt plane is clean, add bounded `memory.db` retrieval packets only where they improve continuity without reintroducing noise.
+
+This sequence matches the two-plane design:
+
+- Plane A keeps near-complete historical truth.
+- Plane B stays intentionally small and role-aware.
+
+In practical terms, the live DM should behave like a current-scene commentator with a compact continuity packet, not a raw reader of every historical chronicle. Leaner narrator context is a feature here, not a regression, so long as identity, active plot pressure, recent turns, and mechanical truth remain visible.
+
+Related current work:
+
+- OpenSpec change `narrator-scene-context-hygiene-and-failclosed-ux` is the conservative first step.
+- `memory.db` / world-narrative retrieval for live narration remains a follow-on change after prompt-plane hygiene is verified.
+
 ## Goals
 
 1. Preserve long-term campaign continuity without overwhelming narrator prompts.
@@ -106,6 +127,9 @@ Do not invert this order.
 - Returns small top-K sets only.
 - Optimized for relevance, recency, and role-context fit.
 - Hard token and item caps.
+
+Implementation note:
+- Before any wider `memory.db` integration, the prompt plane should first exclude high-noise historical surfaces already available in file-backed runtime payloads (for example, stacked historical location chronicles or remote-location atlas dumps). Clean prompt assembly comes before richer retrieval.
 
 This separation prevents "million factoid" failure while preserving full campaign history.
 

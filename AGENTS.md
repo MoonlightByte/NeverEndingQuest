@@ -1021,6 +1021,46 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Combat Single-Session Hygiene + Narrator Scene Payload Hygiene (COMPLETED - 2026-03-18)
+
+**Status:** COMPLETED - implemented, verified, and archived targeted runtime hardening for combat ownership and narrator outbound-context hygiene.
+
+**OpenSpec Archives:**
+- `openspec/changes/archive/2026-03-18-combat-single-active-session-hygiene/`
+- `openspec/changes/archive/2026-03-17-narrator-scene-context-hygiene-and-failclosed-ux/`
+
+**Implementation Summary:**
+- Added tabletop duplicate `createEncounter` guard in `core/ai/action_handler.py` so active unresolved combat blocks second encounter startup fail-closed.
+- Added process-local combat session claim/release and durable owner preference in `core/managers/combat_manager.py` to prevent concurrent loop collisions and encounter-id drift.
+- Added narrator outbound payload sanitizer in `main.py` to exclude historical `=== LOCATION SUMMARY ===` / `=== LOCATION CHRONICLE ===` assistant blocks and `=== COMPLETE MODULE WORLD ATLAS ===` system packet for live narrator calls.
+- Added narrator plot compaction in `main.py` to preserve active/upcoming pressure while suppressing verbose completed-beat prose.
+- Updated retry exhaustion UX to non-technical player-facing `[SYSTEM]` guidance and added dedicated rejected-turn diagnostics log `debug/quality_control/rejected_narrator_turns.jsonl` with module/location/retry context.
+- Synced main specs for archived deltas:
+  - Added `openspec/specs/tt-combat-single-active-session/spec.md`
+  - Added `openspec/specs/tt-narrator-scene-context-hygiene/spec.md`
+  - Added `openspec/specs/tt-rejected-turn-observability/spec.md`
+  - Updated `openspec/specs/tt-combat-phase-sync/spec.md`
+  - Updated `openspec/specs/tt-validation-retry-hygiene/spec.md`
+
+**Verification:**
+- `python3 -m py_compile core/ai/action_handler.py core/managers/combat_manager.py scripts/c5_regression_combat.py` -> PASS
+- `python3 scripts/c5_regression_combat.py` -> PASS (43/43)
+- `python3 -m py_compile main.py scripts/test_narrator_prompt_validation_refactor.py` -> PASS
+- `python3 scripts/test_narrator_prompt_validation_refactor.py` -> PASS (28/28)
+- Payload inspection on `main._sanitize_narrator_payload(...)`: historical location summary/chronicle and world atlas removed; current location and compact plot context preserved.
+- `openspec validate combat-single-active-session-hygiene` -> VALID
+- `openspec validate narrator-scene-context-hygiene-and-failclosed-ux` -> VALID
+- Archive/spec validation gate: `openspec validate --specs` -> PASS
+
+### OpenSpec Tooling Refresh + Thornwood Monster Closure Update (COMPLETED - 2026-03-18)
+
+**Status:** COMPLETED - remaining local updates committed for OpenSpec command/skill text refresh and Thornwood monster closure parity.
+
+**Implementation Summary:**
+- Refreshed local OpenSpec command docs under `.opencode/command/` and generated skill docs under `.opencode/skills/openspec-*` (generatedBy `1.2.0`) to align wording with proposal-first workflow and archive sync guidance.
+- Added generated monster file `modules/The_Thornwood_Watch/monsters/writhing_grubs.json` and updated `modules/The_Thornwood_Watch/monster_closure_report.json` generation metadata.
+- Extended narrative-memory planning notes in `plans/version-2/memory.md` to explicitly sequence prompt-plane hygiene before DB-backed retrieval expansion.
+
 ### Turn-Synced World Time + Idle Input Hardening (COMPLETED - 2026-03-17)
 
 **Status:** COMPLETED - archived OpenSpec change for idle web-loop stability and realistic turn-synced world-time progression.

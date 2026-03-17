@@ -1,0 +1,55 @@
+{
+  "name": "Writhing Grub",
+  "size": "Tiny",
+  "type": "Beast",
+  "alignment": "Unaligned",
+  "armorClass": 10,
+  "hitPoints": 3,
+  "maxHitPoints": 3,
+  "speed": 10,
+  "abilities": {
+    "strength": 2,
+    "dexterity": 10,
+    "constitution": 10,
+    "intelligence": 1,
+    "wisdom": 7,
+    "charisma": 2
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [
+    "fire"
+  ],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed",
+    "frightened"
+  ],
+  "senses": {
+    "darkvision": 30,
+    "passivePerception": 8
+  },
+  "languages": "",
+  "challengeRating": 0.125,
+  "specialAbilities": [
+    {
+      "name": "Swarm Instinct",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "attackBonus": 2,
+      "damageDice": "1d4",
+      "damageBonus": 0,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}
