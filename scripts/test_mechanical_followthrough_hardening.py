@@ -210,6 +210,7 @@ class TestPreCombatHostilePresenceSourceContracts(unittest.TestCase):
 
         self.assertIn("location_hostiles", source)
         self.assertIn("'type': 'location_hostile'", source)
+        self.assertIn("'monsterType': monster_asset_key", source)
 
     def test_party_strip_renders_location_hostiles(self):
         template_path = os.path.join(
@@ -223,6 +224,8 @@ class TestPreCombatHostilePresenceSourceContracts(unittest.TestCase):
 
         self.assertIn("response.location_hostiles", source)
         self.assertIn("Hostile Presence", source)
+        self.assertIn("const hostileBasePath = `/media/monsters/${slugFromMeta}`;", source)
+        self.assertIn("isLocationHostile ? hostileBasePath : npcBasePath", source)
 
 
 class TestDMNoteMechanicalVisibilitySourceContracts(unittest.TestCase):

@@ -50,26 +50,60 @@ def _normalize_character_slug(character_name: str) -> str:
     return name
 
 
-def _get_image_candidate_paths(slug: str, module_name: Optional[str] = None) -> List[str]:
+def _get_image_candidate_paths(
+    slug: str,
+    module_name: Optional[str] = None,
+    media_type: str = "npc",
+) -> List[str]:
     """Build list of candidate portrait/media file paths for version detection.
 
     Candidate chain (in priority order):
-    1. web/static/portraits/<slug>.png (PC portrait location)
-    2. modules/<module>/media/npcs/<slug>_thumb.jpg (module NPC thumbnail)
-    3. modules/<module>/media/npcs/<slug>.jpg (module NPC full)
-    4. modules/<module>/media/npcs/<slug>.png (module NPC PNG)
-    5. web/static/media/npcs/<slug>_thumb.jpg (static NPC thumbnail)
-    6. web/static/media/npcs/<slug>.jpg (static NPC full)
-    7. web/static/media/npcs/<slug>.png (static NPC PNG)
+    - For npc:
+      1. web/static/portraits/<slug>.png (PC portrait location)
+      2. modules/<module>/media/npcs/<slug>_thumb.jpg (module NPC thumbnail)
+      3. modules/<module>/media/npcs/<slug>.jpg (module NPC full)
+      4. modules/<module>/media/npcs/<slug>.png (module NPC PNG)
+      5. web/static/media/npcs/<slug>_thumb.jpg (static NPC thumbnail)
+      6. web/static/media/npcs/<slug>.jpg (static NPC full)
+      7. web/static/media/npcs/<slug>.png (static NPC PNG)
+    - For monster:
+      1. modules/<module>/media/monsters/<slug>_thumb.jpg
+      2. modules/<module>/media/monsters/<slug>_thumb.png
+      3. modules/<module>/media/monsters/<slug>.jpg
+      4. modules/<module>/media/monsters/<slug>.png
+      5. web/static/media/monsters/<slug>_thumb.jpg
+      6. web/static/media/monsters/<slug>_thumb.png
+      7. web/static/media/monsters/<slug>.jpg
+      8. web/static/media/monsters/<slug>.png
 
     Args:
         slug: Normalized character/entity slug
         module_name: Optional current module name for module-specific paths
+        media_type: "npc" or "monster" candidate chain selector
 
     Returns:
         List of candidate file paths (may include non-existent paths)
     """
     candidates: List[str] = []
+
+    normalized_media_type = (media_type or "npc").strip().lower()
+
+    # TABLETOP MODE: Hostile scene-presence cards should resolve against monster media,
+    # not NPC media. Keep npc chain as default for existing player/NPC behavior.
+    if normalized_media_type == "monster":
+        if module_name:
+            module_base = os.path.join("modules", module_name, "media", "monsters")
+            candidates.append(os.path.join(module_base, f"{slug}_thumb.jpg"))
+            candidates.append(os.path.join(module_base, f"{slug}_thumb.png"))
+            candidates.append(os.path.join(module_base, f"{slug}.jpg"))
+            candidates.append(os.path.join(module_base, f"{slug}.png"))
+
+        static_base = os.path.join("web", "static", "media", "monsters")
+        candidates.append(os.path.join(static_base, f"{slug}_thumb.jpg"))
+        candidates.append(os.path.join(static_base, f"{slug}_thumb.png"))
+        candidates.append(os.path.join(static_base, f"{slug}.jpg"))
+        candidates.append(os.path.join(static_base, f"{slug}.png"))
+        return candidates
 
     # Primary PC portrait location
     candidates.append(os.path.join("web", "static", "portraits", f"{slug}.png"))
@@ -121,7 +155,11 @@ def _compute_image_version_from_paths(paths: List[str]) -> Optional[str]:
     return str(int(max_mtime))
 
 
-def _build_image_metadata(slug: str, module_name: Optional[str] = None) -> Dict[str, Any]:
+def _build_image_metadata(
+    slug: str,
+    module_name: Optional[str] = None,
+    media_type: str = "npc",
+) -> Dict[str, Any]:
     """Build image metadata dict with slug and deterministic version.
 
     This is the primary public helper for payload builders to get versioned
@@ -130,13 +168,14 @@ def _build_image_metadata(slug: str, module_name: Optional[str] = None) -> Dict[
     Args:
         slug: Normalized character/entity slug
         module_name: Optional current module name for module-specific paths
+        media_type: "npc" or "monster" candidate chain selector
 
     Returns:
         Dict with keys:
         - image_slug: str (normalized identity)
         - image_version: Optional[str] (max mtime version or None if no files)
     """
-    candidates = _get_image_candidate_paths(slug, module_name)
+    candidates = _get_image_candidate_paths(slug, module_name, media_type=media_type)
     version = _compute_image_version_from_paths(candidates)
 
     return {
@@ -408,12 +447,23 @@ def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Calla
                             if not monster_name:
                                 continue
 
+                            monster_asset_key = ""
+                            if isinstance(monster_entry, dict):
+                                monster_asset_key = str(monster_entry.get('monsterType') or '').strip()
+                            if not monster_asset_key:
+                                monster_asset_key = monster_name
+
                             monster_data_dict = {
                                 'name': monster_name,
                                 'type': 'location_hostile',
+                                'monsterType': monster_asset_key,
                             }
-                            hostile_slug = _normalize_character_slug(monster_name)
-                            hostile_image_meta = _build_image_metadata(hostile_slug, current_module)
+                            hostile_slug = _normalize_character_slug(monster_asset_key)
+                            hostile_image_meta = _build_image_metadata(
+                                hostile_slug,
+                                current_module,
+                                media_type="monster",
+                            )
                             monster_data_dict['image_slug'] = hostile_image_meta.get('image_slug')
                             monster_data_dict['image_version'] = hostile_image_meta.get('image_version')
                             location_hostiles.append(monster_data_dict)

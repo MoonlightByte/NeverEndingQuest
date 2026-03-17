@@ -8048,9 +8048,9 @@
                     const playerFullPortraitUrl = withAssetVersion(`/static/portraits/${slugFromMeta}_full.png`, versionFromMeta);
                     const playerPortraitUrl = withAssetVersion(`/static/portraits/${slugFromMeta}.png`, versionFromMeta);
                     const npcBasePath = `/media/npcs/${slugFromMeta}`;
-                    const videoCandidates = member.type === 'player'
-                        ? [`${npcBasePath}_video.mp4`]
-                        : [`${npcBasePath}_video.mp4`];
+                    const hostileBasePath = `/media/monsters/${slugFromMeta}`;
+                    const mediaBasePath = isLocationHostile ? hostileBasePath : npcBasePath;
+                    const videoCandidates = [`${mediaBasePath}_video.mp4`];
 
                     // TABLETOP MODE: Keep strip render fast (thumb-first) but popup quality high (full-first).
                     const tileImageCandidates = member.type === 'player'
@@ -8060,11 +8060,18 @@
                             withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta),
                             withAssetVersion(`${npcBasePath}.png`, versionFromMeta),
                         ]
-                        : [
-                            withAssetVersion(`${npcBasePath}_thumb.jpg`, versionFromMeta),
-                            withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta),
-                            withAssetVersion(`${npcBasePath}.png`, versionFromMeta),
-                        ];
+                        : (isLocationHostile
+                            ? [
+                                withAssetVersion(`${hostileBasePath}_thumb.jpg`, versionFromMeta),
+                                withAssetVersion(`${hostileBasePath}_thumb.png`, versionFromMeta),
+                                withAssetVersion(`${hostileBasePath}.jpg`, versionFromMeta),
+                                withAssetVersion(`${hostileBasePath}.png`, versionFromMeta),
+                            ]
+                            : [
+                                withAssetVersion(`${npcBasePath}_thumb.jpg`, versionFromMeta),
+                                withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta),
+                                withAssetVersion(`${npcBasePath}.png`, versionFromMeta),
+                            ]);
 
                     // TABLETOP MODE: Player popup prefers static portraits (_full.png -> .png) before NPC media
                     // to avoid stale JPG fallback after portrait create/upload.
@@ -8076,11 +8083,18 @@
                             withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta),
                             withAssetVersion(`${npcBasePath}_thumb.jpg`, versionFromMeta),
                         ]
-                        : [
-                            withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta),
-                            withAssetVersion(`${npcBasePath}.png`, versionFromMeta),
-                            withAssetVersion(`${npcBasePath}_thumb.jpg`, versionFromMeta),
-                        ];
+                        : (isLocationHostile
+                            ? [
+                                withAssetVersion(`${hostileBasePath}.jpg`, versionFromMeta),
+                                withAssetVersion(`${hostileBasePath}.png`, versionFromMeta),
+                                withAssetVersion(`${hostileBasePath}_thumb.jpg`, versionFromMeta),
+                                withAssetVersion(`${hostileBasePath}_thumb.png`, versionFromMeta),
+                            ]
+                            : [
+                                withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta),
+                                withAssetVersion(`${npcBasePath}.png`, versionFromMeta),
+                                withAssetVersion(`${npcBasePath}_thumb.jpg`, versionFromMeta),
+                            ]);
 
                     item.style.backgroundSize = 'cover';
                     item.style.backgroundPosition = 'center';
