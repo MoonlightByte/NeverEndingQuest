@@ -130,10 +130,10 @@ class AtomicFileWriter:
                 logger.error(f"Error releasing lock for {filepath}: {e}")
     
     def create_backup(self, filepath: str) -> Optional[str]:
-        """Create backup of existing file"""
+        """Create backup of existing file."""
         if not os.path.exists(filepath):
             return None
-            
+
         backup_path = f"{filepath}.bak"
         try:
             shutil.copy2(filepath, backup_path)
@@ -142,17 +142,37 @@ class AtomicFileWriter:
         except Exception as e:
             logger.error(f"Error creating backup for {filepath}: {e}")
             raise
-    
-    def write_json(self, filepath: str, data: Dict[str, Any], 
-                   create_backup: bool = True, acquire_lock: bool = True) -> bool:
+
+    def _atomic_replace(self, temp_path: str, filepath: str) -> None:
+        """Replace target file atomically, retrying transient Windows lock errors."""
+        last_error = None
+        for attempt in range(self.max_retries):
+            try:
+                os.replace(temp_path, filepath)
+                return
+            except PermissionError as e:
+                last_error = e
+                logger.warning(
+                    f"Atomic replace blocked for {filepath} (attempt {attempt + 1}/{self.max_retries}): {e}"
+                )
+                if attempt >= self.max_retries - 1:
+                    raise
+                time.sleep(self.retry_delay)
+        if last_error:
+            raise last_error
+
+    def write_json(self, filepath: str, data: Any,
+                   create_backup: bool = True, acquire_lock: bool = True,
+                   json_kwargs: Optional[Dict[str, Any]] = None) -> bool:
         """
         Atomically write JSON data to file with optional backup and locking.
         
         Args:
             filepath: Path to the JSON file
-            data: Dictionary to write as JSON
+            data: JSON-serializable payload to write
             create_backup: Whether to create a backup before writing
             acquire_lock: Whether to use file locking
+            json_kwargs: Optional kwargs forwarded to json.dump
             
         Returns:
             True if successful, False otherwise
@@ -179,23 +199,27 @@ class AtomicFileWriter:
             if dir_path:  # Only create directory if dirname is not empty
                 os.makedirs(dir_path, exist_ok=True)
             
+            dump_kwargs = {
+                'indent': 2,
+                'ensure_ascii': False,
+            }
+            if json_kwargs:
+                dump_kwargs.update(json_kwargs)
+
             # Write to temporary file
             with open(temp_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+                json.dump(data, f, **dump_kwargs)
                 f.write('\n')  # Add newline at end of file
                 f.flush()
                 # Force write to disk
                 try:
                     os.fsync(f.fileno())
-                except:
+                except Exception:
                     # fsync might not work on all systems, that's OK
                     pass
-            
-            # Atomic rename (as atomic as possible on the platform)
-            # On Windows, we need to remove the target first if it exists
-            if os.name == 'nt' and os.path.exists(filepath):
-                os.unlink(filepath)
-            os.rename(temp_path, filepath)
+
+            # Atomic replace with Windows-safe retry behavior.
+            self._atomic_replace(temp_path, filepath)
             # Suppress success messages - only log errors
             # logger.info(f"Successfully wrote {filepath}")
             
@@ -275,10 +299,11 @@ class AtomicFileWriter:
 atomic_writer = AtomicFileWriter()
 
 # Convenience functions
-def safe_write_json(filepath: str, data: Dict[str, Any], 
-                   create_backup: bool = True, acquire_lock: bool = True) -> bool:
-    """Atomically write JSON data to file"""
-    return atomic_writer.write_json(filepath, data, create_backup, acquire_lock)
+def safe_write_json(filepath: str, data: Any,
+                   create_backup: bool = True, acquire_lock: bool = True,
+                   json_kwargs: Optional[Dict[str, Any]] = None) -> bool:
+    """Atomically write JSON data to file."""
+    return atomic_writer.write_json(filepath, data, create_backup, acquire_lock, json_kwargs)
 
 def safe_read_json(filepath: str, acquire_lock: bool = False) -> Optional[Dict[str, Any]]:
     """Safely read JSON file"""

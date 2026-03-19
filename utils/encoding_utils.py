@@ -149,13 +149,16 @@ def safe_json_load(filepath: str) -> Any:
         raise
 
 
-def safe_json_dump(data: Any, filepath: str, **kwargs) -> None:
+def safe_json_dump(data: Any, filepath: str, **kwargs) -> bool:
     """
     Save JSON file with proper encoding and sanitization.
+
+    Uses the atomic file operation layer so JSON writes share the same
+    cross-platform locking and Windows-safe replace semantics.
     """
     # Sanitize data before saving
     clean_data = sanitize_dict(data) if isinstance(data, (dict, list)) else data
-    
+
     # Default kwargs for consistent JSON formatting
     default_kwargs = {
         'ensure_ascii': False,
@@ -163,9 +166,9 @@ def safe_json_dump(data: Any, filepath: str, **kwargs) -> None:
         'separators': (',', ': ')
     }
     default_kwargs.update(kwargs)
-    
-    with open(filepath, 'w', encoding='utf-8') as f:
-        json.dump(clean_data, f, **default_kwargs)
+
+    from utils.file_operations import safe_write_json
+    return safe_write_json(filepath, clean_data, json_kwargs=default_kwargs)
 
 
 def fix_corrupted_location_name(name: str) -> str:
