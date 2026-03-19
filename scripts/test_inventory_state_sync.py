@@ -56,6 +56,33 @@ class TestInventoryStateSync(unittest.TestCase):
         attack_names = [entry.get("name") for entry in updated.get("attacksAndSpellcasting", [])]
         self.assertIn("Wolf-engraved Dagger", attack_names)
 
+    def test_inventory_add_includes_required_equipment_description_before_repair(self):
+        character_data = self._base_character()
+        success, updated_data, error_msg, unsupported_ops = _apply_character_ops_deterministic(
+            character_data,
+            [{"op": "inventory_add", "item": "Reliquary of Saint Rydal"}],
+        )
+
+        self.assertTrue(success, msg=f"ops failed: {error_msg} unsupported={unsupported_ops}")
+        item = next(
+            (entry for entry in updated_data.get("equipment", []) if entry.get("item_name") == "Reliquary of Saint Rydal"),
+            None,
+        )
+        self.assertIsNotNone(item)
+        self.assertTrue(bool(item.get("description")))
+
+    def test_inventory_add_includes_required_ammunition_description_before_repair(self):
+        character_data = self._base_character()
+        success, updated_data, error_msg, unsupported_ops = _apply_character_ops_deterministic(
+            character_data,
+            [{"op": "inventory_add", "item": "Arrows", "item_type": "ammunition", "quantity": 5}],
+        )
+
+        self.assertTrue(success, msg=f"ops failed: {error_msg} unsupported={unsupported_ops}")
+        item = next((entry for entry in updated_data.get("ammunition", []) if entry.get("name") == "Arrows"), None)
+        self.assertIsNotNone(item)
+        self.assertTrue(bool(item.get("description")))
+
     def test_weapon_swap_removes_stale_attack_and_adds_new_attack(self):
         character_data = self._base_character()
         character_data["equipment"] = [

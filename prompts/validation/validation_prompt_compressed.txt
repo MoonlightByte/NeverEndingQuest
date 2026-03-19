@@ -152,6 +152,15 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   narrative_takedown: REQUIRED in same response if enemy defeated outside combat
 }
 
+@INVENTORY_TRANSFER_VALIDATION={
+  trigger: explicit give/hand/trade/transfer wording between two existing characters.
+  required: EXACTLY TWO updateCharacterInfo actions in same response bundle.
+  action_1: remove item(s) from giver inventory.
+  action_2: add same item(s) to receiver inventory.
+  invalid_one_sided: receiver-only add OR giver-only remove = INVALID.
+  fail_reason: "Inventory transfer is one-sided. Add exactly two updateCharacterInfo actions: remove from giver and add to receiver in the same response."
+}
+
 @NPC_JOINING={
    valid: Player accepts + NPC AGREES -> MUST have updatePartyNPCs in SAME response
    invalid: NPC agrees to join but NO updatePartyNPCs action = ALWAYS INVALID
@@ -221,6 +230,8 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   false_comma_names: {"valid":false,"reason":"Used 'Bob, Jane' in single updateCharacterInfo. Use separate actions for each character"}
   false_numbered_actions: {"valid":false,"reason":"Used updateCharacterInfo_2, updateCharacterInfo_3. Put multiple actions in actions array instead"}
   false_wrong_action_format: {"valid":false,"reason":"Action formatted as {'updatePlot':{...}} instead of {'action':'updatePlot','parameters':{...}}. All actions need 'action' and 'parameters' keys"}
+  true_inventory_transfer_two_sided: {"valid":true,"reason":"Explicit item handoff is synchronized with two updateCharacterInfo actions in one bundle (remove from giver, add to receiver)."}
+  false_inventory_transfer_one_sided: {"valid":false,"reason":"Narration describes giving an item but only one updateCharacterInfo action is present. Inventory transfer must remove from giver and add to receiver in the same response."}
   false_missing_party_update: {"valid":false,"reason":"NPC 'Scout Kira' agrees to join ('I can spare Scout Kira') but NO updatePartyNPCs action present. MUST use updatePartyNPCs with operation='add' when NPC joins party. Try again with correct action"}
    false_wrong_join_action: {"valid":false,"reason":"Used updateCharacterInfo to document NPC joining but missing updatePartyNPCs. When NPC joins party, MUST use updatePartyNPCs action. updateCharacterInfo is for stat/inventory changes, NOT party composition"}
    true_npc_arrival_with_action: {"valid":true,"reason":"Narration claims Scout Elen arrived from the trail and includes matching moveBackgroundNPC action with npcName='Scout Elen'. State sync maintained."}

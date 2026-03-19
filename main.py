@@ -76,6 +76,7 @@ import sys
 import codecs
 import glob
 import time
+import tempfile
 from openai import OpenAI
 from datetime import datetime, timedelta
 from termcolor import colored
@@ -1337,22 +1338,62 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
                         if isinstance(loc_name, str) and loc_name.strip():
                             known_location_names.append(loc_name)
 
-            known_locations = packet_topology.get("module_locations", [])
-            if not isinstance(known_locations, list):
-                known_locations = []
-            if not known_locations and isinstance(area_data, dict):
+            known_locations_raw = packet_topology.get("module_locations", [])
+            if not isinstance(known_locations_raw, list):
+                known_locations_raw = []
+
+            known_locations = []
+            known_locations_by_id = {}
+            for loc in known_locations_raw:
+                if not isinstance(loc, dict):
+                    continue
+                loc_id = str(loc.get("id", "") or "").strip()
+                loc_name = str(loc.get("name", "") or "").strip()
+                if not loc_id or not loc_name:
+                    continue
+
+                normalized_loc = {
+                    "id": loc_id,
+                    "name": loc_name,
+                    "area_id": str(loc.get("area_id", "") or "").strip(),
+                    "area_name": str(loc.get("area_name", "") or "").strip(),
+                    "source_room_title": str(loc.get("source_room_title", "") or "").strip(),
+                }
+                known_locations.append(normalized_loc)
+                known_locations_by_id[loc_id] = normalized_loc
+
+            if isinstance(area_data, dict):
+                area_id_fallback = packet_world.get("current_area_id") or party_tracker_data["worldConditions"].get("currentAreaId", "")
+                area_name_fallback = packet_world.get("current_area_name") or party_tracker_data["worldConditions"].get("currentArea", "")
                 for loc in area_data.get("locations", []):
                     if not isinstance(loc, dict):
                         continue
+
                     loc_id = str(loc.get("locationId", "") or "").strip()
                     loc_name = str(loc.get("name", "") or "").strip()
-                    if loc_id and loc_name:
-                        known_locations.append({
-                            "id": loc_id,
-                            "name": loc_name,
-                            "area_id": packet_world.get("current_area_id") or party_tracker_data["worldConditions"].get("currentAreaId", ""),
-                            "area_name": packet_world.get("current_area_name") or party_tracker_data["worldConditions"].get("currentArea", ""),
-                        })
+                    if not loc_id or not loc_name:
+                        continue
+
+                    source_room_title = str(loc.get("source_room_title", "") or "").strip()
+                    existing_loc = known_locations_by_id.get(loc_id)
+                    if existing_loc:
+                        if source_room_title and not existing_loc.get("source_room_title"):
+                            existing_loc["source_room_title"] = source_room_title
+                        if not existing_loc.get("area_id"):
+                            existing_loc["area_id"] = area_id_fallback
+                        if not existing_loc.get("area_name"):
+                            existing_loc["area_name"] = area_name_fallback
+                        continue
+
+                    normalized_loc = {
+                        "id": loc_id,
+                        "name": loc_name,
+                        "area_id": area_id_fallback,
+                        "area_name": area_name_fallback,
+                        "source_room_title": source_room_title,
+                    }
+                    known_locations.append(normalized_loc)
+                    known_locations_by_id[loc_id] = normalized_loc
 
             travel_sync_decision = evaluate_travel_state_sync_decision(
                 response_json=response_json,
@@ -1792,7 +1833,8 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
             from pathlib import Path
 
             # Save validation conversation to temp file
-            temp_file = Path("/tmp/temp_validation_for_api.json")
+            temp_file = Path(tempfile.gettempdir()) / "temp_validation_for_api.json"
+            temp_file.parent.mkdir(parents=True, exist_ok=True)
             with open(temp_file, 'w', encoding='utf-8') as f:
                 json.dump(validation_conversation, f, indent=2, ensure_ascii=False)
 
@@ -3302,7 +3344,8 @@ def get_ai_response(conversation_history, validation_retry_count=0, transient_co
             from pathlib import Path
 
             # Save conversation to temp file
-            temp_file = Path("/tmp/temp_conversation_for_api.json")
+            temp_file = Path(tempfile.gettempdir()) / "temp_conversation_for_api.json"
+            temp_file.parent.mkdir(parents=True, exist_ok=True)
             with open(temp_file, 'w', encoding='utf-8') as f:
                 json.dump(conversation_history, f, indent=2, ensure_ascii=False)
 

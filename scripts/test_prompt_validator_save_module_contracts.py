@@ -131,6 +131,26 @@ class TestPromptValidatorContractParity(unittest.TestCase):
                 msg=f"{key} still documents rigid createNewModule moduleName+startingLocation shape",
             )
 
+    def test_system_prompt_variants_require_two_sided_inventory_transfer(self):
+        """System prompt variants must require two-sided inventory transfer updates."""
+        transfer_pattern = re.compile(r"EXACTLY\s+TWO\s+updateCharacterInfo", re.IGNORECASE)
+        for key in ("system_compressed", "system_full"):
+            self.assertRegex(
+                self.content[key],
+                transfer_pattern,
+                msg=f"{key} missing exact two-sided inventory transfer contract",
+            )
+
+    def test_validator_variants_require_two_sided_inventory_transfer(self):
+        """Validation prompt variants must enforce two-sided transfer actions."""
+        transfer_pattern = re.compile(r"EXACTLY\s+TWO\s+updateCharacterInfo", re.IGNORECASE)
+        for key in ("validator_compressed", "validator_full"):
+            self.assertRegex(
+                self.content[key],
+                transfer_pattern,
+                msg=f"{key} missing two-sided transfer validation contract",
+            )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

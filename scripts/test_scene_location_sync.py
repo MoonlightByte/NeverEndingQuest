@@ -147,6 +147,77 @@ class TestNarratedLocationArrivalSyncDecision(unittest.TestCase):
         self.assertEqual(len(inferred_actions), 1)
         self.assertEqual(inferred_actions[0].get("action"), "updatePartyTracker")
 
+    def test_room_prefix_stripped_alias_commits_priest_lodging(self):
+        response_json = {
+            "narration": "You push open the warped door and step into the priest's lodging.",
+            "actions": [],
+        }
+
+        module_locations = [
+            {
+                "id": "NIG01",
+                "name": "Room 1: Ma's Watering Hole",
+                "area_id": "NIG001",
+                "area_name": "Night_of_the_Restless_Dead Main Area",
+                "source_room_title": "Ma's Watering Hole",
+            },
+            {
+                "id": "NIG04",
+                "name": "Room 4: Priest's Lodging",
+                "area_id": "NIG001",
+                "area_name": "Night_of_the_Restless_Dead Main Area",
+                "source_room_title": "Priest's Lodging",
+            },
+        ]
+
+        decision = evaluate_narrated_location_arrival_decision(
+            response_json=response_json,
+            current_location_id="NIG01",
+            current_area_id="NIG001",
+            known_location_names=["Room 1: Ma's Watering Hole", "Room 4: Priest's Lodging"],
+            module_locations=module_locations,
+        )
+
+        self.assertEqual(decision.get("reconciliation"), "narrated_location_arrival_sync")
+        inferred_actions = decision.get("inferred_actions", [])
+        self.assertEqual(len(inferred_actions), 2)
+        self.assertEqual(inferred_actions[1].get("action"), "updatePartyTracker")
+        self.assertEqual(inferred_actions[1].get("parameters", {}).get("currentLocationId"), "NIG04")
+
+    def test_ambiguous_alias_fails_open_without_commit(self):
+        response_json = {
+            "narration": "You arrive at the shrine and hold your breath.",
+            "actions": [],
+        }
+
+        module_locations = [
+            {
+                "id": "A01",
+                "name": "Room 1: Shrine",
+                "area_id": "A001",
+                "area_name": "Area A",
+                "source_room_title": "Shrine",
+            },
+            {
+                "id": "B02",
+                "name": "Room 2: Shrine",
+                "area_id": "B001",
+                "area_name": "Area B",
+                "source_room_title": "Shrine",
+            },
+        ]
+
+        decision = evaluate_narrated_location_arrival_decision(
+            response_json=response_json,
+            current_location_id="A01",
+            current_area_id="A001",
+            known_location_names=["Room 1: Shrine", "Room 2: Shrine"],
+            module_locations=module_locations,
+        )
+
+        self.assertEqual(decision.get("reconciliation"), "none")
+        self.assertEqual(decision.get("inferred_actions"), [])
+
 
 class TestSceneLocationSyncDecision(unittest.TestCase):
     """Behavior tests for direct NPC scene -> party location sync."""

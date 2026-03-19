@@ -1660,11 +1660,37 @@ def _apply_character_ops_deterministic(character_data: Dict[str, Any], ops: List
                     return (False, character_data, f"cannot remove ammunition not present: {item_name}", [])
 
                 if entry is None:
-                    ammunition.append({"name": item_name, "quantity": quantity})
+                    ammo_name_lower = item_name.lower()
+                    if "arrow" in ammo_name_lower:
+                        ammo_description = "Standard arrows for use with a longbow or shortbow"
+                    elif "bolt" in ammo_name_lower:
+                        ammo_description = "Standard crossbow bolts for use with crossbows"
+                    elif "bullet" in ammo_name_lower:
+                        ammo_description = "Standard sling bullets for use with a sling"
+                    else:
+                        ammo_description = f"Standard {item_name}"
+
+                    ammunition.append(
+                        {
+                            "name": item_name,
+                            "quantity": quantity,
+                            "description": ammo_description,
+                        }
+                    )
                 else:
                     current_qty = _to_int(entry.get("quantity", 0), "quantity", op_type)
                     if op_type == "inventory_add":
                         entry["quantity"] = current_qty + quantity
+                        if not entry.get("description"):
+                            ammo_name_lower = item_name.lower()
+                            if "arrow" in ammo_name_lower:
+                                entry["description"] = "Standard arrows for use with a longbow or shortbow"
+                            elif "bolt" in ammo_name_lower:
+                                entry["description"] = "Standard crossbow bolts for use with crossbows"
+                            elif "bullet" in ammo_name_lower:
+                                entry["description"] = "Standard sling bullets for use with a sling"
+                            else:
+                                entry["description"] = f"Standard {item_name}"
                     else:
                         if quantity > current_qty:
                             return (False, character_data, f"cannot remove {quantity} {item_name}; only {current_qty} available", [])
@@ -1686,12 +1712,19 @@ def _apply_character_ops_deterministic(character_data: Dict[str, Any], ops: List
                 if entry is None:
                     inferred_weapon_fields = _infer_weapon_equipment_fields(item_name)
                     item_type_value = str(op.get("item_type", "miscellaneous")).strip().lower()
+                    if item_type_value not in ["weapon", "armor", "miscellaneous", "consumable", "ammunition", "equipment"]:
+                        item_type_value = "miscellaneous"
                     if inferred_weapon_fields and item_type_value in ["", "miscellaneous", "equipment"]:
                         item_type_value = "weapon"
+
+                    description_value = str(op.get("description") or "").strip()
+                    if not description_value:
+                        description_value = f"A {item_name}."
 
                     equipment.append({
                         "item_name": item_name,
                         "item_type": item_type_value,
+                        "description": description_value,
                         "quantity": quantity,
                     })
                     if inferred_weapon_fields and item_type_value == "weapon":
@@ -1964,6 +1997,7 @@ def update_character_info(character_name, changes, character_role=None, ops=None
             else:
                 _set_last_ops_routing_marker("structured_applied", "ops_applied")
                 updated_data = normalize_status_and_condition(ops_updated_data, character_role)
+                updated_data = repair_character_data(updated_data)
                 updated_data, removed_fields = purge_invalid_fields(updated_data, schema, character_name)
                 if removed_fields:
                     warning(
@@ -1979,7 +2013,6 @@ def update_character_info(character_name, changes, character_role=None, ops=None
                     )
                     return False
 
-                updated_data = repair_character_data(updated_data)
                 save_result = safe_write_json(character_path, updated_data)
                 if not save_result:
                     error(f"FAILURE: Could not persist deterministic ops update for {character_name}", category="file_operations")

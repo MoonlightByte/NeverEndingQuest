@@ -388,12 +388,13 @@ Important clarifications:
    7. transitionLocation should not be taken unless the party or DM deliberly states the action. Questions about maps, areas, directions, etc are not changes in location so don't prompt the model to submit a transitionLocation for these questions.
    8. createEncounter should not be used for traps unless the trap involves monsters starting combat.
    9. ALWAYS pay close attention to when trading occurs between the player and the party NPCs to ensure all actions are taken to update the player and party inventories.
-   10. rollSkillCheck is not a valid action.
-   11. RITUAL MATERIALS: When a character performs a ritual that consumes material components, the model MUST use updateCharacterInfo to remove those materials from inventory. If ritual materials are not removed after a ritual is performed, the response is invalid.
-   12. LOCATION TRANSITIONS: For transitionLocation action, only use "newLocation" parameter with location ID:
-       - ALL moves use location ID only (e.g., "newLocation": "C07", "newLocation": "B01")
-       - NO "areaConnectivityId" parameter needed - system auto-detects area changes
-       - Location ID must be valid format (letter + 2 digits like A01, B05, C03, etc.)
+   10. INVENTORY TRANSFERS: If narration explicitly says one character gives/hands/trades/transfers an item to another character, require EXACTLY TWO updateCharacterInfo actions in the same response: (a) remove from giver and (b) add to receiver. One-sided transfers are invalid.
+   11. rollSkillCheck is not a valid action.
+   12. RITUAL MATERIALS: When a character performs a ritual that consumes material components, the model MUST use updateCharacterInfo to remove those materials from inventory. If ritual materials are not removed after a ritual is performed, the response is invalid.
+   13. LOCATION TRANSITIONS: For transitionLocation action, only use "newLocation" parameter with location ID:
+        - ALL moves use location ID only (e.g., "newLocation": "C07", "newLocation": "B01")
+        - NO "areaConnectivityId" parameter needed - system auto-detects area changes
+        - Location ID must be valid format (letter + 2 digits like A01, B05, C03, etc.)
 
 Here are examples of acceptable model assistant responses:
 

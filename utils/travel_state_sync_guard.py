@@ -137,39 +137,93 @@ def _extract_location_mentions(normalized_narration: str, known_location_names: 
 def _build_location_catalog(known_locations: Optional[List[Dict[str, Any]]], known_location_names: Optional[List[str]]) -> Dict[str, Dict[str, str]]:
     """Build normalized location catalog keyed by normalized location name."""
     catalog: Dict[str, Dict[str, str]] = {}
+    ambiguous_aliases: Set[str] = set()
+
+    def _register_alias(alias_raw: str, entry: Dict[str, str]) -> None:
+        normalized_alias = _normalize_text(alias_raw)
+        if not normalized_alias:
+            return
+
+        existing_entry = catalog.get(normalized_alias)
+        if existing_entry is None:
+            catalog[normalized_alias] = dict(entry)
+            return
+
+        existing_id = str(existing_entry.get("id", "") or "").strip()
+        new_id = str(entry.get("id", "") or "").strip()
+        if existing_id and new_id and existing_id != new_id:
+            ambiguous_aliases.add(normalized_alias)
+            return
+
+        if not existing_id and new_id:
+            catalog[normalized_alias] = dict(entry)
+
+    def _alias_candidates(raw_name: str, source_room_title: str = "") -> List[str]:
+        aliases = [raw_name]
+        room_prefix_stripped = re.sub(r"^room\s+\d+\s*:\s*", "", raw_name, flags=re.IGNORECASE).strip()
+        if room_prefix_stripped:
+            aliases.append(room_prefix_stripped)
+
+        if source_room_title:
+            aliases.append(source_room_title)
+
+        aliases_with_article_variants: List[str] = []
+        for alias in aliases:
+            aliases_with_article_variants.append(alias)
+            alias_normalized = _normalize_text(alias)
+            if alias_normalized.startswith("the "):
+                aliases_with_article_variants.append(alias[4:].strip())
+
+        normalized_unique = []
+        seen_normalized: Set[str] = set()
+        for alias in aliases_with_article_variants:
+            normalized_alias = _normalize_text(alias)
+            if not normalized_alias or normalized_alias in seen_normalized:
+                continue
+            seen_normalized.add(normalized_alias)
+            normalized_unique.append(alias)
+        return normalized_unique
 
     if isinstance(known_locations, list):
         for location in known_locations:
             if not isinstance(location, dict):
                 continue
             raw_name = str(location.get("name", "") or "").strip()
-            normalized_name = _normalize_text(raw_name)
-            if not normalized_name:
+            if not raw_name:
                 continue
 
             location_id = str(location.get("id", "") or "").strip()
             area_id = str(location.get("area_id", "") or "").strip()
             area_name = str(location.get("area_name", "") or "").strip()
+            source_room_title = str(location.get("source_room_title", "") or "").strip()
 
-            catalog[normalized_name] = {
+            location_entry = {
                 "name": raw_name,
                 "id": location_id,
                 "area_id": area_id,
                 "area_name": area_name,
             }
 
+            for alias in _alias_candidates(raw_name, source_room_title):
+                _register_alias(alias, location_entry)
+
     for location_name in known_location_names or []:
         raw_name = str(location_name or "").strip()
-        normalized_name = _normalize_text(raw_name)
-        if not normalized_name:
+        if not raw_name:
             continue
-        if normalized_name not in catalog:
-            catalog[normalized_name] = {
-                "name": raw_name,
-                "id": "",
-                "area_id": "",
-                "area_name": "",
-            }
+
+        location_entry = {
+            "name": raw_name,
+            "id": "",
+            "area_id": "",
+            "area_name": "",
+        }
+        for alias in _alias_candidates(raw_name):
+            _register_alias(alias, location_entry)
+
+    for ambiguous_alias in ambiguous_aliases:
+        if ambiguous_alias in catalog:
+            del catalog[ambiguous_alias]
 
     return catalog
 
