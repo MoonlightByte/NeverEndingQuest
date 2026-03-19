@@ -936,5 +936,44 @@ class TestFastLaneInitiationContract(unittest.TestCase):
             "initiative_order usage must be inside if not is_fast_lane bootstrap block")
 
 
+class TestInterpreterSafeSubprocessContracts(unittest.TestCase):
+    """Regression tests for Windows-safe subprocess interpreter usage."""
+
+    def _read_source(self, relative_path):
+        file_path = os.path.join(PROJECT_ROOT, relative_path)
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def test_combat_entry_uses_active_interpreter(self):
+        source = self._read_source("core/ai/action_handler.py")
+        self.assertIn("import sys", source)
+        self.assertIn("[sys.executable, combat_builder_path]", source)
+        self.assertNotIn('["python", combat_builder_path]', source)
+
+    def test_combat_builder_nested_launches_use_active_interpreter(self):
+        source = self._read_source("core/generators/combat_builder.py")
+        self.assertIn("import sys", source)
+        self.assertIn("[sys.executable, monster_builder_path, monster_type]", source)
+        self.assertIn("[sys.executable, npc_builder_path, formatted_npc_name]", source)
+        self.assertNotIn('["python", monster_builder_path, monster_type]', source)
+        self.assertNotIn('["python", npc_builder_path, formatted_npc_name]', source)
+
+    def test_adjacent_runtime_subprocesses_use_active_interpreter(self):
+        location_source = self._read_source("core/managers/location_manager.py")
+        cumulative_source = self._read_source("core/ai/cumulative_summary.py")
+        memories_source = self._read_source("core/memories/initialize_memories.py")
+        dm_wrapper_source = self._read_source("core/ai/dm_wrapper.py")
+        enhanced_wrapper_source = self._read_source("core/ai/enhanced_dm_wrapper.py")
+
+        self.assertIn("import sys", location_source)
+        self.assertIn("[sys.executable, adv_summary_path", location_source)
+        self.assertIn("import sys", cumulative_source)
+        self.assertIn("[sys.executable, \"scripts/memory_management/compress_memories.py\"]", cumulative_source)
+        self.assertIn("import sys", memories_source)
+        self.assertIn("[sys.executable, \"scripts/memory_management/compress_memories.py\"]", memories_source)
+        self.assertIn("[sys.executable, \"main.py\"]", dm_wrapper_source)
+        self.assertIn("[sys.executable, \"main.py\"]", enhanced_wrapper_source)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

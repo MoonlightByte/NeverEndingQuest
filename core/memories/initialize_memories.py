@@ -5,6 +5,7 @@ Initialize companion memories on startup if they don't exist but journal does
 
 import os
 import json
+import sys
 from pathlib import Path
 from utils.enhanced_logger import debug, info, warning
 from utils.encoding_utils import safe_json_load
@@ -98,7 +99,7 @@ def initialize_memories_if_needed():
         try:
             import subprocess
             result = subprocess.run(
-                ["python", "scripts/memory_management/compress_memories.py"],
+                [sys.executable, "scripts/memory_management/compress_memories.py"],
                 capture_output=True,
                 text=True,
                 timeout=5

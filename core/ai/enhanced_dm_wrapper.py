@@ -192,7 +192,7 @@ def run_game_turn(command, state, auto_dice=False):
     # Prepare the command with input
     try:
         process = subprocess.Popen(
-            ["python", "main.py"],
+            [sys.executable, "main.py"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

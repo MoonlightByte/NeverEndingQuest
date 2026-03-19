@@ -165,7 +165,7 @@ def load_or_create_monster(monster_type):
         # Get the path to monster_builder.py relative to the current file
         current_dir = os.path.dirname(os.path.abspath(__file__))
         monster_builder_path = os.path.join(current_dir, "monster_builder.py")
-        result = subprocess.run(["python", monster_builder_path, monster_type], capture_output=True, text=True)
+        result = subprocess.run([sys.executable, monster_builder_path, monster_type], capture_output=True, text=True)
         if result.returncode == 0:
             print(f"[COMBAT_BUILDER] Monster creation successful: {monster_type}")
             info(f"SUCCESS: Monster builder ({monster_type}) - PASS", category="combat_builder")
@@ -253,7 +253,7 @@ def load_or_create_npc(npc_name):
         # Get the path to npc_builder.py relative to the current file
         current_dir = os.path.dirname(os.path.abspath(__file__))
         npc_builder_path = os.path.join(current_dir, "npc_builder.py")
-        result = subprocess.run(["python", npc_builder_path, formatted_npc_name], capture_output=True, text=True)
+        result = subprocess.run([sys.executable, npc_builder_path, formatted_npc_name], capture_output=True, text=True)
         if result.returncode == 0:
             print(f"[COMBAT_BUILDER] NPC creation successful: {npc_name}")
             info(f"SUCCESS: NPC builder ({npc_name}) - PASS", category="combat_builder")

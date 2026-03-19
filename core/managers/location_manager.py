@@ -52,6 +52,7 @@
 import json
 import subprocess
 import os
+import sys
 import unicodedata
 import re
 import traceback
@@ -308,7 +309,7 @@ def handle_location_transition(current_location, new_location, current_area, cur
             project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             adv_summary_path = os.path.join(project_root, "core", "ai", "adv_summary.py")
             
-            result = subprocess.run(["python", adv_summary_path, "modules/conversation_history/conversation_history.json", "current_location.json", current_location, current_area_id],
+            result = subprocess.run([sys.executable, adv_summary_path, "modules/conversation_history/conversation_history.json", "current_location.json", current_location, current_area_id],
                         check=True, capture_output=True, text=True)
             info("SUCCESS: Adventure summary updated successfully", category="summary_building")
         except subprocess.CalledProcessError as e:

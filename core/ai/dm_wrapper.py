@@ -81,7 +81,7 @@ def run_game_turn(command):
     """
     # Prepare the command with input
     process = subprocess.Popen(
-        ["python", "main.py"],
+        [sys.executable, "main.py"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

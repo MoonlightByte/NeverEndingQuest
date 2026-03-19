@@ -51,6 +51,7 @@
 
 import json
 import os
+import sys
 from datetime import datetime
 
 # Import OpenAI usage tracking (safe - won't break if fails)
@@ -634,7 +635,7 @@ def update_journal_with_summary(adventure_summary, party_tracker_data, location_
                     try:
                         import subprocess
                         result = subprocess.run(
-                            ["python", "scripts/memory_management/compress_memories.py"],
+                            [sys.executable, "scripts/memory_management/compress_memories.py"],
                             capture_output=True,
                             text=True,
                             timeout=5
