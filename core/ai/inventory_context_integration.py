@@ -98,19 +98,27 @@ def get_all_party_inventory(party_tracker_data, characters_data):
     """
     all_inventory = []
     
-    # Get main character inventory
+    # Get main character inventory (TABLETOP MODE: ground on active character)
     if party_tracker_data and characters_data:
         # Primary character
-        primary_char = party_tracker_data.get('party', [None])[0]
+        party_members = party_tracker_data.get('partyMembers', [])
+        active_char = party_tracker_data.get('active_character')
+        primary_char = active_char if active_char else (party_members[0] if party_members else None)
         if primary_char and primary_char in characters_data:
             char_inventory = extract_character_inventory(characters_data[primary_char])
             all_inventory.extend(char_inventory)
         
         # Party NPCs might have items too
         party_npcs = party_tracker_data.get('party_npcs', [])
+        if not party_npcs:
+            party_npcs = party_tracker_data.get('partyNPCs', [])
         for npc_name in party_npcs:
             # Extract just the name without description
-            npc_base_name = npc_name.split('(')[0].strip().lower().replace(' ', '_')
+            if isinstance(npc_name, dict):
+                npc_name_value = str(npc_name.get('name') or '')
+            else:
+                npc_name_value = str(npc_name)
+            npc_base_name = npc_name_value.split('(')[0].strip().lower().replace(' ', '_')
             if npc_base_name in characters_data:
                 npc_inventory = extract_character_inventory(characters_data[npc_base_name])
                 all_inventory.extend(npc_inventory)
@@ -187,8 +195,9 @@ def build_enhanced_dm_note(dm_note, user_input_text, character_data=None,
         try:
             # Get the primary character name from party tracker
             party_members = party_tracker_data.get('partyMembers', [])
-            if party_members:
-                primary_char = party_members[0]
+            active_char = party_tracker_data.get('active_character')
+            primary_char = active_char if active_char else (party_members[0] if party_members else None)
+            if primary_char:
                 # Load character data from file
                 import json
                 from utils.module_path_manager import ModulePathManager

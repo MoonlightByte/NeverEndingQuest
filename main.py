@@ -149,6 +149,11 @@ from utils.file_operations import safe_write_json, safe_read_json
 from utils.module_path_manager import ModulePathManager
 from utils.authoritative_state_packet import build_authoritative_state_packet
 from utils.turn_time_sync import apply_turn_time_sync
+from utils.inventory_possession_authority import evaluate_tracked_item_possession_query
+from utils.tracked_transfer_runtime import (
+    execute_atomic_transfer_pair,
+    extract_atomic_tracked_transfer_pairs,
+)
 from core.managers.campaign_manager import CampaignManager
 from core.ai.inventory_context_integration import build_enhanced_dm_note
 
@@ -199,6 +204,12 @@ current_status_line = None
 def get_request_roll_concentration_dc(damage_taken: int) -> int:
     """Return deterministic concentration DC for requestRoll scaffolding."""
     return calculate_concentration_dc(damage_taken)
+
+
+# TABLETOP MODE: Seamless transition post-processor is intentionally dormant.
+# This runtime layer is disabled until an explicit validated re-enable or removal
+# change lands. Keep movement authority in deterministic Python execution paths.
+ENABLE_SEAMLESS_TRANSITION_POSTPROCESSOR = False
 
 def display_status(message):
     """Display status message above the command prompt"""
@@ -304,6 +315,7 @@ def check_and_inject_return_message(conversation_history, is_combat_active=False
 
 def generate_arrival_narration(departure_narration, party_tracker_data, conversation_history):
     """
+    DORMANT HELPER (disabled in active runtime flow):
     Takes the departure narration and generates a seamless arrival narration.
     """
     debug("STATE_CHANGE: Generating cinematic arrival narration...", category="narrative_generation")
@@ -384,6 +396,7 @@ def generate_arrival_narration(departure_narration, party_tracker_data, conversa
 # <--- NEW FUNCTION to blend the departure and arrival narrations --->
 def generate_seamless_transition_narration(departure_narration, arrival_narration):
     """
+    DORMANT HELPER (disabled in active runtime flow):
     Takes two separate narration blocks (departure and arrival) and uses an AI
     to rewrite them into a single, cohesive, and seamless narrative.
     """
@@ -1562,6 +1575,22 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         print(f"ERROR: {error_msg}")
         return (False, error_msg)
 
+    # TABLETOP MODE: Execute authoritative possession-check detection before
+    # low-risk narration-only skip routing can be considered.
+    possession_checked = False
+    try:
+        possession_query_decision = evaluate_tracked_item_possession_query(
+            user_utterance=user_input or "",
+            party_tracker_data=party_tracker_data,
+        )
+        possession_checked = bool(possession_query_decision.get("is_query", False))
+    except Exception as e:
+        warning(
+            f"STATE_SYNC: Possession query check degraded before skip routing: {e}",
+            category="ai_validation",
+        )
+        possession_checked = False
+
     skip_llm_validation = False
     skip_reason = "not_evaluated"
     validation_routing_telemetry = {
@@ -1587,6 +1616,8 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
                 deterministic_handoff.get("summary", {}).get("all_authoritative_domains_passed", False)
             ),
             reconciled_domains=deterministic_handoff.get("summary", {}).get("reconciled_domains", []),
+            user_input=user_input or "",
+            possession_checked=possession_checked,
         )
         validation_routing_telemetry = build_validation_routing_telemetry(
             skip_llm_validation=skip_llm_validation,
@@ -2761,7 +2792,8 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                 break
         
         # If it's a transition, handle it with the special two-step process
-        if is_transition:
+        # only when the dormant seamless post-processor is explicitly re-enabled.
+        if is_transition and ENABLE_SEAMLESS_TRANSITION_POSTPROCESSOR:
             debug("STATE_CHANGE: Transition action detected. Holding departure narration.", category="location_transitions")
 
             # SURGICAL FIX: Save pre-transition response to history before processing action
@@ -2775,6 +2807,12 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                 result = action_handler.process_action(action, party_tracker_data, location_data, conversation_history)
                 actions_processed = True
                 if isinstance(result, dict):
+                    # TABLETOP MODE: Fail closed on transition execution error.
+                    if result.get("status") == "error":
+                        error_msg = result.get("error_message", "Location transition failed.")
+                        conversation_history.append({"role": "system", "content": f"[SYSTEM] {error_msg}"})
+                        save_conversation_history(conversation_history)
+                        return {"role": "system", "content": f"[SYSTEM] {error_msg}"}
                     if result.get("needs_update"):
                         needs_conversation_history_update = True
                     # Check if we need to generate a DM response (e.g., after module creation)
@@ -2844,6 +2882,72 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
         # Separate updateCharacterInfo actions from others for concurrent processing
         char_update_actions = [action for action in actions if action.get("action") == "updateCharacterInfo"]
         other_actions = [action for action in actions if action.get("action") != "updateCharacterInfo"]
+
+        # TABLETOP MODE: Transactional tracked-item transfer handling.
+        # Execute explicit add/remove transfer pairs atomically before generic
+        # character update processing so partial persistence cannot split ownership.
+        party_character_names = []
+        for party_member in party_tracker_data.get("partyMembers", []):
+            if isinstance(party_member, str) and party_member.strip():
+                party_character_names.append(party_member)
+        for party_npc in party_tracker_data.get("partyNPCs", []):
+            npc_name = ""
+            if isinstance(party_npc, dict):
+                npc_name = str(party_npc.get("name") or "").strip()
+            elif isinstance(party_npc, str):
+                npc_name = party_npc.strip()
+            if npc_name:
+                party_character_names.append(npc_name)
+
+        transfer_pairs, char_update_actions = extract_atomic_tracked_transfer_pairs(
+            char_update_actions,
+            party_character_names,
+        )
+        if transfer_pairs:
+            transfer_module_name = str(party_tracker_data.get("module", "") or "").replace(" ", "_")
+            transfer_path_manager = ModulePathManager(transfer_module_name)
+
+            def _load_character_state_for_transfer(character_name):
+                normalized_name = normalize_character_name(character_name)
+                char_path = transfer_path_manager.get_character_path(normalized_name)
+                return load_json_file(char_path)
+
+            def _save_character_state_for_transfer(character_name, state_payload):
+                normalized_name = normalize_character_name(character_name)
+                char_path = transfer_path_manager.get_character_path(normalized_name)
+                return safe_write_json(char_path, state_payload)
+
+            for transfer_pair in transfer_pairs:
+                transfer_result = execute_atomic_transfer_pair(
+                    pair=transfer_pair,
+                    apply_update_fn=lambda action: action_handler.process_action(
+                        action,
+                        party_tracker_data,
+                        location_data,
+                        conversation_history,
+                    ),
+                    load_state_fn=_load_character_state_for_transfer,
+                    save_state_fn=_save_character_state_for_transfer,
+                )
+                actions_processed = True
+
+                if transfer_result.get("ok"):
+                    needs_conversation_history_update = True
+                    info(
+                        f"STATE_SYNC: Applied atomic tracked transfer item={transfer_pair.get('item_name')} "
+                        f"giver={transfer_pair.get('giver_name')} receiver={transfer_pair.get('receiver_name')}",
+                        category="character_updates",
+                    )
+                    continue
+
+                transfer_error = str(transfer_result.get("error") or "Atomic tracked transfer failed.")
+                error(f"ACTION_ERROR: {transfer_error}", category="action_processing")
+                conversation_history.append({
+                    "role": "system",
+                    "content": f"[SYSTEM] {transfer_error}",
+                })
+                save_conversation_history(conversation_history)
+                return {"role": "system", "content": f"[SYSTEM] {transfer_error}"}
         
         # TABLETOP MODE: Fail-open fallback for transitionLocation without updateTime
         # If movement occurs without explicit time advancement, inject deterministic updateTime
@@ -2915,6 +3019,15 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                         result = future.result()
                         actions_processed = True
                         # Handle result same as sequential processing
+                        if isinstance(result, dict) and result.get("status") == "error":
+                            error_msg = result.get("error_message", "Unknown error in concurrent character update")
+                            error(f"ACTION_ERROR: {error_msg}", category="action_processing")
+                            conversation_history.append({
+                                "role": "system",
+                                "content": f"[SYSTEM] {error_msg}",
+                            })
+                            save_conversation_history(conversation_history)
+                            return {"role": "system", "content": f"[SYSTEM] {error_msg}"}
                         if isinstance(result, dict) and result.get("needs_update"):
                             needs_conversation_history_update = True
                         elif isinstance(result, bool) and result:
@@ -2933,6 +3046,15 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
             for action in char_update_actions:
                 result = action_handler.process_action(action, party_tracker_data, location_data, conversation_history)
                 actions_processed = True
+                if isinstance(result, dict) and result.get("status") == "error":
+                    error_msg = result.get("error_message", "Unknown error in character update")
+                    error(f"ACTION_ERROR: {error_msg}", category="action_processing")
+                    conversation_history.append({
+                        "role": "system",
+                        "content": f"[SYSTEM] {error_msg}",
+                    })
+                    save_conversation_history(conversation_history)
+                    return {"role": "system", "content": f"[SYSTEM] {error_msg}"}
                 if isinstance(result, dict) and result.get("needs_update"):
                     needs_conversation_history_update = True
                 elif isinstance(result, bool) and result:
@@ -4978,6 +5100,34 @@ def main_game_loop():
             safe_write_json("party_tracker.json", party_tracker_data)
             debug("FILE_OP: Updated party_tracker.json with duplicate NPCs removed", category="npc_management")
 
+        # TABLETOP MODE: Deterministic possession-query handling.
+        # Explicit inventory-check turns are answered from committed character
+        # state before narration flow can drift.
+        possession_query_decision = evaluate_tracked_item_possession_query(
+            user_utterance=user_input_text,
+            party_tracker_data=party_tracker_data,
+        )
+        if possession_query_decision.get("handled"):
+            possession_response = str(possession_query_decision.get("response_text") or "Inventory check unavailable.")
+            print(colored("Dungeon Master:", "blue"), colored(possession_response, "blue"))
+
+            # Record deterministic inventory response in history.
+            user_entry = {"role": "user", "content": user_input_text}
+            active_pc = party_tracker_data.get("active_character")
+            party_members = party_tracker_data.get("partyMembers", [])
+            if isinstance(active_pc, str) and active_pc and isinstance(party_members, list) and len(party_members) > 1:
+                user_entry["active_pc"] = active_pc
+            conversation_history.append(user_entry)
+            conversation_history.append(
+                {
+                    "role": "assistant",
+                    "content": json.dumps({"narration": possession_response, "actions": []}),
+                }
+            )
+            save_conversation_history(conversation_history)
+            status_ready()
+            continue
+
         party_members_stats = []
         for member_name_iter in party_tracker_data["partyMembers"]:
             member_file_path = path_manager.get_character_path(member_name_iter)
@@ -5664,7 +5814,7 @@ def main_game_loop():
                 # This includes:
                 # - Standard turn processing
                 # - Combat encounters (via needs_post_combat_narration signal)
-                # - Location transitions (with seamless narration generation)
+                # - Location transitions (deterministic Python commit path)
                 # - Level-up sessions (returned as enter_levelup_mode signal)
                 # - All conversation history updates
                 # The main loop is now just a thin orchestration layer.

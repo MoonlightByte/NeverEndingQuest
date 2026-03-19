@@ -1021,6 +1021,40 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Authoritative Transition + Inventory Runtime Reset (COMPLETED - 2026-03-19)
+
+**Status:** COMPLETED - archived authority reset hardening for same-module movement and tracked-item possession.
+
+**OpenSpec Archives:**
+- `openspec/changes/archive/2026-03-19-tt-runtime-inventory-location-recovery/`
+- `openspec/changes/archive/2026-03-19-tt-authoritative-transition-inventory-runtime-reset/`
+
+**Runtime Architecture Note (Important):**
+- The LLM seamless transition post-processor in `main.py` (`generate_arrival_narration`, `generate_seamless_transition_narration`) is treated as **disabled/dormant** in active runtime flow.
+- Movement correctness is owned by deterministic Python commit paths first; dormant helpers are not authoritative runtime dependencies.
+
+**Implementation Summary:**
+- Added fresh same-module topology validator (`utils/authoritative_transition_validator.py`) and routed `transitionLocation` through authoritative validation first (`core/ai/action_handler.py`).
+- Added deterministic possession query authority (`utils/inventory_possession_authority.py`) and runtime handling in `main.py` so explicit pack/ownership checks resolve from committed character state.
+- Added transactional tracked transfer runtime (`utils/tracked_transfer_runtime.py`) and atomic transfer execution/rollback integration in `main.py` before generic character update processing.
+- Updated skip routing to block narration-only short-circuit on possession contradiction turns until authoritative checks run (`utils/validation_routing.py`).
+- Updated inventory-context grounding to use `active_character` instead of implicit first-party fallback (`core/ai/inventory_context_integration.py`).
+
+**Cleanup Intent:**
+- Keep dormant transition beautifier helpers only as temporary quarantine code while this change is validated.
+- Follow-up work must either (a) remove the dormant layer or (b) explicitly re-enable it through a validated OpenSpec change with regression coverage.
+
+**Verification:**
+- `python3 -m py_compile main.py core/ai/action_handler.py core/ai/inventory_context_integration.py utils/authoritative_transition_validator.py utils/inventory_possession_authority.py utils/tracked_transfer_runtime.py scripts/test_authoritative_transition_inventory_runtime_reset.py scripts/test_validation_skip_routing.py` -> PASS
+- `python3 scripts/test_authoritative_transition_inventory_runtime_reset.py` -> PASS
+- `python3 scripts/test_validation_skip_routing.py` -> PASS
+- `python3 scripts/test_scene_location_sync.py` -> PASS
+- `python3 scripts/test_validation_routing_telemetry.py` -> PASS
+- `python3 scripts/test_runtime_inventory_location_recovery.py` -> PASS
+- `openspec validate tt-runtime-inventory-location-recovery` -> VALID (archived)
+- `openspec validate tt-authoritative-transition-inventory-runtime-reset` -> VALID (archived)
+- `openspec validate --specs` -> PASS
+
 ### Combat Single-Session Hygiene + Narrator Scene Payload Hygiene (COMPLETED - 2026-03-18)
 
 **Status:** COMPLETED - implemented, verified, and archived targeted runtime hardening for combat ownership and narrator outbound-context hygiene.

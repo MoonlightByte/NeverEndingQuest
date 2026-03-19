@@ -86,6 +86,30 @@ class TestValidationSkipRoutingBehavior(unittest.TestCase):
         self.assertFalse(decision)
         self.assertEqual(reason, "deterministic_failed")
 
+    def test_possession_query_turn_cannot_skip_even_without_actions(self):
+        from utils.validation_routing import should_skip_llm_validation
+
+        decision, reason = should_skip_llm_validation(
+            response_json={"actions": []},
+            deterministic_passed=True,
+            user_input="Do I still have the reliquary?",
+            possession_checked=True,
+        )
+        self.assertFalse(decision)
+        self.assertEqual(reason, "possession_query_turn")
+
+    def test_possession_query_requires_authority_check_before_skip(self):
+        from utils.validation_routing import should_skip_llm_validation
+
+        decision, reason = should_skip_llm_validation(
+            response_json={"actions": []},
+            deterministic_passed=True,
+            user_input="Check my pack for the reliquary.",
+            possession_checked=False,
+        )
+        self.assertFalse(decision)
+        self.assertEqual(reason, "requires_possession_authority_check")
+
 
 class TestValidationSkipRoutingSourceContract(unittest.TestCase):
     """Source-contract checks for pipeline integration."""

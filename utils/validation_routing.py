@@ -13,6 +13,8 @@ Helpers for deterministic validation routing decisions.
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from utils.inventory_possession_authority import is_possession_query_turn
+
 
 HIGH_RISK_ACTIONS = {
     "createEncounter",
@@ -289,6 +291,8 @@ def should_skip_llm_validation(
     response_json: Dict[str, Any],
     deterministic_passed: bool,
     reconciled_domains: Optional[List[str]] = None,
+    user_input: str = "",
+    possession_checked: bool = False,
 ) -> Tuple[bool, str]:
     """Conservative skip decision for low-risk turns.
 
@@ -296,6 +300,13 @@ def should_skip_llm_validation(
     """
     if not deterministic_passed:
         return (False, "deterministic_failed")
+
+    # TABLETOP MODE: Possession contradiction/query turns must not short-circuit
+    # to narration-only before authoritative inventory checks run.
+    if is_possession_query_turn(user_input):
+        if not possession_checked:
+            return (False, "requires_possession_authority_check")
+        return (False, "possession_query_turn")
 
     if isinstance(reconciled_domains, list) and reconciled_domains:
         action_names = _extract_action_names(response_json)

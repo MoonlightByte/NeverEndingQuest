@@ -75,6 +75,7 @@ from utils.save_roll_contract import (
     calculate_concentration_dc,
     validate_request_roll_parameters,
 )
+from utils.authoritative_transition_validator import validate_same_module_transition_authority
 
 # Import token tracking
 try:
@@ -1138,7 +1139,7 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
         current_area_name = party_tracker_data["worldConditions"]["currentArea"]
         current_area_id = party_tracker_data["worldConditions"]["currentAreaId"]
         
-        # Use the global location graph for validation
+        # Use the global location graph for validation fallbacks.
         from main import location_graph
         if location_graph is None or len(location_graph.nodes) == 0:
             print("DEBUG: [LocationGraph] WARNING - Global graph is empty or uninitialized. Triggering emergency reload.")
@@ -1159,10 +1160,30 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                 debug(f"VALIDATION: Mapped area ID '{new_location_name_or_id}' to entry location '{entry_location}'", category="location_transitions")
                 new_location_name_or_id = entry_location
         
-        # VALIDATE: Check if location transition is valid
-        is_valid, error_message, auto_area_connectivity_id = validate_location_transition(
-            location_graph, current_location_id, new_location_name_or_id
+        # TABLETOP MODE: Authoritative same-module transition validation.
+        # Validate against fresh module topology first to avoid stale graph drift.
+        module_name = str(party_tracker_data.get("module", "") or "").replace(" ", "_")
+        authoritative_result = validate_same_module_transition_authority(
+            module_name=module_name,
+            current_location_id=current_location_id,
+            destination_location_id=new_location_name_or_id,
+            current_area_id=current_area_id,
         )
+
+        if authoritative_result.get("applies"):
+            is_valid = bool(authoritative_result.get("valid", False))
+            error_message = str(authoritative_result.get("error_message", "") or "")
+            auto_area_connectivity_id = authoritative_result.get("area_connectivity_id")
+            debug(
+                f"TABLETOP MODE: Authoritative same-module transition check applies=True valid={is_valid} "
+                f"path={authoritative_result.get('path', [])}",
+                category="location_transitions",
+            )
+        else:
+            # Fallback for cross-module/global graph checks.
+            is_valid, error_message, auto_area_connectivity_id = validate_location_transition(
+                location_graph, current_location_id, new_location_name_or_id
+            )
         
         if not is_valid:
             # Check if this is a cross-module transition attempt
@@ -1486,10 +1507,20 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 else:
                     error(f"FAILURE: Failed to update character info for {character_name}", category="character_updates")
                     print(f"ERROR: Failed to update character info for {character_name}")
+                    return create_return(
+                        status="error",
+                        needs_update=False,
+                        response_data={"error_message": f"Character update failed for {character_name}."},
+                    )
             except Exception as e:
                 error(f"FAILURE: Exception in character update", exception=e, category="character_updates")
                 # Use print with separate arguments to avoid format string interpretation
                 print("ERROR: Failed to update character info:", str(e))
+                return create_return(
+                    status="error",
+                    needs_update=False,
+                    response_data={"error_message": f"Character update exception for {character_name}: {str(e)}"},
+                )
             finally:
                 # Always reset status after character update completes
                 try:
@@ -1506,6 +1537,11 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 status_ready()
             except Exception:
                 pass
+            return create_return(
+                status="error",
+                needs_update=False,
+                response_data={"error_message": "Character update failed: no character name available."},
+            )
 
 
     elif action_type == ACTION_REQUEST_ROLL:
