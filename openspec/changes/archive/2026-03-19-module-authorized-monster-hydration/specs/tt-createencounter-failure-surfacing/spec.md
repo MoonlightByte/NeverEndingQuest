@@ -1,7 +1,5 @@
-## Purpose
+## MODIFIED Requirements
 
-Define explicit non-misleading failure surfacing when `createEncounter` cannot generate required combat data.
-## Requirements
 ### Requirement: createEncounter failure SHALL be explicit and non-misleading
 When encounter generation fails because required monster stat files are missing or because a requested monster is not authorized by module-authored content, the system SHALL provide actionable error feedback and SHALL NOT present misleading combat-start narration.
 
@@ -31,4 +29,3 @@ When encounter generation fails because required monster stat files are missing 
 - **WHEN** encounter generation succeeds
 - **THEN** normal narration and combat-start flow SHALL proceed unchanged
 - **AND** single-player and multi-player non-failure paths SHALL remain compatible
-

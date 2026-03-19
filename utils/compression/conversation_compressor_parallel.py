@@ -23,6 +23,7 @@ sys.path.append('/mnt/c/dungeon_master_v1')
 from utils.compression.ai_narrative_compressor_agentic import compress_with_ai
 from utils.compression.location_compressor import compress_location
 from utils.compression.character_sheet_conversation_compressor import CharacterSheetConversationCompressor
+from utils.location_context_hygiene import inject_location_provenance
 from model_config import COMPRESSION_MAX_WORKERS
 
 class ParallelConversationCompressor:
@@ -388,6 +389,16 @@ class ParallelConversationCompressor:
                                 header = "=== LOCATION CHRONICLE ===\n\n[IMPORTANT: This is the canonical record of actual events. Reference these as historical fact when narrating.]"
                         
                         compressed_replacement = f"{header}\n\n{compressed_text}"
+                        if header.startswith("=== LOCATION CHRONICLE:"):
+                            location_id_match = re.search(r'\(([A-Z]+\d+)\)', header)
+                            location_id = location_id_match.group(1) if location_id_match else "unknown"
+                            compressed_replacement = inject_location_provenance(
+                                compressed_replacement,
+                                "unknown",
+                                "unknown",
+                                location_id,
+                                "location_chronicle",
+                            )
                         modified_content = modified_content.replace(full_match, compressed_replacement)
                 
                 new_message = message.copy()

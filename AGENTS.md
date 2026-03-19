@@ -1021,6 +1021,51 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Runtime Context Hygiene Stabilization (COMPLETED - 2026-03-19)
+
+**Status:** COMPLETED - archived runtime hot-path stabilization for derived location context provenance, module integration quarantine, and reconciler hygiene.
+
+**OpenSpec Archive:**
+- `openspec/changes/archive/2026-03-19-tt-runtime-context-hygiene-stabilization/`
+
+**Implementation Summary:**
+- Added `utils/location_context_hygiene.py` for derived location-memory provenance tagging and scene-match validation.
+- Updated `main.py` narrator payload hygiene to load current `party_tracker.json` scene state and exclude derived location summaries/chronicles from live narrator payload reuse.
+- Added provenance tagging to derived location summaries and chronicles in `core/ai/cumulative_summary.py`, `core/ai/incremental_compression.py`, `utils/compression/conversation_compressor_parallel.py`, and `utils/compression/multi_pc_conversation_compressor.py`.
+- Quarantined automatic module scans in `core/managers/campaign_manager.py` to a single process-local startup attempt, reducing repeated live-turn Keep_of_Doom integration retries.
+- Hardened `utils/reconcile_location_state.py` to skip derived location-context blocks so mismatched summaries cannot poison hostile-state reconciliation.
+- Synced main specs by creating:
+  - `openspec/specs/tt-location-summary-provenance-guard/spec.md`
+  - `openspec/specs/tt-module-integration-runtime-quarantine/spec.md`
+  - `openspec/specs/tt-location-reconciler-history-hygiene/spec.md`
+  - updated `openspec/specs/tt-narrator-scene-context-hygiene/spec.md`
+
+**Verification:**
+- `python3 -m py_compile main.py core/managers/campaign_manager.py core/ai/cumulative_summary.py core/ai/incremental_compression.py utils/compression/multi_pc_conversation_compressor.py utils/compression/conversation_compressor_parallel.py utils/reconcile_location_state.py utils/location_context_hygiene.py scripts/test_runtime_context_hygiene_stabilization.py scripts/test_narrator_prompt_validation_refactor.py` -> PASS
+- `python3 scripts/test_runtime_context_hygiene_stabilization.py` -> PASS
+- `python3 scripts/test_narrator_prompt_validation_refactor.py` -> PASS
+- `openspec validate tt-runtime-context-hygiene-stabilization` -> VALID (archived)
+
+### Module-Authorized Monster Hydration (COMPLETED - 2026-03-19)
+
+**Status:** COMPLETED - archived authored-module monster authorization and runtime hydration path for encounter creation.
+
+**OpenSpec Archive:**
+- `openspec/changes/archive/2026-03-19-module-authorized-monster-hydration/`
+
+**Implementation Summary:**
+- Added `utils/module_monster_authority.py` to derive a module-authoritative monster roster from existing monster files plus authored `monsters`/`creatures` fields while excluding known NPC names.
+- Updated `core/generators/combat_builder.py` so TABLETOP MODE treats `authorized + missing` monsters as hydratable via reuse-first resolution and builder fallback, while `unauthorized + missing` monsters fail closed.
+- Updated `core/ai/action_handler.py` to surface distinct `unauthorized_monster_reference` versus `authorized_monster_hydration_failed` encounter failures.
+- Added focused regression coverage in `scripts/test_module_authorized_monster_hydration.py`.
+- Synced main specs by creating `openspec/specs/tt-module-authorized-monster-hydration/spec.md` and updating `openspec/specs/tt-createencounter-failure-surfacing/spec.md`.
+
+**Verification:**
+- `python3 -m py_compile utils/module_monster_authority.py core/generators/combat_builder.py core/ai/action_handler.py scripts/test_module_authorized_monster_hydration.py` -> PASS
+- `python3 scripts/test_module_authorized_monster_hydration.py` -> PASS
+- `python3 scripts/c5_regression_combat.py` -> PASS
+- `openspec validate module-authorized-monster-hydration` -> VALID (archived)
+
 ### Authoritative Transition + Inventory Runtime Reset (COMPLETED - 2026-03-19)
 
 **Status:** COMPLETED - archived authority reset hardening for same-module movement and tracked-item possession.

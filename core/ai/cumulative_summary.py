@@ -67,6 +67,7 @@ from utils.file_operations import safe_write_json, safe_read_json
 from utils.encoding_utils import sanitize_text, safe_json_load, safe_json_dump
 from core.managers.status_manager import status_generating_summary, status_updating_journal, status_compressing_history
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.location_context_hygiene import inject_location_provenance
 from utils.ai_client_factory import create_chat_client, get_chat_model_name, get_model_config  # OPENROUTER: Multi-provider support
 
 # Set script name for logging
@@ -448,9 +449,20 @@ def compress_conversation_history_on_transition(conversation_history, leaving_lo
                 new_history.append(conversation_history[i])
             
             # 2. Insert the summary as an assistant message
+            summary_content = f"=== LOCATION SUMMARY ===\n\n{leaving_location_name}:\n{'-' * len(leaving_location_name + ':')}\n{summary}"
+            location_id_match = re.search(r'\(([A-Z]+\d+)\)', leaving_location_name)
+            location_id = location_id_match.group(1) if location_id_match else "unknown"
+            party_tracker = safe_json_load("party_tracker.json") or {}
+            world_conditions = party_tracker.get("worldConditions", {}) if isinstance(party_tracker, dict) else {}
             summary_message = {
                 "role": "assistant",
-                "content": f"=== LOCATION SUMMARY ===\n\n{leaving_location_name}:\n{'-' * len(leaving_location_name + ':')}\n{summary}"
+                "content": inject_location_provenance(
+                    summary_content,
+                    str(party_tracker.get("module", "") or "").replace(" ", "_"),
+                    str(world_conditions.get("currentAreaId", "") or "unknown"),
+                    location_id,
+                    "location_summary",
+                )
             }
             new_history.append(summary_message)
             
@@ -818,9 +830,20 @@ def check_and_compact_missing_summaries(conversation_history, party_tracker_data
                     new_history.append(conversation_history[j])
                 
                 # Insert the summary (replacing the content between transition and next boundary)
+                summary_content = f"=== LOCATION SUMMARY ===\n\n{location_name}:\n{'-' * len(location_name + ':')}\n{summary}"
+                location_id_match = re.search(r'\(([A-Z]+\d+)\)', location_name)
+                location_id = location_id_match.group(1) if location_id_match else "unknown"
+                party_tracker = safe_json_load("party_tracker.json") or {}
+                world_conditions = party_tracker.get("worldConditions", {}) if isinstance(party_tracker, dict) else {}
                 summary_message = {
                     "role": "assistant",
-                    "content": f"=== LOCATION SUMMARY ===\n\n{location_name}:\n{'-' * len(location_name + ':')}\n{summary}"
+                    "content": inject_location_provenance(
+                        summary_content,
+                        str(party_tracker.get("module", "") or "").replace(" ", "_"),
+                        str(world_conditions.get("currentAreaId", "") or "unknown"),
+                        location_id,
+                        "location_summary",
+                    )
                 }
                 new_history.append(summary_message)
                 

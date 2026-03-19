@@ -1068,12 +1068,37 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                 # Extract missing monster info from builder output
                 error_detail = "Combat encounter creation failed."
                 if result.stdout:
-                    # Look for TABLETOP MODE monster errors in stdout
                     import re
-                    monster_match = re.search(r"TABLETOP MODE: Monster '([^']+)' not found in bestiary at ([^\.]+\.json)", result.stdout)
-                    if monster_match:
-                        monster_name = monster_match.group(1)
-                        expected_file = monster_match.group(2)
+                    unauthorized_match = re.search(
+                        r"unauthorized_monster_reference: Monster '([^']+)' is not authorized by authored module content for '([^']+)'",
+                        result.stdout,
+                    )
+                    hydration_match = re.search(
+                        r"authorized_monster_hydration_failed: Monster '([^']+)' is authorized by authored module content but hydration failed for '([^']+)'",
+                        result.stdout,
+                    )
+                    legacy_match = re.search(
+                        r"TABLETOP MODE: Monster '([^']+)' not found in bestiary at ([^\.]+\.json)",
+                        result.stdout,
+                    )
+                    if unauthorized_match:
+                        monster_name = unauthorized_match.group(1)
+                        module_name = unauthorized_match.group(2)
+                        error_detail = (
+                            f"Combat encounter creation failed: Monster '{monster_name}' is not authorized by "
+                            f"authored module content for '{module_name}'. Correct the encounter content or add "
+                            f"the creature to authored module monster sources before retrying."
+                        )
+                    elif hydration_match:
+                        monster_name = hydration_match.group(1)
+                        expected_file = hydration_match.group(2)
+                        error_detail = (
+                            f"Combat encounter creation failed: Monster '{monster_name}' is authorized by "
+                            f"authored module content but hydration failed for '{expected_file}'."
+                        )
+                    elif legacy_match:
+                        monster_name = legacy_match.group(1)
+                        expected_file = legacy_match.group(2)
                         error_detail = f"Combat encounter creation failed: Monster '{monster_name}' is referenced in module content but missing stat file '{expected_file}'. Add the monster stat file or correct the reference."
                     elif "Failed to generate encounter" in result.stdout:
                         error_detail = "Combat encounter creation failed. Check game logs for details."

@@ -1,8 +1,5 @@
-# tt-narrator-scene-context-hygiene Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change narrator-scene-context-hygiene-and-failclosed-ux. Update Purpose after archive.
-## Requirements
 ### Requirement: Live narrator payload SHALL exclude historical location summaries and chronicles
 Outbound payload assembly for the live narrator SHALL omit assistant historical location-summary and location-chronicle blocks from prior scenes, and SHALL reuse derived location-memory blocks only when their provenance matches the active scene.
 
@@ -38,4 +35,3 @@ Scene-context hygiene for the narrator SHALL be applied only to the live narrato
 - **WHEN** narrator payload sanitation excludes historical summaries, atlas content, or verbose completed-plot prose
 - **THEN** canonical stored conversation history SHALL remain unchanged
 - **AND** validator fail-closed behavior for deterministic scene/state checks SHALL remain unchanged
-

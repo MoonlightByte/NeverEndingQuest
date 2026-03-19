@@ -575,17 +575,17 @@ class TestNarratorSceneContextHygieneContracts(unittest.TestCase):
 
     def test_narrator_payload_hygiene_helpers_exist(self):
         source = self._load_main_source()
-        self.assertIn("def _sanitize_narrator_payload(messages_to_send):", source)
+        self.assertIn("def _sanitize_narrator_payload(messages_to_send, current_module_name=\"\", current_location_id=\"\"):", source)
         self.assertIn("def _compact_plot_status_for_narrator(plot_content):", source)
         self.assertIn("def _is_historical_location_context_message(message):", source)
         self.assertIn("def _is_full_module_world_atlas_message(message):", source)
 
     def test_narrator_payload_filters_location_history_and_atlas(self):
         source = self._load_main_source()
-        self.assertIn("=== LOCATION SUMMARY ===", source)
-        self.assertIn("=== LOCATION CHRONICLE ===", source)
+        self.assertIn("is_derived_location_context_message", source)
+        self.assertIn("derived_context_matches_scene", source)
         self.assertIn("=== COMPLETE MODULE WORLD ATLAS ===", source)
-        self.assertIn("messages_to_send = _sanitize_narrator_payload(messages_to_send)", source)
+        self.assertIn("messages_to_send = _sanitize_narrator_payload(messages_to_send, current_module_name, current_location_id)", source)
 
     def test_plot_compaction_preserves_active_upcoming_and_omits_completed_prose(self):
         source = self._load_main_source()

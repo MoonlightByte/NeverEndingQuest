@@ -19,6 +19,7 @@ import config
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.enhanced_logger import info, debug, warning, error
 from utils.ai_client_factory import create_chat_client, get_chat_model_name
+from utils.location_context_hygiene import inject_location_provenance
 
 class IncrementalLocationCompressor:
     """Handles incremental compression of messages at current location."""
@@ -198,6 +199,15 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
                     f"[SUMMARY OF EVENTS AT THIS LOCATION]\n\n"
                     f"The following is a summary of your party's activities at the current location ({location_id}) "
                     f"up to this point:\n\n{response}"
+                )
+                party_tracker = safe_json_load("party_tracker.json") or {}
+                world_conditions = party_tracker.get("worldConditions", {}) if isinstance(party_tracker, dict) else {}
+                summary_content = inject_location_provenance(
+                    summary_content,
+                    str(party_tracker.get("module", "") or "").replace(" ", "_"),
+                    str(world_conditions.get("currentAreaId", "") or location_info.get("area_id", "")),
+                    str(location_id),
+                    "location_summary",
                 )
                 
                 return {

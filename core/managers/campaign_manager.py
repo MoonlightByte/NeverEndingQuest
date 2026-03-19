@@ -82,6 +82,8 @@ set_script_name(__name__)
 
 class CampaignManager:
     """Manages campaign state and inter-module continuity"""
+
+    _module_scan_attempted = False
     
     def __init__(self):
         """Initialize campaign manager"""
@@ -97,8 +99,11 @@ class CampaignManager:
         # Load or create campaign state
         self.campaign_data = self._load_campaign_data()
         
-        # Scan for new modules on startup (delayed import to avoid circular imports)
-        self._scan_for_new_modules()
+        # TABLETOP MODE: Quarantine module auto-integration from the ordinary
+        # live-turn path by allowing at most one process-local scan attempt.
+        if not CampaignManager._module_scan_attempted:
+            CampaignManager._module_scan_attempted = True
+            self._scan_for_new_modules()
     
     def _load_campaign_data(self) -> Dict[str, Any]:
         """Load campaign data or create default"""

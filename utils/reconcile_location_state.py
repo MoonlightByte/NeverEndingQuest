@@ -16,6 +16,7 @@ from openai import OpenAI
 from config import OPENAI_API_KEY, NPC_INFO_UPDATE_MODEL # Using a smaller, faster model is fine
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_read_json, safe_write_json
+from utils.location_context_hygiene import is_derived_location_context_message
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
 # Set script name for logging
@@ -86,6 +87,9 @@ def run(area_id, location_id, conversation_history_segment):
     info(f"RECONCILER: Processing {len(conversation_history_segment)} messages for location {location_id}", category="reconciliation")
     
     for msg in conversation_history_segment:
+        if is_derived_location_context_message(msg):
+            debug("RECONCILER: Skipping derived location context block in reconciliation input", category="reconciliation")
+            continue
         role = "Player" if msg.get("role") == "user" else "DM"
         content = msg.get("content", "")
         # Clean up DM notes for the prompt

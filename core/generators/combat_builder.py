@@ -16,6 +16,7 @@ from termcolor import colored
 import logging
 import shutil
 from utils.module_path_manager import ModulePathManager
+from utils.module_monster_authority import materialize_authorized_monster_file
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
 # Set script name for logging
@@ -145,43 +146,55 @@ def load_or_create_monster(monster_type):
     monster_file = path_manager.get_monster_path(monster_type)
     monster_data = load_json(monster_file)
     if not monster_data:
-        # TABLETOP MODE: In multiplayer mode, refuse to auto-create monsters from
-        # hallucinated names. Only pre-existing bestiary files are valid combat targets.
-        # This prevents the narrator LLM from inventing creatures (e.g., "spectral servant")
-        # that get auto-generated as real stat blocks via monster_builder.py.
-        # In single-player mode, auto-creation is preserved as an upstream feature.
+        # TABLETOP MODE: Only authored module monsters may be hydrated at runtime.
         try:
             from config import MULTIPLAYER_MODE
             if MULTIPLAYER_MODE:
-                error(f"TABLETOP MODE: Monster '{monster_type}' not found in bestiary at "
-                      f"{monster_file}. Refusing to auto-create - narrator may have "
-                      f"hallucinated this creature.", category="combat_builder")
-                return None
-        except ImportError:
-            pass  # config.MULTIPLAYER_MODE not available, use upstream behavior
-        # --- Upstream auto-creation path (single-player mode) ---
-        print(f"[COMBAT_BUILDER] Monster file not found, creating: {monster_file}")
-        warning(f"MONSTER_LOADING: Monster loading ({monster_type}) - attempting creation", category="combat_builder")
-        # Get the path to monster_builder.py relative to the current file
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        monster_builder_path = os.path.join(current_dir, "monster_builder.py")
-        result = subprocess.run([sys.executable, monster_builder_path, monster_type], capture_output=True, text=True)
-        if result.returncode == 0:
-            print(f"[COMBAT_BUILDER] Monster creation successful: {monster_type}")
-            info(f"SUCCESS: Monster builder ({monster_type}) - PASS", category="combat_builder")
-            if os.path.exists(monster_file):
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                monster_builder_path = os.path.join(current_dir, "monster_builder.py")
+                resolution_result = materialize_authorized_monster_file(
+                    current_module,
+                    monster_type,
+                    monster_builder_path,
+                )
+                if not resolution_result.get("ok"):
+                    error_class = resolution_result.get("error_class", "authorized_monster_hydration_failed")
+                    error_message = resolution_result.get("error_message", "Monster resolution failed.")
+                    print(f"[COMBAT_BUILDER] {error_class}: {error_message}")
+                    if resolution_result.get("builder_error"):
+                        print(f"[COMBAT_BUILDER] Builder error: {resolution_result.get('builder_error')}")
+                    error(f"TABLETOP MODE: {error_message}", category="combat_builder")
+                    return None
+
                 monster_data = load_json(monster_file)
                 if not monster_data:
-                    print(colored(f"Error: Failed to load newly created monster data for {monster_type}", "red"))
+                    print(colored(f"Error: Failed to load materialized monster data for {monster_type}", "red"))
                     return None
             else:
-                print(colored(f"Error: Monster file {monster_file} was not created", "red"))
+                raise ImportError
+        except ImportError:
+            # --- Upstream auto-creation path (single-player mode) ---
+            print(f"[COMBAT_BUILDER] Monster file not found, creating: {monster_file}")
+            warning(f"MONSTER_LOADING: Monster loading ({monster_type}) - attempting creation", category="combat_builder")
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            monster_builder_path = os.path.join(current_dir, "monster_builder.py")
+            result = subprocess.run([sys.executable, monster_builder_path, monster_type], capture_output=True, text=True)
+            if result.returncode == 0:
+                print(f"[COMBAT_BUILDER] Monster creation successful: {monster_type}")
+                info(f"SUCCESS: Monster builder ({monster_type}) - PASS", category="combat_builder")
+                if os.path.exists(monster_file):
+                    monster_data = load_json(monster_file)
+                    if not monster_data:
+                        print(colored(f"Error: Failed to load newly created monster data for {monster_type}", "red"))
+                        return None
+                else:
+                    print(colored(f"Error: Monster file {monster_file} was not created", "red"))
+                    return None
+            else:
+                print(f"[COMBAT_BUILDER] Monster creation failed: {monster_type}")
+                print(f"[COMBAT_BUILDER] Error output: {result.stderr}")
+                error(f"FAILURE: Monster builder ({monster_type}) - FAIL", category="combat_builder")
                 return None
-        else:
-            print(f"[COMBAT_BUILDER] Monster creation failed: {monster_type}")
-            print(f"[COMBAT_BUILDER] Error output: {result.stderr}")
-            error(f"FAILURE: Monster builder ({monster_type}) - FAIL", category="combat_builder")
-            return None
     else:
         print(f"[COMBAT_BUILDER] Monster loaded from file: {monster_type}")
     return monster_data

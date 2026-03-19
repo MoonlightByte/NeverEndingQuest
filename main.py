@@ -150,6 +150,10 @@ from utils.module_path_manager import ModulePathManager
 from utils.authoritative_state_packet import build_authoritative_state_packet
 from utils.turn_time_sync import apply_turn_time_sync
 from utils.inventory_possession_authority import evaluate_tracked_item_possession_query
+from utils.location_context_hygiene import (
+    derived_context_matches_scene,
+    is_derived_location_context_message,
+)
 from utils.tracked_transfer_runtime import (
     execute_atomic_transfer_pair,
     extract_atomic_tracked_transfer_pairs,
@@ -3286,17 +3290,8 @@ def save_conversation_history(history):
         error(f"FAILURE: Failed to save conversation history", exception=e, category="file_operations")
 
 def _is_historical_location_context_message(message):
-    """Return True for historical location summary/chronicle assistant blocks."""
-    if not isinstance(message, dict):
-        return False
-    if message.get("role") != "assistant":
-        return False
-
-    content = str(message.get("content", ""))
-    return (
-        "=== LOCATION SUMMARY ===" in content
-        or "=== LOCATION CHRONICLE ===" in content
-    )
+    """Return True for derived assistant location-memory blocks."""
+    return is_derived_location_context_message(message)
 
 
 def _is_full_module_world_atlas_message(message):
@@ -3380,7 +3375,7 @@ def _compact_plot_status_for_narrator(plot_content):
     return "\n".join(compact_lines)
 
 
-def _sanitize_narrator_payload(messages_to_send):
+def _sanitize_narrator_payload(messages_to_send, current_module_name="", current_location_id=""):
     """Sanitize outbound narrator payload without mutating canonical history."""
     sanitized_messages = []
 
@@ -3389,6 +3384,11 @@ def _sanitize_narrator_payload(messages_to_send):
             continue
 
         if _is_historical_location_context_message(message):
+            if not derived_context_matches_scene(message, current_module_name, current_location_id):
+                continue
+            # TABLETOP MODE: even matching derived location summaries remain excluded
+            # from live narrator payload to prevent summary poisoning; current scene
+            # packet plus recent raw turns are the preferred truth source.
             continue
         if _is_full_module_world_atlas_message(message):
             continue
@@ -3427,6 +3427,9 @@ def get_ai_response(conversation_history, validation_retry_count=0, transient_co
         create_chat_client
     )
     
+    # Load current scene state for payload hygiene and routing decisions.
+    party_tracker_data = load_json_file("party_tracker.json") or {}
+
     # Get the last user message for action prediction
     user_input = ""
     for msg in reversed(conversation_history):
@@ -3542,7 +3545,9 @@ def get_ai_response(conversation_history, validation_retry_count=0, transient_co
     
     # TABLETOP MODE: Narrator payload hygiene pass.
     # This pass is outbound-only and does not mutate canonical conversation history.
-    messages_to_send = _sanitize_narrator_payload(messages_to_send)
+    current_module_name = str((party_tracker_data or {}).get("module", "") or "").replace(" ", "_")
+    current_location_id = str((((party_tracker_data or {}).get("worldConditions", {}) or {}).get("currentLocationId", "") or ""))
+    messages_to_send = _sanitize_narrator_payload(messages_to_send, current_module_name, current_location_id)
 
     # TABLETOP MODE: Prompt singularity guard.
     # Ensure exactly one canonical main system prompt in outbound payload,
