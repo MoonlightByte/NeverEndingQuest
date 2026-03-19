@@ -232,8 +232,8 @@ class TestC1C2MainLoopHelpers(unittest.TestCase):
         msg = msg_fn()
         self.assertEqual(
             msg,
-            "[SYSTEM] Unable to generate a valid response after multiple attempts. "
-            "The game state may be inconsistent. Please try a different action or restart the session.",
+            "[SYSTEM] I could not process that turn right now. "
+            "Please try the action again in a simpler sentence, or try a different action.",
         )
 
     def test_fail_closed_path_present_and_fail_open_text_removed(self):
@@ -949,6 +949,14 @@ class TestInterpreterSafeSubprocessContracts(unittest.TestCase):
         self.assertIn("import sys", source)
         self.assertIn("[sys.executable, combat_builder_path]", source)
         self.assertNotIn('["python", combat_builder_path]', source)
+
+    def test_process_action_does_not_shadow_sys_locally(self):
+        source = self._read_source("core/ai/action_handler.py")
+        process_start = source.find("def process_action(")
+        self.assertGreater(process_start, 0, "process_action definition must exist")
+        process_tail = source[process_start:]
+        self.assertNotIn("\n            import sys\n", process_tail)
+        self.assertNotIn("\n        import sys\n", process_tail)
 
     def test_combat_builder_nested_launches_use_active_interpreter(self):
         source = self._read_source("core/generators/combat_builder.py")
