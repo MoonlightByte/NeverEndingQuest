@@ -1501,6 +1501,34 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         print(f"ERROR: {error_msg}")
         return (False, error_msg)
 
+    # TABLETOP MODE: Deterministic party-item transfer recovery before skip routing.
+    # Ensures narration-only turns cannot bypass explicit transfer/self-stow reconciliation.
+    try:
+        from utils.scene_item_reconcile import evaluate_party_item_transfer_recovery_decision
+
+        inventory_recovery_decision = evaluate_party_item_transfer_recovery_decision(
+            parsed_response=response_json,
+            user_utterance=user_input or "",
+            conversation_history=conversation_history,
+            party_tracker_data=party_tracker_data,
+        )
+        inventory_recovery_actions = inventory_recovery_decision.get("inferred_actions", [])
+        inventory_recovery_mode = str(inventory_recovery_decision.get("reconciliation", "none") or "none")
+        if isinstance(inventory_recovery_actions, list) and inventory_recovery_actions:
+            if not isinstance(response_json.get("actions"), list):
+                response_json["actions"] = []
+            response_json["actions"].extend(inventory_recovery_actions)
+            response_to_validate = json.dumps(response_json, ensure_ascii=False)
+            info(
+                f"STATE_SYNC: Inventory transfer recovery injected {len(inventory_recovery_actions)} inferred action(s) mode={inventory_recovery_mode}",
+                category="character_updates",
+            )
+    except Exception as e:
+        warning(
+            f"STATE_SYNC: Inventory transfer recovery degraded: {str(e)}",
+            category="character_updates",
+        )
+
     # TABLETOP MODE: Deterministic mechanics precheck for explicit contradictions
     # Run before LLM validator to fail closed on parseable HP/slot/inventory contradictions.
     try:
@@ -4328,12 +4356,105 @@ def main_game_loop():
                     debug("SUCCESS: Startup narration added to conversation history", category="startup")
     
         party_tracker_data = load_json_file("party_tracker.json")
-    
+
         # Verify party tracker loaded successfully
         if not party_tracker_data:
             print("[ERROR] Party tracker not found after setup. Something went wrong.")
             return
-    
+
+        # TABLETOP MODE: Startup scene-location recovery before stale tracker values
+        # are reused for location load, GUI top bar, and history refresh.
+        try:
+            from utils.travel_state_sync_guard import evaluate_startup_scene_location_recovery_decision
+
+            startup_module_name = str(party_tracker_data.get("module", "") or "").replace(" ", "_")
+            startup_path_manager = ModulePathManager(startup_module_name)
+            startup_area_id = str(party_tracker_data.get("worldConditions", {}).get("currentAreaId", "") or "")
+            startup_area_data = safe_read_json(startup_path_manager.get_area_path(startup_area_id)) if startup_area_id else {}
+
+            startup_location_data = None
+            startup_location_id = str(party_tracker_data.get("worldConditions", {}).get("currentLocationId", "") or "")
+            if isinstance(startup_area_data, dict):
+                startup_location_data = next(
+                    (
+                        loc for loc in startup_area_data.get("locations", [])
+                        if isinstance(loc, dict) and str(loc.get("locationId", "") or "").strip() == startup_location_id
+                    ),
+                    None,
+                )
+
+            startup_packet = build_authoritative_state_packet(
+                party_tracker_data,
+                area_data=startup_area_data if isinstance(startup_area_data, dict) else None,
+                location_data=startup_location_data,
+            )
+            startup_topology = startup_packet.get("topology", {}) if isinstance(startup_packet, dict) else {}
+
+            startup_module_locations = []
+            for location in startup_topology.get("module_locations", []):
+                if not isinstance(location, dict):
+                    continue
+                location_id = str(location.get("id", "") or "").strip()
+                location_name = str(location.get("name", "") or "").strip()
+                if not location_id or not location_name:
+                    continue
+                startup_module_locations.append(
+                    {
+                        "id": location_id,
+                        "name": location_name,
+                        "area_id": str(location.get("area_id", "") or "").strip(),
+                        "area_name": str(location.get("area_name", "") or "").strip(),
+                        "source_room_title": str(location.get("source_room_title", "") or "").strip(),
+                    }
+                )
+
+            startup_known_location_names = [
+                str(name).strip()
+                for name in startup_topology.get("known_location_names", [])
+                if isinstance(name, str) and name.strip()
+            ]
+            if not startup_known_location_names:
+                startup_known_location_names = [loc.get("name", "") for loc in startup_module_locations if loc.get("name")]
+
+            startup_location_decision = evaluate_startup_scene_location_recovery_decision(
+                conversation_history=conversation_history,
+                current_location_id=startup_location_id,
+                current_area_id=startup_area_id,
+                known_location_names=startup_known_location_names,
+                module_locations=startup_module_locations,
+            )
+            startup_inferred_actions = startup_location_decision.get("inferred_actions", [])
+            startup_recovery_mode = str(startup_location_decision.get("reconciliation", "none") or "none")
+
+            if isinstance(startup_inferred_actions, list) and startup_inferred_actions:
+                recovery_params = startup_inferred_actions[0].get("parameters", {})
+                if isinstance(recovery_params, dict):
+                    world_conditions = party_tracker_data.setdefault("worldConditions", {})
+                    recovered_location_id = str(recovery_params.get("currentLocationId", "") or "").strip()
+                    recovered_location_name = str(recovery_params.get("currentLocation", "") or "").strip()
+                    recovered_area_id = str(recovery_params.get("currentAreaId", "") or "").strip()
+                    recovered_area_name = str(recovery_params.get("currentArea", "") or "").strip()
+
+                    if recovered_location_id and recovered_location_name:
+                        world_conditions["currentLocationId"] = recovered_location_id
+                        world_conditions["currentLocation"] = recovered_location_name
+                        if recovered_area_id:
+                            world_conditions["currentAreaId"] = recovered_area_id
+                        if recovered_area_name:
+                            world_conditions["currentArea"] = recovered_area_name
+
+                        safe_write_json("party_tracker.json", party_tracker_data)
+                        info(
+                            f"STATE_SYNC: Startup scene location recovered to {recovered_location_id} mode={startup_recovery_mode}",
+                            category="location_transitions",
+                        )
+                        party_tracker_data = load_json_file("party_tracker.json") or party_tracker_data
+        except Exception as e:
+            warning(
+                f"STATE_SYNC: Startup scene location recovery degraded: {str(e)}",
+                category="location_transitions",
+            )
+
         # Path manager already initialized above for both paths
         # Just verify it's using the correct module
         debug(f"INITIALIZATION: Path manager already initialized - module_name: '{path_manager.module_name}', module_dir: '{path_manager.module_dir}'", category="module_management")

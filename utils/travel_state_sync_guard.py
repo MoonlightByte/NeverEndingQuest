@@ -53,6 +53,13 @@ _PROGRESS_PATTERNS = [
 ]
 
 
+_SCENE_PRESENCE_PATTERNS = [
+    r"\byou\s+(?:are|stand|remain|wait)(?:\s+now)?\s+(?:in|inside|within|at)\b",
+    r"\bthe\s+party\s+(?:is|stands|remains)\s+(?:in|inside|within|at)\b",
+    r"\bcurrently\s+(?:in|at)\b",
+]
+
+
 _DEPARTURE_PATTERNS = [
     r"\bfrom\b",
     r"\bleave(?:s|s|d|ing)?\b",
@@ -541,6 +548,102 @@ def evaluate_narrated_location_arrival_decision(
         "valid": True,
         "inferred_actions": inferred_actions,
         "reconciliation": "narrated_location_arrival_sync",
+    }
+
+
+def evaluate_startup_scene_location_recovery_decision(
+    conversation_history: List[Dict[str, Any]],
+    current_location_id: str,
+    current_area_id: str = "",
+    known_location_names: Optional[List[str]] = None,
+    module_locations: Optional[List[Dict[str, Any]]] = None,
+    max_messages: int = 12,
+) -> Dict[str, Any]:
+    """Recover stale startup location from recent uniquely resolved scene evidence."""
+    if not isinstance(conversation_history, list) or not current_location_id:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    location_catalog = _build_location_catalog(module_locations, known_location_names)
+    if not location_catalog:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    candidate_location_ids: List[str] = []
+    recent_entries: List[Dict[str, Any]] = []
+
+    for entry in reversed(conversation_history):
+        if len(recent_entries) >= max_messages:
+            break
+        if not isinstance(entry, dict):
+            continue
+        role = str(entry.get("role") or "")
+        if role not in {"assistant", "user"}:
+            continue
+        content = entry.get("content")
+        if not isinstance(content, str) or not content.strip():
+            continue
+        recent_entries.append(entry)
+
+    if not recent_entries:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    for entry in recent_entries:
+        normalized_content = _normalize_text(str(entry.get("content") or ""))
+        if not normalized_content:
+            continue
+
+        mentions = _extract_location_mentions(normalized_content, list(location_catalog.keys()))
+        if len(mentions) != 1:
+            continue
+
+        mention = next(iter(mentions))
+        location_entry = location_catalog.get(mention, {})
+        location_id = str(location_entry.get("id", "") or "").strip()
+        if not location_id or location_id == current_location_id:
+            continue
+
+        progress_signal = _contains_any_pattern(normalized_content, _PROGRESS_PATTERNS)
+        arrival_signal = _contains_any_pattern(normalized_content, _ARRIVAL_PATTERNS)
+        presence_signal = _contains_any_pattern(normalized_content, _SCENE_PRESENCE_PATTERNS)
+        if progress_signal and not arrival_signal and not presence_signal:
+            continue
+        if not arrival_signal and not presence_signal:
+            continue
+
+        candidate_location_ids.append(location_id)
+
+    unique_candidates = sorted(set(candidate_location_ids))
+    if len(unique_candidates) != 1:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    destination_id = unique_candidates[0]
+    destination_entry = None
+    for _, entry in location_catalog.items():
+        if str(entry.get("id", "") or "").strip() == destination_id:
+            destination_entry = entry
+            break
+
+    if not isinstance(destination_entry, dict):
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    destination_name = str(destination_entry.get("name", "") or "").strip()
+    destination_area_id = str(destination_entry.get("area_id", "") or "").strip() or current_area_id
+    destination_area_name = str(destination_entry.get("area_name", "") or "").strip()
+    if not destination_name:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    inferred_action = {
+        "action": "updatePartyTracker",
+        "parameters": {
+            "currentLocationId": destination_id,
+            "currentLocation": destination_name,
+            "currentAreaId": destination_area_id,
+            "currentArea": destination_area_name,
+        },
+    }
+    return {
+        "valid": True,
+        "inferred_actions": [inferred_action],
+        "reconciliation": "startup_scene_location_recovery",
     }
 
 

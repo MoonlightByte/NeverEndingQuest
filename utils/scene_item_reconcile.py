@@ -14,9 +14,34 @@ Narrow deterministic reconciliation for explicit narrated scene gifts.
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from utils.pc_manager import get_character_state
 
-_TRANSFER_VERBS_GIVER = ("give", "gives", "hand", "hands", "offer", "offers", "provide", "provides")
+
+_TRANSFER_VERBS_GIVER = (
+    "give",
+    "gives",
+    "gave",
+    "hand",
+    "hands",
+    "handed",
+    "offer",
+    "offers",
+    "offered",
+    "provide",
+    "provides",
+    "provided",
+    "pass",
+    "passes",
+    "passed",
+    "entrust",
+    "entrusts",
+    "entrusted",
+    "transfer",
+    "transfers",
+    "transferred",
+)
 _TRANSFER_VERBS_RECIPIENT = ("take", "takes", "receive", "receives")
+_SELF_STOW_VERBS = ("place", "places", "placed", "stow", "stows", "stowed", "store", "stores", "stored", "put", "puts")
 _QUANTITY_WORDS = {
     "one": 1,
     "two": 2,
@@ -38,6 +63,7 @@ _VAGUE_ITEM_TERMS = {
     "reward",
     "rewards",
 }
+_ITEM_TOKEN_STOPWORDS = {"the", "a", "an", "of", "and", "to", "in", "into", "for", "from", "saint"}
 
 
 def _normalize_name(value: str) -> str:
@@ -58,7 +84,6 @@ def _latest_user_text(conversation_history: List[Dict[str, Any]]) -> str:
 
 def _has_matching_inventory_add_action(actions: List[Dict[str, Any]], character_name: str, item_name: str) -> bool:
     target_character = _normalize_name(character_name)
-    target_item = item_name.strip().lower()
     for action in actions:
         if not isinstance(action, dict):
             continue
@@ -79,8 +104,36 @@ def _has_matching_inventory_add_action(actions: List[Dict[str, Any]], character_
             op_name = str(op.get("op") or op.get("type") or "").strip().lower()
             if op_name != "inventory_add":
                 continue
-            op_item = str(op.get("item_name") or op.get("name") or op.get("item") or "").strip().lower()
-            if op_item == target_item:
+            op_item = str(op.get("item_name") or op.get("name") or op.get("item") or "").strip()
+            if _items_match(op_item, item_name):
+                return True
+    return False
+
+
+def _has_matching_inventory_remove_action(actions: List[Dict[str, Any]], character_name: str, item_name: str) -> bool:
+    target_character = _normalize_name(character_name)
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        if action.get("action") != "updateCharacterInfo":
+            continue
+        params = action.get("parameters", {})
+        if not isinstance(params, dict):
+            continue
+        existing_character = str(params.get("characterName") or "")
+        if _normalize_name(existing_character) != target_character:
+            continue
+        ops = params.get("ops")
+        if not isinstance(ops, list):
+            continue
+        for op in ops:
+            if not isinstance(op, dict):
+                continue
+            op_name = str(op.get("op") or op.get("type") or "").strip().lower()
+            if op_name != "inventory_remove":
+                continue
+            op_item = str(op.get("item_name") or op.get("name") or op.get("item") or "").strip()
+            if _items_match(op_item, item_name):
                 return True
     return False
 
@@ -103,6 +156,127 @@ def _build_party_name_lookup(party_tracker_data: Dict[str, Any]) -> Dict[str, st
             lookup[_normalize_name(npc_name)] = npc_name.strip()
 
     return lookup
+
+
+def _iter_party_character_names(party_tracker_data: Dict[str, Any]) -> List[str]:
+    """Return ordered canonical names for party members and party NPCs."""
+    name_lookup = _build_party_name_lookup(party_tracker_data)
+    ordered_names: List[str] = []
+    seen: Set[str] = set()
+
+    for name in party_tracker_data.get("partyMembers", []):
+        if not isinstance(name, str) or not name.strip():
+            continue
+        normalized = _normalize_name(name)
+        canonical = name_lookup.get(normalized, name.strip())
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        ordered_names.append(canonical)
+
+    for npc in party_tracker_data.get("partyNPCs", []):
+        npc_name = ""
+        if isinstance(npc, dict):
+            npc_name = str(npc.get("name") or "")
+        elif isinstance(npc, str):
+            npc_name = npc
+        if not npc_name.strip():
+            continue
+        normalized = _normalize_name(npc_name)
+        canonical = name_lookup.get(normalized, npc_name.strip())
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        ordered_names.append(canonical)
+
+    return ordered_names
+
+
+def _normalize_item_name(value: str) -> str:
+    """Normalize item labels for deterministic comparisons."""
+    lowered = value.strip().lower()
+    lowered = re.sub(r"[^a-z0-9\s]", " ", lowered)
+    lowered = re.sub(r"\s+", " ", lowered)
+    lowered = lowered.strip()
+    lowered = re.sub(r"^(?:a|an|the)\s+", "", lowered)
+    return lowered
+
+
+def _item_tokens(item_name: str) -> Set[str]:
+    normalized = _normalize_item_name(item_name)
+    if not normalized:
+        return set()
+    return {
+        token
+        for token in normalized.split()
+        if token and token not in _ITEM_TOKEN_STOPWORDS and len(token) >= 3
+    }
+
+
+def _items_match(first_item: str, second_item: str) -> bool:
+    """Return True when two item labels describe the same item identity."""
+    left = _normalize_item_name(first_item)
+    right = _normalize_item_name(second_item)
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    if len(left) >= 5 and left in right:
+        return True
+    if len(right) >= 5 and right in left:
+        return True
+    return bool(_item_tokens(left).intersection(_item_tokens(right)))
+
+
+def _extract_character_inventory_items(character_data: Dict[str, Any]) -> List[str]:
+    """Extract equipment/ammunition item names from character payload."""
+    item_names: List[str] = []
+
+    equipment = character_data.get("equipment", [])
+    if isinstance(equipment, list):
+        for item in equipment:
+            if not isinstance(item, dict):
+                continue
+            item_name = str(item.get("item_name") or item.get("name") or "").strip()
+            if item_name:
+                item_names.append(item_name)
+
+    ammunition = character_data.get("ammunition", [])
+    if isinstance(ammunition, list):
+        for item in ammunition:
+            if not isinstance(item, dict):
+                continue
+            item_name = str(item.get("name") or item.get("item_name") or "").strip()
+            if item_name:
+                item_names.append(item_name)
+
+    return item_names
+
+
+def _build_inventory_snapshot(party_tracker_data: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Load party character inventory snapshots for transfer reconciliation."""
+    snapshot: Dict[str, List[str]] = {}
+    for character_name in _iter_party_character_names(party_tracker_data):
+        char_data = get_character_state(character_name)
+        if not isinstance(char_data, dict):
+            snapshot[character_name] = []
+            continue
+        snapshot[character_name] = _extract_character_inventory_items(char_data)
+    return snapshot
+
+
+def _character_has_item(snapshot: Dict[str, List[str]], character_name: str, item_name: str) -> bool:
+    for existing_item in snapshot.get(character_name, []):
+        if _items_match(existing_item, item_name):
+            return True
+    return False
+
+
+def _find_unique_owner(snapshot: Dict[str, List[str]], item_name: str) -> Optional[str]:
+    owners = [name for name, items in snapshot.items() if any(_items_match(existing, item_name) for existing in items)]
+    if len(owners) == 1:
+        return owners[0]
+    return None
 
 
 def _build_alias_lookup(names: List[str]) -> Dict[str, str]:
@@ -247,6 +421,36 @@ def _append_grant_action(
     )
 
 
+def _append_remove_action(
+    updates: List[Dict[str, Any]],
+    existing_actions: List[Dict[str, Any]],
+    character_name: str,
+    item_name: str,
+    quantity: int,
+    receiver_name: Optional[str] = None,
+) -> None:
+    if _has_matching_inventory_remove_action(existing_actions + updates, character_name, item_name):
+        return
+
+    receiver_text = f" to {receiver_name}" if receiver_name else ""
+    updates.append(
+        {
+            "action": "updateCharacterInfo",
+            "parameters": {
+                "characterName": character_name,
+                "changes": f"Transferred {quantity} {item_name}{receiver_text}.",
+                "ops": [
+                    {
+                        "op": "inventory_remove",
+                        "item": item_name,
+                        "quantity": quantity,
+                    }
+                ],
+            },
+        }
+    )
+
+
 def _text_has_actor_transfer_context(text_blob: str, actor_alias_lookup: Dict[str, str]) -> bool:
     for actor_alias in actor_alias_lookup:
         if not actor_alias:
@@ -350,6 +554,221 @@ def _extract_each_distribution_grants(
                 grants.append((first_name, item_name, each_quantity, None))
                 grants.append((second_name, item_name, each_quantity, None))
     return grants
+
+
+def _extract_party_transfer_triples(
+    text_blob: str,
+    party_alias_lookup: Dict[str, str],
+) -> List[Tuple[str, str, str, int]]:
+    """Extract explicit giver -> receiver -> item transfer triples."""
+    triples: List[Tuple[str, str, str, int]] = []
+    for giver_alias, giver_name in party_alias_lookup.items():
+        for receiver_alias, receiver_name in party_alias_lookup.items():
+            if _normalize_name(giver_name) == _normalize_name(receiver_name):
+                continue
+            for verb in _TRANSFER_VERBS_GIVER:
+                patterns = [
+                    (
+                        rf"\b{re.escape(giver_alias)}\b\s+{re.escape(verb)}\s+"
+                        rf"(?P<item>[^.!?\n,;]+?)\s+to\s+\b{re.escape(receiver_alias)}\b"
+                    ),
+                    (
+                        rf"\b{re.escape(giver_alias)}\b\s+{re.escape(verb)}\s+"
+                        rf"\b{re.escape(receiver_alias)}\b\s+(?P<item>[^.!?\n,;]+)"
+                    ),
+                ]
+                for pattern in patterns:
+                    for match in re.finditer(pattern, text_blob):
+                        parsed = _parse_item_and_quantity(match.group("item"))
+                        if not parsed:
+                            continue
+                        item_name, quantity = parsed
+                        triples.append((giver_name, receiver_name, item_name, quantity))
+    return triples
+
+
+def _extract_receiver_self_stow_mentions(
+    text_blob: str,
+    party_alias_lookup: Dict[str, str],
+) -> List[Tuple[str, str, int]]:
+    """Extract explicit receiver-side item stow mentions."""
+    mentions: List[Tuple[str, str, int]] = []
+    for receiver_alias, receiver_name in party_alias_lookup.items():
+        for verb in _SELF_STOW_VERBS:
+            pattern = (
+                rf"\b{re.escape(receiver_alias)}\b\s+{re.escape(verb)}\s+"
+                rf"(?P<item>[^.!?\n,;]+?)\s+(?:in|into|inside)\b"
+            )
+            for match in re.finditer(pattern, text_blob):
+                parsed = _parse_item_and_quantity(match.group("item"))
+                if not parsed:
+                    continue
+                item_name, quantity = parsed
+                mentions.append((receiver_name, item_name, quantity))
+    return mentions
+
+
+def _find_recent_transfer_chain(
+    conversation_history: List[Dict[str, Any]],
+    party_alias_lookup: Dict[str, str],
+    receiver_name: str,
+    item_name: str,
+    max_messages: int = 14,
+) -> Optional[Tuple[str, str]]:
+    """Find unique recent transfer evidence for receiver/item pair."""
+    recent_segments: List[str] = []
+    for entry in reversed(conversation_history):
+        if len(recent_segments) >= max_messages:
+            break
+        if not isinstance(entry, dict):
+            continue
+        role = str(entry.get("role") or "")
+        if role not in {"assistant", "user"}:
+            continue
+        content = entry.get("content")
+        if not isinstance(content, str) or not content.strip():
+            continue
+        recent_segments.append(content.lower())
+
+    if not recent_segments:
+        return None
+
+    history_blob = "\n".join(reversed(recent_segments))
+    transfers = _extract_party_transfer_triples(history_blob, party_alias_lookup)
+    matched: Dict[Tuple[str, str], Tuple[str, str]] = {}
+
+    for giver_name, transfer_receiver, transfer_item, _quantity in transfers:
+        if _normalize_name(transfer_receiver) != _normalize_name(receiver_name):
+            continue
+        if not _items_match(transfer_item, item_name):
+            continue
+        key = (_normalize_name(giver_name), _normalize_item_name(transfer_item))
+        matched[key] = (giver_name, transfer_item)
+
+    if len(matched) != 1:
+        return None
+    return next(iter(matched.values()))
+
+
+def evaluate_party_item_transfer_recovery_decision(
+    parsed_response: Dict[str, Any],
+    user_utterance: str,
+    conversation_history: List[Dict[str, Any]],
+    party_tracker_data: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Infer deterministic party-to-party transfer recovery actions.
+
+    Recovery is intentionally narrow and fail-open. It only applies to explicit
+    giver/receiver/item evidence or uniquely proven receiver self-stow chains.
+    """
+    actions = parsed_response.get("actions", [])
+    if not isinstance(actions, list):
+        actions = []
+
+    party_names = _iter_party_character_names(party_tracker_data)
+    party_alias_lookup = _build_alias_lookup(party_names)
+    if len(party_alias_lookup) < 2:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    narration_text = str(parsed_response.get("narration") or "")
+    text_blob = "\n".join(
+        segment.lower()
+        for segment in [narration_text, str(user_utterance or ""), _latest_user_text(conversation_history)]
+        if isinstance(segment, str) and segment.strip()
+    )
+    if not text_blob:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    inventory_snapshot = _build_inventory_snapshot(party_tracker_data)
+    inferred_actions: List[Dict[str, Any]] = []
+    recovery_modes: Set[str] = set()
+
+    transfers = _extract_party_transfer_triples(text_blob, party_alias_lookup)
+    dedupe_transfers: Set[Tuple[str, str, str]] = set()
+    for giver_name, receiver_name, item_name, quantity in transfers:
+        transfer_key = (_normalize_name(giver_name), _normalize_name(receiver_name), _normalize_item_name(item_name))
+        if transfer_key in dedupe_transfers:
+            continue
+        dedupe_transfers.add(transfer_key)
+
+        if not _has_matching_inventory_add_action(actions + inferred_actions, receiver_name, item_name):
+            if not _character_has_item(inventory_snapshot, receiver_name, item_name):
+                _append_grant_action(
+                    inferred_actions,
+                    actions,
+                    receiver_name,
+                    item_name,
+                    quantity,
+                    source_actor=giver_name,
+                )
+                recovery_modes.add("party_transfer_recovery")
+
+        unique_owner = _find_unique_owner(inventory_snapshot, item_name)
+        if unique_owner and _normalize_name(unique_owner) == _normalize_name(giver_name):
+            _append_remove_action(
+                inferred_actions,
+                actions,
+                giver_name,
+                item_name,
+                quantity,
+                receiver_name=receiver_name,
+            )
+            if _has_matching_inventory_remove_action(inferred_actions, giver_name, item_name):
+                recovery_modes.add("party_transfer_recovery")
+
+    stow_mentions = _extract_receiver_self_stow_mentions(text_blob, party_alias_lookup)
+    dedupe_stow: Set[Tuple[str, str]] = set()
+    for receiver_name, item_name, quantity in stow_mentions:
+        stow_key = (_normalize_name(receiver_name), _normalize_item_name(item_name))
+        if stow_key in dedupe_stow:
+            continue
+        dedupe_stow.add(stow_key)
+
+        if _has_matching_inventory_add_action(actions + inferred_actions, receiver_name, item_name):
+            continue
+        if _character_has_item(inventory_snapshot, receiver_name, item_name):
+            continue
+
+        recent_chain = _find_recent_transfer_chain(
+            conversation_history=conversation_history,
+            party_alias_lookup=party_alias_lookup,
+            receiver_name=receiver_name,
+            item_name=item_name,
+        )
+        if recent_chain is None:
+            continue
+
+        giver_name, canonical_item_name = recent_chain
+        _append_grant_action(
+            inferred_actions,
+            actions,
+            receiver_name,
+            canonical_item_name,
+            quantity,
+            source_actor=giver_name,
+        )
+        if _has_matching_inventory_add_action(inferred_actions, receiver_name, canonical_item_name):
+            recovery_modes.add("receiver_self_stow_recovery")
+
+        unique_owner = _find_unique_owner(inventory_snapshot, canonical_item_name)
+        if unique_owner and _normalize_name(unique_owner) == _normalize_name(giver_name):
+            _append_remove_action(
+                inferred_actions,
+                actions,
+                giver_name,
+                canonical_item_name,
+                quantity,
+                receiver_name=receiver_name,
+            )
+
+    if not inferred_actions:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    return {
+        "valid": True,
+        "inferred_actions": inferred_actions,
+        "reconciliation": ",".join(sorted(recovery_modes)) if recovery_modes else "party_transfer_recovery",
+    }
 
 
 def infer_scene_item_grant_actions(
