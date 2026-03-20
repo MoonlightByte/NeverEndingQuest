@@ -23,6 +23,8 @@ Current model documentation lives here - read these before doing any model work:
 - `docs/reference/openai-models-reference.md` - GPT-5.2 family, API changes, migration mapping
 - `docs/reference/gemini-models-reference.md` - Gemini 3 family, API differences, parallel call patterns
 - `docs/reference/legacy-model-variable-map.md` - All 21 model variables -> legacy model strings, callsite counts, tier mapping, known bugs
+- `docs/reference/capture-report-template.md` - Standardized report format for per-callsite model comparison (quality, correctness, cost, latency)
+- `tests/model_validation/README.md` - Index of per-callsite model validation scripts (replay captured prompts through models, measure correctness + latency)
 
 ### API Callsite Inventory - Source of Truth
 **`docs/audit/2026-02-12-openai-api-call-inventory.json`** is the authoritative list of all 95 API

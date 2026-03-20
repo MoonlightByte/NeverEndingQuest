@@ -1223,12 +1223,24 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
     print(f"DEBUG: [MAIN VALIDATION] Exported validation messages to debug/api_captures/main_validation_messages_to_api.json")
     
     max_validation_retries = 3
+
+    # Select per-provider validation model config
+    from model_config import MODEL_PROVIDER as _val_provider
+    if _val_provider == "openai":
+        validation_config = config.DM_VALIDATION_GPT52_LOW
+    elif _val_provider == "gemini":
+        validation_config = config.DM_VALIDATION_GEMINI_FLASH_MEDIUM
+    elif _val_provider == "lmstudio":
+        validation_config = config.DM_VALIDATION_LMSTUDIO
+    else:  # legacy
+        validation_config = config.DM_VALIDATION_LEGACY
+
     for attempt in range(max_validation_retries):
-        validation_result = capture_and_fanout("T065", client.chat.completions.create,
+        validation_result = capture_and_fanout("T065", api_client.create_completion,
             messages=validation_messages_to_send,
-            model=DM_VALIDATION_MODEL, # Use imported model name
-            temperature=0.1  # Low temperature for consistent validation
-        )
+            model=validation_config["model"],
+            temperature=0.1,
+            **{k: v for k, v in validation_config.items() if k != "model"})
 
         # Log API call to master log
         try:
@@ -1272,7 +1284,7 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
                         "raw_response": validation_response
                     },
                     "attempt": attempt + 1,
-                    "model_used": DM_VALIDATION_MODEL
+                    "model_used": validation_config["model"]
                 }
                 
                 # Append to validation pairs log

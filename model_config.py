@@ -58,6 +58,22 @@ DM_MINI_MODEL_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 DM_FULL_MODEL_LMSTUDIO = {"model": "local-model"}
 DM_MINI_MODEL_LMSTUDIO = {"model": "local-model"}
 
+# --- T065 AI Response Validation Model Configs (from capture + manual testing) ---
+# Validation requires reasoning -- gpt-5.2|none is UNUSABLE (0/15 correct).
+# Temperature is 0.1 at callsite (stays there, not in config).
+
+# OpenAI (reasoning=low required for validation accuracy)
+DM_VALIDATION_GPT52_LOW = {"model": "gpt-5.2", "reasoning_effort": "low"}
+
+# Gemini (3-flash with medium thinking -- capture tested: 4.93 quality, 5/5 correct)
+DM_VALIDATION_GEMINI_FLASH_MEDIUM = {"model": "gemini-3-flash-preview", "thinking_level": "medium"}
+
+# Legacy (no extra params)
+DM_VALIDATION_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+
+# LM Studio (local passthrough)
+DM_VALIDATION_LMSTUDIO = {"model": "local-model"}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures
