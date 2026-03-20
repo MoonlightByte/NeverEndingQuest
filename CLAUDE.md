@@ -438,6 +438,15 @@ captured input+outputs to GPT and Gemini as independent qualitative reviewers, s
 on 6 criteria (1-5) and producing a final ranking. This is the preferred method -- uses frontier
 models as judges without burning Claude tokens.
 
+**CRITICAL: The reviewer model must be `gpt-5.4` with `reasoning_effort="medium"`.**
+The tool currently defaults to `gpt-4.1-2025-04-14` at line 278 which is a WEAK judge --
+it scored 5/12 correct on T065 validation while gpt-5.4 medium scored much more accurately.
+gpt-4.1 misses game logic errors that stronger models catch. Update the tool before using it.
+
+**CRITICAL: Always run reviews on ALL entries for a callsite, not just a subset.**
+The denominator in correctness scores (X/Y) must always be the total number of test runs.
+Never report X/5 when you ran 12 entries. The full count is required for accurate comparison.
+
 ```bash
 python tools/capture_quality_reviewer.py T067                    # Review latest entry (both reviewers)
 python tools/capture_quality_reviewer.py T067 --reviewer gpt     # GPT reviewer only
