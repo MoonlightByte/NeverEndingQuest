@@ -2202,8 +2202,8 @@ def get_ai_response(conversation_history, validation_retry_count=0):
     
     # Import action predictor and config
     from utils.action_predictor import predict_actions_required, extract_actual_actions, log_prediction_accuracy
-    from config import ENABLE_INTELLIGENT_ROUTING, DM_MINI_MODEL, DM_FULL_MODEL, MAX_VALIDATION_RETRIES
-    from model_config import MODEL_PROVIDER
+    import config
+    import core.ai.api_client as api_client
     
     # Get the last user message for action prediction
     user_input = ""
@@ -2226,16 +2226,16 @@ def get_ai_response(conversation_history, validation_retry_count=0):
         prediction = {"requires_actions": True, "reason": "Validation retry - using full model"}
     
     # Determine which model to use based on intelligent routing and validation retry
-    if ENABLE_INTELLIGENT_ROUTING and validation_retry_count == 0 and not has_module_creation_prompt:
+    if config.ENABLE_INTELLIGENT_ROUTING and validation_retry_count == 0 and not has_module_creation_prompt:
         # Use prediction to determine model (Phase 2 of token optimization)
-        selected_model = DM_MINI_MODEL if not prediction["requires_actions"] else DM_FULL_MODEL
-        
+        selected_model = config.DM_MINI_MODEL if not prediction["requires_actions"] else config.DM_FULL_MODEL
+
         # Log the routing decision
         routing_info = "MINI MODEL" if not prediction["requires_actions"] else "FULL MODEL"
         print(f"DEBUG: MODEL ROUTING - Selected: {routing_info} (Prediction: {prediction['requires_actions']}, Reason: {prediction['reason']})")
     else:
         # Use full model (default behavior or validation retry)
-        selected_model = DM_FULL_MODEL
+        selected_model = config.DM_FULL_MODEL
         if validation_retry_count > 0:
             print(f"DEBUG: MODEL ROUTING - VALIDATION RETRY {validation_retry_count}: Using FULL MODEL")
         else:
@@ -2254,7 +2254,7 @@ def get_ai_response(conversation_history, validation_retry_count=0):
             "routing_reason": prediction.get("reason", "Validation retry or module creation") if validation_retry_count == 0 else f"Validation retry {validation_retry_count}",
             "validation_retry_count": validation_retry_count,
             "has_module_creation_prompt": has_module_creation_prompt,
-            "intelligent_routing_enabled": ENABLE_INTELLIGENT_ROUTING
+            "intelligent_routing_enabled": config.ENABLE_INTELLIGENT_ROUTING
         }
         
         # Append to model selection log
@@ -2302,63 +2302,56 @@ def get_ai_response(conversation_history, validation_retry_count=0):
         json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
     print(f"DEBUG: [MAIN CONVERSATION] Exported conversation messages to main_conversation_messages_to_api.json")
     
-    # Generate response with selected model
+    # Generate response with selected model (unified path -- provider-agnostic)
+    # Model tier escalation: switch to full model after 4 validation failures
+    if validation_retry_count >= 4:
+        selected_model = config.DM_FULL_MODEL
+        print(f"DEBUG: Switching to full model after {validation_retry_count} retries")
+
+    from model_config import MODEL_PROVIDER
+
+    # Select per-provider model config (model string + provider-specific params)
     if MODEL_PROVIDER == "openai":
-        # OpenAI next-gen (gpt-5.2/gpt-5-mini): use mini, no temperature/max_tokens
-        # selected_model already resolved by set_provider() via config.DM_MINI_MODEL/DM_FULL_MODEL
-        selected_model = DM_MINI_MODEL
+        full_config = config.DM_FULL_MODEL_GPT52_NONE
+        mini_config = config.DM_MINI_MODEL_GPT5MINI_LOW
+    elif MODEL_PROVIDER == "gemini":
+        full_config = config.DM_FULL_MODEL_GEMINI_PRO_LOW
+        mini_config = config.DM_MINI_MODEL_GEMINI_FLASH_MINIMAL
+    elif MODEL_PROVIDER == "lmstudio":
+        full_config = config.DM_FULL_MODEL_LMSTUDIO
+        mini_config = config.DM_MINI_MODEL_LMSTUDIO
+    else:  # legacy
+        full_config = config.DM_FULL_MODEL_LEGACY
+        mini_config = config.DM_MINI_MODEL_LEGACY
 
-        # Handle retry logic - switch to full model after failures
-        if validation_retry_count >= 4:
-            selected_model = DM_FULL_MODEL
-            print(f"DEBUG: OpenAI next-gen - Switching to full model after {validation_retry_count} retries")
-
-        print(f"DEBUG: [MAIN.PY] Using OpenAI next-gen model: {selected_model}")
-        response = capture_and_fanout("T068", client.chat.completions.create,
-            messages=messages_to_send,  # Use potentially compressed messages
-            model=selected_model
-        )
-
-        # Log API call to master log
-        try:
-            from utils.api_logger import log_api_call
-            log_api_call("main_dm", messages_to_send, response,
-                        metadata={"retry_count": validation_retry_count, "branch": "openai"})
-        except Exception as e:
-            print(f"[API_LOG] Warning: Failed to log main DM call: {e}")
-
-        # Track token usage
-        if USAGE_TRACKING_AVAILABLE:
-            try:
-                track_response(response)
-            except:
-                pass
+    if selected_model == config.DM_MINI_MODEL:
+        selected_config = mini_config
     else:
-        # Legacy (GPT-4.1) or other providers: Use existing logic with temperature
-        print(f"DEBUG: [MAIN.PY] Using model: {selected_model} (provider: {MODEL_PROVIDER})")
-        response = capture_and_fanout("T067", client.chat.completions.create,
-            messages=messages_to_send,  # Use potentially compressed messages
-            model=selected_model,
-            temperature=TEMPERATURE,
-            response_format={"type": "json_object"}
-        )
+        selected_config = full_config
 
-        # Log API call to master log
+    print(f"DEBUG: [MAIN.PY] Using model: {selected_config['model']} (provider: {MODEL_PROVIDER})")
+    response = capture_and_fanout("T067", api_client.create_completion,
+        messages=messages_to_send,
+        model=selected_config["model"],
+        temperature=TEMPERATURE,
+        **{k: v for k, v in selected_config.items() if k != "model"})
+
+    # Log API call to master log
+    try:
+        from utils.api_logger import log_api_call
+        log_api_call("main_dm", messages_to_send, response,
+                    metadata={"temperature": TEMPERATURE, "retry_count": validation_retry_count, "provider": MODEL_PROVIDER})
+    except Exception as e:
+        print(f"[API_LOG] Warning: Failed to log main DM call: {e}")
+
+    # Track token usage with context for telemetry
+    if USAGE_TRACKING_AVAILABLE:
         try:
-            from utils.api_logger import log_api_call
-            log_api_call("main_dm", messages_to_send, response,
-                        metadata={"temperature": TEMPERATURE, "retry_count": validation_retry_count, "branch": MODEL_PROVIDER})
-        except Exception as e:
-            print(f"[API_LOG] Warning: Failed to log main DM call: {e}")
-
-        # Track token usage with context for telemetry
-        if USAGE_TRACKING_AVAILABLE:
-            try:
-                from utils.openai_usage_tracker import get_global_tracker
-                tracker = get_global_tracker()
-                tracker.track(response, context={'endpoint': 'main_dm', 'purpose': 'primary_game_response', 'model': selected_model})
-            except:
-                pass
+            from utils.openai_usage_tracker import get_global_tracker
+            tracker = get_global_tracker()
+            tracker.track(response, context={'endpoint': 'main_dm', 'purpose': 'primary_game_response', 'model': selected_model})
+        except:
+            pass
     content = response.choices[0].message.content.strip()
     
     # Extract actual actions from the response for accuracy tracking (only on initial attempt)

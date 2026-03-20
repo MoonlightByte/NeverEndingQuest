@@ -56,6 +56,8 @@ import subprocess
 import os
 from datetime import datetime
 from openai import OpenAI
+from core.ai import api_client
+import model_config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T013", "core/ai/action_handler.py", 1005)
 register_callsite("T012", "core/ai/action_handler.py", 553)
@@ -992,8 +994,6 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
             # GENERATE TRANSITION NARRATION using the transition_prompt
             info("STATE_CHANGE: Generating transition narration using AI", category="location_transitions")
             try:
-                client = OpenAI(api_key=config.OPENAI_API_KEY)
-
                 # Build prompt for transition narration
                 transition_messages = [
                     {"role": "system", "content": "You are a skilled Dungeon Master narrating a location transition."},
@@ -1002,9 +1002,9 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
 
                 transition_response = capture_and_fanout(
                     "T013",
-                    client.chat.completions.create,
+                    api_client.create_completion,
                     messages=transition_messages,
-                    model=config.DM_MAIN_MODEL,
+                    model=model_config.get_model_for_callsite("T013", "DM_MAIN_MODEL"),
                     temperature=0.7
                 )
 

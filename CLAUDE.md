@@ -22,6 +22,7 @@ All documents in `docs/plans/` and `docs/audit/` are historical artifacts only.
 Current model documentation lives here - read these before doing any model work:
 - `docs/reference/openai-models-reference.md` - GPT-5.2 family, API changes, migration mapping
 - `docs/reference/gemini-models-reference.md` - Gemini 3 family, API differences, parallel call patterns
+- `docs/reference/legacy-model-variable-map.md` - All 21 model variables -> legacy model strings, callsite counts, tier mapping, known bugs
 
 ### API Callsite Inventory - Source of Truth
 **`docs/audit/2026-02-12-openai-api-call-inventory.json`** is the authoritative list of all 95 API
@@ -429,8 +430,26 @@ Before committing code:
 - [ ] Temperature/reasoning parameters are comparable equivalents, not arbitrary choices
 - [ ] Capture system records output for comparison before merging
 
-### Capture Output Analysis Requirements
-When analyzing model captures in `model_captures/*.json`, you MUST:
+### Capture Quality Review Tool
+**`tools/capture_quality_reviewer.py`** is the primary tool for evaluating capture data. It sends
+captured input+outputs to GPT and Gemini as independent qualitative reviewers, scoring each variant
+on 6 criteria (1-5) and producing a final ranking. This is the preferred method -- uses frontier
+models as judges without burning Claude tokens.
+
+```bash
+python tools/capture_quality_reviewer.py T067                    # Review latest entry (both reviewers)
+python tools/capture_quality_reviewer.py T067 --reviewer gpt     # GPT reviewer only
+python tools/capture_quality_reviewer.py T067 --reviewer gemini  # Gemini reviewer only
+python tools/capture_quality_reviewer.py T067 --entry 0          # Review first entry instead of latest
+python tools/capture_quality_reviewer.py T067 --variants "gpt-5.2|effort=none,gemini-3-pro|thinking=low"
+```
+
+Other analysis tools:
+- `tools/analyze_captures.py` - Deterministic validation with per-task validators, generates HTML/JSON reports
+- `tools/analyze_capture_results.py` - Summary statistics across all captures (pass/fail/error counts)
+
+### Capture Output Manual Analysis Requirements
+When manually analyzing model captures in `model_captures/*.json` (without the review tool), you MUST:
 1. **Read only the LAST entry** - files contain many old captures, only analyze the most recent
 2. **Show actual field values** - not summaries like "Excellent" or "matches"
 3. **Create detailed comparison tables** with these columns:
@@ -458,6 +477,84 @@ they have different parameters (temperature, reasoning_effort, response_format, 
 4. The callsite must reference `model_config.py` variables for its model (no hardcoded strings)
 
 This is non-negotiable. No exceptions. No "just this once." No bulk operations.
+
+### Callsite Migration Pattern (Per-Provider Model Selection)
+
+**HARD RULE: Every callsite must be manually coded to specify its exact model configuration
+per provider. No blanket mechanisms, no automatic parameter injection, no escalation ladders.
+The callsite owns its model selection and parameters. This is non-negotiable.**
+
+Each callsite migration follows this process:
+
+1. Run capture testing to collect quality + cost data across model variants
+2. Run `tools/capture_quality_reviewer.py` to get GPT-scored quality rankings
+3. Select the winning model+params combo per provider from the results
+4. Add named config variables to `model_config.py` for each model+params combo
+5. Update the callsite to reference the correct config variable per provider
+6. Route through `api_client.create_completion()` instead of raw OpenAI client
+
+See `docs/reference/legacy-model-variable-map.md` for the full variable inventory.
+
+**Step 1: Define model configs in `model_config.py`**
+
+Each tested model+params combination gets its own named config variable. The variable
+bundles the model string with its required provider-specific params (reasoning_effort,
+thinking_level, etc.). Temperature is NOT included -- it stays at the callsite.
+
+```python
+# model_config.py -- per-callsite model selections from capture testing
+
+# OpenAI models
+DM_FULL_MODEL_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
+DM_MINI_MODEL_GPT5MINI_LOW = {"model": "gpt-5-mini", "reasoning_effort": "low"}
+
+# Gemini models
+DM_FULL_MODEL_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low"}
+DM_MINI_MODEL_GEMINI_FLASH_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal"}
+
+# Legacy models (no extra params needed)
+DM_FULL_MODEL_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+DM_MINI_MODEL_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+```
+
+**Step 2: Wire the callsite to select the right config per provider**
+
+The callsite checks `MODEL_PROVIDER` and references the specific config variable
+by name. No magic lookup -- the callsite explicitly names which tested configuration
+it uses for each provider.
+
+```python
+# Example: T067 Main DM Loop (uses full + mini models with intelligent routing)
+from model_config import MODEL_PROVIDER
+
+if MODEL_PROVIDER == "openai":
+    full_config = config.DM_FULL_MODEL_GPT52_NONE
+    mini_config = config.DM_MINI_MODEL_GPT5MINI_LOW
+elif MODEL_PROVIDER == "gemini":
+    full_config = config.DM_FULL_MODEL_GEMINI_PRO_LOW
+    mini_config = config.DM_MINI_MODEL_GEMINI_FLASH_MINIMAL
+elif MODEL_PROVIDER == "lmstudio":
+    full_config = config.DM_FULL_MODEL_LMSTUDIO
+    mini_config = config.DM_MINI_MODEL_LMSTUDIO
+else:  # legacy
+    full_config = config.DM_FULL_MODEL_LEGACY
+    mini_config = config.DM_MINI_MODEL_LEGACY
+
+selected = full_config if prediction["requires_actions"] else mini_config
+
+response = capture_and_fanout("T067", api_client.create_completion,
+    messages=messages_to_send,
+    model=selected["model"],
+    temperature=TEMPERATURE,     # callsite owns temperature
+    **{k: v for k, v in selected.items() if k != "model"})
+```
+
+**Key rules:**
+- Temperature stays at the callsite (not in the config dict)
+- The config dict contains ONLY model string + provider-specific params
+- Each provider branch explicitly names the config variable (no inference)
+- `create_completion()` is a thin router -- it does NOT inject params
+- New models require new config variables (e.g., `DM_FULL_MODEL_GPT54_LOW`)
 
 ## SRD 5.2.1 Compliance
 

@@ -149,6 +149,13 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     if model_config.get_provider() == "lmstudio":
         return primary_fn(messages=messages, **kwargs)
 
+    # Gated task_id injection: only inject when callable is create_completion
+    # (unmigrated callsites using raw client.chat.completions.create would
+    # reject unknown 'task_id' kwarg)
+    from core.ai import api_client as _api_client
+    if primary_fn is _api_client.create_completion:
+        kwargs["task_id"] = task_id
+
     # Always fire primary call synchronously
     start = time.time()
     response = primary_fn(messages=messages, **kwargs)
@@ -169,7 +176,8 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         model = kwargs.get("model", "unknown")
         tier = _determine_tier(model)
         caller_temperature = kwargs.get("temperature")
-        caller_kwargs = {k: v for k, v in kwargs.items() if k not in ("model", "messages")}
+        caller_kwargs = {k: v for k, v in kwargs.items()
+                         if k not in ("model", "messages", "task_id", "retry_attempt")}
 
         # Build input record
         input_data = {"messages": messages}

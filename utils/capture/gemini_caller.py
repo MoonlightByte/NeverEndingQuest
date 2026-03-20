@@ -32,6 +32,8 @@ THINKING_SUPPORTED_MODELS = [
     "gemini-2.0-flash-thinking",
     "gemini-3-flash",
     "gemini-3-pro",
+    "gemini-3.1-pro",
+    "gemini-3.1-flash",
 ]
 
 

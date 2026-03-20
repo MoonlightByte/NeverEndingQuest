@@ -4,9 +4,8 @@ Routes API calls to the correct provider (OpenAI, Gemini, LM Studio)
 based on the active MODEL_PROVIDER setting. Normalizes all responses
 to the OpenAI response shape so callsites don't need provider-specific code.
 
-Escalation: Callsites pass retry_attempt=N and the wrapper applies
-provider-native "try harder" logic (reasoning_effort for GPT-5.x,
-thinking_level for Gemini, passthrough for legacy/LM Studio).
+create_completion() is a thin routing layer. Callsites own their
+model and params via named config dicts in model_config.py.
 """
 from utils.openai_client import get_openai_client
 
@@ -69,77 +68,6 @@ class _NormalizedResponse:
 
 
 # ---------------------------------------------------------------------------
-# Per-provider escalation ladders
-# ---------------------------------------------------------------------------
-
-# Each ladder maps retry_attempt -> provider-native parameter dict.
-# Attempt 0 = default. Clamped to max index.
-
-_ESCALATION_LADDERS = {
-    "openai_5x": [
-        # attempt 0: reasoning=none, temperature passes through
-        {"reasoning_effort": "none"},
-        # attempt 1: low reasoning, temperature stripped
-        {"reasoning_effort": "low"},
-        # attempt 2
-        {"reasoning_effort": "medium"},
-        # attempt 3
-        {"reasoning_effort": "high"},
-        # attempt 4+
-        {"reasoning_effort": "high"},
-    ],
-    "openai_54": [
-        {"reasoning_effort": "none"},
-        {"reasoning_effort": "low"},
-        {"reasoning_effort": "medium"},
-        {"reasoning_effort": "high"},
-        {"reasoning_effort": "xhigh"},
-    ],
-    "openai_5mini": [
-        # GPT-5-mini: no "none", no temperature ever
-        {"reasoning_effort": "low"},
-        {"reasoning_effort": "medium"},
-        {"reasoning_effort": "high"},
-        {"reasoning_effort": "high"},
-        {"reasoning_effort": "high"},
-    ],
-    "gemini_pro": [
-        {"thinking_level": "low"},
-        {"thinking_level": "medium"},
-        {"thinking_level": "high"},
-        {"thinking_level": "high"},
-        {"thinking_level": "high"},
-    ],
-    "gemini_flash": [
-        {"thinking_level": "minimal"},
-        {"thinking_level": "low"},
-        {"thinking_level": "medium"},
-        {"thinking_level": "high"},
-        {"thinking_level": "high"},
-    ],
-}
-
-
-def _get_ladder_key(provider, model):
-    """Determine which escalation ladder to use based on provider and model."""
-    if provider in ("legacy", "lmstudio"):
-        return None  # No escalation -- callsite handles temp reduction
-    if provider == "openai":
-        model_lower = model.lower() if model else ""
-        if "mini" in model_lower:
-            return "openai_5mini"
-        if "5.4" in model_lower or "gpt-5.4" in model_lower:
-            return "openai_54"
-        return "openai_5x"
-    if provider == "gemini":
-        model_lower = model.lower() if model else ""
-        if "pro" in model_lower:
-            return "gemini_pro"
-        return "gemini_flash"
-    return None
-
-
-# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -154,67 +82,44 @@ def get_client():
 
 
 def create_completion(messages, model, temperature=None, retry_attempt=0, **kwargs):
-    """Provider-aware completion wrapper with escalation support.
+    """Provider-aware completion wrapper -- thin routing layer.
 
     Routes to OpenAI, Gemini, or LM Studio based on MODEL_PROVIDER.
     Returns an OpenAI-shaped response regardless of provider.
 
-    This wrapper is a THIN routing layer. It does exactly three things:
+    This wrapper does exactly two things:
     1. Route to the correct provider API
     2. Translate parameters natively for that provider
-    3. Return the response
 
-    It does NOT retry, validate, parse, track, or fall back.
+    It does NOT inject reasoning_effort, thinking_level, or other params.
+    The callsite owns its parameters via named config dicts in model_config.py.
 
     Args:
         messages: list of {"role": ..., "content": ...} dicts (OpenAI format)
-        model: model identifier string (e.g. config.DM_MAIN_MODEL)
+        model: model identifier string (e.g. "gpt-5.2", "gemini-3.1-pro-preview")
         temperature: optional float temperature (used by legacy/lmstudio,
                      GPT-5.x at reasoning=none only)
-        retry_attempt: escalation level (0=default, 1+=try harder).
-                       Consumed by wrapper, never forwarded to provider.
-        **kwargs: additional kwargs. task_id is consumed for override lookup.
+        retry_attempt: unused (kept for backwards compatibility)
+        **kwargs: provider-specific params from callsite config dicts
+                  (reasoning_effort, thinking_level, etc.).
                   top_p is stripped. response_format uses _UNSET sentinel
                   (default=JSON mode, None=plain text, other=forwarded).
-                  All other kwargs forwarded to provider.
 
     Returns:
         An object with .choices[0].message.content and .usage attributes.
     """
-    from model_config import MODEL_PROVIDER, CALLSITE_OVERRIDES
+    from model_config import MODEL_PROVIDER
 
     # --- Pop wrapper-only params (never forwarded to provider) ---
     task_id = kwargs.pop("task_id", None)
     kwargs.pop("top_p", None)
     _response_format = kwargs.pop("response_format", _UNSET)
 
-    # --- Clamp retry_attempt ---
-    retry_attempt = min(retry_attempt, 4)
+    # create_completion() is a thin routing layer. It does NOT inject
+    # reasoning_effort, thinking_level, or other params. The callsite
+    # owns its parameters via named config dicts in model_config.py.
 
-    # --- Build merged params: escalation + overrides ---
-    # Priority: explicit kwargs > CALLSITE_OVERRIDES[task_id][provider] > escalation > defaults
-    merged = {}
-
-    # 1. Escalation ladder (lowest priority among merged sources)
-    ladder_key = _get_ladder_key(MODEL_PROVIDER, model)
-    if ladder_key and retry_attempt >= 0:
-        ladder = _ESCALATION_LADDERS[ladder_key]
-        step = min(retry_attempt, len(ladder) - 1)
-        merged.update(ladder[step])
-
-    # 2. CALLSITE_OVERRIDES (mid priority)
-    if task_id and task_id in CALLSITE_OVERRIDES:
-        provider_overrides = CALLSITE_OVERRIDES[task_id].get(MODEL_PROVIDER, {})
-        merged.update(provider_overrides)
-
-    # 3. Explicit kwargs from callsite (highest priority)
-    # These are already in kwargs and will be applied per-provider below.
-    # We merge escalation/override params that aren't explicitly overridden:
-    for key, val in merged.items():
-        if key not in kwargs:
-            kwargs[key] = val
-
-    # --- Post-merge enforcement (hard API constraints) ---
+    # --- Enforce hard API constraints ---
     _enforce_provider_constraints(MODEL_PROVIDER, model, temperature, kwargs)
 
     # --- Route to provider ---
@@ -236,8 +141,10 @@ def _enforce_provider_constraints(provider, model, temperature, kwargs):
 
         # GPT-5-mini: NEVER supports temperature
         if "mini" in model_lower and "5" in model_lower:
-            # Will be handled in _openai_completion by not passing temp
             kwargs["_strip_temperature"] = True
+            # gpt-5-mini does not support reasoning_effort="none"
+            if reasoning and str(reasoning).lower() == "none":
+                kwargs["reasoning_effort"] = "low"
 
         # GPT-5.x with reasoning > none: temperature must be stripped
         elif reasoning and str(reasoning).lower() != "none":
@@ -314,7 +221,7 @@ def _gemini_completion(messages, model, temperature, response_format=_UNSET, **k
     if system_instruction:
         config_kwargs["system_instruction"] = system_instruction
 
-    # Thinking level (from escalation ladder or explicit kwarg)
+    # Thinking level (from callsite kwarg)
     if thinking_level is not None and model_supports_thinking(model):
         config_kwargs["thinking_config"] = types.ThinkingConfig(
             thinking_level=thinking_level

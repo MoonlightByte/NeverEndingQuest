@@ -2859,7 +2859,7 @@ Rules:
                            json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
                        print(f"DEBUG: [COMBAT] Exported compressed messages to combat_messages_to_api.json")
 
-                       response = capture_and_fanout("T045", client.chat.completions.create, messages=messages_to_send, model=combat_model, reasoning={"effort": "high"})
+                       response = capture_and_fanout("T045", client.chat.completions.create, messages=messages_to_send, model=combat_model, reasoning_effort="high")
                    else:
                        # Default is medium reasoning (no need to specify)
                        print(f"DEBUG: [COMBAT] Using OpenAI next-gen model: {combat_model} (default medium reasoning)")

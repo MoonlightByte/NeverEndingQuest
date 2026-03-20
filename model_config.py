@@ -28,6 +28,7 @@ NPC_INFO_UPDATE_MODEL = "gpt-4.1-mini-2025-04-14"      # Used in update_npc_info
 MONSTER_BUILDER_MODEL = "gpt-4.1-2025-04-14"
 ENCOUNTER_UPDATE_MODEL = "gpt-4.1-mini-2025-04-14"
 LEVEL_UP_MODEL = "gpt-4.1-2025-04-14"                  # Used in level_up.py
+DM_EFFECTS_MODEL = "gpt-4.1-2025-04-14"               # Used in update_character_effects.py
 
 # --- Transition Validation Model ---
 TRANSITION_VALIDATOR_MODEL = "gpt-4.1-mini-2025-04-14"  # Used in transition_validator.py
@@ -36,6 +37,26 @@ TRANSITION_VALIDATOR_TEMPERATURE = 0.3                   # Low temp for analytic
 # --- Token Optimization Models ---
 DM_MINI_MODEL = "gpt-4.1-mini-2025-04-14"              # Used for simple conversations and plot-only updates
 DM_FULL_MODEL = "gpt-4.1-2025-04-14"                   # Used for complex actions requiring JSON operations
+
+# --- T067 Main DM Loop Model Configs (from capture testing) ---
+# Each dict bundles model string + provider-specific params.
+# Temperature is NOT included -- it stays at the callsite.
+
+# OpenAI
+DM_FULL_MODEL_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
+DM_MINI_MODEL_GPT5MINI_LOW = {"model": "gpt-5-mini", "reasoning_effort": "low"}
+
+# Gemini (3.1 models - conservative params until capture data collected)
+DM_FULL_MODEL_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low"}
+DM_MINI_MODEL_GEMINI_FLASH_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal"}
+
+# Legacy (no extra params)
+DM_FULL_MODEL_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+DM_MINI_MODEL_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+
+# LM Studio (local passthrough - no extra params, routes through OpenAI client to localhost)
+DM_FULL_MODEL_LMSTUDIO = {"model": "local-model"}
+DM_MINI_MODEL_LMSTUDIO = {"model": "local-model"}
 
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
@@ -103,7 +124,20 @@ PROVIDER_MODELS = {
     },
 }
 
-# Maps each model variable to its tier (full or mini)
+# Per-callsite model variable overrides by provider.
+# Populated from capture testing results. Each entry maps a task_id to the
+# model variable name to use for each provider. Callsites NOT in this map
+# use their original model variable unchanged.
+# See docs/reference/legacy-model-variable-map.md for the full variable inventory.
+CALLSITE_MODEL_MAP = {
+    "T013": {
+        "legacy":   "DM_MAIN_MODEL",    # gpt-4.1 (keep current behavior)
+        "openai":   "DM_MINI_MODEL",    # gpt-5-mini
+        "gemini":   "DM_MINI_MODEL",    # gemini-3.1-flash-lite
+        "lmstudio": "DM_MINI_MODEL",    # local-model
+    },
+}
+
 MODEL_TIER_MAP = {
     "DM_MAIN_MODEL": "full",
     "DM_VALIDATION_MODEL": "full",
@@ -115,6 +149,7 @@ MODEL_TIER_MAP = {
     "LEVEL_UP_MODEL": "full",
     "ACTION_PREDICTION_MODEL": "full",
     "LOCATION_COMPRESSION_MODEL": "full",
+    "DM_EFFECTS_MODEL": "full",
     "DM_MINI_MODEL": "mini",
     "DM_SUMMARIZATION_MODEL": "mini",
     "NARRATIVE_COMPRESSION_MODEL": "mini",
@@ -154,6 +189,26 @@ def set_provider(provider_name):
 def get_provider():
     """Return the current MODEL_PROVIDER value."""
     return MODEL_PROVIDER
+
+
+def get_model_for_callsite(task_id, default_var):
+    """Get the correct model string for a callsite based on current provider.
+
+    Looks up the task_id in CALLSITE_MODEL_MAP. If found, uses the
+    provider-specific model variable. Otherwise falls back to default_var.
+
+    Args:
+        task_id: The callsite task ID (e.g., "T013")
+        default_var: The default model variable name (e.g., "DM_MAIN_MODEL")
+
+    Returns:
+        The resolved model string for the current provider.
+    """
+    if task_id in CALLSITE_MODEL_MAP:
+        var_name = CALLSITE_MODEL_MAP[task_id].get(MODEL_PROVIDER, default_var)
+    else:
+        var_name = default_var
+    return globals()[var_name]
 
 
 _USER_SETTINGS_FILE = "user_settings.json"
