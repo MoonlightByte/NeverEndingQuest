@@ -225,6 +225,22 @@ def normalize_character_name(character_name):
     
     return name
 
+
+def _dedupe_party_member_names(party_members):
+    """Deduplicate party member names by normalized identity, preserving first label."""
+    deduped = []
+    seen = set()
+
+    for member in party_members or []:
+        member_str = str(member or "").strip()
+        normalized = normalize_character_name(member_str)
+        if not normalized or normalized in seen:
+            continue
+        deduped.append(member_str)
+        seen.add(normalized)
+
+    return deduped
+
 def find_character_file_fuzzy(character_name):
     """Find a character file using fuzzy matching
     
@@ -2687,24 +2703,30 @@ Please provide the CORRECT currency values:
                 except Exception as e:
                     error(f"WorldObserver hook failed: {e}", category="world_observer")
                 
-                # CRITICAL FIX: Ensure players are added to partyMembers
+                # CRITICAL FIX: Ensure players are added to partyMembers without mixed-name duplicates
                 if character_role == 'player':
                     try:
                         party_tracker = safe_read_json("party_tracker.json")
                         if party_tracker:
-                            party_members = party_tracker.get("partyMembers", [])
-                            # Check normalized name or original name
-                            if character_name not in party_members and updated_data.get('name') not in party_members:
-                                print(f"DEBUG: [Auto-Register] Adding {character_name} to partyMembers list")
-                                party_members.append(character_name)
-                                party_tracker["partyMembers"] = party_members
-                                
-                                # Set as active if none active
-                                if not party_tracker.get("active_character"):
-                                    party_tracker["active_character"] = character_name
-                                    
-                                safe_write_json("party_tracker.json", party_tracker)
-                                info(f"SUCCESS: Auto-registered {character_name} as party member", category="character_updates")
+                            party_members = _dedupe_party_member_names(
+                                party_tracker.get("partyMembers", [])
+                            )
+                            display_name = str(updated_data.get("name") or character_name).strip()
+                            normalized_display = normalize_character_name(display_name)
+                            existing_normalized = {
+                                normalize_character_name(member) for member in party_members
+                            }
+                            if normalized_display and normalized_display not in existing_normalized:
+                                print(f"DEBUG: [Auto-Register] Adding {display_name} to partyMembers list")
+                                party_members.append(display_name)
+                            party_tracker["partyMembers"] = _dedupe_party_member_names(party_members)
+                            if not party_tracker.get("active_character"):
+                                party_tracker["active_character"] = display_name
+                            safe_write_json("party_tracker.json", party_tracker)
+                            info(
+                                f"SUCCESS: Auto-registered {display_name} as party member",
+                                category="character_updates",
+                            )
                     except Exception as e:
                         print(f"ERROR: Failed to auto-register player: {e}")
 

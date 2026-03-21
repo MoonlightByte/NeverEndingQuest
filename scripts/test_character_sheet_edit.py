@@ -348,10 +348,61 @@ class TestCharacterSheetEditUIContracts(unittest.TestCase):
         with open(socket_handler_path, 'r', encoding='utf-8') as f:
             source = f.read()
 
-        self.assertIn("'party_members': party_tracker.get('partyMembers', [])", source,
-                      "party_data_response should include party_members for tab sync")
+        self.assertIn("'party_members': _dedupe_party_member_names_for_emit(party_tracker.get('partyMembers', []))", source,
+                      "party_data_response should emit deduped party_members for tab sync")
         self.assertIn("'active_character': party_tracker.get('active_character')", source,
                       "party_data_response should include active_character for tab sync")
+
+    def test_party_tab_sync_has_canonical_name_helper(self):
+        """Test: tabletop tab sync defines canonical party-member normalizer."""
+        js_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "static", "js", "tabletop_mode.js"
+        )
+
+        with open(js_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+
+        self.assertIn('function canonicalizePartyMemberName(characterName)', source,
+                      "canonicalizePartyMemberName helper should exist")
+        self.assertIn(".replace(/\\s+/g, '_')", source,
+                      "canonicalizer should normalize whitespace")
+        self.assertIn(".replace(/'/g, '_')", source,
+                      "canonicalizer should normalize apostrophes")
+
+    def test_party_tab_sync_dedupes_incoming_party_members(self):
+        """Test: tab sync dedupes mixed-form names before DOM rebuild."""
+        js_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "static", "js", "tabletop_mode.js"
+        )
+
+        with open(js_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+
+        self.assertIn('const seenMembers = new Set();', source,
+                      "tab sync should track seen canonical members")
+        self.assertIn('const canonical = canonicalizePartyMemberName(memberName);', source,
+                      "tab sync should canonicalize each member")
+        self.assertIn('if (!canonical || seenMembers.has(canonical)) {', source,
+                      "tab sync should skip duplicate/empty canonical names")
+
+    def test_update_tab_ui_uses_canonical_comparison(self):
+        """Test: active tab/card highlighting compares canonical names."""
+        js_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web", "static", "js", "tabletop_mode.js"
+        )
+
+        with open(js_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+
+        self.assertIn('const activeCanonical = canonicalizePartyMemberName(activeName);', source,
+                      "updateTabUI should canonicalize activeName")
+        self.assertIn("tab.classList.toggle('active', tabCanonical === activeCanonical);", source,
+                      "tab highlighting should use canonical equality")
+        self.assertIn("card.classList.toggle('active', cardCanonical === activeCanonical);", source,
+                      "sidebar highlighting should use canonical equality")
 
     def test_party_data_listener_calls_tab_sync_reconciler(self):
         """Test: tabletop socket listener invokes tab reconciler on party updates."""

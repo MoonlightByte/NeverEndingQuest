@@ -1021,6 +1021,33 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Party Member Canonical Dedupe + Tab Sync Hardening (COMPLETED - 2026-03-21)
+
+**Status:** COMPLETED - backend normalization fix with frontend canonical safety net for mixed-form `partyMembers` entries.
+
+**Objective:**
+Stop duplicate tabletop character tabs caused by mixed label variants (`xorn` vs `Xorn`) and keep active-tab highlighting stable under casing/underscore drift.
+
+**Implementation Summary:**
+- Added `_dedupe_party_member_names(...)` helper in `updates/update_character_info.py` (near `normalize_character_name`) to dedupe by normalized identity while preserving first-seen display label.
+- Replaced auto-register path in `updates/update_character_info.py` to:
+  - sanitize existing `partyMembers` before evaluation,
+  - append display name (not routing alias),
+  - dedupe list again before write-back,
+  - maintain `active_character` initialization when missing.
+- Added `canonicalizePartyMemberName(...)` in `web/static/js/tabletop_mode.js` and updated `updateTabUI(...)` to compare canonical identities for tab/card highlighting.
+- Hardened `syncCharacterTabsFromPartyResponse(...)` in `web/static/js/tabletop_mode.js` to dedupe incoming `response.party_members` before render and resolve active character canonically.
+- Added emit-path hardening in `web/extensions/tabletop_socket_handlers.py` with `_dedupe_party_member_names_for_emit(...)` so `party_data_response.party_members` is canonical-deduped for all consumers.
+- Added/extended regression coverage:
+  - `scripts/test_character_sheet_edit.py` (canonical helper + tab dedupe + canonical active-state assertions)
+  - `scripts/test_party_member_autoregister_normalization.py` (runtime dedupe + auto-register no-duplicate behavior)
+
+**Verification:**
+- `python3 -m py_compile updates/update_character_info.py web/extensions/tabletop_socket_handlers.py` -> PASS
+- `node --check web/static/js/tabletop_mode.js` -> PASS
+- `python3 scripts/test_character_sheet_edit.py` -> PASS (36/36)
+- `python3 scripts/test_party_member_autoregister_normalization.py` -> PASS (2/2)
+
 ### Runtime Context Hygiene Stabilization (COMPLETED - 2026-03-19)
 
 **Status:** COMPLETED - archived runtime hot-path stabilization for derived location context provenance, module integration quarantine, and reconciler hygiene.

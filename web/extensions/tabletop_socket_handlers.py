@@ -184,6 +184,22 @@ def _build_image_metadata(
     }
 
 
+def _dedupe_party_member_names_for_emit(party_members: List[Any]) -> List[str]:
+    """Dedupe party member names by normalized identity, preserving first label."""
+    from updates.update_character_info import normalize_character_name
+
+    deduped: List[str] = []
+    seen = set()
+    for member in party_members or []:
+        member_str = str(member or "").strip()
+        normalized = normalize_character_name(member_str)
+        if not normalized or normalized in seen:
+            continue
+        deduped.append(member_str)
+        seen.add(normalized)
+    return deduped
+
+
 def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Callable[..., None]) -> None:
     """Handle requests for party member display and current location NPCs (non-combat)."""
     try:
@@ -472,7 +488,7 @@ def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Calla
             'members': party_members,
             'location_npcs': location_npcs,
             'location_hostiles': location_hostiles,
-            'party_members': party_tracker.get('partyMembers', []),
+            'party_members': _dedupe_party_member_names_for_emit(party_tracker.get('partyMembers', [])),
             'active_character': party_tracker.get('active_character'),
         })
 

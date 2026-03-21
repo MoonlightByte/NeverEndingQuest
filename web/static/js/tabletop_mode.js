@@ -52,23 +52,18 @@ function setActiveCharacter(characterName) {
  * @param {string} activeName - The name of the active character.
  */
 function updateTabUI(activeName) {
+    const activeCanonical = canonicalizePartyMemberName(activeName);
     const tabs = document.querySelectorAll('.character-tab');
     tabs.forEach(tab => {
-        if (tab.getAttribute('data-character') === activeName) {
-            tab.classList.add('active');
-        } else {
-            tab.classList.remove('active');
-        }
+        const tabCanonical = canonicalizePartyMemberName(tab.getAttribute('data-character'));
+        tab.classList.toggle('active', tabCanonical === activeCanonical);
     });
     
     // Also update sidebar if present
     const cards = document.querySelectorAll('.party-member-card');
     cards.forEach(card => {
-        if (card.getAttribute('data-character') === activeName) {
-            card.classList.add('active');
-        } else {
-            card.classList.remove('active');
-        }
+        const cardCanonical = canonicalizePartyMemberName(card.getAttribute('data-character'));
+        card.classList.toggle('active', cardCanonical === activeCanonical);
     });
 }
 
@@ -80,6 +75,17 @@ function updateTabUI(activeName) {
  */
 function formatTabLabel(characterName) {
     return String(characterName || '').replace(/_/g, ' ');
+}
+
+function canonicalizePartyMemberName(characterName) {
+    return String(characterName || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '_')
+        .replace(/'/g, '_')
+        .replace(/[^a-z0-9_]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '');
 }
 
 /**
@@ -94,9 +100,19 @@ function syncCharacterTabsFromPartyResponse(response) {
         return;
     }
 
-    const partyMembers = Array.isArray(response && response.party_members)
+    const rawPartyMembers = Array.isArray(response && response.party_members)
         ? response.party_members
         : [];
+    const partyMembers = [];
+    const seenMembers = new Set();
+    rawPartyMembers.forEach((memberName) => {
+        const canonical = canonicalizePartyMemberName(memberName);
+        if (!canonical || seenMembers.has(canonical)) {
+            return;
+        }
+        seenMembers.add(canonical);
+        partyMembers.push(String(memberName));
+    });
 
     if (!partyMembers.length) {
         return;
@@ -108,11 +124,12 @@ function syncCharacterTabsFromPartyResponse(response) {
     }
 
     const activeFromPayload = (response && response.active_character) || '';
-    const resolvedActive = partyMembers.includes(activeFromPayload)
-        ? activeFromPayload
-        : (window.active_character && partyMembers.includes(window.active_character)
-            ? window.active_character
-            : partyMembers[0]);
+    const activePayloadCanonical = canonicalizePartyMemberName(activeFromPayload);
+    const windowActiveCanonical = canonicalizePartyMemberName(window.active_character || '');
+    const resolvedActive =
+        partyMembers.find((member) => canonicalizePartyMemberName(member) === activePayloadCanonical) ||
+        partyMembers.find((member) => canonicalizePartyMemberName(member) === windowActiveCanonical) ||
+        partyMembers[0];
 
     window.active_character = resolvedActive;
 
