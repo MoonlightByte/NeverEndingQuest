@@ -34,7 +34,7 @@
 | COMBAT_DIALOGUE_SUMMARY_MODEL | gpt-4.1-mini-2025-04-14 | 1 | T041 | Combat dialogue summarization |
 | ADVENTURE_SUMMARY_MODEL | gpt-4.1-mini-2025-04-14 | 4 | T015,T016,T018,T019 | Adventure summary, cumulative summary |
 | PLOT_UPDATE_MODEL | gpt-4.1-mini-2025-04-14 | 1 | T077 | Plot state updates |
-| PLAYER_INFO_UPDATE_MODEL | gpt-4.1-mini-2025-04-14 | 1 | T079 | Player character data updates (dynamic selection) |
+| PLAYER_INFO_UPDATE_MODEL | gpt-4.1-mini-2025-04-14 | 1 | ~~T079~~(DONE) | Player character data updates (dynamic selection) |
 | NPC_INFO_UPDATE_MODEL | gpt-4.1-mini-2025-04-14 | 2 | T014,T091 | NPC data updates, location state reconciliation |
 | ENCOUNTER_UPDATE_MODEL | gpt-4.1-mini-2025-04-14 | 1 | T081 | Encounter data updates |
 | TRANSITION_VALIDATOR_MODEL | gpt-4.1-mini-2025-04-14 | 1 | T021 | Location transition validation |

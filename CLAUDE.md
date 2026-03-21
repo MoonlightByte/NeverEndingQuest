@@ -567,6 +567,26 @@ response = capture_and_fanout("T067", api_client.create_completion,
 - `create_completion()` is a thin router -- it does NOT inject params
 - New models require new config variables (e.g., `DM_FULL_MODEL_GPT54_LOW`)
 
+**Gemini response_schema for structured output callsites:**
+
+Some callsites (e.g., T079 character updates) require Gemini to output a specific JSON
+structure. Without `response_schema`, Gemini flash models output DM narration JSON instead
+of the expected delta format. The fix:
+
+1. Load the callsite's existing JSON schema file (e.g., `schemas/char_schema.json`)
+2. Convert at runtime to Gemini format using `convert_to_gemini_schema()` -- strips
+   `$schema`, `required`, `oneOf`, uppercases types (STRING/INTEGER/OBJECT/ARRAY)
+3. Pass the converted schema as `response_schema` in the Gemini config dict
+4. The existing post-response validation chain strips any spurious extra fields
+
+Do NOT create a separate Gemini-specific schema file. Use the runtime converter so schema
+changes to the source file automatically propagate. The converter function lives in
+`model_config.py` (or a utility module) and is called once at import time.
+
+Tested: gemini-3.1-flash-lite|minimal with auto-converted full char_schema scored 4/6 on
+complex artificial scenarios with zero narration output. Spurious keys are harmless --
+`purge_invalid_fields()` already handles them.
+
 ## SRD 5.2.1 Compliance
 
 When implementing game mechanics:

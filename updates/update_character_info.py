@@ -103,7 +103,8 @@ import shutil
 import os
 from datetime import datetime
 from jsonschema import validate, ValidationError
-from openai import OpenAI
+import config
+from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T079", "updates/update_character_info.py", 1455)
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -118,8 +119,7 @@ except:
     def track_response(r): pass
 import time
 import re
-# Import model configuration from config.py
-from config import OPENAI_API_KEY, PLAYER_INFO_UPDATE_MODEL, NPC_INFO_UPDATE_MODEL
+# Model configuration loaded via config dicts in model_config.py
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_write_json, safe_read_json
 from utils.encoding_utils import safe_json_load
@@ -129,8 +129,6 @@ from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
 # Set script name for logging
 set_script_name(__name__)
-
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Constants
 TEMPERATURE = 0.7
@@ -484,13 +482,6 @@ When NPCs deal damage in combat, do NOT update their action arrays. Only update 
 """
     
     return schema_info
-
-def get_model_for_character(character_role):
-    """Get the appropriate model based on character role"""
-    if character_role == 'player':
-        return PLAYER_INFO_UPDATE_MODEL
-    else:
-        return NPC_INFO_UPDATE_MODEL
 
 def normalize_status_and_condition(data, character_role):
     """Normalize status and condition fields based on character role"""
@@ -1445,18 +1436,28 @@ Character Role: {character_role}
     max_attempts = 3
     attempt = 1
     
-    # Get appropriate model for character type
-    model = get_model_for_character(character_role)
-    
+    # T079 MIGRATION NOTE: Gemini requires response_schema forcing on this callsite.
+    # The schema is auto-converted from schemas/char_schema.json at runtime and
+    # passed via the config dict. purge_invalid_fields() strips spurious extra keys.
+    from model_config import MODEL_PROVIDER
+    if MODEL_PROVIDER == "openai":
+        char_update_config = config.CHAR_UPDATE_GPT5MINI_LOW
+    elif MODEL_PROVIDER == "gemini":
+        char_update_config = config.CHAR_UPDATE_GEMINI_FLASHLITE_MINIMAL
+    elif MODEL_PROVIDER == "lmstudio":
+        char_update_config = config.CHAR_UPDATE_LMSTUDIO
+    else:  # legacy
+        char_update_config = config.CHAR_UPDATE_LEGACY
+
     while attempt <= max_attempts:
         try:
             debug(f"STATE_CHANGE: Attempt {attempt} of {max_attempts}", category="character_updates")
-            
-            response = capture_and_fanout("T079", client.chat.completions.create,
+
+            response = capture_and_fanout("T079", api_client.create_completion,
                 messages=messages,
-                model=model,
-                temperature=TEMPERATURE
-            )
+                model=char_update_config["model"],
+                temperature=TEMPERATURE,
+                **{k: v for k, v in char_update_config.items() if k != "model"})
             
             # Track usage
             if USAGE_TRACKING_AVAILABLE:

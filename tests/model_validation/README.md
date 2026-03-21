@@ -13,6 +13,7 @@ These are NOT unit tests -- they make real API calls and cost real money.
 | `test_t065_gpt52_reasoning.py` | T065 (validation) | gpt-5.2 at reasoning_effort none vs low, varying temperatures | none=0/15 correct, low=9/9 correct. Temperature irrelevant. |
 | `test_t065_gemini_thinking.py` | T065 (validation) | gemini-3-flash and gemini-3.1-flash-lite at thinking=medium | Both correct. 3.1-flash-lite is 5x faster (1.6s vs 9.0s). |
 | `test_t065_live_validation.py` | T065 (validation) | Full replay of ALL entries through selected models | gpt-5.2 low=8/12, gemini-3-flash medium=8/12, gpt-5.2 none=0/15 |
+| `test_t079_gemini_schema.py` | T079 (char updates) | All Gemini models with auto-converted response_schema on 6 artificial scenarios | flash-lite\|minimal=4/6, flash\|low=4/6. Zero narration with schema. |
 
 ## Usage
 
@@ -47,3 +48,4 @@ When testing a new callsite:
 | T067 | Main DM loop | gpt-5.2 none / gpt-5-mini low | gemini-3.1-pro low / gemini-3.1-flash-lite minimal | Done |
 | T065 | AI response validation | gpt-5.2 low | gemini-3-flash medium | Done |
 | T082 | Action predictor (router) | gpt-5-mini low | gemini-3-flash minimal | Done |
+| T079 | Character data updates | gpt-5-mini low | gemini-3.1-flash-lite minimal + response_schema | Done |

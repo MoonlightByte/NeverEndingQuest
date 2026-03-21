@@ -204,6 +204,7 @@ def _gemini_completion(messages, model, temperature, response_format=_UNSET, **k
 
     # --- Pop Gemini-specific params from kwargs ---
     thinking_level = kwargs.pop("thinking_level", None)
+    response_schema = kwargs.pop("response_schema", None)
     # Pop OpenAI-only params that Gemini doesn't understand
     kwargs.pop("reasoning_effort", None)
     kwargs.pop("_strip_temperature", None)
@@ -236,6 +237,11 @@ def _gemini_completion(messages, model, temperature, response_format=_UNSET, **k
     elif isinstance(response_format, dict) and response_format.get("type") in ("json_object", "json_schema"):
         config_kwargs["response_mime_type"] = "application/json"
     # else: response_format=None or unrecognized format means plain text (no JSON mode)
+
+    # Gemini response_schema: constrains JSON output to a specific structure.
+    # Auto-converted at runtime from the callsite's existing JSON schema file.
+    if response_schema is not None:
+        config_kwargs["response_schema"] = response_schema
 
     # max_output_tokens (translated from max_tokens)
     if max_tokens is not None:

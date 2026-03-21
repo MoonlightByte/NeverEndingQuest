@@ -3,6 +3,66 @@
 import json
 import os
 
+
+def convert_to_gemini_schema(json_schema):
+    """Convert JSON Schema Draft-07 to Gemini API response_schema format.
+
+    Strips $schema, required, oneOf (takes first option), uppercases types.
+    Handles union types like ["integer", "null"] by taking the non-null type.
+    Reusable for any callsite that needs Gemini response_schema forcing.
+    """
+    _TYPE_MAP = {
+        "string": "STRING", "integer": "INTEGER", "number": "NUMBER",
+        "boolean": "BOOLEAN", "array": "ARRAY", "object": "OBJECT",
+    }
+
+    def _convert_prop(prop):
+        result = {}
+        prop_type = prop.get("type")
+        if isinstance(prop_type, list):
+            non_null = [t for t in prop_type if t != "null"]
+            prop_type = non_null[0] if non_null else "string"
+        if prop_type:
+            result["type"] = _TYPE_MAP.get(prop_type, "STRING")
+        if "oneOf" in prop and "type" not in result:
+            first = prop["oneOf"][0]
+            if "type" in first:
+                result["type"] = _TYPE_MAP.get(first["type"], "STRING")
+            if "items" in first:
+                result["type"] = "ARRAY"
+                result["items"] = _convert_prop(first["items"])
+        if "properties" in prop:
+            result["type"] = "OBJECT"
+            result["properties"] = {
+                k: _convert_prop(v) for k, v in prop["properties"].items()
+            }
+        if "items" in prop:
+            result["type"] = "ARRAY"
+            result["items"] = _convert_prop(prop["items"])
+        return result
+
+    return {
+        "type": "OBJECT",
+        "properties": {
+            k: _convert_prop(v) for k, v in json_schema.get("properties", {}).items()
+        },
+    }
+
+
+# Load and convert char_schema.json for Gemini response_schema
+_char_schema_path = os.path.join(os.path.dirname(__file__), "schemas", "char_schema.json")
+if os.path.exists(_char_schema_path):
+    with open(_char_schema_path, "r") as _f:
+        _CHAR_SCHEMA_GEMINI = convert_to_gemini_schema(json.load(_f))
+else:
+    _CHAR_SCHEMA_GEMINI = None
+    import logging as _logging
+    _logging.warning(
+        "schemas/char_schema.json not found -- Gemini response_schema "
+        "forcing disabled. Gemini may output narration instead of deltas."
+    )
+
+
 # --- Main Game Logic Models (used in main.py) ---
 DM_MAIN_MODEL = "gpt-4.1-2025-04-14"
 DM_SUMMARIZATION_MODEL = "gpt-4.1-mini-2025-04-14"
@@ -89,6 +149,28 @@ ACTION_PRED_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 
 # LM Studio (local passthrough)
 ACTION_PRED_LMSTUDIO = {"model": "local-model"}
+
+# --- T079 Character Update Model Configs (from capture + simulation testing) ---
+# Gemini requires response_schema to prevent narration output. Schema is
+# auto-converted from schemas/char_schema.json at runtime -- no separate file.
+# Existing purge_invalid_fields() strips spurious extra keys from output.
+# Temperature is 0.7 at callsite.
+
+# OpenAI (mini model with low reasoning)
+CHAR_UPDATE_GPT5MINI_LOW = {"model": "gpt-5-mini", "reasoning_effort": "low"}
+
+# Gemini (3.1 flash-lite with minimal thinking + auto-converted schema)
+CHAR_UPDATE_GEMINI_FLASHLITE_MINIMAL = {
+    "model": "gemini-3.1-flash-lite-preview",
+    "thinking_level": "minimal",
+    "response_schema": _CHAR_SCHEMA_GEMINI,
+}
+
+# Legacy (no extra params -- matches current PLAYER_INFO_UPDATE_MODEL)
+CHAR_UPDATE_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+
+# LM Studio (local passthrough)
+CHAR_UPDATE_LMSTUDIO = {"model": "local-model"}
 
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
