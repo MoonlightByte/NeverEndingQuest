@@ -609,6 +609,11 @@ def create_module_validation_context(party_tracker_data, path_manager, state_pac
         try:
             with open(area_file, "r", encoding="utf-8") as file:
                 area_data = json.load(file)
+
+            try:
+                from core.ai.build_npc_context import extract_hidden_npcs_from_location
+            except Exception:
+                extract_hidden_npcs_from_location = None
             
             valid_location_ids = []
             for location in area_data.get("locations", []):
@@ -619,6 +624,10 @@ def create_module_validation_context(party_tracker_data, path_manager, state_pac
                     
                     # Track NPCs by location
                     location_npcs = [npc.get("name") for npc in location.get("npcs", []) if npc.get("name")]
+                    if extract_hidden_npcs_from_location is not None:
+                        location_npcs.extend(
+                            sorted(extract_hidden_npcs_from_location(location) - set(location_npcs))
+                        )
                     if location_npcs:
                         area_locations_with_npcs[loc_id] = location_npcs
                     
@@ -793,10 +802,11 @@ def create_module_validation_context(party_tracker_data, path_manager, state_pac
         
         validation_context += """ENHANCED VALIDATION RULES:
 1. For interactions happening AT the current location, ONLY use NPCs from the "PRESENT at current location" list
-2. For references to NPCs at OTHER locations, they must exist in the "NPCs at OTHER locations" or module character lists
-3. NEVER create new NPCs - all names must exist in the provided lists
-4. If an NPC is referenced incorrectly, suggest the CORRECT NPC from the current location list
-5. NPCs cannot be in multiple locations simultaneously - verify location consistency
+2. Hidden or revealable authored NPC identities from current-location investigation hooks count as PRESENT at the current location for validation purposes
+3. For references to NPCs at OTHER locations, they must exist in the "NPCs at OTHER locations" or module character lists
+4. NEVER create new NPCs - all names must exist in the provided lists
+5. If an NPC is referenced incorrectly, suggest the CORRECT NPC from the current location list
+6. NPCs cannot be in multiple locations simultaneously - verify location consistency
 
 CHARACTER NAME RULES FOR updateCharacterInfo:
 - ALWAYS use the FULL character name exactly as it appears in the party tracker or NPC lists
@@ -3071,6 +3081,16 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
         for action in other_actions:
             result = action_handler.process_action(action, party_tracker_data, location_data, conversation_history)
             actions_processed = True
+
+            if isinstance(result, dict) and result.get("status") == "error":
+                error_msg = result.get("error_message", "Unknown error in action processing")
+                error(f"ACTION_ERROR: {error_msg}", category="action_processing")
+                conversation_history.append({
+                    "role": "system",
+                    "content": f"[SYSTEM] {error_msg}",
+                })
+                save_conversation_history(conversation_history)
+                return {"role": "system", "content": f"[SYSTEM] {error_msg}"}
             
             # Check for pending archive flag from module transitions
             if isinstance(result, dict) and result.get("response_data", {}).get("pending_archive"):

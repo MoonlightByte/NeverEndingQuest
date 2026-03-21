@@ -15,6 +15,7 @@ See LICENSE file for full terms.
 
 from collections import deque
 from typing import Any, Dict, List, Set
+import os
 
 from utils.file_operations import safe_read_json
 from utils.module_path_manager import ModulePathManager
@@ -24,40 +25,79 @@ def _normalize_id(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _get_backup_area_path(area_path: str) -> str:
+    if area_path.endswith(".json"):
+        return area_path[:-5] + "_BU.json"
+    return area_path + "_BU.json"
+
+
+def _normalize_neighbor_list(raw_neighbors: Any) -> List[str]:
+    if not isinstance(raw_neighbors, list):
+        return []
+    return [
+        _normalize_id(loc_id)
+        for loc_id in raw_neighbors
+        if _normalize_id(loc_id)
+    ]
+
+
+def _collect_location_records(area_payload: Dict[str, Any], area_id: str) -> Dict[str, Dict[str, Any]]:
+    records: Dict[str, Dict[str, Any]] = {}
+    if not isinstance(area_payload, dict):
+        return records
+
+    for location in area_payload.get("locations", []):
+        if not isinstance(location, dict):
+            continue
+
+        location_id = _normalize_id(location.get("locationId"))
+        if not location_id:
+            continue
+
+        records[location_id] = {
+            "area_id": _normalize_id(area_id),
+            "name": str(location.get("name") or "").strip(),
+            "connectivity": _normalize_neighbor_list(location.get("connectivity", [])),
+            "area_connectivity": _normalize_neighbor_list(location.get("areaConnectivityId", [])),
+        }
+    return records
+
+
+def _merge_location_records(primary: Dict[str, Dict[str, Any]], fallback: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    merged: Dict[str, Dict[str, Any]] = {}
+    all_ids = set(primary.keys()) | set(fallback.keys())
+    for location_id in all_ids:
+        primary_record = primary.get(location_id, {})
+        fallback_record = fallback.get(location_id, {})
+        connectivity = primary_record.get("connectivity") or fallback_record.get("connectivity") or []
+        area_connectivity = primary_record.get("area_connectivity") or fallback_record.get("area_connectivity") or []
+        merged[location_id] = {
+            "area_id": primary_record.get("area_id") or fallback_record.get("area_id") or "",
+            "name": primary_record.get("name") or fallback_record.get("name") or "",
+            "neighbors": connectivity + area_connectivity,
+        }
+    return merged
+
+
 def _build_module_topology(module_name: str) -> Dict[str, Dict[str, Any]]:
-    """Build fresh location topology from current module area files."""
+    """Build fresh location topology from current module area files.
+
+    Prefer live runtime area data, but backfill static connectivity from canonical
+    `_BU` area files when the live runtime copy has stale or missing topology.
+    """
     topology: Dict[str, Dict[str, Any]] = {}
     path_manager = ModulePathManager(module_name)
 
     for area_id in path_manager.get_area_ids():
-        area_data = safe_read_json(path_manager.get_area_path(area_id))
-        if not isinstance(area_data, dict):
-            continue
+        area_path = path_manager.get_area_path(area_id)
+        live_area_data = safe_read_json(area_path)
+        backup_area_path = _get_backup_area_path(area_path)
+        backup_area_data = safe_read_json(backup_area_path) if os.path.exists(backup_area_path) else None
 
-        for location in area_data.get("locations", []):
-            if not isinstance(location, dict):
-                continue
-
-            location_id = _normalize_id(location.get("locationId"))
-            if not location_id:
-                continue
-
-            connectivity = [
-                _normalize_id(loc_id)
-                for loc_id in location.get("connectivity", [])
-                if _normalize_id(loc_id)
-            ]
-            area_connectivity = [
-                _normalize_id(loc_id)
-                for loc_id in location.get("areaConnectivityId", [])
-                if _normalize_id(loc_id)
-            ]
-
-            topology[location_id] = {
-                "area_id": _normalize_id(area_id),
-                "name": str(location.get("name") or "").strip(),
-                "neighbors": connectivity + area_connectivity,
-            }
+        live_records = _collect_location_records(live_area_data, area_id)
+        backup_records = _collect_location_records(backup_area_data, area_id)
+        area_topology = _merge_location_records(live_records, backup_records)
+        topology.update(area_topology)
 
     return topology
 

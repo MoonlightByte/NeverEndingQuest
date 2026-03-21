@@ -49,6 +49,52 @@ class TestSameModuleTransitionAuthority(unittest.TestCase):
         self.assertIn("validate_same_module_transition_authority", source)
         self.assertIn("authoritative_result.get(\"applies\")", source)
 
+    def test_transition_validator_backfills_connectivity_from_backup_area_file(self):
+        from unittest.mock import patch
+
+        from utils.authoritative_transition_validator import validate_same_module_transition_authority
+
+        class _FakePathManager:
+            def __init__(self, module_name):
+                self.module_dir = f"modules/{module_name}"
+
+            def get_area_ids(self):
+                return ["NIG001"]
+
+            def get_area_path(self, area_id):
+                return f"modules/Night_of_the_Restless_Dead/areas/{area_id}.json"
+
+        live_payload = {
+            "locations": [
+                {"locationId": "NIG04", "name": "Room 4: Priest's Lodging", "connectivity": []},
+                {"locationId": "NIG05", "name": "Room 5: Cellar Hallway", "connectivity": []},
+            ]
+        }
+        backup_payload = {
+            "locations": [
+                {"locationId": "NIG04", "name": "Room 4: Priest's Lodging", "connectivity": ["NIG05"]},
+                {"locationId": "NIG05", "name": "Room 5: Cellar Hallway", "connectivity": ["NIG04"]},
+            ]
+        }
+
+        def _fake_read_json(path):
+            if path.endswith("NIG001_BU.json"):
+                return backup_payload
+            return live_payload
+
+        with patch("utils.authoritative_transition_validator.ModulePathManager", _FakePathManager), \
+             patch("utils.authoritative_transition_validator.safe_read_json", side_effect=_fake_read_json), \
+             patch("utils.authoritative_transition_validator.os.path.exists", return_value=True):
+            result = validate_same_module_transition_authority(
+                module_name="Night_of_the_Restless_Dead",
+                current_location_id="NIG04",
+                destination_location_id="NIG05",
+                current_area_id="NIG001",
+            )
+
+        self.assertTrue(result.get("valid"))
+        self.assertEqual(result.get("path"), ["NIG04", "NIG05"])
+
 
 class TestTransitionFailureHistoryHygieneContracts(unittest.TestCase):
     @classmethod

@@ -6,9 +6,42 @@ Completely agnostic - extracts NPCs from the locations->npcs structure in area f
 
 import os
 import json
+import re
 from pathlib import Path
-from typing import Dict, Set, List, Optional
+from typing import Dict, Set, List, Optional, Any
 from utils.encoding_utils import safe_json_load
+
+TITLE_NAME_PATTERN = re.compile(
+    r"\b(Father|Brother|Sister|Captain|Commander|Scout|Mayor|Elder|Guildmaster|Gatewarden|Groundskeeper|Apprentice|Merchant|Farmer|Farmhand|Blacksmith|Baker|Hunter)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b"
+)
+
+
+def _iter_hook_strings(value: Any) -> List[str]:
+    strings: List[str] = []
+    if isinstance(value, str):
+        strings.append(value)
+    elif isinstance(value, dict):
+        for child in value.values():
+            strings.extend(_iter_hook_strings(child))
+    elif isinstance(value, list):
+        for child in value:
+            strings.extend(_iter_hook_strings(child))
+    return strings
+
+
+def extract_hidden_npcs_from_location(location: dict) -> Set[str]:
+    """Extract authored hidden/reveal NPC identities from investigation hooks."""
+    hidden_npcs: Set[str] = set()
+    if not isinstance(location, dict):
+        return hidden_npcs
+
+    for hook in location.get("investigation_hooks", []):
+        for text in _iter_hook_strings(hook):
+            for match in TITLE_NAME_PATTERN.finditer(text):
+                hidden_npcs.add(match.group(0).replace(",", "").strip())
+
+    return hidden_npcs
+
 
 def extract_npcs_from_area(area_data: dict) -> Dict[str, Set[str]]:
     """
@@ -60,6 +93,8 @@ def extract_npcs_from_area(area_data: dict) -> Dict[str, Set[str]]:
                                     if name:
                                         location_npcs.add(name)
             
+            location_npcs.update(extract_hidden_npcs_from_location(location))
+
             if location_npcs:
                 npcs_by_location[location_id] = location_npcs
     
