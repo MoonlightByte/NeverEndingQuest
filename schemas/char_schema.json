@@ -57,6 +57,14 @@
     "hitPoints": {
       "type": "integer"
     },
+    "deathSaves": {
+      "type": "object",
+      "properties": {
+        "successes": {"type": "integer", "minimum": 0, "maximum": 3},
+        "failures": {"type": "integer", "minimum": 0, "maximum": 3}
+      },
+      "required": ["successes", "failures"]
+    },
     "maxHitPoints": {
       "type": "integer"
     },

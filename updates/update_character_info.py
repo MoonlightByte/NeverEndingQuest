@@ -586,6 +586,32 @@ def normalize_status_and_condition(data, character_role):
 
     return data
 
+
+def _ensure_death_saves_object(character_data):
+    """Normalize nested death save counters for deterministic combat updates."""
+    death_saves = character_data.get('deathSaves')
+    if not isinstance(death_saves, dict):
+        death_saves = {
+            'successes': character_data.get('deathSaveSuccesses', 0),
+            'failures': character_data.get('deathSaveFailures', 0),
+        }
+
+    try:
+        successes = int(death_saves.get('successes', 0) or 0)
+    except (TypeError, ValueError):
+        successes = 0
+
+    try:
+        failures = int(death_saves.get('failures', 0) or 0)
+    except (TypeError, ValueError):
+        failures = 0
+
+    character_data['deathSaves'] = {
+        'successes': max(0, min(successes, 3)),
+        'failures': max(0, min(failures, 3)),
+    }
+    return character_data['deathSaves']
+
 def deep_merge_dict(base_dict, update_dict):
     """Recursively merge update_dict into base_dict, preserving nested structures"""
     result = copy.deepcopy(base_dict)
@@ -1381,6 +1407,9 @@ def repair_character_data(character_data):
     # Synchronize weapons with attacks
     character_data = synchronize_weapons(character_data)
 
+    # Normalize nested death save state for crash-safe combat persistence
+    _ensure_death_saves_object(character_data)
+
     # Preserve cumulative XP semantics and repair next-threshold drift
     character_data, xp_diagnostics = normalize_xp_progression(character_data, preserve_level=True)
     if xp_diagnostics.get("threshold_mismatch"):
@@ -1449,6 +1478,11 @@ SUPPORTED_CHARACTER_OPS = {
     "condition_remove",
     "feature_usage_delta",
     "feature_usage_set",
+    "death_save_failure",
+    "death_save_failure_delta",
+    "death_save_success",
+    "death_save_success_delta",
+    "death_saves_set",
 }
 
 _last_ops_routing_marker = {
@@ -1519,6 +1553,34 @@ def _to_int(value: Any, field_name: str, op_type: str) -> int:
         return int(value)
     except Exception:
         raise ValueError(f"Invalid integer for {op_type}.{field_name}: {value}")
+
+
+def _sync_death_save_state(updated_data: Dict[str, Any]) -> None:
+    """Keep death saves coherent with HP and status after deterministic ops."""
+    death_saves = _ensure_death_saves_object(updated_data)
+    current_hp = _to_int(updated_data.get("hitPoints", 0), "hitPoints", "death_saves")
+    successes = death_saves["successes"]
+    failures = death_saves["failures"]
+
+    if current_hp > 0:
+        death_saves["successes"] = 0
+        death_saves["failures"] = 0
+        return
+
+    if failures >= 3:
+        updated_data["status"] = "dead"
+        updated_data["condition"] = "none"
+        updated_data["condition_affected"] = []
+    else:
+        updated_data["status"] = "unconscious"
+        updated_data["condition"] = "unconscious"
+        conditions = updated_data.get("condition_affected", [])
+        if not isinstance(conditions, list):
+            conditions = []
+        normalized_conditions = [str(condition).strip().lower() for condition in conditions]
+        if "unconscious" not in normalized_conditions:
+            conditions.append("unconscious")
+        updated_data["condition_affected"] = conditions
 
 
 def _find_class_feature_entry(class_features: List[Dict[str, Any]], feature_name: str) -> Optional[Dict[str, Any]]:
@@ -1622,12 +1684,14 @@ def _apply_character_ops_deterministic(character_data: Dict[str, Any], ops: List
             hp_value = _to_int(op.get("value", op.get("hp")), "value", op_type)
             max_hp = _to_int(updated_data.get("maxHitPoints", hp_value), "maxHitPoints", op_type)
             updated_data["hitPoints"] = max(0, min(hp_value, max_hp))
+            _sync_death_save_state(updated_data)
 
         elif op_type == "hp_delta":
             delta = _to_int(op.get("delta"), "delta", op_type)
             current_hp = _to_int(updated_data.get("hitPoints", 0), "hitPoints", op_type)
             max_hp = _to_int(updated_data.get("maxHitPoints", current_hp), "maxHitPoints", op_type)
             updated_data["hitPoints"] = max(0, min(current_hp + delta, max_hp))
+            _sync_death_save_state(updated_data)
 
         elif op_type == "spell_slot_delta":
             level_key = _normalize_spell_slot_level(op.get("level", ""))
@@ -1866,6 +1930,28 @@ def _apply_character_ops_deterministic(character_data: Dict[str, Any], ops: List
                 refresh_on = op.get("refreshOn")
                 refresh_text = str(refresh_on).strip() if refresh_on is not None else None
                 _write_feature_usage(feature_entry, new_current, max_value, usage_shape, refresh_text)
+
+        elif op_type in ["death_save_failure", "death_save_failure_delta", "death_save_success", "death_save_success_delta", "death_saves_set"]:
+            death_saves = _ensure_death_saves_object(updated_data)
+            current_hp = _to_int(updated_data.get("hitPoints", 0), "hitPoints", op_type)
+            if current_hp > 0:
+                return (False, character_data, f"{op_type} invalid while hitPoints > 0", [])
+
+            if op_type in ["death_save_failure", "death_save_failure_delta"]:
+                delta = _to_int(op.get("delta", 1), "delta", op_type)
+                if delta < 0:
+                    return (False, character_data, f"{op_type} delta must be >= 0", [])
+                death_saves["failures"] = max(0, min(death_saves.get("failures", 0) + delta, 3))
+            elif op_type in ["death_save_success", "death_save_success_delta"]:
+                delta = _to_int(op.get("delta", 1), "delta", op_type)
+                if delta < 0:
+                    return (False, character_data, f"{op_type} delta must be >= 0", [])
+                death_saves["successes"] = max(0, min(death_saves.get("successes", 0) + delta, 3))
+            else:
+                death_saves["successes"] = max(0, min(_to_int(op.get("successes", 0), "successes", op_type), 3))
+                death_saves["failures"] = max(0, min(_to_int(op.get("failures", 0), "failures", op_type), 3))
+
+            _sync_death_save_state(updated_data)
 
     return (True, updated_data, "", [])
 

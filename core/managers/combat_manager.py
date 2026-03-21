@@ -119,6 +119,7 @@ import re
 import random
 import subprocess
 import threading
+from typing import Any, Dict, List, Optional
 
 # Add project root to sys.path for direct execution
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -2702,6 +2703,82 @@ Focus on mechanical accuracy for the actions. For narrative_highlights, extract 
         error(f"COMPRESSION: Failed to generate round {round_num} summary", exception=e, category="combat_events")
         return None
 
+
+def _queue_final_character_update(
+    final_character_updates: Dict[str, List[Dict[str, Any]]],
+    character_name: Optional[str],
+    changes: Optional[str] = None,
+    ops: Optional[List[Dict[str, Any]]] = None,
+) -> None:
+    """Queue a character update payload for end-of-turn persistence."""
+    if not character_name or (not changes and not ops):
+        return
+
+    final_character_updates.setdefault(character_name, []).append({
+        "changes": changes,
+        "ops": ops,
+    })
+
+
+def _sync_multi_pc_character_state(multi_pc_manager: Any, character_name: str) -> None:
+    """Refresh in-memory multi-PC state from persisted character data."""
+    if not multi_pc_manager:
+        return
+
+    persisted_path = f"characters/{normalize_character_name(character_name)}.json"
+    persisted_data = safe_json_load(persisted_path)
+    if isinstance(persisted_data, dict):
+        multi_pc_manager.sync_pc_persistent_state(character_name, persisted_data)
+
+
+def _apply_final_character_updates(
+    final_character_updates: Dict[str, List[Dict[str, Any]]],
+    multi_pc_manager: Any,
+) -> None:
+    """Persist queued character updates while preserving deterministic ops payloads."""
+    if not final_character_updates:
+        return
+
+    info("STATE_UPDATE: Applying all consolidated updates.", category="character_updates")
+    debug(f"AMMO_DEBUG: Processing {len(final_character_updates)} character updates", category="ammunition")
+
+    for character_name, update_entries in final_character_updates.items():
+        ops_entries = [entry for entry in update_entries if entry.get("ops")]
+        prose_changes = [entry.get("changes") for entry in update_entries if entry.get("changes") and not entry.get("ops")]
+
+        for entry in ops_entries:
+            entry_changes = entry.get("changes") or ""
+            entry_ops = entry.get("ops")
+            try:
+                update_success = update_character_info(character_name, entry_changes, ops=entry_ops)
+                if not update_success:
+                    error(f"FAILURE: Deterministic combat update failed for {character_name}.", category="character_updates")
+                    continue
+                _sync_multi_pc_character_state(multi_pc_manager, character_name)
+            except Exception as e:
+                error(f"FAILURE: Critical error during deterministic combat update for {character_name}", exception=e, category="character_updates")
+
+        if prose_changes:
+            final_change_string = "Following the turn's events: " + ", and ".join(prose_changes) + "."
+            info(f"FINAL_CHANGE_STRING for {character_name}: {final_change_string}", category="character_updates")
+
+            if any(word in final_change_string.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
+                debug(f"AMMO_DEBUG: About to update ammunition for {character_name}", category="ammunition")
+                debug(f"AMMO_DEBUG: Final change string: '{final_change_string}'", category="ammunition")
+
+            try:
+                update_success = update_character_info(character_name, final_change_string)
+                if not update_success:
+                    error(f"FAILURE: Final consolidated update failed for {character_name}.", category="character_updates")
+                else:
+                    _sync_multi_pc_character_state(multi_pc_manager, character_name)
+                    if any(word in final_change_string.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
+                        debug(f"AMMO_DEBUG: Successfully processed ammunition update for {character_name}", category="ammunition")
+            except Exception as e:
+                error(f"FAILURE: Critical error during consolidated update for {character_name}", exception=e, category="character_updates")
+                if any(word in final_change_string.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
+                    debug(f"AMMO_DEBUG: Exception during ammunition update: {str(e)}", category="ammunition")
+
 def run_combat_simulation(encounter_id, party_tracker_data, location_info):
     """Run combat simulation with single-session ownership safeguards."""
     effective_encounter_id = str(encounter_id).strip()
@@ -4914,8 +4991,7 @@ Rules:
        # This new block prevents race conditions by consolidating all character
        # updates into a single, authoritative save at the end of combat.
 
-       # A dictionary to hold all change descriptions for each character.
-       # e.g., {'eirik_hearthwise': ['used a crossbow bolt', 'took 5 damage'], ...}
+       # A dictionary to hold queued character update payloads for each actor.
        final_character_updates = {}
 
        # Check if combat is ending in this turn.
@@ -4935,22 +5011,22 @@ Rules:
                char_name_key = "characterName" if "characterName" in parameters else "npcName"
                character_name = parameters.get(char_name_key)
                changes = parameters.get("changes")
+               ops = parameters.get("ops")
 
-               if character_name and changes:
-                   if character_name not in final_character_updates:
-                       final_character_updates[character_name] = []
-                   final_character_updates[character_name].append(changes)
-                   info(f"CONSOLIDATING: Queued change for {character_name}: '{changes}'", category="combat_events")
-                   
-                   # AMMUNITION DEBUG LOGGING
-                   if any(word in changes.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
-                       debug(f"AMMO_DEBUG: Detected ammunition change for {character_name}", category="ammunition")
-                       debug(f"AMMO_DEBUG: Action type: {action_type}", category="ammunition")
-                       debug(f"AMMO_DEBUG: Changes text: '{changes}'", category="ammunition")
-                       debug(f"AMMO_DEBUG: Added to final_character_updates queue", category="ammunition")
+               if character_name and (changes or ops):
+                   _queue_final_character_update(final_character_updates, character_name, changes, ops)
+                   if changes:
+                       info(f"CONSOLIDATING: Queued change for {character_name}: '{changes}'", category="combat_events")
+
+                       if any(word in changes.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
+                           debug(f"AMMO_DEBUG: Detected ammunition change for {character_name}", category="ammunition")
+                           debug(f"AMMO_DEBUG: Action type: {action_type}", category="ammunition")
+                           debug(f"AMMO_DEBUG: Changes text: '{changes}'", category="ammunition")
+                           debug(f"AMMO_DEBUG: Added to final_character_updates queue", category="ammunition")
+                   else:
+                       info(f"CONSOLIDATING: Queued deterministic ops for {character_name}", category="combat_events")
 
            elif action_type == "updateencounter":
-               # Encounter updates are separate and can be processed immediately.
                encounter_id_for_update = parameters.get("encounterId", encounter_id)
                changes = parameters.get("changes", "")
                ops = parameters.get("ops")
@@ -4965,9 +5041,8 @@ Rules:
                        encounter_data = normalize_encounter_status(updated_encounter_data)
                except Exception as e:
                    error(f"FAILURE: Failed to update encounter", exception=e, category="encounter_management")
-           
+
            elif action_type == "exit" and is_combat_ending:
-               # If combat is ending, add the authoritative HP and XP to our dictionary.
                info("CONSOLIDATING: 'exit' action detected. Calculating final HP and XP.", category="combat_events")
                xp_narrative, xp_awarded = calculate_xp()
                info(f"XP_AWARD: Calculated {xp_awarded} XP per participant.", category="xp_tracking")
@@ -4977,93 +5052,65 @@ Rules:
                for creature in encounter_data.get("creatures", []):
                    if creature.get("type") in ["player", "npc"]:
                        character_name = creature.get("name")
-                       if character_name:
-                           if character_name not in final_character_updates:
-                               final_character_updates[character_name] = []
+                       if xp_awarded > 0:
+                           _queue_final_character_update(
+                               final_character_updates,
+                               character_name,
+                               f"awarded {xp_awarded} experience points",
+                           )
 
-                           # CRITICAL FIX: Don't set HP from encounter file - character file is source of truth
-                           # The encounter file may have stale HP values that would overwrite healing done during combat
-                           # Only award XP when combat ends
-
-                            # COMMENTED OUT: This line was setting HP from the encounter file, which can be stale
-                            # final_hp = creature.get("currentHitPoints")
-                            # final_character_updates[character_name].append(f"set hitPoints to {final_hp}")
-
-                           if xp_awarded > 0:
-                                final_character_updates[character_name].append(f"awarded {xp_awarded} experience points")
-
-           # BUG FIX: Post-action auto-exit safety net
-           # If the LLM processed an updateEncounter that killed the last enemy
-           # but didn't return an exit action, force combat end and award XP.
-           # This is a defensive check - the pre-LLM check (check_all_monsters_defeated)
-           # should have already instructed the LLM to exit, but LLMs can ignore instructions.
            if not is_combat_ending and check_all_monsters_defeated(encounter_data):
                info("AUTO_EXIT: All enemies defeated after action processing. LLM failed to call exit - forcing combat end.", category="combat_events")
                is_combat_ending = True
 
-               # Calculate and award XP (same logic as the normal exit path)
                xp_narrative, xp_awarded = calculate_xp()
                info(f"XP_AWARD: Auto-exit calculated {xp_awarded} XP per participant.", category="xp_tracking")
                conversation_history.append({"role": "user", "content": f"XP Awarded: {xp_narrative}"})
                save_json_file(conversation_history_file, conversation_history)
 
                for creature in encounter_data.get("creatures", []):
-                    if creature.get("type") in ["player", "npc"]:
-                        character_name = creature.get("name")
-                        if character_name:
-                            if character_name not in final_character_updates:
-                                final_character_updates[character_name] = []
-                            if xp_awarded > 0:
-                                final_character_updates[character_name].append(f"awarded {xp_awarded} experience points")
+                   if creature.get("type") in ["player", "npc"]:
+                       character_name = creature.get("name")
+                       if xp_awarded > 0:
+                           _queue_final_character_update(
+                               final_character_updates,
+                               character_name,
+                               f"awarded {xp_awarded} experience points",
+                           )
 
            # TABLETOP MODE: Turn Queue Advancement
            if multi_pc_manager and not is_combat_ending:
-               # 1. Check for NPC Turn Auto-Advance
-               # If the prompt generated an action for an NPC, we must advance past them.
                current_actor = multi_pc_manager.get_current_actor()
-               # Advance NPC turns automatically if they were the active actor
                if current_actor and (current_actor.type == CombatantType.NPC):
-                   # If we successfully generated actions (meaning the AI processed the NPC's turn), advance.
-                   if actions: 
+                   if actions:
                        debug(f"[COMBAT_MANAGER] Auto-advancing turn for NPC {current_actor.name}", category="combat_events")
                        next_actor = multi_pc_manager.advance_turn()
-                   
-                       # If next is PC, update tracker/UI
-                   if next_actor.type == CombatantType.PC:
-                       party_tracker_data["active_character"] = next_actor.name
-                       safe_write_json("party_tracker.json", party_tracker_data)
-                       if MULTI_PC_COMBAT_AVAILABLE:
-                           emit_combat_event("active_character_update", {"character": next_actor.name})
-                       debug(f"[COMBAT_MANAGER] Advanced active character to {next_actor.name}", category="combat_events")
-                   else:
-                        debug(f"[COMBAT_MANAGER] Advanced turn to next enemy/NPC: {next_actor.name}", category="combat_events")
 
-           # 2. Check for manual PC turn completion (via UI)
-           # We DO NOT auto-advance here based on actions, to support Multiattack/Action Surge.
-           # Turn advancement happens when:
-           # A. User clicks "End Turn" (sets status to ACTED)
-           # B. Loop detects ACTED status and advances queue
-           active_pc_name = multi_pc_manager.current_pc_name
-           if active_pc_name:
-               active_state = multi_pc_manager.pc_states.get(active_pc_name)
-               
-               # If the UI has marked this PC as ACTED, we advance the queue
-               if active_state and active_state.status == PCStatus.ACTED:
-                   debug(f"[COMBAT_MANAGER] Detected ACTED status for {active_pc_name}, advancing turn queue", category="combat_events")
-                   next_actor = multi_pc_manager.advance_turn()
-                   
-                   # If the next actor is a PC, update the party tracker so the UI tab switches
-                   if next_actor.type == CombatantType.PC:
-                       party_tracker_data["active_character"] = next_actor.name
-                       safe_write_json("party_tracker.json", party_tracker_data)
-                       
-                       # Notify UI to switch tabs
-                       if MULTI_PC_COMBAT_AVAILABLE:
-                           emit_combat_event("active_character_update", {"character": next_actor.name})
-                           
-                       debug(f"[COMBAT_MANAGER] Advanced active character to {next_actor.name}", category="combat_events")
-                   else:
-                       debug(f"[COMBAT_MANAGER] Advanced turn to enemy/NPC: {next_actor.name}", category="combat_events")
+                       if next_actor.type == CombatantType.PC:
+                           party_tracker_data["active_character"] = next_actor.name
+                           safe_write_json("party_tracker.json", party_tracker_data)
+                           if MULTI_PC_COMBAT_AVAILABLE:
+                               emit_combat_event("active_character_update", {"character": next_actor.name})
+                           debug(f"[COMBAT_MANAGER] Advanced active character to {next_actor.name}", category="combat_events")
+                       else:
+                           debug(f"[COMBAT_MANAGER] Advanced turn to next enemy/NPC: {next_actor.name}", category="combat_events")
+
+               active_pc_name = multi_pc_manager.current_pc_name
+               if active_pc_name:
+                   active_state = multi_pc_manager.pc_states.get(active_pc_name)
+
+                   if active_state and active_state.status == PCStatus.ACTED:
+                       debug(f"[COMBAT_MANAGER] Detected ACTED status for {active_pc_name}, advancing turn queue", category="combat_events")
+                       next_actor = multi_pc_manager.advance_turn()
+
+                       if next_actor.type == CombatantType.PC:
+                           party_tracker_data["active_character"] = next_actor.name
+                           safe_write_json("party_tracker.json", party_tracker_data)
+                           if MULTI_PC_COMBAT_AVAILABLE:
+                               emit_combat_event("active_character_update", {"character": next_actor.name})
+                           debug(f"[COMBAT_MANAGER] Advanced active character to {next_actor.name}", category="combat_events")
+                       else:
+                           debug(f"[COMBAT_MANAGER] Advanced turn to enemy/NPC: {next_actor.name}", category="combat_events")
 
        # TABLETOP MODE: Section 1.2 - Opening enemy batch completion transition
        # If DM_GROUP opened the round, clear marker and return control to PC_PHASE after batch resolves.
@@ -5082,45 +5129,17 @@ Rules:
                save_json_file(f"modules/encounters/encounter_{encounter_id}.json", encounter_data)
 
        # STEP 2: EXECUTE the consolidated updates. This is the only place character files are saved.
-       if final_character_updates:
-           info("STATE_UPDATE: Applying all consolidated updates.", category="character_updates")
-           
-           # AMMUNITION DEBUG
-           debug(f"AMMO_DEBUG: Processing {len(final_character_updates)} character updates", category="ammunition")
-           
-           for character_name, changes_list in final_character_updates.items():
-               # Join all changes into one comprehensive request string.
-               final_change_string = "Following the turn's events: " + ", and ".join(changes_list) + "."
-               info(f"FINAL_CHANGE_STRING for {character_name}: {final_change_string}", category="character_updates")
-               
-               # AMMUNITION DEBUG
-               if any(word in final_change_string.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
-                   debug(f"AMMO_DEBUG: About to update ammunition for {character_name}", category="ammunition")
-                   debug(f"AMMO_DEBUG: Final change string: '{final_change_string}'", category="ammunition")
-
-               try:
-                   update_success = update_character_info(character_name, final_change_string)
-                   if not update_success:
-                       error(f"FAILURE: Final consolidated update failed for {character_name}.", category="character_updates")
-                   else:
-                       # AMMUNITION DEBUG
-                       if any(word in final_change_string.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
-                           debug(f"AMMO_DEBUG: Successfully processed ammunition update for {character_name}", category="ammunition")
-               except Exception as e:
-                   error(f"FAILURE: Critical error during consolidated update for {character_name}", exception=e, category="character_updates")
-                   # AMMUNITION DEBUG
-                   if any(word in final_change_string.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
-                       debug(f"AMMO_DEBUG: Exception during ammunition update: {str(e)}", category="ammunition")
+       _apply_final_character_updates(final_character_updates, multi_pc_manager)
 
        # STEP 3: If combat ended, perform final cleanup and exit the simulation.
        if is_combat_ending:
            # Store the encounter ID before clearing it
            last_encounter_id = party_tracker_data.get("worldConditions", {}).get("activeCombatEncounter", "")
-           
+
            # IMPORTANT: Generate summary BEFORE clearing the active encounter ID
            info("AI_CALL: Generating final combat summary...", category="ai_operations")
            dialogue_summary_result = summarize_dialogue(conversation_history, location_info, party_tracker_data)
-           
+
            # NOW clear the active encounter after summary is generated
            if 'worldConditions' in party_tracker_data and 'activeCombatEncounter' in party_tracker_data['worldConditions']:
                if last_encounter_id:
@@ -5128,10 +5147,10 @@ Rules:
                party_tracker_data['worldConditions']['activeCombatEncounter'] = ""
                debug(f"STATE_CHANGE: Cleared active combat encounter. Last completed is now {last_encounter_id}", category="combat_events")
                safe_write_json("party_tracker.json", party_tracker_data)
-           
+
            info("FILE_OP: Saving final combat chat history log...", category="combat_logs")
            generate_chat_history(conversation_history, encounter_id)
-           
+
            # Reload the player_info object from disk one last time before returning it.
            # This ensures the main loop receives the fully updated state.
            player_info = safe_json_load(player_file)

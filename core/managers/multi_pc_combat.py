@@ -27,6 +27,7 @@
 
 import random
 import json
+import re
 from typing import Dict, List, Optional, Any, Tuple, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -58,6 +59,37 @@ def _get_tabletop_debug():
         except ImportError:
             _tabletop_debug_available = None
     return _tabletop_debug_available
+
+
+def _normalize_combat_identity(name: Any) -> str:
+    """Normalize character/combatant names for canonical identity checks."""
+    normalized = str(name or "").strip().lower()
+    normalized = normalized.replace(" ", "_")
+    normalized = normalized.replace("'", "_")
+    normalized = re.sub(r"[^a-z0-9_]", "_", normalized)
+    normalized = re.sub(r"_+", "_", normalized)
+    return normalized.strip("_")
+
+
+def _extract_death_save_counts(character_data: Dict[str, Any]) -> Tuple[int, int]:
+    """Read nested or legacy death save counters from character data."""
+    death_saves = character_data.get("deathSaves")
+    if isinstance(death_saves, dict):
+        try:
+            return (
+                int(death_saves.get("successes", 0) or 0),
+                int(death_saves.get("failures", 0) or 0),
+            )
+        except (TypeError, ValueError):
+            return (0, 0)
+
+    try:
+        return (
+            int(character_data.get("deathSaveSuccesses", 0) or 0),
+            int(character_data.get("deathSaveFailures", 0) or 0),
+        )
+    except (TypeError, ValueError):
+        return (0, 0)
 
 
 class PCStatus(Enum):
@@ -188,19 +220,33 @@ class CombatStateManager:
             party_data: The party_tracker.json data
         """
         self.pc_states.clear()
-        
+
         party_members = party_data.get("partyMembers", [])
+        requested_active_identity = _normalize_combat_identity(party_data.get("active_character"))
+        deduped_members: List[str] = []
+        seen_identities = set()
+
+        for member_name in party_members:
+            normalized_member = _normalize_combat_identity(member_name)
+            if not normalized_member or normalized_member in seen_identities:
+                continue
+            seen_identities.add(normalized_member)
+            deduped_members.append(str(member_name))
+
+        party_members = deduped_members
         
         # Enforce party size limit
         if len(party_members) > self.MAX_PARTY_SIZE:
             party_members = party_members[:self.MAX_PARTY_SIZE]
         
+        resolved_active_name: Optional[str] = None
+
         for member_name in party_members:
             # TABLETOP MODE: Load character data directly from character JSON file
             # party_tracker.json does not store nested character objects
             # Build path manually to avoid circular dependencies and import issues
             try:
-                normalized_name = member_name.lower().replace(' ', '_')
+                normalized_name = _normalize_combat_identity(member_name)
                 char_file_path = f"characters/{normalized_name}.json"
                 
                 # Use safe_json_load if available, otherwise fall back to standard json
@@ -219,12 +265,20 @@ class CombatStateManager:
                       category="combat_events")
                 char_data = {}
             
+            display_name = str(char_data.get("name") or member_name).strip() or str(member_name)
+
             # Read HP from character schema (hitPoints is top-level, not nested under hp)
             current_hp = char_data.get("hitPoints", 10)
             max_hp = char_data.get("maxHitPoints", current_hp)
+            death_successes, death_failures = _extract_death_save_counts(char_data)
+            persisted_status = str(char_data.get("status") or "").strip().lower()
             
             # Determine initial status based on HP
-            if current_hp <= 0:
+            if persisted_status == "dead":
+                status = PCStatus.DEAD
+            elif current_hp <= 0 and death_successes >= 3:
+                status = PCStatus.STABLE
+            elif current_hp <= 0:
                 status = PCStatus.INCAPACITATED
             else:
                 status = PCStatus.READY
@@ -232,18 +286,25 @@ class CombatStateManager:
             # Capture any metadata (like position) from char_data
             metadata = char_data.get("metadata", {}) or {}
                 
-            self.pc_states[member_name] = PCCombatState(
-                character_name=member_name,
+            self.pc_states[display_name] = PCCombatState(
+                character_name=display_name,
                 initiative_modifier=char_data.get("initiative", 0),
                 status=status,
+                death_save_successes=death_successes,
+                death_save_failures=death_failures,
                 current_hp=current_hp,
                 max_hp=max_hp,
                 ac=char_data.get("armorClass", 10),
                 metadata=metadata
             )
+
+            if requested_active_identity and _normalize_combat_identity(display_name) == requested_active_identity:
+                resolved_active_name = display_name
         
         # Set first PC as current if none selected
-        if not self.current_pc_name and self.pc_states:
+        if resolved_active_name:
+            self.current_pc_name = resolved_active_name
+        elif not self.current_pc_name and self.pc_states:
             self.current_pc_name = list(self.pc_states.keys())[0]
     
     def get_available_pcs(self) -> List[str]:
@@ -277,14 +338,22 @@ class CombatStateManager:
         Returns:
             True if successful, False if PC can't act
         """
-        if character_name not in self.pc_states:
+        resolved_name = character_name if character_name in self.pc_states else None
+        if resolved_name is None:
+            requested_identity = _normalize_combat_identity(character_name)
+            for existing_name in self.pc_states.keys():
+                if _normalize_combat_identity(existing_name) == requested_identity:
+                    resolved_name = existing_name
+                    break
+
+        if resolved_name is None:
             return False
-            
-        state = self.pc_states[character_name]
+
+        state = self.pc_states[resolved_name]
         
         # Can select if ready OR incapacitated (for death saves)
         if state.status in (PCStatus.READY, PCStatus.INCAPACITATED):
-            self.current_pc_name = character_name
+            self.current_pc_name = resolved_name
             return True
             
         return False
@@ -301,16 +370,64 @@ class CombatStateManager:
             return
             
         state = self.pc_states[character_name]
+        previous_status = state.status
         state.current_hp = new_hp
         
-        if new_hp <= 0 and state.status not in (PCStatus.DEAD, PCStatus.STABLE):
-            state.status = PCStatus.INCAPACITATED
-            state.death_save_successes = 0
-            state.death_save_failures = 0
-        elif new_hp > 0 and state.status in (PCStatus.INCAPACITATED, PCStatus.STABLE):
+        if new_hp <= 0:
+            if previous_status in (PCStatus.READY, PCStatus.ACTED):
+                state.status = PCStatus.INCAPACITATED
+                state.death_save_successes = 0
+                state.death_save_failures = 0
+        elif new_hp > 0 and previous_status in (PCStatus.INCAPACITATED, PCStatus.STABLE):
             state.status = PCStatus.READY
             state.death_save_successes = 0
             state.death_save_failures = 0
+
+    def sync_pc_persistent_state(self, character_name: str, character_data: Dict[str, Any]) -> None:
+        """Sync durable PC state fields loaded from character storage."""
+        resolved_name = character_name if character_name in self.pc_states else None
+        if resolved_name is None:
+            requested_identity = _normalize_combat_identity(character_name)
+            for existing_name in self.pc_states.keys():
+                if _normalize_combat_identity(existing_name) == requested_identity:
+                    resolved_name = existing_name
+                    break
+
+        if resolved_name is None:
+            return
+
+        state = self.pc_states.get(resolved_name)
+        if not state:
+            return
+
+        try:
+            state.current_hp = int(character_data.get("hitPoints", state.current_hp) or 0)
+        except (TypeError, ValueError):
+            pass
+
+        try:
+            state.max_hp = int(character_data.get("maxHitPoints", state.max_hp) or state.max_hp)
+        except (TypeError, ValueError):
+            pass
+
+        try:
+            state.ac = int(character_data.get("armorClass", state.ac) or state.ac)
+        except (TypeError, ValueError):
+            pass
+
+        death_successes, death_failures = _extract_death_save_counts(character_data)
+        state.death_save_successes = death_successes
+        state.death_save_failures = death_failures
+
+        persisted_status = str(character_data.get("status") or "").strip().lower()
+        if persisted_status == "dead":
+            state.status = PCStatus.DEAD
+        elif state.current_hp <= 0 and death_successes >= 3:
+            state.status = PCStatus.STABLE
+        elif state.current_hp <= 0:
+            state.status = PCStatus.INCAPACITATED
+        else:
+            state.status = PCStatus.READY
 
 
 @dataclass
@@ -460,28 +577,47 @@ class TurnQueueManager:
         Matches partial names (case-insensitive).
         Prioritizes enemies, then living targets.
         """
-        partial_name = partial_name.lower().strip()
-        candidates = []
-        
-        # Search in turn queue
-        for combatant in self.turn_queue:
-            if partial_name in combatant.name.lower():
-                candidates.append(combatant)
-        
+        partial_raw = str(partial_name or "").strip().lower()
+        partial_identity = _normalize_combat_identity(partial_name)
+        if not partial_raw and not partial_identity:
+            return None
+
+        def _matches(combatant: Combatant) -> bool:
+            name_raw = combatant.name.lower()
+            name_identity = _normalize_combat_identity(combatant.name)
+            raw_match = partial_raw and partial_raw in name_raw
+            identity_match = partial_identity and partial_identity in name_identity
+            return bool(raw_match or identity_match)
+
+        def _score(combatant: Combatant) -> Tuple[int, int, int, int]:
+            name_raw = combatant.name.lower()
+            name_identity = _normalize_combat_identity(combatant.name)
+            exact_match = int(
+                (partial_raw and partial_raw == name_raw)
+                or (partial_identity and partial_identity == name_identity)
+            )
+            prefix_match = int(
+                (partial_raw and name_raw.startswith(partial_raw))
+                or (partial_identity and name_identity.startswith(partial_identity))
+            )
+            enemy_priority = int(combatant.type == CombatantType.ENEMY)
+            return (exact_match, prefix_match, enemy_priority, combatant.initiative)
+
+        candidates = [combatant for combatant in self.turn_queue if _matches(combatant)]
         if not candidates:
             return None
-            
-        # Prioritize enemies
-        enemies = [c for c in candidates if c.type == CombatantType.ENEMY]
-        if enemies:
-            return enemies[0]
-            
-        # Then prioritize living targets
-        living = [c for c in candidates if c.status.lower() != "dead"]
-        if living:
-            return living[0]
-            
-        return candidates[0]
+
+        living_candidates = [
+            combatant for combatant in candidates if not self._is_inactive_combatant(combatant)
+        ]
+        if not living_candidates:
+            return None
+
+        living_enemies = [
+            combatant for combatant in living_candidates if combatant.type == CombatantType.ENEMY
+        ]
+        pool = living_enemies or living_candidates
+        return max(pool, key=_score)
     
     def complete_pc_turn(self, character_name: Optional[str] = None) -> bool:
         """
@@ -524,7 +660,13 @@ class TurnQueueManager:
     def _is_inactive_combatant(combatant: Combatant) -> bool:
         """Return True if combatant should be skipped by turn progression."""
         status = (combatant.status or "").strip().lower()
-        return status in ("dead", "defeated", "incapacitated", "unconscious", "stable")
+        if status in ("dead", "defeated", "incapacitated", "unconscious", "stable"):
+            return True
+
+        try:
+            return int(combatant.hp) <= 0
+        except (TypeError, ValueError):
+            return False
 
     @staticmethod
     def _is_valid_enemy_phase_actor(combatant: Combatant) -> bool:
@@ -702,8 +844,7 @@ class MultiPCCombatManager:
             # During PC phase, all enemies and NPCs are forbidden
             return [
                 c.name for c in self._turns.turn_queue 
-                if c.type in (CombatantType.ENEMY, CombatantType.NPC) 
-                and c.status != "dead"
+                if self._turns._is_valid_enemy_phase_actor(c)
             ]
         # During enemy phase, no restrictions
         return []
@@ -873,6 +1014,23 @@ class MultiPCCombatManager:
             
         command = parts[0].lower()
         args = parts[1:]
+
+        normalized_actor = _normalize_combat_identity(actor_name)
+        acting_pc_state: Optional[PCCombatState] = None
+        for pc_name, pc_state in self._state.pc_states.items():
+            if _normalize_combat_identity(pc_name) == normalized_actor:
+                acting_pc_state = pc_state
+                break
+
+        if command in ("/att", "/dmg") and acting_pc_state and acting_pc_state.status in (
+            PCStatus.INCAPACITATED,
+            PCStatus.DEAD,
+            PCStatus.STABLE,
+        ):
+            return (
+                f"[skipTTS] Dungeon Master: [SYSTEM] {acting_pc_state.character_name} cannot use {command} while at 0 HP. Resolve the required death save first.",
+                None,
+            )
         
         if command == "/att":
             # Syntax: /att [target] [roll] [optional: weapon]
@@ -1070,6 +1228,10 @@ class MultiPCCombatManager:
         Delegates to CombatStateManager.get_all_active_pcs().
         """
         return self._state.get_all_active_pcs()
+
+    def sync_pc_persistent_state(self, character_name: str, character_data: Dict[str, Any]) -> None:
+        """Sync persisted HP/status/death saves into in-memory combat state."""
+        self._state.sync_pc_persistent_state(character_name, character_data)
     
     def set_current_pc(self, character_name: str) -> bool:
         """
@@ -1452,7 +1614,7 @@ class MultiPCCombatManager:
 
         # PC_PHASE: STRICT TURN ISOLATION MODE
         current_actor = self.get_current_actor()
-        actor_name = current_actor.name if current_actor else "Current Actor"
+        actor_name = self._state.current_pc_name or (current_actor.name if current_actor else "Current Actor")
         
         # Count remaining PCs
         available_pcs = self.get_available_pcs()
@@ -1494,6 +1656,9 @@ class MultiPCCombatManager:
         status = combatant.status.lower()
         name = combatant.name
         
+        if TurnQueueManager._is_inactive_combatant(combatant) and combatant.type != CombatantType.PC:
+            return "[D]", "Dead"
+
         if status == "dead":
             return "[D]", "Dead"
         
@@ -1525,7 +1690,7 @@ class MultiPCCombatManager:
         for combatant in sorted_queue:
             name = combatant.name
             init = combatant.initiative
-            status = combatant.status.lower()
+            status = "dead" if TurnQueueManager._is_inactive_combatant(combatant) and combatant.type != CombatantType.PC else combatant.status.lower()
             marker, state = self._get_combatant_marker(combatant)
             
             initiative_lines.append(f"- {name} ({init}) - {status}")
@@ -1559,33 +1724,33 @@ class MultiPCCombatManager:
                 return instruction, []
         
         # PC_PHASE
-        active_pc = self._state.current_pc_name
+        active_pc_name: str = self._state.current_pc_name or "Current PC"
         active_pc_index = -1
         
         for i, combatant in enumerate(sorted_queue):
-            if combatant.name == active_pc:
+            if combatant.name == active_pc_name:
                 active_pc_index = i
                 break
         
         if active_pc_index < 0:
-            return f">>> CURRENT: {active_pc} - PLAYER TURN (await input)", [active_pc]
+            return f">>> CURRENT: {active_pc_name} - PLAYER TURN (await input)", [active_pc_name]
         
         # Find NPCs acting before active PC
         npcs_before = [
             combatant.name for i, combatant in enumerate(sorted_queue[:active_pc_index])
-            if combatant.type in (CombatantType.ENEMY, CombatantType.NPC)
+            if TurnQueueManager._is_valid_enemy_phase_actor(combatant)
         ]
         
         if npcs_before:
             npc_list = "\n".join([f"- {name}" for name in npcs_before])
             instruction = f""">>> PROCESS ALL OF THESE IN ONE RESPONSE (Initiative Order):
 {npc_list}
->>> THEN STOP AT: {active_pc} (Player)"""
-            return instruction, npcs_before + [active_pc]
+>>> THEN STOP AT: {active_pc_name} (Player)"""
+            return instruction, npcs_before + [active_pc_name]
         else:
             active_init = sorted_queue[active_pc_index].initiative
-            instruction = f">>> CURRENT: {active_pc} ({active_init}) - PLAYER TURN (await input)"
-            return instruction, [active_pc]
+            instruction = f">>> CURRENT: {active_pc_name} ({active_init}) - PLAYER TURN (await input)"
+            return instruction, [active_pc_name]
     
     def format_initiative_tracker(self, encounter_data: Dict[str, Any]) -> str:
         """
