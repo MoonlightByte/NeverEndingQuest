@@ -39,13 +39,10 @@
 # ============================================================================
 
 import json
-from openai import OpenAI
-from config import OPENAI_API_KEY, ACTION_PREDICTION_MODEL
+import config
+from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T082", "utils/action_predictor.py", 152)
-
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Action prediction system prompt (condensed from full system analysis)
 ACTION_PREDICTION_PROMPT = """You are an action prediction agent for the world's most popular 5th edition roleplaying game AI system. Analyze user input to determine if it requires JSON actions in the AI response.
@@ -149,13 +146,26 @@ def predict_actions_required(user_input):
             "confidence": str
         }
     """
+    from model_config import MODEL_PROVIDER
+    if MODEL_PROVIDER == "openai":
+        pred_config = config.ACTION_PRED_GPT5MINI_LOW
+    elif MODEL_PROVIDER == "gemini":
+        pred_config = config.ACTION_PRED_GEMINI_FLASH_MINIMAL
+    elif MODEL_PROVIDER == "lmstudio":
+        pred_config = config.ACTION_PRED_LMSTUDIO
+    else:  # legacy
+        pred_config = config.ACTION_PRED_LEGACY
+
     try:
         # Call action prediction model
-        response = capture_and_fanout("T082", client.chat.completions.create, messages=[
+        response = capture_and_fanout("T082", api_client.create_completion,
+            messages=[
                 {"role": "system", "content": ACTION_PREDICTION_PROMPT},
                 {"role": "user", "content": f"Analyze this user input: '{user_input}'"}
-            ], model=ACTION_PREDICTION_MODEL,
-            temperature=0.1)
+            ],
+            model=pred_config["model"],
+            temperature=0.1,
+            **{k: v for k, v in pred_config.items() if k != "model"})
         
         # Parse the prediction response
         prediction_text = response.choices[0].message.content.strip()

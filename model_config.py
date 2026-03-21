@@ -74,6 +74,22 @@ DM_VALIDATION_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 # LM Studio (local passthrough)
 DM_VALIDATION_LMSTUDIO = {"model": "local-model"}
 
+# --- T082 Action Predictor Model Configs (from capture testing) ---
+# Binary classifier, fires every turn. Speed and cost critical.
+# Temperature is 0.1 at callsite.
+
+# OpenAI (mini model with low reasoning -- 14/14 correct, $0.0007, 2.8s)
+ACTION_PRED_GPT5MINI_LOW = {"model": "gpt-5-mini", "reasoning_effort": "low"}
+
+# Gemini (3-flash with minimal thinking -- 13/14 correct, $0.0011, 1.4s fastest)
+ACTION_PRED_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+
+# Legacy (full model, no extra params -- matches current ACTION_PREDICTION_MODEL)
+ACTION_PRED_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+
+# LM Studio (local passthrough)
+ACTION_PRED_LMSTUDIO = {"model": "local-model"}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures

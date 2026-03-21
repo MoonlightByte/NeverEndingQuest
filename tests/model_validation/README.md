@@ -41,8 +41,9 @@ When testing a new callsite:
 
 ## Callsite Migration Status
 
-| Callsite | Scripts | Selected Models | Status |
-|---|---|---|---|
-| T013 | (manual analysis only) | OpenAI: gpt-5-mini, Gemini: gemini-3.1-flash-lite | Done |
-| T067 | (capture reviewer only) | OpenAI: gpt-5.2 none / gpt-5-mini low, Gemini: gemini-3.1-pro low / flash-lite minimal | Done |
-| T065 | 3 scripts | OpenAI: gpt-5.2 low, Gemini: gemini-3-flash medium | Done |
+| Callsite | Description | OpenAI Model | Gemini Model | Status |
+|---|---|---|---|---|
+| T013 | Transition narration | gpt-5-mini (via CALLSITE_MODEL_MAP) | gemini-3.1-flash-lite (via CALLSITE_MODEL_MAP) | Done |
+| T067 | Main DM loop | gpt-5.2 none / gpt-5-mini low | gemini-3.1-pro low / gemini-3.1-flash-lite minimal | Done |
+| T065 | AI response validation | gpt-5.2 low | gemini-3-flash medium | Done |
+| T082 | Action predictor (router) | gpt-5-mini low | gemini-3-flash minimal | Done |
