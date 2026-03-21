@@ -133,18 +133,26 @@ def update_party_tracker(encounter_id):
     return False
 
 def load_or_create_monster(monster_type):
+    requested_label = str(monster_type or "").strip()
     formatted_monster_type = format_type_name(monster_type)
-    print(f"[COMBAT_BUILDER] Monster load/create: '{monster_type}' -> '{formatted_monster_type}'")
+    print(f"[COMBAT_BUILDER] Monster load/create: '{requested_label}' -> '{formatted_monster_type}'")
+
+    canonical_monster_type = formatted_monster_type
+    canonical_name = requested_label
+
     # Get current module from party tracker for consistent path resolution
+    current_module = ""
     try:
         from utils.encoding_utils import safe_json_load
         party_tracker = safe_json_load("party_tracker.json")
-        current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
+        current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else ""
         path_manager = ModulePathManager(current_module)
     except:
         path_manager = ModulePathManager()  # Fallback to reading from file
+
     monster_file = path_manager.get_monster_path(monster_type)
     monster_data = load_json(monster_file)
+
     if not monster_data:
         # TABLETOP MODE: Only authored module monsters may be hydrated at runtime.
         try:
@@ -157,6 +165,7 @@ def load_or_create_monster(monster_type):
                     monster_type,
                     monster_builder_path,
                 )
+
                 if not resolution_result.get("ok"):
                     error_class = resolution_result.get("error_class", "authorized_monster_hydration_failed")
                     error_message = resolution_result.get("error_message", "Monster resolution failed.")
@@ -166,38 +175,49 @@ def load_or_create_monster(monster_type):
                     error(f"TABLETOP MODE: {error_message}", category="combat_builder")
                     return None
 
-                monster_data = load_json(monster_file)
+                canonical_monster_type = resolution_result.get("canonical_slug") or canonical_monster_type
+                canonical_name = resolution_result.get("canonical_name") or canonical_name or requested_label
+                resolved_path = resolution_result.get("target_path") or path_manager.get_monster_path(canonical_name)
+
+                monster_data = load_json(resolved_path)
                 if not monster_data:
-                    print(colored(f"Error: Failed to load materialized monster data for {monster_type}", "red"))
+                    print(colored(f"Error: Failed to load materialized monster data for {requested_label}", "red"))
                     return None
             else:
                 raise ImportError
         except ImportError:
             # --- Upstream auto-creation path (single-player mode) ---
             print(f"[COMBAT_BUILDER] Monster file not found, creating: {monster_file}")
-            warning(f"MONSTER_LOADING: Monster loading ({monster_type}) - attempting creation", category="combat_builder")
+            warning(f"MONSTER_LOADING: Monster loading ({requested_label}) - attempting creation", category="combat_builder")
             current_dir = os.path.dirname(os.path.abspath(__file__))
             monster_builder_path = os.path.join(current_dir, "monster_builder.py")
             result = subprocess.run([sys.executable, monster_builder_path, monster_type], capture_output=True, text=True)
             if result.returncode == 0:
-                print(f"[COMBAT_BUILDER] Monster creation successful: {monster_type}")
-                info(f"SUCCESS: Monster builder ({monster_type}) - PASS", category="combat_builder")
+                print(f"[COMBAT_BUILDER] Monster creation successful: {requested_label}")
+                info(f"SUCCESS: Monster builder ({requested_label}) - PASS", category="combat_builder")
                 if os.path.exists(monster_file):
                     monster_data = load_json(monster_file)
                     if not monster_data:
-                        print(colored(f"Error: Failed to load newly created monster data for {monster_type}", "red"))
+                        print(colored(f"Error: Failed to load newly created monster data for {requested_label}", "red"))
                         return None
                 else:
                     print(colored(f"Error: Monster file {monster_file} was not created", "red"))
                     return None
             else:
-                print(f"[COMBAT_BUILDER] Monster creation failed: {monster_type}")
+                print(f"[COMBAT_BUILDER] Monster creation failed: {requested_label}")
                 print(f"[COMBAT_BUILDER] Error output: {result.stderr}")
-                error(f"FAILURE: Monster builder ({monster_type}) - FAIL", category="combat_builder")
+                error(f"FAILURE: Monster builder ({requested_label}) - FAIL", category="combat_builder")
                 return None
     else:
-        print(f"[COMBAT_BUILDER] Monster loaded from file: {monster_type}")
-    return monster_data
+        print(f"[COMBAT_BUILDER] Monster loaded from file: {requested_label}")
+
+    display_name = requested_label or str(monster_data.get("name") or "Unknown")
+    return {
+        "monster_data": monster_data,
+        "canonical_monster_type": canonical_monster_type,
+        "display_name": display_name,
+        "requested_monster_type": formatted_monster_type,
+    }
 
 def load_or_create_npc(npc_name):
     formatted_npc_name = format_type_name(npc_name)
@@ -376,23 +396,27 @@ def generate_encounter(encounter_data):
     # Add monsters
     monster_counts = {}
     for monster_type in encounter_data["monsters"]:
-        formatted_monster_type = format_type_name(monster_type)
-        print(f"[COMBAT_BUILDER] Loading/creating monster: {monster_type} -> {formatted_monster_type}")
-        monster_data = load_or_create_monster(monster_type)
-        if not monster_data:
+        print(f"[COMBAT_BUILDER] Loading/creating monster: {monster_type} -> {format_type_name(monster_type)}")
+        monster_resolution = load_or_create_monster(monster_type)
+        if not monster_resolution:
             return None
 
-        monster_counts[formatted_monster_type] = monster_counts.get(formatted_monster_type, 0) + 1
-        
-        if monster_counts[formatted_monster_type] > 1:
-            monster_name = f"{monster_data['name']}_{monster_counts[formatted_monster_type]}"
+        monster_data = monster_resolution["monster_data"]
+        canonical_monster_type = str(monster_resolution.get("canonical_monster_type") or format_type_name(monster_type))
+        display_name = str(monster_resolution.get("display_name") or monster_data.get("name") or monster_type)
+        display_slug = format_type_name(display_name)
+
+        monster_counts[display_slug] = monster_counts.get(display_slug, 0) + 1
+
+        if monster_counts[display_slug] > 1:
+            monster_name = f"{display_name}_{monster_counts[display_slug]}"
         else:
-            monster_name = monster_data['name']
+            monster_name = display_name
 
         monster = {
             "name": monster_name,
             "type": "enemy",
-            "monsterType": formatted_monster_type,
+            "monsterType": canonical_monster_type,
             "initiative": random.randint(1, 20),
             "status": "alive",
             "conditions": [],

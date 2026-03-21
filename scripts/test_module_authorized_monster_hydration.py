@@ -19,6 +19,7 @@ if PROJECT_ROOT not in sys.path:
 from utils.module_monster_authority import (
     authorize_module_monster,
     materialize_authorized_monster_file,
+    resolve_authorized_monster_reference,
 )
 
 
@@ -69,6 +70,107 @@ class TestModuleMonsterAuthority(unittest.TestCase):
         self.assertIn("--module", builder_calls[0])
         self.assertIn("Night_of_the_Restless_Dead", builder_calls[0])
 
+    def test_flavored_cultist_leader_resolves_to_cultist_for_hydration(self):
+        builder_calls = []
+        authority = {
+            "cultist": {"sources": [{"type": "authored_area_content", "name": "Cultist"}]},
+        }
+
+        def _record_builder(args, capture_output, text):
+            builder_calls.append(args)
+            return SimpleNamespace(returncode=1, stdout="", stderr="builder failed")
+
+        with patch("utils.module_monster_authority.build_module_monster_authority", return_value=authority), \
+             patch("utils.module_monster_authority.find_reusable_monster_path", return_value=None), \
+             patch("utils.module_monster_authority.os.path.exists", return_value=False), \
+             patch("utils.module_monster_authority.subprocess.run", side_effect=_record_builder):
+            result = materialize_authorized_monster_file(
+                "Night_of_the_Restless_Dead",
+                "Cultist Leader",
+                "core/generators/monster_builder.py",
+            )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_class"], "authorized_monster_hydration_failed")
+        self.assertEqual(result.get("canonical_slug"), "cultist")
+        self.assertEqual(builder_calls[0][2], "Cultist")
+
+
+class TestCanonicalMonsterReferenceResolution(unittest.TestCase):
+    def test_exact_match_stays_exact(self):
+        authority = {
+            "cultist": {"sources": [{"type": "authored_area_content", "name": "Cultist"}]},
+        }
+        with patch("utils.module_monster_authority.build_module_monster_authority", return_value=authority):
+            result = resolve_authorized_monster_reference("Night_of_the_Restless_Dead", "Cultist")
+
+        self.assertTrue(result["authorized"])
+        self.assertEqual(result["resolution_mode"], "exact")
+        self.assertEqual(result["canonical_slug"], "cultist")
+
+    def test_canonicalizable_flavor_resolves_unique_base(self):
+        authority = {
+            "cultist": {"sources": [{"type": "authored_area_content", "name": "Cultist"}]},
+            "skeleton": {"sources": [{"type": "authored_area_content", "name": "Skeleton"}]},
+        }
+        with patch("utils.module_monster_authority.build_module_monster_authority", return_value=authority):
+            result = resolve_authorized_monster_reference("Night_of_the_Restless_Dead", "Cultist Leader")
+
+        self.assertTrue(result["authorized"])
+        self.assertEqual(result["resolution_mode"], "subset_unique")
+        self.assertEqual(result["canonical_slug"], "cultist")
+
+    def test_adjective_flavor_resolves_without_modifier_collision(self):
+        authority = {
+            "cultist": {"sources": [{"type": "authored_area_content", "name": "Cultist"}]},
+            "red": {"sources": [{"type": "authored_area_content", "name": "Red"}]},
+        }
+        with patch("utils.module_monster_authority.build_module_monster_authority", return_value=authority):
+            result = resolve_authorized_monster_reference("Night_of_the_Restless_Dead", "Red-Cloaked Cultist")
+
+        self.assertTrue(result["authorized"])
+        self.assertEqual(result["resolution_mode"], "subset_unique")
+        self.assertEqual(result["canonical_slug"], "cultist")
+
+    def test_exact_stronger_variant_remains_exact(self):
+        authority = {
+            "bandit": {"sources": [{"type": "authored_area_content", "name": "Bandit"}]},
+            "bandit_captain": {"sources": [{"type": "authored_area_content", "name": "Bandit Captain"}]},
+        }
+        with patch("utils.module_monster_authority.build_module_monster_authority", return_value=authority):
+            result = resolve_authorized_monster_reference("Night_of_the_Restless_Dead", "Bandit Captain")
+
+        self.assertTrue(result["authorized"])
+        self.assertEqual(result["resolution_mode"], "exact")
+        self.assertEqual(result["canonical_slug"], "bandit_captain")
+
+    def test_ambiguous_label_fails_closed(self):
+        authority = {
+            "skeleton": {"sources": [{"type": "authored_area_content", "name": "Skeleton"}]},
+            "guard": {"sources": [{"type": "authored_area_content", "name": "Guard"}]},
+        }
+        with patch("utils.module_monster_authority.build_module_monster_authority", return_value=authority):
+            result = resolve_authorized_monster_reference("Night_of_the_Restless_Dead", "Skeleton Guard")
+
+        self.assertFalse(result["authorized"])
+        self.assertEqual(result["resolution_mode"], "ambiguous")
+        self.assertEqual(result["reason"], "ambiguous_candidates")
+        self.assertEqual(sorted(result["candidates"]), ["guard", "skeleton"])
+
+    def test_nonsense_label_fails_closed(self):
+        authority = {
+            "cultist": {"sources": [{"type": "authored_area_content", "name": "Cultist"}]},
+        }
+        with patch("utils.module_monster_authority.build_module_monster_authority", return_value=authority):
+            result = resolve_authorized_monster_reference(
+                "Night_of_the_Restless_Dead",
+                "Abyssal Grave-Priest of the Hollow Sun",
+            )
+
+        self.assertFalse(result["authorized"])
+        self.assertEqual(result["resolution_mode"], "unauthorized")
+        self.assertEqual(result["reason"], "no_canonical_match")
+
 
 class TestCombatBuilderSourceContracts(unittest.TestCase):
     def test_combat_builder_uses_authorized_materialization_helper(self):
@@ -80,6 +182,8 @@ class TestCombatBuilderSourceContracts(unittest.TestCase):
         self.assertIn("resolution_result = materialize_authorized_monster_file(", source)
         self.assertIn("error_class = resolution_result.get(\"error_class\"", source)
         self.assertIn("error_message = resolution_result.get(\"error_message\"", source)
+        self.assertIn("display_name = str(monster_resolution.get(\"display_name\")", source)
+        self.assertIn('"monsterType": canonical_monster_type', source)
 
     def test_action_handler_surfaces_new_monster_failure_classes(self):
         file_path = os.path.join(PROJECT_ROOT, "core", "ai", "action_handler.py")
