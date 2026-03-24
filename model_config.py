@@ -172,6 +172,23 @@ CHAR_UPDATE_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 # LM Studio (local passthrough)
 CHAR_UPDATE_LMSTUDIO = {"model": "local-model"}
 
+# --- T017 Combat Compression Model Configs (from synthetic testing v5 prompt) ---
+# CRITICAL: This callsite outputs plain text tags (@T=CS/v2), NOT JSON.
+# response_format=None opts out of default JSON mode.
+# Temperature is 0.3 at callsite.
+
+# OpenAI (mini model with low reasoning -- 5/6 correct, entry 4 @ROUND cosmetic only)
+COMBAT_COMPRESS_GPT5MINI_LOW = {"model": "gpt-5-mini", "reasoning_effort": "low", "response_format": None}
+
+# Gemini (3-flash with low thinking -- stable 6/6, 2.0s avg, fastest)
+COMBAT_COMPRESS_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low", "response_format": None}
+
+# Legacy (no extra params)
+COMBAT_COMPRESS_LEGACY = {"model": "gpt-4.1-mini-2025-04-14", "response_format": None}
+
+# LM Studio (local passthrough)
+COMBAT_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures

@@ -11,7 +11,8 @@ No validation needed since output is for AI context only, not actions.
 import json
 import hashlib
 import re
-from openai import OpenAI
+import config
+from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T017", "core/ai/combat_compression_engine.py", 169)
 from typing import Dict, Optional
@@ -45,16 +46,25 @@ REQUIRED TAGS (each exactly once; if a datum is absent in source, omit its tag e
 - @T=CS/v2
 - @ROUND=<integer>
 - @PLAYER=<exact player name from source>                     # keep spaces and punctuation as-is, but drop "(player)" suffix
-- @PROCESS=[<id:initiative>, ...]                             # creatures to process NOW (from >>> PROCESS …), in that order
+- @PROCESS=[<id:initiative>, ...]                             # creatures to process NOW, in initiative order
                                                              # Format entries as id:initiative (e.g., G3:18) — do NOT use parentheses
+                                                             # If source says ">>> PROCESS ALL OF THESE": list creatures to resolve before stop
+                                                             # If source says ">>> CURRENT: <name> - PLAYER TURN": set @PROCESS=[player:init] ONLY
+                                                             #   (the player is the ONLY creature to process; after_player creatures are NOT in @PROCESS)
 - @STOP=<same exact value as @PLAYER>                         # MUST equal @PLAYER; if source gives a stop name, use that exact name
-- @STATUS=acted[...],dead[...],after_player[...],waiting[...] # from tracker; any group may be empty; 'waiting' preserves initiative order
+- @STATUS=acted[...],dead[...],after_player[...],waiting[...] # from tracker; ALL FOUR groups MUST always appear, even if empty (e.g., acted[],dead[])
+                                                             # Assign each creature to EXACTLY ONE group using this precedence: dead > acted > after_player > waiting
+                                                             # after_player[] = creatures whose tracker line explicitly reads "- After Player"; do NOT also list in waiting[]
+                                                             # waiting[] = all remaining alive creatures not yet acted, including @PLAYER during PLAYER TURN
+                                                             # CRITICAL: @PLAYER MUST appear in exactly one group; never omit @PLAYER from @STATUS
 - @ROSTER=[id:role:type:canonical, ...]                       # MUST include every actor referenced anywhere
                                                              # role ∈ {player, ally, enemy, neutral}
                                                              # type = monster species or class/archetype (e.g., Skeleton, Ranger, Scout, PC, unknown)
                                                              # canonical = exact name as it appears in source (spaces allowed)
 - @HP=[<id:cur/max>, ...]                                     # include ALL living creatures from the tracker (not just @PROCESS) + the player
-- @ATK=[<id:[r1,r2,...]>, ...]                                # ONLY actors in @PROCESS that can attack; preserve listed roll order for each
+- @ATK=[<id:[r1,r2,...]>, ...]                                # MUST always appear when @PROCESS is non-empty; ONLY actors listed in @PROCESS
+                                                             # For player (who rolls own dice): include player:[] (empty list, not a label or weapon name)
+                                                             # For NPCs/monsters: include their pre-rolled attack values; preserve listed roll order
 - @DICE={dX:[v1,v2,...], dY:[...]}                            # ONLY generic damage dice relevant to THIS segment; values must be within die faces
 - @SLOTS=[<id:L#:curr/max>, ...]                              # ONLY partially used spell slots where curr < max
                                                              # NEVER include full slots (e.g., omit L3:2/2, L1:4/4, L2:3/3)
@@ -88,12 +98,16 @@ STOP LOGIC
 - Otherwise set @STOP to @PLAYER.
 - @STOP MUST equal @PLAYER exactly.
 
-SELF-CHECK (before you output)
-- @PROCESS includes initiatives exactly as shown in source; order is preserved.
+SELF-CHECK (before you output -- reject and redo if ANY check fails)
+- @PROCESS includes ONLY creatures that need resolution NOW. Dead creatures are NEVER in @PROCESS.
+- If the input says "PLAYER TURN": @PROCESS has exactly ONE entry (the player). No enemies, no allies.
+- If the input says "ROUND COMPLETE": @PROCESS lists ALL creatures marked [X] (Acted) in the tracker, excluding dead. This is NOT a player turn -- do NOT set @PROCESS to the player alone.
 - @STOP equals @PLAYER exactly.
 - Every ID used in other tags exists in @ROSTER with role/type/canonical.
 - @HP includes ALL living creatures (plus the player) from the tracker.
-- Each actor in @PROCESS that can attack has an entry in @ATK.
+- @ATK MUST be present whenever @PROCESS has entries. It contains ONLY actors in @PROCESS. For the player (rolls own dice), use id:[] -- never a label or weapon name.
+- @STATUS has exactly four groups: acted[], dead[], after_player[], waiting[]. All four MUST appear. @PLAYER MUST appear in exactly one group.
+- No creature in more than one @STATUS group. Assign by precedence: dead > acted > after_player > waiting. A creature labeled "After Player" in source goes ONLY in after_player[], never also in waiting[].
 - @DICE only contains plausible generic damage dice for THIS segment; values are within face ranges.
 - @SLOTS contains only partially used slots; omit full ones.
 
@@ -103,25 +117,18 @@ FORMAT
 class CombatCompressor:
     """Production combat message compressor for historical context."""
     
-    def __init__(self, api_key: str = None, enable_caching: bool = True):
+    def __init__(self, enable_caching: bool = True):
         """Initialize compressor."""
-        # Get API key from environment or config
-        if api_key is None:
-            api_key = os.environ.get('OPENAI_API_KEY')
-        
-        if api_key is None:
-            try:
-                sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                import config
-                api_key = getattr(config, 'OPENAI_API_KEY', None)
-            except:
-                pass
-        
-        if not api_key:
-            raise ValueError("OpenAI API key required")
-        
-        self.client = OpenAI(api_key=api_key)
-        self.model = NARRATIVE_COMPRESSION_MODEL
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            self._config = config.COMBAT_COMPRESS_GPT5MINI_LOW
+        elif MODEL_PROVIDER == "gemini":
+            self._config = config.COMBAT_COMPRESS_GEMINI_FLASH_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            self._config = config.COMBAT_COMPRESS_LMSTUDIO
+        else:  # legacy
+            self._config = config.COMBAT_COMPRESS_LEGACY
+
         self.enable_caching = enable_caching
         self.cache_file = Path("modules/conversation_history/combat_compression_cache.json")
         self.cache = self._load_cache() if enable_caching else {}
@@ -165,11 +172,15 @@ class CombatCompressor:
         
         try:
             # Call AI for compression
-            print(f"[DEBUG] Calling AI compression with model: {self.model}")
-            response = capture_and_fanout("T017", self.client.chat.completions.create, messages=[
+            print(f"[DEBUG] Calling AI compression with model: {self._config['model']}")
+            response = capture_and_fanout("T017", api_client.create_completion,
+                messages=[
                     {"role": "system", "content": COMBAT_COMPRESSION_PROMPT},
                     {"role": "user", "content": content}
-                ], model=self.model, temperature=0.3)
+                ],
+                model=self._config["model"],
+                temperature=0.3,
+                **{k: v for k, v in self._config.items() if k != "model"})
             
             # Track usage
             if USAGE_TRACKING_AVAILABLE:
@@ -207,7 +218,7 @@ class CombatCompressor:
         except Exception as e:
             # Log the error for debugging
             print(f"[ERROR] Combat compression failed: {e}")
-            print(f"[ERROR] Model: {self.model}")
+            print(f"[ERROR] Model: {self._config['model']}")
             print(f"[ERROR] Content length: {len(content)} chars")
             
             # Check if it's an API key issue
