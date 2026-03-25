@@ -12,7 +12,7 @@
 
 | Model Variable | Legacy Model | Callsite Count | Task IDs | Primary Usage |
 |---|---|---|---|---|
-| DM_MAIN_MODEL | gpt-4.1-2025-04-14 | 17 | ~~T013~~(DONE),T022-T028,T031,T036,T037,T046,T059,T063,T064,T092 | Main DM narration, transitions, generators, stitching |
+| DM_MAIN_MODEL | gpt-4.1-2025-04-14 | 17 | ~~T013~~(DONE),T022-T028,T031,T036,T037,~~T046~~(DONE),T059,T063,T064,T092 | Main DM narration, transitions, generators, stitching |
 | DM_FULL_MODEL | gpt-4.1-2025-04-14 | 0 dedicated | (used dynamically by ~~T067~~(DONE) via selected_model) | Complex actions requiring JSON operations |
 | DM_VALIDATION_MODEL | gpt-4.1-2025-04-14 | 3 | T040,T048,~~T065~~(DONE) | AI response validation, combat validation |
 | COMBAT_MAIN_MODEL | gpt-4.1-2025-04-14 | 3 | T043,T044,T045 | Primary combat loop (T045 uses dynamic assignment) |

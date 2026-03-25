@@ -189,6 +189,24 @@ COMBAT_COMPRESS_LEGACY = {"model": "gpt-4.1-mini-2025-04-14", "response_format":
 # LM Studio (local passthrough)
 COMBAT_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
 
+# ----- T046 Initiative Tracker -----
+# Analytical combat utility: tracks turn order, determines who acts next.
+# Full-tier callsite, temperature=0.1, plain text output.
+# GPT-5.4 reviewer: gpt-5.2|none = 4/4 pass (4.2/5), gemini-flash|minimal = 4/4 pass (4.2/5)
+# gpt-5-mini DISQUALIFIED (contradictory tracker on E[1], scored 1-2/5)
+
+# OpenAI (gpt-5.2 with no reasoning -- 4/4 correct, 2.46s avg, temp=0.1 passes through)
+INIT_TRACKER_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none", "response_format": None}
+
+# Gemini (3-flash with minimal thinking -- 4/4 correct, 1.71s avg, fastest + cheapest)
+INIT_TRACKER_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal", "response_format": None}
+
+# Legacy (no extra params -- response_format=None opts out of default JSON mode)
+INIT_TRACKER_LEGACY = {"model": "gpt-4.1-2025-04-14", "response_format": None}
+
+# LM Studio (local passthrough)
+INIT_TRACKER_LMSTUDIO = {"model": "local-model", "response_format": None}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures

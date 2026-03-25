@@ -12,10 +12,10 @@ Used to enhance the combat state display with live turn tracking.
 import json
 import re
 import os
-from openai import OpenAI
+from core.ai import api_client
+import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T046", "core/managers/initiative_tracker_ai.py", 172)
-from config import OPENAI_API_KEY, DM_MAIN_MODEL
+register_callsite("T046", "core/managers/initiative_tracker_ai.py", 177)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -133,10 +133,6 @@ def generate_live_initiative_tracker(encounter_data, conversation_history, curre
         str: Formatted initiative tracker or None if generation fails
     """
     try:
-        if not OPENAI_API_KEY:
-            logger.warning("OpenAI API key not configured, cannot generate initiative tracker")
-            return None
-        
         # Get current round
         if current_round is None:
             current_round = encounter_data.get("current_round", encounter_data.get("combat_round", 1))
@@ -167,9 +163,22 @@ def generate_live_initiative_tracker(encounter_data, conversation_history, curre
             json.dump(api_messages, f, indent=2, ensure_ascii=False)
         print(f"DEBUG: [INITIATIVE] Exported messages to debug/api_captures/initiative_messages_to_api.json")
         
-        # Query AI model
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        response = capture_and_fanout("T046", client.chat.completions.create, messages=api_messages, model=DM_MAIN_MODEL, temperature=0.1)
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            tracker_config = config.INIT_TRACKER_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            tracker_config = config.INIT_TRACKER_GEMINI_FLASH_MINIMAL
+        elif MODEL_PROVIDER == "lmstudio":
+            tracker_config = config.INIT_TRACKER_LMSTUDIO
+        else:  # legacy
+            tracker_config = config.INIT_TRACKER_LEGACY
+
+        response = capture_and_fanout("T046", api_client.create_completion,
+            messages=api_messages,
+            model=tracker_config["model"],
+            temperature=0.1,
+            **{k: v for k, v in tracker_config.items() if k != "model"})
         
         # Extract the tracker from response
         tracker_text = response.choices[0].message.content
