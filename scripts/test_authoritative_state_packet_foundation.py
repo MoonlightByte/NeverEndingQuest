@@ -44,6 +44,7 @@ class TestAuthoritativeStatePacketShape(unittest.TestCase):
                     "name": "Rangers' Command Post",
                     "description": "A muddy camp beneath old pines.",
                     "dmInstructions": "Keep watchful NPC tone.",
+                    "source_room_title": "Command Post",
                     "connectivity": ["TW02", "TW03"],
                 },
                 {
@@ -91,6 +92,11 @@ class TestAuthoritativeStatePacketShape(unittest.TestCase):
         self.assertIn("TW02", packet["topology"]["known_location_ids"])
         self.assertIn("Forest Trail", packet["topology"]["known_location_names"])
         self.assertIn("module_locations", packet["topology"])
+        self.assertEqual(packet["location"]["adjacent_location_ids"], ["TW02", "TW03"])
+        self.assertEqual(len(packet["location"]["adjacent_location_names"]), 2)
+        self.assertTrue(
+            all("source_room_title" in location for location in packet["topology"]["module_locations"]),
+        )
 
     def test_packet_builder_is_read_only_for_input_payload(self):
         before = copy.deepcopy(self.party_tracker)

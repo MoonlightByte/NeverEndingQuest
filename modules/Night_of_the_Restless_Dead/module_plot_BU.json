@@ -1,13 +1,14 @@
 {
-  "plotTitle": "Night_of_the_Restless_Dead Adventure",
-  "mainObjective": "The hook and entry to the academy.",
+  "plotTitle": "Night of the Restless Dead Adventure",
+  "mainObjective": "Save the village from the cathedral cult and restore the ancient ward.",
   "plotPoints": [
     {
       "id": "PP001",
-      "title": "Room 1: Ma's Watering Hole",
+      "title": "Ma's Watering Hole",
       "description": "The party arrives at Ma's Watering Hole, a rural inn between Yatar and Waterdeep. Ma runs the inn and Blarg, a large half-orc, handles security.",
       "location": "NIG01",
       "nextPoints": [
+        "PP008",
         "PP002"
       ],
       "status": "not started",
@@ -15,8 +16,20 @@
       "source_room_number": 1
     },
     {
+      "id": "PP008",
+      "title": "Brother Lintar's Place",
+      "description": "Brother Lintar keeps a sheltered refuge on the village outskirts where the party can regroup, present Saint Rydal's relic, and plan a renewed push into the cathedral.",
+      "location": "NIG08",
+      "nextPoints": [
+        "PP002"
+      ],
+      "status": "not started",
+      "plotImpact": "Sanctuary and recovery staging point progression",
+      "source_room_number": 8
+    },
+    {
       "id": "PP002",
-      "title": "Room 2: Ruined Cathedral Main Hall",
+      "title": "Ruined Cathedral Main Hall",
       "description": "The party reaches the ruined cathedral. Thick webs cover the entrance and the main hall is dark and damaged.",
       "location": "NIG02",
       "nextPoints": [
@@ -28,7 +41,7 @@
     },
     {
       "id": "PP003",
-      "title": "Room 3: Cathedral Storage",
+      "title": "Cathedral Storage",
       "description": "The storage room is mostly empty except for old barrels and dried blood. A web-wrapped figure hangs from the ceiling.",
       "location": "NIG03",
       "nextPoints": [
@@ -40,7 +53,7 @@
     },
     {
       "id": "PP004",
-      "title": "Room 4: Priest's Lodging",
+      "title": "Priest's Lodging",
       "description": "An old bed frame, fireplace, and a cellar door are in this room. Faint light shows through the cellar door edges.",
       "location": "NIG04",
       "nextPoints": [
@@ -52,8 +65,8 @@
     },
     {
       "id": "PP005",
-      "title": "Room 5: Cellar Hallway",
-      "description": "A collapsed branching tunnel leads to a single large door with light leaking through. If the alarm was triggered, enemies prepare an ambush.\n\n**Exits:**\n- South: Room 4\n- North: Room 6",
+      "title": "Cellar Hallway",
+      "description": "A collapsed branching tunnel leads to a single large door with light leaking through. If the alarm was triggered, enemies prepare an ambush.\n\n**Exits:**\n- South: Priest's Lodging\n- North: Dead End Ritual Chamber",
       "location": "NIG05",
       "nextPoints": [
         "PP006"
@@ -64,7 +77,7 @@
     },
     {
       "id": "PP006",
-      "title": "Room 6: Dead End Ritual Chamber",
+      "title": "Dead End Ritual Chamber",
       "description": "A cultist and Red argue about acquiring more experiments for a necromantic ring. They attack when alerted.",
       "location": "NIG06",
       "nextPoints": [
@@ -76,7 +89,7 @@
     },
     {
       "id": "PP007",
-      "title": "Room 100: Conclusion",
+      "title": "Conclusion",
       "description": "The party returns to Ma's Watering Hole after ending the immediate threat. They receive lodging and reward, but larger cult activity may continue.\n\n**Exits:**\n- None",
       "location": "NIG07",
       "nextPoints": [],
@@ -95,15 +108,31 @@
         "id": "secret_passage",
         "name": "Ma's Hidden Cellar",
         "trigger": "Insight check in NIG01",
-        "path": ["NIG01", "NIG04", "NIG05", "NIG06"],
-        "bypass": ["NIG02", "NIG03"],
+        "path": [
+          "NIG01",
+          "NIG04",
+          "NIG05",
+          "NIG06"
+        ],
+        "bypass": [
+          "NIG02",
+          "NIG03"
+        ],
         "lore_gain": "Druid circle revelation earlier"
       },
       {
         "id": "ledger_revelation",
         "name": "Cathedral Tithe Investigation",
         "trigger": "Investigation check in NIG02",
-        "path": ["NIG01", "NIG02", "NIG03", "NIG04", "NIG05", "NIG06"],
+        "path": [
+          "NIG01",
+          "NIG08",
+          "NIG02",
+          "NIG03",
+          "NIG04",
+          "NIG05",
+          "NIG06"
+        ],
         "lore_gain": "Bramble family connection; 170-year cult history"
       }
     ],
@@ -111,14 +140,30 @@
       {
         "id": "standard_combat",
         "name": "Direct Assault",
-        "path": ["NIG01", "NIG02", "NIG03", "NIG04", "NIG05", "NIG06"],
+        "path": [
+          "NIG01",
+          "NIG08",
+          "NIG02",
+          "NIG03",
+          "NIG04",
+          "NIG05",
+          "NIG06"
+        ],
         "difficulty": "standard"
       },
       {
         "id": "blarg_blackmail",
         "name": "Spy Exploitation",
         "trigger": "Discover Blarg's letters in NIG01",
-        "path": ["NIG01", "NIG02", "NIG03", "NIG04", "NIG05", "NIG06"],
+        "path": [
+          "NIG01",
+          "NIG08",
+          "NIG02",
+          "NIG03",
+          "NIG04",
+          "NIG05",
+          "NIG06"
+        ],
         "difficulty": "reduced (intel advantage)"
       }
     ],
@@ -167,7 +212,7 @@
   },
   "import_metadata": {
     "source_title": "Night of the Restless Dead",
-    "room_count": 7,
+    "room_count": 8,
     "area_id": "NIG001"
   }
 }

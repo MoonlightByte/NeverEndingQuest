@@ -1,17 +1,18 @@
 {
   "module": "Night_of_the_Restless_Dead",
-  "timestamp": "2026-03-15T16:42:30.452733",
+  "timestamp": "2026-03-26T11:21:07.365202",
   "summary": {
-    "total_files": 7,
-    "total_passed": 8,
+    "total_files": 11,
+    "total_passed": 13,
     "total_failed": 0
   },
   "results": {
     "area": {
       "files": [
+        "NIG001_BU.json (areas/)",
         "NIG001.json (areas/)"
       ],
-      "passed": 1,
+      "passed": 2,
       "failed": 0,
       "errors": []
     },
@@ -51,6 +52,36 @@
       "files": [
         "module_context.json"
       ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "runtime_room_reachability": {
+      "files": [
+        "areas/NIG001.json"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "map_area_parity": {
+      "files": [
+        "NIG001.json <-> map_NIG001.json"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "plot_progression": {
+      "files": [
+        "module_plot.json"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "connectivity": {
+      "files": [],
       "passed": 1,
       "failed": 0,
       "errors": []

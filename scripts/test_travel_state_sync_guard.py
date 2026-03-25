@@ -152,6 +152,38 @@ class TestTravelStateSyncGuardBehavior(unittest.TestCase):
         self.assertEqual(progress.get("mode"), "in_transit")
         self.assertEqual(progress.get("targetLocationId"), "NIG06")
 
+    def test_current_location_alias_is_not_treated_as_destination(self):
+        response = {
+            "narration": "You leave the priest's lodging and pause to listen at the cellar door.",
+            "actions": [],
+        }
+        decision = evaluate_travel_state_sync_decision(
+            response_json=response,
+            is_travel_intent=True,
+            current_location_name="Room 4: Priest's Lodging",
+            current_location_id="NIG04",
+            known_location_names=["Room 4: Priest's Lodging", "Room 5: Cellar Hallway"],
+            known_locations=[
+                {
+                    "id": "NIG04",
+                    "name": "Room 4: Priest's Lodging",
+                    "area_id": "NIG001",
+                    "source_room_title": "Priest's Lodging",
+                },
+                {
+                    "id": "NIG05",
+                    "name": "Room 5: Cellar Hallway",
+                    "area_id": "NIG001",
+                    "source_room_title": "Cellar Hallway",
+                },
+            ],
+            adjacent_location_ids=["NIG05"],
+            reachable_location_ids=["NIG04", "NIG05"],
+        )
+        self.assertTrue(decision.get("valid"))
+        self.assertEqual(decision.get("reason"), "")
+        self.assertEqual(decision.get("inferred_actions"), [])
+
     def test_ambiguous_prose_fails_open(self):
         response = {
             "narration": "Cold air moves through the stone and the lantern trembles.",

@@ -5277,24 +5277,39 @@ def main_game_loop():
             connected_areas_display_str = "" # Initialize as empty
 
             if location_data: # Ensure location_data is not None
+                current_area_full_data = load_json_file(path_manager.get_area_path(current_area_id))
+                location_record_for_connectivity = location_data
+                if (
+                    isinstance(current_area_full_data, dict)
+                    and (not location_data.get("connectivity"))
+                    and current_location_id
+                ):
+                    fallback_location = next(
+                        (
+                            loc for loc in current_area_full_data.get("locations", [])
+                            if isinstance(loc, dict) and loc.get("locationId") == current_location_id
+                        ),
+                        None,
+                    )
+                    if isinstance(fallback_location, dict):
+                        location_record_for_connectivity = fallback_location
+
                 # Get connections within the current area
-                if "connectivity" in location_data and location_data["connectivity"]:
-                    connected_ids_current_area = location_data["connectivity"]
+                if "connectivity" in location_record_for_connectivity and location_record_for_connectivity["connectivity"]:
+                    connected_ids_current_area = location_record_for_connectivity["connectivity"]
                     connected_names_current_area = []
-                    # Load the current area's full data to get names from IDs
-                    current_area_full_data = load_json_file(path_manager.get_area_path(current_area_id))
                     if current_area_full_data and "locations" in current_area_full_data:
                         for loc_id in connected_ids_current_area:
                             found_loc = next((l["name"] for l in current_area_full_data["locations"] if l["locationId"] == loc_id), loc_id)
                             connected_names_current_area.append(found_loc)
                     if connected_names_current_area:
                          connected_locations_display_str = ", ".join(connected_names_current_area)
-            
+
                 # Get connections to other areas
-                if "areaConnectivityId" in location_data and location_data["areaConnectivityId"]:
+                if "areaConnectivityId" in location_record_for_connectivity and location_record_for_connectivity["areaConnectivityId"]:
                     # Use the global location_graph to get info about connected locations
                     connected_area_details = []
-                    for connected_loc_id in location_data["areaConnectivityId"]:
+                    for connected_loc_id in location_record_for_connectivity["areaConnectivityId"]:
                         # Get the full info for the connected location
                         conn_loc_info = location_graph.get_location_info(connected_loc_id)
                         if conn_loc_info:

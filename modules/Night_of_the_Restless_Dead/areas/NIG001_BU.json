@@ -1,16 +1,17 @@
 {
   "areaId": "NIG001",
-  "areaName": "Night_of_the_Restless_Dead Main Area",
+  "areaName": "Night of the Restless Dead Main Area",
   "areaDescription": "Imported adventure: Night of the Restless Dead",
   "locations": [
     {
       "locationId": "NIG01",
-      "name": "Room 1: Ma's Watering Hole",
+      "name": "Ma's Watering Hole",
       "description": "The party arrives at Ma's Watering Hole, a rural inn between Yatar and Waterdeep. Ma runs the inn and Blarg, a large half-orc, handles security.",
       "source_room_number": 1,
       "source_room_title": "Ma's Watering Hole",
       "connectivity": [
         "NIG02",
+        "NIG08",
         "NIG04"
       ],
       "creatures": "Ma (commoner), Blarg (berserker), Crawling Claw, Zombie, Zombie.",
@@ -19,7 +20,7 @@
           "id": "ma_secret",
           "trigger": "Insight DC 12",
           "description": "Ma flinches when cathedral cult is mentioned; she knows more than she admits",
-          "reward": "Hidden cellar passage to Room 4 (bypass Rooms 2-3)",
+          "reward": "Hidden cellar passage to Priest's Lodging (bypass the main hall and storage)",
           "cross_module_ref": "Mayor Tilda Bramble (Pumpkin King) mentions 'my sister who fled'"
         },
         {
@@ -31,17 +32,65 @@
         }
       ],
       "branch_pivot": {
-        "investigation_first": {"leads_to": "NIG04", "bypass": ["NIG02", "NIG03"]},
-        "confrontation_first": {"leads_to": "NIG02", "standard_path": true}
-      }
+        "investigation_first": {
+          "leads_to": "NIG04",
+          "bypass": [
+            "NIG02",
+            "NIG03"
+          ]
+        },
+        "confrontation_first": {
+          "leads_to": "NIG02",
+          "standard_path": true
+        }
+      },
+      "npcs": [
+        {
+          "name": "Ma (Margaret Thornfield)",
+          "description": "A kind innkeeper masking deep fear of the cathedral cult and the Bramble bloodline.",
+          "attitude": "Guarded"
+        },
+        {
+          "name": "Blarg",
+          "description": "A broad half-orc bouncer who watches newcomers closely and knows more about the cathedral than he admits.",
+          "attitude": "Suspicious"
+        }
+      ]
+    },
+    {
+      "locationId": "NIG08",
+      "name": "Brother Lintar's Place",
+      "description": "A lamplit stone refuge on the outskirts between Ma's inn and the ruined cathedral. Brother Lintar keeps a small chapel here, with clean cots, bread ovens, and a stout door that can be barred against the dead.",
+      "source_room_number": 8,
+      "source_room_title": "Brother Lintar's Place",
+      "connectivity": [
+        "NIG01",
+        "NIG02"
+      ],
+      "npcs": [
+        {
+          "name": "Brother Lintar",
+          "description": "A warm half-elf priest and keeper of a modest refuge on the village outskirts, ready to shelter the weary and guard Saint Rydal's relic.",
+          "attitude": "Welcoming"
+        }
+      ],
+      "investigation_hooks": [
+        {
+          "id": "lintar_sanctuary",
+          "trigger": "Automatic on arrival with the relic or Father Aldric",
+          "description": "Brother Lintar recognizes Saint Rydal's relic and offers sanctuary, food, and a defensible place to regroup before the party returns to the cathedral.",
+          "reward": "Safe rest staging point and local lore about the village outskirts and the cathedral road"
+        }
+      ]
     },
     {
       "locationId": "NIG02",
-      "name": "Room 2: Ruined Cathedral Main Hall",
+      "name": "Ruined Cathedral Main Hall",
       "description": "The party reaches the ruined cathedral. Thick webs cover the entrance and the main hall is dark and damaged.",
       "source_room_number": 2,
       "source_room_title": "Ruined Cathedral Main Hall",
       "connectivity": [
+        "NIG08",
         "NIG01",
         "NIG03"
       ],
@@ -65,7 +114,7 @@
     },
     {
       "locationId": "NIG03",
-      "name": "Room 3: Cathedral Storage",
+      "name": "Cathedral Storage",
       "description": "The storage room is mostly empty except for old barrels and dried blood. A web-wrapped figure hangs from the ceiling.",
       "source_room_number": 3,
       "source_room_title": "Cathedral Storage",
@@ -89,7 +138,7 @@
     },
     {
       "locationId": "NIG04",
-      "name": "Room 4: Priest's Lodging",
+      "name": "Priest's Lodging",
       "description": "An old bed frame, fireplace, and a cellar door are in this room. Faint light shows through the cellar door edges. This chamber is beneath the ruined cathedral, and the hidden bypass from Ma's inn links here before continuing deeper into the catacombs.",
       "source_room_number": 4,
       "source_room_title": "Priest's Lodging",
@@ -117,12 +166,19 @@
           "reward": "Reveals Third Path: druid circle can absorb curse without sacrifices",
           "cross_module_ref": "Corrupted druids in Thornwood (NCW001) are same circle"
         }
+      ],
+      "npcs": [
+        {
+          "name": "Father Aldric",
+          "description": "A frightened priest hiding behind the fireplace, desperate to save the cathedral's true ward.",
+          "attitude": "Fearful"
+        }
       ]
     },
     {
       "locationId": "NIG05",
-      "name": "Room 5: Cellar Hallway",
-      "description": "A collapsed branching tunnel leads to a single large door with light leaking through. If the alarm was triggered, enemies prepare an ambush.\n\n**Exits:**\n- South: Room 4\n- North: Room 6",
+      "name": "Cellar Hallway",
+      "description": "A collapsed branching tunnel leads to a single large door with light leaking through. If the alarm was triggered, enemies prepare an ambush.\n\n**Exits:**\n- South: Priest's Lodging\n- North: Dead End Ritual Chamber",
       "source_room_number": 5,
       "source_room_title": "Cellar Hallway",
       "connectivity": [
@@ -132,7 +188,7 @@
     },
     {
       "locationId": "NIG06",
-      "name": "Room 6: Dead End Ritual Chamber",
+      "name": "Dead End Ritual Chamber",
       "description": "A cultist and Red argue about acquiring more experiments for a necromantic ring. They attack when alerted.",
       "source_room_number": 6,
       "source_room_title": "Dead End Ritual Chamber",
@@ -179,11 +235,23 @@
             "ring_status": "Both rings obtainable"
           }
         }
-      }
+      },
+      "npcs": [
+        {
+          "name": "Sister Miriam Bramble",
+          "description": "A desperate cult leader trying to break the tithe curse through forbidden necromancy.",
+          "attitude": "Desperate"
+        },
+        {
+          "name": "Red (The Crimson Binder)",
+          "description": "A crimson-robed enforcer of the Pumpkin King demanding the ring and the cult's submission.",
+          "attitude": "Hostile"
+        }
+      ]
     },
     {
       "locationId": "NIG07",
-      "name": "Room 100: Conclusion",
+      "name": "Conclusion",
       "description": "The party returns to Ma's Watering Hole after ending the immediate threat. They receive lodging and reward, but larger cult activity may continue.\n\n**Exits:**\n- None",
       "source_room_number": 100,
       "source_room_title": "Conclusion",

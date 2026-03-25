@@ -36,7 +36,11 @@
       "moral_grayness": "Both victim (fled tithe) and perpetrator (experiments on innocents)",
       "motivation": "Break Pumpkin King's pact using forbidden necromancy",
       "willing_cost": "Sacrifice innocents to end larger curse",
-      "outcome_options": ["aid", "oppose", "negotiate"],
+      "outcome_options": [
+        "aid",
+        "oppose",
+        "negotiate"
+      ],
       "cross_module_ref": "Mayor Tilda's sister; knows First Tithe lore"
     },
     "red_crimson_binder": {
@@ -45,7 +49,11 @@
       "species": "Half-elf",
       "appearance": "Crimson robes with Pumpkin King sigils",
       "conflict": "Demands Miriam surrender; represents tithe continuation",
-      "outcome_options": ["side_with", "oppose", "kill_both"],
+      "outcome_options": [
+        "side_with",
+        "oppose",
+        "kill_both"
+      ],
       "cross_module_ref": "Crimson-robed messengers in Pumpkin King module"
     },
     "wandering_merchant": {
@@ -60,7 +68,15 @@
       ],
       "side_quest": "Escort to Waterdeep for gold",
       "cross_module_ref": "Appears in multiple modules as same character"
+    },
+    "brother_lintar": {
+      "name": "Brother Lintar",
+      "role": "sanctuary_keeper",
+      "location": "NIG08 on the village outskirts between Ma's inn and the cathedral road",
+      "lore": "Keeps a refuge for the faithful, knows Saint Rydal's relic on sight, and offers the safest place nearby to rest before returning to the cathedral.",
+      "reward": "Provides sanctuary, local guidance, and a defensible staging point for the final push",
+      "cross_module_ref": "Aldric mentions Brother Lintar as the priest still holding the outskirts refuge"
     }
   },
-  "count": 6
+  "count": 7
 }

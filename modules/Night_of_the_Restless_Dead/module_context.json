@@ -1,12 +1,13 @@
 {
-  "module_name": "Night_of_the_Restless_Dead",
+  "module_name": "Night of the Restless Dead",
   "module_id": "Night_of_the_Restless_Dead",
   "areas": {
     "NIG001": {
-      "name": "Night_of_the_Restless_Dead Main Area",
+      "name": "Night of the Restless Dead Main Area",
       "type": "dungeon",
       "locations": [
         "NIG01",
+        "NIG08",
         "NIG02",
         "NIG03",
         "NIG04",
@@ -14,53 +15,97 @@
         "NIG06",
         "NIG07"
       ],
-      "npcs": [],
+      "npcs": [
+        "ma_thornfield",
+        "blarg_half_orc",
+        "father_aldric",
+        "brother_lintar",
+        "sister_miriam_bramble",
+        "red_crimson_binder"
+      ],
       "plot_points": []
     }
   },
-  "npcs": {},
+  "npcs": {
+    "ma_thornfield": {
+      "name": "Ma (Margaret Thornfield)",
+      "description": "Kindly innkeeper with family ties to the Brambles and dangerous knowledge of the cathedral cult.",
+      "type": "npc"
+    },
+    "blarg_half_orc": {
+      "name": "Blarg",
+      "description": "Half-orc bouncer and watcher whose loyalties are complicated by the Pumpkin King.",
+      "type": "npc"
+    },
+    "father_aldric": {
+      "name": "Father Aldric",
+      "description": "A hidden priest who knows the cathedral was built over an ancient druid circle.",
+      "type": "npc"
+    },
+    "brother_lintar": {
+      "name": "Brother Lintar",
+      "description": "A warm half-elf priest who maintains a sanctuary on the village outskirts between Ma's inn and the cathedral road.",
+      "type": "npc"
+    },
+    "sister_miriam_bramble": {
+      "name": "Sister Miriam Bramble",
+      "description": "The cult leader trying to break the tithe curse by desperate means.",
+      "type": "npc"
+    },
+    "red_crimson_binder": {
+      "name": "Red (The Crimson Binder)",
+      "description": "A crimson-robed Pumpkin King enforcer sent to seize the ring and break the cult.",
+      "type": "npc"
+    }
+  },
   "locations": {
     "NIG01": {
-      "name": "Room 1: Ma's Watering Hole",
+      "name": "Ma's Watering Hole",
       "type": "room",
       "description_preview": "The party arrives at Ma's Watering Hole, a rural inn between Yatar and Waterdeep. Ma runs the inn an",
       "source_room_number": 1
     },
     "NIG02": {
-      "name": "Room 2: Ruined Cathedral Main Hall",
+      "name": "Ruined Cathedral Main Hall",
       "type": "room",
       "description_preview": "The party reaches the ruined cathedral. Thick webs cover the entrance and the main hall is dark and ",
       "source_room_number": 2
     },
     "NIG03": {
-      "name": "Room 3: Cathedral Storage",
+      "name": "Cathedral Storage",
       "type": "room",
       "description_preview": "The storage room is mostly empty except for old barrels and dried blood. A web-wrapped figure hangs ",
       "source_room_number": 3
     },
     "NIG04": {
-      "name": "Room 4: Priest's Lodging",
+      "name": "Priest's Lodging",
       "type": "room",
       "description_preview": "An old bed frame, fireplace, and a cellar door are in this room. Faint light shows through the cella",
       "source_room_number": 4
     },
     "NIG05": {
-      "name": "Room 5: Cellar Hallway",
+      "name": "Cellar Hallway",
       "type": "room",
       "description_preview": "A collapsed branching tunnel leads to a single large door with light leaking through. If the alarm w",
       "source_room_number": 5
     },
     "NIG06": {
-      "name": "Room 6: Dead End Ritual Chamber",
+      "name": "Dead End Ritual Chamber",
       "type": "room",
       "description_preview": "A cultist and Red argue about acquiring more experiments for a necromantic ring. They attack when al",
       "source_room_number": 6
     },
     "NIG07": {
-      "name": "Room 100: Conclusion",
+      "name": "Conclusion",
       "type": "room",
       "description_preview": "The party returns to Ma's Watering Hole after ending the immediate threat. They receive lodging and ",
       "source_room_number": 100
+    },
+    "NIG08": {
+      "name": "Brother Lintar's Place",
+      "type": "refuge",
+      "description_preview": "A lamplit refuge on the village outskirts where Brother Lintar shelters the faithful and guards Saint Rydal's relic.",
+      "source_room_number": 8
     }
   },
   "plot_scopes": {},
@@ -136,19 +181,19 @@
   "import_source": {
     "path": "/tmp/homebrew_ingest_staging/deterministic.json",
     "title": "Night of the Restless Dead",
-    "room_count": 7
+    "room_count": 8
   },
   "continuity": {
     "continuity_version": "v1",
     "entry_state_variants": {
       "cold_start": {
-        "summary": "Party enters Night_of_the_Restless_Dead with no prior continuity context. Present the opening conflict and immediate objective clearly."
+        "summary": "Party enters Night of the Restless Dead with no prior continuity context. Present the opening conflict and immediate objective clearly."
       },
       "partial_context": {
-        "summary": "Party enters Night_of_the_Restless_Dead with partial prior context. Reinforce known clues before branch-critical decisions."
+        "summary": "Party enters Night of the Restless Dead with partial prior context. Reinforce known clues before branch-critical decisions."
       },
       "late_arc": {
-        "summary": "Party enters Night_of_the_Restless_Dead in late-arc state. Provide compact recap and maintain path to a valid ending."
+        "summary": "Party enters Night of the Restless Dead in late-arc state. Provide compact recap and maintain path to a valid ending."
       }
     },
     "cross_module_refs": [
@@ -187,7 +232,7 @@
         "module_context",
         "module_plot"
       ],
-      "notes": "Night_of_the_Restless_Dead remains fully playable as a standalone module when cross-module continuity is unavailable."
+      "notes": "Night of the Restless Dead remains fully playable as a standalone module when cross-module continuity is unavailable."
     }
   }
 }

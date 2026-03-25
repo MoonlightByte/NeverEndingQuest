@@ -18,7 +18,7 @@ When `initiativeWinner` is `dmGroup` at combat start, the system MUST process ex
 - **AND** control SHALL proceed to normal phase evaluation (player phase or combat end)
 
 ### Requirement: Phase and Prompt Contracts SHALL Remain Coherent
-The combat phase value, required-response instructions, and turn-control behavior MUST not contradict each other within the same turn.
+The combat phase value, selected active player character, turn queue ownership, and required-response instructions MUST not contradict each other within the same turn.
 
 #### Scenario: Enemy phase contract is active
 - **WHEN** current phase is `ENEMY_PHASE`
@@ -27,14 +27,24 @@ The combat phase value, required-response instructions, and turn-control behavio
 
 #### Scenario: Player phase contract is active
 - **WHEN** current phase is `PC_PHASE`
-- **THEN** required-response instructions SHALL allow only the active player-controlled turn resolution path
+- **THEN** required-response instructions SHALL allow only the selected active player-controlled turn resolution path
 - **AND** enemy actions SHALL NOT be generated unless an explicit enemy-phase trigger is present (`/end` or deterministic opening-batch trigger)
+
+#### Scenario: Manual active-PC switch occurs before command resolution
+- **WHEN** tabletop runtime force-switches the active PC from tagged input or UI selection during `PC_PHASE`
+- **THEN** the selected active PC, prompt actor, and current player-facing turn contract SHALL synchronize to the same canonical PC identity before the next combat prompt is assembled
+- **AND** the system SHALL NOT emit a required-response block for a different stale actor from the turn queue
 
 #### Scenario: Active encounter ownership remains stable after initiative lock
 - **WHEN** a tabletop encounter has already accepted a valid `/init` and locked `initiativeWinner`
 - **AND** subsequent player combat commands such as `/att` are processed
 - **THEN** the runtime SHALL continue routing those commands to the same active encounter owner
 - **AND** the system SHALL NOT regress to `Initiative pending` for a different duplicate encounter unless the owned encounter itself still requires `/init`
+
+#### Scenario: Prompt actor differs from selected active PC before resolution
+- **WHEN** prompt assembly detects a stale player actor different from the selected active PC during an owned active encounter
+- **THEN** runtime SHALL reconcile prompt ownership to the selected active PC before issuing required-response instructions
+- **AND** the resulting prompt SHALL not instruct the model to resolve another PC's action in that turn
 
 ### Requirement: Existing Initiative Start Modes SHALL Remain Backward Compatible
 The phase sync fix MUST preserve behavior for `pcGroup` starts and existing non-phase1 encounters.

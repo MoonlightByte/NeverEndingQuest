@@ -114,7 +114,7 @@ def _extract_module_locations(module_name: str) -> List[Dict[str, Any]]:
             if not isinstance(area_payload, dict):
                 continue
 
-            area_name = _safe_string(area_payload.get("name", ""))
+            area_name = _safe_string(area_payload.get("areaName", "")) or _safe_string(area_payload.get("name", ""))
             for location in area_payload.get("locations", []):
                 if not isinstance(location, dict):
                     continue
@@ -128,6 +128,8 @@ def _extract_module_locations(module_name: str) -> List[Dict[str, Any]]:
                         "name": location_name,
                         "area_id": area_id,
                         "area_name": area_name,
+                        "source_room_title": _safe_string(location.get("source_room_title", "")),
+                        "adjacent_location_ids": _extract_adjacent_location_ids(location),
                     }
                 )
     except Exception as exc:
@@ -213,6 +215,24 @@ def build_authoritative_state_packet(
     known_locations = _extract_known_locations(resolved_area_data)
     module_locations = _extract_module_locations(module_name)
     adjacent_location_ids = _extract_adjacent_location_ids(resolved_location_data)
+    if not adjacent_location_ids and current_location_id:
+        for location in module_locations:
+            if str(location.get("id", "") or "").strip() != current_location_id:
+                continue
+            adjacent_location_ids = _safe_list_of_strings(location.get("adjacent_location_ids", []))
+            if adjacent_location_ids:
+                break
+
+    location_names_by_id = {
+        str(location.get("id", "") or "").strip(): str(location.get("name", "") or "").strip()
+        for location in module_locations
+        if str(location.get("id", "") or "").strip() and str(location.get("name", "") or "").strip()
+    }
+    adjacent_location_names = [
+        location_names_by_id[item]
+        for item in adjacent_location_ids
+        if item in location_names_by_id
+    ]
 
     party_members = _safe_list_of_strings(party_tracker_data.get("partyMembers", []))
     active_character = _safe_string(party_tracker_data.get("active_character", ""))
@@ -255,6 +275,7 @@ def build_authoritative_state_packet(
             "description": location_description,
             "dm_instructions": location_dm_instructions,
             "adjacent_location_ids": adjacent_location_ids,
+            "adjacent_location_names": adjacent_location_names,
         },
         "topology": {
             "known_location_ids": known_locations.get("ids", []),

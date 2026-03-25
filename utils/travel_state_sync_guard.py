@@ -235,6 +235,33 @@ def _build_location_catalog(known_locations: Optional[List[Dict[str, Any]]], kno
     return catalog
 
 
+def _collect_current_location_aliases(
+    location_catalog: Dict[str, Dict[str, str]],
+    current_location_id: str,
+    current_location_name: str,
+) -> Set[str]:
+    """Return all normalized aliases that map to the current canonical location."""
+    current_aliases: Set[str] = set()
+    normalized_current_name = _normalize_text(current_location_name)
+
+    for alias, entry in location_catalog.items():
+        if not isinstance(entry, dict):
+            continue
+
+        entry_id = str(entry.get("id", "") or "").strip()
+        entry_name = _normalize_text(str(entry.get("name", "") or ""))
+        if current_location_id and entry_id == current_location_id:
+            current_aliases.add(alias)
+            continue
+        if normalized_current_name and entry_name == normalized_current_name:
+            current_aliases.add(alias)
+
+    if normalized_current_name:
+        current_aliases.add(normalized_current_name)
+
+    return current_aliases
+
+
 def _is_topology_safe_destination(
     destination_id: str,
     current_location_id: str,
@@ -298,13 +325,17 @@ def evaluate_travel_state_sync_decision(
             "reconciliation": "none",
         }
 
-    normalized_current_name = _normalize_text(current_location_name)
     location_catalog = _build_location_catalog(known_locations, known_location_names)
+    current_location_aliases = _collect_current_location_aliases(
+        location_catalog,
+        current_location_id=current_location_id,
+        current_location_name=current_location_name,
+    )
     known_names = list(location_catalog.keys())
     mentions = _extract_location_mentions(normalized_narration, known_names)
 
-    current_mentioned = bool(normalized_current_name and normalized_current_name in mentions)
-    non_current_mentions = sorted(name for name in mentions if name != normalized_current_name)
+    current_mentioned = any(name in current_location_aliases for name in mentions)
+    non_current_mentions = sorted(name for name in mentions if name not in current_location_aliases)
 
     arrival_signal = _contains_any_pattern(normalized_narration, _ARRIVAL_PATTERNS)
     progress_signal = _contains_any_pattern(normalized_narration, _PROGRESS_PATTERNS)
@@ -347,7 +378,7 @@ def evaluate_travel_state_sync_decision(
     destination_id = str(destination_entry.get("id", "") or "").strip()
     destination_name = str(destination_entry.get("name", "") or "").strip() or destination_normalized
 
-    if normalized_current_name and destination_normalized == normalized_current_name:
+    if destination_normalized in current_location_aliases:
         return {
             "valid": False,
             "reason": "travel state sync guard: same-location travel commit is not allowed",
