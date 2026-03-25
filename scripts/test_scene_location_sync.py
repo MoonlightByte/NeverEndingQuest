@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.travel_state_sync_guard import (
     evaluate_narrated_location_arrival_decision,
+    evaluate_scene_plot_location_reconciliation_decision,
     evaluate_scene_location_sync_decision,
 )
 
@@ -321,6 +322,136 @@ class TestSceneLocationSyncDecision(unittest.TestCase):
         self.assertEqual(decision.get("inferred_actions"), [])
 
 
+class TestScenePlotLocationReconciliationDecision(unittest.TestCase):
+    def setUp(self):
+        self.module_locations = [
+            {
+                "id": "NIG04",
+                "name": "Room 4: Priest's Lodging",
+                "area_id": "NIG001",
+                "area_name": "Night of the Restless Dead",
+            },
+            {
+                "id": "NIG05",
+                "name": "Room 5: Cellar Hallway",
+                "area_id": "NIG001",
+                "area_name": "Night of the Restless Dead",
+            },
+            {
+                "id": "NIG06",
+                "name": "Room 6: Dead End Ritual Chamber",
+                "area_id": "NIG001",
+                "area_name": "Night of the Restless Dead",
+            },
+        ]
+        self.plot_data = {
+            "plotPoints": [
+                {"id": "PP004", "location": "NIG04"},
+                {"id": "PP005", "location": "NIG05"},
+                {"id": "PP006", "location": "NIG06"},
+            ]
+        }
+
+    def test_plot_update_repairs_stale_location(self):
+        response_json = {
+            "narration": "The party presses through the cellar threshold.",
+            "actions": [
+                {
+                    "action": "updatePlot",
+                    "parameters": {
+                        "plotPointId": "PP005",
+                        "newStatus": "in progress",
+                    },
+                }
+            ],
+        }
+
+        decision = evaluate_scene_plot_location_reconciliation_decision(
+            response_json=response_json,
+            current_location_id="NIG04",
+            plot_data=self.plot_data,
+            module_locations=self.module_locations,
+        )
+
+        self.assertEqual(decision.get("reconciliation"), "scene_plot_location_sync")
+        inferred_actions = decision.get("inferred_actions", [])
+        self.assertEqual(len(inferred_actions), 1)
+        self.assertEqual(inferred_actions[0].get("action"), "updatePartyTracker")
+        self.assertEqual(inferred_actions[0].get("parameters", {}).get("currentLocationId"), "NIG05")
+
+    def test_encounter_update_repairs_stale_location(self):
+        response_json = {
+            "narration": "The last cultist falls in the ritual chamber.",
+            "actions": [
+                {
+                    "action": "updateEncounter",
+                    "parameters": {
+                        "encounterId": "NIG06-E1",
+                    },
+                }
+            ],
+        }
+
+        decision = evaluate_scene_plot_location_reconciliation_decision(
+            response_json=response_json,
+            current_location_id="NIG04",
+            plot_data=self.plot_data,
+            module_locations=self.module_locations,
+        )
+
+        inferred_actions = decision.get("inferred_actions", [])
+        self.assertEqual(len(inferred_actions), 1)
+        self.assertEqual(inferred_actions[0].get("parameters", {}).get("currentLocationId"), "NIG06")
+
+    def test_explicit_location_action_blocks_reconciliation(self):
+        response_json = {
+            "narration": "The party pushes deeper into the cellar hallway.",
+            "actions": [
+                {
+                    "action": "transitionLocation",
+                    "parameters": {"newLocation": "NIG05"},
+                },
+                {
+                    "action": "updatePlot",
+                    "parameters": {"plotPointId": "PP005", "newStatus": "in progress"},
+                },
+            ],
+        }
+
+        decision = evaluate_scene_plot_location_reconciliation_decision(
+            response_json=response_json,
+            current_location_id="NIG04",
+            plot_data=self.plot_data,
+            module_locations=self.module_locations,
+        )
+
+        self.assertEqual(decision.get("inferred_actions"), [])
+
+    def test_ambiguous_candidates_fail_open(self):
+        response_json = {
+            "narration": "The scene spans the hallway and chamber.",
+            "actions": [
+                {
+                    "action": "updatePlot",
+                    "parameters": {"plotPointId": "PP005", "newStatus": "in progress"},
+                },
+                {
+                    "action": "updateEncounter",
+                    "parameters": {"encounterId": "NIG06-E1"},
+                },
+            ],
+        }
+
+        decision = evaluate_scene_plot_location_reconciliation_decision(
+            response_json=response_json,
+            current_location_id="NIG04",
+            plot_data=self.plot_data,
+            module_locations=self.module_locations,
+        )
+
+        self.assertEqual(decision.get("inferred_actions"), [])
+
+
 class TestSceneLocationSyncSourceContract(unittest.TestCase):
     """Source-contract checks for validator wiring."""
 
@@ -333,8 +464,10 @@ class TestSceneLocationSyncSourceContract(unittest.TestCase):
             content = handle.read()
 
         self.assertIn("evaluate_narrated_location_arrival_decision", content)
+        self.assertIn("evaluate_scene_plot_location_reconciliation_decision", content)
         self.assertIn("evaluate_scene_location_sync_decision", content)
         self.assertIn("STATE_SYNC: Narrated location arrival injected", content)
+        self.assertIn("STATE_SYNC: Scene/plot location sync injected", content)
         self.assertIn("STATE_SYNC: Scene location sync injected", content)
 
 

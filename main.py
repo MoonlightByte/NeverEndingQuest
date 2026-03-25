@@ -1286,6 +1286,7 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         packet_topology = authoritative_state_packet.get("topology", {})
         packet_party = authoritative_state_packet.get("party", {})
         packet_module = authoritative_state_packet.get("module", {})
+        current_plot_data = load_json_file(path_manager.get_plot_path()) or {}
         
         # Load all module NPC names for comprehensive known NPC detection
         module_npc_names = load_module_npc_names(module_name)
@@ -1351,6 +1352,7 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         try:
             from utils.travel_state_sync_guard import (
                 evaluate_narrated_location_arrival_decision,
+                evaluate_scene_plot_location_reconciliation_decision,
                 evaluate_scene_location_sync_decision,
                 evaluate_travel_state_sync_decision,
             )
@@ -1486,6 +1488,24 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
                 response_to_validate = json.dumps(response_json, ensure_ascii=False)
                 info(
                     f"STATE_SYNC: Scene location sync injected {len(scene_location_actions)} inferred action(s) mode={scene_location_mode}",
+                    category="location_transitions",
+                )
+
+            scene_plot_location_sync = evaluate_scene_plot_location_reconciliation_decision(
+                response_json=response_json,
+                current_location_id=packet_world.get("current_location_id") or party_tracker_data["worldConditions"].get("currentLocationId", ""),
+                plot_data=current_plot_data,
+                module_locations=known_locations,
+            )
+            scene_plot_actions = scene_plot_location_sync.get("inferred_actions", [])
+            scene_plot_mode = str(scene_plot_location_sync.get("reconciliation", "none") or "none")
+            if isinstance(scene_plot_actions, list) and scene_plot_actions:
+                if not isinstance(response_json.get("actions"), list):
+                    response_json["actions"] = []
+                response_json["actions"].extend(scene_plot_actions)
+                response_to_validate = json.dumps(response_json, ensure_ascii=False)
+                info(
+                    f"STATE_SYNC: Scene/plot location sync injected {len(scene_plot_actions)} inferred action(s) mode={scene_plot_mode}",
                     category="location_transitions",
                 )
         except Exception as e:

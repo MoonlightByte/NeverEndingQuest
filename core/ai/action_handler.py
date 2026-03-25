@@ -62,7 +62,7 @@ from openai import OpenAI
 import config
 from core.managers.location_manager import get_location_data
 from utils.module_path_manager import ModulePathManager
-from updates.plot_update import update_plot
+from updates.plot_update import normalize_plot_status, update_plot
 from utils.encoding_utils import sanitize_text, safe_json_dump, safe_json_load
 from utils.file_operations import safe_read_json
 from core.managers.status_manager import (
@@ -1136,6 +1136,13 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
         status_updating_plot()
         plot_point_id = parameters["plotPointId"]
         new_status = parameters["newStatus"]
+        normalized_plot_status = normalize_plot_status(new_status)
+        if normalized_plot_status and normalized_plot_status != new_status:
+            info(
+                f"PLOT_STATUS_NORMALIZED: {plot_point_id} '{new_status}' -> '{normalized_plot_status}'",
+                category="plot_updates",
+            )
+        new_status = normalized_plot_status or new_status
         plot_impact = parameters.get("plotImpact", "")
         plot_filename = "module_plot.json"  # Now using unified plot file
         updated_plot = update_plot(plot_point_id, new_status, plot_impact, plot_filename)
@@ -2464,6 +2471,12 @@ def move_background_npc(npc_name, context, current_location_hint=None, party_tra
             backup_path = create_area_backup(area_file)
             if not backup_path:
                 print("WARNING: Could not create backup, proceeding anyway")
+
+            # TABLETOP MODE: Hidden authored NPC identities may exist in
+            # investigation hooks before they are materialized into location
+            # npcs. Materialize a minimal runtime-safe record so subsequent
+            # update/remove/move execution can operate on authoritative data.
+            _materialize_hidden_npc_if_needed(area_data, location_id, npc_data)
             
             # Get party NPCs for validation
             party_npcs = party_tracker_data.get("partyNPCs", [])
@@ -2536,6 +2549,46 @@ def move_background_npc(npc_name, context, current_location_hint=None, party_tra
             traceback.print_exc()
             return False
 
+
+def _materialize_hidden_npc_if_needed(area_data, location_id, npc_data):
+    """Ensure hidden authored NPC identities exist in runtime npc lists before mutation."""
+    if not isinstance(area_data, dict) or not isinstance(npc_data, dict):
+        return False
+
+    if not npc_data.get("_tabletop_hidden_identity"):
+        return False
+
+    hidden_name = str(npc_data.get("name", "") or "").strip()
+    if not hidden_name:
+        return False
+
+    for location in area_data.get("locations", []):
+        if not isinstance(location, dict) or str(location.get("locationId", "") or "").strip() != location_id:
+            continue
+
+        location_npcs = location.setdefault("npcs", [])
+        if not isinstance(location_npcs, list):
+            location["npcs"] = []
+            location_npcs = location["npcs"]
+
+        for existing_npc in location_npcs:
+            if not isinstance(existing_npc, dict):
+                continue
+            if str(existing_npc.get("name", "") or "").strip().lower() == hidden_name.lower():
+                return False
+
+        location_npcs.append(
+            {
+                "name": hidden_name,
+                "description": str(npc_data.get("description", "") or f"{hidden_name} is concealed nearby.").strip(),
+                "attitude": str(npc_data.get("attitude", "") or "Fearful").strip(),
+            }
+        )
+        info(f"NPC_REVEAL: Materialized hidden authored NPC '{hidden_name}' in {location_id}", category="npc_management")
+        return True
+
+    return False
+
 def find_npc_in_areas(npc_name, path_manager, location_hint=None):
     """Find an NPC in area files, returning lookup result with status.
     
@@ -2557,6 +2610,38 @@ def find_npc_in_areas(npc_name, path_manager, location_hint=None):
     from datetime import datetime
     from utils.file_operations import safe_read_json
     from utils.npc_arrival_validator import resolve_npc_identity
+
+    def _extract_location_hidden_npcs(location):
+        try:
+            from core.ai.build_npc_context import extract_hidden_npcs_from_location
+        except Exception:
+            return []
+
+        hidden_identities = []
+        hidden_names = extract_hidden_npcs_from_location(location)
+        hooks = location.get("investigation_hooks", []) if isinstance(location, dict) else []
+        for hidden_name in sorted(hidden_names):
+            hidden_description = ""
+            for hook in hooks:
+                if not isinstance(hook, dict):
+                    continue
+                hook_description = str(hook.get("description", "") or "").strip()
+                if hidden_name.lower() in hook_description.lower():
+                    hidden_description = hook_description
+                    break
+
+            if not hidden_description:
+                hidden_description = f"{hidden_name} is concealed nearby."
+
+            hidden_identities.append(
+                {
+                    "name": hidden_name,
+                    "description": hidden_description,
+                    "attitude": "Fearful",
+                    "_tabletop_hidden_identity": True,
+                }
+            )
+        return hidden_identities
     
     # Get all area files in the module, excluding backup files
     area_pattern = f"{path_manager.module_dir}/areas/*.json"
@@ -2597,6 +2682,13 @@ def find_npc_in_areas(npc_name, path_manager, location_hint=None):
                         if result.status == "matched":
                             debug(f"NPC_LOOKUP: Strict hint match found {npc_name} in {location_id}", category="npc_management")
                             return ('strict_match', (area_file, location_id, npc))
+
+                    for hidden_npc in _extract_location_hidden_npcs(location):
+                        hidden_name = hidden_npc.get("name", "")
+                        result = resolve_npc_identity(npc_name, {hidden_name})
+                        if result.status == "matched":
+                            debug(f"NPC_LOOKUP: Strict hidden-author match found {npc_name} in {location_id}", category="npc_management")
+                            return ('strict_match', (area_file, location_id, hidden_npc))
                             
             except Exception as e:
                 warning(f"FILE_OP: Could not search area file {area_file}: {e}", category="file_operations")
@@ -2628,6 +2720,14 @@ def find_npc_in_areas(npc_name, path_manager, location_hint=None):
                         if npc_canonical_name not in npc_location_map:
                             npc_location_map[npc_canonical_name] = []
                         npc_location_map[npc_canonical_name].append((area_file, location_id, npc))
+
+                for hidden_npc in _extract_location_hidden_npcs(location):
+                    hidden_name = hidden_npc.get("name", "")
+                    if hidden_name:
+                        all_npc_canonical.add(hidden_name)
+                        if hidden_name not in npc_location_map:
+                            npc_location_map[hidden_name] = []
+                        npc_location_map[hidden_name].append((area_file, location_id, hidden_npc))
                         
         except Exception as e:
             warning(f"FILE_OP: Could not search area file {area_file}: {e}", category="file_operations")

@@ -4,6 +4,7 @@
 # This software is subject to the terms of the Fair Source License.
 
 import json
+import re
 from jsonschema import validate, ValidationError
 import time
 
@@ -31,12 +32,66 @@ client = create_chat_client()
 # Constants
 TEMPERATURE = 0.7
 
+_PLOT_STATUS_ALIASES = {
+    "not started": "not started",
+    "not_started": "not started",
+    "not-started": "not started",
+    "unstarted": "not started",
+    "in progress": "in progress",
+    "in_progress": "in progress",
+    "in-progress": "in progress",
+    "progress": "in progress",
+    "completed": "completed",
+    "complete": "completed",
+    "resolved": "completed",
+}
+
 # ANSI escape codes - REMOVED per CLAUDE.md guidelines
 # All color codes have been removed to prevent Windows console encoding errors
 
 def load_schema():
     with open("schemas/plot_schema.json", "r") as schema_file:
         return json.load(schema_file)
+
+
+def normalize_plot_status(status_value):
+    """Normalize plot status aliases to canonical schema values when supported."""
+    if status_value is None:
+        return ""
+
+    normalized_input = re.sub(r"\s+", " ", str(status_value).strip().lower())
+    if not normalized_input:
+        return ""
+
+    alias_key = normalized_input.replace("-", " ").replace("_", " ")
+    alias_key = re.sub(r"\s+", " ", alias_key).strip()
+    return _PLOT_STATUS_ALIASES.get(alias_key, normalized_input)
+
+
+def _normalize_plot_update_sections(updated_sections):
+    """Normalize plot status aliases inside AI-returned update payloads."""
+    if not isinstance(updated_sections, dict):
+        return updated_sections
+
+    normalized_sections = json.loads(json.dumps(updated_sections))
+    for _, updates in normalized_sections.items():
+        if not isinstance(updates, dict):
+            continue
+
+        status_value = updates.get("status")
+        if status_value is not None:
+            updates["status"] = normalize_plot_status(status_value)
+
+        side_quests = updates.get("sideQuests")
+        if isinstance(side_quests, list):
+            for side_quest in side_quests:
+                if not isinstance(side_quest, dict):
+                    continue
+                side_status = side_quest.get("status")
+                if side_status is not None:
+                    side_quest["status"] = normalize_plot_status(side_status)
+
+    return normalized_sections
 
 def update_party_tracker(plot_point_id, new_status, plot_impact, plot_filename):
     # DEPRECATED: activeQuests tracking has been deprecated in favor of using module_plot.json as the single source of truth
@@ -103,6 +158,7 @@ def update_party_tracker(plot_point_id, new_status, plot_impact, plot_filename):
     debug(f"STATE_CHANGE: Party tracker updated for plot point {plot_point_id}", category="plot_updates")
 
 def update_plot(plot_point_id_param, new_status_param, plot_impact_param, plot_filename_param, max_retries=3): # Renamed params
+    normalized_status_param = normalize_plot_status(new_status_param)
     try:
         # Use unified module plot file with current module from party tracker
         party_tracker = safe_read_json("party_tracker.json")
@@ -144,7 +200,7 @@ Examples:
 5. Input: Plot point to update: PP011, New status: in progress, Plot impact: The party is exploring the Crystal Cavern and deciphering hidden messages left by the dwarves.
    Output: {"PP011": {"status": "in progress", "plotImpact": "The party is exploring the Crystal Cavern and deciphering hidden messages left by the dwarves."}}"""
             },
-            {"role": "user", "content": f"Current plot info: {json.dumps(plot_info_data)}\n\nPlot point to update: {plot_point_id_param}\nNew status: {new_status_param}\nPlot impact: {plot_impact_param}"}
+            {"role": "user", "content": f"Current plot info: {json.dumps(plot_info_data)}\n\nPlot point to update: {plot_point_id_param}\nNew status: {normalized_status_param}\nPlot impact: {plot_impact_param}"}
         ]
 
         config = get_model_config("plot_update", PLOT_UPDATE_MODEL)  # OPENROUTER: 3-tier model selection
@@ -171,6 +227,7 @@ Examples:
             ai_response_content = ai_response_content.strip()
 
             updated_sections = json.loads(ai_response_content)
+            updated_sections = _normalize_plot_update_sections(updated_sections)
 
             for current_plot_point_id, updates in updated_sections.items(): # Renamed plot_point_id loop var
                 for plot_point_obj in plot_info_data["plotPoints"]: # Renamed plot_point loop var
@@ -193,7 +250,7 @@ Examples:
                 error("FAILURE: Failed to save plot file", category="file_operations")
                 return plot_info_data
 
-            update_party_tracker(plot_point_id_param, new_status_param, plot_impact_param, plot_filename_param)
+            update_party_tracker(plot_point_id_param, normalized_status_param, plot_impact_param, plot_filename_param)
 
             debug(f"STATE_CHANGE: Plot information updated for plot point {plot_point_id_param}", category="plot_updates")
             

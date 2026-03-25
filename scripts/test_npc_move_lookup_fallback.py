@@ -96,6 +96,22 @@ class TestFindNPCInAreasStrictThenFallback(unittest.TestCase):
             ]
         }
 
+        self.area_hidden_priest = {
+            "locations": [
+                {
+                    "locationId": "NIG04",
+                    "name": "Room 4: Priest's Lodging",
+                    "npcs": [],
+                    "investigation_hooks": [
+                        {
+                            "id": "hiding_priest",
+                            "description": "Father Aldric hides behind fireplace, fears cult will find him",
+                        }
+                    ],
+                }
+            ]
+        }
+
     @patch('glob.glob')
     @patch('utils.file_operations.safe_read_json')
     def test_strict_hint_match_success(self, mock_read_json, mock_glob):
@@ -230,6 +246,24 @@ class TestFindNPCInAreasStrictThenFallback(unittest.TestCase):
         self.assertIsNotNone(data)
         area_file, location_id, npc = data
         self.assertEqual(npc["name"], "Bex")
+
+    @patch('glob.glob')
+    @patch('utils.file_operations.safe_read_json')
+    def test_hidden_authored_npc_matches_strict_hint(self, mock_read_json, mock_glob):
+        """Hidden investigation-hook NPCs should resolve at the hinted location."""
+        from core.ai.action_handler import find_npc_in_areas
+
+        mock_glob.return_value = [f"{self.module_dir}/areas/NIG001.json"]
+        mock_read_json.return_value = self.area_hidden_priest
+
+        status, data = find_npc_in_areas("Father Aldric", self.path_manager, location_hint="NIG04")
+
+        self.assertEqual(status, 'strict_match')
+        self.assertIsNotNone(data)
+        area_file, location_id, npc = data
+        self.assertEqual(location_id, "NIG04")
+        self.assertEqual(npc["name"], "Father Aldric")
+        self.assertTrue(npc.get("_tabletop_hidden_identity"))
 
 
 if __name__ == "__main__":

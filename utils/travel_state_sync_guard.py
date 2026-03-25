@@ -463,6 +463,93 @@ def _has_explicit_update_time_action(response_json: Dict[str, Any]) -> bool:
     return False
 
 
+def evaluate_scene_plot_location_reconciliation_decision(
+    response_json: Dict[str, Any],
+    current_location_id: str,
+    plot_data: Optional[Dict[str, Any]] = None,
+    module_locations: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Infer canonical current location from unique same-turn plot or encounter evidence."""
+    if _has_explicit_location_commit_action(response_json):
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    actions = response_json.get("actions", [])
+    if not isinstance(actions, list) or not isinstance(plot_data, dict):
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    module_location_index: Dict[str, Dict[str, str]] = {}
+    for location in module_locations or []:
+        if not isinstance(location, dict):
+            continue
+        location_id = str(location.get("id", "") or "").strip()
+        location_name = str(location.get("name", "") or "").strip()
+        if not location_id or not location_name:
+            continue
+        module_location_index[location_id] = {
+            "id": location_id,
+            "name": location_name,
+            "area_id": str(location.get("area_id", "") or "").strip(),
+            "area_name": str(location.get("area_name", "") or "").strip(),
+        }
+
+    if not module_location_index:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    plot_location_map: Dict[str, str] = {}
+    for plot_point in plot_data.get("plotPoints", []):
+        if not isinstance(plot_point, dict):
+            continue
+        plot_point_id = str(plot_point.get("id", "") or "").strip()
+        location_id = str(plot_point.get("location", "") or "").strip()
+        if plot_point_id and location_id:
+            plot_location_map[plot_point_id] = location_id
+
+    candidate_location_ids: List[str] = []
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        action_type = str(action.get("action", "") or "").strip()
+        parameters = action.get("parameters", {})
+        if not isinstance(parameters, dict):
+            continue
+
+        if action_type == "updatePlot":
+            plot_point_id = str(parameters.get("plotPointId", "") or "").strip()
+            mapped_location_id = plot_location_map.get(plot_point_id, "")
+            if mapped_location_id and mapped_location_id in module_location_index and mapped_location_id != current_location_id:
+                candidate_location_ids.append(mapped_location_id)
+        elif action_type == "updateEncounter":
+            encounter_id = str(parameters.get("encounterId", "") or "").strip()
+            encounter_location_id = encounter_id.split("-E", 1)[0].strip() if "-E" in encounter_id else ""
+            if encounter_location_id and encounter_location_id in module_location_index and encounter_location_id != current_location_id:
+                candidate_location_ids.append(encounter_location_id)
+
+    unique_candidates = sorted(set(candidate_location_ids))
+    if len(unique_candidates) != 1:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    destination_id = unique_candidates[0]
+    destination_entry = module_location_index.get(destination_id, {})
+    destination_name = str(destination_entry.get("name", "") or "").strip()
+    if not destination_name:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    inferred_action = {
+        "action": "updatePartyTracker",
+        "parameters": {
+            "currentLocationId": destination_id,
+            "currentLocation": destination_name,
+            "currentAreaId": str(destination_entry.get("area_id", "") or "").strip(),
+            "currentArea": str(destination_entry.get("area_name", "") or "").strip(),
+        },
+    }
+    return {
+        "valid": True,
+        "inferred_actions": [inferred_action],
+        "reconciliation": "scene_plot_location_sync",
+    }
+
+
 def evaluate_narrated_location_arrival_decision(
     response_json: Dict[str, Any],
     current_location_id: str,
