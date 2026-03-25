@@ -18,8 +18,8 @@ from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.module_path_manager import ModulePathManager
 from updates.update_character_info import normalize_character_name
-from openai import OpenAI
 import config
+from core.ai import api_client
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -33,10 +33,8 @@ except:
 from utils.enhanced_logger import set_script_name
 set_script_name(os.path.basename(__file__))
 
-# Initialize OpenAI client
-client = OpenAI(api_key=config.OPENAI_API_KEY)
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T078", "updates/update_character_effects.py", 201)
+register_callsite("T078", "updates/update_character_effects.py", 210)
 
 EFFECTS_TRACKER_FILE = "modules/effects_tracker.json"
 
@@ -197,15 +195,26 @@ For HP gains from Aid, use positive values (e.g., +5).
 Set affects_max to true for effects like Aid that modify both current and maximum values.
 """
 
+    # Select model config per provider
+    from model_config import MODEL_PROVIDER
+    if MODEL_PROVIDER == "openai":
+        effects_config = config.CHAR_EFFECTS_GPT52_NONE
+    elif MODEL_PROVIDER == "gemini":
+        effects_config = config.CHAR_EFFECTS_GEMINI_FLASH_HIGH
+    elif MODEL_PROVIDER == "lmstudio":
+        effects_config = config.CHAR_EFFECTS_LMSTUDIO
+    else:  # legacy
+        effects_config = config.CHAR_EFFECTS_LEGACY
+
     try:
-        response = capture_and_fanout("T078", client.chat.completions.create,
+        response = capture_and_fanout("T078", api_client.create_completion,
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": f"Analyze this update: {change_description}"}
             ],
-            model=config.DM_EFFECTS_MODEL if hasattr(config, 'DM_EFFECTS_MODEL') else config.DM_MAIN_MODEL,
-            temperature=0.3  # Lower temperature for more consistent JSON
-        )
+            model=effects_config["model"],
+            temperature=0.3,
+            **{k: v for k, v in effects_config.items() if k != "model"})
         
         # Track usage if available
         if USAGE_TRACKING_AVAILABLE:

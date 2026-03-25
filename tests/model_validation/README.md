@@ -53,3 +53,4 @@ When testing a new callsite:
 | T079 | Character data updates | gpt-5-mini low | gemini-3.1-flash-lite minimal + response_schema | Done |
 | T017 | Combat compression | gpt-5-mini low | gemini-3-flash low + response_format=None | Done |
 | T046 | Initiative tracker | gpt-5.2 none | gemini-3-flash minimal | Done |
+| T078 | Character effects | gpt-5.2 none | gemini-3-flash high | Done |

@@ -207,6 +207,24 @@ INIT_TRACKER_LEGACY = {"model": "gpt-4.1-2025-04-14", "response_format": None}
 # LM Studio (local passthrough)
 INIT_TRACKER_LMSTUDIO = {"model": "local-model", "response_format": None}
 
+# ----- T078 Character Effects -----
+# Analyzes character updates for trackable temporary effects (buffs/debuffs).
+# Full-tier callsite, temperature=0.3, JSON output.
+# GPT-5.4 reviewer: gpt-5.2|none = 5/5 pass (4.4/5), gemini-flash|high = 5/5 pass (4.4/5)
+# gemini-flash|minimal scored 3/5 on Sneak Attack entry (contradictory duration metadata)
+
+# OpenAI (gpt-5.2 with no reasoning -- 5/5 pass, 4.4/5 avg, 1.31s, temp=0.3 passes through)
+CHAR_EFFECTS_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
+
+# Gemini (3-flash with high thinking -- 5/5 pass, 4.4/5 avg, 2.89s, cheapest at $0.0006/call)
+CHAR_EFFECTS_GEMINI_FLASH_HIGH = {"model": "gemini-3-flash-preview", "thinking_level": "high"}
+
+# Legacy (no extra params)
+CHAR_EFFECTS_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+
+# LM Studio (local passthrough)
+CHAR_EFFECTS_LMSTUDIO = {"model": "local-model"}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures
