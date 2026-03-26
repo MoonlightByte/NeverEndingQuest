@@ -3788,6 +3788,13 @@ def extract_module_context_for_monsters(module_name):
 def run_game_loop():
     """Run the main game loop with enhanced error handling"""
     try:
+        # TABLETOP MODE: Web launch path must hydrate runtime files too.
+        # main.main() performs this for CLI launches, but web mode calls
+        # dm_main.main_game_loop() directly and would otherwise keep stale
+        # live area/module_plot files on disk.
+        from utils.startup_wizard import initialize_game_files_from_bu
+        initialize_game_files_from_bu()
+
         # Start the output sender thread
         output_thread = threading.Thread(target=send_output_to_clients, daemon=True)
         output_thread.start()

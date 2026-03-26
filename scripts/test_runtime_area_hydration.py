@@ -243,6 +243,26 @@ class TestStartupWizardHydrationContracts(unittest.TestCase):
         self.assertIn('live_file = str(bu_file).replace("_BU.json", ".json")', self.startup_wizard_source)
 
 
+class TestWebRuntimeHydrationContracts(unittest.TestCase):
+    """Source-contract checks for web launch hydration parity."""
+
+    @classmethod
+    def setUpClass(cls):
+        repo_root = Path(__file__).resolve().parents[1]
+        cls.web_interface_source = (repo_root / "web" / "web_interface.py").read_text(
+            encoding="utf-8"
+        )
+
+    def test_web_run_game_loop_hydrates_runtime_files_before_main_loop(self):
+        self.assertIn("from utils.startup_wizard import initialize_game_files_from_bu", self.web_interface_source)
+        self.assertIn("initialize_game_files_from_bu()", self.web_interface_source)
+        run_loop_start = self.web_interface_source.index("def run_game_loop():")
+        run_loop_source = self.web_interface_source[run_loop_start:]
+        hydrate_index = run_loop_source.index("initialize_game_files_from_bu()")
+        main_loop_index = run_loop_source.rindex("dm_main.main_game_loop()")
+        self.assertLess(hydrate_index, main_loop_index)
+
+
 class TestResetPlotHydrationContracts(unittest.TestCase):
     """Source-contract checks for reset compatibility with module_plot BU restoration."""
 
