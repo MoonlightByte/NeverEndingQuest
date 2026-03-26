@@ -66,6 +66,15 @@ class TestRestlessDeadModuleSemantics(unittest.TestCase):
         self.assertNotIn("Night_of_the_Restless_Dead", plot_title)
         self.assertNotIn("Night_of_the_Restless_Dead", area_name)
 
+    def test_world_registry_starting_location_is_prefix_free(self):
+        world_registry_path = os.path.join(PROJECT_ROOT, "modules", "world_registry.json")
+        with open(world_registry_path, "r", encoding="utf-8") as handle:
+            world_registry = json.load(handle)
+
+        starting_location = world_registry.get("modules", {}).get("Night_of_the_Restless_Dead", {}).get("startingLocation", {})
+        self.assertEqual(starting_location.get("locationName"), "Ma's Watering Hole")
+        self.assertFalse(str(starting_location.get("locationName", "")).startswith("Room "))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

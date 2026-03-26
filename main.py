@@ -5357,6 +5357,8 @@ def main_game_loop():
 
             party_stats_str = "; ".join(party_stats_formatted) if party_stats_formatted else "None"
             current_location_name_note = world_conditions["currentLocation"]
+            if isinstance(current_location_name_note, str):
+                current_location_name_note = re.sub(r"^Room\s+\d+\s*:\s*", "", current_location_name_note, flags=re.IGNORECASE)
             current_location_id_note = world_conditions["currentLocationId"]
             
             # Check if current location has been peacefully resolved
@@ -5373,49 +5375,65 @@ def main_game_loop():
             connected_locations_display_str = "None listed"
             connected_areas_display_str = "" # Initialize as empty
 
-            if location_data: # Ensure location_data is not None
-                current_area_full_data = load_json_file(path_manager.get_area_path(current_area_id))
-                location_record_for_connectivity = location_data
-                if (
-                    isinstance(current_area_full_data, dict)
-                    and (not location_data.get("connectivity"))
-                    and current_location_id_note
-                ):
-                    fallback_location = next(
+            current_area_full_data = load_json_file(path_manager.get_area_path(current_area_id))
+            location_record_for_connectivity = location_data if isinstance(location_data, dict) else {}
+            fallback_location = None
+            if isinstance(current_area_full_data, dict) and current_location_id_note:
+                fallback_location = next(
+                    (
+                        loc for loc in current_area_full_data.get("locations", [])
+                        if isinstance(loc, dict) and loc.get("locationId") == current_location_id_note
+                    ),
+                    None,
+                )
+
+            if isinstance(fallback_location, dict) and (not location_record_for_connectivity or not location_record_for_connectivity.get("connectivity")):
+                location_record_for_connectivity = fallback_location
+
+            connected_ids_current_area = []
+            if isinstance(location_record_for_connectivity, dict):
+                raw_connectivity = location_record_for_connectivity.get("connectivity", [])
+                if isinstance(raw_connectivity, list):
+                    connected_ids_current_area = [loc_id for loc_id in raw_connectivity if isinstance(loc_id, str) and loc_id]
+
+            if not connected_ids_current_area and isinstance(packet_location, dict):
+                raw_packet_adjacency = packet_location.get("adjacent_location_ids", [])
+                if isinstance(raw_packet_adjacency, list):
+                    connected_ids_current_area = [loc_id for loc_id in raw_packet_adjacency if isinstance(loc_id, str) and loc_id]
+
+            if connected_ids_current_area:
+                connected_names_current_area = []
+                area_locations = current_area_full_data.get("locations", []) if isinstance(current_area_full_data, dict) else []
+                for loc_id in connected_ids_current_area:
+                    found_loc = next(
                         (
-                            loc for loc in current_area_full_data.get("locations", [])
-                            if isinstance(loc, dict) and loc.get("locationId") == current_location_id_note
+                            l.get("name", loc_id)
+                            for l in area_locations
+                            if isinstance(l, dict) and l.get("locationId") == loc_id
                         ),
                         None,
                     )
-                    if isinstance(fallback_location, dict):
-                        location_record_for_connectivity = fallback_location
+                    if not found_loc and location_graph:
+                        found_loc = location_graph.get_location_name(loc_id)
+                    connected_names_current_area.append(found_loc or loc_id)
 
-                # Get connections within the current area
-                if "connectivity" in location_record_for_connectivity and location_record_for_connectivity["connectivity"]:
-                    connected_ids_current_area = location_record_for_connectivity["connectivity"]
-                    connected_names_current_area = []
-                    if current_area_full_data and "locations" in current_area_full_data:
-                        for loc_id in connected_ids_current_area:
-                            found_loc = next((l["name"] for l in current_area_full_data["locations"] if l["locationId"] == loc_id), loc_id)
-                            connected_names_current_area.append(found_loc)
-                    if connected_names_current_area:
-                         connected_locations_display_str = ", ".join(connected_names_current_area)
+                if connected_names_current_area:
+                    connected_locations_display_str = ", ".join(connected_names_current_area)
 
-                # Get connections to other areas
-                if "areaConnectivityId" in location_record_for_connectivity and location_record_for_connectivity["areaConnectivityId"]:
-                    # Use the global location_graph to get info about connected locations
-                    connected_area_details = []
-                    for connected_loc_id in location_record_for_connectivity["areaConnectivityId"]:
-                        # Get the full info for the connected location
-                        conn_loc_info = location_graph.get_location_info(connected_loc_id)
-                        if conn_loc_info:
-                            conn_loc_name = conn_loc_info['location_name']
-                            conn_area_name = location_graph.get_area_name_from_location_id(connected_loc_id)
-                            connected_area_details.append(f"{conn_loc_name} (in {conn_area_name})")
-                
-                    if connected_area_details:
-                        connected_areas_display_str = ". Connects to other areas via: " + ", ".join(connected_area_details)
+            # Get connections to other areas
+            if isinstance(location_record_for_connectivity, dict) and location_record_for_connectivity.get("areaConnectivityId"):
+                # Use the global location_graph to get info about connected locations
+                connected_area_details = []
+                for connected_loc_id in location_record_for_connectivity["areaConnectivityId"]:
+                    # Get the full info for the connected location
+                    conn_loc_info = location_graph.get_location_info(connected_loc_id)
+                    if conn_loc_info:
+                        conn_loc_name = conn_loc_info['location_name']
+                        conn_area_name = location_graph.get_area_name_from_location_id(connected_loc_id)
+                        connected_area_details.append(f"{conn_loc_name} (in {conn_area_name})")
+            
+                if connected_area_details:
+                    connected_areas_display_str = ". Connects to other areas via: " + ", ".join(connected_area_details)
         
             # --- INTER-MODULE CONNECTIVITY SECTION ---
             available_modules_str = ""

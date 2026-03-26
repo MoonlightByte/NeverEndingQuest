@@ -16,6 +16,7 @@ Portions derived from SRD 5.2.1, licensed under CC BY 4.0.
 
 import json
 import os
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -58,6 +59,13 @@ try:
         web_mode = True
 except:
     pass
+
+
+def _normalize_display_location_name(location_name):
+    """Strip legacy room-number prefixes from user-facing location names."""
+    if not isinstance(location_name, str):
+        return ""
+    return re.sub(r"^Room\s+\d+\s*:\s*", "", location_name.strip(), flags=re.IGNORECASE)
 
 def display_status(message):
     """Display status message above the command prompt"""
@@ -1697,7 +1705,7 @@ def update_party_tracker(module_name, character_name, startup_incomplete=None):
                 "season": "Spring",
                 "dayNightCycle": "Day",
                 "moonPhase": "New Moon",
-                "currentLocation": starting_location.get("locationName", ""),
+                "currentLocation": _normalize_display_location_name(starting_location.get("locationName", "")),
                 "currentLocationId": starting_location.get("locationId", ""),
                 "currentArea": starting_location.get("areaName", ""),
                 "currentAreaId": starting_location.get("areaId", ""),

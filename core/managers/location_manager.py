@@ -221,12 +221,24 @@ def handle_location_transition(current_location, new_location, current_area, cur
         path_manager = ModulePathManager(current_module)
         current_area_file = path_manager.get_area_path(current_area_id)
         current_area_data = load_json_file(current_area_file)
+        current_location_id_from_tracker = str(party_tracker.get("worldConditions", {}).get("currentLocationId", "") or "").strip()
+        current_location_normalized = str(current_location or "").strip()
+        current_location_room_prefix_stripped = re.sub(r"^Room\s+\d+\s*:\s*", "", current_location_normalized, flags=re.IGNORECASE).strip()
 
         if current_area_data and "locations" in current_area_data:
             # Find current location info 
             current_location_info = None
             for loc in current_area_data["locations"]:
-                if loc["name"] == current_location or loc["locationId"] == current_location:
+                source_room_title = str(loc.get("source_room_title", "") or "").strip()
+                location_name = str(loc.get("name", "") or "").strip()
+                location_id = str(loc.get("locationId", "") or "").strip()
+                if (
+                    location_name == current_location
+                    or location_id == current_location
+                    or (current_location_id_from_tracker and location_id == current_location_id_from_tracker)
+                    or (source_room_title and source_room_title == current_location_normalized)
+                    or (current_location_room_prefix_stripped and location_name == current_location_room_prefix_stripped)
+                ):
                     current_location_info = loc
                     break
                     

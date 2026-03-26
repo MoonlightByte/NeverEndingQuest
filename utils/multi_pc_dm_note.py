@@ -27,6 +27,13 @@ from utils.pc_manager import should_use_abstraction_layer
 from utils.authoritative_state_packet import build_authoritative_state_packet
 
 
+def _normalize_display_location_name(location_name: str) -> str:
+    """Strip legacy room-number prefixes from user-facing location names."""
+    if not isinstance(location_name, str):
+        return ""
+    return location_name.split(": ", 1)[1] if location_name.lower().startswith("room ") and ": " in location_name else location_name
+
+
 def should_use_multi_pc_dm_note(party_tracker_data: Optional[Dict[str, Any]]) -> bool:
     """
     Determine if multi-PC DM Note format should be used.
@@ -488,7 +495,7 @@ def build_multi_pc_dm_note(
     party_npcs_str = format_party_npcs(party_npcs)
 
     effective_module_name = packet_module.get("name") or current_module_name
-    effective_location_name = packet_world.get("current_location_name") or current_location_name
+    effective_location_name = _normalize_display_location_name(packet_world.get("current_location_name") or current_location_name)
     effective_location_id = packet_world.get("current_location_id") or current_location_id
     effective_area_name = packet_world.get("current_area_name") or current_area_name
     
