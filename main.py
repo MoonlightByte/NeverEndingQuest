@@ -5288,12 +5288,12 @@ def main_game_loop():
                 if (
                     isinstance(current_area_full_data, dict)
                     and (not location_data.get("connectivity"))
-                    and current_location_id
+                    and current_location_id_note
                 ):
                     fallback_location = next(
                         (
                             loc for loc in current_area_full_data.get("locations", [])
-                            if isinstance(loc, dict) and loc.get("locationId") == current_location_id
+                            if isinstance(loc, dict) and loc.get("locationId") == current_location_id_note
                         ),
                         None,
                     )
