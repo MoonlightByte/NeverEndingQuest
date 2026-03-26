@@ -1021,6 +1021,86 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Restless Dead Travel + Recruit Validation Cleanup (COMPLETED - 2026-03-27)
+
+**Status:** COMPLETED - tabletop runtime cleanup for Night of the Restless Dead travel/recruitment flow plus legacy room-label display normalization.
+
+**Objective:**
+- Stop false NPC-arrival hard fails when sleep/travel planning mentions user-named destination NPCs before transition commit.
+- Restore valid same-area travel from `NIG01` to `NIG08` in Night of the Restless Dead.
+- Prevent `updatePartyNPCs` from rejecting recruitable module NPCs like Blarg just because they are not already in `party_tracker.json`.
+- Remove lingering `Room X:` prefixes from user-facing location display paths.
+
+**Implementation Summary:**
+- Updated `utils/npc_arrival_validator.py` to allow user-named travel-intent mentions without forcing same-turn arrival actions when the mention is planning-only.
+- Updated `main.py` DM-note connectivity assembly to recover adjacency from fresh area data and authoritative packet adjacency when `location_data` is stale or missing.
+- Updated `core/managers/location_manager.py` transition matching to accept tracker location id, `source_room_title`, and room-prefix-stripped names while preserving canonical prefix-free display names.
+- Updated `utils/startup_wizard.py`, `utils/multi_pc_dm_note.py`, `main.py`, and `modules/world_registry.json` so user-facing location strings normalize away legacy `Room X:` prefixes.
+- Updated `main.py` `normalize_character_names_in_response(...)` so `updatePartyNPCs` can resolve module-known recruitable NPCs (for example `Blarg`) before they exist in `party_tracker.json`, while still fail-closing on ambiguity.
+
+**Regression Coverage:**
+- Extended `scripts/test_npc_arrival_state_sync.py` for:
+  - user-named travel mention allowance,
+  - module-NPC recruitment acceptance for `updatePartyNPCs` dict form,
+  - module-NPC recruitment acceptance for `updatePartyNPCs` string `add` form.
+- Added `scripts/test_location_manager_transition_name_fallback.py` for room-prefix/source-title/current-location-id transition matching.
+- Extended `scripts/test_main_location_connectivity_note_fix.py` for missing-`location_data` adjacency fallback and packet adjacency fallback.
+- Extended `scripts/test_restless_dead_module_semantics.py` to enforce prefix-free world-registry starting location naming.
+
+**Verification:**
+- `python3 -m py_compile main.py core/managers/location_manager.py utils/multi_pc_dm_note.py utils/startup_wizard.py scripts/test_npc_arrival_state_sync.py scripts/test_main_location_connectivity_note_fix.py scripts/test_location_manager_transition_name_fallback.py scripts/test_restless_dead_module_semantics.py` -> PASS
+- `.venv/bin/python scripts/test_npc_arrival_state_sync.py` -> PASS (47/47)
+- `python3 scripts/test_main_location_connectivity_note_fix.py` -> PASS
+- `python3 scripts/test_location_manager_transition_name_fallback.py` -> PASS
+- `python3 scripts/test_restless_dead_module_semantics.py` -> PASS
+
+### Travel Validation-Order Alignment + Character State Hygiene (COMPLETED - 2026-03-26)
+
+**Status:** COMPLETED - runtime validation-order fix plus deterministic positive-HP life-state normalization hardening.
+
+**Objective:**
+- Stop travel/NPC validation from checking destination-scene NPCs against stale source-room context during reconcile-first movement.
+- Stop characters with `hitPoints > 0` from remaining durably marked `unconscious` in loaded runtime state, prompts, or encounter sync.
+
+**Implementation Summary:**
+- Updated `main.py` validation flow to compute an effective post-travel location context from explicit/inferred movement actions before NPC arrival validation.
+- Updated `utils/travel_state_sync_guard.py` to treat `knock on/at` as arrival evidence and allow clear user-utterance travel evidence to reconcile narration-only travel turns.
+- Updated `utils/npc_arrival_validator.py` to:
+  - exempt destination-present NPCs after transition commit,
+  - accept `destination_location_data` + `source_location_hint`,
+  - emit `travel_companion_autocommit` inferred `moveBackgroundNPC` actions for named travel companions when safe.
+- Added `utils/character_state_hygiene.py` with `normalize_life_state_fields()` as canonical HP/status/condition/death-save normalizer.
+- Wired life-state hygiene through:
+  - `updates/update_character_info.py` (`normalize_status_and_condition()` and `repair_character_data()`)
+  - `utils/pc_manager.py` character loads
+  - `core/managers/combat_manager.py` prompt formatting and active encounter character/NPC sync
+- Resulting life-state rules:
+  - `hitPoints > 0` => `status="alive"`, clears stale `unconscious`, resets death saves
+  - `hitPoints <= 0` and `< 3` failures => `unconscious`
+  - `hitPoints <= 0` and `>= 3` failures => `dead`
+
+**Regression Coverage:**
+- Added `scripts/test_character_state_hygiene.py`
+- Extended/verified:
+  - `scripts/test_travel_state_sync_guard.py`
+  - `scripts/test_npc_arrival_state_sync.py`
+  - `scripts/test_runtime_inventory_location_recovery.py`
+  - `scripts/test_travel_fail_soft.py`
+  - `scripts/test_hidden_npc_validation_context.py`
+  - `scripts/test_inventory_state_sync.py`
+  - `scripts/test_combat_state_coherence_repair.py`
+
+**Verification:**
+- `python3 -m py_compile utils/character_state_hygiene.py updates/update_character_info.py utils/pc_manager.py core/managers/combat_manager.py scripts/test_character_state_hygiene.py scripts/test_inventory_state_sync.py scripts/test_combat_state_coherence_repair.py scripts/test_travel_state_sync_guard.py scripts/test_npc_arrival_state_sync.py scripts/test_runtime_inventory_location_recovery.py scripts/test_travel_fail_soft.py scripts/test_hidden_npc_validation_context.py` -> PASS
+- `python3 scripts/test_character_state_hygiene.py` -> PASS
+- `python3 scripts/test_inventory_state_sync.py` -> PASS
+- `python3 scripts/test_combat_state_coherence_repair.py` -> PASS
+- `python3 scripts/test_travel_state_sync_guard.py` -> PASS
+- `python3 scripts/test_npc_arrival_state_sync.py` -> PASS
+- `python3 scripts/test_runtime_inventory_location_recovery.py` -> PASS
+- `python3 scripts/test_travel_fail_soft.py` -> PASS
+- `python3 scripts/test_hidden_npc_validation_context.py` -> PASS
+
 ### Party Member Canonical Dedupe + Tab Sync Hardening (COMPLETED - 2026-03-21)
 
 **Status:** COMPLETED - backend normalization fix with frontend canonical safety net for mixed-form `partyMembers` entries.
