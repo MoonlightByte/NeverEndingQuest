@@ -65,6 +65,40 @@ class TestRuntimeAreaHydration(unittest.TestCase):
         self.assertEqual(before_text, after_text)
         self.assertNotEqual(after_text, bu_file.read_text(encoding="utf-8"))
 
+    def test_stale_live_area_with_missing_location_ids_is_repaired(self):
+        """Existing live area should be repaired when canonical location IDs diverge."""
+        bu_file = self.modules_root / "ModuleOne" / "areas" / "A001_BU.json"
+        live_file = self.modules_root / "ModuleOne" / "areas" / "A001.json"
+
+        self._write_json(
+            bu_file,
+            {
+                "areaId": "A001",
+                "locations": [
+                    {"locationId": "L1", "name": "Old Hall", "npcs": []},
+                    {"locationId": "L2", "name": "New Refuge", "npcs": [{"name": "Keeper"}]},
+                ],
+            },
+        )
+        self._write_json(
+            live_file,
+            {
+                "areaId": "A001",
+                "locations": [
+                    {"locationId": "L1", "name": "Old Hall", "encounters": [{"id": "E1"}]},
+                ],
+            },
+        )
+
+        result = hydrate_missing_live_area_files_from_bu(str(self.modules_root))
+        repaired_payload = json.loads(live_file.read_text(encoding="utf-8"))
+
+        self.assertEqual(result["repaired_existing"], 1)
+        self.assertEqual(len(repaired_payload["locations"]), 2)
+        first_location = repaired_payload["locations"][0]
+        self.assertEqual(first_location["locationId"], "L1")
+        self.assertEqual(first_location["encounters"], [{"id": "E1"}])
+
     def test_restored_files_are_reported_in_deterministic_order(self):
         """Restored file list should be deterministic regardless of filesystem order."""
         self._write_json(
@@ -133,6 +167,39 @@ class TestRuntimePlotHydration(unittest.TestCase):
         self.assertEqual(result["skipped_existing"], 1)
         self.assertEqual(before_text, after_text)
         self.assertNotEqual(after_text, bu_file.read_text(encoding="utf-8"))
+
+    def test_stale_live_plot_with_missing_plot_points_is_repaired(self):
+        """Existing live plot should be repaired when canonical plot points diverge."""
+        bu_file = self.modules_root / "ModuleOne" / "module_plot_BU.json"
+        live_file = self.modules_root / "ModuleOne" / "module_plot.json"
+
+        self._write_json(
+            bu_file,
+            {
+                "plotTitle": "Canonical Plot",
+                "plotPoints": [
+                    {"id": "PP001", "title": "Start", "status": "not started"},
+                    {"id": "PP002", "title": "Refuge", "status": "not started"},
+                ],
+            },
+        )
+        self._write_json(
+            live_file,
+            {
+                "plotTitle": "Live Plot",
+                "plotPoints": [
+                    {"id": "PP001", "title": "Start", "status": "completed", "plotImpact": "done"},
+                ],
+            },
+        )
+
+        result = hydrate_missing_module_plot_files_from_bu(str(self.modules_root))
+        repaired_payload = json.loads(live_file.read_text(encoding="utf-8"))
+
+        self.assertEqual(result["repaired_existing"], 1)
+        self.assertEqual(len(repaired_payload["plotPoints"]), 2)
+        self.assertEqual(repaired_payload["plotPoints"][0]["status"], "completed")
+        self.assertEqual(repaired_payload["plotPoints"][0]["plotImpact"], "done")
 
     def test_restored_module_plot_files_are_deterministic(self):
         """Restored module_plot list should be deterministic by module path."""

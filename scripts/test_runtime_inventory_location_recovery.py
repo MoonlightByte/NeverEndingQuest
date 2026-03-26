@@ -216,6 +216,28 @@ class TestStartupSceneLocationRecovery(unittest.TestCase):
 
         self.assertEqual(decision.get("inferred_actions"), [])
 
+    def test_startup_transition_replay_trusts_latest_transition_destination(self):
+        from utils.travel_state_sync_guard import evaluate_startup_scene_location_recovery_decision
+
+        conversation_history = [
+            {"role": "assistant", "content": "The priest's lodging falls quiet behind you."},
+            {"role": "user", "content": "Location transition: Priest's Lodging (NIG04) to Ma's Watering Hole (NIG01)"},
+            {"role": "assistant", "content": "You gather at Ma's Watering Hole and bar the shutters."},
+        ]
+
+        decision = evaluate_startup_scene_location_recovery_decision(
+            conversation_history=conversation_history,
+            current_location_id="NIG04",
+            current_area_id="NIG001",
+            known_location_names=["Room 1: Ma's Watering Hole", "Room 4: Priest's Lodging"],
+            module_locations=self.module_locations,
+        )
+
+        inferred = decision.get("inferred_actions", [])
+        self.assertEqual(len(inferred), 1)
+        self.assertEqual(decision.get("reconciliation"), "startup_transition_replay")
+        self.assertEqual(inferred[0].get("parameters", {}).get("currentLocationId"), "NIG01")
+
 
 class TestRuntimeInventoryLocationRecoverySourceContracts(unittest.TestCase):
     @classmethod

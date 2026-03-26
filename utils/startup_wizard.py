@@ -150,9 +150,11 @@ def initialize_game_files_from_bu():
 
     area_result = hydrate_missing_live_area_files_from_bu("modules")
     initialized_count += int(area_result.get("restored", 0))
+    initialized_count += int(area_result.get("repaired_existing", 0))
 
     plot_result = hydrate_missing_module_plot_files_from_bu("modules")
     initialized_count += int(plot_result.get("restored", 0))
+    initialized_count += int(plot_result.get("repaired_existing", 0))
 
     # Preserve legacy non-area BU hydration behavior.
     bu_files = sorted(Path("modules").rglob("*_BU.json"), key=lambda path: str(path).lower())

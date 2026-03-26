@@ -184,6 +184,45 @@ class TestTravelStateSyncGuardBehavior(unittest.TestCase):
         self.assertEqual(decision.get("reason"), "")
         self.assertEqual(decision.get("inferred_actions"), [])
 
+    def test_user_utterance_can_resolve_honorific_place_alias_for_arrival(self):
+        response = {
+            "narration": "At dawn, you reach Brother Lintar's modest dwelling and see the lantern in the window.",
+            "actions": [
+                {"action": "rest", "parameters": {"type": "long"}},
+                {"action": "updateTime", "parameters": {"timeEstimate": 480}},
+            ],
+        }
+        decision = evaluate_travel_state_sync_decision(
+            response_json=response,
+            is_travel_intent=True,
+            current_location_name="Ma's Watering Hole",
+            current_location_id="NIG01",
+            user_utterance="After resting we head to Lintar's place. Is he home?",
+            known_location_names=["Brother Lintar's Place", "Ma's Watering Hole"],
+            known_locations=[
+                {
+                    "id": "NIG01",
+                    "name": "Ma's Watering Hole",
+                    "area_id": "NIG001",
+                    "source_room_title": "Ma's Watering Hole",
+                },
+                {
+                    "id": "NIG08",
+                    "name": "Brother Lintar's Place",
+                    "area_id": "NIG001",
+                    "source_room_title": "Brother Lintar's Place",
+                },
+            ],
+            adjacent_location_ids=["NIG08", "NIG02", "NIG04"],
+            reachable_location_ids=["NIG01", "NIG02", "NIG04", "NIG08"],
+        )
+        self.assertTrue(decision.get("valid"))
+        inferred_actions = decision.get("inferred_actions", [])
+        self.assertEqual(len(inferred_actions), 1)
+        self.assertEqual(inferred_actions[0].get("action"), "transitionLocation")
+        self.assertEqual(inferred_actions[0].get("parameters", {}).get("newLocation"), "NIG08")
+        self.assertEqual(decision.get("reconciliation"), "arrival_autocommit")
+
     def test_ambiguous_prose_fails_open(self):
         response = {
             "narration": "Cold air moves through the stone and the lantern trembles.",

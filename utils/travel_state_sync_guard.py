@@ -174,6 +174,11 @@ def _build_location_catalog(known_locations: Optional[List[Dict[str, Any]]], kno
         if source_room_title:
             aliases.append(source_room_title)
 
+        for alias in list(aliases):
+            title_stripped = re.sub(r"^(brother|sister|father|mother)\s+", "", alias, flags=re.IGNORECASE).strip()
+            if title_stripped:
+                aliases.append(title_stripped)
+
         aliases_with_article_variants: List[str] = []
         for alias in aliases:
             aliases_with_article_variants.append(alias)
@@ -291,6 +296,7 @@ def evaluate_travel_state_sync_decision(
     is_travel_intent: bool,
     current_location_name: str,
     current_location_id: str = "",
+    user_utterance: str = "",
     known_location_names: Optional[List[str]] = None,
     known_locations: Optional[List[Dict[str, Any]]] = None,
     adjacent_location_ids: Optional[List[str]] = None,
@@ -356,6 +362,11 @@ def evaluate_travel_state_sync_decision(
             "inferred_actions": [],
             "reconciliation": "blocker_or_clarifier",
         }
+
+    if not non_current_mentions and user_utterance:
+        normalized_user_utterance = _normalize_text(user_utterance)
+        user_mentions = _extract_location_mentions(normalized_user_utterance, known_names)
+        non_current_mentions = sorted(name for name in user_mentions if name not in current_location_aliases)
 
     if not non_current_mentions:
         return {
@@ -703,6 +714,44 @@ def evaluate_startup_scene_location_recovery_decision(
 
     if not recent_entries:
         return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    latest_transition_entry = None
+    for entry in reversed(conversation_history):
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("role") or "") != "user":
+            continue
+        content = str(entry.get("content") or "")
+        if content.startswith("Location transition:"):
+            latest_transition_entry = content
+            break
+
+    if latest_transition_entry:
+        id_match = re.match(r"Location transition: (.+?) \(([A-Z]+\d+)\) to (.+?) \(([A-Z]+\d+)\)", latest_transition_entry)
+        if id_match:
+            destination_name = str(id_match.group(3) or "").strip()
+            destination_id = str(id_match.group(4) or "").strip()
+            if destination_id == current_location_id:
+                return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+            destination_entry = location_catalog.get(_normalize_text(destination_name), {})
+            destination_area_id = str(destination_entry.get("area_id", "") or "").strip() or current_area_id
+            destination_area_name = str(destination_entry.get("area_name", "") or "").strip()
+            return {
+                "valid": True,
+                "inferred_actions": [
+                    {
+                        "action": "updatePartyTracker",
+                        "parameters": {
+                            "currentLocationId": destination_id,
+                            "currentLocation": destination_name,
+                            "currentAreaId": destination_area_id,
+                            "currentArea": destination_area_name,
+                        },
+                    }
+                ],
+                "reconciliation": "startup_transition_replay",
+            }
 
     for entry in recent_entries:
         normalized_content = _normalize_text(str(entry.get("content") or ""))

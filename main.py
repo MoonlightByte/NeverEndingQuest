@@ -1429,6 +1429,7 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
                 is_travel_intent=is_travel_intent,
                 current_location_name=packet_world.get("current_location_name") or party_tracker_data["worldConditions"].get("currentLocation", ""),
                 current_location_id=packet_world.get("current_location_id") or party_tracker_data["worldConditions"].get("currentLocationId", ""),
+                user_utterance=user_input,
                 known_location_names=known_location_names,
                 known_locations=known_locations,
                 adjacent_location_ids=packet_location.get("adjacent_location_ids", []),
@@ -4725,7 +4726,12 @@ def main_game_loop():
                 "  /travel [location] - Travel to location\n"
                 "  /rest [short/long] - Rest\n"
                 "  /storage - Access storage\n"
-                "  /levelup - Trigger level up if XP requirement met"
+                "  /levelup - Trigger level up if XP requirement met\n"
+                "[SYSTEM] Reference Guides:\n"
+                "  - NEQ Quick Reference Guide: /static/docs/NEQ_Quick_Reference_Guide.pdf\n"
+                "  - 5e Cheat Sheet: /static/docs/5E_Actions_Cheat_Sheet.pdf\n"
+                "  - 5e Rules on a Page: /static/docs/5E_Rules_On_A_Page.pdf\n"
+                "  - 5e Basic Rules: https://www.dndbeyond.com/sources/dnd/basic-rules-2014"
             )
             print(colored(help_msg, "cyan"))
             # Force flush to ensure it reaches the web interface immediately

@@ -3911,25 +3911,30 @@ Player: {initial_prompt_text}"""
        
        # ----------------------------------------------------------------------
 
-       if cmd in ["/help", "\\help"]:
-           help_msg = (
-               "[skipTTS] Dungeon Master: [SYSTEM] Available Combat Commands:\n"
-               "  /stats      - View full character stats\n"
-               "  /hp [val]   - Combat Heal (positive) or damage (negative)\n"
-               "  /att [target] [roll] [weapon] - Attack a target\n"
-               "  /dmg [val]  - Apply damage\n"
-               "  /init [1-20] - Set PC group initiative roll\n"
-               "  /end        - End PC combat turn\n"
-               "  /end_combat - Force end the current combat encounter\n"
-               "  /save       - Save current game state\n"
-               "  /quit       - Exit the game\n"
-               "  /help       - Show this help message"
-           )
-           print(help_msg)
-           # Force flush to ensure it reaches the web interface immediately
-           import sys
-           sys.stdout.flush()
-           continue
+           if cmd in ["/help", "\\help"]:
+               help_msg = (
+                   "[skipTTS] Dungeon Master: [SYSTEM] Available Combat Commands:\n"
+                   "  /stats      - View full character stats\n"
+                   "  /hp [val]   - Combat Heal (positive) or damage (negative)\n"
+                   "  /att [target] [roll] [weapon] - Attack a target\n"
+                   "  /dmg [val]  - Apply damage\n"
+                   "  /init [1-20] - Set PC group initiative roll\n"
+                   "  /end        - End PC combat turn\n"
+                   "  /end_combat - Force end the current combat encounter\n"
+                   "  /save       - Save current game state\n"
+                   "  /quit       - Exit the game\n"
+                   "  /help       - Show this help message\n"
+                   "[SYSTEM] Reference Guides:\n"
+                   "  - NEQ Quick Reference Guide: /static/docs/NEQ_Quick_Reference_Guide.pdf\n"
+                   "  - 5e Cheat Sheet: /static/docs/5E_Actions_Cheat_Sheet.pdf\n"
+                   "  - 5e Rules on a Page: /static/docs/5E_Rules_On_A_Page.pdf\n"
+                   "  - 5e Basic Rules: https://www.dndbeyond.com/sources/dnd/basic-rules-2014"
+               )
+               print(help_msg)
+               # Force flush to ensure it reaches the web interface immediately
+               import sys
+               sys.stdout.flush()
+               continue
 
        # --- Character Info Commands ---
        

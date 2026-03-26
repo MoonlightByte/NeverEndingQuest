@@ -5237,6 +5237,28 @@
             return new Set(SAVING_THROW_CLASS_FALLBACKS[classToken] || []);
         }
 
+        function escapeMessageHtml(text) {
+            return String(text || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function formatMessageHtmlWithLinks(text) {
+            const escaped = escapeMessageHtml(text);
+            const linkified = escaped.replace(
+                /(https:\/\/[^\s<]+|\/static\/docs\/[^\s<]+)/g,
+                '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+            );
+            return linkified.replace(/\n/g, '<br>');
+        }
+
+        function setMessageTextWithLinks(element, text) {
+            element.innerHTML = formatMessageHtmlWithLinks(text);
+        }
+
         function getEffectiveSavingThrowProficiencies(entity) {
             const normalized = normalizeSavingThrows(entity?.savingThrows);
             if (normalized.size > 0) {
@@ -6130,7 +6152,7 @@
                 
                 const text = document.createElement('div');
                 text.className = 'message-text';
-                text.textContent = message.content;
+                setMessageTextWithLinks(text, message.content);
                 
                 header.appendChild(author);
                 header.appendChild(badge);
@@ -6213,7 +6235,7 @@
                 author.textContent = authorName;
                 const text = document.createElement('div');
                 text.className = 'message-text';
-                text.textContent = message.content;
+                setMessageTextWithLinks(text, message.content);
                 header.appendChild(author);
                 contentDiv.appendChild(header);
                 contentDiv.appendChild(text);
@@ -6226,7 +6248,7 @@
                 contentDiv.className = 'message-content';
                 const text = document.createElement('div');
                 text.className = 'message-text';
-                text.textContent = message.content;
+                setMessageTextWithLinks(text, message.content);
                 contentDiv.appendChild(text);
                 messageDiv.appendChild(contentDiv);
                 
@@ -6241,7 +6263,7 @@
                 }
                 const text = document.createElement('div');
                 text.className = 'message-text';
-                text.textContent = message.content;
+                setMessageTextWithLinks(text, message.content);
                 contentDiv.appendChild(text);
                 messageDiv.appendChild(contentDiv);
             }
