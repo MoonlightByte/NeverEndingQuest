@@ -1071,6 +1071,26 @@ class TestPromptEnrichmentWithPersonalityBackground(unittest.TestCase):
         self.assertNotIn("deeply connected to loyal to", prompt)
         self.assertNotIn("yet sometimes showing sometimes", prompt)
 
+    def test_prompt_sanitizes_policy_risk_violence_phrases(self):
+        """Test: Portrait prompt softens policy-risk violence wording from free text fields."""
+        from core.toolkit.portrait_service import build_character_portrait_prompt
+
+        character_data = {
+            "name": "Blarg",
+            "race": "Half-Orc",
+            "class": "Barbarian",
+            "personality_traits": "Violence is my answer to almost any challenge.",
+            "flaws": "Bloody reprisals come easily to me.",
+            "backstory": "He killed raiders and left blood in his wake."
+        }
+
+        prompt = build_character_portrait_prompt(character_data).lower()
+
+        self.assertNotIn("violence is my answer", prompt)
+        self.assertNotIn("bloody", prompt)
+        self.assertNotIn("killed", prompt)
+        self.assertIn("force", prompt)
+
     def test_prompt_has_no_ellipsis_punctuation_artifacts(self):
         """Test: Prompt should not contain four-dot punctuation artifacts."""
         from core.toolkit.portrait_service import build_character_portrait_prompt

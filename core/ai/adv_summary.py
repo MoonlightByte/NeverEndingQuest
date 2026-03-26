@@ -15,6 +15,7 @@ See LICENSE file for full terms.
 
 import json
 import os
+import re
 import sys
 import traceback
 from datetime import datetime
@@ -37,6 +38,13 @@ from utils.encoding_utils import sanitize_text, safe_json_load, safe_json_dump
 from core.managers.status_manager import status_generating_summary
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.ai_client_factory import create_chat_client, get_chat_model_name, get_model_config  # OPENROUTER: Multi-provider support
+
+
+def _normalize_display_location_name(location_name: str) -> str:
+    """Strip legacy room prefixes from user-facing location names."""
+    if not isinstance(location_name, str):
+        return ""
+    return re.sub(r"^Room\s+\d+\s*:\s*", "", location_name.strip(), flags=re.IGNORECASE)
 
 # Set script name for logging
 set_script_name("adv_summary")
@@ -526,7 +534,7 @@ if __name__ == "__main__":
 
     conversation_history_file_arg = sys.argv[1]
     current_location_file_arg = sys.argv[2] # This is the JSON of the location *being left*
-    leaving_location_name_arg = sys.argv[3]
+    leaving_location_name_arg = _normalize_display_location_name(sys.argv[3])
     current_area_id_arg = sys.argv[4]
 
     conversation_history_content = load_json_file(conversation_history_file_arg)
@@ -557,7 +565,15 @@ if __name__ == "__main__":
     all_locations_in_area = load_json_file(area_file_to_update)
     
     # Find the specific location object within that area's data that matches the name of the location being left
-    leaving_location_obj_from_area = next((loc for loc in all_locations_in_area.get("locations", []) if loc.get("name") == leaving_location_name_arg), None)
+    leaving_location_obj_from_area = next(
+        (
+            loc for loc in all_locations_in_area.get("locations", [])
+            if loc.get("name") == leaving_location_name_arg
+            or _normalize_display_location_name(loc.get("name", "")) == leaving_location_name_arg
+            or loc.get("source_room_title") == leaving_location_name_arg
+        ),
+        None,
+    )
 
     if leaving_location_obj_from_area:
         # Pass current_area_id_arg to update_location_json as it's needed to load the correct area file within that function
@@ -567,7 +583,11 @@ if __name__ == "__main__":
             # Update the main area file data in memory
             found_in_all_locations = False
             for i, location_in_list in enumerate(all_locations_in_area.get("locations", [])):
-                if location_in_list.get("name") == leaving_location_name_arg:
+                if (
+                    location_in_list.get("name") == leaving_location_name_arg
+                    or _normalize_display_location_name(location_in_list.get("name", "")) == leaving_location_name_arg
+                    or location_in_list.get("source_room_title") == leaving_location_name_arg
+                ):
                     all_locations_in_area["locations"][i] = updated_location_data
                     found_in_all_locations = True
                     break

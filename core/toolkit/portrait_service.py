@@ -67,6 +67,28 @@ def _sanitize_prompt_text(text: str, max_length: int = 200) -> str:
     return cleaned
 
 
+def _sanitize_portrait_semantics(text: str, max_length: int = 200) -> str:
+    """Reduce policy-risk wording in portrait prompt prose while preserving tone."""
+    cleaned = _sanitize_prompt_text(text, max_length=max_length)
+    if not cleaned:
+        return ""
+
+    replacement_patterns = [
+        (r"\bviolence\b", "force"),
+        (r"\bviolent\b", "dangerous"),
+        (r"\bkill(?:ing|s|ed)?\b", "defeat"),
+        (r"\bmurder(?:s|ed|ous)?\b", "harm"),
+        (r"\bslaughter(?:ed|s)?\b", "rout"),
+        (r"\bblood(?:shed|y)?\b", "grim conflict"),
+        (r"\bgore\b", "grim detail"),
+    ]
+
+    for pattern, replacement in replacement_patterns:
+        cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
+
+    return cleaned
+
+
 def _extract_first_int(text: str) -> Optional[int]:
     """Safely extract first integer from text.
     
@@ -351,16 +373,16 @@ def _build_visual_brief(character_data: Dict[str, Any]) -> str:
     
     # Sanitize and normalize personality fields
     personality_traits = _normalize_personality_phrase(
-        _sanitize_prompt_text(character_data.get("personality_traits", ""), max_length=120)
+        _sanitize_portrait_semantics(character_data.get("personality_traits", ""), max_length=120)
     )
     ideals = _normalize_personality_phrase(
-        _sanitize_prompt_text(character_data.get("ideals", ""), max_length=100)
+        _sanitize_portrait_semantics(character_data.get("ideals", ""), max_length=100)
     )
     bonds = _normalize_personality_phrase(
-        _sanitize_prompt_text(character_data.get("bonds", ""), max_length=120)
+        _sanitize_portrait_semantics(character_data.get("bonds", ""), max_length=120)
     )
     flaws = _normalize_personality_phrase(
-        _sanitize_prompt_text(character_data.get("flaws", ""), max_length=100)
+        _sanitize_portrait_semantics(character_data.get("flaws", ""), max_length=100)
     )
     
     # Build demeanor as prose
@@ -383,7 +405,7 @@ def _build_visual_brief(character_data: Dict[str, Any]) -> str:
             demeanor_clause = f"Their expression shows {demeanor_text}. "
     
     # Add backstory context (bounded and sanitized)
-    backstory = _sanitize_prompt_text(character_data.get("backstory", ""), max_length=150)
+    backstory = _sanitize_portrait_semantics(character_data.get("backstory", ""), max_length=150)
     backstory_clause = ""
     if backstory:
         # Truncate to first sentence or ~100 chars for visual context
