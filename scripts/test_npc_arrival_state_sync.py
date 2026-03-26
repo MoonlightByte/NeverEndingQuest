@@ -1023,6 +1023,69 @@ class TestNPCNameNormalization(unittest.TestCase):
         npc_name = parsed["actions"][0]["parameters"]["npcName"]
         self.assertEqual(npc_name.lower(), "merchant kael")
 
+    def test_updatePartyNPCs_module_npc_recruit_not_rejected_by_party_only_set(self):
+        """
+        updatePartyNPCs add should resolve module-known recruitable NPCs even when not yet in party tracker.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from main import normalize_character_names_in_response
+
+        response = json.dumps({
+            "narration": "Blarg grunts and agrees to come with you.",
+            "actions": [
+                {
+                    "action": "updatePartyNPCs",
+                    "parameters": {"operation": "add", "npc": {"name": "Blarg", "level": "3", "class": "Berserker"}}
+                }
+            ]
+        })
+
+        party_tracker_data = {
+            "module": "Night_of_the_Restless_Dead",
+            "partyMembers": ["xorn", "Redax", "athelon", "lidda_underbough"],
+            "partyNPCs": []
+        }
+
+        normalized, message = normalize_character_names_in_response(response, party_tracker_data)
+
+        self.assertIsNotNone(normalized, f"Module-known recruitment should be accepted, got: {message}")
+        parsed = json.loads(normalized)
+        npc_name = parsed["actions"][0]["parameters"]["npc"]["name"]
+        self.assertEqual(npc_name, "Blarg")
+
+    def test_updatePartyNPCs_module_npc_add_string_form_not_rejected(self):
+        """
+        updatePartyNPCs add string form should also allow module-known recruitable NPCs.
+        """
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from main import normalize_character_names_in_response
+
+        response = json.dumps({
+            "narration": "Blarg joins the party.",
+            "actions": [
+                {
+                    "action": "updatePartyNPCs",
+                    "parameters": {"add": "Blarg"}
+                }
+            ]
+        })
+
+        party_tracker_data = {
+            "module": "Night_of_the_Restless_Dead",
+            "partyMembers": ["xorn", "Redax", "athelon", "lidda_underbough"],
+            "partyNPCs": []
+        }
+
+        normalized, message = normalize_character_names_in_response(response, party_tracker_data)
+
+        self.assertIsNotNone(normalized, f"Module-known add string should be accepted, got: {message}")
+        parsed = json.loads(normalized)
+        self.assertEqual(parsed["actions"][0]["parameters"]["add"], "Blarg")
+
     def test_string_npc_form_converted_to_dict(self):
         """
         Non-canonical string form for npc parameter should be converted to dict.

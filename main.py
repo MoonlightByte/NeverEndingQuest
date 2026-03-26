@@ -849,6 +849,67 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
     corrections = []
     rejections = []
 
+    def _restore_module_npc_display_name(module_name, canonical_name):
+        """Recover display casing for a module NPC canonical name."""
+        if not module_name or not canonical_name:
+            return canonical_name
+
+        try:
+            from utils.module_path_manager import ModulePathManager
+
+            path_manager = ModulePathManager(module_name)
+            for area_id in path_manager.get_area_ids():
+                area_path = path_manager.get_area_path(area_id)
+                area_data = safe_json_load(area_path)
+                if not isinstance(area_data, dict):
+                    continue
+                for location in area_data.get("locations", []):
+                    if not isinstance(location, dict):
+                        continue
+                    for npc in location.get("npcs", []):
+                        if isinstance(npc, dict):
+                            npc_name = str(npc.get("name", "") or "").strip()
+                        elif isinstance(npc, str):
+                            npc_name = str(npc).strip()
+                        else:
+                            npc_name = ""
+                        if npc_name and npc_name.lower() == str(canonical_name).lower():
+                            return npc_name
+        except Exception as e:
+            print(f"[NPC_NORM] INFO: Could not restore display name for '{canonical_name}': {e}")
+
+        return canonical_name
+
+    def _resolve_update_party_npc_name(original_name):
+        """Resolve recruitable NPC identity from party tracker or module NPC canon."""
+        normalized_name, match_type = normalize_npc_name_for_action(
+            original_name, party_tracker_data, debug_print=True
+        )
+        if normalized_name is not None:
+            return normalized_name, match_type, None
+
+        module_name = str(party_tracker_data.get('module', '') or '').strip()
+        if not module_name:
+            return None, None, "not_found"
+
+        try:
+            from utils.npc_arrival_validator import resolve_npc_identity, load_module_npc_names
+
+            module_npc_names = load_module_npc_names(module_name)
+            if not module_npc_names:
+                return None, None, "not_found"
+
+            module_resolve = resolve_npc_identity(original_name, module_npc_names)
+            if module_resolve.status == "matched" and module_resolve.canonical_name:
+                display_name = _restore_module_npc_display_name(module_name, module_resolve.canonical_name)
+                return display_name, "module_npc", None
+            if module_resolve.status == "ambiguous":
+                return None, None, "ambiguous"
+        except Exception as e:
+            print(f"[NPC_NORM] INFO: Module NPC recruitment resolution degraded for '{original_name}': {e}")
+
+        return None, None, "not_found"
+
     for i, action in enumerate(parsed['actions']):
         if not isinstance(action, dict):
             continue
@@ -895,13 +956,15 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
                     if original_name:
                         print(f"[NPC_NORM] Checking updatePartyNPCs action with npc.name='{original_name}'")
 
-                        normalized_name, match_type = normalize_npc_name_for_action(
-                            original_name, party_tracker_data, debug_print=True
-                        )
+                        normalized_name, match_type, failure_reason = _resolve_update_party_npc_name(original_name)
 
                         if normalized_name is None:
-                            rejections.append(f"Action {i+1} (updatePartyNPCs): '{original_name}' not in party tracker")
-                            print(f"[NPC_NORM] REJECT: '{original_name}' cannot be matched to party tracker")
+                            if failure_reason == "ambiguous":
+                                rejections.append(f"Action {i+1} (updatePartyNPCs): '{original_name}' ambiguous in module NPC set")
+                                print(f"[NPC_NORM] REJECT: '{original_name}' ambiguous in module NPC set")
+                            else:
+                                rejections.append(f"Action {i+1} (updatePartyNPCs): '{original_name}' not in party tracker or module NPC set")
+                                print(f"[NPC_NORM] REJECT: '{original_name}' cannot be matched to party tracker or module NPC set")
 
                         elif normalized_name != original_name:
                             npc_param['name'] = normalized_name
@@ -916,13 +979,15 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
                     original_name = npc_param
                     print(f"[NPC_NORM] Checking updatePartyNPCs action with npc='{original_name}' (string form)")
 
-                    normalized_name, match_type = normalize_npc_name_for_action(
-                        original_name, party_tracker_data, debug_print=True
-                    )
+                    normalized_name, match_type, failure_reason = _resolve_update_party_npc_name(original_name)
 
                     if normalized_name is None:
-                        rejections.append(f"Action {i+1} (updatePartyNPCs): '{original_name}' not in party tracker")
-                        print(f"[NPC_NORM] REJECT: '{original_name}' cannot be matched to party tracker")
+                        if failure_reason == "ambiguous":
+                            rejections.append(f"Action {i+1} (updatePartyNPCs): '{original_name}' ambiguous in module NPC set")
+                            print(f"[NPC_NORM] REJECT: '{original_name}' ambiguous in module NPC set")
+                        else:
+                            rejections.append(f"Action {i+1} (updatePartyNPCs): '{original_name}' not in party tracker or module NPC set")
+                            print(f"[NPC_NORM] REJECT: '{original_name}' cannot be matched to party tracker or module NPC set")
 
                     elif normalized_name != original_name:
                         # Convert string to dict with canonical name
@@ -1012,13 +1077,15 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
                     original_name = add_param
                     print(f"[NPC_NORM] Checking updatePartyNPCs action with add='{original_name}' (string form)")
 
-                    normalized_name, match_type = normalize_npc_name_for_action(
-                        original_name, party_tracker_data, debug_print=True
-                    )
+                    normalized_name, match_type, failure_reason = _resolve_update_party_npc_name(original_name)
 
                     if normalized_name is None:
-                        rejections.append(f"Action {i+1} (updatePartyNPCs): '{original_name}' not in party tracker")
-                        print(f"[NPC_NORM] REJECT: '{original_name}' cannot be matched to party tracker")
+                        if failure_reason == "ambiguous":
+                            rejections.append(f"Action {i+1} (updatePartyNPCs): '{original_name}' ambiguous in module NPC set")
+                            print(f"[NPC_NORM] REJECT: '{original_name}' ambiguous in module NPC set")
+                        else:
+                            rejections.append(f"Action {i+1} (updatePartyNPCs): '{original_name}' not in party tracker or module NPC set")
+                            print(f"[NPC_NORM] REJECT: '{original_name}' cannot be matched to party tracker or module NPC set")
 
                     elif normalized_name != original_name:
                         params['add'] = normalized_name
@@ -1038,13 +1105,15 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
                         if isinstance(item, str):
                             # List of strings
                             original_name = item
-                            normalized_name, match_type = normalize_npc_name_for_action(
-                                original_name, party_tracker_data, debug_print=True
-                            )
+                            normalized_name, match_type, failure_reason = _resolve_update_party_npc_name(original_name)
 
                             if normalized_name is None:
-                                rejections.append(f"Action {i+1} (updatePartyNPCs): list item[{idx}] '{original_name}' not in party tracker")
-                                print(f"[NPC_NORM] REJECT: list item[{idx}] '{original_name}' cannot be matched to party tracker")
+                                if failure_reason == "ambiguous":
+                                    rejections.append(f"Action {i+1} (updatePartyNPCs): list item[{idx}] '{original_name}' ambiguous in module NPC set")
+                                    print(f"[NPC_NORM] REJECT: list item[{idx}] '{original_name}' ambiguous in module NPC set")
+                                else:
+                                    rejections.append(f"Action {i+1} (updatePartyNPCs): list item[{idx}] '{original_name}' not in party tracker or module NPC set")
+                                    print(f"[NPC_NORM] REJECT: list item[{idx}] '{original_name}' cannot be matched to party tracker or module NPC set")
                                 has_rejection = True
 
                             elif normalized_name != original_name:
@@ -1060,13 +1129,15 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
                             # List of dicts - check for name key
                             original_name = item.get('name')
                             if original_name:
-                                normalized_name, match_type = normalize_npc_name_for_action(
-                                    original_name, party_tracker_data, debug_print=True
-                                )
+                                normalized_name, match_type, failure_reason = _resolve_update_party_npc_name(original_name)
 
                                 if normalized_name is None:
-                                    rejections.append(f"Action {i+1} (updatePartyNPCs): dict item[{idx}] '{original_name}' not in party tracker")
-                                    print(f"[NPC_NORM] REJECT: dict item[{idx}] '{original_name}' cannot be matched to party tracker")
+                                    if failure_reason == "ambiguous":
+                                        rejections.append(f"Action {i+1} (updatePartyNPCs): dict item[{idx}] '{original_name}' ambiguous in module NPC set")
+                                        print(f"[NPC_NORM] REJECT: dict item[{idx}] '{original_name}' ambiguous in module NPC set")
+                                    else:
+                                        rejections.append(f"Action {i+1} (updatePartyNPCs): dict item[{idx}] '{original_name}' not in party tracker or module NPC set")
+                                        print(f"[NPC_NORM] REJECT: dict item[{idx}] '{original_name}' cannot be matched to party tracker or module NPC set")
                                     has_rejection = True
 
                                 elif normalized_name != original_name:
