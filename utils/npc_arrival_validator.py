@@ -322,6 +322,38 @@ def _has_scene_presence_user_cue(user_utterance: Optional[str]) -> bool:
     return any(re.search(pattern, utterance_lower) for pattern in _SCENE_PRESENCE_USER_CUE_PATTERNS)
 
 
+def _is_npc_explicitly_named_in_user_utterance(canonical_name: str, user_utterance: Optional[str]) -> bool:
+    """Return True when the user explicitly names an NPC in their own utterance."""
+    if not canonical_name or not isinstance(user_utterance, str):
+        return False
+
+    utterance_lower = user_utterance.lower().strip()
+    if not utterance_lower:
+        return False
+
+    canonical_lower = canonical_name.lower()
+    if canonical_lower in utterance_lower:
+        return True
+
+    alias_candidates = [canonical_name]
+    title_stripped = re.sub(r"^(brother|sister|father|mother)\s+", "", canonical_name, flags=re.IGNORECASE).strip()
+    if title_stripped:
+        alias_candidates.append(title_stripped)
+
+    for candidate in alias_candidates:
+        candidate_tokens = {
+            token for token in _extract_name_tokens(candidate)
+            if token not in _NPC_MENTION_STOPWORDS
+        }
+        if candidate_tokens and all(
+            re.search(r"\b" + re.escape(token) + r"\b", utterance_lower)
+            for token in candidate_tokens
+        ):
+            return True
+
+    return False
+
+
 def _build_scene_presence_inferred_action(
     canonical_npc_name: str,
     current_location_hint: str,
@@ -502,6 +534,31 @@ def evaluate_npc_arrival_state_sync_decision(
                     "reason": "",
                     "inferred_actions": inferred_actions,
                     "reconciliation": "travel_companion_autocommit",
+                    "missing_actions": missing_sorted,
+                }
+
+        can_allow_user_named_travel_mentions = (
+            bool(missing_sorted)
+            and not ambiguous_mentions
+            and is_travel_intent
+            and not has_transition_action
+            and not has_join_semantics
+            and isinstance(user_utterance, str)
+            and bool(user_utterance.strip())
+        )
+
+        if can_allow_user_named_travel_mentions:
+            unresolved_user_named_mentions = [
+                canonical_name
+                for canonical_name in missing_sorted
+                if not _is_npc_explicitly_named_in_user_utterance(canonical_name, user_utterance)
+            ]
+            if not unresolved_user_named_mentions:
+                return {
+                    "valid": True,
+                    "reason": "",
+                    "inferred_actions": [],
+                    "reconciliation": "user_named_travel_mention",
                     "missing_actions": missing_sorted,
                 }
 

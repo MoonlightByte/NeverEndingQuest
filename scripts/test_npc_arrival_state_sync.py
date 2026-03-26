@@ -703,6 +703,57 @@ class TestTravelIntentFailSoft(unittest.TestCase):
         self.assertEqual(inferred_actions[0].get("action"), "moveBackgroundNPC")
         self.assertEqual(inferred_actions[0].get("parameters", {}).get("npcName"), "Father Aldric")
 
+    def test_user_named_travel_mentions_are_allowed_without_transition(self):
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": (
+                "At dawn, Father Aldric helps the party gather their gear for Brother Lintar's place, "
+                "and Brother Lintar is spoken of as the next refuge waiting ahead."
+            ),
+            "actions": [
+                {"action": "rest", "parameters": {"type": "long"}},
+                {"action": "updateTime", "parameters": {"timeEstimate": 480}},
+            ],
+        }
+
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json,
+            self.party_tracker,
+            location_data=self.location_data,
+            module_npc_names={"Brother Lintar", "Father Aldric"},
+            is_travel_intent=True,
+            user_utterance="We sleep until dawn then get ready to travel to Lintar's place with Aldric.",
+        )
+
+        self.assertTrue(is_valid, reason)
+
+    def test_user_named_travel_mention_does_not_exempt_unmentioned_npc(self):
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": (
+                "At dawn, Father Aldric gathers the party for Brother Lintar's place, and Scout Elen "
+                "arrives from the outpost to join the march."
+            ),
+            "actions": [
+                {"action": "rest", "parameters": {"type": "long"}},
+                {"action": "updateTime", "parameters": {"timeEstimate": 480}},
+            ],
+        }
+
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json,
+            self.party_tracker,
+            location_data=self.location_data,
+            module_npc_names={"Brother Lintar", "Father Aldric", "Scout Elen"},
+            is_travel_intent=True,
+            user_utterance="We sleep until dawn then get ready to travel to Lintar's place with Aldric.",
+        )
+
+        self.assertFalse(is_valid)
+        self.assertIn("scout elen", reason.lower())
+
 
 class TestContractIntegration(unittest.TestCase):
     """Integration tests combining validation and dedupe logic."""
