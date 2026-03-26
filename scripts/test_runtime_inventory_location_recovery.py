@@ -267,6 +267,11 @@ class TestRuntimeInventoryLocationRecoverySourceContracts(unittest.TestCase):
         self.assertIn("evaluate_startup_scene_location_recovery_decision", self.main_source)
         self.assertIn("STATE_SYNC: Startup scene location recovered", self.main_source)
 
+    def test_main_uses_effective_location_context_for_npc_validation(self):
+        self.assertIn("effective_location_data = location_data", self.main_source)
+        self.assertIn("location_data=effective_location_data", self.main_source)
+        self.assertIn("destination_location_data=effective_location_data", self.main_source)
+
     def test_validation_contract_rejects_one_sided_inventory_transfer(self):
         self.assertIn("invalid_one_sided", self.validation_prompt_compressed)
         self.assertIn("One-sided transfers are invalid", self.validation_prompt)

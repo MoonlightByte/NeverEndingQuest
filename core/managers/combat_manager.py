@@ -154,6 +154,7 @@ from config import (
     DM_MINI_MODEL
 )
 from updates.update_character_info import update_character_info, normalize_character_name
+from utils.character_state_hygiene import normalize_life_state_fields
 import updates.update_encounter as update_encounter
 import updates.update_party_tracker as update_party_tracker
 # Import the preroll generator
@@ -2008,6 +2009,8 @@ def sync_active_encounter():
                     player_data = safe_json_load(player_file)
                     if not player_data:
                         error(f"FAILURE: Failed to load player file: {player_file}", category="file_operations")
+                    else:
+                        player_data = normalize_life_state_fields(player_data)
                         # Update combat-relevant fields
                         if creature.get("currentHitPoints") != player_data.get("hitPoints"):
                             creature["currentHitPoints"] = player_data.get("hitPoints")
@@ -2031,6 +2034,7 @@ def sync_active_encounter():
                     if not npc_data:
                         error(f"FAILURE: Failed to load NPC file for: {creature['name']}", category="file_operations")
                     else:
+                        npc_data = normalize_life_state_fields(npc_data)
                         # Update combat-relevant fields
                         if creature.get("currentHitPoints") != npc_data.get("hitPoints"):
                             creature["currentHitPoints"] = npc_data.get("hitPoints")
@@ -2075,6 +2079,9 @@ def format_character_for_combat(char_data, char_type="player", role=None):
     Returns:
         Formatted string matching conversation_utils format
     """
+    if isinstance(char_data, dict):
+        char_data = normalize_life_state_fields(dict(char_data))
+
     # Get equipment string - include ALL items with quantities (not just equipped)
     # Don't include item type in parentheses for combat - wastes tokens
     equipment_str = "None"

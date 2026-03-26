@@ -133,6 +133,7 @@ from utils.character_ops_routing import (
     normalize_character_ops_payload,
     classify_character_update_payload,
 )
+from utils.character_state_hygiene import normalize_life_state_fields
 from utils.xp_progression_utils import normalize_xp_progression
 from core.managers.world_observer import get_world_observer
 
@@ -567,24 +568,7 @@ def get_model_for_character(character_role):
 def normalize_status_and_condition(data, character_role):
     """Normalize status and condition fields based on character role"""
     # This fix applies to all character types
-    
-    # Force 'status' to lowercase if it exists
-    if 'status' in data and isinstance(data.get('status'), str):
-        data['status'] = data['status'].lower()
-
-    # Force 'condition' to lowercase if it exists
-    if 'condition' in data and isinstance(data.get('condition'), str):
-        data['condition'] = data['condition'].lower()
-        
-        # Also correct common synonyms to match the schema
-        if data['condition'] == 'normal':
-            data['condition'] = 'none'
-
-    # Ensure all items in 'condition_affected' are lowercase
-    if 'condition_affected' in data and isinstance(data.get('condition_affected'), list):
-        data['condition_affected'] = [str(c).lower() for c in data['condition_affected']]
-
-    return data
+    return normalize_life_state_fields(data)
 
 
 def _ensure_death_saves_object(character_data):
@@ -1409,6 +1393,7 @@ def repair_character_data(character_data):
 
     # Normalize nested death save state for crash-safe combat persistence
     _ensure_death_saves_object(character_data)
+    normalize_life_state_fields(character_data)
 
     # Preserve cumulative XP semantics and repair next-threshold drift
     character_data, xp_diagnostics = normalize_xp_progression(character_data, preserve_level=True)

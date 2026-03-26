@@ -652,6 +652,57 @@ class TestTravelIntentFailSoft(unittest.TestCase):
         self.assertTrue(is_valid,
             f"Complex travel narration with distant NPC refs should pass, got: {reason}")
 
+    def test_destination_npc_is_exempt_after_transition_commit(self):
+        from utils.npc_arrival_validator import validate_npc_arrival_state_sync
+
+        response_json = {
+            "narration": "Brother Lintar opens the door as you arrive at his refuge.",
+            "actions": [
+                {"action": "transitionLocation", "parameters": {"newLocation": "NIG08"}}
+            ],
+        }
+
+        is_valid, reason = validate_npc_arrival_state_sync(
+            response_json,
+            self.party_tracker,
+            location_data={"npcs": [{"name": "Brother Lintar"}]},
+            module_npc_names={"Brother Lintar", "Father Aldric"},
+            is_travel_intent=True,
+            user_utterance="We walk to Lintar's place and knock on the door.",
+            destination_location_data={"npcs": [{"name": "Brother Lintar"}]},
+            source_location_hint="NIG01",
+        )
+
+        self.assertTrue(is_valid, reason)
+
+    def test_travel_companion_can_autocommit_with_transition(self):
+        from utils.npc_arrival_validator import evaluate_npc_arrival_state_sync_decision
+
+        response_json = {
+            "narration": "Brother Lintar opens the door while Father Aldric waits beside you.",
+            "actions": [
+                {"action": "transitionLocation", "parameters": {"newLocation": "NIG08"}}
+            ],
+        }
+
+        decision = evaluate_npc_arrival_state_sync_decision(
+            response_json,
+            self.party_tracker,
+            location_data={"npcs": [{"name": "Brother Lintar"}]},
+            module_npc_names={"Brother Lintar", "Father Aldric"},
+            is_travel_intent=True,
+            user_utterance="We walk to Lintar's place with Father Aldric and knock on the door.",
+            destination_location_data={"npcs": [{"name": "Brother Lintar"}]},
+            source_location_hint="NIG01",
+        )
+
+        self.assertTrue(decision.get("valid"))
+        self.assertEqual(decision.get("reconciliation"), "travel_companion_autocommit")
+        inferred_actions = decision.get("inferred_actions", [])
+        self.assertEqual(len(inferred_actions), 1)
+        self.assertEqual(inferred_actions[0].get("action"), "moveBackgroundNPC")
+        self.assertEqual(inferred_actions[0].get("parameters", {}).get("npcName"), "Father Aldric")
+
 
 class TestContractIntegration(unittest.TestCase):
     """Integration tests combining validation and dedupe logic."""

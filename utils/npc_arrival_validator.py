@@ -344,6 +344,8 @@ def evaluate_npc_arrival_state_sync_decision(
     module_npc_names: Optional[Set[str]] = None,
     is_travel_intent: bool = False,
     user_utterance: Optional[str] = None,
+    destination_location_data: Optional[Dict[str, Any]] = None,
+    source_location_hint: str = "",
 ) -> Dict[str, Any]:
     """Evaluate deterministic NPC state-sync decision with optional reconciliation."""
     narration = response_json.get("narration", "")
@@ -357,9 +359,15 @@ def evaluate_npc_arrival_state_sync_decision(
     party_members_canonical = _build_party_member_canonical_set(party_tracker_data)
 
     present_npcs_canonical = _build_present_npc_canonical_set(party_tracker_data, location_data)
+    destination_present_npcs_canonical = _build_present_npc_canonical_set({}, destination_location_data)
 
     known_npcs_lower = _build_known_npc_set(party_tracker_data, location_data, module_npc_names)
     known_npcs_canonical = _build_known_npc_canonical_set(party_tracker_data, location_data, module_npc_names)
+
+    has_transition_action = any(
+        isinstance(action, dict) and action.get("action") in {"transitionLocation", "updatePartyTracker"}
+        for action in actions
+    )
 
     mentioned_npcs_lower = _extract_npc_mentions(narration, known_npcs_lower)
     if not mentioned_npcs_lower:
@@ -438,6 +446,16 @@ def evaluate_npc_arrival_state_sync_decision(
         if exempt:
             continue
 
+        if has_transition_action:
+            for destination_npc in destination_present_npcs_canonical:
+                result = resolve_npc_identity(canonical_name, {destination_npc})
+                if result.status == "matched":
+                    exempt = True
+                    break
+
+        if exempt:
+            continue
+
         has_action = _has_arrival_action_for_npc(
             canonical_name,
             actions,
@@ -450,6 +468,43 @@ def evaluate_npc_arrival_state_sync_decision(
     missing_sorted = sorted(missing_actions)
 
     if missing_sorted:
+        can_reconcile_travel_companions = (
+            bool(missing_sorted)
+            and not ambiguous_mentions
+            and is_travel_intent
+            and has_transition_action
+            and not has_join_semantics
+            and isinstance(user_utterance, str)
+            and bool(user_utterance.strip())
+        )
+
+        if can_reconcile_travel_companions:
+            inferred_actions = []
+            current_location_hint = source_location_hint
+            if not current_location_hint and isinstance(party_tracker_data, dict):
+                world_conditions = party_tracker_data.get("worldConditions", {})
+                if isinstance(world_conditions, dict):
+                    current_location_hint = str(world_conditions.get("currentLocationId", "") or "").strip()
+
+            user_utterance_lower = user_utterance.lower()
+            for canonical_name in missing_sorted:
+                if canonical_name.lower() in user_utterance_lower:
+                    inferred_actions.append(
+                        _build_scene_presence_inferred_action(
+                            canonical_npc_name=canonical_name,
+                            current_location_hint=current_location_hint,
+                        )
+                    )
+
+            if inferred_actions:
+                return {
+                    "valid": True,
+                    "reason": "",
+                    "inferred_actions": inferred_actions,
+                    "reconciliation": "travel_companion_autocommit",
+                    "missing_actions": missing_sorted,
+                }
+
         if not has_explicit_arrival:
             return {
                 "valid": True,
@@ -470,8 +525,8 @@ def evaluate_npc_arrival_state_sync_decision(
         )
 
         if can_reconcile_scene_presence:
-            current_location_hint = ""
-            if isinstance(party_tracker_data, dict):
+            current_location_hint = source_location_hint
+            if not current_location_hint and isinstance(party_tracker_data, dict):
                 world_conditions = party_tracker_data.get("worldConditions", {})
                 if isinstance(world_conditions, dict):
                     current_location_hint = str(world_conditions.get("currentLocationId", "") or "").strip()
@@ -512,7 +567,9 @@ def validate_npc_arrival_state_sync(
     location_data: Optional[Dict[str, Any]] = None,
     module_npc_names: Optional[Set[str]] = None,
     is_travel_intent: bool = False,
-    user_utterance: Optional[str] = None
+    user_utterance: Optional[str] = None,
+    destination_location_data: Optional[Dict[str, Any]] = None,
+    source_location_hint: str = "",
 ) -> Tuple[bool, str]:
     """
     Validate that narration does not introduce off-location known NPCs
@@ -538,6 +595,8 @@ def validate_npc_arrival_state_sync(
         module_npc_names=module_npc_names,
         is_travel_intent=is_travel_intent,
         user_utterance=user_utterance,
+        destination_location_data=destination_location_data,
+        source_location_hint=source_location_hint,
     )
     return bool(decision.get("valid", True)), str(decision.get("reason", "") or "")
 

@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.enhanced_logger import info, error, debug
+from utils.character_state_hygiene import normalize_life_state_fields
 from utils.character_creation_prompt_builder import build_dm_creation_prompt_bundle
 
 PARTY_TRACKER_FILE = "party_tracker.json"
@@ -165,6 +166,8 @@ def get_character_state(character_name: str,
             _character_access_stats['single_player_calls'] += 1
         char_path = _get_character_path(character_name)
         data = safe_read_json(char_path)
+        if isinstance(data, dict):
+            data = normalize_life_state_fields(data)
         
         if data and fields:
             return {k: v for k, v in data.items() if k in fields}
@@ -182,6 +185,9 @@ def get_character_state(character_name: str,
             debug(f"Character not found: {character_name}", 
                   category="character_access")
             return None
+
+        if isinstance(data, dict):
+            data = normalize_life_state_fields(data)
         
         debug(f"Character loaded: {character_name}", category="character_access")
         

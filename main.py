@@ -1509,6 +1509,95 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
                     f"STATE_SYNC: Scene/plot location sync injected {len(scene_plot_actions)} inferred action(s) mode={scene_plot_mode}",
                     category="location_transitions",
                 )
+
+            effective_location_id = packet_world.get("current_location_id") or party_tracker_data["worldConditions"].get("currentLocationId", "")
+            effective_location_name = packet_world.get("current_location_name") or party_tracker_data["worldConditions"].get("currentLocation", "")
+            effective_area_id = packet_world.get("current_area_id") or party_tracker_data["worldConditions"].get("currentAreaId", "")
+            effective_area_name = packet_world.get("current_area_name") or party_tracker_data["worldConditions"].get("currentArea", "")
+            effective_location_data = location_data
+
+            def _resolve_effective_location_entry(destination_token):
+                token = str(destination_token or "").strip()
+                if not token:
+                    return None, None
+
+                normalized_token = token.lower()
+                matched_entry = known_locations_by_id.get(token)
+                if not matched_entry:
+                    for candidate in known_locations:
+                        candidate_name = str(candidate.get("name", "") or "").strip().lower()
+                        candidate_title = str(candidate.get("source_room_title", "") or "").strip().lower()
+                        if normalized_token in {candidate_name, candidate_title}:
+                            matched_entry = candidate
+                            break
+
+                if not matched_entry:
+                    return None, None
+
+                area_id_value = str(matched_entry.get("area_id", "") or "").strip() or effective_area_id
+                area_data_value = area_data if area_id_value == current_area_id else None
+                if area_data_value is None and area_id_value:
+                    try:
+                        area_path = path_manager.get_area_path(area_id_value)
+                        with open(area_path, "r", encoding="utf-8") as file:
+                            area_data_value = json.load(file)
+                    except Exception:
+                        area_data_value = None
+
+                if isinstance(area_data_value, dict):
+                    matched_location = next(
+                        (
+                            loc for loc in area_data_value.get("locations", [])
+                            if isinstance(loc, dict) and str(loc.get("locationId", "") or "").strip() == str(matched_entry.get("id", "") or "").strip()
+                        ),
+                        None,
+                    )
+                    return matched_entry, matched_location
+
+                return matched_entry, None
+
+            actions_for_location_resolution = response_json.get("actions", [])
+            if isinstance(actions_for_location_resolution, list):
+                for action in actions_for_location_resolution:
+                    if not isinstance(action, dict):
+                        continue
+                    action_type = str(action.get("action", "") or "").strip()
+                    parameters = action.get("parameters", {}) if isinstance(action.get("parameters", {}), dict) else {}
+
+                    destination_token = ""
+                    if action_type == "transitionLocation":
+                        destination_token = parameters.get("newLocation", "")
+                    elif action_type == "updatePartyTracker":
+                        destination_token = parameters.get("currentLocationId", "")
+
+                    if not destination_token:
+                        continue
+
+                    matched_entry, matched_location = _resolve_effective_location_entry(destination_token)
+                    if not matched_entry:
+                        continue
+
+                    effective_location_id = str(matched_entry.get("id", "") or "").strip() or effective_location_id
+                    effective_location_name = str(matched_entry.get("name", "") or "").strip() or effective_location_name
+                    effective_area_id = str(matched_entry.get("area_id", "") or "").strip() or effective_area_id
+                    effective_area_name = str(matched_entry.get("area_name", "") or "").strip() or effective_area_name
+                    if isinstance(matched_location, dict):
+                        effective_location_data = matched_location
+
+            if effective_location_id != (packet_world.get("current_location_id") or party_tracker_data["worldConditions"].get("currentLocationId", "")):
+                packet_world = dict(packet_world)
+                packet_world["current_location_id"] = effective_location_id
+                packet_world["current_location_name"] = effective_location_name
+                packet_world["current_area_id"] = effective_area_id
+                packet_world["current_area_name"] = effective_area_name
+                packet_location = dict(packet_location)
+                if isinstance(effective_location_data, dict):
+                    packet_location["description"] = str(effective_location_data.get("description", "") or "")
+                    packet_location["dm_instructions"] = str(effective_location_data.get("dmInstructions", "") or "")
+                    packet_location["adjacent_location_ids"] = effective_location_data.get("connectivity", []) if isinstance(effective_location_data.get("connectivity", []), list) else []
+                authoritative_state_packet = dict(authoritative_state_packet)
+                authoritative_state_packet["world"] = packet_world
+                authoritative_state_packet["location"] = packet_location
         except Exception as e:
             error_msg = f"Travel state sync guard error: {str(e)}"
             print(f"ERROR: {error_msg}")
@@ -1518,10 +1607,12 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         npc_sync_decision = evaluate_npc_arrival_state_sync_decision(
             response_json,
             party_tracker_data,
-            location_data=location_data,
+            location_data=effective_location_data,
             module_npc_names=module_npc_names,
             is_travel_intent=is_travel_intent,
-            user_utterance=user_input
+            user_utterance=user_input,
+            destination_location_data=effective_location_data,
+            source_location_hint=current_location_id,
         )
 
         is_sync_valid = bool(npc_sync_decision.get("valid", True))

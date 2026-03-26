@@ -41,6 +41,7 @@ _ARRIVAL_PATTERNS = [
     r"\bemerge(?:s|d|ing)?\b",
     r"\benter(?:s|ed|ing)?\b",
     r"\bstep(?:s|ped|ping)?\s+(?:into|through|up|down)\b",
+    r"\bknock(?:s|ed|ing)?\s+(?:on|at)\b",
 ]
 
 
@@ -321,7 +322,13 @@ def evaluate_travel_state_sync_decision(
 
     narration = str(response_json.get("narration", "") or "")
     normalized_narration = _normalize_text(narration)
+    normalized_user_utterance = _normalize_text(user_utterance) if isinstance(user_utterance, str) else ""
+
     movement_commitment = _contains_any_pattern(normalized_narration, _MOVEMENT_COMMITMENT_PATTERNS)
+    if is_travel_intent and normalized_user_utterance:
+        movement_commitment = movement_commitment or _contains_any_pattern(normalized_user_utterance, _MOVEMENT_COMMITMENT_PATTERNS)
+    if is_travel_intent:
+        movement_commitment = True
 
     if not movement_commitment:
         return {
@@ -346,6 +353,10 @@ def evaluate_travel_state_sync_decision(
     arrival_signal = _contains_any_pattern(normalized_narration, _ARRIVAL_PATTERNS)
     progress_signal = _contains_any_pattern(normalized_narration, _PROGRESS_PATTERNS)
     departure_signal = _contains_any_pattern(normalized_narration, _DEPARTURE_PATTERNS)
+    if is_travel_intent and normalized_user_utterance:
+        arrival_signal = arrival_signal or _contains_any_pattern(normalized_user_utterance, _ARRIVAL_PATTERNS)
+        progress_signal = progress_signal or _contains_any_pattern(normalized_user_utterance, _PROGRESS_PATTERNS)
+        departure_signal = departure_signal or _contains_any_pattern(normalized_user_utterance, _DEPARTURE_PATTERNS)
 
     if current_mentioned and len(non_current_mentions) == 1 and arrival_signal and not departure_signal:
         return {

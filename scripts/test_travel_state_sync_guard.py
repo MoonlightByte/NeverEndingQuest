@@ -223,6 +223,30 @@ class TestTravelStateSyncGuardBehavior(unittest.TestCase):
         self.assertEqual(inferred_actions[0].get("parameters", {}).get("newLocation"), "NIG08")
         self.assertEqual(decision.get("reconciliation"), "arrival_autocommit")
 
+    def test_narration_only_response_still_autocommits_when_user_utterance_clearly_arrives(self):
+        response = {
+            "narration": "The party stands beneath the inn's dim rafters, deciding what to do next.",
+            "actions": [],
+        }
+        decision = evaluate_travel_state_sync_decision(
+            response_json=response,
+            is_travel_intent=True,
+            current_location_name="Ma's Watering Hole",
+            current_location_id="NIG01",
+            user_utterance="We leave Ma's and walk to Lintar's place, knock on the door to see if he's in.",
+            known_location_names=["Brother Lintar's Place", "Ma's Watering Hole"],
+            known_locations=[
+                {"id": "NIG01", "name": "Ma's Watering Hole", "area_id": "NIG001", "source_room_title": "Ma's Watering Hole"},
+                {"id": "NIG08", "name": "Brother Lintar's Place", "area_id": "NIG001", "source_room_title": "Brother Lintar's Place"},
+            ],
+            adjacent_location_ids=["NIG08", "NIG02", "NIG04"],
+            reachable_location_ids=["NIG01", "NIG02", "NIG04", "NIG08"],
+        )
+        inferred_actions = decision.get("inferred_actions", [])
+        self.assertEqual(len(inferred_actions), 1)
+        self.assertEqual(inferred_actions[0].get("action"), "transitionLocation")
+        self.assertEqual(inferred_actions[0].get("parameters", {}).get("newLocation"), "NIG08")
+
     def test_ambiguous_prose_fails_open(self):
         response = {
             "narration": "Cold air moves through the stone and the lantern trembles.",
