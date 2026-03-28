@@ -367,6 +367,8 @@ debug_output_queue = queue.Queue()
 user_input_queue = queue.Queue()
 # module_progress_queue imported from shared_state
 game_thread = None
+startup_in_progress = False
+startup_guard_lock = threading.Lock()
 original_stdout = sys.stdout
 original_stderr = sys.stderr
 original_stdin = sys.stdin
@@ -2765,7 +2767,7 @@ def handle_connect():
 @socketio.on('request_status')
 def handle_request_status():
     """Handle frontend request for current system status."""
-    global game_thread
+    global game_thread, startup_in_progress
     try:
         from config import DEBUG_STATUS_SYNC
     except ImportError:
@@ -2775,14 +2777,17 @@ def handle_request_status():
         from core.managers.status_manager import status_manager
         message, is_processing = status_manager.get_status()
         
-        # Check if game is actually running
-        is_running = game_thread is not None and game_thread.is_alive()
+        # Check if game is actually running or still in startup gate.
+        with startup_guard_lock:
+            is_starting = startup_in_progress
+            is_running = game_thread is not None and game_thread.is_alive()
         
         # Explicitly tag as a direct response to a request
         emit('status_response', {
             'message': message,
             'is_processing': is_processing,
-            'game_started': is_running
+            'game_started': is_running,
+            'game_starting': is_starting,
         })
         
         # Also send a standard status_update for redundancy
@@ -2792,7 +2797,7 @@ def handle_request_status():
         })
         
         if DEBUG_STATUS_SYNC:
-            print(f"[DEBUG_STATUS] Responded to request_status: '{message}', is_processing={is_processing}, game_started={is_running}")
+            print(f"[DEBUG_STATUS] Responded to request_status: '{message}', is_processing={is_processing}, game_started={is_running}, game_starting={is_starting}")
     except Exception as e:
         if DEBUG_STATUS_SYNC:
             print(f"[DEBUG_STATUS] Error in request_status handler: {e}")
@@ -3003,73 +3008,81 @@ def handle_action(data):
 @socketio.on('start_game')
 def handle_start_game():
     """Start the game in a separate thread"""
-    global game_thread
-    
-    if game_thread and game_thread.is_alive():
-        emit('error', {'message': 'Game is already running'})
-        return
-    
-    # TABLETOP MODE: Preflight validation - check module integrity before starting
-    # Lazy import to avoid module-level dependencies
-    from web.extensions.start_game_preflight import run_start_game_module_preflight
-    preflight_result = run_start_game_module_preflight()
-    
-    # Log preflight status for observability
-    from utils.enhanced_logger import debug, info
-    debug(
-        f"Start-game preflight status={preflight_result.get('status')} "
-        f"module={preflight_result.get('module')} "
-        f"reference_failed={preflight_result.get('reference_failed')}",
-        category="module_validation"
-    )
-    
-    if preflight_result.get('status') == 'pass':
-        info(
-            f"Start-game preflight passed for module: {preflight_result.get('module')}",
-            category="module_validation"
-        )
-    elif preflight_result.get('status') == 'repaired_pass':
-        info(
-            f"Start-game preflight repaired and passed for module: {preflight_result.get('module')}",
-            category="module_validation"
-        )
-    # TABLETOP MODE: Hard-fail startup gate for unresolved references
-    if preflight_result.get('status') == 'fail':
-        error_msg = (
-            preflight_result.get('message')
-            or "[SYSTEM] Module preflight failed. Combat startup blocked. "
-            "Check logs and fix unresolved monster references."
-        )
-        emit('error', {'message': error_msg})
-        return
-    
-    # Uninstall debug interceptor to prevent competing stdout redirections
-    uninstall_debug_interceptor()
-    
-    # Set up output capture - both go to debug by default, filtering happens in write()
-    sys.stdout = WebOutputCapture(debug_output_queue, original_stdout)
-    sys.stderr = WebOutputCapture(debug_output_queue, original_stderr, is_error=True)
-    sys.stdin = WebInput(user_input_queue)
-    
-    # Start the game in a separate thread
-    game_thread = threading.Thread(target=run_game_loop, daemon=True)
-    game_thread.start()
+    global game_thread, startup_in_progress
 
-    # TABLETOP MODE: Best-effort diary draft refresh after successful start.
-    # This must never block or fail the Start Game success path.
+    with startup_guard_lock:
+        if startup_in_progress or (game_thread and game_thread.is_alive()):
+            emit('error', {'message': 'Game is already starting or running'})
+            return
+
+        startup_in_progress = True
     try:
-        from web.extensions.session_diary_runtime import refresh_session_diary_start_hook
+        # TABLETOP MODE: Preflight validation - check module integrity before starting
+        # Lazy import to avoid module-level dependencies
+        from web.extensions.start_game_preflight import run_start_game_module_preflight
+        preflight_result = run_start_game_module_preflight()
 
-        diary_result = refresh_session_diary_start_hook()
-        if diary_result.get('status') == 'success' and diary_result.get('action') == 'updated':
-            emit('system_message', {'content': '[SYSTEM] Journal draft updated.'})
-    except Exception as diary_error:
+        # Log preflight status for observability
+        from utils.enhanced_logger import debug, info
         debug(
-            f"SESSION_DIARY: Start-game diary hook suppressed: {diary_error}",
-            category="web_interface"
+            f"Start-game preflight status={preflight_result.get('status')} "
+            f"module={preflight_result.get('module')} "
+            f"reference_failed={preflight_result.get('reference_failed')}",
+            category="module_validation"
         )
-    
-    emit('game_started', {'message': 'Game started successfully'})
+
+        if preflight_result.get('status') == 'pass':
+            info(
+                f"Start-game preflight passed for module: {preflight_result.get('module')}",
+                category="module_validation"
+            )
+        elif preflight_result.get('status') == 'repaired_pass':
+            info(
+                f"Start-game preflight repaired and passed for module: {preflight_result.get('module')}",
+                category="module_validation"
+            )
+        # TABLETOP MODE: Hard-fail startup gate for unresolved references
+        if preflight_result.get('status') == 'fail':
+            error_msg = (
+                preflight_result.get('message')
+                or "[SYSTEM] Module preflight failed. Combat startup blocked. "
+                "Check logs and fix unresolved monster references."
+            )
+            emit('error', {'message': error_msg})
+            return
+
+        # Uninstall debug interceptor to prevent competing stdout redirections
+        uninstall_debug_interceptor()
+
+        # Set up output capture - both go to debug by default, filtering happens in write()
+        sys.stdout = WebOutputCapture(debug_output_queue, original_stdout)
+        sys.stderr = WebOutputCapture(debug_output_queue, original_stderr, is_error=True)
+        sys.stdin = WebInput(user_input_queue)
+
+        # Start the game in a separate thread
+        game_thread = threading.Thread(target=run_game_loop, daemon=True)
+        game_thread.start()
+
+        # TABLETOP MODE: Best-effort diary draft refresh after successful start.
+        # This must never block or fail the Start Game success path.
+        try:
+            from web.extensions.session_diary_runtime import refresh_session_diary_start_hook
+
+            diary_result = refresh_session_diary_start_hook()
+            if diary_result.get('status') == 'success' and diary_result.get('action') == 'updated':
+                emit('system_message', {'content': '[SYSTEM] Journal draft updated.'})
+        except Exception as diary_error:
+            debug(
+                f"SESSION_DIARY: Start-game diary hook suppressed: {diary_error}",
+                category="web_interface"
+            )
+
+        emit('game_started', {'message': 'Game started successfully'})
+    except Exception as start_error:
+        emit('error', {'message': f'Failed to start game: {str(start_error)}'})
+    finally:
+        with startup_guard_lock:
+            startup_in_progress = False
 
 @socketio.on('request_player_data')
 def handle_player_data_request(data):
@@ -3369,6 +3382,22 @@ def handle_user_exit():
         # TABLETOP MODE: Exit intent logging and graceful shutdown
         print("[Py] User has initiated exit from the game")
         emit('exit_acknowledged', {'message': 'Exit acknowledged'})
+
+        # TABLETOP MODE: Best-effort confirmed diary checkpoint on explicit Exit.
+        # This must never block or fail the shutdown path.
+        try:
+            from web.extensions.session_diary_runtime import confirm_session_diary_exit_hook
+
+            diary_result = confirm_session_diary_exit_hook()
+            debug(
+                f"SESSION_DIARY: Exit hook result status={diary_result.get('status')} action={diary_result.get('action')}",
+                category="web_interface",
+            )
+        except Exception as diary_error:
+            debug(
+                f"SESSION_DIARY: Exit hook suppressed: {diary_error}",
+                category="web_interface",
+            )
         
         # Brief delay to improve ack delivery chance
         import time
@@ -3801,6 +3830,7 @@ def extract_module_context_for_monsters(module_name):
 
 def run_game_loop():
     """Run the main game loop with enhanced error handling"""
+    global game_thread
     try:
         # TABLETOP MODE: Web launch path must hydrate runtime files too.
         # main.main() performs this for CLI launches, but web mode calls
@@ -3865,6 +3895,8 @@ def run_game_loop():
         except Exception:
             pass
     finally:
+        with startup_guard_lock:
+            game_thread = None
         # Restore original streams safely
         try:
             sys.stdout = original_stdout

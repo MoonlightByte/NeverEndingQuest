@@ -30,6 +30,25 @@ The system SHALL generate a `confirmed` diary entry during save creation and SHA
 - **WHEN** confirmed diary creation fails during save processing
 - **THEN** the save operation SHALL still succeed and the diary result SHALL be surfaced as degraded metadata rather than a save failure
 
+### Requirement: Explicit Exit SHALL auto-confirm unsaved diary progress
+The explicit GUI Exit path SHALL create an idempotent `confirmed` diary checkpoint when eligible source history exists beyond the last confirmed checkpoint, even if the player did not manually save. This checkpoint SHALL be lighter-weight than a save snapshot and SHALL not create save-game artifacts by itself.
+
+#### Scenario: Exit creates one confirmed diary entry when unsaved progress exists
+- **WHEN** the player uses explicit GUI Exit and new eligible source events exist after the last confirmed diary checkpoint
+- **THEN** the system SHALL create exactly one new confirmed diary entry for that unsaved progress window
+
+#### Scenario: Repeated exit processing does not duplicate canon entries
+- **WHEN** the system reprocesses the same explicit Exit checkpoint window because of repeated clicks or shutdown retries
+- **THEN** it SHALL reuse the existing confirmed checkpoint behavior and SHALL NOT create duplicate confirmed diary rows
+
+#### Scenario: Exit with no new progress does not create extra confirmed rows
+- **WHEN** the player uses explicit GUI Exit and no eligible source events exist after the last confirmed diary checkpoint
+- **THEN** the system SHALL leave confirmed diary state unchanged and SHALL NOT create an additional confirmed row
+
+#### Scenario: Diary confirmation failure does not block exit
+- **WHEN** explicit Exit triggers diary confirmation and diary generation raises an exception or returns an error
+- **THEN** the system SHALL still complete the exit flow and SHALL surface the diary result as degraded rather than failing shutdown
+
 ### Requirement: Draft and confirmed diary state SHALL remain segregated
 The diary system SHALL preserve a strict boundary between unsaved draft content and confirmed save-bound canon content.
 
@@ -40,3 +59,7 @@ The diary system SHALL preserve a strict boundary between unsaved draft content 
 #### Scenario: Confirmed timeline excludes draft rows
 - **WHEN** a caller requests confirmed diary history for story compilation or canonical timeline display
 - **THEN** the system SHALL return confirmed rows only and SHALL exclude draft rows from that canonical result set
+
+#### Scenario: Exit auto-confirm clears superseded draft state
+- **WHEN** explicit Exit successfully confirms a diary checkpoint from the active draft window
+- **THEN** the system SHALL clear or supersede the active draft row so the next Start Game begins from a fresh draft boundary

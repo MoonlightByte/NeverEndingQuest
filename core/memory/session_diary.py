@@ -140,6 +140,8 @@ def _serialize_diary_row(row: Optional[sqlite3.Row]) -> Optional[Dict[str, Any]]
         "diary_id": row["diary_id"],
         "status": row["status"],
         "save_id": row["save_id"],
+        "checkpoint_type": row["checkpoint_type"] if "checkpoint_type" in row.keys() else None,
+        "checkpoint_id": row["checkpoint_id"] if "checkpoint_id" in row.keys() else None,
         "draft_key": row["draft_key"],
         "summary": row["summary"],
         "generation_mode": row["generation_mode"],
@@ -265,6 +267,25 @@ def build_fallback_summary(source_events: List[Dict[str, Any]]) -> str:
         "the chapter closed",
     )
     return f"The chapter opened with {first_text} and closed with {last_text}."
+
+
+def _get_confirmed_checkpoint_row(
+    conn: sqlite3.Connection,
+    checkpoint_type: str,
+    checkpoint_id: str,
+) -> Optional[sqlite3.Row]:
+    """Return one confirmed diary row by checkpoint identity."""
+    return conn.execute(
+        """
+        SELECT *
+        FROM session_diary_entries
+        WHERE status = 'confirmed'
+          AND checkpoint_type = ?
+          AND checkpoint_id = ?
+        LIMIT 1
+        """,
+        (checkpoint_type, checkpoint_id),
+    ).fetchone()
 
 
 def refresh_draft_if_stale(db_path: str, world_conditions: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -512,6 +533,19 @@ def confirm_diary_for_save(
         conn = _connect(db_path)
         _ensure_state_row(conn)
 
+        checkpoint_type = "save"
+        checkpoint_id = normalized_save_id
+
+        existing_checkpoint_row = _get_confirmed_checkpoint_row(conn, checkpoint_type, checkpoint_id)
+        if existing_checkpoint_row is not None:
+            return {
+                "status": "success",
+                "action": "reused",
+                "db_path": db_path,
+                "save_id": normalized_save_id,
+                "entry": _serialize_diary_row(existing_checkpoint_row),
+            }
+
         existing_row = conn.execute(
             """
             SELECT *
@@ -550,11 +584,13 @@ def confirm_diary_for_save(
             cursor = conn.execute(
                 """
                 INSERT INTO session_diary_entries (
-                    status,
-                    save_id,
-                    draft_key,
-                    world_year,
-                    world_month,
+                        status,
+                        save_id,
+                        checkpoint_type,
+                        checkpoint_id,
+                        draft_key,
+                        world_year,
+                        world_month,
                     world_month_index,
                     world_day,
                     world_time,
@@ -568,11 +604,13 @@ def confirm_diary_for_save(
                     created_at,
                     updated_at
                 ) VALUES (
-                    'confirmed',
-                    ?,
-                    NULL,
-                    ?,
-                    ?,
+                        'confirmed',
+                        ?,
+                        ?,
+                        ?,
+                        NULL,
+                        ?,
+                        ?,
                     ?,
                     ?,
                     ?,
@@ -589,6 +627,8 @@ def confirm_diary_for_save(
                 """,
                 (
                     normalized_save_id,
+                    checkpoint_type,
+                    checkpoint_id,
                     world_data["world_year"],
                     world_data["world_month"],
                     world_data["world_month_index"],
@@ -662,6 +702,207 @@ def confirm_diary_for_save(
             "message": str(confirm_error),
             "db_path": db_path,
             "save_id": normalized_save_id,
+        }
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def confirm_diary_for_exit(
+    db_path: str,
+    world_conditions: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Create idempotent confirmed diary entry for explicit exit checkpoints."""
+    if not init_memory_db(db_path):
+        return {
+            "status": "error",
+            "message": "Memory DB initialization failed",
+            "db_path": db_path,
+        }
+
+    conn: Optional[sqlite3.Connection] = None
+    now_iso = _utc_now_iso()
+    world_data = _normalize_world_fields(world_conditions)
+
+    try:
+        conn = _connect(db_path)
+        _ensure_state_row(conn)
+
+        state_row = conn.execute(
+            """
+            SELECT last_confirmed_event_id, last_draft_event_id
+            FROM session_diary_state
+            WHERE state_id = 1
+            """
+        ).fetchone()
+
+        last_confirmed_event_id = _safe_int(state_row["last_confirmed_event_id"], 0) if state_row else 0
+        last_draft_event_id = _safe_int(state_row["last_draft_event_id"], 0) if state_row else 0
+        latest_entry_id = _get_latest_journal_entry_id(conn)
+
+        if latest_entry_id <= 0:
+            return {
+                "status": "success",
+                "action": "unchanged",
+                "db_path": db_path,
+                "latest_entry_id": latest_entry_id,
+                "entry": None,
+            }
+
+        checkpoint_type = "exit"
+        checkpoint_id = f"exit:{latest_entry_id}"
+
+        existing_row = _get_confirmed_checkpoint_row(conn, checkpoint_type, checkpoint_id)
+        if existing_row is not None:
+            return {
+                "status": "success",
+                "action": "reused",
+                "db_path": db_path,
+                "latest_entry_id": latest_entry_id,
+                "entry": _serialize_diary_row(existing_row),
+            }
+
+        if latest_entry_id <= last_confirmed_event_id:
+            draft_row = conn.execute(
+                """
+                SELECT *
+                FROM session_diary_entries
+                WHERE status = 'draft'
+                ORDER BY updated_at DESC, diary_id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            return {
+                "status": "success",
+                "action": "unchanged",
+                "db_path": db_path,
+                "latest_entry_id": latest_entry_id,
+                "draft": _serialize_diary_row(draft_row),
+                "entry": None,
+            }
+
+        source_entries = _fetch_source_entries_bounded(conn, last_confirmed_event_id, latest_entry_id)
+        fallback_summary = build_fallback_summary(source_entries)
+        source_start_event_id = source_entries[0]["entry_id"] if source_entries else None
+
+        with conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO session_diary_entries (
+                    status,
+                    save_id,
+                    checkpoint_type,
+                    checkpoint_id,
+                    draft_key,
+                    world_year,
+                    world_month,
+                    world_month_index,
+                    world_day,
+                    world_time,
+                    world_sort_key,
+                    summary,
+                    source_start_event_id,
+                    source_end_event_id,
+                    source_counts_json,
+                    generation_mode,
+                    llm_model,
+                    created_at,
+                    updated_at
+                ) VALUES (
+                    'confirmed',
+                    NULL,
+                    ?,
+                    ?,
+                    NULL,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    'fallback',
+                    NULL,
+                    ?,
+                    ?
+                )
+                """,
+                (
+                    checkpoint_type,
+                    checkpoint_id,
+                    world_data["world_year"],
+                    world_data["world_month"],
+                    world_data["world_month_index"],
+                    world_data["world_day"],
+                    world_data["world_time"],
+                    world_data["world_sort_key"],
+                    fallback_summary,
+                    source_start_event_id,
+                    latest_entry_id,
+                    _build_source_counts(source_entries, last_confirmed_event_id, latest_entry_id),
+                    now_iso,
+                    now_iso,
+                ),
+            )
+
+            conn.execute(
+                """
+                DELETE FROM session_diary_entries
+                WHERE status = 'draft'
+                """
+            )
+
+            conn.execute(
+                """
+                UPDATE session_diary_state
+                SET
+                    last_confirmed_event_id = ?,
+                    last_draft_event_id = ?,
+                    last_draft_key = NULL,
+                    updated_at = ?
+                WHERE state_id = 1
+                """,
+                (
+                    latest_entry_id,
+                    max(last_draft_event_id, latest_entry_id),
+                    now_iso,
+                ),
+            )
+
+            entry_id = cursor.lastrowid
+
+        entry_row = conn.execute(
+            """
+            SELECT *
+            FROM session_diary_entries
+            WHERE diary_id = ?
+            LIMIT 1
+            """,
+            (entry_id,),
+        ).fetchone()
+
+        return {
+            "status": "success",
+            "action": "created",
+            "db_path": db_path,
+            "latest_entry_id": latest_entry_id,
+            "entry": _serialize_diary_row(entry_row),
+            "source_count": len(source_entries),
+            "generation_mode": "fallback",
+        }
+    except Exception as confirm_error:
+        error(
+            f"SESSION_DIARY: Confirm exit checkpoint failed: {confirm_error}",
+            exception=confirm_error,
+            category="memory_db",
+        )
+        return {
+            "status": "error",
+            "message": str(confirm_error),
+            "db_path": db_path,
         }
     finally:
         if conn is not None:

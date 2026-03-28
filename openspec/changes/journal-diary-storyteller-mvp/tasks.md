@@ -40,5 +40,14 @@
 
 SHOULD:
 - Keep diary-entry generation prompt payloads compact and bounded to avoid slowing Start Game and Save paths.
+- Keep explicit Exit checkpoint work lightweight and fail-open so shutdown remains reliable.
 - Prefer additive UI logic and helper extraction over replacing existing Journal rendering code.
 - Keep story compiler prompt assembly provider-agnostic by reusing the existing AI client/model selection helpers.
+
+## 7. Exit auto-confirm follow-up plan
+
+- [x] 7.1 Add additive checkpoint identity support in `core/memory/memory_db.py` and `core/memory/session_diary.py` so confirmed entries can distinguish `save` vs `exit` origins without duplicating the same exit checkpoint window.
+- [x] 7.2 Implement `confirm_diary_for_exit(...)` in `core/memory/session_diary.py` so explicit Exit creates one idempotent confirmed checkpoint when new eligible source history exists after the last confirmed checkpoint, and clears/supersedes the active draft after promotion.
+- [x] 7.3 Update `web/web_interface.py` `handle_user_exit()` to call `confirm_diary_for_exit(...)` behind a fail-open `# TABLETOP MODE:` hook that preserves shutdown success even when diary confirmation degrades.
+- [x] 7.4 Add focused regression coverage proving explicit Exit creates one confirmed diary entry, repeated Exit retries do not duplicate canon rows, no-progress Exit creates nothing, and diary failure does not block shutdown.
+- [ ] 7.5 Perform manual smoke validation: play without clicking Save, press explicit GUI Exit, restart with Start Game, confirm the Diary timeline now contains a confirmed entry and Story So Far can build from it without requiring a manual save.

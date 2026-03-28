@@ -5077,6 +5077,7 @@
         window.socket = socket;
         let connected = false;
         let gameStarted = false;
+        let startupPending = false;
         let initiativeOrder = []; // Store the ordered list of combatants
         let playerName = '';      // Store the player's name for highlighting
         let hoverTimer = null;    // For managing hover delay on video preview
@@ -6445,6 +6446,7 @@
             connected = true;
             document.getElementById('status-text').textContent = 'Connected';
             document.getElementById('status-indicator').classList.add('connected');
+            syncStartButtonState();
             loadCharacterStats();
             requestPlotData(); // <--- ADD THIS
             requestPartyData(); // Load party display on connect
@@ -6455,6 +6457,8 @@
         socket.on('disconnect', () => {
             connected = false;
             gameStarted = false;
+            startupPending = false;
+            syncStartButtonState();
             document.getElementById('status-text').textContent = 'Disconnected';
             document.getElementById('status-indicator').classList.remove('connected');
             document.getElementById('user-input').disabled = true;
@@ -6462,9 +6466,9 @@
         });
         
         socket.on('game_started', (data) => {
+            startupPending = false;
             gameStarted = true;
-            document.getElementById('start-button').textContent = 'Game Running';
-            document.getElementById('start-button').disabled = true;
+            syncStartButtonState();
             document.getElementById('user-input').disabled = false;
             document.getElementById('send-button').disabled = false;
             document.getElementById('save-button').disabled = false;
@@ -6507,7 +6511,13 @@
             }, 1500);
         });
         socket.on('debug_output', (message) => { addMessage('debug-output', message); });
-        socket.on('error', (error) => { addMessage('game-output', { type: 'error', content: error.message }); });
+        socket.on('error', (error) => {
+            if (startupPending && !gameStarted) {
+                startupPending = false;
+                syncStartButtonState();
+            }
+            addMessage('game-output', { type: 'error', content: error.message });
+        });
         
         // Token usage updates
         // TABLETOP MODE: Extended with session/week cost rollups (hardened for regression safety)
@@ -6717,12 +6727,15 @@
             // Sync gameStarted flag if provided
             if (data.game_started !== undefined) {
                 gameStarted = data.game_started;
-                
+                if (data.game_starting !== undefined) {
+                    startupPending = !!data.game_starting && !gameStarted;
+                } else if (gameStarted) {
+                    startupPending = false;
+                }
+
                 // Update Start Game button UI
-                const startButton = document.getElementById('start-button');
-                if (gameStarted && startButton) {
-                    startButton.textContent = 'Game Running';
-                    startButton.disabled = true;
+                syncStartButtonState();
+                if (gameStarted) {
                     document.getElementById('save-button').disabled = false;
                     document.getElementById('load-button').disabled = false;
                     document.getElementById('reset-button').disabled = false;
@@ -6740,8 +6753,32 @@
         });
         
         // User interaction functions
+        function syncStartButtonState() {
+            const startButton = document.getElementById('start-button');
+            if (!startButton) {
+                return;
+            }
+
+            if (gameStarted) {
+                startButton.textContent = 'Game Running';
+                startButton.disabled = true;
+                return;
+            }
+
+            if (startupPending) {
+                startButton.textContent = 'Starting...';
+                startButton.disabled = true;
+                return;
+            }
+
+            startButton.textContent = 'Start Game';
+            startButton.disabled = !connected;
+        }
+
         function startGame() {
-            if (connected && !gameStarted) {
+            if (connected && !gameStarted && !startupPending) {
+                startupPending = true;
+                syncStartButtonState();
                 socket.emit('start_game');
             }
         }

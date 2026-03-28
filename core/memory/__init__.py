@@ -36,6 +36,7 @@ from core.memory.party_transition_memory import (
 )
 from core.memory.session_diary import (
     build_fallback_summary,
+    confirm_diary_for_exit,
     compute_world_sort_key,
     confirm_diary_for_save,
     list_diary_entries,
@@ -70,6 +71,7 @@ __all__ = [
     "compute_world_sort_key",
     "build_fallback_summary",
     "refresh_draft_if_stale",
+    "confirm_diary_for_exit",
     "confirm_diary_for_save",
     "list_diary_entries",
     "build_confirmed_story_text",

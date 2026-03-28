@@ -9,6 +9,7 @@ Session diary runtime hook tests.
 Focused Step-3 coverage:
 - save remains successful when diary checkpoint generation fails,
 - Start Game diary refresh helper fails open,
+- explicit Exit diary confirmation fails open,
 - web handler source wiring remains present.
 """
 
@@ -105,6 +106,19 @@ class TestSessionDiaryRuntimeHooks(unittest.TestCase):
         self.assertEqual(result["status"], "error")
         self.assertIn("forced start hook failure", result["message"])
 
+    def test_exit_hook_failure_returns_error_payload_without_raise(self) -> None:
+        import web.extensions.session_diary_runtime as runtime
+
+        with mock.patch.object(
+            runtime,
+            "confirm_diary_for_exit",
+            side_effect=RuntimeError("forced exit hook failure"),
+        ):
+            result = runtime.confirm_session_diary_exit_hook("data/memory.db")
+
+        self.assertEqual(result["status"], "error")
+        self.assertIn("forced exit hook failure", result["message"])
+
     def test_web_interface_contains_start_hook_wiring(self) -> None:
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         web_interface_path = os.path.join(repo_root, "web", "web_interface.py")
@@ -114,6 +128,7 @@ class TestSessionDiaryRuntimeHooks(unittest.TestCase):
 
         self.assertIn("refresh_session_diary_start_hook", source)
         self.assertIn("Journal draft updated.", source)
+        self.assertIn("confirm_session_diary_exit_hook", source)
 
 
 if __name__ == "__main__":

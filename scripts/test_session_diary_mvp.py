@@ -25,6 +25,7 @@ from core.memory.memory_db import init_memory_db
 from core.memory.memory_ingest import ingest_journal_entry
 from core.memory.session_diary import (
     build_fallback_summary,
+    confirm_diary_for_exit,
     confirm_diary_for_save,
     refresh_draft_if_stale,
 )
@@ -137,6 +138,52 @@ class TestSessionDiaryMVP(unittest.TestCase):
         self.assertEqual(confirm_result.get("status"), "success")
         self.assertEqual(confirm_result.get("action"), "created")
         self.assertEqual(self._count_rows("status = 'draft'"), 0)
+
+    def test_exit_confirm_creates_one_confirmed_entry_without_save(self) -> None:
+        self._ingest_entry("The party forced open the ossuary door.", "journal:6")
+        refresh_result = refresh_draft_if_stale(
+            self.db_path,
+            {"year": 1492, "month": "Ches", "day": 24, "time": "09:00:00"},
+        )
+        self.assertEqual(refresh_result.get("status"), "success")
+        self.assertEqual(self._count_rows("status = 'draft'"), 1)
+
+        exit_result = confirm_diary_for_exit(
+            self.db_path,
+            {"year": 1492, "month": "Ches", "day": 24, "time": "09:30:00"},
+        )
+        self.assertEqual(exit_result.get("status"), "success")
+        self.assertEqual(exit_result.get("action"), "created")
+        self.assertEqual(exit_result.get("entry", {}).get("checkpoint_type"), "exit")
+        self.assertEqual(self._count_rows("status = 'confirmed' AND checkpoint_type = 'exit'"), 1)
+        self.assertEqual(self._count_rows("status = 'draft'"), 0)
+
+    def test_exit_confirm_is_idempotent_for_same_progress_window(self) -> None:
+        self._ingest_entry("The chanting below the nave grew louder.", "journal:7")
+
+        first = confirm_diary_for_exit(
+            self.db_path,
+            {"year": 1492, "month": "Ches", "day": 24, "time": "10:15:00"},
+        )
+        self.assertEqual(first.get("status"), "success")
+        self.assertEqual(first.get("action"), "created")
+
+        second = confirm_diary_for_exit(
+            self.db_path,
+            {"year": 1492, "month": "Ches", "day": 24, "time": "10:15:30"},
+        )
+        self.assertEqual(second.get("status"), "success")
+        self.assertEqual(second.get("action"), "reused")
+        self.assertEqual(self._count_rows("status = 'confirmed' AND checkpoint_type = 'exit'"), 1)
+
+    def test_exit_confirm_unchanged_when_no_new_events_exist(self) -> None:
+        unchanged = confirm_diary_for_exit(
+            self.db_path,
+            {"year": 1492, "month": "Ches", "day": 24, "time": "11:00:00"},
+        )
+        self.assertEqual(unchanged.get("status"), "success")
+        self.assertEqual(unchanged.get("action"), "unchanged")
+        self.assertEqual(self._count_rows("status = 'confirmed' AND checkpoint_type = 'exit'"), 0)
 
     def test_build_fallback_summary_is_deterministic(self) -> None:
         events = [

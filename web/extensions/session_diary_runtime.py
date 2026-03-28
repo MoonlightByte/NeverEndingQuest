@@ -16,7 +16,7 @@ from utils.enhanced_logger import debug, error, info, warning
 
 try:
     from core.memory.memory_db import DEFAULT_MEMORY_DB_PATH
-    from core.memory.session_diary import refresh_draft_if_stale
+    from core.memory.session_diary import confirm_diary_for_exit, refresh_draft_if_stale
 
     SESSION_DIARY_RUNTIME_AVAILABLE = True
 except ImportError:
@@ -71,6 +71,47 @@ def refresh_session_diary_start_hook(db_path: str = DEFAULT_MEMORY_DB_PATH) -> D
     except Exception as hook_error:
         error(
             f"SESSION_DIARY: Start hook failed: {hook_error}",
+            exception=hook_error,
+            category="web_interface",
+        )
+        return {
+            "status": "error",
+            "message": str(hook_error),
+            "db_path": db_path,
+        }
+
+
+def confirm_session_diary_exit_hook(db_path: str = DEFAULT_MEMORY_DB_PATH) -> Dict[str, Any]:
+    """Best-effort explicit Exit confirmed checkpoint hook."""
+    if not SESSION_DIARY_RUNTIME_AVAILABLE:
+        return {
+            "status": "disabled",
+            "message": "Session diary runtime unavailable",
+            "db_path": db_path,
+        }
+
+    try:
+        result = confirm_diary_for_exit(db_path, get_session_diary_world_conditions())
+        action = result.get("action")
+        if result.get("status") == "success":
+            debug(
+                f"SESSION_DIARY: Exit hook completed action={action}",
+                category="web_interface",
+            )
+            if action == "created":
+                info(
+                    "SESSION_DIARY: Confirmed diary checkpoint on explicit Exit",
+                    category="web_interface",
+                )
+        else:
+            warning(
+                f"SESSION_DIARY: Exit hook degraded with status={result.get('status')}",
+                category="web_interface",
+            )
+        return result
+    except Exception as hook_error:
+        error(
+            f"SESSION_DIARY: Exit hook failed: {hook_error}",
             exception=hook_error,
             category="web_interface",
         )

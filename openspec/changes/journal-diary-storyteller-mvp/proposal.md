@@ -7,6 +7,7 @@ This change is needed now because the project already has the memory foundation,
 ## What Changes
 
 - Add a two-checkpoint diary system with one active unsaved `draft` entry refreshed on Start Game and `confirmed` entries created on Save.
+- Append explicit Exit auto-confirm behavior so players who end sessions without manually saving still advance the confirmed diary timeline when unsaved diary progress exists.
 - Add memory DB tables and service helpers to store diary entries, checkpoint state, and a cached confirmed-only story artifact.
 - Add a confirmed-only long-form story compiler that uses the storyteller chronicle prompt to turn campaign history into literary 3rd-person prose.
 - Add Journal API routes to list diary data and download a generated "story so far" PDF.
@@ -18,7 +19,7 @@ This change is needed now because the project already has the memory foundation,
 ## Capabilities
 
 ### New Capabilities
-- `journal-diary-dual-checkpoint`: Start Game refreshes one active draft diary entry and Save creates idempotent confirmed diary entries tied to save checkpoints.
+- `journal-diary-dual-checkpoint`: Start Game refreshes one active draft diary entry, Save creates idempotent confirmed diary entries tied to save checkpoints, and explicit Exit can auto-confirm a checkpoint when new unsaved diary progress exists.
 - `journal-diary-tabbed-ui`: The Journal modal exposes a Diary tab with draft and confirmed entries while preserving existing Quests behavior.
 - `campaign-journal-story-pdf`: Users can build/download a confirmed-only "story so far" artifact with caching and safe failure behavior.
 - `campaign-storyteller-chronicle-generation`: The system compiles diary/history context into 3rd-person fantasy prose using a storyteller prompt that incorporates meaningful PC chat input and respects authoritative state.
@@ -42,6 +43,7 @@ This change is needed now because the project already has the memory foundation,
   - memory DB migrations and retrieval/ingest adjacency
   - Start Game runtime hook
   - Save checkpoint flow
+  - explicit GUI Exit checkpoint flow
   - Journal modal UI and download flow
 - Merge-safety impact:
   - SHOULD remain additive, with minimal host-file hooks marked `# TABLETOP MODE:`.
@@ -54,4 +56,4 @@ This change is needed now because the project already has the memory foundation,
 - Fallback strategy:
   - use compact bounded diary prompts for checkpoint generation,
   - use deterministic fallback summaries when LLM generation fails,
-  - keep Save and Start Game successful even when diary/story generation degrades.
+  - keep Save, Start Game, and explicit Exit successful even when diary/story generation degrades.

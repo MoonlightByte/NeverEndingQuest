@@ -483,6 +483,22 @@ CREATE INDEX IF NOT EXISTS idx_story_so_far_cache_created
 """
 
 
+MIGRATION_005_SESSION_DIARY_CHECKPOINT_IDENTITY = """
+ALTER TABLE session_diary_entries ADD COLUMN checkpoint_type TEXT;
+ALTER TABLE session_diary_entries ADD COLUMN checkpoint_id TEXT;
+
+UPDATE session_diary_entries
+SET checkpoint_type = 'save', checkpoint_id = save_id
+WHERE status = 'confirmed'
+  AND save_id IS NOT NULL
+  AND (checkpoint_type IS NULL OR checkpoint_id IS NULL);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_session_diary_checkpoint_identity_unique
+    ON session_diary_entries(checkpoint_type, checkpoint_id)
+    WHERE checkpoint_type IS NOT NULL AND checkpoint_id IS NOT NULL;
+"""
+
+
 def run_memory_migrations(db_path: str = DEFAULT_MEMORY_DB_PATH) -> Dict[str, Any]:
     """Run all pending memory DB migrations and return summary."""
     _ensure_parent_dir(db_path)
@@ -492,6 +508,7 @@ def run_memory_migrations(db_path: str = DEFAULT_MEMORY_DB_PATH) -> Dict[str, An
         ("002_readiness_tables", MIGRATION_002_READINESS_TABLES),
         ("003_world_narrative_tables", MIGRATION_003_WORLD_NARRATIVE_TABLES),
         ("004_session_diary_tables", MIGRATION_004_SESSION_DIARY_TABLES),
+        ("005_session_diary_checkpoint_identity", MIGRATION_005_SESSION_DIARY_CHECKPOINT_IDENTITY),
     ]
 
     applied_count = 0
