@@ -83,9 +83,12 @@ try:
         import_memory_db_package,
         validate_memory_package,
     )
+    from core.memory.session_diary import confirm_diary_for_save
     MEMORY_PARITY_ENABLED = True
+    SESSION_DIARY_ENABLED = True
 except ImportError:
     MEMORY_PARITY_ENABLED = False
+    SESSION_DIARY_ENABLED = False
     DEFAULT_MEMORY_DB_PATH = "data/memory.db"
 
 # Restore context file for fork-on-first-save-after-restore behavior
@@ -140,6 +143,64 @@ class SaveGameManager:
             warning(f"ARCHIVE_EXPORT: Could not create archive_exports directory: {e}", category="save_game")
         
         return archive_dir
+
+    def _get_world_conditions_for_diary(self) -> Dict[str, Any]:
+        """Get current world conditions for diary checkpoint generation."""
+        try:
+            party_tracker = safe_json_load("party_tracker.json")
+            if isinstance(party_tracker, dict):
+                world_conditions = party_tracker.get("worldConditions", {})
+                if isinstance(world_conditions, dict):
+                    return world_conditions
+        except Exception as world_error:
+            warning(
+                f"SESSION_DIARY: Could not load world conditions for save checkpoint: {world_error}",
+                category="save_game",
+            )
+        return {}
+
+    def _confirm_session_diary_checkpoint(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """Best-effort confirmed diary checkpoint for save creation."""
+        save_id = str(metadata.get("save_id", "")).strip()
+        if not SESSION_DIARY_ENABLED:
+            return {
+                "status": "disabled",
+                "message": "Session diary unavailable",
+            }
+
+        if not save_id:
+            return {
+                "status": "error",
+                "message": "Missing save_id for diary checkpoint",
+            }
+
+        try:
+            result = confirm_diary_for_save(
+                DEFAULT_MEMORY_DB_PATH,
+                save_id,
+                self._get_world_conditions_for_diary(),
+            )
+            if result.get("status") == "success":
+                info(
+                    f"SESSION_DIARY: Confirmed diary checkpoint action={result.get('action')} save_id={save_id}",
+                    category="save_game",
+                )
+            else:
+                warning(
+                    f"SESSION_DIARY: Diary checkpoint degraded for save_id={save_id} status={result.get('status')}",
+                    category="save_game",
+                )
+            return result
+        except Exception as diary_error:
+            error(
+                f"SESSION_DIARY: Diary checkpoint failed for save_id={save_id}: {diary_error}",
+                exception=diary_error,
+                category="save_game",
+            )
+            return {
+                "status": "error",
+                "message": str(diary_error),
+            }
     
     def get_essential_files(self) -> List[str]:
         """Get list of essential files that must be saved for game state"""
@@ -922,7 +983,7 @@ class SaveGameManager:
                 "files_skipped": len(skipped_files),
                 "total_files_processed": len(copied_files) + len(skipped_files),
             }
-            
+
             # TABLETOP MODE: Export memory DB package for Many Worlds support
             memory_package_result = self._export_memory_package(save_path)
             if memory_package_result:
@@ -934,6 +995,27 @@ class SaveGameManager:
                     error_msg = f"Save failed: memory package export error - {memory_package_result.get('message', 'unknown error')}"
                     error(f"FAILURE: {error_msg}", category="save_game")
                     return False, error_msg
+
+            # TABLETOP MODE: Confirm diary checkpoint only after save viability is established.
+            # This keeps save failures from creating canon diary entries for aborted saves.
+            diary_checkpoint_result = self._confirm_session_diary_checkpoint(metadata)
+            metadata["session_diary"] = diary_checkpoint_result
+
+            # TABLETOP MODE: Best-effort refresh of exported memory package after diary confirmation
+            # so confirmed checkpoints are included in the saved memory snapshot when possible.
+            diary_memory_refresh = None
+            if (
+                diary_checkpoint_result.get("status") == "success"
+                and memory_package_result
+                and memory_package_result.get("status") == "success"
+            ):
+                diary_memory_refresh = self._export_memory_package(save_path)
+                metadata["session_diary_memory_refresh"] = diary_memory_refresh
+                if diary_memory_refresh.get("status") != "success":
+                    warning(
+                        f"SESSION_DIARY: Memory package refresh degraded after diary checkpoint: {diary_memory_refresh.get('message', 'unknown error')}",
+                        category="save_game",
+                    )
             
             # Save updated metadata
             safe_write_json(metadata_path, metadata)
@@ -959,6 +1041,12 @@ class SaveGameManager:
                 success_msg += " (essential files only)"
             else:
                 success_msg += " (full save)"
+
+            diary_status = metadata.get("session_diary", {}).get("status")
+            if diary_status == "success":
+                success_msg += f"\nDiary checkpoint: {metadata['session_diary'].get('action', 'updated')}"
+            elif diary_status:
+                success_msg += f"\nDiary checkpoint: degraded ({diary_status})"
             
             # TABLETOP MODE: Add memory package status to success message
             if memory_package_result and memory_package_result.get("status") == "success":

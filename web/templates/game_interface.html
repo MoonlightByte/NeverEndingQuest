@@ -4165,6 +4165,103 @@
             border-left: 3px solid #d8cdaa;
             background: rgba(0,0,0,0.03);
         }
+
+        .journal-tabs {
+            position: absolute;
+            top: 12px;
+            left: 24px;
+            display: flex;
+            gap: 8px;
+            z-index: 1010;
+        }
+
+        .journal-tab {
+            border: 1px solid #8a6d4f;
+            background: #e6d7ba;
+            color: #4a3a2a;
+            padding: 8px 14px;
+            border-radius: 999px;
+            font-family: 'Georgia', serif;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .journal-tab.active {
+            background: #6a4f3a;
+            color: #f3e9d2;
+            border-color: #6a4f3a;
+        }
+
+        .journal-tab:hover {
+            background: #d8c7a7;
+        }
+
+        .journal-tab.active:hover {
+            background: #6a4f3a;
+        }
+
+        .diary-entry {
+            margin-bottom: 18px;
+            padding-bottom: 14px;
+            border-bottom: 1px dashed #c8bda8;
+        }
+
+        .diary-entry.draft {
+            background: rgba(106, 79, 58, 0.08);
+            border: 1px solid #c8bda8;
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 20px;
+        }
+
+        .diary-entry-title {
+            font-size: 1.05em;
+            font-weight: bold;
+            color: #6a4f3a;
+            margin-bottom: 6px;
+        }
+
+        .diary-entry-meta {
+            font-size: 0.85em;
+            color: #8a7a6a;
+            margin-bottom: 8px;
+        }
+
+        .diary-entry-body {
+            font-size: 0.96em;
+            line-height: 1.55;
+            white-space: pre-wrap;
+        }
+
+        .diary-download-wrap {
+            margin-bottom: 16px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid #c8bda8;
+        }
+
+        .diary-download-button {
+            width: 100%;
+            padding: 10px 12px;
+            border: none;
+            border-radius: 6px;
+            background: #6a4f3a;
+            color: #f3e9d2;
+            cursor: pointer;
+            font-family: 'Georgia', serif;
+            font-size: 14px;
+        }
+
+        .diary-download-button:disabled {
+            opacity: 0.65;
+            cursor: not-allowed;
+        }
+
+        .journal-empty-state {
+            font-size: 0.95em;
+            line-height: 1.5;
+            color: #6f5b47;
+            font-style: italic;
+        }
         
         /* --- NEW STYLES for Header Control Refactor --- */
         
@@ -4952,6 +5049,10 @@
     <!-- Add this entire block just before your <script> tag -->
     <div id="journal-modal" class="modal">
         <div class="journal-book">
+            <div class="journal-tabs">
+                <button id="journal-tab-quests" class="journal-tab active" type="button">Quests</button>
+                <button id="journal-tab-diary" class="journal-tab" type="button">Diary</button>
+            </div>
             <!-- Left Page -->
             <div class="journal-page" id="journal-left-page">
                 <div class="page-content">
@@ -9733,18 +9834,167 @@
         // Get references to all the HTML elements we need to work with.
         const journalModal = document.getElementById('journal-modal');
         const journalBtn = document.getElementById('journal-btn');
-        const closeBtn = document.querySelector('.close-btn');
+        const closeBtn = journalModal.querySelector('.close-btn');
+        const journalTabQuests = document.getElementById('journal-tab-quests');
+        const journalTabDiary = document.getElementById('journal-tab-diary');
         const leftPage = document.getElementById('journal-left-page').querySelector('.page-content');
         const rightPage = document.getElementById('journal-right-page').querySelector('.page-content');
+        let currentJournalView = 'quests';
+        let latestPlotResponse = null;
+        let latestDiaryResponse = null;
+
+        function journalEscapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function formatDiaryWorldMeta(entry) {
+            if (!entry || !entry.world) return 'Unknown time';
+            const world = entry.world;
+            return `${journalEscapeHtml(world.month || 'Unknown Month')} ${journalEscapeHtml(world.day || 0)}, ${journalEscapeHtml(world.year || 0)} at ${journalEscapeHtml(world.time || '00:00:00')}`;
+        }
+
+        function renderDiaryEntryHtml(entry, isDraft) {
+            const title = isDraft ? 'Current Session (Unsaved Draft)' : 'Confirmed Chronicle';
+            const entryClass = isDraft ? 'diary-entry draft' : 'diary-entry';
+            return `
+                <div class="${entryClass}">
+                    <div class="diary-entry-title">${title}</div>
+                    <div class="diary-entry-meta">${formatDiaryWorldMeta(entry)}</div>
+                    <div class="diary-entry-body">${journalEscapeHtml(entry.summary || '')}</div>
+                </div>
+            `;
+        }
+
+        function renderDiaryToPages(response) {
+            if (!response || response.status !== 'success') {
+                leftPage.innerHTML = '<h2>Diary</h2><p class="journal-empty-state">Could not load diary data.</p>';
+                rightPage.innerHTML = '<div class="diary-download-wrap"><button class="diary-download-button" type="button" onclick="downloadStorySoFar(event)">Download the story so far...</button></div>';
+                return;
+            }
+
+            const entries = Array.isArray(response.entries) ? response.entries : [];
+            const midpoint = Math.ceil(entries.length / 2);
+            const leftEntries = entries.slice(0, midpoint);
+            const rightEntries = entries.slice(midpoint);
+
+            let leftHtml = '<h2>Diary</h2>';
+            if (response.draft) {
+                leftHtml += renderDiaryEntryHtml(response.draft, true);
+            }
+            if (leftEntries.length > 0) {
+                leftEntries.forEach(entry => {
+                    leftHtml += renderDiaryEntryHtml(entry, false);
+                });
+            } else if (!response.draft) {
+                leftHtml += '<p class="journal-empty-state">No confirmed diary entries yet.</p>';
+            }
+
+            let rightHtml = '<div class="diary-download-wrap"><button class="diary-download-button" type="button" onclick="downloadStorySoFar(event)">Download the story so far...</button></div>';
+            if (rightEntries.length > 0) {
+                rightEntries.forEach(entry => {
+                    rightHtml += renderDiaryEntryHtml(entry, false);
+                });
+            } else {
+                rightHtml += '<p class="journal-empty-state">Confirmed diary entries will appear here as the campaign grows.</p>';
+            }
+
+            leftPage.innerHTML = leftHtml;
+            rightPage.innerHTML = rightHtml;
+        }
+
+        async function requestDiaryData() {
+            leftPage.innerHTML = '<h2>Diary</h2><p class="journal-empty-state">Loading diary...</p>';
+            rightPage.innerHTML = '<div class="diary-download-wrap"><button class="diary-download-button" type="button" disabled>Loading...</button></div>';
+            try {
+                const response = await fetch('/api/journal/diary');
+                const payload = await response.json();
+                latestDiaryResponse = payload;
+                if (currentJournalView === 'diary') {
+                    renderDiaryToPages(payload);
+                }
+            } catch (error) {
+                console.error('Error fetching diary data:', error);
+                latestDiaryResponse = { status: 'error' };
+                if (currentJournalView === 'diary') {
+                    renderDiaryToPages(latestDiaryResponse);
+                }
+            }
+        }
+
+        function setJournalView(viewName) {
+            currentJournalView = viewName;
+            journalTabQuests.classList.toggle('active', viewName === 'quests');
+            journalTabDiary.classList.toggle('active', viewName === 'diary');
+
+            if (viewName === 'quests') {
+                if (latestPlotResponse) {
+                    renderQuestsFromResponse(latestPlotResponse);
+                } else {
+                    leftPage.innerHTML = '<h2>Journal</h2><p class="journal-empty-state">Loading quest data...</p>';
+                    rightPage.innerHTML = '';
+                    socket.emit('request_plot_data');
+                }
+            } else {
+                if (latestDiaryResponse) {
+                    renderDiaryToPages(latestDiaryResponse);
+                } else {
+                    requestDiaryData();
+                }
+            }
+        }
+
+        async function downloadStorySoFar(event) {
+            const button = event.target;
+            const originalText = button.textContent;
+
+            try {
+                button.textContent = 'Generating...';
+                button.disabled = true;
+
+                const response = await fetch('/api/journal/story-so-far/pdf');
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || 'Failed to generate story PDF');
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const anchor = document.createElement('a');
+                anchor.style.display = 'none';
+                anchor.href = url;
+                anchor.download = 'Story_So_Far.pdf';
+                document.body.appendChild(anchor);
+                anchor.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(anchor);
+            } catch (error) {
+                console.error('Story PDF Download Error:', error);
+                alert('Failed to download story PDF: ' + error.message);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        window.downloadStorySoFar = downloadStorySoFar;
 
         // --- Event Listeners to open and close the journal ---
         journalBtn.onclick = function() {
             journalModal.style.display = 'block';
-            // Every time the journal is opened, ask the server for the latest quest data.
-            socket.emit('request_plot_data');
+            setJournalView(currentJournalView);
         }
         closeBtn.onclick = function() {
             journalModal.style.display = 'none';
+        }
+        journalTabQuests.onclick = function() {
+            setJournalView('quests');
+        }
+        journalTabDiary.onclick = function() {
+            setJournalView('diary');
         }
         // TABLETOP MODE: Changed to addEventListener to avoid overwriting upstream window.onclick
         // This preserves other modal close handlers (portraits, NPCs, etc.)
@@ -9757,6 +10007,16 @@
 
         // --- Listen for the server's response with quest data ---
         socket.on('plot_data_response', function(response) {
+            latestPlotResponse = response;
+            renderQuestsFromResponse(response);
+        });
+
+        function renderQuestsFromResponse(response) {
+            latestPlotResponse = response;
+            if (currentJournalView !== 'quests') {
+                return;
+            }
+
             if (response.error || !response.data || !response.data.plotPoints) {
                 console.error('Error fetching plot data:', response.error || 'No plot data available.');
                 leftPage.innerHTML = '<h2>Journal</h2><p>Could not load quest data.</p>';
@@ -9811,7 +10071,7 @@
 
             // Right Page: Completed Quests
             rightPage.innerHTML = '<h2>A Chronicle of Deeds</h2>' + renderQuestsToHTML(completedQuests);
-        });
+        }
 
         // --- Automatically refresh data to keep the journal up to date ---
         // We need to make sure we ask for new quest data after the player does something.

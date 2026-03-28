@@ -3054,6 +3054,20 @@ def handle_start_game():
     # Start the game in a separate thread
     game_thread = threading.Thread(target=run_game_loop, daemon=True)
     game_thread.start()
+
+    # TABLETOP MODE: Best-effort diary draft refresh after successful start.
+    # This must never block or fail the Start Game success path.
+    try:
+        from web.extensions.session_diary_runtime import refresh_session_diary_start_hook
+
+        diary_result = refresh_session_diary_start_hook()
+        if diary_result.get('status') == 'success' and diary_result.get('action') == 'updated':
+            emit('system_message', {'content': '[SYSTEM] Journal draft updated.'})
+    except Exception as diary_error:
+        debug(
+            f"SESSION_DIARY: Start-game diary hook suppressed: {diary_error}",
+            category="web_interface"
+        )
     
     emit('game_started', {'message': 'Game started successfully'})
 

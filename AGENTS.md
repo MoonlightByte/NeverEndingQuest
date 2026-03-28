@@ -1023,6 +1023,73 @@ character_data["is_active_pc"] = True
 
 ### Restless Dead Travel + Recruit Validation Cleanup (COMPLETED - 2026-03-27)
 
+### Journal Diary + Story So Far MVP (COMPLETED - 2026-03-29)
+
+**Status:** COMPLETED - draft/confirmed diary checkpoints, confirmed-only story compiler/PDF route, and Journal Diary tab integrated.
+
+**Objective:**
+Add an in-product diary workflow that preserves one active unsaved draft on Start Game, creates confirmed canon checkpoints on Save, and lets users download a confirmed-only "Story So Far" PDF using a fantasy-chronicle prompt without disturbing existing Quests or character-sheet PDF flows.
+
+**Implementation Summary:**
+- Added memory DB migration in `core/memory/memory_db.py` for:
+  - `session_diary_entries`
+  - `session_diary_state`
+  - `story_so_far_cache`
+- Added checkpoint prompt + story prompt surfaces:
+  - `prompts/tabletop/session_diary_entry.txt`
+  - `prompts/tabletop/storyteller_campaign_chronicle.txt`
+- Added `core/memory/session_diary.py` with:
+  - `compute_world_sort_key(...)`
+  - `build_fallback_summary(...)`
+  - `refresh_draft_if_stale(...)`
+  - `confirm_diary_for_save(...)`
+  - `list_diary_entries(...)`
+- Added `core/memory/story_so_far_compiler.py` with confirmed-only compilation, fingerprint cache reuse, and simple PDF rendering fallback.
+- Added fail-open runtime hooks:
+  - `updates/save_game_manager.py` confirms diary checkpoint after save viability is established and records degraded status without failing the save
+  - `web/extensions/session_diary_runtime.py` + `web/web_interface.py` refresh draft diary state after successful Start Game without blocking gameplay start
+- Extended `web/routes/memory_routes.py` with:
+  - `GET /api/journal/diary`
+  - `GET /api/journal/story-so-far/pdf`
+- Updated `web/templates/game_interface.html` Journal modal to add Quests/Diary tabs, draft + confirmed diary rendering, and a `Download the story so far...` button using the same fetch/blob/download UX pattern as the existing character-sheet PDF download.
+
+**Key Contracts:**
+- Save remains successful if diary/story generation degrades.
+- Start Game remains successful if draft refresh degrades.
+- Story compilation uses confirmed diary entries only; draft content is excluded by design.
+- Current authoritative campaign state still wins over stale narrative when story compilation resolves final state.
+
+**Verification:**
+- `.venv/bin/python -m py_compile core/memory/__init__.py core/memory/memory_db.py core/memory/session_diary.py core/memory/story_so_far_compiler.py updates/save_game_manager.py web/extensions/session_diary_runtime.py web/routes/memory_routes.py web/web_interface.py scripts/test_session_diary_mvp.py scripts/test_session_diary_runtime_hooks.py scripts/test_story_so_far_pdf_mvp.py scripts/test_journal_diary_ui_mvp.py` -> PASS
+- `.venv/bin/python scripts/test_session_diary_mvp.py` -> PASS
+- `.venv/bin/python scripts/test_session_diary_runtime_hooks.py` -> PASS
+- `.venv/bin/python scripts/test_story_so_far_pdf_mvp.py` -> PASS
+- `.venv/bin/python scripts/test_journal_diary_ui_mvp.py` -> PASS
+- Extracted inline JS from `web/templates/game_interface.html` and ran `node --check` on the extracted script block -> PASS
+- `openspec validate journal-diary-storyteller-mvp` -> VALID
+
+**Files Added:**
+- `core/memory/session_diary.py`
+- `core/memory/story_so_far_compiler.py`
+- `web/extensions/session_diary_runtime.py`
+- `prompts/tabletop/session_diary_entry.txt`
+- `prompts/tabletop/storyteller_campaign_chronicle.txt`
+- `scripts/test_session_diary_mvp.py`
+- `scripts/test_session_diary_runtime_hooks.py`
+- `scripts/test_story_so_far_pdf_mvp.py`
+- `scripts/test_journal_diary_ui_mvp.py`
+
+**Files Modified:**
+- `core/memory/__init__.py`
+- `core/memory/memory_db.py`
+- `updates/save_game_manager.py`
+- `web/routes/memory_routes.py`
+- `web/templates/game_interface.html`
+- `web/web_interface.py`
+- `openspec/changes/journal-diary-storyteller-mvp/*`
+
+---
+
 **Status:** COMPLETED - tabletop runtime cleanup for Night of the Restless Dead travel/recruitment flow plus legacy room-label display normalization.
 
 **Objective:**

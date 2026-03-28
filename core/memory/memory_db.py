@@ -416,6 +416,73 @@ CREATE INDEX IF NOT EXISTS idx_campaign_world_delta_campaign
 """
 
 
+MIGRATION_004_SESSION_DIARY_TABLES = """
+CREATE TABLE IF NOT EXISTS session_diary_entries (
+    diary_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    status TEXT NOT NULL,
+    save_id TEXT,
+    draft_key TEXT,
+    world_year INTEGER NOT NULL,
+    world_month TEXT NOT NULL,
+    world_month_index INTEGER NOT NULL,
+    world_day INTEGER NOT NULL,
+    world_time TEXT NOT NULL,
+    world_sort_key INTEGER NOT NULL,
+    summary TEXT NOT NULL,
+    source_start_event_id INTEGER,
+    source_end_event_id INTEGER,
+    source_counts_json TEXT NOT NULL DEFAULT '{}',
+    generation_mode TEXT NOT NULL DEFAULT 'llm',
+    llm_model TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_diary_status_sort
+    ON session_diary_entries(status, world_sort_key DESC, diary_id DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_session_diary_save_id_unique
+    ON session_diary_entries(save_id)
+    WHERE save_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_session_diary_draft_key_unique
+    ON session_diary_entries(draft_key)
+    WHERE draft_key IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS session_diary_state (
+    state_id INTEGER PRIMARY KEY CHECK(state_id = 1),
+    last_draft_event_id INTEGER NOT NULL DEFAULT 0,
+    last_confirmed_event_id INTEGER NOT NULL DEFAULT 0,
+    last_confirmed_save_id TEXT,
+    last_draft_key TEXT,
+    updated_at TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO session_diary_state (
+    state_id,
+    last_draft_event_id,
+    last_confirmed_event_id,
+    updated_at
+) VALUES (
+    1,
+    0,
+    0,
+    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+);
+
+CREATE TABLE IF NOT EXISTS story_so_far_cache (
+    cache_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    confirmed_fingerprint TEXT NOT NULL UNIQUE,
+    pdf_path TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    confirmed_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_story_so_far_cache_created
+    ON story_so_far_cache(created_at DESC);
+"""
+
+
 def run_memory_migrations(db_path: str = DEFAULT_MEMORY_DB_PATH) -> Dict[str, Any]:
     """Run all pending memory DB migrations and return summary."""
     _ensure_parent_dir(db_path)
@@ -424,6 +491,7 @@ def run_memory_migrations(db_path: str = DEFAULT_MEMORY_DB_PATH) -> Dict[str, An
         ("001_initial_schema", MIGRATION_001_INITIAL_SCHEMA),
         ("002_readiness_tables", MIGRATION_002_READINESS_TABLES),
         ("003_world_narrative_tables", MIGRATION_003_WORLD_NARRATIVE_TABLES),
+        ("004_session_diary_tables", MIGRATION_004_SESSION_DIARY_TABLES),
     ]
 
     applied_count = 0
