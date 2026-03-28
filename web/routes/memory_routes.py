@@ -9,6 +9,7 @@ Copyright (c) 2024 MoonlightByte
 Licensed under Fair Source License 1.0
 """
 
+import os
 from typing import Any
 
 from flask import Flask, jsonify, request, send_file
@@ -114,6 +115,13 @@ def register_memory_routes(app: Flask) -> None:
                 return jsonify({
                     'status': 'error',
                     'message': 'Story PDF path missing',
+                }), 500
+
+            pdf_path = os.path.abspath(str(pdf_path))
+            if not os.path.exists(pdf_path):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Story PDF unavailable',
                 }), 500
 
             return send_file(

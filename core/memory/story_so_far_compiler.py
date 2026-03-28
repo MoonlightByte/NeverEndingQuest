@@ -17,6 +17,7 @@ import os
 import sqlite3
 import textwrap
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.memory.memory_db import DEFAULT_MEMORY_DB_PATH, init_memory_db
@@ -44,9 +45,22 @@ LINE_HEIGHT = 14
 CHARS_PER_LINE = 92
 
 
+MODULE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = MODULE_DIR.parents[1]
+
+
 def _utc_now_iso() -> str:
     """Return UTC timestamp in ISO-8601 format."""
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _resolve_runtime_path(relative_path: str) -> str:
+    """Resolve runtime paths against cwd first, then project root."""
+    cwd_path = Path(relative_path)
+    if cwd_path.exists():
+        return str(cwd_path)
+
+    return str((PROJECT_ROOT / relative_path).resolve())
 
 
 def _connect(db_path: str) -> sqlite3.Connection:
@@ -98,21 +112,22 @@ def _compute_confirmed_fingerprint(entries: List[Dict[str, Any]]) -> str:
 
 def _load_story_template() -> str:
     """Load storyteller prompt template from disk."""
-    if not os.path.exists(STORY_TEMPLATE_PATH):
+    template_path = _resolve_runtime_path(STORY_TEMPLATE_PATH)
+    if not os.path.exists(template_path):
         return ""
-    with open(STORY_TEMPLATE_PATH, "r", encoding="utf-8") as handle:
+    with open(template_path, "r", encoding="utf-8") as handle:
         return handle.read()
 
 
 def _get_current_campaign_context() -> Dict[str, Any]:
     """Load compact current campaign context for ending-state grounding."""
-    party_tracker = safe_json_load("party_tracker.json") or {}
-    current_location = safe_json_load("current_location.json") or {}
+    party_tracker = safe_json_load(_resolve_runtime_path("party_tracker.json")) or {}
+    current_location = safe_json_load(_resolve_runtime_path("current_location.json")) or {}
 
     module_name = str(party_tracker.get("module", "Unknown")).strip() or "Unknown"
     module_plot = {}
     if module_name and module_name.lower() != "unknown":
-        module_plot = safe_json_load(f"modules/{module_name}/module_plot.json") or {}
+        module_plot = safe_json_load(_resolve_runtime_path(f"modules/{module_name}/module_plot.json")) or {}
 
     return {
         "campaign_name": module_name.replace("_", " "),
@@ -264,7 +279,7 @@ def _build_fallback_story(entries: List[Dict[str, Any]], context: Dict[str, Any]
 
 def _ensure_cache_dir() -> None:
     """Ensure story cache directory exists."""
-    os.makedirs(STORY_CACHE_DIR, exist_ok=True)
+    os.makedirs(_resolve_runtime_path(STORY_CACHE_DIR), exist_ok=True)
 
 
 def _escape_pdf_text(text: str) -> str:
@@ -472,7 +487,7 @@ def get_or_build_story_pdf(db_path: str = DEFAULT_MEMORY_DB_PATH) -> Dict[str, A
         }
 
     _ensure_cache_dir()
-    cache_path = os.path.join(STORY_CACHE_DIR, f"story_so_far_{fingerprint}.pdf")
+    cache_path = os.path.join(_resolve_runtime_path(STORY_CACHE_DIR), f"story_so_far_{fingerprint}.pdf")
     conn: Optional[sqlite3.Connection] = None
 
     try:

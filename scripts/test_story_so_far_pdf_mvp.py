@@ -157,6 +157,7 @@ class TestStorySoFarPdfMVP(unittest.TestCase):
         self.assertEqual(second.get("status"), "success")
         self.assertTrue(second.get("cache_hit"))
         self.assertEqual(first.get("pdf_path"), second.get("pdf_path"))
+        self.assertTrue(os.path.isabs(first.get("pdf_path")))
 
     def test_story_pdf_route_returns_safe_error_json(self) -> None:
         if not FLASK_AVAILABLE:
