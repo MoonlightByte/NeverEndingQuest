@@ -92,6 +92,7 @@ from utils.encoding_utils import (
     setup_utf8_console
 )
 from utils.session_cleanup import cleanup_history_files, remove_stale_resume_recaps
+from utils.combat_summary_history import build_historical_combat_summary_message
 
 # Import token tracking
 try:
@@ -4703,7 +4704,7 @@ def main_game_loop():
         if dialogue_summary:
             # We create a clear, systemic message indicating combat is over.
             # This mimics the handoff from action_handler.
-            combat_summary_message = f"[COMBAT CONCLUDED] The encounter has ended. The following is a summary of events:\n\n{dialogue_summary}"
+            combat_summary_message = build_historical_combat_summary_message(dialogue_summary)
             conversation_history.append({"role": "user", "content": combat_summary_message})
             debug("STATE_CHANGE: Appended combat summary to main history after resumed session.", category="session_management")
             save_conversation_history(conversation_history)

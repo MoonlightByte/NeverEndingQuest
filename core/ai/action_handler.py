@@ -77,6 +77,7 @@ from utils.save_roll_contract import (
     validate_request_roll_parameters,
 )
 from utils.authoritative_transition_validator import validate_same_module_transition_authority
+from utils.combat_summary_history import build_historical_combat_summary_message
 
 # Import token tracking
 try:
@@ -1025,7 +1026,7 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                     # Add clear historical marker to prevent Combat Commitment Point confusion
                     modified_combat_summary = {
                         "role": "user",
-                        "content": "[COMBAT CONCLUDED - HISTORICAL RECORD]\n" + combat_summary["content"] + "\n[END OF COMBAT RECORD - Please continue the narrative after this combat]\n\nIMPORTANT: All XP, treasure, currency, items, and other rewards mentioned above have already been distributed by the combat system. Do NOT award them again."
+                        "content": build_historical_combat_summary_message(combat_summary["content"])
                     }
                     conversation_history.append(modified_combat_summary)
                     # Import save_conversation_history from main

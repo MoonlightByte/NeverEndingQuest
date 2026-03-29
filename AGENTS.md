@@ -1021,6 +1021,35 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Combat Resume Replay Guards (COMPLETED - 2026-03-30)
+
+**Status:** COMPLETED - resumed combat no longer replays already-applied enemy damage on authoritative encounter state, and resumed combat summaries are now marked historical-only to prevent reward/XP duplication.
+
+**OpenSpec Change:**
+- `openspec/changes/tt-combat-resume-replay-guards/`
+
+**Objective:**
+- Prevent resumed multi-PC combat from reapplying stale enemy HP/status updates during crash recovery.
+- Stop resumed post-combat summaries from being interpreted as fresh actionable turns that re-award XP or other rewards.
+
+**Implementation Summary:**
+- `utils/combat_summary_history.py`
+  - Added shared historical combat summary wrapper for no-replay post-combat history handoff.
+- `main.py`
+  - Resumed combat flow now appends the same historical-record combat summary contract used by the normal combat-complete path.
+- `core/ai/action_handler.py`
+  - Reused the shared historical summary helper for normal post-combat handoff to reduce resume/non-resume divergence.
+- `updates/update_encounter.py`
+  - Added deterministic replay detection for supported enemy ops by comparing prose `HP old->new` mirrors against the current authoritative encounter state.
+  - Duplicate resumed enemy updates now fail open as no-ops instead of reapplying lethal damage and triggering false auto-exit.
+- `scripts/test_combat_resume_replay_guards.py`
+  - Added regressions for historical-summary wrapping, already-applied positive-HP replay suppression, kill replay suppression, and non-replay normal-application behavior.
+
+**Verification:**
+- `python3 -m py_compile main.py core/ai/action_handler.py updates/update_encounter.py utils/combat_summary_history.py scripts/test_combat_resume_replay_guards.py` -> PASS
+- `python3 scripts/test_combat_resume_replay_guards.py` -> PASS
+- `openspec validate tt-combat-resume-replay-guards` -> PASS
+
 ### Character Ops Runtime Recovery + Target Normalization (COMPLETED - 2026-03-29)
 
 **Status:** COMPLETED - generalized structured `updateCharacterInfo` runtime hardening so recoverable ops alias/shape drift no longer freezes gameplay, while authoritative contradictions remain fail-closed.

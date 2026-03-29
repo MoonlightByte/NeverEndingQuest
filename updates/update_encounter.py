@@ -198,6 +198,83 @@ def _prepare_supported_encounter_ops(
     return prepared, "ok"
 
 
+def _extract_expected_enemy_transitions(changes: Any) -> Dict[str, Dict[str, Any]]:
+    """Extract deterministic enemy final-state hints from combat prose mirror text."""
+    if not isinstance(changes, str) or not changes.strip():
+        return {}
+
+    transitions: Dict[str, Dict[str, Any]] = {}
+    pattern = re.compile(
+        r"(?P<name>[A-Za-z0-9_][A-Za-z0-9_ '\-]*?)\s+takes\b[^()]*\(HP\s*(?P<old>-?\d+)\s*->\s*(?P<new>-?\d+)\)",
+        re.IGNORECASE,
+    )
+
+    for match in pattern.finditer(changes):
+        normalized_name = _normalize_name_key(match.group("name"))
+        if not normalized_name:
+            continue
+
+        final_hp = max(0, _coerce_int(match.group("new"), 0))
+        trailing_slice = changes[match.end():match.end() + 80].lower()
+        final_status = None
+        for status_value in NON_LIVING_ENEMY_STATUSES:
+            if f"now {status_value}" in trailing_slice:
+                final_status = status_value
+                break
+
+        transitions[normalized_name] = {
+            "final_hp": final_hp,
+            "final_status": final_status,
+        }
+
+    return transitions
+
+
+def _is_prepared_encounter_ops_replay(
+    encounter_info: Dict[str, Any],
+    prepared_ops: List[Dict[str, Any]],
+    changes: Any,
+) -> bool:
+    """Detect already-applied resumed enemy ops using authoritative encounter state."""
+    expected_transitions = _extract_expected_enemy_transitions(changes)
+    if not expected_transitions or not prepared_ops:
+        return False
+
+    replay_verified = False
+
+    for op_data in prepared_ops:
+        op_name = op_data.get("op")
+        if op_name not in {"hp_delta", "set_hp", "set_status"}:
+            return False
+
+        creature = op_data.get("creature")
+        if not isinstance(creature, dict):
+            return False
+
+        normalized_name = _normalize_name_key(creature.get("name", ""))
+        expected = expected_transitions.get(normalized_name)
+        if not expected:
+            return False
+
+        current_hp = _coerce_int(creature.get("currentHitPoints", 0), 0)
+        current_status = str(creature.get("status", "alive")).strip().lower()
+        expected_hp = _coerce_int(expected.get("final_hp"), 0)
+        expected_status = str(expected.get("final_status") or "").strip().lower()
+
+        if current_hp != expected_hp:
+            return False
+
+        if expected_status:
+            if current_status != expected_status:
+                return False
+        elif expected_hp <= 0 and current_status not in NON_LIVING_ENEMY_STATUSES:
+            return False
+
+        replay_verified = True
+
+    return replay_verified
+
+
 def _apply_prepared_encounter_ops(
     encounter_info: Dict[str, Any],
     prepared_ops: List[Dict[str, Any]],
@@ -337,6 +414,12 @@ def update_encounter(encounter_id, changes, ops=None, max_retries=3):
         prepared_ops, ops_reason = _prepare_supported_encounter_ops(encounter_info, ops)
         if prepared_ops is not None:
             try:
+                if _is_prepared_encounter_ops_replay(encounter_info, prepared_ops, changes):
+                    info(
+                        "ENCOUNTER_OPS_ROUTE mode=noop reason=duplicate_replay_detected",
+                        category="encounter_updates",
+                    )
+                    return original_info
                 encounter_info = _apply_prepared_encounter_ops(encounter_info, prepared_ops)
                 info(
                     "ENCOUNTER_OPS_ROUTE mode=ops reason=supported_ops_applied",
