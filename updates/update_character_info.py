@@ -169,9 +169,9 @@ def _normalize_currency_type(currency_str: str) -> str:
 def _get_currency_delta_value(op: Dict[str, Any]) -> Any:
     """Resolve supported numeric aliases for currency delta ops.
 
-    Runtime prefers `delta`, but LLM responses sometimes emit `amount` or
-    `value` for the same intent. Accept the unambiguous aliases so narration
-    does not hard-fail on otherwise valid loot updates.
+    Runtime prefers `delta`, but LLM responses sometimes emit `amount`,
+    `value`, or `quantity` for the same intent. Accept the unambiguous aliases
+    so narration does not hard-fail on otherwise valid loot updates.
     """
     if "delta" in op:
         return op.get("delta")
@@ -179,6 +179,8 @@ def _get_currency_delta_value(op: Dict[str, Any]) -> Any:
         return op.get("amount")
     if "value" in op:
         return op.get("value")
+    if "quantity" in op:
+        return op.get("quantity")
     return None
 
 
