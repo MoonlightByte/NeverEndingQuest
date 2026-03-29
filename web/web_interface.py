@@ -570,10 +570,79 @@ WEB_OUTPUT_DEBUG_FILTER_MARKERS = [
     '[OK] Loaded'
 ]
 
+WEB_OUTPUT_NON_NARRATIVE_PREFIXES = [
+    '[DEBUG',
+    '[Py]',
+    '[INFO]',
+    '[OK]',
+    '[WARNING]',
+    '[ERROR]',
+    '[MESSAGE_CACHE]',
+    '[SHARED STATE]',
+    '[TABLETOP MODE]',
+    '[DEBUG ACTION_HANDLER]',
+    '[StartupWizard]',
+    '[COMBAT_BUILDER]',
+    '[ModulePathManager]',
+    '[QuestPlayerFormatter]',
+    '[UpdateCharacterInfo]',
+    '[UpdateEncounter]',
+    '[CumulativeSummary]',
+    '[PlotUpdate]',
+    '[WebInterface]',
+    '[Main]',
+    '[API_LOG]',
+    '[COMBAT_MANAGER]',
+    'DEBUG:',
+    'INFO:',
+    'WARNING:',
+    'ERROR:',
+    'STDOUT:',
+    'Web Interface starting from:',
+    'Looking for templates in:',
+    'Looking for static files in:',
+    'Found game_interface.html at:',
+    'Starting NeverEndingQuest Web Interface...',
+    'Opening browser at ',
+    'NeverEndingQuest v',
+    'Installing from:',
+    'Install location:',
+    'Step ',
+    'Requirement already satisfied:',
+    'remote:',
+    'Unpacking objects:',
+    'Updating ',
+    'Fast-forward',
+]
+
+WEB_OUTPUT_NARRATION_PREFIX_EXCEPTIONS = (
+    '[SYSTEM]',
+    '[skipTTS]',
+    '[prefill:',
+)
+
 
 def should_filter_to_debug_output(clean_line):
     """Return True if line should be routed to debug output."""
     return any(marker in clean_line for marker in WEB_OUTPUT_DEBUG_FILTER_MARKERS)
+
+
+def is_non_narrative_output_line(clean_line):
+    """Return True when a line is runtime/log output, not DM narration."""
+    normalized_line = clean_line.strip()
+    if not normalized_line:
+        return False
+
+    if normalized_line.startswith(WEB_OUTPUT_NARRATION_PREFIX_EXCEPTIONS):
+        return False
+
+    if should_filter_to_debug_output(normalized_line):
+        return True
+
+    return any(
+        normalized_line.startswith(prefix)
+        for prefix in WEB_OUTPUT_NON_NARRATIVE_PREFIXES
+    )
 
 class WebOutputCapture:
     """Captures output and routes it to appropriate queues"""
@@ -676,8 +745,7 @@ class WebOutputCapture:
                             # If buffer append fails, reset DM section
                             self.in_dm_section = False
                             self.dm_buffer = []
-                    elif clean_line.startswith('[DEBUG]') or \
-                         any(marker in clean_line for marker in ['DEBUG:', 'ERROR:', 'WARNING:', '[COMBAT_MANAGER]']) or \
+                    elif is_non_narrative_output_line(clean_line) or \
                          (clean_line.startswith('[') and ('HP:' in clean_line or 'XP:' in clean_line)) or \
                          clean_line.startswith('>'):
                         # This ends the DM section - send accumulated DM content as single message
@@ -728,7 +796,7 @@ class WebOutputCapture:
                             pass
                     else:
                         # Still in DM section - check if it's a debug message
-                        if should_filter_to_debug_output(clean_line):
+                        if is_non_narrative_output_line(clean_line):
                             # This is a debug message - send to debug output instead
                             debug_output_queue.put({
                                 'type': 'debug',
@@ -765,7 +833,7 @@ class WebOutputCapture:
                                 self.dm_buffer = []
                 else:
                     # Not in DM section - check if it's a debug message that should be filtered
-                    if should_filter_to_debug_output(clean_line):
+                    if is_non_narrative_output_line(clean_line):
                         # These are debug messages - send to debug output
                         debug_output_queue.put({
                             'type': 'debug',

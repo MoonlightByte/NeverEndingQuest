@@ -1021,6 +1021,54 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Combat Defeated-Enemy Sync + Combat-Init Chat Leak Fixes (COMPLETED - 2026-03-29)
+
+**Status:** COMPLETED - combat-state convergence hardening implemented; OpenSpec change archived with manual live smoke deferred outside the archived change.
+
+**OpenSpec Archive:**
+- `openspec/changes/archive/2026-03-29-tt-combat-defeated-enemy-state-sync/`
+
+**Objective:**
+- Prevent defeated enemies from lingering in initiative/targeting as zero-or-negative HP ghosts.
+- Restore coherent combat-start UX without leaking runtime/stdout logs into GUI chat during the single pre-initiative narration beat.
+- Keep fast-lane initiative behavior while preserving Python mechanical authority over enemy defeat state.
+
+**Implementation Summary:**
+- `updates/update_encounter.py`
+  - Added enemy defeat normalization so enemy HP clamps to `0` and non-living status persists when defeat is implied.
+  - Prevented same-turn enemy resurrection drift from later encounter writes after authoritative defeat.
+- `core/managers/multi_pc_combat.py`
+  - Added non-PC queue resync from authoritative `encounter_data`.
+  - Defeated enemies now become untargetable immediately after queue refresh.
+- `core/managers/combat_manager.py`
+  - Refreshes non-PC queue state immediately after `updateEncounter` mutations.
+- `web/extensions/tabletop_socket_handlers.py`
+  - Initiative payload now hides non-player combatants when `currentHitPoints <= 0`, even if stale status still says `alive`.
+- `main.py`
+  - Restored exactly one combat setup narration before initiative when `createEncounter` fires, without re-enabling the old duplicate combat-manager intro.
+- `web/web_interface.py`
+  - Fixed GUI chat ordering so player combat commands echo before DM/system responses.
+  - Hardened `WebOutputCapture` narration boundaries so combat-init runtime/stdout lines (`[DEBUG ACTION_HANDLER]`, `[Py]`, `[COMBAT_BUILDER]`, installer/startup text, `STDOUT:` blocks) route to debug output instead of chat.
+
+**Regression Coverage:**
+- Added/updated:
+  - `scripts/test_update_encounter_ops_runtime.py`
+  - `scripts/test_multi_pc_combat.py`
+  - `scripts/c5_regression_combat.py`
+  - `scripts/test_createencounter_failure_surfacing.py`
+  - `scripts/test_startup_web_input_contract.py`
+  - `scripts/test_web_output_capture_contract.py`
+
+**Verification:**
+- `python3 -m py_compile updates/update_encounter.py core/managers/multi_pc_combat.py core/managers/combat_manager.py web/extensions/tabletop_socket_handlers.py scripts/test_update_encounter_ops_runtime.py scripts/test_multi_pc_combat.py scripts/c5_regression_combat.py` -> PASS
+- `.venv/bin/python scripts/test_update_encounter_ops_runtime.py` -> PASS
+- `python3 scripts/test_multi_pc_combat.py` -> PASS
+- `python3 scripts/c5_regression_combat.py` -> PASS
+- `python3 scripts/step_3_3_smoke_test.py` -> PASS
+- `python3 -m py_compile web/web_interface.py scripts/test_web_output_capture_contract.py` -> PASS
+- `python3 scripts/test_web_output_capture_contract.py` -> PASS
+- `python3 scripts/test_startup_web_input_contract.py` -> PASS
+
 ### Currency Abbreviation Normalization Fix (COMPLETED - 2026-03-29)
 
 **Status:** COMPLETED - Fixed hard failure when LLM generates abbreviated currency types in `currency_delta` ops.
