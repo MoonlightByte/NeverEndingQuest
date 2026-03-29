@@ -50,11 +50,69 @@ SUPPORTED_ENCOUNTER_OPS = {
 }
 
 ALLOWED_STATUS_VALUES = {"alive", "dead", "unconscious", "defeated"}
+NON_LIVING_ENEMY_STATUSES = {"dead", "unconscious", "defeated"}
+
+
+def _coerce_int(value: Any, default: int = 0) -> int:
+    """Safely coerce encounter numeric fields to int."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _normalize_name_key(value: str) -> str:
     """Normalize creature names for deterministic encounter-op matching."""
     return str(value).strip().lower().replace("_", " ").replace("-", " ")
+
+
+def _preferred_non_living_status(current_status: str, original_status: str) -> str:
+    """Pick a deterministic schema-legal non-living status for defeated enemies."""
+    for candidate in (current_status, original_status):
+        normalized = str(candidate or "").strip().lower()
+        if normalized in NON_LIVING_ENEMY_STATUSES:
+            return normalized
+    return "dead"
+
+
+def _normalize_enemy_defeat_states(
+    encounter_info: Dict[str, Any],
+    original_info: Dict[str, Any],
+) -> None:
+    """Clamp defeated enemy HP and prevent same-turn enemy resurrection drift."""
+    original_enemy_index: Dict[str, Dict[str, Any]] = {}
+    for creature in original_info.get("creatures", []):
+        if str(creature.get("type", "")).lower() != "enemy":
+            continue
+        key = _normalize_name_key(creature.get("name", ""))
+        if key and key not in original_enemy_index:
+            original_enemy_index[key] = creature
+
+    for creature in encounter_info.get("creatures", []):
+        if str(creature.get("type", "")).lower() != "enemy":
+            continue
+
+        key = _normalize_name_key(creature.get("name", ""))
+        original_creature = original_enemy_index.get(key, {})
+
+        current_hp = _coerce_int(creature.get("currentHitPoints", 0), 0)
+        current_status = str(creature.get("status", "alive")).strip().lower()
+        original_hp = _coerce_int(original_creature.get("currentHitPoints", 0), 0)
+        original_status = str(original_creature.get("status", "alive")).strip().lower()
+
+        was_already_defeated = (
+            bool(original_creature)
+            and (
+                original_hp <= 0
+                or original_status in NON_LIVING_ENEMY_STATUSES
+            )
+        )
+
+        if current_hp <= 0 or was_already_defeated:
+            creature["currentHitPoints"] = 0
+            creature["status"] = _preferred_non_living_status(current_status, original_status)
+        else:
+            creature["currentHitPoints"] = current_hp
 
 
 def _resolve_enemy_creature(
@@ -242,6 +300,7 @@ def _finalize_encounter_update(
     path_manager: ModulePathManager,
 ) -> Dict[str, Any]:
     """Apply sync/normalization, validate, and persist encounter state."""
+    _normalize_enemy_defeat_states(encounter_info, original_info)
     _sync_non_enemy_creatures(encounter_info, path_manager)
     _normalize_creature_statuses(encounter_info)
 

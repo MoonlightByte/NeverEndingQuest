@@ -110,6 +110,47 @@ class TestUpdateEncounterOpsRuntime(unittest.TestCase):
         self.assertEqual(result, baseline)
         self.assertEqual(self._read_encounter(), baseline)
 
+    def test_overkill_enemy_hp_is_clamped_and_status_is_non_living(self):
+        result = update_encounter(
+            self.encounter_id,
+            None,
+            ops=[{"op": "hp_delta", "creature": "Goblin-1", "delta": -30}],
+        )
+
+        self.assertIsNotNone(result)
+        goblin = result["creatures"][0]
+        self.assertEqual(goblin["currentHitPoints"], 0)
+        self.assertEqual(goblin["status"], "dead")
+
+        persisted_goblin = self._read_encounter()["creatures"][0]
+        self.assertEqual(persisted_goblin["currentHitPoints"], 0)
+        self.assertEqual(persisted_goblin["status"], "dead")
+
+    def test_previously_defeated_enemy_cannot_be_revived_by_later_ops(self):
+        fixture = self._read_encounter()
+        fixture["creatures"][0]["currentHitPoints"] = 0
+        fixture["creatures"][0]["status"] = "dead"
+        with open(self.encounter_path, "w", encoding="utf-8") as file_handle:
+            json.dump(fixture, file_handle, indent=2)
+
+        result = update_encounter(
+            self.encounter_id,
+            None,
+            ops=[
+                {"op": "set_hp", "creature": "Goblin-1", "hp": 5},
+                {"op": "set_status", "creature": "Goblin-1", "status": "alive"},
+            ],
+        )
+
+        self.assertIsNotNone(result)
+        goblin = result["creatures"][0]
+        self.assertEqual(goblin["currentHitPoints"], 0)
+        self.assertEqual(goblin["status"], "dead")
+
+        persisted_goblin = self._read_encounter()["creatures"][0]
+        self.assertEqual(persisted_goblin["currentHitPoints"], 0)
+        self.assertEqual(persisted_goblin["status"], "dead")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

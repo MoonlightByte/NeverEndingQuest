@@ -698,6 +698,63 @@ class TurnQueueManager:
 
         return remaining
 
+    def sync_non_pc_state_from_encounter(self, encounter_data: Dict[str, Any]) -> bool:
+        """Refresh enemy/NPC queue state from authoritative encounter data."""
+        creatures = encounter_data.get("creatures", []) if isinstance(encounter_data, dict) else []
+        if not creatures or not self.turn_queue:
+            return False
+
+        encounter_index: Dict[str, Dict[str, Any]] = {}
+        for creature in creatures:
+            creature_type = str(creature.get("type", "")).strip().lower()
+            if creature_type not in ("enemy", "npc"):
+                continue
+
+            normalized_name = _normalize_combat_identity(creature.get("name", ""))
+            if normalized_name and normalized_name not in encounter_index:
+                encounter_index[normalized_name] = creature
+
+        changed = False
+        for combatant in self.turn_queue:
+            if combatant.type not in (CombatantType.ENEMY, CombatantType.NPC):
+                continue
+
+            source = encounter_index.get(_normalize_combat_identity(combatant.name))
+            if not source:
+                continue
+
+            try:
+                new_hp = int(source.get("currentHitPoints", combatant.hp))
+            except (TypeError, ValueError):
+                new_hp = combatant.hp
+
+            try:
+                new_max_hp = int(source.get("maxHitPoints", combatant.max_hp))
+            except (TypeError, ValueError):
+                new_max_hp = combatant.max_hp
+
+            try:
+                new_ac = int(source.get("armorClass", combatant.ac))
+            except (TypeError, ValueError):
+                new_ac = combatant.ac
+
+            new_status = str(source.get("status", combatant.status) or combatant.status).strip().lower()
+
+            if combatant.hp != new_hp:
+                combatant.hp = new_hp
+                changed = True
+            if combatant.max_hp != new_max_hp:
+                combatant.max_hp = new_max_hp
+                changed = True
+            if combatant.ac != new_ac:
+                combatant.ac = new_ac
+                changed = True
+            if (combatant.status or "").strip().lower() != new_status:
+                combatant.status = new_status
+                changed = True
+
+        return changed
+
 
 @dataclass 
 class MultiPCCombatManager:
@@ -1343,6 +1400,10 @@ class MultiPCCombatManager:
             self._state.current_round = encounter_round
             return True
         return False
+
+    def sync_non_pc_queue_state(self, encounter_data: Dict[str, Any]) -> bool:
+        """Sync enemy/NPC queue state from authoritative encounter data."""
+        return self._turns.sync_non_pc_state_from_encounter(encounter_data)
     
     def update_pc_hp(self, character_name: str, new_hp: int) -> None:
         """

@@ -39,13 +39,40 @@ def test_handle_user_input_skips_character_tagging_during_startup_incomplete() -
     assert "if character_name and not startup_incomplete:" in handler_source, (
         "Web input handler should skip character tagging during startup onboarding"
     )
-    assert "user_input_queue.put(user_input)" in handler_source, (
-        "Startup onboarding path should queue raw input"
+    assert "queued_input = user_input" in handler_source, (
+        "Startup onboarding path should preserve raw input without character tagging"
+    )
+    assert "user_input_queue.put(queued_input)" in handler_source, (
+        "Web input handler should queue the processed input"
+    )
+
+
+def test_handle_user_input_echoes_before_queueing() -> None:
+    source = _load_web_interface_source()
+    handler_source = _extract_handler(
+        source,
+        "@socketio.on('user_input')",
+        "@socketio.on('action')",
+    )
+
+    emit_pos = handler_source.find("emit('game_output', message)")
+    cache_pos = handler_source.find("add_to_message_cache(message)")
+    queue_pos = handler_source.find("user_input_queue.put(queued_input)")
+
+    assert emit_pos != -1, "Web input handler should echo the user input to chat"
+    assert cache_pos != -1, "Web input handler should cache echoed user input"
+    assert queue_pos != -1, "Web input handler should queue the processed user input"
+    assert emit_pos < queue_pos, (
+        "User input should be echoed before queueing so combat feedback cannot overtake it"
+    )
+    assert cache_pos < queue_pos, (
+        "Cached user input should be recorded before queueing the processed input"
     )
 
 
 def main() -> None:
     test_handle_user_input_skips_character_tagging_during_startup_incomplete()
+    test_handle_user_input_echoes_before_queueing()
     print("[PASS] startup web input contract checks")
 
 

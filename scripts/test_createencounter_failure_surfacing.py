@@ -49,12 +49,10 @@ class TestCreateEncounterErrorMessage(unittest.TestCase):
 
 
 class TestCreateEncounterNarrationGate(unittest.TestCase):
-    """Test that failed createEncounter does not emit combat narration (Task 4.3)"""
+    """Test createEncounter narration gating contracts."""
     
     def test_successful_createEncounter_allows_narration(self):
-        """Test that successful createEncounter still emits narration"""
-        # This is a conceptual test - we can't easily test the full main.py flow
-        # but we can verify the deferred emission logic exists
+        """Successful createEncounter should still preserve deferred narration state."""
         
         # Check that main.py has the deferred narration variables
         main_file = Path(__file__).parent.parent / "main.py"
@@ -65,22 +63,30 @@ class TestCreateEncounterNarrationGate(unittest.TestCase):
         self.assertIn("narration_deferred", content, "main.py should have narration_deferred variable")
         self.assertIn("narration_emitted", content, "main.py should have narration_emitted variable")
         
-        # Assert: Should emit after action processing
+        # Assert: Generic deferred emission path still exists for non-combat actions
         self.assertIn("if not narration_emitted and narration_deferred:", content, 
                      "Should have deferred emission check")
-        
-    def test_failed_createEncounter_returns_before_narration(self):
-        """Test that error returns happen before narration emission"""
+
+    def test_createEncounter_emits_single_intro_before_combat_handoff(self):
+        """createEncounter should print one intro beat before process_action starts combat."""
         main_file = Path(__file__).parent.parent / "main.py"
         with open(main_file, 'r', encoding='utf-8') as f:
             content = f.read()
-            
-        # Check that error handling uses the return path that skips narration
-        # The error return path checks result.get("status") == "error"
-        self.assertIn('"status") == "error"', content,
-                     "Should check status error for failed actions")
-        self.assertIn("[SYSTEM]", content,
-                     "Should include SYSTEM tag in error")
+
+        intro_gate = 'action.get("action") == "createEncounter"'
+        narration_print = 'print(colored("Dungeon Master:", "blue"), colored(narration_deferred, "blue"))'
+        process_call = 'result = action_handler.process_action(action, party_tracker_data, location_data, conversation_history)'
+
+        self.assertIn(intro_gate, content, "Should special-case createEncounter narration")
+        self.assertIn(narration_print, content, "Should print narration for createEncounter before combat handoff")
+        self.assertIn(process_call, content, "Should still hand off to action processing")
+
+        intro_gate_pos = content.find(intro_gate)
+        narration_print_pos = content.find(narration_print, intro_gate_pos)
+        process_call_pos = content.find(process_call, narration_print_pos)
+
+        self.assertGreater(narration_print_pos, intro_gate_pos, "Narration print should occur inside createEncounter gate")
+        self.assertGreater(process_call_pos, narration_print_pos, "Narration should print before process_action starts combat")
         
 
 class TestErrorMessageContent(unittest.TestCase):

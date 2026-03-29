@@ -3262,6 +3262,18 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
         
         # Process all other actions sequentially
         for action in other_actions:
+            # TABLETOP MODE: Restore the single combat intro beat before initiative.
+            # The fast-lane combat manager intentionally skips its own duplicate
+            # opening narration, so createEncounter must emit the LLM's existing
+            # scene-setting narration here before combat takes over.
+            if (
+                action.get("action") == "createEncounter"
+                and not narration_emitted
+                and narration_deferred
+            ):
+                print(colored("Dungeon Master:", "blue"), colored(narration_deferred, "blue"))
+                narration_emitted = True
+
             result = action_handler.process_action(action, party_tracker_data, location_data, conversation_history)
             actions_processed = True
 

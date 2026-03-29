@@ -333,6 +333,45 @@ class TestTurnQueueManager(unittest.TestCase):
         self.assertEqual(next_actor.name, "Goblin A")
         self.assertFalse(rolled_over)
 
+    def test_sync_non_pc_state_from_encounter_refreshes_queue(self):
+        """Enemy/NPC queue entries should refresh from encounter truth."""
+        self.turn_mgr.turn_queue = [
+            Combatant("Goblin A", CombatantType.ENEMY, 19, 7, 7, 15, "alive"),
+            Combatant("Guard Ally", CombatantType.NPC, 14, 12, 12, 14, "alive"),
+            Combatant("Acheron", CombatantType.PC, 16, 21, 21, 16, "alive"),
+        ]
+        encounter_data = {
+            "creatures": [
+                {"name": "Goblin A", "type": "enemy", "currentHitPoints": 0, "maxHitPoints": 7, "armorClass": 15, "status": "dead"},
+                {"name": "Guard Ally", "type": "npc", "currentHitPoints": 5, "maxHitPoints": 12, "armorClass": 14, "status": "alive"},
+            ]
+        }
+
+        changed = self.turn_mgr.sync_non_pc_state_from_encounter(encounter_data)
+
+        self.assertTrue(changed)
+        self.assertEqual(self.turn_mgr.turn_queue[0].hp, 0)
+        self.assertEqual(self.turn_mgr.turn_queue[0].status, "dead")
+        self.assertEqual(self.turn_mgr.turn_queue[1].hp, 5)
+
+    def test_sync_non_pc_state_from_encounter_blocks_defeated_target_reuse(self):
+        """Refreshed defeated enemy must become untargetable immediately."""
+        self.turn_mgr.turn_queue = [
+            Combatant("Cultist_2", CombatantType.ENEMY, 12, 6, 9, 12, "alive"),
+            Combatant("Giant Spider", CombatantType.ENEMY, 10, 26, 26, 14, "alive"),
+        ]
+        encounter_data = {
+            "creatures": [
+                {"name": "Cultist_2", "type": "enemy", "currentHitPoints": 0, "maxHitPoints": 9, "armorClass": 12, "status": "dead"},
+                {"name": "Giant Spider", "type": "enemy", "currentHitPoints": 26, "maxHitPoints": 26, "armorClass": 14, "status": "alive"},
+            ]
+        }
+
+        self.turn_mgr.sync_non_pc_state_from_encounter(encounter_data)
+
+        self.assertIsNone(self.turn_mgr.find_target("cultist_2", encounter_data))
+        self.assertEqual(self.turn_mgr.find_target("giant spider", encounter_data).name, "Giant Spider")
+
 
 class TestMultiPCCombatManagerFacade(unittest.TestCase):
     """Test MultiPCCombatManager facade and delegation."""

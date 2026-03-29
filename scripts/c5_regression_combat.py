@@ -362,6 +362,11 @@ class TestCombatManagerEncounterSyncContracts(unittest.TestCase):
         self.assertIn('STATE_PERSIST: Fast-lane encounter state persisted', source)
         self.assertIn('safe_write_json(f"modules/encounters/encounter_{encounter_id}.json", encounter_data)', source)
 
+    def test_update_encounter_branch_resyncs_non_pc_queue_state(self):
+        source = self._load_combat_manager_source()
+        self.assertIn('multi_pc_manager.sync_non_pc_queue_state(encounter_data)', source)
+        self.assertIn('STATE_SYNC: Refreshed non-PC turn queue state from authoritative encounter data', source)
+
 
 class TestCombatSingleActiveSessionContracts(unittest.TestCase):
     """Regression tests for single-active-session combat ownership guardrails."""
@@ -653,6 +658,20 @@ class TestInitiativePayloadInclusionContract(unittest.TestCase):
             active_true_pos,
             visible_check_pos,
             "active: True must come after visible_combatants check"
+        )
+
+    def test_non_player_payload_filters_zero_hp_alive_ghosts(self):
+        """Non-player initiative entries must exclude zero-HP ghosts even if status drift says alive."""
+        source = self._load_tabletop_socket_handlers_source()
+        self.assertIn(
+            'current_hp = int(creature.get("currentHitPoints", 0))',
+            source,
+            "Must read currentHitPoints for non-player initiative filtering"
+        )
+        self.assertIn(
+            'if status == "alive" and current_hp > 0:',
+            source,
+            "Non-player initiative visibility must require alive status and positive HP"
         )
 
 

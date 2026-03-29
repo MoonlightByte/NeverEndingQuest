@@ -2821,10 +2821,9 @@ def handle_user_input(data):
     # In multi-PC mode, tag the input so the LLM knows who is acting.
     # Skip tagging during startup onboarding.
     if character_name and not startup_incomplete:
-        tagged_input = f"[{character_name}]: {user_input}"
-        user_input_queue.put(tagged_input)
+        queued_input = f"[{character_name}]: {user_input}"
     else:
-        user_input_queue.put(user_input)
+        queued_input = user_input
     
     # Echo the input back to the game output with author attribution
     message = {
@@ -2832,14 +2831,19 @@ def handle_user_input(data):
         'content': user_input,
         'author': character_name or 'You'
     }
+
+    # TABLETOP MODE: Echo player input before queueing it so combat command
+    # feedback/system responses cannot overtake the originating user message
+    # in the GUI chat feed.
+    emit('game_output', message)
+    add_to_message_cache(message)
+
+    user_input_queue.put(queued_input)
     
     # TABLETOP MODE: Log user input for AI assistant real-time monitoring
     log_chat_event('user_input', user_input, character_name, metadata={
         'queue_size': user_input_queue.qsize()
     })
-    
-    emit('game_output', message)
-    add_to_message_cache(message)
 
 @socketio.on('action')
 def handle_action(data):

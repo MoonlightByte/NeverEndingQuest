@@ -5042,7 +5042,10 @@ Rules:
                encounter_id_for_update = parameters.get("encounterId", encounter_id)
                changes = parameters.get("changes", "")
                ops = parameters.get("ops")
-               info(f"STATE_UPDATE: Processing immediate encounter update: {changes}", category="encounter_management")
+               info(
+                   f"STATE_UPDATE: Processing immediate encounter update: {changes}",
+                   category="encounter_management",
+               )
                try:
                    updated_encounter_data = update_encounter.update_encounter(
                        encounter_id_for_update,
@@ -5051,8 +5054,17 @@ Rules:
                    )
                    if updated_encounter_data:
                        encounter_data = normalize_encounter_status(updated_encounter_data)
+                       if multi_pc_manager and multi_pc_manager.sync_non_pc_queue_state(encounter_data):
+                           debug(
+                               "STATE_SYNC: Refreshed non-PC turn queue state from authoritative encounter data",
+                               category="combat_events",
+                           )
                except Exception as e:
-                   error(f"FAILURE: Failed to update encounter", exception=e, category="encounter_management")
+                   error(
+                       "FAILURE: Failed to update encounter",
+                       exception=e,
+                       category="encounter_management",
+                   )
 
            elif action_type == "exit" and is_combat_ending:
                info("CONSOLIDATING: 'exit' action detected. Calculating final HP and XP.", category="combat_events")

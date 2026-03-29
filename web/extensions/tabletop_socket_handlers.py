@@ -530,6 +530,10 @@ def handle_initiative_data_request_impl(emit_fn: Callable[..., None], error_fn: 
         for creature in encounter_data["creatures"]:
             creature_type = str(creature.get("type", "")).lower()
             status = str(creature.get("status", "unknown")).lower()
+            try:
+                current_hp = int(creature.get("currentHitPoints", 0))
+            except (TypeError, ValueError):
+                current_hp = 0
 
             if creature_type == "player":
                 # Include all non-dead players so incapacitated/unconscious PCs remain in initiative UI.
@@ -537,7 +541,7 @@ def handle_initiative_data_request_impl(emit_fn: Callable[..., None], error_fn: 
                     visible_combatants.append(creature)
             else:
                 # Preserve existing behavior for non-player combatants.
-                if status == "alive":
+                if status == "alive" and current_hp > 0:
                     visible_combatants.append(creature)
 
         if not visible_combatants:
