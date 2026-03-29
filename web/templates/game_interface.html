@@ -2514,7 +2514,7 @@
             margin-bottom: 8px;
             padding-bottom: 8px;
             border-bottom: 2px solid #666;
-            align-items: stretch;
+            align-items: flex-start;
             width: 100%;
         }
 
@@ -2610,7 +2610,10 @@
             padding: 10px;
             display: flex;
             flex-direction: column;
-            min-height: 150px; /* Match portrait minimum height while allowing growth */
+            height: 150px;
+            max-height: 150px;
+            box-sizing: border-box;
+            overflow: hidden;
         }
         
         .character-sheet {
@@ -2631,6 +2634,8 @@
         }
         
         .character-details {
+            flex: 1 1 auto;
+            min-height: 0;
             display: flex;
             flex-direction: column;
             gap: 4px;
@@ -2639,6 +2644,13 @@
             line-height: 1.25;
             overflow-wrap: anywhere;
             word-break: break-word;
+            overflow: hidden;
+        }
+
+        .character-details > div {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         
         .orange {
@@ -2647,6 +2659,7 @@
         }
         
         .character-name {
+            flex: 0 0 auto;
             font-size: 24px;
             font-weight: 600;
             color: #FFA500;
@@ -2663,12 +2676,8 @@
         }
 
         .character-name span {
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
+            display: block;
             overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: normal;
             max-height: 2.3em;
         }
 
