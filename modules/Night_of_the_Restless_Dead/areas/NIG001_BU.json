@@ -211,6 +211,20 @@
         "NIG05",
         "NIG07"
       ],
+      "visibleHostiles": [
+        {
+          "name": "Cultist",
+          "monsterType": "Cultist"
+        },
+        {
+          "name": "Skeleton",
+          "monsterType": "Skeleton"
+        },
+        {
+          "name": "Skeleton",
+          "monsterType": "Skeleton"
+        }
+      ],
       "creatures": "Cultist, Red, Skeleton, Skeleton.",
       "climax_scene": {
         "faction_conflict": "Miriam (cult leader) vs Red (Pumpkin King enforcer)",

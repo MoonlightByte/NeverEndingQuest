@@ -200,6 +200,53 @@ def _dedupe_party_member_names_for_emit(party_members: List[Any]) -> List[str]:
     return deduped
 
 
+def _extract_visible_location_hostiles(location_data: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Return explicitly visible hostile scene actors for the non-combat strip.
+
+    Generic location `monsters` data represents encounter seeds or possible threats,
+    which may be off-screen, behind doors, or otherwise not currently visible to the
+    party. To avoid leaking hidden threats into the top-strip UI, pre-combat hostile
+    cards are emitted only from explicit scene-visibility metadata.
+
+    Supported additive metadata keys:
+    - `visibleHostiles`
+    - `hostileSceneRoster`
+    - `sceneHostiles`
+    - `preCombatHostiles`
+    """
+    explicit_roster = None
+    for key in ("visibleHostiles", "hostileSceneRoster", "sceneHostiles", "preCombatHostiles"):
+        roster_value = location_data.get(key)
+        if isinstance(roster_value, list):
+            explicit_roster = roster_value
+            break
+
+    if not explicit_roster:
+        return []
+
+    visible_hostiles: List[Dict[str, str]] = []
+    for hostile_entry in explicit_roster:
+        hostile_name = ""
+        hostile_monster_type = ""
+
+        if isinstance(hostile_entry, dict):
+            hostile_name = str(hostile_entry.get("name") or "").strip()
+            hostile_monster_type = str(hostile_entry.get("monsterType") or hostile_name).strip()
+        elif isinstance(hostile_entry, str):
+            hostile_name = hostile_entry.strip()
+            hostile_monster_type = hostile_name
+
+        if not hostile_name:
+            continue
+
+        visible_hostiles.append({
+            "name": hostile_name,
+            "monsterType": hostile_monster_type or hostile_name,
+        })
+
+    return visible_hostiles
+
+
 def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Callable[..., None]) -> None:
     """Handle requests for party member display and current location NPCs (non-combat)."""
     try:
@@ -451,23 +498,15 @@ def handle_party_data_request_impl(emit_fn: Callable[..., None], error_fn: Calla
                                     npc_data_dict['image_version'] = location_npc_image_meta.get('image_version')
                                     location_npcs.append(npc_data_dict)
 
-                    # TABLETOP MODE: Surface hostile scene presence pre-combat.
-                    if not active_encounter_id and current_location_data and 'monsters' in current_location_data:
-                        for monster_entry in current_location_data.get('monsters', []):
-                            monster_name = ''
-                            if isinstance(monster_entry, dict):
-                                monster_name = str(monster_entry.get('name') or '').strip()
-                            elif isinstance(monster_entry, str):
-                                monster_name = monster_entry.strip()
-
+                    # TABLETOP MODE: Surface only explicitly visible hostile scene presence pre-combat.
+                    # Do not leak generic location monster seeds into the player-visible top strip.
+                    if not active_encounter_id and current_location_data:
+                        for monster_entry in _extract_visible_location_hostiles(current_location_data):
+                            monster_name = str(monster_entry.get('name') or '').strip()
                             if not monster_name:
                                 continue
 
-                            monster_asset_key = ""
-                            if isinstance(monster_entry, dict):
-                                monster_asset_key = str(monster_entry.get('monsterType') or '').strip()
-                            if not monster_asset_key:
-                                monster_asset_key = monster_name
+                            monster_asset_key = str(monster_entry.get('monsterType') or monster_name).strip()
 
                             monster_data_dict = {
                                 'name': monster_name,

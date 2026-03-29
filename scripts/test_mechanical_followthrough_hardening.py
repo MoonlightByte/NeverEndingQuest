@@ -267,6 +267,40 @@ class TestFeatureUsageOps(unittest.TestCase):
         self.assertIn("Could not safely apply character update", classification["user_message"])
 
 
+class TestVisibleHostileExtraction(unittest.TestCase):
+    def test_generic_location_monsters_do_not_become_visible_hostiles(self):
+        from web.extensions.tabletop_socket_handlers import _extract_visible_location_hostiles
+
+        location_data = {
+            "name": "Cellar Hallway",
+            "monsters": [
+                {"name": "Cultist"},
+                {"name": "Skeleton"},
+            ],
+        }
+
+        self.assertEqual(_extract_visible_location_hostiles(location_data), [])
+
+    def test_explicit_visible_hostiles_are_emitted(self):
+        from web.extensions.tabletop_socket_handlers import _extract_visible_location_hostiles
+
+        location_data = {
+            "name": "Ritual Landing",
+            "visibleHostiles": [
+                {"name": "Cultist Lookout", "monsterType": "Cultist"},
+                "Skeleton",
+            ],
+        }
+
+        self.assertEqual(
+            _extract_visible_location_hostiles(location_data),
+            [
+                {"name": "Cultist Lookout", "monsterType": "Cultist"},
+                {"name": "Skeleton", "monsterType": "Skeleton"},
+            ],
+        )
+
+
 class TestPreCombatHostilePresenceSourceContracts(unittest.TestCase):
     def test_party_data_payload_includes_location_hostiles(self):
         socket_handler_path = os.path.join(
