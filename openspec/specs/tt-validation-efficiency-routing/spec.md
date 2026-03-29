@@ -16,7 +16,7 @@ Validation compression SHALL only run when the assembled validation payload exce
 
 ### Requirement: Low-risk deterministic-safe turns SHALL have an eligible skip path
 
-The validation pipeline SHALL support skipping or narrowing LLM validation for conservative low-risk turns only after authoritative deterministic checks have run and only when no unresolved high-risk or contested-truth condition remains.
+The validation pipeline SHALL support skipping or narrowing LLM validation for conservative low-risk turns only after authoritative deterministic checks have run and only when no unresolved high-risk, contested-truth, or explicit bookkeeping-correction condition remains.
 
 #### Scenario: Reconciled soft-state only turn
 - **WHEN** the response contains only deterministic or reconciled travel or NPC soft-state actions
@@ -31,13 +31,17 @@ The validation pipeline SHALL support skipping or narrowing LLM validation for c
 - **WHEN** the triggering turn explicitly questions or contradicts the possession of a tracked item
 - **THEN** the pipeline SHALL run authoritative inventory checks before deciding whether the turn is eligible for low-risk narration-only skip
 
+#### Scenario: Explicit bookkeeping correction turn does not qualify for narration-only skip
+- **WHEN** the triggering turn or candidate response explicitly claims that currency or inventory bookkeeping has already been corrected, reclassified, paid, refunded, gained, or removed
+- **THEN** the pipeline SHALL NOT classify that turn as eligible for `narration_only` skip until matching state-mutation action coverage is present
+
 #### Scenario: Authoritative transition failure does not qualify for narration-only skip
 - **WHEN** a turn includes a failed `transitionLocation` attempt or other authoritative movement failure
 - **THEN** the pipeline SHALL NOT downgrade that turn into a low-risk narration-only outcome
 
 ### Requirement: Narration-only skip SHALL occur only after deterministic recovery opportunities are exhausted
 
-The validation-efficiency routing path SHALL NOT finalize a turn as low-risk narration-only until deterministic inventory and location recovery hooks have had an opportunity to reconcile uniquely resolvable state drift.
+The validation-efficiency routing path SHALL NOT finalize a turn as low-risk narration-only until deterministic inventory and location recovery hooks have had an opportunity to reconcile uniquely resolvable state drift and until explicit bookkeeping-correction guards report no missing committed state mutation.
 
 #### Scenario: Candidate response is narration-only but transfer/location recovery is still possible
 - **GIVEN** the candidate response has `actions: []`
@@ -46,9 +50,16 @@ The validation-efficiency routing path SHALL NOT finalize a turn as low-risk nar
 - **THEN** deterministic recovery SHALL run first
 - **AND** the low-risk skip decision SHALL occur only after that recovery path reports no remaining applicable reconciliation
 
+#### Scenario: Candidate response is narration-only but claims a committed bookkeeping correction
+- **GIVEN** the candidate response has `actions: []`
+- **AND** the triggering turn or candidate narration explicitly claims that a currency or inventory correction has already been applied
+- **WHEN** validation routing evaluates the turn
+- **THEN** runtime SHALL reject `narration_only` skip eligibility for that turn
+
 #### Scenario: Pure narration-only turn with no recoverable state drift still skips normally
 - **GIVEN** the candidate response has `actions: []`
 - **AND** deterministic recovery finds no uniquely resolvable inventory or location repair opportunity
+- **AND** no explicit bookkeeping correction claim is present
 - **WHEN** validation routing evaluates the turn
 - **THEN** runtime MAY still skip the LLM validator as low-risk narration-only
 

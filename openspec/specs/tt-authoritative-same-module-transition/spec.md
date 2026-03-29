@@ -28,3 +28,9 @@ For same-module movement, runtime SHALL commit canonical location state successf
 - **WHEN** a same-module `transitionLocation` request fails validation or execution
 - **THEN** runtime SHALL preserve the prior canonical location state unchanged
 
+#### Scenario: Inferred sublocation commit applies before same-turn encounter creation
+- **WHEN** runtime infers a valid same-module sublocation commit from narrow descent reconciliation
+- **AND** the same turn also produces `createEncounter`
+- **THEN** runtime SHALL apply the inferred canonical location commit before encounter creation consumes location truth
+- **AND** encounter identity and downstream history SHALL anchor to the inferred destination rather than the stale parent room
+
