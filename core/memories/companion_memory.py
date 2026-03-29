@@ -6,7 +6,8 @@ Manages memory creation, retrieval, and persistence for companion NPCs.
 
 import json
 import os
-from typing import Dict, List, Optional, Any
+import re
+from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
 from collections import defaultdict
 
@@ -21,6 +22,26 @@ MEMORY_QUALITY_HEALTHY = 'healthy'
 MEMORY_QUALITY_SPARSE = 'sparse'
 MEMORY_QUALITY_DEGRADED = 'degraded_extract'
 MEMORY_QUALITY_MALFORMED = 'malformed'
+
+RELATIONSHIP_TRIGGER_LIMIT = 3
+ATTRIBUTION_LOG_LIMIT = 12
+GROUP_SHARED_ACTIONS = {
+    'agreed to accompany',
+    'joined the party',
+    'followed into danger',
+    'stood watch',
+    'kept watch',
+    'broke enemy ranks',
+    'fought fiercely',
+    'worked together',
+    'shared determination',
+    'stood united',
+}
+_PC_ALIAS_TITLES = {
+    'sir', 'lady', 'lord', 'captain', 'commander', 'ranger', 'scout', 'priest',
+    'cleric', 'wizard', 'mage', 'paladin', 'rogue', 'fighter', 'bard',
+    'druid', 'monk', 'warlock', 'sorcerer',
+}
 
 
 def _coerce_int(value: Any, default: int = 0) -> int:
@@ -44,6 +65,152 @@ def has_nonzero_emotional_state(emotional_state: Dict[str, Any]) -> bool:
             return False
 
     return False
+
+
+def _coerce_float(value: Any, default: float = 0.0) -> float:
+    """Coerce a value to float for relationship scores."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _build_global_state(emotional_state: Dict[str, Any], resentment: float) -> Dict[str, float]:
+    """Build bounded global state payload."""
+    return {
+        'trust': round(_coerce_float(emotional_state.get('trust', 0.0)), 3),
+        'power': round(_coerce_float(emotional_state.get('power', 0.0)), 3),
+        'intimacy': round(_coerce_float(emotional_state.get('intimacy', 0.0)), 3),
+        'fear': round(_coerce_float(emotional_state.get('fear', 0.0)), 3),
+        'respect': round(_coerce_float(emotional_state.get('respect', 0.0)), 3),
+        'resentment': round(max(0.0, min(1.0, _coerce_float(resentment, 0.0))), 3),
+    }
+
+
+def _canonicalize_pc_name(character_name: str) -> str:
+    """Normalize PC names using the shared character identity convention."""
+    name = str(character_name or '').strip().lower()
+    name = name.replace(' ', '_').replace("'", '_')
+    name = re.sub(r'[^a-z0-9_]', '_', name)
+    name = re.sub(r'_+', '_', name)
+    return name.strip('_')
+
+
+def _build_party_member_aliases(character_name: str) -> List[str]:
+    """Build bounded alias list for summary attribution."""
+    aliases = []
+    name = str(character_name or '').strip()
+    if not name:
+        return aliases
+
+    aliases.append(name)
+    normalized = name.replace('_', ' ').strip()
+    if normalized and normalized.lower() != name.lower():
+        aliases.append(normalized)
+
+    tokens = [token for token in re.split(r"[\s_]+", normalized) if token]
+    if tokens:
+        if tokens[0].lower() in _PC_ALIAS_TITLES and len(tokens) > 1:
+            aliases.append(tokens[1])
+        else:
+            aliases.append(tokens[0])
+        if len(tokens) > 1:
+            aliases.append(tokens[-1])
+
+    deduped = []
+    seen = set()
+    for alias in aliases:
+        alias_text = str(alias or '').strip()
+        alias_key = alias_text.lower()
+        if not alias_text or alias_key in seen:
+            continue
+        deduped.append(alias_text)
+        seen.add(alias_key)
+    return deduped
+
+
+def _build_party_member_identity(character_name: str) -> Optional[Dict[str, Any]]:
+    """Build canonical identity record for a party member."""
+    display_name = str(character_name or '').strip()
+    if not display_name:
+        return None
+
+    character_id = ''
+    try:
+        from utils.pc_manager import get_character_state
+
+        character_data = get_character_state(display_name, fields=['character_id', 'name']) or {}
+        character_id = str(character_data.get('character_id', '')).strip()
+        if character_data.get('name'):
+            display_name = str(character_data.get('name')).strip() or display_name
+    except Exception:
+        character_id = ''
+
+    edge_key = character_id or _canonicalize_pc_name(display_name)
+    if not edge_key:
+        return None
+
+    return {
+        'key': edge_key,
+        'display_name': display_name,
+        'character_id': character_id,
+        'normalized_name': _canonicalize_pc_name(display_name),
+        'aliases': _build_party_member_aliases(display_name),
+    }
+
+
+def build_companion_memory_participants(party_tracker_data: Dict[str, Any]) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """Build canonical companion NPC and party-member identity inputs."""
+    party_npcs: List[str] = []
+    party_member_identities: List[Dict[str, Any]] = []
+    seen_npcs = set()
+    seen_members = set()
+
+    try:
+        from utils.npc_name_canonicalizer import get_canonical_name
+    except Exception:
+        get_canonical_name = None
+
+    for npc in party_tracker_data.get('partyNPCs', []):
+        npc_name = npc.get('name', '') if isinstance(npc, dict) else str(npc)
+        npc_name = str(npc_name or '').strip()
+        if not npc_name:
+            continue
+        canonical_name = get_canonical_name(npc_name) if get_canonical_name else npc_name
+        if canonical_name and canonical_name not in seen_npcs:
+            party_npcs.append(canonical_name)
+            seen_npcs.add(canonical_name)
+
+    for member in party_tracker_data.get('partyMembers', []):
+        identity = _build_party_member_identity(str(member))
+        if not identity:
+            continue
+        if identity['key'] in seen_members:
+            continue
+        party_member_identities.append(identity)
+        seen_members.add(identity['key'])
+
+    return party_npcs, party_member_identities
+
+
+def _edge_has_signal(edge_data: Any) -> bool:
+    """Return True when a relationship edge contains usable continuity signal."""
+    if not isinstance(edge_data, dict):
+        return False
+
+    for field in ('trust', 'respect', 'intimacy', 'fear', 'resentment'):
+        if abs(_coerce_float(edge_data.get(field, 0.0))) > 0.0:
+            return True
+
+    recent_triggers = edge_data.get('recent_triggers', [])
+    return isinstance(recent_triggers, list) and len(recent_triggers) > 0
+
+
+def _has_usable_relationship_edges(edges: Any) -> bool:
+    """Return True when any stored relationship edge contains signal."""
+    if not isinstance(edges, dict):
+        return False
+    return any(_edge_has_signal(edge_data) for edge_data in edges.values())
 
 
 def build_recent_meaningful_event(location: str, actions: List[Any], timestamp: str) -> Dict[str, str]:
@@ -78,6 +245,7 @@ def classify_npc_memory_data(data: Dict[str, Any]) -> str:
     mention_count = data.get('mention_count', total_interactions)
     meaningful_count = data.get('meaningful_interaction_count', total_interactions)
     recent_events = data.get('recent_meaningful_events', [])
+    relationship_edges = data.get('relationship_edges', {})
 
     if not isinstance(npc_name, str) or not npc_name.strip():
         return MEMORY_QUALITY_MALFORMED
@@ -89,6 +257,8 @@ def classify_npc_memory_data(data: Dict[str, Any]) -> str:
         return MEMORY_QUALITY_MALFORMED
     if not isinstance(recent_events, list):
         return MEMORY_QUALITY_MALFORMED
+    if not isinstance(relationship_edges, dict):
+        return MEMORY_QUALITY_MALFORMED
 
     try:
         meaningful_count = int(meaningful_count)
@@ -97,7 +267,7 @@ def classify_npc_memory_data(data: Dict[str, Any]) -> str:
     except (TypeError, ValueError):
         return MEMORY_QUALITY_MALFORMED
 
-    if core_memories or has_nonzero_emotional_state(emotional_state):
+    if core_memories or has_nonzero_emotional_state(emotional_state) or _has_usable_relationship_edges(relationship_edges):
         return MEMORY_QUALITY_HEALTHY
     if meaningful_count > 0 or len(recent_events) > 0:
         return MEMORY_QUALITY_DEGRADED
@@ -109,14 +279,15 @@ def classify_npc_memory_data(data: Dict[str, Any]) -> str:
 class CompanionMemoryManager:
     """Manages the complete memory system for companion NPCs"""
     
-    def __init__(self, mode='append'):
+    def __init__(self, mode='append', data_dir: Optional[str] = None):
         """Initialize the memory management system
 
         Args:
             mode: 'append' to add to existing memories, 'refresh' to rebuild from scratch
+            data_dir: Optional override for companion memory storage path
         """
         self.mode = mode
-        self.data_dir = Path('data/companion_memories')
+        self.data_dir = Path(data_dir) if data_dir else Path('data/companion_memories')
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
         # Core components
@@ -128,6 +299,9 @@ class CompanionMemoryManager:
         self.npc_memories: Dict[str, List[CoreMemory]] = defaultdict(list)
         self.npc_emotional_states: Dict[str, EmotionalVector] = defaultdict(EmotionalVector)
         self.npc_behavioral_models: Dict[str, Dict[str, float]] = defaultdict(self._init_behavioral_model)
+        self.npc_global_resentment: Dict[str, float] = defaultdict(float)
+        self.npc_relationship_edges: Dict[str, Dict[str, Dict[str, Any]]] = defaultdict(dict)
+        self.relationship_attribution_logs: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
         self.mention_counts: Dict[str, int] = defaultdict(int)
         self.interaction_counts: Dict[str, int] = defaultdict(int)
         self.recent_meaningful_events: Dict[str, List[Dict[str, str]]] = defaultdict(list)
@@ -189,7 +363,8 @@ class CompanionMemoryManager:
 
     def process_journal_entry(self,
                             journal_entry: Dict[str, Any],
-                            party_npcs: Optional[List[str]] = None) -> Dict[str, CoreMemory]:
+                            party_npcs: Optional[List[str]] = None,
+                            party_members: Optional[List[Any]] = None) -> Dict[str, CoreMemory]:
         """Process a journal entry for memory extraction"""
 
         # Check for duplicate processing
@@ -218,6 +393,8 @@ class CompanionMemoryManager:
         if not party_npcs:
             debug("CompanionMemory", "No party NPCs provided, skipping memory processing")
             return {}
+
+        party_member_identities = self._prepare_party_member_identities(party_members)
 
         memories_created = {}
         state_changed = False
@@ -249,6 +426,48 @@ class CompanionMemoryManager:
             self.recent_meaningful_events[npc_name] = self.recent_meaningful_events[npc_name][-3:]
             state_changed = True
 
+            attributed_edges = self._attribute_actions_to_party_members(summary, npc_name, party_member_identities)
+            attributed_action_names = set()
+            edge_keys = []
+            for edge_key, edge_info in attributed_edges.items():
+                edge_keys.append(edge_key)
+                edge_actions = edge_info.get('actions', [])
+                for action in edge_actions:
+                    attributed_action_names.add(action.get_readable_action())
+                if edge_actions:
+                    self._update_relationship_edge_state(
+                        npc_name,
+                        edge_info,
+                        edge_actions,
+                        location,
+                        original_timestamp,
+                    )
+
+            group_actions = self._select_group_actions(actions, attributed_action_names)
+            if group_actions:
+                self._update_group_relationship_state(
+                    npc_name,
+                    group_actions,
+                    location,
+                    original_timestamp,
+                )
+
+            attribution_mode = 'group_only'
+            if attributed_edges and group_actions:
+                attribution_mode = 'mixed'
+            elif attributed_edges:
+                attribution_mode = 'edge_only'
+
+            self._record_attribution_event(
+                npc_name,
+                attribution_mode,
+                location,
+                original_timestamp,
+                edge_keys,
+                group_actions,
+                attributed_action_names,
+            )
+
             # Extract relevant excerpt
             excerpt = self._extract_excerpt(summary, npc_name)
 
@@ -276,10 +495,6 @@ class CompanionMemoryManager:
                             days_passed = relative_day - last_memory.relative_day
                             if days_passed > 0:
                                 self.apply_emotional_decay(self.npc_emotional_states[npc_name], days_passed)
-
-                    # Update emotional state
-                    for emotion, value in memory.emotional_vector.items():
-                        self.npc_emotional_states[npc_name].add(emotion, value)
 
                     # Update behavioral model
                     self._update_behavioral_model(npc_name, actions)
@@ -320,8 +535,6 @@ class CompanionMemoryManager:
     
     def _extract_excerpt(self, text: str, npc_name: str, context_chars: int = 100) -> str:
         """Extract relevant excerpt mentioning NPC"""
-        import re
-        
         match = re.search(rf'\b{npc_name}\b', text, re.IGNORECASE)
         if match:
             start = max(0, match.start() - context_chars)
@@ -336,7 +549,258 @@ class CompanionMemoryManager:
             
             return excerpt
         return text[:200] + '...' if len(text) > 200 else text
-    
+
+    def _prepare_party_member_identities(self, party_members: Optional[List[Any]]) -> List[Dict[str, Any]]:
+        """Normalize party-member identity input for relationship attribution."""
+        identities = []
+        seen = set()
+
+        for member in party_members or []:
+            if isinstance(member, dict):
+                identity = dict(member)
+                display_name = str(identity.get('display_name') or identity.get('name') or '').strip()
+                if not display_name:
+                    continue
+                identity.setdefault('display_name', display_name)
+                identity.setdefault('normalized_name', _canonicalize_pc_name(display_name))
+                identity.setdefault('character_id', str(identity.get('character_id', '')).strip())
+                identity.setdefault('key', identity.get('character_id') or identity['normalized_name'])
+                identity.setdefault('aliases', _build_party_member_aliases(display_name))
+            else:
+                identity = _build_party_member_identity(str(member))
+
+            if not identity:
+                continue
+
+            key = str(identity.get('key', '')).strip()
+            if not key or key in seen:
+                continue
+            identities.append(identity)
+            seen.add(key)
+
+        return identities
+
+    def _extract_attribution_window(self, text: str, alias: str, radius: int = 90) -> Optional[str]:
+        """Extract a local attribution window around a party-member alias."""
+        if not alias:
+            return None
+
+        match = re.search(rf'\b{re.escape(alias)}\b', text, re.IGNORECASE)
+        if not match:
+            return None
+
+        start = max(0, match.start() - radius)
+        end = min(len(text), match.end() + radius)
+        return text[start:end].strip()
+
+    def _summarize_action_names(self, actions: List[Any]) -> List[str]:
+        """Return bounded unique readable action names."""
+        summaries = []
+        seen = set()
+        for action in actions:
+            readable = str(action.get_readable_action() or '').strip()
+            if not readable or readable in seen:
+                continue
+            summaries.append(readable)
+            seen.add(readable)
+        return summaries
+
+    def _attribute_actions_to_party_members(self,
+                                            summary: str,
+                                            npc_name: str,
+                                            party_member_identities: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """Attribute companion-memory actions to specific PCs when evidence is strong."""
+        attributed: Dict[str, Dict[str, Any]] = {}
+        if not party_member_identities:
+            return attributed
+
+        sentence_candidates = re.split(r'(?<=[.!?])\s+', summary)
+        candidate_fragments = [fragment.strip() for fragment in sentence_candidates if fragment.strip()]
+        candidate_fragments.append(summary)
+
+        for identity in party_member_identities:
+            best_actions = []
+            best_score = 0
+            best_window = ''
+
+            for alias in identity.get('aliases', []):
+                for fragment in candidate_fragments:
+                    if not re.search(rf'\b{re.escape(alias)}\b', fragment, re.IGNORECASE):
+                        continue
+                    if not re.search(rf'\b{re.escape(npc_name)}\b', fragment, re.IGNORECASE):
+                        continue
+
+                    window = self._extract_attribution_window(fragment, alias) or fragment
+                    window_actions = self.action_parser.parse_entry(window, npc_name)
+                    if not window_actions:
+                        continue
+
+                    specific_actions = []
+                    for action in window_actions:
+                        if action.get_readable_action() in GROUP_SHARED_ACTIONS:
+                            continue
+                        specific_actions.append(action)
+                    if not specific_actions:
+                        continue
+
+                    score = len(specific_actions)
+                    if re.search(rf'\b{re.escape(alias)}\b', window, re.IGNORECASE):
+                        score += 1
+
+                    if score > best_score:
+                        best_actions = specific_actions
+                        best_score = score
+                        best_window = window
+
+            if best_actions:
+                attributed[identity['key']] = {
+                    'key': identity['key'],
+                    'display_name': identity['display_name'],
+                    'character_id': identity.get('character_id', ''),
+                    'actions': best_actions,
+                    'window': best_window,
+                }
+
+        return attributed
+
+    def _select_group_actions(self,
+                              all_actions: List[Any],
+                              attributed_action_names: set) -> List[Any]:
+        """Keep group continuity actions plus unassigned actions."""
+        group_actions = []
+        seen = set()
+        for action in all_actions:
+            readable = action.get_readable_action()
+            if not readable:
+                continue
+            if readable in seen:
+                continue
+            if readable in GROUP_SHARED_ACTIONS or readable not in attributed_action_names:
+                group_actions.append(action)
+                seen.add(readable)
+        return group_actions
+
+    def _calculate_resentment_delta(self, actions: List[Any]) -> float:
+        """Approximate resentment drift from parsed actions."""
+        resentment_delta = 0.0
+        for action in actions:
+            trust_delta = _coerce_float(action.emotional_impact.get('trust', 0.0))
+            respect_delta = _coerce_float(action.emotional_impact.get('respect', 0.0))
+            fear_delta = _coerce_float(action.emotional_impact.get('fear', 0.0))
+
+            if action.action_type == 'negative':
+                resentment_delta += abs(min(trust_delta, 0.0))
+                resentment_delta += abs(min(respect_delta, 0.0)) * 0.75
+                resentment_delta += max(fear_delta, 0.0) * 0.4
+            elif action.action_type == 'positive':
+                resentment_delta -= max(trust_delta, 0.0) * 0.25
+                resentment_delta -= max(respect_delta, 0.0) * 0.2
+
+        return resentment_delta
+
+    def _update_group_relationship_state(self,
+                                         npc_name: str,
+                                         actions: List[Any],
+                                         location: str,
+                                         timestamp: str) -> None:
+        """Update group continuity state for ambiguous or party-wide beats."""
+        if not actions:
+            return
+
+        for action in actions:
+            for emotion, value in action.emotional_impact.items():
+                self.npc_emotional_states[npc_name].add(emotion, value)
+
+        resentment = self.npc_global_resentment.get(npc_name, 0.0)
+        resentment += self._calculate_resentment_delta(actions)
+        self.npc_global_resentment[npc_name] = max(0.0, min(1.0, resentment))
+
+    def _get_relationship_edge_state(self,
+                                     npc_name: str,
+                                     edge_key: str,
+                                     display_name: str,
+                                     character_id: str) -> Dict[str, Any]:
+        """Get or initialize per-PC relationship edge state."""
+        existing = self.npc_relationship_edges[npc_name].get(edge_key)
+        if isinstance(existing, dict):
+            existing.setdefault('display_name', display_name)
+            existing.setdefault('character_id', character_id)
+            existing.setdefault('recent_triggers', [])
+            return existing
+
+        edge_state = {
+            'display_name': display_name,
+            'character_id': character_id,
+            'trust': 0.0,
+            'respect': 0.0,
+            'intimacy': 0.0,
+            'fear': 0.0,
+            'resentment': 0.0,
+            'recent_triggers': [],
+            'last_significant_interaction': '',
+        }
+        self.npc_relationship_edges[npc_name][edge_key] = edge_state
+        return edge_state
+
+    def _update_relationship_edge_state(self,
+                                        npc_name: str,
+                                        edge_info: Dict[str, Any],
+                                        actions: List[Any],
+                                        location: str,
+                                        timestamp: str) -> None:
+        """Apply specific-PC relationship edge updates."""
+        edge_state = self._get_relationship_edge_state(
+            npc_name,
+            edge_info['key'],
+            edge_info.get('display_name', edge_info['key']),
+            edge_info.get('character_id', ''),
+        )
+
+        for action in actions:
+            edge_state['trust'] = max(-1.0, min(1.0, _coerce_float(edge_state.get('trust', 0.0)) + _coerce_float(action.emotional_impact.get('trust', 0.0))))
+            edge_state['respect'] = max(-1.0, min(1.0, _coerce_float(edge_state.get('respect', 0.0)) + _coerce_float(action.emotional_impact.get('respect', 0.0))))
+            edge_state['intimacy'] = max(0.0, min(1.0, _coerce_float(edge_state.get('intimacy', 0.0)) + _coerce_float(action.emotional_impact.get('intimacy', 0.0))))
+            edge_state['fear'] = max(0.0, min(1.0, _coerce_float(edge_state.get('fear', 0.0)) + _coerce_float(action.emotional_impact.get('fear', 0.0))))
+
+        resentment = _coerce_float(edge_state.get('resentment', 0.0))
+        resentment += self._calculate_resentment_delta(actions)
+        edge_state['resentment'] = round(max(0.0, min(1.0, resentment)), 3)
+        edge_state['last_significant_interaction'] = timestamp
+
+        triggers = edge_state.get('recent_triggers', [])
+        if not isinstance(triggers, list):
+            triggers = []
+        for action_name in self._summarize_action_names(actions):
+            trigger_text = f"{action_name}@{location[:40]}"
+            if trigger_text in triggers:
+                continue
+            triggers.append(trigger_text)
+        edge_state['recent_triggers'] = triggers[-RELATIONSHIP_TRIGGER_LIMIT:]
+
+    def _record_attribution_event(self,
+                                  npc_name: str,
+                                  mode: str,
+                                  location: str,
+                                  timestamp: str,
+                                  edge_keys: List[str],
+                                  group_actions: List[Any],
+                                  attributed_action_names: set) -> None:
+        """Record bounded attribution diagnostics for rebuild and tests."""
+        log_entry = {
+            'timestamp': timestamp,
+            'location': location,
+            'mode': mode,
+            'edge_keys': sorted(edge_keys),
+            'group_actions': self._summarize_action_names(group_actions),
+            'edge_actions': sorted(attributed_action_names),
+        }
+        self.relationship_attribution_logs[npc_name].append(log_entry)
+        self.relationship_attribution_logs[npc_name] = self.relationship_attribution_logs[npc_name][-ATTRIBUTION_LOG_LIMIT:]
+        debug(
+            "CompanionMemory",
+            f"REL_EDGE npc={npc_name} mode={mode} edges={','.join(sorted(edge_keys)) or 'none'}",
+        )
+
     def _update_behavioral_model(self, npc_name: str, actions: List[Any]) -> None:
         """Update behavioral eigenvector model based on actions"""
         model = self.npc_behavioral_models[npc_name]
@@ -418,6 +882,12 @@ class CompanionMemoryManager:
             'meaningful_interaction_count': self.interaction_counts.get(npc_name, 0),
             'core_memories': len(self.npc_memories.get(npc_name, [])),
             'emotional_state': self.npc_emotional_states[npc_name].to_dict() if npc_name in self.npc_emotional_states else {},
+            'npc_global_state': _build_global_state(
+                self.npc_emotional_states[npc_name].to_dict() if npc_name in self.npc_emotional_states else {},
+                self.npc_global_resentment.get(npc_name, 0.0),
+            ),
+            'relationship_edges': self.npc_relationship_edges.get(npc_name, {}),
+            'relationship_attribution_log': self.relationship_attribution_logs.get(npc_name, []),
             'behavioral_model': self.npc_behavioral_models.get(npc_name, {}),
             'relationship_status': self._determine_relationship(npc_name),
             'strongest_memory': None,
@@ -432,6 +902,7 @@ class CompanionMemoryManager:
             'mention_count': profile['mention_count'],
             'meaningful_interaction_count': profile['meaningful_interaction_count'],
             'recent_meaningful_events': profile['recent_meaningful_events'],
+            'relationship_edges': profile['relationship_edges'],
         })
         
         # Add strongest memory if exists
@@ -484,6 +955,9 @@ class CompanionMemoryManager:
         npc_names = set(self.npc_memories.keys())
         npc_names.update(self.npc_emotional_states.keys())
         npc_names.update(self.npc_behavioral_models.keys())
+        npc_names.update(self.npc_global_resentment.keys())
+        npc_names.update(self.npc_relationship_edges.keys())
+        npc_names.update(self.relationship_attribution_logs.keys())
         npc_names.update(self.interaction_counts.keys())
         npc_names.update(self.mention_counts.keys())
         npc_names.update(self.recent_meaningful_events.keys())
@@ -503,6 +977,8 @@ class CompanionMemoryManager:
         total_interactions = self.interaction_counts.get(npc_name, 0)
         mention_count = self.mention_counts.get(npc_name, total_interactions)
         recent_events = self.recent_meaningful_events.get(npc_name, [])
+        relationship_edges = self.npc_relationship_edges.get(npc_name, {})
+        attribution_log = self.relationship_attribution_logs.get(npc_name, [])
 
         filename = self.data_dir / f"{npc_name.lower().replace(' ', '_')}_memories.json"
 
@@ -510,6 +986,9 @@ class CompanionMemoryManager:
             'npc_name': npc_name,
             'core_memories': core_memories,
             'current_emotional_state': emotional_state,
+            'npc_global_state': _build_global_state(emotional_state, self.npc_global_resentment.get(npc_name, 0.0)),
+            'relationship_edges': relationship_edges,
+            'relationship_attribution_log': attribution_log,
             'behavioral_model': behavioral_model,
             'total_interactions': total_interactions,
             'meaningful_interaction_count': total_interactions,
@@ -548,11 +1027,19 @@ class CompanionMemoryManager:
         # Load emotional state
         if 'current_emotional_state' in data:
             self.npc_emotional_states[npc_name].from_dict(data['current_emotional_state'])
-        
+
+        npc_global_state = data.get('npc_global_state', {})
+        if isinstance(npc_global_state, dict):
+            self.npc_global_resentment[npc_name] = max(0.0, min(1.0, _coerce_float(npc_global_state.get('resentment', 0.0))))
+
         # Load behavioral model
         if 'behavioral_model' in data:
             self.npc_behavioral_models[npc_name] = data['behavioral_model']
-        
+
+        relationship_edges = data.get('relationship_edges', {})
+        if isinstance(relationship_edges, dict):
+            self.npc_relationship_edges[npc_name] = relationship_edges
+
         # Load interaction counts
         total_interactions = _coerce_int(data.get('meaningful_interaction_count', data.get('total_interactions', 0)))
         mention_count = _coerce_int(data.get('mention_count', total_interactions), total_interactions)
@@ -562,7 +1049,11 @@ class CompanionMemoryManager:
         recent_events = data.get('recent_meaningful_events', [])
         if isinstance(recent_events, list):
             self.recent_meaningful_events[npc_name] = recent_events[-3:]
-        
+
+        attribution_log = data.get('relationship_attribution_log', [])
+        if isinstance(attribution_log, list):
+            self.relationship_attribution_logs[npc_name] = attribution_log[-ATTRIBUTION_LOG_LIMIT:]
+
         debug("CompanionMemory", f"Loaded {len(self.npc_memories[npc_name])} memories for {npc_name}")
     
     def save_configuration(self) -> None:
@@ -616,6 +1107,15 @@ class CompanionMemoryManager:
         
         if npc_name in self.npc_behavioral_models:
             del self.npc_behavioral_models[npc_name]
+
+        if npc_name in self.npc_global_resentment:
+            del self.npc_global_resentment[npc_name]
+
+        if npc_name in self.npc_relationship_edges:
+            del self.npc_relationship_edges[npc_name]
+
+        if npc_name in self.relationship_attribution_logs:
+            del self.relationship_attribution_logs[npc_name]
         
         if npc_name in self.interaction_counts:
             del self.interaction_counts[npc_name]
@@ -639,6 +1139,9 @@ class CompanionMemoryManager:
         self.npc_memories.clear()
         self.npc_emotional_states.clear()
         self.npc_behavioral_models.clear()
+        self.npc_global_resentment.clear()
+        self.npc_relationship_edges.clear()
+        self.relationship_attribution_logs.clear()
         self.mention_counts.clear()
         self.interaction_counts.clear()
         self.recent_meaningful_events.clear()

@@ -115,6 +115,64 @@ def compress_memory(memory: Dict) -> Dict:
 
     return compressed
 
+
+def _compress_global_state(npc_data: Dict) -> List[float]:
+    """Compress bounded NPC-global state."""
+    global_state = npc_data.get('npc_global_state') or {}
+    if not isinstance(global_state, dict):
+        global_state = {}
+
+    return [
+        round(global_state.get('trust', npc_data.get('current_emotional_state', {}).get('trust', 0.0)), 2),
+        round(global_state.get('power', npc_data.get('current_emotional_state', {}).get('power', 0.0)), 2),
+        round(global_state.get('intimacy', npc_data.get('current_emotional_state', {}).get('intimacy', 0.0)), 2),
+        round(global_state.get('fear', npc_data.get('current_emotional_state', {}).get('fear', 0.0)), 2),
+        round(global_state.get('respect', npc_data.get('current_emotional_state', {}).get('respect', 0.0)), 2),
+        round(global_state.get('resentment', 0.0), 2),
+    ]
+
+
+def _compress_relationship_edges(npc_data: Dict) -> List[Dict[str, Any]]:
+    """Compress per-PC relationship edges for bounded narrator projection."""
+    compressed_edges = []
+    relationship_edges = npc_data.get('relationship_edges', {})
+    if not isinstance(relationship_edges, dict):
+        return compressed_edges
+
+    for edge_key, edge_data in relationship_edges.items():
+        if not isinstance(edge_data, dict):
+            continue
+
+        compact = {
+            'k': str(edge_key),
+            'd': str(edge_data.get('display_name', edge_key)),
+            'e': [
+                round(edge_data.get('trust', 0.0), 2),
+                round(edge_data.get('respect', 0.0), 2),
+                round(edge_data.get('intimacy', 0.0), 2),
+                round(edge_data.get('fear', 0.0), 2),
+                round(edge_data.get('resentment', 0.0), 2),
+            ],
+        }
+
+        last_interaction = str(edge_data.get('last_significant_interaction', '')).strip()
+        if last_interaction:
+            compact['lt'] = last_interaction
+
+        recent_triggers = edge_data.get('recent_triggers', [])
+        if isinstance(recent_triggers, list):
+            trimmed = []
+            for trigger in recent_triggers[-2:]:
+                trigger_text = str(trigger).strip()
+                if trigger_text:
+                    trimmed.append(trigger_text[:80])
+            if trimmed:
+                compact['rt'] = trimmed
+
+        compressed_edges.append(compact)
+
+    return compressed_edges
+
 def compress_npc_data(npc_data: Dict) -> Dict:
     """Compress full NPC memory data"""
     compressed = {
@@ -129,6 +187,7 @@ def compress_npc_data(npc_data: Dict) -> Dict:
             round(npc_data['current_emotional_state'].get('fear', 0), 2),
             round(npc_data['current_emotional_state'].get('respect', 0), 2)
         ],
+        "gs": _compress_global_state(npc_data),
         "bm": [  # Behavioral model as array
             round(npc_data['behavioral_model'].get('protector_vs_exploiter', 0), 1),
             round(npc_data['behavioral_model'].get('consistent_vs_chaotic', 0), 1),
@@ -138,6 +197,10 @@ def compress_npc_data(npc_data: Dict) -> Dict:
         ],
         "mem": [compress_memory(m) for m in npc_data['core_memories']]
     }
+
+    relationship_edges = _compress_relationship_edges(npc_data)
+    if relationship_edges:
+        compressed['re'] = relationship_edges
 
     recent_events = npc_data.get('recent_meaningful_events', [])
     if recent_events:
@@ -169,6 +232,8 @@ def create_compressed_file():
             "bm": ["protector", "consistent", "generous", "truthful", "peaceful"],
             "bm_rng": "-1..+1 (float)",
             "q": ["healthy", "sparse", "degraded_extract", "malformed"],
+            "gs": "group state [trust,power,intimacy,fear,respect,resentment]",
+            "re": "relationship edges [{k,d,e[trust,respect,intimacy,fear,resentment],lt,rt}]",
             "m": "memory salience (0..2+)",
             "dr": "decay_resistance (0..1, omit=1)",
             "v": "emotion_velocity magnitude (0..~2)",
@@ -225,9 +290,12 @@ def create_compressed_file():
     used_actions = set()
     has_cascade_types = False
     has_decay_resistance = False
+    has_relationship_edges = False
 
     # Scan through all NPCs to see what's actually used
     for npc in npcs:
+        if npc.get('re'):
+            has_relationship_edges = True
         for mem in npc.get('mem', []):
             # Collect used action codes
             for action_code in mem.get('a', []):
@@ -261,6 +329,10 @@ def create_compressed_file():
 
     if total_memories > 10:  # Include behavioral model for very large datasets
         minimal_spec["bm"] = ["protector", "consistent", "generous", "truthful", "peaceful"]
+
+    if has_relationship_edges:
+        minimal_spec["gs"] = ["trust", "power", "intimacy", "fear", "respect", "resentment"]
+        minimal_spec["re"] = ["key", "display", "edge_state", "last_ts", "recent_triggers"]
 
     if has_cascade_types:
         minimal_spec["ct"] = ["CONFIRMATION", "REVERSAL", "COMPLEXITY", None]
@@ -328,6 +400,33 @@ def decompress_memories(compressed_path: str = "data/companion_memories/memories
             decompressed['memory_quality'] = npc['q']
         if 'rm' in npc:
             decompressed['recent_meaningful_events'] = npc['rm']
+        if 'gs' in npc and len(npc['gs']) >= 6:
+            decompressed['npc_global_state'] = {
+                'trust': npc['gs'][0],
+                'power': npc['gs'][1],
+                'intimacy': npc['gs'][2],
+                'fear': npc['gs'][3],
+                'respect': npc['gs'][4],
+                'resentment': npc['gs'][5],
+            }
+        if 're' in npc:
+            decompressed['relationship_edges'] = {}
+            for edge in npc['re']:
+                if not isinstance(edge, dict) or 'k' not in edge or 'e' not in edge:
+                    continue
+                edge_values = edge.get('e', [])
+                if len(edge_values) < 5:
+                    continue
+                decompressed['relationship_edges'][edge['k']] = {
+                    'display_name': edge.get('d', edge['k']),
+                    'trust': edge_values[0],
+                    'respect': edge_values[1],
+                    'intimacy': edge_values[2],
+                    'fear': edge_values[3],
+                    'resentment': edge_values[4],
+                    'last_significant_interaction': edge.get('lt', ''),
+                    'recent_triggers': edge.get('rt', []),
+                }
 
         # Decompress memories
         for mem in npc['mem']:

@@ -2,8 +2,10 @@
 """Regression coverage for companion memory parser hardening."""
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -15,6 +17,7 @@ from core.ai.conversation_utils import (
 )
 from core.memories.action_parser import ActionParser
 from core.memories.companion_memory import (
+    CompanionMemoryManager,
     MEMORY_QUALITY_DEGRADED,
     MEMORY_QUALITY_HEALTHY,
     MEMORY_QUALITY_MALFORMED,
@@ -158,6 +161,37 @@ class TestRawMemoryQualityClassification(unittest.TestCase):
 
         self.assertEqual(quality, MEMORY_QUALITY_HEALTHY)
 
+    def test_relationship_edges_make_packet_healthy(self):
+        quality = classify_npc_memory_data({
+            "npc_name": "Blarg",
+            "core_memories": [],
+            "current_emotional_state": {
+                "trust": 0.0,
+                "power": 0.0,
+                "intimacy": 0.0,
+                "fear": 0.0,
+                "respect": 0.0,
+            },
+            "behavioral_model": {},
+            "total_interactions": 2,
+            "mention_count": 2,
+            "meaningful_interaction_count": 2,
+            "recent_meaningful_events": [],
+            "relationship_edges": {
+                "redax": {
+                    "display_name": "Redax",
+                    "trust": 0.4,
+                    "respect": 0.3,
+                    "intimacy": 0.0,
+                    "fear": 0.0,
+                    "resentment": 0.0,
+                    "recent_triggers": ["faced coercion@Ma's Watering Hole"],
+                }
+            },
+        })
+
+        self.assertEqual(quality, MEMORY_QUALITY_HEALTHY)
+
     def test_bad_shapes_classify_as_malformed(self):
         quality = classify_npc_memory_data({
             "npc_name": "Blarg",
@@ -180,6 +214,21 @@ class TestRawMemoryQualityClassification(unittest.TestCase):
 
 
 class TestCompressedPacketFallback(unittest.TestCase):
+    def test_edge_only_packet_classifies_as_healthy(self):
+        packet = {
+            "n": "Blarg",
+            "ti": 2,
+            "mc": 2,
+            "es": [0.0, 0.0, 0.0, 0.0, 0.0],
+            "bm": [0.0, 0.0, 0.0, 0.0, 0.0],
+            "mem": [],
+            "re": [
+                {"k": "redax", "d": "Redax", "e": [0.4, 0.3, 0.0, 0.0, 0.0], "rt": ["faced coercion@Ma's Watering Hole"]}
+            ],
+        }
+
+        self.assertEqual(_classify_companion_memory_packet(packet), MEMORY_QUALITY_HEALTHY)
+
     def test_sparse_packet_projects_bounded_fallback(self):
         packet = {
             "n": "Blarg",
@@ -245,6 +294,122 @@ class TestCompressedPacketFallback(unittest.TestCase):
 
         self.assertEqual(_classify_companion_memory_packet(packet), MEMORY_QUALITY_MALFORMED)
         self.assertIsNone(_project_companion_memory_packet(packet))
+
+    def test_active_pc_projection_prefers_matching_edge(self):
+        packet = {
+            "n": "Blarg",
+            "ti": 4,
+            "mc": 4,
+            "es": [0.0, 0.0, 0.0, 0.0, 0.0],
+            "bm": [0.0, 0.0, 0.0, 0.0, 0.0],
+            "mem": [],
+            "re": [
+                {"k": "redax", "d": "Redax", "e": [0.4, 0.3, 0.0, 0.2, 0.0], "rt": ["faced coercion@Ma's Watering Hole"]},
+                {"k": "lidda_underbough", "d": "Lidda Underbough", "e": [-0.3, -0.1, 0.0, 0.2, 0.6], "rt": ["secret exposed@Ma's Watering Hole"]},
+            ],
+        }
+
+        projected = _project_companion_memory_packet(
+            packet,
+            active_pc_identity={"key": "redax", "normalized_name": "redax"},
+        )
+
+        self.assertIn("ap", projected)
+        self.assertIn("Redax", projected["ap"])
+        self.assertIn("sp", projected)
+        self.assertIn("Lidda", projected["sp"])
+
+    def test_single_player_projection_uses_sole_edge_without_active_identity(self):
+        packet = {
+            "n": "Blarg",
+            "ti": 1,
+            "mc": 1,
+            "es": [0.0, 0.0, 0.0, 0.0, 0.0],
+            "bm": [0.0, 0.0, 0.0, 0.0, 0.0],
+            "mem": [],
+            "re": [
+                {"k": "solo-pc-id", "d": "Redax", "e": [0.5, 0.3, 0.0, 0.0, 0.0], "rt": ["performed rescue@Crypt" ]}
+            ],
+        }
+
+        projected = _project_companion_memory_packet(packet)
+
+        self.assertIn("ap", projected)
+        self.assertIn("Redax", projected["ap"])
+
+
+class TestRelationshipEdgePersistence(unittest.TestCase):
+    def _build_manager(self):
+        temp_dir = tempfile.TemporaryDirectory()
+        manager = CompanionMemoryManager(mode='refresh', data_dir=temp_dir.name)
+        self.addCleanup(temp_dir.cleanup)
+        return manager
+
+    def test_mixed_relationship_entry_creates_distinct_edges(self):
+        manager = self._build_manager()
+        entry = {
+            "date": "1492 Springmonth 2",
+            "time": "10:16:00",
+            "location": "Ma's Watering Hole",
+            "summary": BLARG_LEVERAGE_EXCERPT,
+        }
+        party_members = [
+            {"display_name": "Lidda Underbough", "key": "lidda_underbough", "normalized_name": "lidda_underbough", "aliases": ["Lidda Underbough", "Lidda"]},
+            {"display_name": "Redax", "key": "redax", "normalized_name": "redax", "aliases": ["Redax"]},
+        ]
+
+        manager.process_journal_entry(entry, ["Blarg"], party_members=party_members)
+
+        edges = manager.npc_relationship_edges["Blarg"]
+        self.assertIn("lidda_underbough", edges)
+        self.assertIn("redax", edges)
+        self.assertGreater(edges["lidda_underbough"]["resentment"], 0.0)
+        self.assertGreater(edges["redax"]["fear"], 0.0)
+        self.assertGreater(manager.npc_emotional_states["Blarg"].to_dict()["trust"], 0.0)
+        self.assertEqual(manager.relationship_attribution_logs["Blarg"][-1]["mode"], "mixed")
+
+    def test_ambiguous_group_teamwork_stays_group_only(self):
+        manager = self._build_manager()
+        entry = {
+            "date": "1492 Springmonth 3",
+            "time": "11:00:00",
+            "location": "Cathedral Stairs",
+            "summary": BLARG_FOLLOW_EXCERPT,
+        }
+        party_members = [
+            {"display_name": "Redax", "key": "redax", "normalized_name": "redax", "aliases": ["Redax"]},
+            {"display_name": "Xorn", "key": "xorn", "normalized_name": "xorn", "aliases": ["Xorn"]},
+            {"display_name": "Athelon", "key": "athelon", "normalized_name": "athelon", "aliases": ["Athelon"]},
+            {"display_name": "Lidda Underbough", "key": "lidda_underbough", "normalized_name": "lidda_underbough", "aliases": ["Lidda Underbough", "Lidda"]},
+        ]
+
+        manager.process_journal_entry(entry, ["Blarg"], party_members=party_members)
+
+        self.assertEqual(manager.npc_relationship_edges.get("Blarg", {}), {})
+        self.assertGreater(manager.npc_emotional_states["Blarg"].to_dict()["trust"], 0.0)
+        self.assertEqual(manager.relationship_attribution_logs["Blarg"][-1]["mode"], "group_only")
+
+    @patch('utils.pc_manager.get_character_state')
+    @patch('utils.npc_name_canonicalizer.get_canonical_name')
+    def test_character_id_becomes_edge_key(self, mock_canonical_npc, mock_get_character_state):
+        from core.memories.companion_memory import build_companion_memory_participants
+
+        mock_canonical_npc.side_effect = lambda name: name
+        mock_get_character_state.side_effect = lambda name, fields=None: {
+            "name": name,
+            "character_id": "pc-redax-id" if name == "Sir Redax" else "",
+        }
+
+        party_tracker = {
+            "partyNPCs": [{"name": "Blarg"}],
+            "partyMembers": ["Sir Redax"],
+        }
+
+        party_npcs, party_members = build_companion_memory_participants(party_tracker)
+
+        self.assertEqual(party_npcs, ["Blarg"])
+        self.assertEqual(party_members[0]["key"], "pc-redax-id")
+        self.assertIn("Redax", party_members[0]["aliases"])
 
 
 if __name__ == "__main__":

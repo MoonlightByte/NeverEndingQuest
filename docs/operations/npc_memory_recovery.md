@@ -43,11 +43,13 @@ python3 scripts/memory_management/compress_memories.py
 After a successful rebuild:
 
 - meaningful companion interactions should be re-derived from `journal.json`,
+- per-PC relationship edges should be regenerated when journal evidence clearly ties a companion beat to a specific PC,
 - degraded extraction cases should either produce usable memories or bounded fallback context,
 - only truly malformed packets should remain excluded from narrator context.
 
 ## Notes
 
 - This recovery flow does not require `memory.db`.
-- This first slice does not yet add per-PC relationship edges.
+- This recovery flow now rebuilds additive file-backed per-PC relationship edges for the live tabletop path.
+- Deeper relationship retrieval, scoring, and broader memory evolution move to `plans/version-2/memory.md` after this Phase 2A slice.
 - If a companion still remains degraded after rebuild, inspect the relevant journal phrasing and extend parser coverage before assuming the save data is corrupt.

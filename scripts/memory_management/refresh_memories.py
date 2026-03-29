@@ -12,8 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from core.memories.companion_memory import CompanionMemoryManager
-from utils.npc_name_canonicalizer import get_canonical_name
+from core.memories.companion_memory import CompanionMemoryManager, build_companion_memory_participants
 
 def refresh_all_memories():
     """Process entire journal from scratch, replacing all existing memories"""
@@ -38,24 +37,14 @@ def refresh_all_memories():
     entries = journal_data.get('entries', [])
     print(f"Found {len(entries)} journal entries to process\n")
 
-    # Get party NPCs from party_tracker and canonicalize names
+    # Get party NPCs and party-member identities from party tracker
     party_npcs = []
+    party_members = []
     party_tracker_path = Path('party_tracker.json')
     if party_tracker_path.exists():
         with open(party_tracker_path, 'r') as f:
             party_data = json.load(f)
-            party_npc_list = party_data.get('partyNPCs', [])
-            if party_npc_list:
-                for npc in party_npc_list:
-                    if isinstance(npc, dict):
-                        name = npc.get('name', '')
-                    else:
-                        name = str(npc)
-                    if name:
-                        # Use AI-based name canonicalization (handles all D&D naming conventions)
-                        canonical_name = get_canonical_name(name)
-                        if canonical_name and canonical_name not in party_npcs:
-                            party_npcs.append(canonical_name)
+            party_npcs, party_members = build_companion_memory_participants(party_data)
 
     if not party_npcs:
         print("ERROR: No party NPCs found in party_tracker.json")
@@ -76,7 +65,7 @@ def refresh_all_memories():
             print(f"Processing entries {i+1}-{min(i+10, len(entries))}...", end="\r")
 
         # Process entry
-        memories = memory_manager.process_journal_entry(entry, party_npcs)
+        memories = memory_manager.process_journal_entry(entry, party_npcs, party_members=party_members)
 
         # Track day changes
         if memory_manager.day_counter != current_day:
@@ -148,6 +137,22 @@ def refresh_all_memories():
                 memory = profile['strongest_memory']
                 actions = ', '.join(memory.get('trigger_actions', [])[:2])
                 print(f"  Strongest Memory: {actions} at {memory.get('location')} (v={memory.get('emotional_velocity'):.2f})")
+
+            relationship_edges = profile.get('relationship_edges', {})
+            if relationship_edges:
+                print("  Relationship Edges:")
+                for edge_key, edge_data in sorted(relationship_edges.items()):
+                    if not isinstance(edge_data, dict):
+                        continue
+                    display_name = edge_data.get('display_name', edge_key)
+                    edge_parts = []
+                    for field in ('trust', 'respect', 'intimacy', 'fear', 'resentment'):
+                        value = float(edge_data.get(field, 0.0))
+                        if abs(value) > 0.05:
+                            edge_parts.append(f"{field}={value:.2f}")
+                    if not edge_parts:
+                        edge_parts.append('low-signal')
+                    print(f"    - {display_name}: {', '.join(edge_parts)}")
 
     # Check for duplicates
     print("\n" + "-" * 40)

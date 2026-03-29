@@ -1021,6 +1021,40 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Companion Relationship Edges + GUI Label/Layout Hardening (COMPLETED - 2026-03-30)
+
+**Status:** COMPLETED - companion memory now keeps per-PC relationship edges with active-PC-aware projection, while GUI chat/header display was hardened for readable character/location labels and stable layout.
+
+**Objective:**
+- Preserve companion relationship continuity across multiple PCs without collapsing to party-wide generic sentiment only.
+- Improve GUI readability by normalizing slug-like chat speaker labels (for example `lidda_underbough`) to title-case display names while keeping canonical runtime identifiers unchanged.
+- Prevent character/location header overflow regressions that hide the input panel or spill outside boxed regions.
+
+**Implementation Summary:**
+- `core/memories/companion_memory.py`
+  - Added party-member identity mapping helpers and per-PC relationship-edge storage (`relationship_edges`) with bounded trigger history.
+  - Added group-vs-edge attribution handling, resentment drift tracking, and persisted attribution diagnostics.
+  - Extended save/load/profile surfaces with `npc_global_state` and relationship-edge payloads.
+- `core/ai/cumulative_summary.py`
+  - Switched companion participant collection to shared canonical participant builder and passed party-member identities into journal memory processing.
+- `core/memories/initialize_memories.py`
+  - Replaced ad-hoc NPC extraction with shared participant builder to keep initialization/refresh semantics aligned.
+- `core/ai/conversation_utils.py`
+  - Added active-PC identity resolution for compressed companion memory projection.
+  - Added edge scoring/summarization and projected active/secondary relationship snippets (`ap`, `sp`) for bounded prompt context.
+- `scripts/memory_management/compress_memories.py`
+  - Added compression/decompression support for global state (`gs`) and relationship edges (`re`).
+- `scripts/memory_management/refresh_memories.py`
+  - Routed refresh through canonical participant builder and surfaced relationship-edge summaries in refresh output.
+- `scripts/test_companion_memory_parser_hardening.py`
+  - Added regressions for relationship-edge quality classification, active-PC projection preference, mixed/group attribution behavior, and `character_id` edge-key wiring.
+- `web/templates/game_interface.html`
+  - Location header now stays one line with ellipsis, shows compact location text, and retains full location/area in tooltip.
+  - Character sheet top header now scales with content, keeps portrait panel fixed, and clamps long PC names to two lines.
+  - GUI chat now normalizes slug-like PC labels/authors to title-case display names (underscores -> spaces) for readability.
+- `install_neverendingquest_windows.bat`
+  - Generated `launch_game.bat` now exits with process errorlevel instead of pausing, so desktop shortcut launches close cleanly on GUI exit.
+
 ### Combat Resume Replay Guards (COMPLETED - 2026-03-30)
 
 **Status:** COMPLETED - resumed combat no longer replays already-applied enemy damage on authoritative encounter state, and resumed combat summaries are now marked historical-only to prevent reward/XP duplication.

@@ -49,18 +49,10 @@ def initialize_memories_if_needed():
         warning("initialize_memories", "Invalid party tracker")
         return False
 
-    # Extract party NPCs
-    party_npcs = []
-    for npc in party_tracker.get('partyNPCs', []):
-        npc_name = npc.get('name', '') if isinstance(npc, dict) else str(npc)
-        if npc_name:
-            # Extract just the first name (e.g., "Kira" from "Scout Kira")
-            first_name = npc_name.split()[0] if ' ' in npc_name else npc_name
-            # Remove titles
-            if first_name.lower() in ['scout', 'ranger', 'commander']:
-                parts = npc_name.split()
-                first_name = parts[1] if len(parts) > 1 else parts[0]
-            party_npcs.append(first_name)
+    # Extract companion NPCs and party-member identities
+    from core.memories.companion_memory import build_companion_memory_participants
+
+    party_npcs, party_members = build_companion_memory_participants(party_tracker)
 
     if not party_npcs:
         warning("initialize_memories", "No NPCs found in party tracker")
@@ -80,7 +72,7 @@ def initialize_memories_if_needed():
         memories_created = {}
 
         for entry in journal_data['entries']:
-            result = memory_manager.process_journal_entry(entry, party_npcs)
+            result = memory_manager.process_journal_entry(entry, party_npcs, party_members=party_members)
             if result:
                 entries_processed += 1
                 for npc, memory in result.items():

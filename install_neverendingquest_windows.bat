@@ -327,8 +327,8 @@ echo.
 echo Step 8: Creating launch scripts...
 echo @echo off > launch_game.bat
 echo cd /d "%%~dp0" >> launch_game.bat
-echo venv\Scripts\python run_web.py >> launch_game.bat
-echo pause >> launch_game.bat
+echo call venv\Scripts\python run_web.py >> launch_game.bat
+echo exit /b %%ERRORLEVEL%% >> launch_game.bat
 echo [OK] Created launch_game.bat
 
 set SCRIPT_DIR=%CD%

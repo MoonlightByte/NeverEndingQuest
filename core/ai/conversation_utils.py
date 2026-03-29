@@ -320,6 +320,148 @@ def _build_party_npc_role_map(party_tracker_data):
     return role_map
 
 
+def _build_party_member_identity_map(party_tracker_data):
+    """Build normalized lookup map for party-member identities."""
+    identity_map = {}
+    if not party_tracker_data:
+        return identity_map
+
+    def normalize_character_name(value):
+        name = str(value or '').strip().lower()
+        name = name.replace(' ', '_').replace("'", '_')
+        name = re.sub(r'[^a-z0-9_]', '_', name)
+        name = re.sub(r'_+', '_', name)
+        return name.strip('_')
+
+    try:
+        from utils.pc_manager import get_character_state
+    except Exception:
+        get_character_state = None
+
+    for member in party_tracker_data.get('partyMembers', []):
+        display_name = str(member or '').strip()
+        if not display_name:
+            continue
+
+        character_id = ''
+        if get_character_state:
+            try:
+                character_data = get_character_state(display_name, fields=['character_id', 'name']) or {}
+                character_id = str(character_data.get('character_id', '')).strip()
+                display_name = str(character_data.get('name') or display_name).strip() or display_name
+            except Exception:
+                character_id = ''
+
+        normalized_name = normalize_character_name(display_name)
+        edge_key = character_id or normalized_name
+        identity = {
+            'key': edge_key,
+            'display_name': display_name,
+            'normalized_name': normalized_name,
+        }
+
+        aliases = [display_name, normalized_name]
+        tokens = [token for token in re.split(r'[\s_]+', display_name) if token]
+        if tokens:
+            aliases.append(tokens[0])
+            aliases.append(tokens[-1])
+
+        for alias in aliases:
+            alias_text = str(alias or '').strip()
+            if not alias_text:
+                continue
+            alias_key = normalize_character_name(alias_text)
+            if alias_key:
+                identity_map[alias_key] = identity
+
+    return identity_map
+
+
+def _resolve_active_pc_identity(party_tracker_data):
+    """Resolve active PC identity for active-PC-first companion projection."""
+    identity_map = _build_party_member_identity_map(party_tracker_data)
+    active_name = str((party_tracker_data or {}).get('active_character', '')).strip()
+
+    if active_name:
+        active_key = str(active_name or '').strip().lower()
+        active_key = active_key.replace(' ', '_').replace("'", '_')
+        active_key = re.sub(r'[^a-z0-9_]', '_', active_key)
+        active_key = re.sub(r'_+', '_', active_key).strip('_')
+
+        if active_key in identity_map:
+            return identity_map[active_key]
+
+    unique_identities = []
+    seen = set()
+    for identity in identity_map.values():
+        identity_key = identity.get('key')
+        if identity_key in seen:
+            continue
+        unique_identities.append(identity)
+        seen.add(identity_key)
+
+    if len(unique_identities) == 1:
+        return unique_identities[0]
+    return None
+
+
+def _relationship_edge_strength(edge):
+    """Score a compressed relationship edge for projection priority."""
+    if not isinstance(edge, dict):
+        return 0.0
+
+    edge_values = edge.get('e', [])
+    if not _is_numeric_list(edge_values, 5):
+        return 0.0
+
+    return (
+        abs(float(edge_values[0])) +
+        abs(float(edge_values[1])) +
+        float(edge_values[2]) +
+        float(edge_values[3]) +
+        float(edge_values[4]) * 1.25 +
+        (0.2 if edge.get('rt') else 0.0)
+    )
+
+
+def _format_relationship_edge_summary(edge):
+    """Convert a compressed relationship edge into bounded prose."""
+    if not isinstance(edge, dict):
+        return ''
+
+    edge_values = edge.get('e', [])
+    if not _is_numeric_list(edge_values, 5):
+        return ''
+
+    display_name = str(edge.get('d', 'that companion')).strip() or 'that companion'
+    trust, respect, intimacy, fear, resentment = [float(value) for value in edge_values]
+
+    if resentment >= 0.45 and trust <= 0.0:
+        summary = f"distrusts {display_name}"
+    elif trust >= 0.45 and respect >= 0.25:
+        summary = f"trusts {display_name} and respects their lead"
+    elif trust >= 0.4:
+        summary = f"trusts {display_name}"
+    elif respect >= 0.45:
+        summary = f"respects {display_name}"
+    elif intimacy >= 0.45:
+        summary = f"feels close to {display_name}"
+    elif fear >= 0.45:
+        summary = f"is wary of {display_name}"
+    else:
+        summary = f"has unresolved history with {display_name}"
+
+    recent_triggers = edge.get('rt', [])
+    if isinstance(recent_triggers, list) and recent_triggers:
+        trigger_text = str(recent_triggers[-1]).strip()
+        if '@' in trigger_text:
+            trigger_text = trigger_text.split('@', 1)[0]
+        if trigger_text:
+            summary += f" after {trigger_text}"
+
+    return summary[:140]
+
+
 def _classify_companion_memory_packet(npc):
     """Classify a compressed companion memory packet for prompt safety."""
     if not isinstance(npc, dict):
@@ -330,6 +472,7 @@ def _classify_companion_memory_packet(npc):
     emotional_state = npc.get('es', [0.0, 0.0, 0.0, 0.0, 0.0])
     behavioral_model = npc.get('bm', [0.0, 0.0, 0.0, 0.0, 0.0])
     recent_notes = npc.get('rm', [])
+    relationship_edges = npc.get('re', [])
 
     if not isinstance(npc_name, str) or not npc_name.strip():
         return 'malformed'
@@ -341,6 +484,8 @@ def _classify_companion_memory_packet(npc):
         return 'malformed'
     if recent_notes is not None and not isinstance(recent_notes, list):
         return 'malformed'
+    if relationship_edges is not None and not isinstance(relationship_edges, list):
+        return 'malformed'
 
     try:
         interaction_count = int(npc.get('ti', 0))
@@ -350,6 +495,8 @@ def _classify_companion_memory_packet(npc):
 
     if any(abs(float(value)) > 0.0 for value in emotional_state) or len(memories) > 0:
         return 'healthy'
+    if any(_relationship_edge_strength(edge) > 0.0 for edge in relationship_edges or []):
+        return 'healthy'
     if interaction_count > 0 or len(recent_notes) > 0:
         return 'degraded_extract'
     if mention_count > 0:
@@ -358,7 +505,7 @@ def _classify_companion_memory_packet(npc):
     return 'sparse'
 
 
-def _project_companion_memory_packet(npc, npc_role=''):
+def _project_companion_memory_packet(npc, npc_role='', active_pc_identity=None):
     """Project a compressed companion memory packet into healthy or fallback form."""
     quality = _classify_companion_memory_packet(npc)
     if quality == 'malformed':
@@ -367,27 +514,57 @@ def _project_companion_memory_packet(npc, npc_role=''):
     emotional_state = npc.get('es', [0.0, 0.0, 0.0, 0.0, 0.0])
     behavioral_model = npc.get('bm', [0.0, 0.0, 0.0, 0.0, 0.0])
 
-    if quality == 'healthy':
-        projected = dict(npc)
-        projected['q'] = quality
-    else:
-        projected = {
-            'n': npc.get('n', 'unknown'),
-            'q': quality,
-            'ti': int(npc.get('ti', 0)),
-            'mc': int(npc.get('mc', npc.get('ti', 0))),
-            'es': emotional_state,
-            'bm': behavioral_model,
-            'mem': [],
-        }
+    projected = {
+        'n': npc.get('n', 'unknown'),
+        'q': quality,
+        'ti': int(npc.get('ti', 0)),
+        'mc': int(npc.get('mc', npc.get('ti', 0))),
+        'es': emotional_state,
+        'bm': behavioral_model,
+        'mem': list(npc.get('mem', [])) if quality == 'healthy' else [],
+    }
 
-        recent_notes = []
-        for note in npc.get('rm', [])[:2]:
-            note_text = str(note).strip()
-            if note_text:
-                recent_notes.append(note_text[:100])
-        if recent_notes:
-            projected['rm'] = recent_notes
+    group_state = npc.get('gs', [])
+    if _is_numeric_list(group_state, 6):
+        projected['gs'] = group_state
+
+    recent_notes = []
+    for note in npc.get('rm', [])[:2]:
+        note_text = str(note).strip()
+        if note_text:
+            recent_notes.append(note_text[:100])
+    if recent_notes:
+        projected['rm'] = recent_notes
+
+    relationship_edges = [edge for edge in npc.get('re', []) if _relationship_edge_strength(edge) > 0.0]
+    active_edge = None
+    if active_pc_identity:
+        active_key = str(active_pc_identity.get('key', '')).strip()
+        normalized_key = str(active_pc_identity.get('normalized_name', '')).strip()
+        for edge in relationship_edges:
+            edge_key = str(edge.get('k', '')).strip()
+            if edge_key and edge_key in (active_key, normalized_key):
+                active_edge = edge
+                break
+    if not active_edge and len(relationship_edges) == 1:
+        active_edge = relationship_edges[0]
+
+    if active_edge:
+        active_summary = _format_relationship_edge_summary(active_edge)
+        if active_summary:
+            projected['ap'] = active_summary
+
+    secondary_candidates = []
+    for edge in relationship_edges:
+        if active_edge and edge is active_edge:
+            continue
+        secondary_candidates.append((_relationship_edge_strength(edge), edge))
+    secondary_candidates.sort(key=lambda item: item[0], reverse=True)
+
+    if secondary_candidates:
+        secondary_summary = _format_relationship_edge_summary(secondary_candidates[0][1])
+        if secondary_summary:
+            projected['sp'] = secondary_summary
 
     if npc_role:
         projected['r'] = npc_role
@@ -488,6 +665,7 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
             # Format memories compactly for AI
             if memories and 'npcs' in memories:
                 npc_role_map = _build_party_npc_role_map(party_tracker_data)
+                active_pc_identity = _resolve_active_pc_identity(party_tracker_data)
                 valid_npcs = []
                 for npc in memories['npcs']:
                     npc_name = npc.get('n', 'unknown')
@@ -507,7 +685,7 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
                     elif quality == 'sparse':
                         debug(f"Detected sparse memory data for {npc_name}. Using bounded fallback context.", category="memory")
 
-                    projected_npc = _project_companion_memory_packet(npc, npc_role)
+                    projected_npc = _project_companion_memory_packet(npc, npc_role, active_pc_identity=active_pc_identity)
                     if projected_npc:
                         valid_npcs.append(projected_npc)
 

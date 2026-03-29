@@ -620,25 +620,17 @@ def update_journal_with_summary(adventure_summary, party_tracker_data, location_
 
         # Process memories for companion NPCs
         try:
-            from core.memories.companion_memory import CompanionMemoryManager
-            from utils.npc_name_canonicalizer import get_canonical_name
+            from core.memories.companion_memory import CompanionMemoryManager, build_companion_memory_participants
             memory_manager = CompanionMemoryManager()
 
-            # Get list of party NPCs with canonical names
-            party_npcs = []
-            for npc in party_tracker_data.get('partyNPCs', []):
-                npc_name = npc.get('name', '') if isinstance(npc, dict) else str(npc)
-                if npc_name:
-                    # Use AI-based canonicalization to handle all D&D naming conventions
-                    canonical_name = get_canonical_name(npc_name)
-                    if canonical_name:
-                        party_npcs.append(canonical_name)
+            party_npcs, party_members = build_companion_memory_participants(party_tracker_data)
 
             # Process the journal entry for memories
             if party_npcs:
                 memories_created = memory_manager.process_journal_entry(
                     new_entry,
-                    party_npcs
+                    party_npcs,
+                    party_members=party_members,
                 )
 
                 if memories_created:

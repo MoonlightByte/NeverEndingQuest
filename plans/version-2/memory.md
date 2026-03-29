@@ -47,6 +47,17 @@ Related current work:
 - OpenSpec change `narrator-scene-context-hygiene-and-failclosed-ux` is the conservative first step.
 - `memory.db` / world-narrative retrieval for live narration remains a follow-on change after prompt-plane hygiene is verified.
 
+### Legacy companion-memory boundary after Phase 2A
+
+The file-backed companion-memory runtime now carries the last planned live-stack tabletop extension for this path: additive per-PC relationship edges plus bounded active-PC-first prompt projection.
+
+That means further work in this area SHOULD move into the version-2 architecture instead of continuing to deepen the legacy file-backed stack. In practical terms, the following belong to v2 from this point onward:
+
+- relationship retrieval from `data/memory.db`,
+- cross-scene or cross-module relationship ranking/scoring,
+- Titan/provenance relationship analytics,
+- and any broader replacement/unification of the companion-memory subsystem.
+
 ## Goals
 
 1. Preserve long-term campaign continuity without overwhelming narrator prompts.
