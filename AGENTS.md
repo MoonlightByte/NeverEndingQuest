@@ -1045,6 +1045,39 @@ LLM generated `currency_delta` op with `"currency":"sp"` (abbreviation), but run
 - All 16 existing ops contract tests pass
 - Integration test confirms `sp`→`silver` mapping works
 
+### Currency Delta Amount Alias Fix (COMPLETED - 2026-03-29)
+
+**Status:** COMPLETED - Follow-up fix for LLM using `amount` instead of `delta` in `currency_delta` ops.
+
+**Problem:**
+After fixing currency abbreviation normalization, LLM continued to fail with:
+```
+ValueError: Invalid integer for currency_delta.silver: None
+```
+
+The LLM was generating `currency_delta` ops with `amount` field instead of `delta`:
+```json
+{"op":"currency_delta","currency":"sp","amount":5}
+```
+
+Runtime only checked for `delta` field, so `delta_value` was `None`, causing integer conversion to fail.
+
+**Implementation:**
+- Added `_get_currency_delta_value()` helper in `updates/update_character_info.py`
+- Accepts unambiguous numeric aliases: `delta`, `amount`, `value`
+- Prefers `delta` when present, falls back to `amount` or `value`
+- Applied in `currency_delta` op handler
+- Zero breaking changes - existing `delta` usage unchanged
+
+**Files Modified:**
+- `updates/update_character_info.py` - Added `_get_currency_delta_value()` helper and applied to currency delta parsing
+- `scripts/test_update_character_ops_contract.py` - Added regression test for amount alias with abbreviation
+
+**Verification:**
+- `python3 -m py_compile updates/update_character_info.py scripts/test_update_character_ops_contract.py` -> PASS
+- All 17 ops contract tests pass (including new regression test)
+- Direct smoke test of Lidda-style payload confirms `amount` + `sp` now works correctly
+
 ### Restless Dead Travel + Recruit Validation Cleanup (COMPLETED - 2026-03-27)
 
 ### Journal Diary + Story So Far MVP (COMPLETED - 2026-03-29)

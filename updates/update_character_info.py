@@ -166,6 +166,22 @@ def _normalize_currency_type(currency_str: str) -> str:
     return _CURRENCY_ABBREVIATIONS.get(normalized, normalized)
 
 
+def _get_currency_delta_value(op: Dict[str, Any]) -> Any:
+    """Resolve supported numeric aliases for currency delta ops.
+
+    Runtime prefers `delta`, but LLM responses sometimes emit `amount` or
+    `value` for the same intent. Accept the unambiguous aliases so narration
+    does not hard-fail on otherwise valid loot updates.
+    """
+    if "delta" in op:
+        return op.get("delta")
+    if "amount" in op:
+        return op.get("amount")
+    if "value" in op:
+        return op.get("value")
+    return None
+
+
 # Constants
 TEMPERATURE = 0.7
 VALIDATION_TEMPERATURE = 0.1  # Lower temperature for validation
@@ -1863,7 +1879,7 @@ def _apply_character_ops_deterministic(character_data: Dict[str, Any], ops: List
                 delta_map = deltas
             else:
                 coin_type = str(op.get("currency") or op.get("coin") or "").strip().lower()
-                delta_value = op.get("delta")
+                delta_value = _get_currency_delta_value(op)
                 if not coin_type:
                     return (False, character_data, "currency_delta missing currency key", [])
                 delta_map = {coin_type: delta_value}

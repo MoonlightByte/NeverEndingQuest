@@ -188,6 +188,26 @@ class TestOpsRoutingBehaviorContracts(unittest.TestCase):
         self.assertEqual(normalized[0].get("op"), "hp_delta")
         self.assertEqual(normalized[0].get("delta"), 7)
 
+    def test_currency_delta_accepts_amount_alias_and_abbreviation(self):
+        from updates.update_character_info import _apply_character_ops_deterministic
+
+        character_data = {
+            "characterName": "lidda_underbough",
+            "currency": {"gold": 10, "silver": 0, "copper": 0},
+            "inventory": {"equipment": [], "ammunition": []},
+        }
+        ops = [{"op": "currency_delta", "currency": "sp", "amount": 5}]
+
+        success, updated_data, error_message, unsupported_ops = _apply_character_ops_deterministic(
+            character_data,
+            ops,
+        )
+
+        self.assertTrue(success)
+        self.assertEqual(error_message, "")
+        self.assertEqual(unsupported_ops, [])
+        self.assertEqual(updated_data["currency"]["silver"], 5)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
