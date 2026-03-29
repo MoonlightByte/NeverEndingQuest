@@ -1048,12 +1048,21 @@ character_data["is_active_pc"] = True
   - Routed refresh through canonical participant builder and surfaced relationship-edge summaries in refresh output.
 - `scripts/test_companion_memory_parser_hardening.py`
   - Added regressions for relationship-edge quality classification, active-PC projection preference, mixed/group attribution behavior, and `character_id` edge-key wiring.
+- `docs/operations/npc_memory_recovery.md`
+  - Recovery flow now explicitly covers rebuilding additive relationship edges from `journal.json`.
+- `plans/version-2/memory.md`
+  - Marked this Phase 2A slice as the last planned legacy file-backed companion-memory extension before deeper relationship retrieval/scoring moves to v2.
 - `web/templates/game_interface.html`
   - Location header now stays one line with ellipsis, shows compact location text, and retains full location/area in tooltip.
   - Character sheet top header now scales with content, keeps portrait panel fixed, and clamps long PC names to two lines.
   - GUI chat now normalizes slug-like PC labels/authors to title-case display names (underscores -> spaces) for readability.
 - `install_neverendingquest_windows.bat`
   - Generated `launch_game.bat` now exits with process errorlevel instead of pausing, so desktop shortcut launches close cleanly on GUI exit.
+
+**Verification:**
+- `python3 -m py_compile core/memories/companion_memory.py core/ai/cumulative_summary.py core/memories/initialize_memories.py scripts/memory_management/refresh_memories.py scripts/memory_management/compress_memories.py core/ai/conversation_utils.py scripts/test_companion_memory_parser_hardening.py` -> PASS
+- `python3 scripts/test_companion_memory_parser_hardening.py` -> PASS (21/21)
+- Temp-dir smoke pass confirmed save -> compress -> active-PC projection survives end-to-end with distinct edge keys.
 
 ### Combat Resume Replay Guards (COMPLETED - 2026-03-30)
 
