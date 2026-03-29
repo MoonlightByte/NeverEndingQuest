@@ -2514,7 +2514,7 @@
             margin-bottom: 8px;
             padding-bottom: 8px;
             border-bottom: 2px solid #666;
-            align-items: flex-start;
+            align-items: center;
             width: 100%;
         }
 
@@ -2608,10 +2608,8 @@
             border: 1px solid #444;
             border-radius: 8px;
             padding: 10px;
-            display: grid;
-            grid-template-rows: auto 1fr;
-            row-gap: 8px;
-            align-content: start;
+            display: flex;
+            flex-direction: column;
             height: 150px;
             max-height: 150px;
             box-sizing: border-box;
@@ -2636,16 +2634,14 @@
         }
         
         .character-details {
+            flex: 1 1 auto;
             min-height: 0;
-            display: grid;
-            grid-auto-rows: minmax(0, auto);
-            align-content: start;
+            display: flex;
+            flex-direction: column;
             gap: 4px;
             color: #ccc;
             font-size: 15px;
-            line-height: 1.25;
-            overflow-wrap: anywhere;
-            word-break: break-word;
+            line-height: 1.2;
             overflow: hidden;
         }
 
@@ -2661,25 +2657,24 @@
         }
         
         .character-name {
-            font-size: 22px;
+            font-size: 23px;
             font-weight: 600;
             color: #FFA500;
             text-transform: uppercase;
             letter-spacing: 1px;
             font-family: 'Cinzel', Georgia, serif;
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-            line-height: 1.05;
-            margin: 0;
+            line-height: 1;
+            margin: 0 0 6px 0;
             padding-bottom: 6px;
             border-bottom: 1px solid #666;
-            overflow-wrap: anywhere;
-            word-break: break-word;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .character-name span {
             display: block;
-            overflow: hidden;
-            max-height: 2.1em;
         }
 
         .pdf-button {
