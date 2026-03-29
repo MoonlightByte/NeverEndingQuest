@@ -1021,6 +1021,38 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Implicit Sublocation Descent Sync (COMPLETED - 2026-03-29)
+
+**Status:** COMPLETED - narrow runtime hardening for local below/into-the-catacombs scene drift, preserving DM adjudication fallback UX.
+
+**OpenSpec Change:**
+- `openspec/changes/tt-implicit-sublocation-descent-sync/`
+
+**Objective:**
+- Prevent same-module narrated descent into an authored adjacent lower sublocation from remaining canonically anchored to the stale parent room.
+- Ensure same-turn combat anchors to the inferred sublocation before `createEncounter` consumes stale location truth.
+- Preserve fail-open behavior for ambiguity and keep direct DM drift-question repair flow valid.
+
+**Implementation Summary:**
+- `utils/travel_state_sync_guard.py`
+  - Added `evaluate_implicit_sublocation_descent_decision()` for narrow adjacent-sublocation inference from descent/entry scene cues.
+  - Added `prioritize_pre_encounter_location_actions()` so inferred or explicit location-anchor actions apply before `createEncounter`.
+- `main.py`
+  - Wired implicit sublocation descent reconciliation into the existing runtime location-sync hook before later scene/action processing consumes stale location truth.
+  - Preserved explicit `transitionLocation` / `updatePartyTracker.currentLocationId` precedence and existing fail-open behavior.
+- `modules/Night_of_the_Restless_Dead/areas/NIG001.json`
+  - Added additive `transition_hints` metadata for the `NIG02 -> NIG03` altar-crevice / catacombs lock case.
+  - Mirrored the same hint metadata in `modules/Night_of_the_Restless_Dead/areas/NIG001_BU.json`.
+- `scripts/test_scene_location_sync.py`
+  - Added regressions for unnamed `NIG02 -> NIG03` descent, ambiguity fail-open, explicit precedence, DM drift-question no-force behavior, same-turn descent-plus-combat ordering, and restart-oriented transition replay recovery.
+
+**Verification:**
+- `python3 -m py_compile main.py utils/travel_state_sync_guard.py scripts/test_scene_location_sync.py scripts/test_travel_state_sync_guard.py` -> PASS
+- `python3 scripts/test_scene_location_sync.py` -> PASS
+- `python3 scripts/test_travel_state_sync_guard.py` -> PASS
+- `.venv/bin/python core/validation/validate_module_files.py --module Night_of_the_Restless_Dead` -> PASS
+- `openspec validate tt-implicit-sublocation-descent-sync` -> PASS
+
 ### Combat Defeated-Enemy Sync + Combat-Init Chat Leak Fixes (COMPLETED - 2026-03-29)
 
 **Status:** COMPLETED - combat-state convergence hardening implemented; OpenSpec change archived with manual live smoke deferred outside the archived change.

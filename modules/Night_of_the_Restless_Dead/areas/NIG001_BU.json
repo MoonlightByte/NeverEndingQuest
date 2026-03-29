@@ -94,6 +94,21 @@
         "NIG01",
         "NIG03"
       ],
+      "transition_hints": [
+        {
+          "destinationId": "NIG03",
+          "match_any": [
+            "crevice behind the altar",
+            "altar crevice",
+            "behind the altar",
+            "base of a wide fissure",
+            "base of a shadowy fissure",
+            "catacombs below",
+            "beneath the ruined cathedral",
+            "lower tunnels"
+          ]
+        }
+      ],
       "creatures": "Undead Giant Spider.",
       "investigation_hooks": [
         {

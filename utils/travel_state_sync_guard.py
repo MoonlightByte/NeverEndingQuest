@@ -104,6 +104,21 @@ _CLARIFICATION_PATTERNS = [
 ]
 
 
+_DESCENT_ENTRY_PATTERNS = [
+    r"\bdescend(?:s|ed|ing)?\b",
+    r"\bclimb(?:s|ed|ing)?\s+down\b",
+    r"\bdrop(?:s|ped|ping)?\s+down\b",
+    r"\bdown\s+the\s+(?:crevice|fissure|stairs|stair|tunnel|passage)\b",
+    r"\bbehind\s+the\s+altar\b",
+    r"\bbeneath\s+the\b",
+    r"\bbelow\b",
+    r"\bcatacombs?\b",
+    r"\blower\s+(?:tunnels?|depths?)\b",
+    r"\bbase\s+of\s+(?:a|the)\s+(?:wide\s+)?fissure\b",
+    r"\bbase\s+of\s+(?:a|the)\s+shadowy\s+fissure\b",
+]
+
+
 def _normalize_text(value: str) -> str:
     """Normalize freeform text to lowercase alphanumeric tokens."""
     lowered = value.lower().strip()
@@ -290,6 +305,180 @@ def _is_topology_safe_destination(
         return True
 
     return False
+
+
+def _build_location_index(module_locations: Optional[List[Dict[str, Any]]]) -> Dict[str, Dict[str, Any]]:
+    """Build a location index keyed by canonical location id."""
+    location_index: Dict[str, Dict[str, Any]] = {}
+
+    for location in module_locations or []:
+        if not isinstance(location, dict):
+            continue
+
+        location_id = str(location.get("id", "") or "").strip()
+        location_name = str(location.get("name", "") or "").strip()
+        if not location_id or not location_name:
+            continue
+
+        location_index[location_id] = {
+            "id": location_id,
+            "name": location_name,
+            "area_id": str(location.get("area_id", "") or "").strip(),
+            "area_name": str(location.get("area_name", "") or "").strip(),
+            "source_room_title": str(location.get("source_room_title", "") or "").strip(),
+            "connectivity": [
+                str(value or "").strip()
+                for value in location.get("connectivity", [])
+                if str(value or "").strip()
+            ],
+            "transition_hints": location.get("transition_hints", []),
+        }
+
+    return location_index
+
+
+def _normalized_hint_phrases(raw_hint: Dict[str, Any]) -> List[str]:
+    """Return normalized match phrases from transition hint payload."""
+    normalized_phrases: List[str] = []
+    raw_values = raw_hint.get("match_any", raw_hint.get("phrases", []))
+    if not isinstance(raw_values, list):
+        return normalized_phrases
+
+    for raw_value in raw_values:
+        normalized_value = _normalize_text(str(raw_value or ""))
+        if normalized_value and normalized_value not in normalized_phrases:
+            normalized_phrases.append(normalized_value)
+
+    return normalized_phrases
+
+
+def _contains_transition_hint(combined_text: str, raw_hint: Dict[str, Any]) -> bool:
+    """Return True when any normalized hint phrase is present in combined text."""
+    padded_text = f" {combined_text} "
+    for phrase in _normalized_hint_phrases(raw_hint):
+        if f" {phrase} " in padded_text:
+            return True
+    return False
+
+
+def evaluate_implicit_sublocation_descent_decision(
+    response_json: Dict[str, Any],
+    current_location_id: str,
+    user_utterance: str = "",
+    module_locations: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Infer one adjacent authored sublocation from narrow descent scene evidence."""
+    if _has_explicit_location_commit_action(response_json):
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    location_index = _build_location_index(module_locations)
+    current_entry = location_index.get(str(current_location_id or "").strip())
+    if not isinstance(current_entry, dict):
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    narration = _normalize_text(str(response_json.get("narration", "") or ""))
+    normalized_user_utterance = _normalize_text(user_utterance) if isinstance(user_utterance, str) else ""
+    combined_parts = [part for part in [normalized_user_utterance, narration] if part]
+    combined_text = " ".join(combined_parts).strip()
+    if not combined_text:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    adjacent_ids = [
+        location_id
+        for location_id in current_entry.get("connectivity", [])
+        if location_id in location_index and location_id != current_location_id
+    ]
+    if not adjacent_ids:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    candidate_ids: List[str] = []
+    transition_hints = current_entry.get("transition_hints", [])
+    if isinstance(transition_hints, list):
+        for raw_hint in transition_hints:
+            if not isinstance(raw_hint, dict):
+                continue
+            destination_id = str(raw_hint.get("destinationId", "") or "").strip()
+            if destination_id not in adjacent_ids:
+                continue
+            if _contains_transition_hint(combined_text, raw_hint):
+                candidate_ids.append(destination_id)
+
+    if not candidate_ids and len(adjacent_ids) == 1:
+        has_descent_signal = _contains_any_pattern(combined_text, _DESCENT_ENTRY_PATTERNS)
+        has_arrival_or_presence = (
+            _contains_any_pattern(combined_text, _ARRIVAL_PATTERNS)
+            or _contains_any_pattern(combined_text, _SCENE_PRESENCE_PATTERNS)
+        )
+        if has_descent_signal and has_arrival_or_presence:
+            candidate_ids.append(adjacent_ids[0])
+
+    unique_candidate_ids = sorted(set(candidate_ids))
+    if len(unique_candidate_ids) != 1:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    destination_id = unique_candidate_ids[0]
+    destination_entry = location_index.get(destination_id, {})
+    destination_name = str(destination_entry.get("name", "") or "").strip()
+    if not destination_name:
+        return {"valid": True, "inferred_actions": [], "reconciliation": "none"}
+
+    inferred_action = {
+        "action": "updatePartyTracker",
+        "parameters": {
+            "currentLocationId": destination_id,
+            "currentLocation": destination_name,
+            "currentAreaId": str(destination_entry.get("area_id", "") or "").strip(),
+            "currentArea": str(destination_entry.get("area_name", "") or "").strip(),
+        },
+    }
+    return {
+        "valid": True,
+        "inferred_actions": [inferred_action],
+        "reconciliation": "implicit_sublocation_descent_sync",
+    }
+
+
+def prioritize_pre_encounter_location_actions(actions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Move location-anchor actions ahead of createEncounter without reordering unrelated actions."""
+    if not isinstance(actions, list) or not actions:
+        return actions
+
+    has_create_encounter = any(
+        isinstance(action, dict) and action.get("action") == "createEncounter"
+        for action in actions
+    )
+    if not has_create_encounter:
+        return actions
+
+    def _is_location_anchor(action: Dict[str, Any]) -> bool:
+        if not isinstance(action, dict):
+            return False
+        action_type = action.get("action")
+        if action_type == "transitionLocation":
+            return True
+        if action_type != "updatePartyTracker":
+            return False
+        parameters = action.get("parameters", {})
+        return isinstance(parameters, dict) and bool(parameters.get("currentLocationId"))
+
+    location_anchors = [action for action in actions if _is_location_anchor(action)]
+    if not location_anchors:
+        return actions
+
+    remaining_actions = [action for action in actions if not _is_location_anchor(action)]
+    reordered_actions: List[Dict[str, Any]] = []
+    inserted_anchors = False
+
+    for action in remaining_actions:
+        if not inserted_anchors and isinstance(action, dict) and action.get("action") == "createEncounter":
+            reordered_actions.extend(location_anchors)
+            inserted_anchors = True
+        reordered_actions.append(action)
+
+    if not inserted_anchors:
+        return actions
+
+    return reordered_actions
 
 
 def evaluate_travel_state_sync_decision(

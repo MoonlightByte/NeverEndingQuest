@@ -1422,6 +1422,7 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         # while preserving explicit transitionLocation precedence and topology safety.
         try:
             from utils.travel_state_sync_guard import (
+                evaluate_implicit_sublocation_descent_decision,
                 evaluate_narrated_location_arrival_decision,
                 evaluate_scene_plot_location_reconciliation_decision,
                 evaluate_scene_location_sync_decision,
@@ -1458,6 +1459,11 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
                     "area_id": str(loc.get("area_id", "") or "").strip(),
                     "area_name": str(loc.get("area_name", "") or "").strip(),
                     "source_room_title": str(loc.get("source_room_title", "") or "").strip(),
+                    "connectivity": [
+                        str(value or "").strip()
+                        for value in loc.get("adjacent_location_ids", [])
+                        if str(value or "").strip()
+                    ],
                 }
                 known_locations.append(normalized_loc)
                 known_locations_by_id[loc_id] = normalized_loc
@@ -1483,6 +1489,16 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
                             existing_loc["area_id"] = area_id_fallback
                         if not existing_loc.get("area_name"):
                             existing_loc["area_name"] = area_name_fallback
+                        connectivity_values = [
+                            str(value or "").strip()
+                            for value in loc.get("connectivity", [])
+                            if str(value or "").strip()
+                        ]
+                        if connectivity_values:
+                            existing_loc["connectivity"] = connectivity_values
+                        transition_hints = loc.get("transition_hints", [])
+                        if isinstance(transition_hints, list) and transition_hints:
+                            existing_loc["transition_hints"] = transition_hints
                         continue
 
                     normalized_loc = {
@@ -1491,6 +1507,12 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
                         "area_id": area_id_fallback,
                         "area_name": area_name_fallback,
                         "source_room_title": source_room_title,
+                        "connectivity": [
+                            str(value or "").strip()
+                            for value in loc.get("connectivity", [])
+                            if str(value or "").strip()
+                        ],
+                        "transition_hints": loc.get("transition_hints", []),
                     }
                     known_locations.append(normalized_loc)
                     known_locations_by_id[loc_id] = normalized_loc
@@ -1542,6 +1564,24 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
                 response_to_validate = json.dumps(response_json, ensure_ascii=False)
                 info(
                     f"STATE_SYNC: Narrated location arrival injected {len(narrated_arrival_actions)} inferred action(s) mode={narrated_arrival_mode}",
+                    category="location_transitions",
+                )
+
+            implicit_sublocation_sync = evaluate_implicit_sublocation_descent_decision(
+                response_json=response_json,
+                current_location_id=packet_world.get("current_location_id") or party_tracker_data["worldConditions"].get("currentLocationId", ""),
+                user_utterance=user_input or "",
+                module_locations=known_locations,
+            )
+            implicit_sublocation_actions = implicit_sublocation_sync.get("inferred_actions", [])
+            implicit_sublocation_mode = str(implicit_sublocation_sync.get("reconciliation", "none") or "none")
+            if isinstance(implicit_sublocation_actions, list) and implicit_sublocation_actions:
+                if not isinstance(response_json.get("actions"), list):
+                    response_json["actions"] = []
+                response_json["actions"] = implicit_sublocation_actions + response_json["actions"]
+                response_to_validate = json.dumps(response_json, ensure_ascii=False)
+                info(
+                    f"STATE_SYNC: Implicit sublocation descent injected {len(implicit_sublocation_actions)} inferred action(s) mode={implicit_sublocation_mode}",
                     category="location_transitions",
                 )
 
@@ -3080,6 +3120,15 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
         char_update_actions = [action for action in actions if action.get("action") == "updateCharacterInfo"]
         other_actions = [action for action in actions if action.get("action") != "updateCharacterInfo"]
 
+        # TABLETOP MODE: Ensure inferred or explicit location anchors apply before
+        # same-turn encounter creation consumes stale canonical location truth.
+        try:
+            from utils.travel_state_sync_guard import prioritize_pre_encounter_location_actions
+
+            other_actions = prioritize_pre_encounter_location_actions(other_actions)
+        except Exception as e:
+            debug(f"STATE_SYNC: Could not prioritize pre-encounter location anchors: {e}", category="location_transitions")
+
         # TABLETOP MODE: Transactional tracked-item transfer handling.
         # Execute explicit add/remove transfer pairs atomically before generic
         # character update processing so partial persistence cannot split ownership.
@@ -3148,12 +3197,12 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
         
         # TABLETOP MODE: Fail-open fallback for transitionLocation without updateTime
         # If movement occurs without explicit time advancement, inject deterministic updateTime
-        has_transition = any(action.get("action") == "transitionLocation" for action in actions)
-        has_update_time = any(action.get("action") == "updateTime" for action in actions)
+        has_transition = any(action.get("action") == "transitionLocation" for action in other_actions)
+        has_update_time = any(action.get("action") == "updateTime" for action in other_actions)
         
         if has_transition and not has_update_time:
             # Find the transitionLocation action to get target
-            transition_action = next((a for a in actions if a.get("action") == "transitionLocation"), None)
+            transition_action = next((a for a in other_actions if a.get("action") == "transitionLocation"), None)
             if transition_action:
                 target_location = transition_action.get("parameters", {}).get("newLocation", "")
                 current_area_id = party_tracker_data.get("worldConditions", {}).get("currentAreaId", "")
