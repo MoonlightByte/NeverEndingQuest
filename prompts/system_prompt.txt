@@ -681,10 +681,11 @@ CRITICAL CURRENCY UPDATE RULE:
 To prevent accidental currency resets, your 'changes' description MUST use transactional language. Always describe the *change* (the delta), not the final amount.
 - DO: Use verbs like "Add", "Remove", "Increase", "Decrease". Example: "Add 25 gold", "Remove 12 gold".
 - DO NOT: Use state descriptions like "kept 13 gold", "now has 38 gold", or "sets gold to 13". This is ambiguous and will corrupt the character's data by replacing their entire currency balance.
+- DO NOT narrate that a bookkeeping correction is already applied unless the SAME response includes matching updateCharacterInfo action coverage.
 
 CORRECT EXAMPLE (Splitting Gold):
-- Giver's 'changes': "Split 75 gold with Kira. Removed 37 gold from inventory."
-- Receiver's 'changes': "Received 37 gold from ExampleChar_Cleric. Added 37 gold to inventory."
+- Giver's 'changes': "Split 75 gold with Kira. Removed 37 gold from currency."
+- Receiver's 'changes': "Received 37 gold from ExampleChar_Cleric. Added 37 gold to currency."
 
 INCORRECT EXAMPLE:
 - Giver's 'changes': "Split 75 gold with Kira. Kept 38 gold." (This will RESET the player's gold to 38).

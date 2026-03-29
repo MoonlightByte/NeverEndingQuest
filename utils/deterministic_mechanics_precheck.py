@@ -63,6 +63,26 @@ _REST_DURATION_PATTERN = re.compile(
     r"\b(short|long)\s+rest(?:ed|ing)?(?:\s+for)?\s+(\d+)\s*(minutes?|mins?|hours?|hrs?)\b",
     re.IGNORECASE,
 )
+_BOOKKEEPING_OBJECT_PATTERN = re.compile(
+    r"\b(currency|gold|silver|copper|gp|sp|cp|coin|coins|coin pouch|coin purse|pouch|purse|inventory|miscellaneous)\b",
+    re.IGNORECASE,
+)
+_BOOKKEEPING_CORRECTION_CONTEXT_PATTERN = re.compile(
+    r"\b(correct(?:ion|ed)?|instead of|rather than|not miscellaneous|not misc|not inventory|reclassif(?:y|ied)|belongs in|should be tracked as|tracked as)\b",
+    re.IGNORECASE,
+)
+_BOOKKEEPING_STATE_CLAIM_PATTERN = re.compile(
+    r"\b(you now have|now has|is now|are now|has been|have been|currently has|currently have|inventory remains organized)\b",
+    re.IGNORECASE,
+)
+_BOOKKEEPING_TRANSACTION_PATTERN = re.compile(
+    r"\b(you pay|you paid|paid|received|gained|lost|found|refunded|deducted|split|divided|removed|added|moved|transferred)\b",
+    re.IGNORECASE,
+)
+_BOOKKEEPING_UPDATE_VERB_PATTERN = re.compile(
+    r"\b(add(?:ed)?|remove(?:d)?|increase(?:d)?|decrease(?:d)?|receive(?:d)?|pay(?:ment|ing|s|ed)?|spen(?:d|t)|refund(?:ed)?|deduct(?:ed)?|split|divid(?:e|ed)|move(?:d)?|transfer(?:red)?)\b",
+    re.IGNORECASE,
+)
 
 _NUMBER_WORDS = {
     "a": 1,
@@ -192,6 +212,73 @@ def _duration_to_minutes(duration_value: int, duration_unit: str) -> int:
     return duration_value
 
 
+def _normalize_whitespace(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def has_bookkeeping_update_action_coverage(response_json: Dict[str, Any]) -> bool:
+    """Return True when response includes explicit inventory/currency mutation coverage."""
+    actions = response_json.get("actions", [])
+    if not isinstance(actions, list):
+        return False
+
+    for action in actions:
+        if not isinstance(action, dict) or action.get("action") != "updateCharacterInfo":
+            continue
+
+        parameters = action.get("parameters", {})
+        if not isinstance(parameters, dict):
+            continue
+
+        ops = parameters.get("ops", [])
+        if isinstance(ops, list):
+            for op in ops:
+                if not isinstance(op, dict):
+                    continue
+                op_name = str(op.get("op", "")).strip().lower()
+                if op_name in {"inventory_add", "inventory_remove", "currency_delta"}:
+                    return True
+
+        changes = _normalize_whitespace(parameters.get("changes", ""))
+        if not changes:
+            continue
+        if _BOOKKEEPING_OBJECT_PATTERN.search(changes) and _BOOKKEEPING_UPDATE_VERB_PATTERN.search(changes):
+            return True
+
+    return False
+
+
+def has_explicit_bookkeeping_correction_claim(
+    response_json: Dict[str, Any],
+    user_input: str = "",
+) -> bool:
+    """Return True for explicit committed bookkeeping correction/mutation claims.
+
+    This detector stays intentionally narrow. It targets narration that claims a
+    bookkeeping change already happened, not pure rules clarification.
+    """
+    narration = _normalize_whitespace(response_json.get("narration", ""))
+    user_text = _normalize_whitespace(user_input)
+    if not narration:
+        return False
+
+    combined = f"{user_text} {narration}".strip()
+    if not _BOOKKEEPING_OBJECT_PATTERN.search(combined):
+        return False
+
+    narration_has_object = bool(_BOOKKEEPING_OBJECT_PATTERN.search(narration))
+    if narration_has_object and _BOOKKEEPING_TRANSACTION_PATTERN.search(narration):
+        return True
+
+    if not _BOOKKEEPING_STATE_CLAIM_PATTERN.search(narration):
+        return False
+
+    if _BOOKKEEPING_CORRECTION_CONTEXT_PATTERN.search(combined):
+        return True
+
+    return False
+
+
 def _extract_rest_durations_from_text(text: str) -> List[Tuple[str, int]]:
     rest_durations: List[Tuple[str, int]] = []
     for match in _REST_DURATION_PATTERN.finditer(text):
@@ -318,6 +405,7 @@ def validate_deterministic_mechanics_precheck(
     response_json: Dict[str, Any],
     party_tracker_data: Optional[Dict[str, Any]] = None,
     character_loader: Optional[CharacterLoader] = None,
+    user_input: str = "",
 ) -> Tuple[bool, str]:
     """Validate explicit mechanics contradictions in updateCharacterInfo actions.
 
@@ -331,6 +419,13 @@ def validate_deterministic_mechanics_precheck(
         return True, ""
 
     loader = character_loader or _default_character_loader
+
+    if has_explicit_bookkeeping_correction_claim(response_json, user_input=user_input):
+        if not has_bookkeeping_update_action_coverage(response_json):
+            return False, (
+                "Deterministic mechanics precheck failed: Explicit bookkeeping correction claim "
+                "requires matching updateCharacterInfo action coverage."
+            )
 
     narration = response_json.get("narration")
     if isinstance(narration, str):

@@ -398,6 +398,104 @@ class TestDeterministicMechanicsPrecheck(unittest.TestCase):
         self.assertTrue(valid)
         self.assertEqual(reason, "")
 
+    def test_coin_pouch_correction_without_action_coverage_fails(self):
+        from utils.deterministic_mechanics_precheck import validate_deterministic_mechanics_precheck
+
+        response_json = {
+            "narration": "Yes. You now have 16 copper coins in your currency pouch, and your inventory remains organized.",
+            "actions": [],
+        }
+
+        valid, reason = validate_deterministic_mechanics_precheck(
+            response_json,
+            character_loader=_loader_factory({}),
+            user_input="That copper coin should be currency, not miscellaneous inventory.",
+        )
+        self.assertFalse(valid)
+        self.assertIn("bookkeeping correction", reason.lower())
+
+    def test_coin_pouch_correction_with_action_coverage_passes(self):
+        from utils.deterministic_mechanics_precheck import validate_deterministic_mechanics_precheck
+
+        response_json = {
+            "narration": "Yes. The copper is now tracked in your coin pouch.",
+            "actions": [
+                {
+                    "action": "updateCharacterInfo",
+                    "parameters": {
+                        "characterName": "lidda_underbough",
+                        "changes": "Moved 1 copper coin from misc inventory handling to currency. Added 1 copper to currency.",
+                        "ops": [{"op": "currency_delta", "currency": "copper", "delta": 1}],
+                    },
+                }
+            ],
+        }
+
+        valid, reason = validate_deterministic_mechanics_precheck(
+            response_json,
+            character_loader=_loader_factory({}),
+            user_input="Please track that copper as currency instead of miscellaneous inventory.",
+        )
+        self.assertTrue(valid)
+        self.assertEqual(reason, "")
+
+    def test_payment_without_action_coverage_fails(self):
+        from utils.deterministic_mechanics_precheck import validate_deterministic_mechanics_precheck
+
+        response_json = {
+            "narration": "You paid 2 silver for the room.",
+            "actions": [],
+        }
+
+        valid, reason = validate_deterministic_mechanics_precheck(
+            response_json,
+            character_loader=_loader_factory({}),
+            user_input="I pay for the room.",
+        )
+        self.assertFalse(valid)
+        self.assertIn("updatecharacterinfo", reason.lower())
+
+    def test_refund_without_action_coverage_fails(self):
+        from utils.deterministic_mechanics_precheck import validate_deterministic_mechanics_precheck
+
+        response_json = {
+            "narration": "The innkeeper refunded 5 copper to you.",
+            "actions": [],
+        }
+
+        valid, reason = validate_deterministic_mechanics_precheck(
+            response_json,
+            character_loader=_loader_factory({}),
+            user_input="He gives the copper back.",
+        )
+        self.assertFalse(valid)
+        self.assertIn("bookkeeping correction", reason.lower())
+
+    def test_narrated_currency_gain_with_action_coverage_passes(self):
+        from utils.deterministic_mechanics_precheck import validate_deterministic_mechanics_precheck
+
+        response_json = {
+            "narration": "You found 5 copper among the loose stones.",
+            "actions": [
+                {
+                    "action": "updateCharacterInfo",
+                    "parameters": {
+                        "characterName": "lidda_underbough",
+                        "changes": "Found 5 copper. Added 5 copper to currency.",
+                        "ops": [{"op": "currency_delta", "currency": "cp", "amount": 5}],
+                    },
+                }
+            ],
+        }
+
+        valid, reason = validate_deterministic_mechanics_precheck(
+            response_json,
+            character_loader=_loader_factory({}),
+            user_input="I scoop up the loose copper.",
+        )
+        self.assertTrue(valid)
+        self.assertEqual(reason, "")
+
     def test_non_update_actions_are_ignored(self):
         from utils.deterministic_mechanics_precheck import validate_deterministic_mechanics_precheck
 
@@ -428,6 +526,7 @@ class TestPipelineIntegrationContract(unittest.TestCase):
             source = f.read()
 
         self.assertIn("validate_deterministic_mechanics_precheck", source)
+        self.assertIn('user_input=user_input or ""', source)
 
 
 if __name__ == "__main__":

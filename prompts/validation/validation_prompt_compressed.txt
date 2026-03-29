@@ -161,6 +161,14 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   fail_reason: "Inventory transfer is one-sided. Add exactly two updateCharacterInfo actions: remove from giver and add to receiver in the same response."
 }
 
+@BOOKKEEPING_CORRECTION_VALIDATION={
+  trigger: narration claims currency/inventory bookkeeping has already been corrected, reclassified, paid, refunded, gained, or removed.
+  valid: pure rules clarification with no committed state claim MAY keep actions:[].
+  invalid: committed bookkeeping correction narrated as already applied while actions are empty.
+  required: matching updateCharacterInfo action coverage in SAME response.
+  fail_reason: "Bookkeeping correction is narrated as already applied but no updateCharacterInfo action commits the change. Emit the missing character update in the same response."
+}
+
 @NPC_JOINING={
    valid: Player accepts + NPC AGREES -> MUST have updatePartyNPCs in SAME response
    invalid: NPC agrees to join but NO updatePartyNPCs action = ALWAYS INVALID
@@ -282,7 +290,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
 }
 
 @CLARIFICATIONS={
-  1:Empty actions OK if waiting for input/consent
+  1:Empty actions OK if waiting for input/consent, EXCEPT committed bookkeeping corrections
   2:NEVER ask player to roll for NPCs--DM rolls them
   3:transitionLocation REQUIRED when party states moving
   4:INVENTORY QUERIES: "How many arrows?" / "Check inventory" = NO updateCharacterInfo needed (just narrate counts)

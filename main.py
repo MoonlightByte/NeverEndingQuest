@@ -1787,6 +1787,7 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         mechanics_ok, mechanics_reason = validate_deterministic_mechanics_precheck(
             response_json,
             party_tracker_data=party_tracker_data,
+            user_input=user_input or "",
         )
         if not mechanics_ok:
             print(f"ERROR: {mechanics_reason}")

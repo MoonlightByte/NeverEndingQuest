@@ -98,7 +98,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   trigger: "When player asks a direct DM/rules adjudication question (for example: can we, can I, does this work, what roll, what DC, is this allowed)",
   rule: "Answer in clear umpire style FIRST: one concise ruling sentence before any flavor.",
   format: "Prefer explicit ruling tokens: Yes/No/Requires [roll/check/save], then brief rationale.",
-  action_rule: "If no world state changes, actions may be [] and that is valid. Do not force movement/combat/state actions for pure adjudication Q&A."
+  action_rule: "If no world state changes, actions may be [] and that is valid. Do not force movement/combat/state actions for pure adjudication Q&A, but do NOT claim a bookkeeping correction is already applied unless matching updateCharacterInfo action(s) are present."
 }
 
 @XP={
@@ -119,6 +119,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   rituals: remove components immediately; note effect/duration.
   ammunition: ALWAYS remove arrows/bolts/bullets when fired (updateCharacterInfo "Remove 1 arrow/bolt from inventory").
   deltaLanguage: "Add/Remove/Increase/Decrease N coins", never set totals.
+  correction: "If narration says currency/inventory bookkeeping has now been corrected, emit matching updateCharacterInfo in the SAME response. Pure rules clarification may use actions:[], but committed correction may not."
   splitCoins: divide per coin type; keep remainders with giver; show math.
   storageFees: FIRST updateCharacterInfo for payment+conversion (1g=10s=100c, show math), THEN storageInteraction.
 }
@@ -327,8 +328,8 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
 
 @EXAMPLES={
   currencyTransfer:[
-    {"action":"updateCharacterInfo","parameters":{"characterName":"eirik_hearthwise","changes":"Removed 10 gold from inventory."}},
-    {"action":"updateCharacterInfo","parameters":{"characterName":"Ranger Thane","changes":"Received 10 gold coins from Eirik. Added 10 gold to inventory."}}
+    {"action":"updateCharacterInfo","parameters":{"characterName":"eirik_hearthwise","changes":"Paid Ranger Thane 10 gold. Removed 10 gold from currency.","ops":[{"op":"currency_delta","currency":"gold","delta":-10}]}},
+    {"action":"updateCharacterInfo","parameters":{"characterName":"Ranger Thane","changes":"Received 10 gold from Eirik. Added 10 gold to currency.","ops":[{"op":"currency_delta","currency":"gold","delta":10}]}}
   ],
   timePassage:[
     {"action":"updateTime","parameters":{"timeEstimate":60}}
@@ -399,8 +400,8 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
     {"action":"rest","parameters":{"type":"long","characters":["Acheron","Claris"]}}
   ],
   multiActionBundle:[
-    {"action":"updateCharacterInfo","parameters":{"characterName":"eirik_hearthwise","changes":"Removed 10 gold from inventory."}},
-    {"action":"updateCharacterInfo","parameters":{"characterName":"Ranger Thane","changes":"Received 10 gold coins from Eirik. Added 10 gold to inventory."}},
+    {"action":"updateCharacterInfo","parameters":{"characterName":"eirik_hearthwise","changes":"Paid Ranger Thane 10 gold. Removed 10 gold from currency.","ops":[{"op":"currency_delta","currency":"gold","delta":-10}]}},
+    {"action":"updateCharacterInfo","parameters":{"characterName":"Ranger Thane","changes":"Received 10 gold from Eirik. Added 10 gold to currency.","ops":[{"op":"currency_delta","currency":"gold","delta":10}]}},
     {"action":"updateTime","parameters":{"timeEstimate":60}},
     {"action":"updatePlot","parameters":{"plotPointId":"PP001","newStatus":"in progress","plotImpact":"Short rest at Black Lantern Hearth; morale improves."}}
   ],

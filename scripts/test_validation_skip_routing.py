@@ -110,6 +110,34 @@ class TestValidationSkipRoutingBehavior(unittest.TestCase):
         self.assertFalse(decision)
         self.assertEqual(reason, "requires_possession_authority_check")
 
+    def test_bookkeeping_correction_turn_cannot_skip(self):
+        from utils.validation_routing import should_skip_llm_validation
+
+        decision, reason = should_skip_llm_validation(
+            response_json={
+                "narration": "Yes. You now have 16 copper coins in your currency pouch, and your inventory remains organized.",
+                "actions": [],
+            },
+            deterministic_passed=True,
+            user_input="That copper coin should be currency, not miscellaneous inventory.",
+        )
+        self.assertFalse(decision)
+        self.assertEqual(reason, "explicit_bookkeeping_correction_turn")
+
+    def test_pure_bookkeeping_clarification_can_still_skip(self):
+        from utils.validation_routing import should_skip_llm_validation
+
+        decision, reason = should_skip_llm_validation(
+            response_json={
+                "narration": "Yes. Copper coins are generally tracked as currency rather than miscellaneous inventory.",
+                "actions": [],
+            },
+            deterministic_passed=True,
+            user_input="Should that copper be tracked as currency instead of inventory?",
+        )
+        self.assertTrue(decision)
+        self.assertEqual(reason, "narration_only")
+
 
 class TestValidationSkipRoutingSourceContract(unittest.TestCase):
     """Source-contract checks for pipeline integration."""

@@ -518,6 +518,32 @@ class TestNarratorContractSourceGuards(unittest.TestCase):
         self.assertIn("@UMPIRE_DIRECT_ANSWER_VALIDATION={", content)
         self.assertIn("clear ruling-first", content)
 
+    def test_system_prompt_has_bookkeeping_correction_contract(self):
+        """Compressed system prompt should distinguish clarification from committed bookkeeping correction."""
+        prompt_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "prompts", "system_prompt_compressed.txt"
+        )
+        with open(prompt_path, "r") as f:
+            content = f.read()
+
+        self.assertIn('committed correction may not', content)
+        self.assertIn('Removed 10 gold from currency.', content)
+        self.assertIn('"op":"currency_delta"', content)
+
+    def test_validation_prompt_has_bookkeeping_correction_block(self):
+        """Compressed validation prompt should reject correction-only narration with empty actions."""
+        prompt_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "prompts", "validation", "validation_prompt_compressed.txt"
+        )
+        with open(prompt_path, "r") as f:
+            content = f.read()
+
+        self.assertIn("@BOOKKEEPING_CORRECTION_VALIDATION={", content)
+        self.assertIn("committed bookkeeping correction narrated as already applied while actions are empty", content)
+        self.assertIn("EXCEPT committed bookkeeping corrections", content)
+
     def test_validation_prompt_has_domain_scoped_deterministic_handoff(self):
         """Compressed validation prompt should define domain-scoped handoff fields."""
         prompt_path = os.path.join(
@@ -547,6 +573,18 @@ class TestNarratorContractSourceGuards(unittest.TestCase):
         self.assertIn("VALID - Travel Domain Already Reconciled", content)
         self.assertIn("VALID - NPC Scene Presence Domain Already Reconciled", content)
         self.assertIn("INVALID - Mixed-Domain Failure", content)
+
+    def test_uncompressed_validation_prompt_mentions_bookkeeping_corrections(self):
+        """Uncompressed validation prompt should document bookkeeping correction constraints."""
+        prompt_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "prompts", "validation", "validation_prompt.txt"
+        )
+        with open(prompt_path, "r") as f:
+            content = f.read()
+
+        self.assertIn("BOOKKEEPING CORRECTIONS", content)
+        self.assertIn("currency or inventory bookkeeping correction has already been applied", content)
 
     def test_main_has_prerequisite_locked_plot_filter(self):
         """main.py should gate active plot visibility by prerequisites."""

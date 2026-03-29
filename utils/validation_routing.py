@@ -13,6 +13,7 @@ Helpers for deterministic validation routing decisions.
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from utils.deterministic_mechanics_precheck import has_explicit_bookkeeping_correction_claim
 from utils.inventory_possession_authority import is_possession_query_turn
 
 
@@ -313,6 +314,9 @@ def should_skip_llm_validation(
         if action_names:
             if set(action_names).issubset({"transitionLocation", "updateTime", "moveBackgroundNPC", "updatePartyTracker"}):
                 return (True, "reconciled_soft_state_only")
+
+    if has_explicit_bookkeeping_correction_claim(response_json, user_input=user_input):
+        return (False, "explicit_bookkeeping_correction_turn")
 
     action_names = _extract_action_names(response_json)
     if not action_names:
