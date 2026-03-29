@@ -285,6 +285,115 @@ def load_json_data(file_path):
         print(f"{file_path} has an invalid JSON format. Returning None.")
         return None
 
+
+def _is_numeric_list(values, expected_len):
+    """Return True when values is a numeric list of the expected length."""
+    if not isinstance(values, list) or len(values) != expected_len:
+        return False
+
+    try:
+        for value in values:
+            float(value)
+    except (TypeError, ValueError):
+        return False
+
+    return True
+
+
+def _build_party_npc_role_map(party_tracker_data):
+    """Build a simple name-to-role map for party NPCs."""
+    role_map = {}
+    if not party_tracker_data:
+        return role_map
+
+    for npc in party_tracker_data.get('partyNPCs', []):
+        if isinstance(npc, dict):
+            name = str(npc.get('name', '')).strip()
+            role = str(npc.get('role', '')).strip()
+        else:
+            name = str(npc).strip()
+            role = ''
+
+        if name:
+            role_map[name.lower()] = role
+
+    return role_map
+
+
+def _classify_companion_memory_packet(npc):
+    """Classify a compressed companion memory packet for prompt safety."""
+    if not isinstance(npc, dict):
+        return 'malformed'
+
+    npc_name = npc.get('n')
+    memories = npc.get('mem', [])
+    emotional_state = npc.get('es', [0.0, 0.0, 0.0, 0.0, 0.0])
+    behavioral_model = npc.get('bm', [0.0, 0.0, 0.0, 0.0, 0.0])
+    recent_notes = npc.get('rm', [])
+
+    if not isinstance(npc_name, str) or not npc_name.strip():
+        return 'malformed'
+    if not isinstance(memories, list):
+        return 'malformed'
+    if not _is_numeric_list(emotional_state, 5):
+        return 'malformed'
+    if not _is_numeric_list(behavioral_model, 5):
+        return 'malformed'
+    if recent_notes is not None and not isinstance(recent_notes, list):
+        return 'malformed'
+
+    try:
+        interaction_count = int(npc.get('ti', 0))
+        mention_count = int(npc.get('mc', interaction_count))
+    except (TypeError, ValueError):
+        return 'malformed'
+
+    if any(abs(float(value)) > 0.0 for value in emotional_state) or len(memories) > 0:
+        return 'healthy'
+    if interaction_count > 0 or len(recent_notes) > 0:
+        return 'degraded_extract'
+    if mention_count > 0:
+        return 'sparse'
+
+    return 'sparse'
+
+
+def _project_companion_memory_packet(npc, npc_role=''):
+    """Project a compressed companion memory packet into healthy or fallback form."""
+    quality = _classify_companion_memory_packet(npc)
+    if quality == 'malformed':
+        return None
+
+    emotional_state = npc.get('es', [0.0, 0.0, 0.0, 0.0, 0.0])
+    behavioral_model = npc.get('bm', [0.0, 0.0, 0.0, 0.0, 0.0])
+
+    if quality == 'healthy':
+        projected = dict(npc)
+        projected['q'] = quality
+    else:
+        projected = {
+            'n': npc.get('n', 'unknown'),
+            'q': quality,
+            'ti': int(npc.get('ti', 0)),
+            'mc': int(npc.get('mc', npc.get('ti', 0))),
+            'es': emotional_state,
+            'bm': behavioral_model,
+            'mem': [],
+        }
+
+        recent_notes = []
+        for note in npc.get('rm', [])[:2]:
+            note_text = str(note).strip()
+            if note_text:
+                recent_notes.append(note_text[:100])
+        if recent_notes:
+            projected['rm'] = recent_notes
+
+    if npc_role:
+        projected['r'] = npc_role
+
+    return projected
+
 def update_conversation_history(conversation_history, party_tracker_data, plot_data, module_data):
     # Read the actual system prompt to get the proper identifier
     with open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "prompts", "system_prompt_compressed.txt"), "r", encoding="utf-8") as file:
@@ -378,24 +487,29 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
 
             # Format memories compactly for AI
             if memories and 'npcs' in memories:
-                # Self-healing: Validate memory structure and fix corrupted data
+                npc_role_map = _build_party_npc_role_map(party_tracker_data)
                 valid_npcs = []
                 for npc in memories['npcs']:
-                    # Check for corrupted emotional state (all zeros) or empty memories with positive interaction count
-                    es = npc.get('es', [0.0, 0.0, 0.0, 0.0, 0.0])
-                    mem = npc.get('mem', [])
-                    interaction_count = npc.get('ti', 0)
                     npc_name = npc.get('n', 'unknown')
+                    npc_role = npc_role_map.get(str(npc_name).lower(), '')
+                    quality = _classify_companion_memory_packet(npc)
 
-                    # Flag suspicious data patterns
-                    if sum(abs(x) for x in es) == 0.0 and len(mem) == 0 and interaction_count > 0:
-                        warning(f"Detected corrupted memory data for {npc_name}: " +
-                               f"{interaction_count} interactions but zero emotional state and no memories. " +
+                    if quality == 'malformed':
+                        warning(f"Detected malformed memory data for {npc_name}. " +
                                "This NPC will be excluded from context until memories regenerate.",
                                category="memory")
                         continue
 
-                    valid_npcs.append(npc)
+                    if quality == 'degraded_extract':
+                        warning(f"Detected degraded memory data for {npc_name}: meaningful companion history exists " +
+                               "but no crystallized memory state is available. Using bounded fallback context.",
+                               category="memory")
+                    elif quality == 'sparse':
+                        debug(f"Detected sparse memory data for {npc_name}. Using bounded fallback context.", category="memory")
+
+                    projected_npc = _project_companion_memory_packet(npc, npc_role)
+                    if projected_npc:
+                        valid_npcs.append(projected_npc)
 
                 if valid_npcs:
                     memory_content = "=== COMPANION MEMORIES (Compressed) ===\n"
@@ -408,7 +522,7 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
                     new_history.append(memory_message)
                     debug(f"Injected fresh companion memories for {len(valid_npcs)} NPCs", category="memory")
                 else:
-                    debug("No valid companion memories to inject (all NPCs have corrupted data)", category="memory")
+                    debug("No valid companion memories to inject (all NPC packets malformed)", category="memory")
     except Exception as e:
         warning(f"Failed to inject memories (non-fatal): {e}", category="memory")
 

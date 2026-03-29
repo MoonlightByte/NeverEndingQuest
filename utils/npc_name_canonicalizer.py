@@ -16,7 +16,11 @@ import json
 import os
 from pathlib import Path
 from typing import Dict, Optional
-import openai
+
+try:
+    import openai
+except ImportError:
+    openai = None
 
 from model_config import DM_MINI_MODEL
 from utils.encoding_utils import safe_json_load, safe_json_dump
@@ -98,6 +102,9 @@ def call_mini_model_for_name(full_name: str) -> str:
     Raises:
         Exception: If API call fails
     """
+    if openai is None:
+        raise RuntimeError("openai package unavailable")
+
     from config import OPENAI_API_KEY
 
     # Initialize OpenAI client

@@ -49,7 +49,19 @@ ACTION_MAP = {
     "held captive": "hc",
     "made last stand": "ls",
     "fled or retreated": "fr",
-    "renewed hope": "rh"
+    "renewed hope": "rh",
+    "agreed to accompany": "ac",
+    "joined the party": "jp",
+    "followed into danger": "fd",
+    "stood watch": "sw",
+    "shared determination": "sd",
+    "stood united": "su",
+    "broke enemy ranks": "br",
+    "fought fiercely": "ff",
+    "secret exposed": "sx",
+    "allegiance exposed": "ax",
+    "was blackmailed": "wb",
+    "faced coercion": "fc"
 }
 
 def compress_memory(memory: Dict) -> Dict:
@@ -108,6 +120,8 @@ def compress_npc_data(npc_data: Dict) -> Dict:
     compressed = {
         "n": npc_data['npc_name'],
         "ti": npc_data['total_interactions'],
+        "mc": npc_data.get('mention_count', npc_data['total_interactions']),
+        "q": npc_data.get('memory_quality', 'healthy'),
         "es": [  # Current emotional state as array
             round(npc_data['current_emotional_state'].get('trust', 0), 2),
             round(npc_data['current_emotional_state'].get('power', 0), 2),
@@ -125,6 +139,22 @@ def compress_npc_data(npc_data: Dict) -> Dict:
         "mem": [compress_memory(m) for m in npc_data['core_memories']]
     }
 
+    recent_events = npc_data.get('recent_meaningful_events', [])
+    if recent_events:
+        compressed["rm"] = []
+        for event in recent_events[-2:]:
+            if isinstance(event, dict):
+                summary = str(event.get('summary', '')).strip()
+                location = str(event.get('location', '')).strip()
+                if summary:
+                    if location:
+                        compressed["rm"].append(f"{summary}@{location[:40]}")
+                    else:
+                        compressed["rm"].append(summary)
+
+        if not compressed["rm"]:
+            del compressed["rm"]
+
     return compressed
 
 def create_compressed_file():
@@ -138,10 +168,13 @@ def create_compressed_file():
             "es_rng": "-1..+1 (float)",
             "bm": ["protector", "consistent", "generous", "truthful", "peaceful"],
             "bm_rng": "-1..+1 (float)",
+            "q": ["healthy", "sparse", "degraded_extract", "malformed"],
             "m": "memory salience (0..2+)",
             "dr": "decay_resistance (0..1, omit=1)",
             "v": "emotion_velocity magnitude (0..~2)",
             "x": "interaction index (int)",
+            "mc": "story-presence mention count (int)",
+            "rm": "recent meaningful notes (compact strings, optional)",
             "ct": ["CONFIRMATION", "REVERSAL", "COMPLEXITY", None],
             "tone_map": {
                 "trust": "+warm,+cooperative; -guarded",
@@ -288,6 +321,13 @@ def decompress_memories(compressed_path: str = "data/companion_memories/memories
             },
             "total_interactions": npc['ti']
         }
+
+        if 'mc' in npc:
+            decompressed['mention_count'] = npc['mc']
+        if 'q' in npc:
+            decompressed['memory_quality'] = npc['q']
+        if 'rm' in npc:
+            decompressed['recent_meaningful_events'] = npc['rm']
 
         # Decompress memories
         for mem in npc['mem']:

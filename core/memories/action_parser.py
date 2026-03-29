@@ -75,6 +75,22 @@ ACTION_PATTERNS = {
     r'prepared?\s+to\s+(?:report|return)\s+(?:back\s+)?together': {'trust': 0.1, 'respect': 0.1},
     r'(?:collaborated|cooperated)': {'trust': 0.2, 'respect': 0.2},
 
+    # Recruitment / alliance formation
+    r'\b(?:agreed|agreeing)\b.*\b(?:accompany|aid|help|join)\b': {'trust': 0.2, 'respect': 0.2},
+    r'\b(?:consented|consenting)\b.*\b(?:accompany|aid|help|join)\b': {'trust': 0.2, 'respect': 0.2},
+    r'(?:accompan(?:y|ied|ying)|join(?:ed|ing))\s+(?:the\s+)?party': {'trust': 0.2, 'respect': 0.1},
+    r'follow(?:ed|ing)\s+(?:the\s+party|them)\s+(?:into|down|through)': {'trust': 0.2, 'respect': 0.1},
+
+    # Guard / escort / watch duties
+    r'stand(?:ing)?\s+watch': {'trust': 0.2, 'respect': 0.1},
+    r'guard(?:ing|ed)?\s+(?:the\s+)?(?:rear|door|doors|entry|entrance|main\s+doors)': {'trust': 0.2, 'respect': 0.1},
+    r'bring(?:ing)?\s+up\s+(?:the\s+)?rear': {'trust': 0.2, 'respect': 0.1},
+
+    # Narrative combat teamwork / contribution
+    r'scattered?\s+(?:the\s+)?enemy\s+ranks': {'trust': 0.2, 'respect': 0.3, 'power': 0.2},
+    r'strikes?\s+(?:relentless|unyielding)': {'respect': 0.2, 'power': 0.2},
+    r'pressed\s+forward,?\s+united\s+in\s+purpose': {'trust': 0.2, 'respect': 0.2},
+
     # ===== ENHANCED PATTERNS ADDED =====
 
     # Romantic/Intimate actions
@@ -170,6 +186,15 @@ NEGATIVE_PATTERNS = {
     r'(?:rejected|spurned|rebuffed)': {'intimacy': -0.3, 'respect': -0.1},
     r'(?:cruel|callous|heartless)': {'fear': 0.4, 'trust': -0.6, 'respect': -0.4},
     r'(?:intimidated|frightened|scared)': {'fear': 0.5, 'trust': -0.3},
+
+    # Exposure / leverage / coercion
+    r'hidden\s+(?:bundle\s+of\s+)?letters': {'trust': -0.2, 'fear': 0.2},
+    r'secret\s+correspondence': {'trust': -0.3, 'fear': 0.2},
+    r'covert\s+allegiance': {'trust': -0.4, 'respect': -0.2, 'fear': 0.1},
+    r'blackmail(?:ed|ing)': {'trust': -0.3, 'fear': 0.4},
+    r'confronted?': {'fear': 0.2, 'respect': 0.1},
+    r'demand(?:ed|ing)\s+(?:his|her|their)\s+(?:aid|help|cooperation)': {'trust': -0.1, 'fear': 0.3},
+    r'pressured?\s+(?:him|her|them)?\s*(?:into|to)\s+(?:aid|help|cooperate|accompany|join)': {'trust': -0.1, 'fear': 0.3},
 }
 
 @dataclass
@@ -232,10 +257,20 @@ class ParsedAction:
             return 'deepened bond'
         elif 'trust' in self.pattern:
             return 'built trust'
+        elif 'agree' in self.pattern or 'consent' in self.pattern:
+            return 'agreed to accompany'
+        elif 'accompany' in self.pattern or 'join' in self.pattern:
+            return 'joined the party'
+        elif 'follow' in self.pattern:
+            return 'followed into danger'
         elif 'together' in self.pattern:
             return 'worked together'
         elif 'camaraderie' in self.pattern:
             return 'shared camaraderie'
+        elif 'purpose' in self.pattern or 'resolve' in self.pattern or 'determination' in self.pattern:
+            return 'shared determination'
+        elif 'unity' in self.pattern or 'unified' in self.pattern or 'united' in self.pattern:
+            return 'stood united'
         elif 'laugh' in self.pattern or 'joke' in self.pattern:
             return 'shared laughter'
         elif 'celebrated' in self.pattern or 'rejoiced' in self.pattern:
@@ -276,12 +311,18 @@ class ParsedAction:
         # Protection
         elif 'watch' in self.pattern or 'keen' in self.pattern:
             return 'kept watch'
+        elif 'guard' in self.pattern or 'rear' in self.pattern:
+            return 'stood watch'
         elif 'protected' in self.pattern:
             return 'provided protection'
         elif 'risked' in self.pattern or 'sacrificed' in self.pattern:
             return 'made sacrifice'
         elif 'saved' in self.pattern or 'rescued' in self.pattern:
             return 'performed rescue'
+        elif 'enemy' in self.pattern and 'ranks' in self.pattern:
+            return 'broke enemy ranks'
+        elif 'relentless' in self.pattern or 'unyielding' in self.pattern:
+            return 'fought fiercely'
 
         # Teaching
         elif 'taught' in self.pattern or 'instructed' in self.pattern:
@@ -302,6 +343,14 @@ class ParsedAction:
             return 'abandoned in danger'
         elif 'betrayed' in self.pattern:
             return 'betrayed trust'
+        elif 'blackmail' in self.pattern:
+            return 'was blackmailed'
+        elif 'letters' in self.pattern or 'correspondence' in self.pattern:
+            return 'secret exposed'
+        elif 'allegiance' in self.pattern:
+            return 'allegiance exposed'
+        elif 'confront' in self.pattern or 'demand' in self.pattern or 'pressure' in self.pattern:
+            return 'faced coercion'
         elif 'threatened' in self.pattern:
             return 'made threats'
         elif 'cruel' in self.pattern or 'callous' in self.pattern:

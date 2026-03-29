@@ -17,6 +17,95 @@ from .memory_gravity import GravitationalRetrieval
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.enhanced_logger import debug, info, warning, error
 
+MEMORY_QUALITY_HEALTHY = 'healthy'
+MEMORY_QUALITY_SPARSE = 'sparse'
+MEMORY_QUALITY_DEGRADED = 'degraded_extract'
+MEMORY_QUALITY_MALFORMED = 'malformed'
+
+
+def _coerce_int(value: Any, default: int = 0) -> int:
+    """Coerce a value to int for memory counters."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def has_nonzero_emotional_state(emotional_state: Dict[str, Any]) -> bool:
+    """Return True when any tracked emotion is non-zero."""
+    if not isinstance(emotional_state, dict):
+        return False
+
+    for value in emotional_state.values():
+        try:
+            if abs(float(value)) > 0.0:
+                return True
+        except (TypeError, ValueError):
+            return False
+
+    return False
+
+
+def build_recent_meaningful_event(location: str, actions: List[Any], timestamp: str) -> Dict[str, str]:
+    """Build a compact recent-event record for sparse/degraded fallback."""
+    trigger_actions = []
+    for action in actions:
+        readable = action.get_readable_action()
+        if readable and readable not in trigger_actions:
+            trigger_actions.append(readable)
+
+    summary = ', '.join(trigger_actions[:3]) if trigger_actions else 'meaningful interaction'
+    if len(summary) > 90:
+        summary = summary[:87] + '...'
+
+    return {
+        'timestamp': timestamp,
+        'location': location,
+        'summary': summary,
+    }
+
+
+def classify_npc_memory_data(data: Dict[str, Any]) -> str:
+    """Classify raw NPC memory payload quality."""
+    if not isinstance(data, dict):
+        return MEMORY_QUALITY_MALFORMED
+
+    npc_name = data.get('npc_name')
+    core_memories = data.get('core_memories', [])
+    emotional_state = data.get('current_emotional_state', {})
+    behavioral_model = data.get('behavioral_model', {})
+    total_interactions = data.get('total_interactions', 0)
+    mention_count = data.get('mention_count', total_interactions)
+    meaningful_count = data.get('meaningful_interaction_count', total_interactions)
+    recent_events = data.get('recent_meaningful_events', [])
+
+    if not isinstance(npc_name, str) or not npc_name.strip():
+        return MEMORY_QUALITY_MALFORMED
+    if not isinstance(core_memories, list):
+        return MEMORY_QUALITY_MALFORMED
+    if not isinstance(emotional_state, dict):
+        return MEMORY_QUALITY_MALFORMED
+    if not isinstance(behavioral_model, dict):
+        return MEMORY_QUALITY_MALFORMED
+    if not isinstance(recent_events, list):
+        return MEMORY_QUALITY_MALFORMED
+
+    try:
+        meaningful_count = int(meaningful_count)
+        mention_count = int(mention_count)
+        int(total_interactions)
+    except (TypeError, ValueError):
+        return MEMORY_QUALITY_MALFORMED
+
+    if core_memories or has_nonzero_emotional_state(emotional_state):
+        return MEMORY_QUALITY_HEALTHY
+    if meaningful_count > 0 or len(recent_events) > 0:
+        return MEMORY_QUALITY_DEGRADED
+    if mention_count > 0:
+        return MEMORY_QUALITY_SPARSE
+
+    return MEMORY_QUALITY_SPARSE
+
 class CompanionMemoryManager:
     """Manages the complete memory system for companion NPCs"""
     
@@ -39,7 +128,9 @@ class CompanionMemoryManager:
         self.npc_memories: Dict[str, List[CoreMemory]] = defaultdict(list)
         self.npc_emotional_states: Dict[str, EmotionalVector] = defaultdict(EmotionalVector)
         self.npc_behavioral_models: Dict[str, Dict[str, float]] = defaultdict(self._init_behavioral_model)
+        self.mention_counts: Dict[str, int] = defaultdict(int)
         self.interaction_counts: Dict[str, int] = defaultdict(int)
+        self.recent_meaningful_events: Dict[str, List[Dict[str, str]]] = defaultdict(list)
 
         # Time tracking
         self.day_counter = 0
@@ -129,6 +220,7 @@ class CompanionMemoryManager:
             return {}
 
         memories_created = {}
+        state_changed = False
 
         # Process each NPC
         for npc_name in party_npcs:
@@ -136,14 +228,26 @@ class CompanionMemoryManager:
             if npc_name.lower() not in summary.lower():
                 continue
 
-            # Track interaction
-            self.interaction_counts[npc_name] += 1
+            # Ensure state exists for mentioned NPCs and track story presence
+            self.npc_memories[npc_name]
+            self.npc_emotional_states[npc_name]
+            self.npc_behavioral_models[npc_name]
+            self.mention_counts[npc_name] += 1
+            state_changed = True
 
             # Parse actions from journal
             actions = self.action_parser.parse_entry(summary, npc_name)
 
             if not actions:
                 continue
+
+            # Track meaningful interactions separately from story presence
+            self.interaction_counts[npc_name] += 1
+
+            recent_event = build_recent_meaningful_event(location, actions, original_timestamp)
+            self.recent_meaningful_events[npc_name].append(recent_event)
+            self.recent_meaningful_events[npc_name] = self.recent_meaningful_events[npc_name][-3:]
+            state_changed = True
 
             # Extract relevant excerpt
             excerpt = self._extract_excerpt(summary, npc_name)
@@ -195,8 +299,8 @@ class CompanionMemoryManager:
                 else:
                     debug("CompanionMemory", f"Skipping duplicate memory for {npc_name}")
 
-        # Save if any memories were created
-        if memories_created and self.mode != 'refresh':  # Don't save during bulk refresh
+        # Save any changed companion state when appending incrementally
+        if state_changed and self.mode != 'refresh':
             self.save_all_memories()
 
         return memories_created
@@ -310,12 +414,25 @@ class CompanionMemoryManager:
         profile = {
             'name': npc_name,
             'total_interactions': self.interaction_counts.get(npc_name, 0),
+            'mention_count': self.mention_counts.get(npc_name, self.interaction_counts.get(npc_name, 0)),
+            'meaningful_interaction_count': self.interaction_counts.get(npc_name, 0),
             'core_memories': len(self.npc_memories.get(npc_name, [])),
             'emotional_state': self.npc_emotional_states[npc_name].to_dict() if npc_name in self.npc_emotional_states else {},
             'behavioral_model': self.npc_behavioral_models.get(npc_name, {}),
             'relationship_status': self._determine_relationship(npc_name),
-            'strongest_memory': None
+            'strongest_memory': None,
+            'recent_meaningful_events': self.recent_meaningful_events.get(npc_name, []),
         }
+        profile['memory_quality'] = classify_npc_memory_data({
+            'npc_name': npc_name,
+            'core_memories': [m.to_dict() for m in self.npc_memories.get(npc_name, [])],
+            'current_emotional_state': profile['emotional_state'],
+            'behavioral_model': profile['behavioral_model'],
+            'total_interactions': profile['total_interactions'],
+            'mention_count': profile['mention_count'],
+            'meaningful_interaction_count': profile['meaningful_interaction_count'],
+            'recent_meaningful_events': profile['recent_meaningful_events'],
+        })
         
         # Add strongest memory if exists
         if npc_name in self.npc_memories and self.npc_memories[npc_name]:
@@ -364,7 +481,14 @@ class CompanionMemoryManager:
     def save_all_memories(self) -> None:
         """Save all memories to disk"""
         
-        for npc_name in self.npc_memories:
+        npc_names = set(self.npc_memories.keys())
+        npc_names.update(self.npc_emotional_states.keys())
+        npc_names.update(self.npc_behavioral_models.keys())
+        npc_names.update(self.interaction_counts.keys())
+        npc_names.update(self.mention_counts.keys())
+        npc_names.update(self.recent_meaningful_events.keys())
+
+        for npc_name in sorted(npc_names):
             self.save_npc_memories(npc_name)
         
         # Save configuration
@@ -373,15 +497,27 @@ class CompanionMemoryManager:
     def save_npc_memories(self, npc_name: str) -> None:
         """Save memories for a specific NPC"""
         
+        core_memories = [m.to_dict() for m in self.npc_memories.get(npc_name, [])]
+        emotional_state = self.npc_emotional_states[npc_name].to_dict() if npc_name in self.npc_emotional_states else {}
+        behavioral_model = self.npc_behavioral_models.get(npc_name, {})
+        total_interactions = self.interaction_counts.get(npc_name, 0)
+        mention_count = self.mention_counts.get(npc_name, total_interactions)
+        recent_events = self.recent_meaningful_events.get(npc_name, [])
+
         filename = self.data_dir / f"{npc_name.lower().replace(' ', '_')}_memories.json"
-        
+
         data = {
             'npc_name': npc_name,
-            'core_memories': [m.to_dict() for m in self.npc_memories.get(npc_name, [])],
-            'current_emotional_state': self.npc_emotional_states[npc_name].to_dict() if npc_name in self.npc_emotional_states else {},
-            'behavioral_model': self.npc_behavioral_models.get(npc_name, {}),
-            'total_interactions': self.interaction_counts.get(npc_name, 0)
+            'core_memories': core_memories,
+            'current_emotional_state': emotional_state,
+            'behavioral_model': behavioral_model,
+            'total_interactions': total_interactions,
+            'meaningful_interaction_count': total_interactions,
+            'mention_count': mention_count,
+            'crystallized_memory_count': len(core_memories),
+            'recent_meaningful_events': recent_events,
         }
+        data['memory_quality'] = classify_npc_memory_data(data)
         
         safe_json_dump(data, filename)
         debug("CompanionMemory", f"Saved memories for {npc_name}")
@@ -417,8 +553,15 @@ class CompanionMemoryManager:
         if 'behavioral_model' in data:
             self.npc_behavioral_models[npc_name] = data['behavioral_model']
         
-        # Load interaction count
-        self.interaction_counts[npc_name] = data.get('total_interactions', 0)
+        # Load interaction counts
+        total_interactions = _coerce_int(data.get('meaningful_interaction_count', data.get('total_interactions', 0)))
+        mention_count = _coerce_int(data.get('mention_count', total_interactions), total_interactions)
+        self.interaction_counts[npc_name] = total_interactions
+        self.mention_counts[npc_name] = mention_count
+
+        recent_events = data.get('recent_meaningful_events', [])
+        if isinstance(recent_events, list):
+            self.recent_meaningful_events[npc_name] = recent_events[-3:]
         
         debug("CompanionMemory", f"Loaded {len(self.npc_memories[npc_name])} memories for {npc_name}")
     
@@ -430,7 +573,8 @@ class CompanionMemoryManager:
             'max_memories_per_npc': 5,
             'retrieval_pull_threshold': self.retrieval_system.pull_threshold,
             'total_memories_created': self.crystallizer.memory_counter,
-            'npc_interaction_counts': dict(self.interaction_counts)
+            'npc_interaction_counts': dict(self.interaction_counts),
+            'npc_mention_counts': dict(self.mention_counts)
         }
         
         safe_json_dump(config, self.config_file)
@@ -457,6 +601,9 @@ class CompanionMemoryManager:
         
         if 'npc_interaction_counts' in config:
             self.interaction_counts.update(config['npc_interaction_counts'])
+
+        if 'npc_mention_counts' in config:
+            self.mention_counts.update(config['npc_mention_counts'])
     
     def clear_npc_memories(self, npc_name: str) -> None:
         """Clear all memories for a specific NPC"""
@@ -472,6 +619,12 @@ class CompanionMemoryManager:
         
         if npc_name in self.interaction_counts:
             del self.interaction_counts[npc_name]
+
+        if npc_name in self.mention_counts:
+            del self.mention_counts[npc_name]
+
+        if npc_name in self.recent_meaningful_events:
+            del self.recent_meaningful_events[npc_name]
         
         # Delete file
         filename = self.data_dir / f"{npc_name.lower().replace(' ', '_')}_memories.json"
@@ -486,7 +639,9 @@ class CompanionMemoryManager:
         self.npc_memories.clear()
         self.npc_emotional_states.clear()
         self.npc_behavioral_models.clear()
+        self.mention_counts.clear()
         self.interaction_counts.clear()
+        self.recent_meaningful_events.clear()
         self.processed_entries.clear()
 
         # Reset counters
