@@ -1021,6 +1021,30 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Currency Abbreviation Normalization Fix (COMPLETED - 2026-03-29)
+
+**Status:** COMPLETED - Fixed hard failure when LLM generates abbreviated currency types in `currency_delta` ops.
+
+**Problem:**
+LLM generated `currency_delta` op with `"currency":"sp"` (abbreviation), but runtime only accepted full names (`"gold"`, `"silver"`, `"copper"`), causing hard failure:
+```
+[ERROR] FAILURE: Deterministic ops application failed for lidda_underbough: unsupported currency type: sp
+```
+
+**Implementation:**
+- Added `_CURRENCY_ABBREVIATIONS` mapping dictionary and `_normalize_currency_type()` helper in `updates/update_character_info.py`
+- Maps: `gp`→`gold`, `sp`→`silver`, `cp`→`copper`, plus case-insensitive handling
+- Applied normalization in `currency_delta` op handler before validation
+- Zero breaking changes - existing full-name usage unchanged
+
+**Files Modified:**
+- `updates/update_character_info.py` - Added normalization helper and applied to currency type validation
+
+**Verification:**
+- `python3 -m py_compile updates/update_character_info.py` -> PASS
+- All 16 existing ops contract tests pass
+- Integration test confirms `sp`→`silver` mapping works
+
 ### Restless Dead Travel + Recruit Validation Cleanup (COMPLETED - 2026-03-27)
 
 ### Journal Diary + Story So Far MVP (COMPLETED - 2026-03-29)

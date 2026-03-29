@@ -143,6 +143,29 @@ set_script_name(__name__)
 # Initialize client using factory (supports OpenAI and OpenRouter)
 client = create_chat_client()
 
+# Currency abbreviation normalization mapping
+_CURRENCY_ABBREVIATIONS = {
+    "gp": "gold",
+    "pp": "platinum",
+    "sp": "silver",
+    "ep": "electrum",
+    "cp": "copper",
+}
+
+
+def _normalize_currency_type(currency_str: str) -> str:
+    """Normalize currency abbreviations to full names.
+    
+    Args:
+        currency_str: Currency type (may be abbreviation or full name)
+    
+    Returns:
+        Normalized currency name (gold, silver, copper, etc.)
+    """
+    normalized = str(currency_str).strip().lower()
+    return _CURRENCY_ABBREVIATIONS.get(normalized, normalized)
+
+
 # Constants
 TEMPERATURE = 0.7
 VALIDATION_TEMPERATURE = 0.1  # Lower temperature for validation
@@ -1846,7 +1869,7 @@ def _apply_character_ops_deterministic(character_data: Dict[str, Any], ops: List
                 delta_map = {coin_type: delta_value}
 
             for coin_type, delta_value in delta_map.items():
-                coin = str(coin_type).strip().lower()
+                coin = _normalize_currency_type(coin_type)
                 if coin not in ["gold", "silver", "copper"]:
                     return (False, character_data, f"unsupported currency type: {coin}", [])
                 delta = _to_int(delta_value, coin, op_type)
