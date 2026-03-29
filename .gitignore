@@ -40,6 +40,7 @@ party_tracker.json.bak
 journal.json
 journal.json.bak
 chronology.json
+data/story_so_far_cache/
 modules/conversation_history/
 player_storage.json
 # Character files - all should be local only
