@@ -32,13 +32,25 @@ def _load_update_helpers():
         source = file_handle.read()
 
     parsed = ast.parse(source)
-    target_assign_names = {"SUPPORTED_CHARACTER_OPS"}
+    target_assign_names = {
+        "SUPPORTED_CHARACTER_OPS",
+        "_CURRENCY_ABBREVIATIONS",
+        "OPS_ROUTING_REASON_APPLY_RECOVERABLE_WITH_CHANGES",
+        "OPS_ROUTING_REASON_APPLY_RECOVERABLE_NO_FALLBACK",
+        "OPS_ROUTING_REASON_APPLY_AUTHORITATIVE_HARD_FAIL",
+    }
     target_func_names = {
+        "_normalize_currency_type",
+        "_get_currency_delta_value",
         "_to_int",
+        "_canonicalize_ops_target_identity",
+        "_resolve_named_entry",
         "_resolve_op_type",
         "_find_equipment_entry",
         "_find_ammunition_entry",
         "_find_class_feature_entry",
+        "_classify_deterministic_ops_failure",
+        "_resolve_apply_failure_route",
         "_read_feature_usage",
         "_write_feature_usage",
         "_apply_character_ops_deterministic",
@@ -57,6 +69,7 @@ def _load_update_helpers():
     helper_module = ast.Module(body=selected_nodes, type_ignores=[])
     namespace = {
         "copy": copy,
+        "re": __import__("re"),
         "Any": Any,
         "Dict": Dict,
         "List": List,
@@ -165,6 +178,9 @@ class TestFeatureUsageOps(unittest.TestCase):
     def setUpClass(cls):
         namespace = _load_update_helpers()
         cls.apply_ops = staticmethod(namespace["_apply_character_ops_deterministic"])
+        cls.classify_failure = staticmethod(namespace["_classify_deterministic_ops_failure"])
+        cls.resolve_failure_route = staticmethod(namespace["_resolve_apply_failure_route"])
+        cls.canonicalize_identity = staticmethod(namespace["_canonicalize_ops_target_identity"])
 
     def test_feature_usage_delta_updates_nested_usage(self):
         character_data = {
@@ -195,6 +211,60 @@ class TestFeatureUsageOps(unittest.TestCase):
         self.assertEqual(updated["classFeatures"][0]["currentUses"], 0)
         self.assertEqual(updated["classFeatures"][0]["uses"], 0)
         self.assertEqual(updated["classFeatures"][0]["maxUses"], 1)
+
+    def test_feature_usage_delta_matches_compacted_feature_alias(self):
+        character_data = {
+            "classFeatures": [
+                {"name": "Divine Sense", "usage": {"current": 5, "max": 5, "refreshOn": "longRest"}}
+            ]
+        }
+        ops = [{"op": "feature_usage_delta", "feature": "DivineSense", "delta": -1}]
+
+        success, updated, error_message, unsupported = self.apply_ops(character_data, ops)
+        self.assertTrue(success)
+        self.assertEqual(error_message, "")
+        self.assertEqual(unsupported, [])
+        self.assertEqual(updated["classFeatures"][0]["usage"]["current"], 4)
+
+    def test_feature_usage_delta_matches_legacy_compacted_lay_on_hands_alias(self):
+        character_data = {
+            "classFeatures": [
+                {"name": "Lay on Hands", "usage": {"current": 5, "max": 5, "refreshOn": "longRest"}}
+            ]
+        }
+        ops = [{"op": "feature_usage_delta", "feature": "LayonHands", "delta": -1}]
+
+        success, updated, error_message, unsupported = self.apply_ops(character_data, ops)
+        self.assertTrue(success)
+        self.assertEqual(error_message, "")
+        self.assertEqual(unsupported, [])
+        self.assertEqual(updated["classFeatures"][0]["usage"]["current"], 4)
+
+    def test_canonical_target_identity_strips_spacing_and_punctuation(self):
+        self.assertEqual(self.canonicalize_identity("Divine Sense"), "divinesense")
+        self.assertEqual(self.canonicalize_identity("Divine-Sense"), "divinesense")
+        self.assertEqual(self.canonicalize_identity("Lay on Hands"), "layonhands")
+
+    def test_recoverable_failure_route_degrades_when_changes_present(self):
+        route = self.resolve_failure_route(
+            "Expended 1 use of Divine Sense.",
+            "unknown class feature: DivineSense",
+        )
+        self.assertEqual(route["mode"], "prose_fallback")
+        self.assertEqual(route["reason"], "ops_apply_recoverable_with_changes_fallback")
+
+    def test_authoritative_failure_route_stays_hard_fail_even_with_changes(self):
+        route = self.resolve_failure_route(
+            "Removed 2 arrows from inventory.",
+            "cannot remove 2 Arrow; only 1 available",
+        )
+        self.assertEqual(route["mode"], "hard_fail")
+        self.assertEqual(route["reason"], "ops_apply_authoritative_hard_fail")
+
+    def test_authoritative_failure_classification_mentions_specific_user_message(self):
+        classification = self.classify_failure("currency underflow for gold: 0+-5")
+        self.assertEqual(classification["mode"], "hard_fail")
+        self.assertIn("Could not safely apply character update", classification["user_message"])
 
 
 class TestPreCombatHostilePresenceSourceContracts(unittest.TestCase):

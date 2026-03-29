@@ -1021,6 +1021,41 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Character Ops Runtime Recovery + Target Normalization (COMPLETED - 2026-03-29)
+
+**Status:** COMPLETED - generalized structured `updateCharacterInfo` runtime hardening so recoverable ops alias/shape drift no longer freezes gameplay, while authoritative contradictions remain fail-closed.
+
+**OpenSpec Change:**
+- `openspec/changes/tt-character-ops-runtime-recovery-and-target-normalization/`
+
+**Objective:**
+- Stop mixed `changes + ops` character updates from hard-failing on benign target-label drift such as `DivineSense` vs `Divine Sense`.
+- Preserve deterministic Python authority for real contradictions like underflow, overflow, impossible removals, and invalid death-save mutations.
+- Replace opaque generic character-update failures with safer recovery routing and clearer surfaced errors.
+
+**Implementation Summary:**
+- `updates/update_character_info.py`
+  - Added canonical structured-ops target identity normalization for feature, equipment, and ammunition matching.
+  - Hardened spell-slot level normalization for compact and textual aliases.
+  - Added recoverable-vs-authoritative deterministic apply failure classification.
+  - Mixed `changes + ops` payloads now degrade to prose fallback on recoverable apply-time failures, while contradiction-class failures still hard-fail.
+  - Added richer ops routing markers with `error_message` and `user_message` fields for diagnostics and user-safe surfacing.
+- `utils/character_ops_routing.py`
+  - Extended legacy nested wrapper normalization to cover death-save op variants so newer deterministic ops remain parity-normalized.
+- `core/ai/action_handler.py`
+  - Preserves routing-specific failure details from `update_character_info(...)` and returns user-safe error text instead of collapsing everything to a generic failure.
+- `main.py`
+  - Reads nested `response_data.error_message` from action-handler failures so surfaced `[SYSTEM]` feedback stays specific.
+- Regression coverage:
+  - `scripts/test_mechanical_followthrough_hardening.py`
+  - `scripts/test_update_character_ops_contract.py`
+
+**Verification:**
+- `python3 -m py_compile updates/update_character_info.py utils/character_ops_routing.py core/ai/action_handler.py main.py scripts/test_mechanical_followthrough_hardening.py scripts/test_update_character_ops_contract.py` -> PASS
+- `python3 scripts/test_mechanical_followthrough_hardening.py` -> PASS
+- `python3 scripts/test_update_character_ops_contract.py` -> PASS
+- `openspec validate tt-character-ops-runtime-recovery-and-target-normalization` -> PASS
+
 ### Implicit Sublocation Descent Sync (COMPLETED - 2026-03-29)
 
 **Status:** COMPLETED - narrow runtime hardening for local below/into-the-catacombs scene drift, preserving DM adjudication fallback UX.

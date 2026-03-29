@@ -131,9 +131,23 @@ class TestOpsRuntimeSourceContracts(unittest.TestCase):
         self.assertIn("ops_absent", update_source)
         self.assertIn("ops_invalid_with_changes_fallback", update_source)
         self.assertIn("ops_unsupported_with_changes_fallback", update_source)
+        self.assertIn("ops_apply_recoverable_with_changes_fallback", update_source)
+        self.assertIn("ops_apply_authoritative_hard_fail", update_source)
 
     def test_action_handler_logs_ops_route_marker(self):
         self.assertIn("CHAR_OPS_ROUTE", self.content["action_handler"])
+
+    def test_main_reads_nested_response_data_error_message(self):
+        main_path = os.path.join(REPO_ROOT, "main.py")
+        with open(main_path, "r", encoding="utf-8") as file_handle:
+            main_source = file_handle.read()
+
+        self.assertIn('result.get("response_data", {})', main_source)
+        self.assertIn('response_data.get("error_message")', main_source)
+
+    def test_action_handler_surfaces_ops_route_error_details(self):
+        self.assertIn('ops_route.get("error_message")', self.content["action_handler"])
+        self.assertIn('ops_route.get("user_message")', self.content["action_handler"])
 
 
 class TestOpsRoutingBehaviorContracts(unittest.TestCase):
@@ -188,8 +202,17 @@ class TestOpsRoutingBehaviorContracts(unittest.TestCase):
         self.assertEqual(normalized[0].get("op"), "hp_delta")
         self.assertEqual(normalized[0].get("delta"), 7)
 
+    def test_scalar_nested_death_save_delta_is_normalized(self):
+        from utils.character_ops_routing import normalize_character_ops_payload
+
+        normalized = normalize_character_ops_payload([{"death_save_failure_delta": 1}])
+        self.assertEqual(normalized[0].get("op"), "death_save_failure_delta")
+        self.assertEqual(normalized[0].get("delta"), 1)
+
     def test_currency_delta_accepts_amount_alias_and_abbreviation(self):
-        from updates.update_character_info import _apply_character_ops_deterministic
+        from scripts.test_mechanical_followthrough_hardening import _load_update_helpers
+
+        apply_ops = _load_update_helpers()["_apply_character_ops_deterministic"]
 
         character_data = {
             "characterName": "lidda_underbough",
@@ -198,7 +221,7 @@ class TestOpsRoutingBehaviorContracts(unittest.TestCase):
         }
         ops = [{"op": "currency_delta", "currency": "sp", "amount": 5}]
 
-        success, updated_data, error_message, unsupported_ops = _apply_character_ops_deterministic(
+        success, updated_data, error_message, unsupported_ops = apply_ops(
             character_data,
             ops,
         )
@@ -209,7 +232,9 @@ class TestOpsRoutingBehaviorContracts(unittest.TestCase):
         self.assertEqual(updated_data["currency"]["silver"], 5)
 
     def test_currency_delta_accepts_quantity_alias_and_abbreviation(self):
-        from updates.update_character_info import _apply_character_ops_deterministic
+        from scripts.test_mechanical_followthrough_hardening import _load_update_helpers
+
+        apply_ops = _load_update_helpers()["_apply_character_ops_deterministic"]
 
         character_data = {
             "characterName": "lidda_underbough",
@@ -218,7 +243,7 @@ class TestOpsRoutingBehaviorContracts(unittest.TestCase):
         }
         ops = [{"op": "currency_delta", "currency": "sp", "quantity": 6}]
 
-        success, updated_data, error_message, unsupported_ops = _apply_character_ops_deterministic(
+        success, updated_data, error_message, unsupported_ops = apply_ops(
             character_data,
             ops,
         )

@@ -25,6 +25,11 @@ _LEGACY_NESTED_OP_KEYS = {
     "condition_remove",
     "feature_usage_delta",
     "feature_usage_set",
+    "death_save_failure",
+    "death_save_failure_delta",
+    "death_save_success",
+    "death_save_success_delta",
+    "death_saves_set",
 }
 
 
@@ -63,6 +68,8 @@ def _normalize_legacy_nested_op(op: Dict[str, Any]) -> Dict[str, Any]:
         normalized_op["delta"] = payload
     elif normalized_name == "feature_usage_set":
         normalized_op["current"] = payload
+    elif normalized_name in ["death_save_failure", "death_save_failure_delta", "death_save_success", "death_save_success_delta"]:
+        normalized_op["delta"] = payload
     else:
         return op
 

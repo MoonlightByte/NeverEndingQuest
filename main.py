@@ -3267,7 +3267,8 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                         actions_processed = True
                         # Handle result same as sequential processing
                         if isinstance(result, dict) and result.get("status") == "error":
-                            error_msg = result.get("error_message", "Unknown error in concurrent character update")
+                            response_data = result.get("response_data", {}) if isinstance(result, dict) else {}
+                            error_msg = response_data.get("error_message") or result.get("error_message", "Unknown error in concurrent character update")
                             error(f"ACTION_ERROR: {error_msg}", category="action_processing")
                             conversation_history.append({
                                 "role": "system",
@@ -3294,7 +3295,8 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                 result = action_handler.process_action(action, party_tracker_data, location_data, conversation_history)
                 actions_processed = True
                 if isinstance(result, dict) and result.get("status") == "error":
-                    error_msg = result.get("error_message", "Unknown error in character update")
+                    response_data = result.get("response_data", {}) if isinstance(result, dict) else {}
+                    error_msg = response_data.get("error_message") or result.get("error_message", "Unknown error in character update")
                     error(f"ACTION_ERROR: {error_msg}", category="action_processing")
                     conversation_history.append({
                         "role": "system",

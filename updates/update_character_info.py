@@ -1514,6 +1514,8 @@ SUPPORTED_CHARACTER_OPS = {
 _last_ops_routing_marker = {
     "mode": "unknown",
     "reason": "unknown",
+    "error_message": "",
+    "user_message": "",
 }
 
 # TABLETOP MODE: Deterministic routing reason markers for ops pilot telemetry.
@@ -1521,13 +1523,23 @@ _last_ops_routing_marker = {
 OPS_ROUTING_REASON_OPS_ABSENT = "ops_absent"
 OPS_ROUTING_REASON_INVALID_WITH_CHANGES = "ops_invalid_with_changes_fallback"
 OPS_ROUTING_REASON_UNSUPPORTED_WITH_CHANGES = "ops_unsupported_with_changes_fallback"
+OPS_ROUTING_REASON_APPLY_RECOVERABLE_WITH_CHANGES = "ops_apply_recoverable_with_changes_fallback"
+OPS_ROUTING_REASON_APPLY_RECOVERABLE_NO_FALLBACK = "ops_apply_recoverable_no_fallback"
+OPS_ROUTING_REASON_APPLY_AUTHORITATIVE_HARD_FAIL = "ops_apply_authoritative_hard_fail"
 
 
-def _set_last_ops_routing_marker(mode: str, reason: str) -> None:
+def _set_last_ops_routing_marker(
+    mode: str,
+    reason: str,
+    error_message: str = "",
+    user_message: str = "",
+) -> None:
     global _last_ops_routing_marker
     _last_ops_routing_marker = {
         "mode": str(mode),
         "reason": str(reason),
+        "error_message": str(error_message or ""),
+        "user_message": str(user_message or ""),
     }
 
 
@@ -1538,9 +1550,112 @@ def get_last_ops_routing_marker() -> Dict[str, str]:
 
 def _normalize_spell_slot_level(level_value: Any) -> str:
     level_str = str(level_value).strip().lower()
-    if level_str.startswith("level"):
-        return level_str
-    return f"level{level_str}"
+    compact_level = re.sub(r"[\s_\-]+", "", level_str)
+    if compact_level.startswith("level"):
+        suffix = compact_level[5:]
+        if suffix:
+            return f"level{suffix}"
+    if compact_level.startswith("lvl"):
+        suffix = compact_level[3:]
+        if suffix:
+            return f"level{suffix}"
+
+    digits_match = re.search(r"([1-9])", compact_level)
+    if digits_match:
+        return f"level{digits_match.group(1)}"
+
+    word_levels = {
+        "one": "level1",
+        "first": "level1",
+        "two": "level2",
+        "second": "level2",
+        "three": "level3",
+        "third": "level3",
+        "four": "level4",
+        "fourth": "level4",
+        "five": "level5",
+        "fifth": "level5",
+        "six": "level6",
+        "sixth": "level6",
+        "seven": "level7",
+        "seventh": "level7",
+        "eight": "level8",
+        "eighth": "level8",
+        "nine": "level9",
+        "ninth": "level9",
+    }
+    if compact_level in word_levels:
+        return word_levels[compact_level]
+
+    return f"level{compact_level}"
+
+
+def _canonicalize_ops_target_identity(value: Any) -> str:
+    raw_value = str(value or "").strip().lower()
+    return "".join(character for character in raw_value if character.isalnum())
+
+
+def _resolve_named_entry(
+    entries: List[Dict[str, Any]],
+    target_name: str,
+    candidate_keys: Tuple[str, ...],
+) -> Tuple[Optional[Dict[str, Any]], str]:
+    target_exact = str(target_name or "").strip().lower()
+    target_identity = _canonicalize_ops_target_identity(target_name)
+    if not target_exact:
+        return (None, "missing")
+
+    exact_matches: List[Dict[str, Any]] = []
+    canonical_matches: List[Dict[str, Any]] = []
+    loose_matches: List[Dict[str, Any]] = []
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+
+        existing_name = ""
+        for key in candidate_keys:
+            candidate_value = entry.get(key)
+            if candidate_value:
+                existing_name = str(candidate_value).strip()
+                break
+        if not existing_name:
+            continue
+
+        existing_lower = existing_name.lower()
+        existing_identity = _canonicalize_ops_target_identity(existing_name)
+
+        if existing_lower == target_exact:
+            exact_matches.append(entry)
+            continue
+
+        if target_identity and existing_identity == target_identity:
+            canonical_matches.append(entry)
+            continue
+
+        if (
+            target_identity
+            and len(target_identity) >= 4
+            and (
+                target_identity in existing_identity
+                or existing_identity in target_identity
+                or target_exact in existing_lower
+                or existing_lower in target_exact
+            )
+        ):
+            loose_matches.append(entry)
+
+    for matches, reason in (
+        (exact_matches, "exact"),
+        (canonical_matches, "canonical"),
+        (loose_matches, "loose"),
+    ):
+        if len(matches) == 1:
+            return (matches[0], reason)
+        if len(matches) > 1:
+            return (None, "ambiguous")
+
+    return (None, "missing")
 
 
 def _resolve_op_type(op: Dict[str, Any]) -> str:
@@ -1553,25 +1668,13 @@ def _resolve_op_type(op: Dict[str, Any]) -> str:
 
 
 def _find_equipment_entry(equipment: List[Dict[str, Any]], item_name: str) -> Optional[Dict[str, Any]]:
-    target = item_name.strip().lower()
-    for item in equipment:
-        if not isinstance(item, dict):
-            continue
-        existing_name = str(item.get("item_name") or item.get("name") or "").strip().lower()
-        if existing_name == target:
-            return item
-    return None
+    matched_entry, _ = _resolve_named_entry(equipment, item_name, ("item_name", "name"))
+    return matched_entry
 
 
 def _find_ammunition_entry(ammunition: List[Dict[str, Any]], item_name: str) -> Optional[Dict[str, Any]]:
-    target = item_name.strip().lower()
-    for item in ammunition:
-        if not isinstance(item, dict):
-            continue
-        existing_name = str(item.get("name") or "").strip().lower()
-        if existing_name == target:
-            return item
-    return None
+    matched_entry, _ = _resolve_named_entry(ammunition, item_name, ("name",))
+    return matched_entry
 
 
 def _to_int(value: Any, field_name: str, op_type: str) -> int:
@@ -1610,26 +1713,53 @@ def _sync_death_save_state(updated_data: Dict[str, Any]) -> None:
 
 
 def _find_class_feature_entry(class_features: List[Dict[str, Any]], feature_name: str) -> Optional[Dict[str, Any]]:
-    target = feature_name.strip().lower()
-    if not target:
-        return None
+    matched_entry, _ = _resolve_named_entry(class_features, feature_name, ("name",))
+    return matched_entry
 
-    exact_match: Optional[Dict[str, Any]] = None
-    contains_match: Optional[Dict[str, Any]] = None
 
-    for feature in class_features:
-        if not isinstance(feature, dict):
-            continue
-        existing_name = str(feature.get("name") or "").strip().lower()
-        if not existing_name:
-            continue
-        if existing_name == target:
-            exact_match = feature
-            break
-        if target in existing_name and contains_match is None:
-            contains_match = feature
+def _classify_deterministic_ops_failure(error_message: str) -> Dict[str, str]:
+    error_text = str(error_message or "").strip()
+    lowered = error_text.lower()
 
-    return exact_match or contains_match
+    authoritative_markers = [
+        "underflow",
+        "overflow",
+        "cannot remove",
+        "invalid while hitpoints > 0",
+        "ambiguous class feature",
+    ]
+    if any(marker in lowered for marker in authoritative_markers):
+        return {
+            "mode": "hard_fail",
+            "reason": OPS_ROUTING_REASON_APPLY_AUTHORITATIVE_HARD_FAIL,
+            "error_message": error_text,
+            "user_message": f"Could not safely apply character update for {error_text}.",
+        }
+
+    return {
+        "mode": "recoverable",
+        "reason": OPS_ROUTING_REASON_APPLY_RECOVERABLE_NO_FALLBACK,
+        "error_message": error_text,
+        "user_message": "Could not apply the structured character update exactly as written, but a safe fallback may still be available.",
+    }
+
+
+def _resolve_apply_failure_route(changes_text: str, ops_error: str) -> Dict[str, str]:
+    failure_classification = _classify_deterministic_ops_failure(ops_error)
+    has_changes_fallback = bool(str(changes_text or "").strip())
+
+    if failure_classification["mode"] == "recoverable" and has_changes_fallback:
+        return {
+            "mode": "prose_fallback",
+            "reason": OPS_ROUTING_REASON_APPLY_RECOVERABLE_WITH_CHANGES,
+            "error_message": failure_classification["error_message"],
+            "user_message": "",
+        }
+
+    if failure_classification["mode"] == "recoverable":
+        return failure_classification
+
+    return failure_classification
 
 
 def _read_feature_usage(feature: Dict[str, Any]) -> Tuple[int, Optional[int], str]:
@@ -1703,281 +1833,288 @@ def _apply_character_ops_deterministic(character_data: Dict[str, Any], ops: List
 
     updated_data = copy.deepcopy(character_data)
 
-    for op in ops:
-        op_type = _resolve_op_type(op)
+    try:
+        for op in ops:
+            op_type = _resolve_op_type(op)
 
-        if op_type == "set_hp":
-            hp_value = _to_int(op.get("value", op.get("hp")), "value", op_type)
-            max_hp = _to_int(updated_data.get("maxHitPoints", hp_value), "maxHitPoints", op_type)
-            updated_data["hitPoints"] = max(0, min(hp_value, max_hp))
-            _sync_death_save_state(updated_data)
+            if op_type == "set_hp":
+                hp_value = _to_int(op.get("value", op.get("hp")), "value", op_type)
+                max_hp = _to_int(updated_data.get("maxHitPoints", hp_value), "maxHitPoints", op_type)
+                updated_data["hitPoints"] = max(0, min(hp_value, max_hp))
+                _sync_death_save_state(updated_data)
 
-        elif op_type == "hp_delta":
-            delta = _to_int(op.get("delta"), "delta", op_type)
-            current_hp = _to_int(updated_data.get("hitPoints", 0), "hitPoints", op_type)
-            max_hp = _to_int(updated_data.get("maxHitPoints", current_hp), "maxHitPoints", op_type)
-            updated_data["hitPoints"] = max(0, min(current_hp + delta, max_hp))
-            _sync_death_save_state(updated_data)
-
-        elif op_type == "spell_slot_delta":
-            level_key = _normalize_spell_slot_level(op.get("level", ""))
-            delta = _to_int(op.get("delta"), "delta", op_type)
-
-            spellcasting = updated_data.get("spellcasting", {})
-            if not isinstance(spellcasting, dict):
-                spellcasting = {}
-                updated_data["spellcasting"] = spellcasting
-
-            spell_slots = spellcasting.get("spellSlots", {})
-            if not isinstance(spell_slots, dict):
-                return (False, character_data, "spellcasting.spellSlots missing or invalid", [])
-
-            slot_data = spell_slots.get(level_key)
-            if not isinstance(slot_data, dict):
-                return (False, character_data, f"unknown spell slot level: {level_key}", [])
-
-            current = _to_int(slot_data.get("current", 0), "current", op_type)
-            maximum = _to_int(slot_data.get("max", 0), "max", op_type)
-            new_value = current + delta
-            if new_value < 0 or new_value > maximum:
-                return (False, character_data, f"invalid spell slot delta for {level_key}: {current}+{delta} outside [0,{maximum}]", [])
-            slot_data["current"] = new_value
-
-        elif op_type in ["inventory_add", "inventory_remove"]:
-            item_name = str(op.get("item_name") or op.get("name") or op.get("item") or "").strip()
-            if not item_name:
-                return (False, character_data, f"{op_type} missing item name", [])
-
-            quantity = _to_int(op.get("quantity", 1), "quantity", op_type)
-            if quantity <= 0:
-                return (False, character_data, f"{op_type} quantity must be > 0", [])
-
-            container = str(op.get("container", "equipment")).strip().lower()
-            is_ammo = container == "ammunition" or str(op.get("item_type", "")).strip().lower() == "ammunition"
-
-            if is_ammo:
-                ammunition = updated_data.get("ammunition", [])
-                if not isinstance(ammunition, list):
-                    ammunition = []
-                    updated_data["ammunition"] = ammunition
-
-                entry = _find_ammunition_entry(ammunition, item_name)
-                if entry is None and op_type == "inventory_remove":
-                    return (False, character_data, f"cannot remove ammunition not present: {item_name}", [])
-
-                if entry is None:
-                    ammo_name_lower = item_name.lower()
-                    if "arrow" in ammo_name_lower:
-                        ammo_description = "Standard arrows for use with a longbow or shortbow"
-                    elif "bolt" in ammo_name_lower:
-                        ammo_description = "Standard crossbow bolts for use with crossbows"
-                    elif "bullet" in ammo_name_lower:
-                        ammo_description = "Standard sling bullets for use with a sling"
-                    else:
-                        ammo_description = f"Standard {item_name}"
-
-                    ammunition.append(
-                        {
-                            "name": item_name,
-                            "quantity": quantity,
-                            "description": ammo_description,
-                        }
-                    )
-                else:
-                    current_qty = _to_int(entry.get("quantity", 0), "quantity", op_type)
-                    if op_type == "inventory_add":
-                        entry["quantity"] = current_qty + quantity
-                        if not entry.get("description"):
-                            ammo_name_lower = item_name.lower()
-                            if "arrow" in ammo_name_lower:
-                                entry["description"] = "Standard arrows for use with a longbow or shortbow"
-                            elif "bolt" in ammo_name_lower:
-                                entry["description"] = "Standard crossbow bolts for use with crossbows"
-                            elif "bullet" in ammo_name_lower:
-                                entry["description"] = "Standard sling bullets for use with a sling"
-                            else:
-                                entry["description"] = f"Standard {item_name}"
-                    else:
-                        if quantity > current_qty:
-                            return (False, character_data, f"cannot remove {quantity} {item_name}; only {current_qty} available", [])
-                        new_qty = current_qty - quantity
-                        if new_qty <= 0:
-                            ammunition.remove(entry)
-                        else:
-                            entry["quantity"] = new_qty
-            else:
-                equipment = updated_data.get("equipment", [])
-                if not isinstance(equipment, list):
-                    equipment = []
-                    updated_data["equipment"] = equipment
-
-                entry = _find_equipment_entry(equipment, item_name)
-                if entry is None and op_type == "inventory_remove":
-                    return (False, character_data, f"cannot remove equipment not present: {item_name}", [])
-
-                if entry is None:
-                    inferred_weapon_fields = _infer_weapon_equipment_fields(item_name)
-                    item_type_value = str(op.get("item_type", "miscellaneous")).strip().lower()
-                    if item_type_value not in ["weapon", "armor", "miscellaneous", "consumable", "ammunition", "equipment"]:
-                        item_type_value = "miscellaneous"
-                    if inferred_weapon_fields and item_type_value in ["", "miscellaneous", "equipment"]:
-                        item_type_value = "weapon"
-
-                    description_value = str(op.get("description") or "").strip()
-                    if not description_value:
-                        description_value = f"A {item_name}."
-
-                    equipment.append({
-                        "item_name": item_name,
-                        "item_type": item_type_value,
-                        "description": description_value,
-                        "quantity": quantity,
-                    })
-                    if inferred_weapon_fields and item_type_value == "weapon":
-                        equipment[-1].update(inferred_weapon_fields)
-                        equipment[-1]["item_name"] = item_name
-                        equipment[-1]["quantity"] = quantity
-                else:
-                    current_qty = _to_int(entry.get("quantity", 0), "quantity", op_type)
-                    if op_type == "inventory_add":
-                        entry["quantity"] = current_qty + quantity
-                        if str(entry.get("item_type", "")).strip().lower() != "weapon":
-                            inferred_weapon_fields = _infer_weapon_equipment_fields(item_name)
-                            if inferred_weapon_fields:
-                                entry["item_type"] = "weapon"
-                                if not entry.get("item_subtype"):
-                                    entry["item_subtype"] = inferred_weapon_fields.get("item_subtype", "other")
-                                if not entry.get("weapon_type"):
-                                    entry["weapon_type"] = inferred_weapon_fields.get("weapon_type", "melee")
-                                if not entry.get("damage"):
-                                    entry["damage"] = inferred_weapon_fields.get("damage", "1d4")
-                                if "attack_bonus" not in entry:
-                                    entry["attack_bonus"] = inferred_weapon_fields.get("attack_bonus", 0)
-                                if not entry.get("description"):
-                                    entry["description"] = inferred_weapon_fields.get("description", f"A standard {item_name}.")
-                                if "equipped" not in entry:
-                                    entry["equipped"] = inferred_weapon_fields.get("equipped", False)
-                                if "magical" not in entry:
-                                    entry["magical"] = inferred_weapon_fields.get("magical", False)
-                                if "consumable" not in entry:
-                                    entry["consumable"] = inferred_weapon_fields.get("consumable", False)
-                    else:
-                        if quantity > current_qty:
-                            return (False, character_data, f"cannot remove {quantity} {item_name}; only {current_qty} available", [])
-                        new_qty = current_qty - quantity
-                        if new_qty <= 0:
-                            equipment.remove(entry)
-                        else:
-                            entry["quantity"] = new_qty
-
-        elif op_type == "currency_delta":
-            currency = updated_data.get("currency", {})
-            if not isinstance(currency, dict):
-                currency = {}
-                updated_data["currency"] = currency
-
-            deltas = op.get("deltas")
-            if isinstance(deltas, dict):
-                delta_map = deltas
-            else:
-                coin_type = str(op.get("currency") or op.get("coin") or "").strip().lower()
-                delta_value = _get_currency_delta_value(op)
-                if not coin_type:
-                    return (False, character_data, "currency_delta missing currency key", [])
-                delta_map = {coin_type: delta_value}
-
-            for coin_type, delta_value in delta_map.items():
-                coin = _normalize_currency_type(coin_type)
-                if coin not in ["gold", "silver", "copper"]:
-                    return (False, character_data, f"unsupported currency type: {coin}", [])
-                delta = _to_int(delta_value, coin, op_type)
-                current_value = _to_int(currency.get(coin, 0), coin, op_type)
-                new_value = current_value + delta
-                if new_value < 0:
-                    return (False, character_data, f"currency underflow for {coin}: {current_value}+{delta}", [])
-                currency[coin] = new_value
-
-        elif op_type in ["condition_add", "condition_remove"]:
-            condition_name = str(op.get("condition") or op.get("name") or "").strip()
-            if not condition_name:
-                return (False, character_data, f"{op_type} missing condition", [])
-
-            conditions = updated_data.get("condition_affected", [])
-            if not isinstance(conditions, list):
-                conditions = []
-
-            normalized = [str(c).strip().lower() for c in conditions]
-            target = condition_name.lower()
-
-            if op_type == "condition_add":
-                if target not in normalized:
-                    conditions.append(condition_name)
-            else:
-                conditions = [c for c in conditions if str(c).strip().lower() != target]
-
-            updated_data["condition_affected"] = conditions
-            updated_data["condition"] = conditions[0] if conditions else "none"
-
-        elif op_type in ["feature_usage_delta", "feature_usage_set"]:
-            feature_name = str(op.get("feature") or op.get("feature_name") or op.get("name") or "").strip()
-            if not feature_name:
-                return (False, character_data, f"{op_type} missing feature name", [])
-
-            class_features = updated_data.get("classFeatures", [])
-            if not isinstance(class_features, list):
-                return (False, character_data, "classFeatures missing or invalid", [])
-
-            feature_entry = _find_class_feature_entry(class_features, feature_name)
-            if feature_entry is None:
-                return (False, character_data, f"unknown class feature: {feature_name}", [])
-
-            current_usage, max_usage, usage_shape = _read_feature_usage(feature_entry)
-
-            if op_type == "feature_usage_delta":
+            elif op_type == "hp_delta":
                 delta = _to_int(op.get("delta"), "delta", op_type)
-                new_current = current_usage + delta
-                if new_current < 0:
-                    return (False, character_data, f"feature usage underflow for {feature_name}: {current_usage}+{delta}", [])
-                if max_usage is not None and new_current > max_usage:
-                    return (False, character_data, f"feature usage overflow for {feature_name}: {current_usage}+{delta}>{max_usage}", [])
-                _write_feature_usage(feature_entry, new_current, max_usage, usage_shape)
-            else:
-                new_current = _to_int(op.get("current"), "current", op_type)
-                provided_max = op.get("max")
-                max_value = max_usage
-                if provided_max is not None:
-                    max_value = _to_int(provided_max, "max", op_type)
+                current_hp = _to_int(updated_data.get("hitPoints", 0), "hitPoints", op_type)
+                max_hp = _to_int(updated_data.get("maxHitPoints", current_hp), "maxHitPoints", op_type)
+                updated_data["hitPoints"] = max(0, min(current_hp + delta, max_hp))
+                _sync_death_save_state(updated_data)
 
-                if new_current < 0:
-                    return (False, character_data, f"feature usage underflow for {feature_name}: {new_current}", [])
-                if max_value is not None and new_current > max_value:
-                    return (False, character_data, f"feature usage overflow for {feature_name}: {new_current}>{max_value}", [])
+            elif op_type == "spell_slot_delta":
+                level_key = _normalize_spell_slot_level(op.get("level", ""))
+                delta = _to_int(op.get("delta"), "delta", op_type)
 
-                refresh_on = op.get("refreshOn")
-                refresh_text = str(refresh_on).strip() if refresh_on is not None else None
-                _write_feature_usage(feature_entry, new_current, max_value, usage_shape, refresh_text)
+                spellcasting = updated_data.get("spellcasting", {})
+                if not isinstance(spellcasting, dict):
+                    spellcasting = {}
+                    updated_data["spellcasting"] = spellcasting
 
-        elif op_type in ["death_save_failure", "death_save_failure_delta", "death_save_success", "death_save_success_delta", "death_saves_set"]:
-            death_saves = _ensure_death_saves_object(updated_data)
-            current_hp = _to_int(updated_data.get("hitPoints", 0), "hitPoints", op_type)
-            if current_hp > 0:
-                return (False, character_data, f"{op_type} invalid while hitPoints > 0", [])
+                spell_slots = spellcasting.get("spellSlots", {})
+                if not isinstance(spell_slots, dict):
+                    return (False, character_data, "spellcasting.spellSlots missing or invalid", [])
 
-            if op_type in ["death_save_failure", "death_save_failure_delta"]:
-                delta = _to_int(op.get("delta", 1), "delta", op_type)
-                if delta < 0:
-                    return (False, character_data, f"{op_type} delta must be >= 0", [])
-                death_saves["failures"] = max(0, min(death_saves.get("failures", 0) + delta, 3))
-            elif op_type in ["death_save_success", "death_save_success_delta"]:
-                delta = _to_int(op.get("delta", 1), "delta", op_type)
-                if delta < 0:
-                    return (False, character_data, f"{op_type} delta must be >= 0", [])
-                death_saves["successes"] = max(0, min(death_saves.get("successes", 0) + delta, 3))
-            else:
-                death_saves["successes"] = max(0, min(_to_int(op.get("successes", 0), "successes", op_type), 3))
-                death_saves["failures"] = max(0, min(_to_int(op.get("failures", 0), "failures", op_type), 3))
+                slot_data = spell_slots.get(level_key)
+                if not isinstance(slot_data, dict):
+                    return (False, character_data, f"unknown spell slot level: {level_key}", [])
 
-            _sync_death_save_state(updated_data)
+                current = _to_int(slot_data.get("current", 0), "current", op_type)
+                maximum = _to_int(slot_data.get("max", 0), "max", op_type)
+                new_value = current + delta
+                if new_value < 0 or new_value > maximum:
+                    return (False, character_data, f"invalid spell slot delta for {level_key}: {current}+{delta} outside [0,{maximum}]", [])
+                slot_data["current"] = new_value
+
+            elif op_type in ["inventory_add", "inventory_remove"]:
+                item_name = str(op.get("item_name") or op.get("name") or op.get("item") or "").strip()
+                if not item_name:
+                    return (False, character_data, f"{op_type} missing item name", [])
+
+                quantity = _to_int(op.get("quantity", 1), "quantity", op_type)
+                if quantity <= 0:
+                    return (False, character_data, f"{op_type} quantity must be > 0", [])
+
+                container = str(op.get("container", "equipment")).strip().lower()
+                is_ammo = container == "ammunition" or str(op.get("item_type", "")).strip().lower() == "ammunition"
+
+                if is_ammo:
+                    ammunition = updated_data.get("ammunition", [])
+                    if not isinstance(ammunition, list):
+                        ammunition = []
+                        updated_data["ammunition"] = ammunition
+
+                    entry = _find_ammunition_entry(ammunition, item_name)
+                    if entry is None and op_type == "inventory_remove":
+                        return (False, character_data, f"cannot remove ammunition not present: {item_name}", [])
+
+                    if entry is None:
+                        ammo_name_lower = item_name.lower()
+                        if "arrow" in ammo_name_lower:
+                            ammo_description = "Standard arrows for use with a longbow or shortbow"
+                        elif "bolt" in ammo_name_lower:
+                            ammo_description = "Standard crossbow bolts for use with crossbows"
+                        elif "bullet" in ammo_name_lower:
+                            ammo_description = "Standard sling bullets for use with a sling"
+                        else:
+                            ammo_description = f"Standard {item_name}"
+
+                        ammunition.append(
+                            {
+                                "name": item_name,
+                                "quantity": quantity,
+                                "description": ammo_description,
+                            }
+                        )
+                    else:
+                        current_qty = _to_int(entry.get("quantity", 0), "quantity", op_type)
+                        if op_type == "inventory_add":
+                            entry["quantity"] = current_qty + quantity
+                            if not entry.get("description"):
+                                ammo_name_lower = item_name.lower()
+                                if "arrow" in ammo_name_lower:
+                                    entry["description"] = "Standard arrows for use with a longbow or shortbow"
+                                elif "bolt" in ammo_name_lower:
+                                    entry["description"] = "Standard crossbow bolts for use with crossbows"
+                                elif "bullet" in ammo_name_lower:
+                                    entry["description"] = "Standard sling bullets for use with a sling"
+                                else:
+                                    entry["description"] = f"Standard {item_name}"
+                        else:
+                            if quantity > current_qty:
+                                return (False, character_data, f"cannot remove {quantity} {item_name}; only {current_qty} available", [])
+                            new_qty = current_qty - quantity
+                            if new_qty <= 0:
+                                ammunition.remove(entry)
+                            else:
+                                entry["quantity"] = new_qty
+                else:
+                    equipment = updated_data.get("equipment", [])
+                    if not isinstance(equipment, list):
+                        equipment = []
+                        updated_data["equipment"] = equipment
+
+                    entry = _find_equipment_entry(equipment, item_name)
+                    if entry is None and op_type == "inventory_remove":
+                        return (False, character_data, f"cannot remove equipment not present: {item_name}", [])
+
+                    if entry is None:
+                        inferred_weapon_fields = _infer_weapon_equipment_fields(item_name)
+                        item_type_value = str(op.get("item_type", "miscellaneous")).strip().lower()
+                        if item_type_value not in ["weapon", "armor", "miscellaneous", "consumable", "ammunition", "equipment"]:
+                            item_type_value = "miscellaneous"
+                        if inferred_weapon_fields and item_type_value in ["", "miscellaneous", "equipment"]:
+                            item_type_value = "weapon"
+
+                        description_value = str(op.get("description") or "").strip()
+                        if not description_value:
+                            description_value = f"A {item_name}."
+
+                        equipment.append({
+                            "item_name": item_name,
+                            "item_type": item_type_value,
+                            "description": description_value,
+                            "quantity": quantity,
+                        })
+                        if inferred_weapon_fields and item_type_value == "weapon":
+                            equipment[-1].update(inferred_weapon_fields)
+                            equipment[-1]["item_name"] = item_name
+                            equipment[-1]["quantity"] = quantity
+                    else:
+                        current_qty = _to_int(entry.get("quantity", 0), "quantity", op_type)
+                        if op_type == "inventory_add":
+                            entry["quantity"] = current_qty + quantity
+                            if str(entry.get("item_type", "")).strip().lower() != "weapon":
+                                inferred_weapon_fields = _infer_weapon_equipment_fields(item_name)
+                                if inferred_weapon_fields:
+                                    entry["item_type"] = "weapon"
+                                    if not entry.get("item_subtype"):
+                                        entry["item_subtype"] = inferred_weapon_fields.get("item_subtype", "other")
+                                    if not entry.get("weapon_type"):
+                                        entry["weapon_type"] = inferred_weapon_fields.get("weapon_type", "melee")
+                                    if not entry.get("damage"):
+                                        entry["damage"] = inferred_weapon_fields.get("damage", "1d4")
+                                    if "attack_bonus" not in entry:
+                                        entry["attack_bonus"] = inferred_weapon_fields.get("attack_bonus", 0)
+                                    if not entry.get("description"):
+                                        entry["description"] = inferred_weapon_fields.get("description", f"A standard {item_name}.")
+                                    if "equipped" not in entry:
+                                        entry["equipped"] = inferred_weapon_fields.get("equipped", False)
+                                    if "magical" not in entry:
+                                        entry["magical"] = inferred_weapon_fields.get("magical", False)
+                                    if "consumable" not in entry:
+                                        entry["consumable"] = inferred_weapon_fields.get("consumable", False)
+                        else:
+                            if quantity > current_qty:
+                                return (False, character_data, f"cannot remove {quantity} {item_name}; only {current_qty} available", [])
+                            new_qty = current_qty - quantity
+                            if new_qty <= 0:
+                                equipment.remove(entry)
+                            else:
+                                entry["quantity"] = new_qty
+
+            elif op_type == "currency_delta":
+                currency = updated_data.get("currency", {})
+                if not isinstance(currency, dict):
+                    currency = {}
+                    updated_data["currency"] = currency
+
+                deltas = op.get("deltas")
+                if isinstance(deltas, dict):
+                    delta_map = deltas
+                else:
+                    coin_type = str(op.get("currency") or op.get("coin") or "").strip().lower()
+                    delta_value = _get_currency_delta_value(op)
+                    if not coin_type:
+                        return (False, character_data, "currency_delta missing currency key", [])
+                    delta_map = {coin_type: delta_value}
+
+                for coin_type, delta_value in delta_map.items():
+                    coin = _normalize_currency_type(coin_type)
+                    if coin not in ["gold", "silver", "copper"]:
+                        return (False, character_data, f"unsupported currency type: {coin}", [])
+                    delta = _to_int(delta_value, coin, op_type)
+                    current_value = _to_int(currency.get(coin, 0), coin, op_type)
+                    new_value = current_value + delta
+                    if new_value < 0:
+                        return (False, character_data, f"currency underflow for {coin}: {current_value}+{delta}", [])
+                    currency[coin] = new_value
+
+            elif op_type in ["condition_add", "condition_remove"]:
+                condition_name = str(op.get("condition") or op.get("name") or "").strip()
+                if not condition_name:
+                    return (False, character_data, f"{op_type} missing condition", [])
+
+                conditions = updated_data.get("condition_affected", [])
+                if not isinstance(conditions, list):
+                    conditions = []
+
+                normalized = [str(c).strip().lower() for c in conditions]
+                target = condition_name.lower()
+
+                if op_type == "condition_add":
+                    if target not in normalized:
+                        conditions.append(condition_name)
+                else:
+                    conditions = [c for c in conditions if str(c).strip().lower() != target]
+
+                updated_data["condition_affected"] = conditions
+                updated_data["condition"] = conditions[0] if conditions else "none"
+
+            elif op_type in ["feature_usage_delta", "feature_usage_set"]:
+                feature_name = str(op.get("feature") or op.get("feature_name") or op.get("name") or "").strip()
+                if not feature_name:
+                    return (False, character_data, f"{op_type} missing feature name", [])
+
+                class_features = updated_data.get("classFeatures", [])
+                if not isinstance(class_features, list):
+                    return (False, character_data, "classFeatures missing or invalid", [])
+
+                feature_entry, match_reason = _resolve_named_entry(class_features, feature_name, ("name",))
+                if feature_entry is None:
+                    if match_reason == "ambiguous":
+                        return (False, character_data, f"ambiguous class feature: {feature_name}", [])
+                    return (False, character_data, f"unknown class feature: {feature_name}", [])
+
+                current_usage, max_usage, usage_shape = _read_feature_usage(feature_entry)
+
+                if op_type == "feature_usage_delta":
+                    delta = _to_int(op.get("delta"), "delta", op_type)
+                    new_current = current_usage + delta
+                    if new_current < 0:
+                        return (False, character_data, f"feature usage underflow for {feature_name}: {current_usage}+{delta}", [])
+                    if max_usage is not None and new_current > max_usage:
+                        return (False, character_data, f"feature usage overflow for {feature_name}: {current_usage}+{delta}>{max_usage}", [])
+                    _write_feature_usage(feature_entry, new_current, max_usage, usage_shape)
+                else:
+                    new_current = _to_int(op.get("current"), "current", op_type)
+                    provided_max = op.get("max")
+                    max_value = max_usage
+                    if provided_max is not None:
+                        max_value = _to_int(provided_max, "max", op_type)
+
+                    if new_current < 0:
+                        return (False, character_data, f"feature usage underflow for {feature_name}: {new_current}", [])
+                    if max_value is not None and new_current > max_value:
+                        return (False, character_data, f"feature usage overflow for {feature_name}: {new_current}>{max_value}", [])
+
+                    refresh_on = op.get("refreshOn")
+                    refresh_text = str(refresh_on).strip() if refresh_on is not None else None
+                    _write_feature_usage(feature_entry, new_current, max_value, usage_shape, refresh_text)
+
+            elif op_type in ["death_save_failure", "death_save_failure_delta", "death_save_success", "death_save_success_delta", "death_saves_set"]:
+                death_saves = _ensure_death_saves_object(updated_data)
+                current_hp = _to_int(updated_data.get("hitPoints", 0), "hitPoints", op_type)
+                if current_hp > 0:
+                    return (False, character_data, f"{op_type} invalid while hitPoints > 0", [])
+
+                if op_type in ["death_save_failure", "death_save_failure_delta"]:
+                    delta = _to_int(op.get("delta", 1), "delta", op_type)
+                    if delta < 0:
+                        return (False, character_data, f"{op_type} delta must be >= 0", [])
+                    death_saves["failures"] = max(0, min(death_saves.get("failures", 0) + delta, 3))
+                elif op_type in ["death_save_success", "death_save_success_delta"]:
+                    delta = _to_int(op.get("delta", 1), "delta", op_type)
+                    if delta < 0:
+                        return (False, character_data, f"{op_type} delta must be >= 0", [])
+                    death_saves["successes"] = max(0, min(death_saves.get("successes", 0) + delta, 3))
+                else:
+                    death_saves["successes"] = max(0, min(_to_int(op.get("successes", 0), "successes", op_type), 3))
+                    death_saves["failures"] = max(0, min(_to_int(op.get("failures", 0), "failures", op_type), 3))
+
+                _sync_death_save_state(updated_data)
+    except ValueError as exc:
+        return (False, character_data, str(exc), [])
+    except Exception as exc:
+        return (False, character_data, f"deterministic ops exception: {type(exc).__name__}: {exc}", [])
 
     return (True, updated_data, "", [])
 
@@ -2018,6 +2155,12 @@ def update_character_info(character_name, changes, character_role=None, ops=None
             category="character_updates",
         )
     elif payload_route["mode"] == "hard_fail" and payload_route["reason"] == "ops_invalid_no_fallback":
+        _set_last_ops_routing_marker(
+            payload_route["mode"],
+            payload_route["reason"],
+            error_message="Invalid structured ops payload without prose fallback.",
+            user_message="Could not safely apply that character update because the structured update payload was invalid.",
+        )
         error(
             f"FAILURE: Invalid ops payload without prose fallback for {character_name} (reason=ops_invalid_no_fallback)",
             category="character_updates",
@@ -2096,7 +2239,11 @@ def update_character_info(character_name, changes, character_role=None, ops=None
                 f"CHAR_OPS: Structured ops invalid/empty for {character_name}; falling back to legacy changes",
                 category="character_updates",
             )
-            _set_last_ops_routing_marker("prose_fallback", "ops_invalid_with_changes_fallback")
+            _set_last_ops_routing_marker(
+                "prose_fallback",
+                "ops_invalid_with_changes_fallback",
+                error_message="Invalid structured ops payload; using prose fallback.",
+            )
         else:
             ops_success, ops_updated_data, ops_error, unsupported_ops = _apply_character_ops_deterministic(
                 character_data,
@@ -2114,14 +2261,30 @@ def update_character_info(character_name, changes, character_role=None, ops=None
                     f"CHAR_OPS: Unsupported ops for {character_name} ({unsupported_ops}); using legacy prose fallback",
                     category="character_updates",
                 )
-                _set_last_ops_routing_marker("prose_fallback", "ops_unsupported_with_changes_fallback")
-            elif not ops_success:
-                _set_last_ops_routing_marker("hard_fail", "ops_deterministic_apply_failed")
-                error(
-                    f"FAILURE: Deterministic ops application failed for {character_name}: {ops_error}",
-                    category="character_updates",
+                _set_last_ops_routing_marker(
+                    "prose_fallback",
+                    "ops_unsupported_with_changes_fallback",
+                    error_message=f"Unsupported ops: {unsupported_ops}",
                 )
-                return False
+            elif not ops_success:
+                failure_route = _resolve_apply_failure_route(changes_text, ops_error)
+                _set_last_ops_routing_marker(
+                    failure_route["mode"],
+                    failure_route["reason"],
+                    error_message=failure_route.get("error_message", ""),
+                    user_message=failure_route.get("user_message", ""),
+                )
+                if failure_route["mode"] == "prose_fallback":
+                    warning(
+                        f"CHAR_OPS: Recoverable deterministic ops failure for {character_name}; using prose fallback ({ops_error})",
+                        category="character_updates",
+                    )
+                else:
+                    error(
+                        f"FAILURE: Deterministic ops application failed for {character_name}: {ops_error}",
+                        category="character_updates",
+                    )
+                    return False
             else:
                 _set_last_ops_routing_marker("structured_applied", "ops_applied")
                 updated_data = normalize_status_and_condition(ops_updated_data, character_role)

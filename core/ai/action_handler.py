@@ -1504,6 +1504,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             try:
                 debug(f"STATE_CHANGE: Calling update_character_info for {character_name}", category="character_updates")
                 success = update_character_info(character_name, changes, ops=ops)
+                ops_route = {}
                 try:
                     ops_route = get_last_ops_routing_marker()
                     debug(
@@ -1530,12 +1531,18 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         warning(f"EFFECTS: Failed to track effect: {str(e)}", category="effects_tracking")
                         # Don't break the game if effects tracking fails
                 else:
+                    route_error_message = str(ops_route.get("error_message") or "").strip()
+                    route_user_message = str(ops_route.get("user_message") or "").strip()
+                    surfaced_error = route_user_message or route_error_message or f"Character update failed for {character_name}."
                     error(f"FAILURE: Failed to update character info for {character_name}", category="character_updates")
                     print(f"ERROR: Failed to update character info for {character_name}")
                     return create_return(
                         status="error",
                         needs_update=False,
-                        response_data={"error_message": f"Character update failed for {character_name}."},
+                        response_data={
+                            "error_message": surfaced_error,
+                            "ops_route": ops_route,
+                        },
                     )
             except Exception as e:
                 error(f"FAILURE: Exception in character update", exception=e, category="character_updates")
