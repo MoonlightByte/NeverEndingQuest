@@ -89,6 +89,11 @@ When prerolls are provided, validate:
 - INVALID: Any response that shows "[Player rolls: X]" and immediate resolution in the same response
 - VALID: Separate responses for requesting vs. resolving player actions
 
+NARRATION CONSISTENCY VALIDATION:
+- If attack math shows a MISS against known AC, narration MUST NOT describe that same attack as landing with successful impact, injury, or destructive contact.
+- If attack math shows a HIT against known AC, narration MUST NOT describe that same attack as harmlessly missing or striking only the wall, floor, or empty air.
+- FAIL OPEN on vague atmosphere only. Reject only explicit contradictions backed by parseable attack math and AC.
+
 JSON STRUCTURE VALIDATION:
 Required fields in combat responses:
 - "narration": Combat description and dialogue (should be cinematic, not mechanical)
@@ -147,6 +152,7 @@ ACTION USAGE VALIDATION:
   - When supported encounter ops are present, treat ops as authoritative mechanics payload and changes as readable mirror.
   - changes-only remains compatibility-valid during migration.
   - Supported enemy encounter ops in this slice: hp_delta, set_hp, condition_add, condition_remove, set_status.
+  - updateEncounter prose mirrors and ops MUST remain enemy-only; player or allied NPC targets inside updateEncounter are INVALID.
   - Unsupported or ambiguous encounter ops should preserve safe fallback behavior when changes provides a valid enemy-state mirror.
 - requestRoll: Preferred for player-facing saving throws, ability checks, skill checks, and concentration saves.
   - requestRoll pause contract: response MUST stop after issuing requestRoll.
@@ -174,6 +180,10 @@ INVALID - Player HP via updateEncounter:
 {"action": "updateEncounter", "changes": "ExampleChar_Cleric takes 5 damage, HP 13 -> 8"}
 CORRECT: Use updateCharacterInfo for ExampleChar_Cleric (player)
 
+INVALID - Player target inside updateEncounter ops:
+{"action": "updateEncounter", "parameters": {"encounterId": "E1", "changes": "Skeleton deals 6 damage to Athelon (HP 11 -> 5).", "ops": [{"op": "hp_delta", "creature": "Athelon", "delta": -6}]}}
+CORRECT: Keep enemy housekeeping on updateEncounter if needed, but move Athelon's HP change to updateCharacterInfo
+
 INVALID - Monster HP via updateCharacterInfo:
 {"action": "updateCharacterInfo", "characterName": "whispering_ashling", "changes": "Takes 5 damage"}
 CORRECT: Use updateEncounter for monsters
@@ -195,6 +205,16 @@ VALID - Prose-only fallback during migration:
 
 VALID - requestRoll pause (saving throw):
 {"action": "requestRoll", "parameters": {"characterName": "eirik_hearthwise", "rollType": "saving_throw", "dc": 12, "reason": "Resist paralysis from ghoul claws.", "ability": "constitution"}}
+
+INVALID - Miss narrated as hit:
+Math: "Blarg attacks Skeleton (Attack roll: 4+5=9, misses Skeleton AC 13)"
+Narration: "Bone splinters fly as the blade bites deep."
+Result: INVALID. Miss math cannot be narrated as a successful impact.
+
+INVALID - Hit narrated as harmless miss:
+Math: "Skeleton attacks Athelon (Attack roll: 19+4=23, hits Athelon AC 14)"
+Narration: "The arrow shatters against the wall near Athelon's head."
+Result: INVALID. Confirmed hit math cannot be narrated as a harmless miss.
 
 VALID - requestRoll concentration save with deterministic DC:
 {"action": "requestRoll", "parameters": {"characterName": "eirik_hearthwise", "rollType": "saving_throw", "dc": 11, "reason": "Concentration after taking 23 damage.", "ability": "constitution"}}

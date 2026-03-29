@@ -120,6 +120,12 @@
   validation_check: "Verify: attack roll + bonus >= target AC before any damage is mentioned"
 }
 
+@NARRATION_CONSISTENCY={
+  miss_as_hit_invalid: "If attack math shows a miss, narration must NOT describe successful impact, injury, or destructive contact from that attack.",
+  hit_as_miss_invalid: "If attack math shows a hit, narration must NOT describe the blow or projectile as harmlessly missing or striking only the environment.",
+  bounded_scope: "Reject only explicit contradictions backed by attack math and AC. Fail open on vague atmosphere or unclear wording."
+}
+
 @ATTACK_TRACE={
   critical_if: [
     "HP change applied AND AC present AND no attack reference at all",
@@ -175,6 +181,7 @@
   valid_enemy_turn_pc_damage: "Enemy turn that only damages PCs/NPCs: updateEncounter may be housekeeping-only; PC/NPC HP MUST be in updateCharacterInfo.",
   batch_enemy_phase: "When multiple enemies act in batch (after /end OR initiative-driven DM start), expect: ONE updateEncounter consolidating all enemy actions/state + SEPARATE updateCharacterInfo for EACH PC/NPC that took damage. Multiple updateCharacterInfo is correct here, not a consolidation violation.",
   enemy_mixed_payload_preferred: "For enemy updateEncounter, prefer payloads that include both changes and supported ops.",
+  enemy_boundary_strict: "updateEncounter prose mirrors and ops MUST remain enemy-only. If a player or allied NPC appears as the mutated target, the response is INVALID.",
   enemy_prose_fallback: "If supported ops are absent for an enemy update, changes-only updateEncounter remains compatibility-valid during migration.",
   enemy_ops_fail_open: "Do not reject solely because enemy ops are unsupported/ambiguous if changes provides a valid enemy-state mirror and routing rules are satisfied.",
   mixed_payload_preferred: "For PC/allied updates, prefer updateCharacterInfo payloads that include both changes and supported ops.",

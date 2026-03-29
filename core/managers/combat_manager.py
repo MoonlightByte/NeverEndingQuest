@@ -166,6 +166,10 @@ import core.ai.cumulative_summary as cumulative_summary
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
 from utils.save_roll_contract import calculate_concentration_dc
 from utils.combat_phase_integrity_precheck import validate_combat_phase_integrity_precheck
+from utils.combat_narration_consistency_precheck import (
+    validate_combat_narration_consistency_precheck,
+    validate_update_encounter_enemy_boundary_precheck,
+)
 from utils.validation_routing import (
     get_validation_compression_decision,
     build_validation_routing_telemetry,
@@ -1127,6 +1131,39 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
                 f"VALIDATION_ERROR: Phase-integrity precheck failed open due to error: {phase_precheck_error}",
                 category="combat_validation",
             )
+
+    # --- TABLETOP MODE: DETERMINISTIC NARRATION/ROUTING PRECHECKS ---
+    # Reject explicit hit/miss narration contradictions and invalid enemy routing
+    # before probabilistic validation, while preserving fail-open behavior on ambiguity.
+    try:
+        response_json = parse_json_safely(response)
+        if response_json and isinstance(response_json, dict):
+            narration_ok, narration_reason = validate_combat_narration_consistency_precheck(
+                response_json,
+                encounter_data,
+            )
+            if not narration_ok:
+                debug(
+                    f"VALIDATION_FAIL: Narration-consistency precheck rejected response: {narration_reason}",
+                    category="combat_validation",
+                )
+                return f"VALIDATION FAILURE: {narration_reason}"
+
+            routing_ok, routing_reason = validate_update_encounter_enemy_boundary_precheck(
+                response_json,
+                encounter_data,
+            )
+            if not routing_ok:
+                debug(
+                    f"VALIDATION_FAIL: Enemy-routing precheck rejected response: {routing_reason}",
+                    category="combat_validation",
+                )
+                return f"VALIDATION FAILURE: {routing_reason}"
+    except Exception as narration_precheck_error:
+        debug(
+            f"VALIDATION_ERROR: Narration/routing prechecks failed open due to error: {narration_precheck_error}",
+            category="combat_validation",
+        )
     # --- END MULTI-PC VALIDATION GUARDRAIL ---
 
     debug("VALIDATION: Validating combat response...", category="combat_validation")
