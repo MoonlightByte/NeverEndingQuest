@@ -12,6 +12,7 @@ Covers Step 2 requirements:
 - deterministic fallback summary generation.
 """
 
+import json
 import os
 import sqlite3
 import sys
@@ -41,12 +42,22 @@ class TestSessionDiaryMVP(unittest.TestCase):
 
     def setUp(self) -> None:
         self.temp_dir = tempfile.mkdtemp(prefix="neq_diary_test_")
+        self.prev_cwd = os.getcwd()
+        os.chdir(self.temp_dir)
+        os.makedirs("modules/conversation_history", exist_ok=True)
+        with open("journal.json", "w", encoding="utf-8") as handle:
+            handle.write('{"journal_entries": []}')
+        with open("modules/conversation_history/conversation_history.json", "w", encoding="utf-8") as handle:
+            handle.write('{"conversation_history": []}')
+        with open("modules/conversation_history/combat_conversation_history.json", "w", encoding="utf-8") as handle:
+            handle.write('{"combat_history": []}')
         self.db_path = os.path.join(self.temp_dir, "memory_test.db")
         self.assertTrue(init_memory_db(self.db_path))
 
     def tearDown(self) -> None:
         import shutil
 
+        os.chdir(self.prev_cwd)
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir, ignore_errors=True)
 
@@ -184,6 +195,29 @@ class TestSessionDiaryMVP(unittest.TestCase):
         self.assertEqual(unchanged.get("status"), "success")
         self.assertEqual(unchanged.get("action"), "unchanged")
         self.assertEqual(self._count_rows("status = 'confirmed' AND checkpoint_type = 'exit'"), 0)
+
+    def test_refresh_draft_backfills_runtime_sources_before_checkpoint(self) -> None:
+        with open("journal.json", "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "journal_entries": [
+                        {
+                            "title": "Cathedral Descent",
+                            "content": "The party descended beneath the ruined cathedral and hacked free of clinging webs.",
+                            "timestamp": _utc_now_iso(),
+                        }
+                    ]
+                },
+                handle,
+            )
+
+        result = refresh_draft_if_stale(
+            self.db_path,
+            {"year": 1492, "month": "Ches", "day": 24, "time": "12:00:00"},
+        )
+        self.assertEqual(result.get("status"), "success")
+        self.assertEqual(result.get("action"), "updated")
+        self.assertIn("ruined cathedral", result.get("draft", {}).get("summary", "").lower())
 
     def test_build_fallback_summary_is_deterministic(self) -> None:
         events = [

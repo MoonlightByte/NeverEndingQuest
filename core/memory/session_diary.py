@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from core.memory.memory_db import init_memory_db
+from core.memory.memory_ingest import backfill_memory_db_from_histories
 from utils.enhanced_logger import debug, error
 
 
@@ -38,6 +39,7 @@ _MONTH_INDEX_BY_NAME = {
 MAX_SOURCE_EVENTS = 120
 MIN_LIST_LIMIT = 1
 MAX_LIST_LIMIT = 100
+DIARY_BACKFILL_SOURCES = ["journal", "conversation", "combat"]
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -59,6 +61,32 @@ def _connect(db_path: str) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+def _refresh_diary_source_history(db_path: str) -> Dict[str, Any]:
+    """Best-effort sync of runtime history sources into memory DB before checkpoints."""
+    try:
+        result = backfill_memory_db_from_histories(
+            db_path=db_path,
+            include_system_messages=False,
+            sources=DIARY_BACKFILL_SOURCES,
+            batch_size=100,
+        )
+        if result.get("status") == "error":
+            debug(
+                f"SESSION_DIARY: Source sync degraded: {result.get('message')}",
+                category="memory_db",
+            )
+        return result
+    except Exception as sync_error:
+        debug(
+            f"SESSION_DIARY: Source sync suppressed: {sync_error}",
+            category="memory_db",
+        )
+        return {
+            "status": "error",
+            "message": str(sync_error),
+        }
 
 
 def _clamp_limit(limit: Any, default: int = 20) -> int:
@@ -297,6 +325,8 @@ def refresh_draft_if_stale(db_path: str, world_conditions: Optional[Dict[str, An
             "db_path": db_path,
         }
 
+    _refresh_diary_source_history(db_path)
+
     conn: Optional[sqlite3.Connection] = None
     draft_key = "active_draft"
     now_iso = _utc_now_iso()
@@ -525,6 +555,8 @@ def confirm_diary_for_save(
             "save_id": normalized_save_id,
         }
 
+    _refresh_diary_source_history(db_path)
+
     conn: Optional[sqlite3.Connection] = None
     now_iso = _utc_now_iso()
     world_data = _normalize_world_fields(world_conditions)
@@ -719,6 +751,8 @@ def confirm_diary_for_exit(
             "message": "Memory DB initialization failed",
             "db_path": db_path,
         }
+
+    _refresh_diary_source_history(db_path)
 
     conn: Optional[sqlite3.Connection] = None
     now_iso = _utc_now_iso()

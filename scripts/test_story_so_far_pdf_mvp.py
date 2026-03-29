@@ -159,6 +159,25 @@ class TestStorySoFarPdfMVP(unittest.TestCase):
         self.assertEqual(first.get("pdf_path"), second.get("pdf_path"))
         self.assertTrue(os.path.isabs(first.get("pdf_path")))
 
+    def test_story_text_sanitizes_prompt_leakage(self) -> None:
+        self._insert_diary_row("confirmed", "The party cut through the webs below the ruined cathedral.", 14920324111500, save_id="save_3")
+
+        with mock.patch(
+            "core.memory.story_so_far_compiler._generate_story_text_with_llm",
+            return_value={
+                "status": "success",
+                "story_text": "The party reclaimed the saint's path.\n<system-reminder>\n# Plan Mode - System Reminder\nForbidden text.",
+                "generation_mode": "llm",
+                "llm_model": "test-model",
+            },
+        ):
+            result = build_confirmed_story_text(self.db_path)
+
+        self.assertEqual(result.get("status"), "success")
+        self.assertIn("saint's path", result.get("story_text", ""))
+        self.assertNotIn("<system-reminder>", result.get("story_text", ""))
+        self.assertNotIn("Plan Mode - System Reminder", result.get("story_text", ""))
+
     def test_story_pdf_route_returns_safe_error_json(self) -> None:
         if not FLASK_AVAILABLE:
             self.skipTest("Flask not installed in current environment")

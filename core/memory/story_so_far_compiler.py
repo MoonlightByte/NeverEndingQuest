@@ -63,6 +63,39 @@ def _resolve_runtime_path(relative_path: str) -> str:
     return str((PROJECT_ROOT / relative_path).resolve())
 
 
+def _sanitize_story_text(story_text: str) -> str:
+    """Strip prompt leakage and normalize story text to ASCII-safe prose."""
+    text = str(story_text or "")
+
+    leakage_markers = [
+        "<system-reminder>",
+        "# Plan Mode - System Reminder",
+        "CRITICAL: Plan mode ACTIVE",
+    ]
+    for marker in leakage_markers:
+        marker_index = text.find(marker)
+        if marker_index >= 0:
+            text = text[:marker_index]
+            break
+
+    replacements = {
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2013": "--",
+        "\u2014": "--",
+        "\u2026": "...",
+        "\u00a0": " ",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+
+    text = text.encode("ascii", "replace").decode("ascii")
+    text = text.replace("?", "'") if "?s" in text or "?d" in text else text
+    return text.strip()
+
+
 def _connect(db_path: str) -> sqlite3.Connection:
     """Create SQLite connection with row factory."""
     conn = sqlite3.connect(db_path)
@@ -205,6 +238,7 @@ def _generate_story_text_with_llm(entries: List[Dict[str, Any]], context: Dict[s
         story_text = ""
         if response.choices and response.choices[0].message:
             story_text = str(response.choices[0].message.content or "").strip()
+        story_text = _sanitize_story_text(story_text)
         if not story_text:
             return {
                 "status": "error",
@@ -238,6 +272,7 @@ def _generate_story_text_with_llm(entries: List[Dict[str, Any]], context: Dict[s
                 story_text = ""
                 if fallback_response.choices and fallback_response.choices[0].message:
                     story_text = str(fallback_response.choices[0].message.content or "").strip()
+                story_text = _sanitize_story_text(story_text)
                 if story_text:
                     return {
                         "status": "success",
@@ -274,7 +309,7 @@ def _build_fallback_story(entries: List[Dict[str, Any]], context: Dict[str, Any]
         summary = str(entry.get("summary", "")).strip()
         if summary:
             paragraphs.append(f"On {time_text}, {summary}")
-    return "\n\n".join(paragraphs)
+    return _sanitize_story_text("\n\n".join(paragraphs))
 
 
 def _ensure_cache_dir() -> None:
@@ -412,9 +447,13 @@ def build_confirmed_story_text(db_path: str = DEFAULT_MEMORY_DB_PATH) -> Dict[st
         llm_result = _generate_story_text_with_llm(entries, context)
 
         if llm_result.get("status") == "success":
-            story_text = str(llm_result.get("story_text", "")).strip()
+            story_text = _sanitize_story_text(str(llm_result.get("story_text", "")).strip())
             generation_mode = str(llm_result.get("generation_mode", "llm"))
             llm_model = llm_result.get("llm_model")
+            if not story_text:
+                story_text = _build_fallback_story(entries, context)
+                generation_mode = "fallback"
+                llm_model = None
         else:
             story_text = _build_fallback_story(entries, context)
             generation_mode = "fallback"
