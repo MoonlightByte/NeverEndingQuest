@@ -256,6 +256,60 @@ def _build_location_catalog(known_locations: Optional[List[Dict[str, Any]]], kno
     return catalog
 
 
+def _get_explicit_transition_destination(response_json: Dict[str, Any]) -> str:
+    """Return the first explicit transition destination token, if present."""
+    actions = response_json.get("actions", [])
+    if not isinstance(actions, list):
+        return ""
+
+    for action in actions:
+        if not isinstance(action, dict) or action.get("action") != "transitionLocation":
+            continue
+        parameters = action.get("parameters", {})
+        if not isinstance(parameters, dict):
+            continue
+        return str(parameters.get("newLocation", "") or "").strip()
+
+    return ""
+
+
+def _resolve_location_entry_from_token(
+    destination_token: str,
+    known_locations: Optional[List[Dict[str, Any]]],
+    location_catalog: Dict[str, Dict[str, str]],
+) -> Dict[str, str]:
+    """Resolve explicit destination token by canonical id first, then alias/name."""
+    token = str(destination_token or "").strip()
+    if not token:
+        return {}
+
+    for location in known_locations or []:
+        if not isinstance(location, dict):
+            continue
+        if str(location.get("id", "") or "").strip() == token:
+            return {
+                "name": str(location.get("name", "") or "").strip(),
+                "id": token,
+                "area_id": str(location.get("area_id", "") or "").strip(),
+                "area_name": str(location.get("area_name", "") or "").strip(),
+            }
+
+    normalized_token = _normalize_text(token)
+    if not normalized_token:
+        return {}
+
+    resolved_entry = location_catalog.get(normalized_token)
+    if not isinstance(resolved_entry, dict):
+        return {}
+
+    return {
+        "name": str(resolved_entry.get("name", "") or "").strip(),
+        "id": str(resolved_entry.get("id", "") or "").strip(),
+        "area_id": str(resolved_entry.get("area_id", "") or "").strip(),
+        "area_name": str(resolved_entry.get("area_name", "") or "").strip(),
+    }
+
+
 def _collect_current_location_aliases(
     location_catalog: Dict[str, Dict[str, str]],
     current_location_id: str,
@@ -501,7 +555,52 @@ def evaluate_travel_state_sync_decision(
             "reconciliation": "none",
         }
 
+    location_catalog = _build_location_catalog(known_locations, known_location_names)
+    current_location_aliases = _collect_current_location_aliases(
+        location_catalog,
+        current_location_id=current_location_id,
+        current_location_name=current_location_name,
+    )
+
     if _has_transition_location_action(response_json):
+        destination_token = _get_explicit_transition_destination(response_json)
+        explicit_destination = _resolve_location_entry_from_token(
+            destination_token=destination_token,
+            known_locations=known_locations,
+            location_catalog=location_catalog,
+        )
+        destination_id = str(explicit_destination.get("id", "") or "").strip()
+        destination_name = str(explicit_destination.get("name", "") or "").strip() or destination_token
+
+        if not destination_id:
+            return {
+                "valid": False,
+                "reason": f"travel state sync guard: destination '{destination_name}' does not exist in module",
+                "inferred_actions": [],
+                "reconciliation": "none",
+            }
+
+        if destination_id == current_location_id or _normalize_text(destination_name) in current_location_aliases:
+            return {
+                "valid": False,
+                "reason": "travel state sync guard: same-location travel commit is not allowed",
+                "inferred_actions": [],
+                "reconciliation": "none",
+            }
+
+        if not _is_topology_safe_destination(
+            destination_id=destination_id,
+            current_location_id=current_location_id,
+            adjacent_location_ids=adjacent_location_ids,
+            reachable_location_ids=reachable_location_ids,
+        ):
+            return {
+                "valid": False,
+                "reason": f"travel state sync guard: destination '{destination_name}' is not topology-safe from current location",
+                "inferred_actions": [],
+                "reconciliation": "none",
+            }
+
         return {
             "valid": True,
             "reason": "",
@@ -527,12 +626,6 @@ def evaluate_travel_state_sync_decision(
             "reconciliation": "none",
         }
 
-    location_catalog = _build_location_catalog(known_locations, known_location_names)
-    current_location_aliases = _collect_current_location_aliases(
-        location_catalog,
-        current_location_id=current_location_id,
-        current_location_name=current_location_name,
-    )
     known_names = list(location_catalog.keys())
     mentions = _extract_location_mentions(normalized_narration, known_names)
 

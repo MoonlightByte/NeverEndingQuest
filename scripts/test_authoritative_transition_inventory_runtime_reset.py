@@ -115,6 +115,12 @@ class TestTransitionFailureHistoryHygieneContracts(unittest.TestCase):
         arrival_index = self.main_source.index("generate_arrival_narration", branch_start)
         self.assertLess(error_index, arrival_index)
 
+    def test_transition_errors_surface_nested_response_data_message(self):
+        self.assertIn(
+            'response_data.get("error_message") or result.get("error_message", "Unknown error in action processing")',
+            self.main_source,
+        )
+
 
 class TestTrackedTransferAtomicity(unittest.TestCase):
     def test_atomic_transfer_rolls_back_on_second_leg_failure(self):

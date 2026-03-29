@@ -3331,7 +3331,8 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
             actions_processed = True
 
             if isinstance(result, dict) and result.get("status") == "error":
-                error_msg = result.get("error_message", "Unknown error in action processing")
+                response_data = result.get("response_data", {}) if isinstance(result, dict) else {}
+                error_msg = response_data.get("error_message") or result.get("error_message", "Unknown error in action processing")
                 error(f"ACTION_ERROR: {error_msg}", category="action_processing")
                 conversation_history.append({
                     "role": "system",
@@ -3372,7 +3373,8 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
             
             # C1.3: Handle explicit error status from action processing (e.g., encounter init failure)
             if isinstance(result, dict) and result.get("status") == "error":
-                error_msg = result.get("error_message", "Unknown error in action processing")
+                response_data = result.get("response_data", {}) if isinstance(result, dict) else {}
+                error_msg = response_data.get("error_message") or result.get("error_message", "Unknown error in action processing")
                 error(f"ACTION_ERROR: {error_msg}", category="action_processing")
                 # Add deterministic system error to conversation instead of continuing with potentially corrupted state
                 conversation_history.append({

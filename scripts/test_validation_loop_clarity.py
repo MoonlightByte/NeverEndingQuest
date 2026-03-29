@@ -11,7 +11,7 @@ Verifies that:
 import unittest
 import sys
 import os
-import inspect
+import ast
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -19,32 +19,43 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 class TestFunctionSignatures(unittest.TestCase):
     """Test that function signatures are correct."""
 
+    def _get_function_def(self, relative_path, function_name):
+        file_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            *relative_path,
+        )
+        with open(file_path, "r", encoding="utf-8") as handle:
+            tree = ast.parse(handle.read(), filename=file_path)
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == function_name:
+                return node
+        self.fail(f"Function {function_name} not found in {'/'.join(relative_path)}")
+
     def test_pre_validate_transition_accepts_raw_player_input(self):
         """
         Test 1: pre_validate_transition function signature includes raw_player_input parameter.
         """
-        from core.ai.action_handler import pre_validate_transition
-        sig = inspect.signature(pre_validate_transition)
-        params = list(sig.parameters.keys())
+        function_def = self._get_function_def(("core", "ai", "action_handler.py"), "pre_validate_transition")
+        params = [arg.arg for arg in function_def.args.args]
         
         self.assertIn('raw_player_input', params,
             "pre_validate_transition must accept raw_player_input parameter")
         
         # Check it's optional (has default value)
-        raw_input_param = sig.parameters['raw_player_input']
-        self.assertEqual(
-            raw_input_param.default,
-            None,
-            "raw_player_input should default to None for backward compatibility"
-        )
+        default_arg_names = params[-len(function_def.args.defaults):] if function_def.args.defaults else []
+        self.assertIn('raw_player_input', default_arg_names,
+            "raw_player_input should default to None for backward compatibility")
+        raw_input_default = function_def.args.defaults[default_arg_names.index('raw_player_input')]
+        self.assertIsInstance(raw_input_default, ast.Constant)
+        self.assertIsNone(raw_input_default.value)
 
     def test_validate_transition_request_receives_player_request(self):
         """
         Test 2: validate_transition_request accepts player_request parameter.
         """
-        from core.ai.transition_validator import validate_transition_request
-        sig = inspect.signature(validate_transition_request)
-        params = list(sig.parameters.keys())
+        function_def = self._get_function_def(("core", "ai", "transition_validator.py"), "validate_transition_request")
+        params = [arg.arg for arg in function_def.args.args]
         
         self.assertIn('player_request', params,
             "validate_transition_request must accept player_request parameter")
@@ -101,6 +112,32 @@ class TestCodeContracts(unittest.TestCase):
             "TABLETOP MODE: Pass raw player input for pre-validation",
             content,
             "main.py should have TABLETOP MODE comment for raw input"
+        )
+
+
+class TestPreValidateTransitionBehavior(unittest.TestCase):
+    """Source checks for fail-closed transition pre-validation."""
+
+    def test_pre_validate_transition_rejects_unknown_destination(self):
+        action_handler_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'core', 'ai', 'action_handler.py'
+        )
+
+        with open(action_handler_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        self.assertIn(
+            "if not location_graph.validate_location_id_format(new_location_id):",
+            content,
+        )
+        self.assertIn(
+            "Travel Blocked: Destination location '",
+            content,
+        )
+        self.assertIn(
+            "No valid path exists between",
+            content,
         )
 
 

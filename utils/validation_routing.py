@@ -124,9 +124,10 @@ def build_authoritative_domain_handoff(
     payload_version: str = "v1",
 ) -> Dict[str, Any]:
     """Build narrator deterministic handoff payload as domain-scoped metadata."""
+    travel_mode = str(_normalize_domain_decision(travel_sync_decision).get("reconciliation", "none") or "none")
     travel_payload = _build_domain_payload(
         decision=travel_sync_decision,
-        authoritative=True,
+        authoritative=travel_mode != "explicit_transition",
         reconciled_modes={"arrival_autocommit", "progress_in_transit"},
     )
     npc_payload = _build_domain_payload(

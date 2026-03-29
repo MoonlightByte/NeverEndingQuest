@@ -70,6 +70,49 @@ class TestTravelStateSyncGuardBehavior(unittest.TestCase):
         self.assertTrue(decision.get("valid"))
         self.assertEqual(decision.get("reconciliation"), "explicit_transition")
 
+    def test_explicit_transition_to_unknown_destination_is_invalid(self):
+        response = {
+            "narration": "You descend into the crypt.",
+            "actions": [{"action": "transitionLocation", "parameters": {"newLocation": "NIG09"}}],
+        }
+        decision = evaluate_travel_state_sync_decision(
+            response_json=response,
+            is_travel_intent=True,
+            current_location_name="Ruined Cathedral Main Hall",
+            current_location_id="NIG02",
+            known_location_names=["Ruined Cathedral Main Hall", "Cathedral Storage", "Brother Lintar's Place"],
+            known_locations=[
+                {"id": "NIG02", "name": "Ruined Cathedral Main Hall", "area_id": "NIG001"},
+                {"id": "NIG03", "name": "Cathedral Storage", "area_id": "NIG001"},
+                {"id": "NIG08", "name": "Brother Lintar's Place", "area_id": "NIG001"},
+            ],
+            adjacent_location_ids=["NIG03", "NIG08", "NIG01"],
+            reachable_location_ids=["NIG01", "NIG02", "NIG03", "NIG08"],
+        )
+        self.assertFalse(decision.get("valid"))
+        self.assertIn("does not exist in module", decision.get("reason", ""))
+
+    def test_explicit_transition_to_unreachable_destination_is_invalid(self):
+        response = {
+            "narration": "You press onward into the catacombs.",
+            "actions": [{"action": "transitionLocation", "parameters": {"newLocation": "NIG06"}}],
+        }
+        decision = evaluate_travel_state_sync_decision(
+            response_json=response,
+            is_travel_intent=True,
+            current_location_name="Ruined Cathedral Main Hall",
+            current_location_id="NIG02",
+            known_location_names=["Ruined Cathedral Main Hall", "Dead End Ritual Chamber"],
+            known_locations=[
+                {"id": "NIG02", "name": "Ruined Cathedral Main Hall", "area_id": "NIG001"},
+                {"id": "NIG06", "name": "Dead End Ritual Chamber", "area_id": "NIG001"},
+            ],
+            adjacent_location_ids=["NIG03", "NIG08", "NIG01"],
+            reachable_location_ids=["NIG01", "NIG02", "NIG03", "NIG08"],
+        )
+        self.assertFalse(decision.get("valid"))
+        self.assertIn("not topology-safe", decision.get("reason", ""))
+
     def test_allows_current_location_blocker_without_transition(self):
         response = {
             "narration": "The tunnel loops and is blocked. You remain at Ma's Watering Hole.",

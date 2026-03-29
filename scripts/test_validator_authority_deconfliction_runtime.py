@@ -61,6 +61,22 @@ class TestValidatorAuthorityDeconflictionRuntime(unittest.TestCase):
         self.assertIn("travel_state_sync", outcome["suppressed_domains"])
         self.assertEqual(outcome["remaining_failure_domains"], [])
 
+    def test_explicit_transition_validator_complaint_is_not_suppressed(self):
+        from utils.validation_routing import apply_authoritative_domain_deconfliction
+
+        handoff = self._build_handoff(travel_mode="explicit_transition")
+        reason = "References location 'NIG09' which does not exist in module data. Use a valid location ID for transitionLocation."
+        outcome = apply_authoritative_domain_deconfliction(
+            is_valid=False,
+            reason=reason,
+            deterministic_handoff=handoff,
+        )
+
+        self.assertFalse(outcome["is_valid"])
+        self.assertFalse(outcome["suppression_applied"])
+        self.assertEqual(outcome["suppressed_domains"], [])
+        self.assertIn("travel_state_sync", outcome["remaining_failure_domains"])
+
     def test_npc_reconciled_validator_complaint_is_suppressed(self):
         from utils.validation_routing import apply_authoritative_domain_deconfliction
 

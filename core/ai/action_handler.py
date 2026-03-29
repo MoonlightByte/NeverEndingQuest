@@ -170,6 +170,10 @@ def pre_validate_transition(parameters, party_tracker_data, conversation_history
             # No location specified, let normal validator handle it
             return True, ""
 
+        if not location_graph.validate_location_id_format(new_location_id):
+            error_msg = f"[TRAVEL AGENT] Travel Blocked: Destination location '{new_location_id}' does not exist in module. Use a valid in-module location ID."
+            return False, error_msg
+
         # Get current location from party tracker
         current_location_id = party_tracker_data["worldConditions"]["currentLocationId"]
         current_location_name = party_tracker_data["worldConditions"]["currentLocation"]
@@ -180,8 +184,11 @@ def pre_validate_transition(parameters, party_tracker_data, conversation_history
         success, path, path_message = location_graph.find_path(current_location_id, new_location_id)
 
         if not success:
-            # Path doesn't exist - let normal validation handle it
-            return True, ""
+            error_msg = (
+                f"[TRAVEL AGENT] Travel Blocked: No valid path exists between {current_location_id} "
+                f"and {new_location_id}. {path_message}"
+            )
+            return False, error_msg
 
         # Analyze path for encounters and blocking
         current_module = party_tracker_data.get("module", "").replace(" ", "_")
