@@ -58,6 +58,29 @@ That means further work in this area SHOULD move into the version-2 architecture
 - Titan/provenance relationship analytics,
 - and any broader replacement/unification of the companion-memory subsystem.
 
+### Companion NPC carry-forward from archived live-stack planning
+
+The archived `plans/archive/npc-memory.md` plan is now split across implemented live behavior and v2 carry-forward work.
+
+Already handled in the legacy live path:
+
+- generalized parser hardening for companion-relevant events,
+- mention vs meaningful-interaction accounting,
+- quality classification plus sparse/degraded fallback,
+- additive file-backed per-PC relationship edges with active-PC-first prompt projection.
+
+Still pending and now owned by v2:
+
+1. Replace file-backed relationship continuity with `memory.db` relationship retrieval surfaces.
+2. Unify companion-memory extraction around a single richer parser/crystallizer path instead of maintaining separate legacy and enhanced concepts.
+3. Add operator-grade diagnosis and targeted rebuild/report flows that work with both DB-backed and compatibility-bridge state.
+4. Carry forward unresolved modeling questions in a schema-first way, especially:
+   - whether resentment remains a first-class relationship axis,
+   - how much relationship state remains universal vs tabletop-specific in prompt projection,
+   - and what provenance/evidence trail must accompany inferred relationship updates.
+
+The v2 objective is not to keep expanding the old packet format. It is to absorb the useful live semantics into durable retrieval/storage contracts and then retire the legacy-specific logic where practical.
+
 ## Goals
 
 1. Preserve long-term campaign continuity without overwhelming narrator prompts.
@@ -279,6 +302,11 @@ Columns:
 - `state_json TEXT NOT NULL`
 - `updated_at TEXT NOT NULL`
 
+Bridge intent:
+- Stores transitional companion-affect state imported from the legacy file-backed system.
+- MUST be treated as a compatibility surface, not the long-term source of truth for relationship retrieval.
+- SHOULD be derivable from or reconcilable with canonical `memory_events` + `memory_links` + relationship-oriented retrieval views.
+
 ### 8) Optional `retrieval_snippets`
 Precompiled prompt-ready snippets.
 
@@ -312,6 +340,44 @@ Indexes:
 - `get_context_memories(scene_type: str, active_entities: List[str], limit: int = 12) -> List[Dict[str, Any]]`
 - `get_relationship_memories(entity_a: str, entity_b: str, limit: int = 15) -> List[Dict[str, Any]]`
 - `get_retirement_return_memories(entity_id: str, limit: int = 20) -> List[Dict[str, Any]]`
+
+### Companion relationship follow-on requirements (post-Stage 1)
+
+The archived NPC-memory work leaves several companion-specific follow-ons that now belong here:
+
+1. `get_relationship_memories(...)` SHOULD support companion NPC <-> PC retrieval as a first-class use case, not just a generic entity pair lookup.
+2. Retrieval inputs SHOULD be able to distinguish:
+   - active-PC relationship history,
+   - strongest non-active tension/alliance,
+   - and group continuity that should not be force-attributed to one PC.
+3. The retrieval layer SHOULD support evidence-weighted relationship snippets so resentment, trust repair, coercion, rescue, and battlefield loyalty can be surfaced without dumping raw journal prose.
+4. Relationship retrieval SHOULD expose bounded operator diagnostics so a degraded companion state can be explained as:
+   - no evidence,
+   - ambiguous/group-only evidence,
+   - sparse evidence,
+   - or malformed legacy bridge state.
+
+### Companion memory unification track
+
+The old live plan also proposed a later migration toward the enhanced parser/crystallizer path. In v2, treat that as a unification problem rather than another legacy patch:
+
+1. Decide whether the enhanced companion parser becomes the canonical ingest path for relationship events.
+2. If not, backport only the concepts that matter at the DB/event layer:
+   - richer attribution tags,
+   - context tags,
+   - relationship-phase awareness,
+   - reinforcement tracking,
+   - climactic or pivotal moment weighting.
+3. Avoid a permanent dual-stack outcome where file-backed companion logic and DB-backed retrieval each encode different relationship semantics.
+
+### Recovery and operator tooling carry-forward
+
+The archived NPC-memory plan also identified recovery needs that now belong to the v2 operator plane:
+
+1. diagnosis/report mode for companion relationship state,
+2. targeted rebuild of one NPC or one relationship pair from journal/history sources,
+3. compatibility-safe rebuild of compressed/bridge state after ingestion changes,
+4. explicit reporting for healthy vs sparse vs degraded vs malformed companion memory outcomes.
 
 ### Minimal HTTP route (inspection/test)
 

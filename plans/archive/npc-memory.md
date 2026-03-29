@@ -1,10 +1,24 @@
 # NPC Memory Hardening Plan
 
+## Status
+
+- Lifecycle state: Archived (superseded/partially implemented, 2026-03-30)
+- Priority: Archived reference
+- Scope: Historical live-stack companion-memory hardening and relationship-edge planning
+- Closure decision: Phase 1 hardening and Phase 2A file-backed relationship edges landed in runtime; remaining work moved into v2 planning
+- Runtime implementation references:
+  - `openspec/changes/npc-memory-parser-hardening/`
+  - `openspec/changes/tt-npc-memory-relationship-edges/`
+- V2 destination references:
+  - `plans/version-2/memory.md`
+  - `plans/version-2/v2-narrative-track.md`
+
 Date: 2026-03-29
 Project: NeverEndingQuest (Tabletop merge-safe branch)
-Status: Draft for review
+Status: Archived reference
 Related references:
 - `plans/version-2/memory.md`
+- `plans/version-2/v2-narrative-track.md`
 - `core/memories/companion_memory.py`
 - `core/memories/action_parser.py`
 - `core/ai/conversation_utils.py`

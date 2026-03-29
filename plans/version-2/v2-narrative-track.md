@@ -67,6 +67,15 @@ Phase 2: World Model and Memory Lift (IN PROGRESS)
 - Scope: map module continuity signals into world narrative interpretation inputs, plus introduce runtime creative ingest lane.
 - Outcome target: continuity-aware world model proposals without mechanical writes, with approval-gated draft promotion.
 
+Phase 2B: Companion Relationship Memory Lift (PLANNED)
+- Scope: absorb the remaining unfinished NPC companion-memory work into the v2 memory/retrieval architecture after the live file-backed Phase 2A stopgap.
+- Outcome target: DB-backed relationship retrieval for companion NPC <-> PC continuity, with active-PC-aware bounded prompt projection and a single canonical relationship event model.
+- Hard guardrails:
+  - v2 SHOULD reuse the useful semantics proven in the live Phase 2A path, but MUST NOT keep deepening the legacy file-backed stack.
+  - Relationship retrieval MUST distinguish group continuity from specific-PC edges without forcing attribution when evidence is ambiguous.
+  - Any richer parser/crystallizer adoption MUST flow into the common memory architecture, not create another parallel long-lived subsystem.
+  - Operator-facing diagnosis/rebuild tooling for companion state MUST align with the same v2 memory truth model.
+
 Phase 2A: Creative Ingest Lane + Approval Gate (PLANNED, HIGH PRIORITY)
 - Scope: accept raw prose (paste/upload) and run LLM-first conversion into structured ingest drafts and narrative seed atoms.
 - Model posture: prioritize GLM-5 for initial narrative development quality, with provider abstraction and fallback support.
@@ -97,7 +106,7 @@ Phase 5: Governance and Observability Hardening (PLANNED)
 - `plans/version-2/world-narrative.md`
   - Owns: interpreted world model architecture and copyright-safe narrative store.
 - `plans/version-2/memory.md`
-  - Owns: retrieval/storage contracts and memory-layer integration with continuity quality signals.
+  - Owns: retrieval/storage contracts, companion relationship-memory migration after live Phase 2A, and memory-layer integration with continuity quality signals.
 - `plans/version-2/narrative-sovereignty-post-gametest.md`
   - Owns: post-gametest continuation of reconcile-first runtime architecture after G1-G4, including event-ledger and prompt-reset sequencing before OpenRouter migration.
 - `plans/version-2/CNS build/EGO.md`
@@ -115,11 +124,12 @@ Phase 5: Governance and Observability Hardening (PLANNED)
 2. creative ingest lane (raw prose -> structured draft + seed atoms) ->
 3. approval gate + Ralph loop validation ->
 4. world-narrative + memory interpreted contracts ->
-5. post-gametest narrative-sovereignty continuation (event ledger + prompt reset) ->
-6. OpenRouter router re-architecture ->
-7. EGO/Titan runtime bridge ->
-8. module-builder continuity pressure integration ->
-9. governance hardening.
+5. companion relationship memory lift (DB-backed relationship retrieval + companion-state unification) ->
+6. post-gametest narrative-sovereignty continuation (event ledger + prompt reset) ->
+7. OpenRouter router re-architecture ->
+8. EGO/Titan runtime bridge ->
+9. module-builder continuity pressure integration ->
+10. governance hardening.
 
 ## Creative Ingest Execution Plan (v2)
 
@@ -151,6 +161,22 @@ Stage E: Gameplay-Coupled Evolution
 - Mechanical outcomes remain Python-authoritative.
 - Narrative updates return to proposal/apply lifecycle (no bypass path).
 
+## Companion NPC Memory Integration Notes
+
+The archived `plans/archive/npc-memory.md` live-stack plan is now split across:
+
+1. already-landed live fixes (`npc-memory-parser-hardening`, `tt-npc-memory-relationship-edges`), and
+2. future v2 memory architecture work.
+
+Within this narrative spine, companion NPC memory work belongs inside the wider memory/world-model track rather than as a separate ad hoc subsystem. The v2 carry-forward scope is:
+
+- relationship retrieval for companion NPC <-> PC continuity from `data/memory.db`,
+- unification of legacy companion-memory semantics with the canonical event/link model,
+- bounded active-PC-first relationship projection from retrieval rather than raw file packets,
+- and operator-safe diagnosis/rebuild flows that explain ambiguous, sparse, degraded, or malformed companion states.
+
+This keeps NPC memory enhancements embedded in the same Ralph-loop, approval-gated, Python-truth-respecting architecture as the rest of the v2 narrative system.
+
 ## Next Milestone
 
 Stand up Phase 2A MVP:
@@ -159,6 +185,7 @@ Stand up Phase 2A MVP:
 2. Deterministic validation bundle for generated drafts.
 3. Facilitator approval UI/API with explicit apply action.
 4. Provenance logging for accepted/rejected draft iterations.
+5. Draft the first v2 companion relationship retrieval contract so the archived NPC-memory follow-on work has a clear home in the common memory architecture.
 
 ## Exit Criteria
 
@@ -170,6 +197,7 @@ This narrative track is considered cohesive when:
 4. Titan/EGO phases explicitly consume continuity outputs as quality inputs.
 5. Builder integration remains proposal/apply and provenance-safe.
 6. Creative ingest lane remains approval-gated in initial runtime rollout.
+7. Companion NPC relationship continuity is owned by the shared memory architecture rather than a permanently separate legacy subsystem.
 
 ## Working Note
 
