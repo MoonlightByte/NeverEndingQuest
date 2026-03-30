@@ -1021,6 +1021,34 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Spatial Mapping Foundation Plans (COMPLETED - 2026-03-31)
+
+**Status:** COMPLETED - Drafted and organized v2 mapping architecture plans.
+**Objective:** Define scalable, engine-agnostic spatial reasoning layers (Combat, Local, Regional) to power upcoming v2 ASCII/Canvas mapping UI without introducing duplicate map truths.
+**Implementation Summary:**
+- Created `plans/version-2/mapping/mapping-overview.md` to link all map documents.
+- Refactored `dm-combat-grid.md`, `dm-local-grid.md`, and `dm-regional-grid.md` into the new architecture folder.
+- Extended `plans/module-publication.md` with explicit "Spatial Coordinate Semantic Grounding" and "The Stage (Environment Grid)" requirements to ensure modules generate strict 3x3 topological arrays during ingest.
+
+### Authoritative Transition Target Validation & Error Surfacing (COMPLETED - 2026-03-30)
+
+**Status:** COMPLETED - Hardened deterministic travel validation against hallucinated explicit locations.
+**Objective:** Prevent hallucinated transitionLocation targets (like NIG09) from bypassing validation checks and ensure runtime surfaces nested semantic transition errors cleanly.
+**Implementation Summary:**
+- `utils/travel_state_sync_guard.py` now explicitly validates transition destinations against known module locations and topological connectivity.
+- `utils/validation_routing.py` no longer treats `explicit_transition` as automatically authoritative for validation suppression.
+- `core/ai/action_handler.py` `pre_validate_transition()` fails closed for nonexistent destinations.
+- `main.py` surfaces nested `response_data.error_message` from failed transitions directly to chat instead of generic fallback errors.
+
+### Travel/NPC Effective-Location & HP/State Hygiene (COMPLETED - 2026-03-30)
+
+**Status:** COMPLETED - Fixed positive-HP stale-unconscious bug and normalized life state resolution.
+**Objective:** Ensure characters with `hitPoints > 0` cannot remain durably marked unconscious or dead in prompts, encounter syncs, or runtime memory, fixing normalization drift.
+**Implementation Summary:**
+- Added `utils/character_state_hygiene.py` with `normalize_life_state_fields()`.
+- Wired hygiene normalization into `updates/update_character_info.py` via `normalize_status_and_condition()` and `repair_character_data()`.
+- Applied state hygiene to `utils/pc_manager.py` character loads and `core/managers/combat_manager.py` prompt formatting to protect active-encounter state sync.
+
 ### Companion Relationship Edges + GUI Label/Layout Hardening (COMPLETED - 2026-03-30)
 
 **Status:** COMPLETED - companion memory now keeps per-PC relationship edges with active-PC-aware projection, while GUI chat/header display was hardened for readable character/location labels and stable layout.

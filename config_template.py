@@ -83,7 +83,7 @@ ENABLE_LIVE_EXCHANGE_RATE = False  # Disabled by default for safety
 # Note: All model configurations are now imported from model_config.py above
 
 # --- Web Interface Configuration ---
-MULTIPLAYER_MODE = False                             # Enable tabletop/multi-PC UI even with 1 character
+MULTIPLAYER_MODE = True                                 # Enable tabletop/multi-PC UI even with 1 character
 WEB_PORT = 8357                                         # Port for the web interface (changed from 5000 for security)
 DEBUG_STATUS_SYNC = False                               # Enable/disable noisy status synchronization debug logs
 

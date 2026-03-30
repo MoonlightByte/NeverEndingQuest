@@ -1,0 +1,94 @@
+{
+  "name": "Undead Giant Spider",
+  "size": "Large",
+  "type": "Undead",
+  "alignment": "Unaligned",
+  "armorClass": 14,
+  "hitPoints": 20,
+  "maxHitPoints": 20,
+  "speed": 30,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 2,
+    "wisdom": 8,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 7
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "necrotic"
+  ],
+  "damageImmunities": [
+    "poison"
+  ],
+  "conditionImmunities": [
+    "poisoned",
+    "exhaustion"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 9
+  },
+  "languages": "",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Undead Fortitude",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": ""
+    },
+    {
+      "name": "Spider Climb",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": ""
+    },
+    {
+      "name": "Web Sense",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": ""
+    },
+    {
+      "name": "Web Walker",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": ""
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    },
+    {
+      "name": "Bite (Poison)",
+      "attackBonus": 0,
+      "damageDice": "2d8",
+      "damageBonus": 0,
+      "damageType": "poison"
+    },
+    {
+      "name": "Web (Recharge 5\u20136)",
+      "attackBonus": 5,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "restrained"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Dead"
+}

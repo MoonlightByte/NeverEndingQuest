@@ -1,0 +1,91 @@
+{
+  "name": "Spectral Trace",
+  "size": "Small",
+  "type": "Undead",
+  "alignment": "Neutral Evil",
+  "armorClass": 12,
+  "hitPoints": 9,
+  "maxHitPoints": 9,
+  "speed": 0,
+  "abilities": {
+    "strength": 1,
+    "dexterity": 14,
+    "constitution": 10,
+    "intelligence": 7,
+    "wisdom": 12,
+    "charisma": 14
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 4,
+    "perception": 3
+  },
+  "damageVulnerabilities": [
+    "force",
+    "radiant"
+  ],
+  "damageResistances": [
+    "acid",
+    "cold",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "Understands all languages it knew in life but can't speak",
+  "challengeRating": 0.25,
+  "specialAbilities": [
+    {
+      "name": "Incorporeal Form",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Ethereal Sight",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Fade",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Chilling Touch",
+      "attackBonus": 4,
+      "damageDice": "1d4",
+      "damageBonus": 2,
+      "damageType": "cold"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

@@ -190,3 +190,11 @@ Create targeted developer remediation tooling for existing modules.
 This solves semantic grounding issues for spatial movement:
 - **Semantic Reality:** Ensures coordinates match the prose. When a player says "We head North through the door", the Python travel validator (using the 3x3 local grid) naturally aligns with the authored reality of the module.
 - **Publishability Audit:** Add a "Spatial Coherence" check to the readiness validator (`validate_module_files.py`). A module fails publication if connected rooms are mathematically distant (e.g., connected but >2 coordinate steps away) without a narrative justification (like a teleport trap). This ensures broken local grids never reach the runtime.
+
+### 4. The Stage (Environment Grid)
+A 3x3 tactical grid representing the physical room or clearing. It contains *no people*, only terrain, hazards, and features.
+
+* **Generation:** Created at module ingest or backfill (Option A). The LLM cartographer extracts a `tactical_grid` array from the location's prose description and saves it to the module's `areas/` JSON.
+* **Schema Definition:** The `tactical_grid` should be an array of 9 strings mapping to `["NW", "N", "NE", "W", "C", "E", "SW", "S", "SE"]`. Each string contains a terse descriptor of the terrain, furniture, or hazards in that zone (e.g., `"Bar/Kegs"`, `"Open Space"`, `"Fireplace"`, `"Stairs Up"`).
+* **Prompt Logic:** "Analyze the physical description of this room. Create a 3x3 tactical grid dividing the room into 9 zones. For each zone, provide a 1-3 word description of the most prominent environmental feature, hazard, or terrain. Do not include characters or monsters. If a zone is empty, label it 'Open Space'."
+* **Publishability Audit:** Extend the readiness validator to check that every location possesses a valid 9-element `tactical_grid` array containing string descriptors, ensuring the runtime combat system always has an environment stage to load.
