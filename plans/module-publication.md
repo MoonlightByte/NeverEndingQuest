@@ -165,3 +165,28 @@ After this work:
 - destination and NPC authority bugs should be caught during ingest/readiness
 - runtime should stop carrying the burden of repairing missing authored semantics
 - manual bug testing should become confirmation, not discovery
+
+## Spatial Coordinate Semantic Grounding (DM Local Grid Support)
+
+### Problem
+To fully enable the 3x3 phenomenological "DM Local Grid", modules must possess semantically accurate `X#Y#` coordinates where connected rooms are physically adjacent in coordinate space, and their relative placement (North, South, East, West) matches the narrative descriptions. Currently:
+- **New Ingests:** `homebrewery_importer.py` creates naive, linear maps (`X0Y0`, `X1Y0`...) ignoring text descriptions.
+- **Legacy Modules:** Coordinates are manually authored (often conflicting with text) or missing entirely.
+
+### 1. Ingest Pipeline Upgrade (New Modules)
+Add a "Spatial Resolution Pass" to the `core/importers/homebrewery_importer.py` pipeline.
+- **LLM Spatial Inference:** After room extraction, invoke an LLM cartographer (`_resolve_spatial_layout()`).
+- **Prompt Logic:** "Analyze these rooms for directional cues (north, stairs down, east wing) and logical adjacency. Output a JSON map assigning a relative X,Y coordinate to each room, starting at X10Y10 for the entrance. Ensure North is Y-1, South is Y+1, East is X+1, and West is X-1."
+- **Pipeline Integration:** Replace the linear logic in `_emit_map_file()`. Emit these semantically grounded coordinates in both `areas/<AREA>.json` and `map_<AREA>.json`.
+
+### 2. Backfill Tooling (Legacy Modules)
+Create targeted developer remediation tooling for existing modules.
+- **New Script:** `scripts/remediate_module_coordinates.py`
+- **Read & Extract:** Read an area file, extract the `locations` array, preserving exact `connectivity` and `description` text.
+- **LLM Reconciliation:** Prompt the LLM: "Here is an existing map with fixed connections. Read the descriptions and assign an X,Y coordinate to each room starting at X10Y10. Ensure connected rooms are placed as close to adjacent as possible in the grid, strictly respecting any directional words (North, South) mentioned in the text."
+- **Safe Write:** Safely update the `coordinates` key for every location in the `areas/` JSON and rebuild the layout array in the `map_/` JSON. Support `--dry-run` and `--apply` flags.
+
+### 3. Alignment with Publication Standards
+This solves semantic grounding issues for spatial movement:
+- **Semantic Reality:** Ensures coordinates match the prose. When a player says "We head North through the door", the Python travel validator (using the 3x3 local grid) naturally aligns with the authored reality of the module.
+- **Publishability Audit:** Add a "Spatial Coherence" check to the readiness validator (`validate_module_files.py`). A module fails publication if connected rooms are mathematically distant (e.g., connected but >2 coordinate steps away) without a narrative justification (like a teleport trap). This ensures broken local grids never reach the runtime.
