@@ -13,14 +13,11 @@ import json
 import os
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
-from openai import OpenAI
-from config import OPENAI_API_KEY, DM_MAIN_MODEL
 import jsonschema
 import random
 from utils.module_path_manager import ModulePathManager
-
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
+from utils.ai_client_factory import create_chat_client, get_model_config, handle_provider_error
+from model_config import DM_MAIN_MODEL
 
 @dataclass
 class LocationPromptGuide:
@@ -387,6 +384,39 @@ class LocationGenerator:
         with open("schemas/loca_schema.json", "r") as f:
             return json.load(f)
     
+    def _slim_context_for_location(self, context: Any) -> Dict[str, Any]:
+        """Extract only narrative-essential info for location generation"""
+        ctx_dict = context.to_dict() if hasattr(context, 'to_dict') else dict(context)
+        
+        slim = {
+            "module_name": ctx_dict.get("module_name", ""),
+            "areas": {},
+            "locations": {},
+            "npcs": {}
+        }
+        
+        for a_id, a_data in ctx_dict.get("areas", {}).items():
+            slim["areas"][a_id] = {
+                "name": a_data.get("name"),
+                "type": a_data.get("type")
+            }
+            
+        for l_id, l_data in ctx_dict.get("locations", {}).items():
+            slim["locations"][l_id] = {
+                "name": l_data.get("name"),
+                "type": l_data.get("type")
+            }
+            
+        for n_id, n_data in ctx_dict.get("npcs", {}).items():
+            slim["npcs"][n_id] = {
+                "name": n_data.get("name"),
+                "role": n_data.get("role"),
+                "faction": n_data.get("faction"),
+                "appears_in": n_data.get("appears_in", [])
+            }
+            
+        return slim
+
     def generate_field(self, field_path: str, schema_info: Dict[str, Any], 
                       context: Dict[str, Any]) -> Any:
         """Generate content for a specific field"""
@@ -408,7 +438,7 @@ Detailed Guidelines:
 {guide_text}
 
 Context:
-{json.dumps(context.to_dict() if hasattr(context, 'to_dict') else context, indent=2)}
+{json.dumps(self._slim_context_for_location(context), indent=2)}
 
 Return ONLY the value for this field in the correct format.
 For strings, return just the string.
@@ -416,14 +446,28 @@ For arrays, return just the array.
 For objects, return just the object.
 """
         
-        response = client.chat.completions.create(
-            model=DM_MAIN_MODEL,
-            temperature=0.7,
-            messages=[
-                {"role": "system", "content": "You are an expert 5e location designer. Return only the requested data in the exact format needed."},
-                {"role": "user", "content": prompt}
-            ]
-        )
+        client = create_chat_client()
+        config = get_model_config("location_generator", DM_MAIN_MODEL)
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model=config["model"],
+                    **config.get("extra_body", {}),
+                    temperature=0.7,
+                    messages=[
+                        {"role": "system", "content": "You are an expert 5e location designer. Return only the requested data in the exact format needed."},
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                break
+            except Exception as e:
+                error_result = handle_provider_error(e, "generate_location_field")
+                if error_result["should_fallback"] and attempt < max_retries - 1:
+                    client = create_chat_client(use_fallback=True)
+                    continue
+                raise
         
         content = response.choices[0].message.content.strip()
         
@@ -539,15 +583,29 @@ AREA CONNECTIVITY RULES:
 Check the location schema carefully for all required fields.
 """
         
-        response = client.chat.completions.create(
-            model=DM_MAIN_MODEL,
-            temperature=0.8,
-            messages=[
-                {"role": "system", "content": "You are an expert 5e dungeon designer creating cohesive, interconnected locations."},
-                {"role": "user", "content": batch_prompt}
-            ],
-            response_format={"type": "json_object"}
-        )
+        client = create_chat_client()
+        config = get_model_config("location_generator_batch", DM_MAIN_MODEL)
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model=config["model"],
+                    **config.get("extra_body", {}),
+                    temperature=0.8,
+                    messages=[
+                        {"role": "system", "content": "You are an expert 5e dungeon designer creating cohesive, interconnected locations."},
+                        {"role": "user", "content": batch_prompt}
+                    ],
+                    response_format={"type": "json_object"}
+                )
+                break
+            except Exception as e:
+                error_result = handle_provider_error(e, "generate_location_batch")
+                if error_result["should_fallback"] and attempt < max_retries - 1:
+                    client = create_chat_client(use_fallback=True)
+                    continue
+                raise
         
         return json.loads(response.choices[0].message.content)
     

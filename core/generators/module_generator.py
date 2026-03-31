@@ -75,15 +75,12 @@ import random
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
-from openai import OpenAI
-from config import OPENAI_API_KEY, DM_MAIN_MODEL
+from utils.ai_client_factory import create_chat_client, get_model_config, handle_provider_error
+from model_config import DM_MAIN_MODEL
 import jsonschema
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_write_json as save_json_safely
 from utils.enhanced_logger import debug, info, warning, error
-
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Location ID prefix mapping to ensure unique IDs across areas
 LOCATION_PREFIX_MAP = {
@@ -519,23 +516,34 @@ If the field expects an object, return just the object.
         print(f"DEBUG: [ModuleGenerator] Making API call to {DM_MAIN_MODEL}...")
         print(f"DEBUG: [ModuleGenerator] Prompt length: {len(prompt)} characters")
         print(f"INFO: Calling OpenAI API for {field_path}... This may take 10-30 seconds.")
+        import time
         start_time = time.time()
-        try:
-            response = client.chat.completions.create(
-                model=DM_MAIN_MODEL,
-                temperature=0.7,
-                messages=[
-                    {"role": "system", "content": "You are an expert 5e module designer. Return only the requested data in the exact format needed."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            elapsed = time.time() - start_time
-            print(f"DEBUG: [ModuleGenerator] API call completed successfully in {elapsed:.1f} seconds")
-        except Exception as e:
-            print(f"ERROR: [ModuleGenerator] API call failed: {e}")
-            import traceback
-            print(f"ERROR: [ModuleGenerator] Traceback: {traceback.format_exc()}")
-            raise
+        
+        client = create_chat_client()
+        config = get_model_config("module_generator", DM_MAIN_MODEL)
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model=config["model"],
+                    **config.get("extra_body", {}),
+                    temperature=0.7,
+                    messages=[
+                        {"role": "system", "content": "You are an expert 5e module designer. Return only the requested data in the exact format needed."},
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                break
+            except Exception as e:
+                error_result = handle_provider_error(e, "module_generator_field")
+                if error_result["should_fallback"] and attempt < max_retries - 1:
+                    client = create_chat_client(use_fallback=True)
+                    continue
+                raise
+        
+        elapsed = time.time() - start_time
+        print(f"DEBUG: [ModuleGenerator] API call completed successfully in {elapsed:.1f} seconds")
         
         content = response.choices[0].message.content.strip()
         

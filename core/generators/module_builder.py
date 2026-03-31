@@ -568,11 +568,12 @@ The plot title should reference this specific area, not other locations.
             self.log("Warning: No plots to unify")
             return
             
-        # Import OpenAI at the function level to avoid circular imports
-        from openai import OpenAI
-        from config import OPENAI_API_KEY, DM_MAIN_MODEL
+        # Import factory at the function level to avoid circular imports
+        from utils.ai_client_factory import create_chat_client, get_model_config, handle_provider_error
+        from config import DM_MAIN_MODEL
         
-        client = OpenAI(api_key=OPENAI_API_KEY)
+        client = create_chat_client()
+        model_config = get_model_config("unify_plots", DM_MAIN_MODEL)
         
         # Prepare context for unification
         area_summaries = []
@@ -671,15 +672,26 @@ IMPORTANT:
 - Maintain all existing content but improve flow and connections"""
 
         try:
-            response = client.chat.completions.create(
-                model=DM_MAIN_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are an expert 5th edition module designer specializing in creating coherent, engaging adventure narratives."},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.7
-            )
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = client.chat.completions.create(
+                        model=model_config["model"],
+                        **model_config.get("extra_body", {}),
+                        messages=[
+                            {"role": "system", "content": "You are an expert 5th edition module designer specializing in creating coherent, engaging adventure narratives."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        response_format={"type": "json_object"},
+                        temperature=0.7
+                    )
+                    break
+                except Exception as e:
+                    error_result = handle_provider_error(e, "unify_plots")
+                    if error_result["should_fallback"] and attempt < max_retries - 1:
+                        client = create_chat_client(use_fallback=True)
+                        continue
+                    raise
             
             unified_plot = json.loads(response.choices[0].message.content)
             
@@ -761,10 +773,11 @@ IMPORTANT:
             return
         
         # Import here to avoid circular imports
-        from openai import OpenAI
-        from config import OPENAI_API_KEY, DM_MAIN_MODEL
+        from utils.ai_client_factory import create_chat_client, get_model_config, handle_provider_error
+        from config import DM_MAIN_MODEL
         
-        client = OpenAI(api_key=OPENAI_API_KEY)
+        client = create_chat_client()
+        model_config = get_model_config("update_plot_hooks", DM_MAIN_MODEL)
         
         # Update each area's plot hooks
         for area_id in self.areas_data:
@@ -919,19 +932,30 @@ Return a JSON object with this structure:
 IMPORTANT: 
 - Only include locations that need plot hook updates
 - Reference specific plot point/side quest IDs where it makes narrative sense
-- Preserve the existing hook style and tone
+- Preserve the existing style and tone
 - Make hooks more specific and actionable"""
 
         try:
-            response = client.chat.completions.create(
-                model=DM_MAIN_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are an expert 5th edition module designer specializing in creating actionable plot hooks that reference specific plot elements."},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.6
-            )
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = client.chat.completions.create(
+                        model=model_config["model"],
+                        **model_config.get("extra_body", {}),
+                        messages=[
+                            {"role": "system", "content": "You are an expert 5th edition module designer specializing in creating actionable plot hooks that reference specific plot elements."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        response_format={"type": "json_object"},
+                        temperature=0.6
+                    )
+                    break
+                except Exception as e:
+                    error_result = handle_provider_error(e, "update_plot_hooks")
+                    if error_result["should_fallback"] and attempt < max_retries - 1:
+                        client = create_chat_client(use_fallback=True)
+                        continue
+                    raise
             
             result = json.loads(response.choices[0].message.content)
             return result.get("plotHookUpdates", [])
@@ -1361,10 +1385,11 @@ def parse_narrative_to_module_params(narrative: str) -> Dict[str, Any]:
     Returns:
         Dict containing parsed module parameters
     """
-    from openai import OpenAI
+    from utils.ai_client_factory import create_chat_client, get_model_config, handle_provider_error
     import config
     
-    client = OpenAI(api_key=config.OPENAI_API_KEY)
+    client = create_chat_client()
+    model_config = get_model_config("parse_module_params", config.DM_SUMMARIZATION_MODEL)
     
     parsing_prompt = """You are a module configuration parser for the world's most popular 5th edition tabletop role-playing game. Extract adventure module parameters from a narrative description.
 
@@ -1420,15 +1445,23 @@ Return ONLY the JSON object, no explanations or additional text."""
     
     for attempt in range(max_retries):
         try:
-            response = client.chat.completions.create(
-                model=config.DM_SUMMARIZATION_MODEL,
-                temperature=0.3,
-                messages=[
-                    {"role": "system", "content": current_prompt},
-                    {"role": "user", "content": f"Parse this module narrative:\n\n{narrative}"}
-                ]
-            )
-            
+            try:
+                response = client.chat.completions.create(
+                    model=model_config["model"],
+                    **model_config.get("extra_body", {}),
+                    temperature=0.3,
+                    messages=[
+                        {"role": "system", "content": current_prompt},
+                        {"role": "user", "content": f"Parse this module narrative:\n\n{narrative}"}
+                    ]
+                )
+            except Exception as e:
+                error_result = handle_provider_error(e, "parse_module_parameters")
+                if error_result["should_fallback"] and attempt < max_retries - 1:
+                    client = create_chat_client(use_fallback=True)
+                    continue
+                raise
+                
             result = response.choices[0].message.content.strip()
             # Clean up potential code blocks
             if "```json" in result:

@@ -40,12 +40,10 @@ import json
 import os
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
-from openai import OpenAI
-from config import OPENAI_API_KEY, DM_MAIN_MODEL
 import jsonschema
 
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
+from utils.ai_client_factory import create_chat_client, get_model_config, handle_provider_error
+from model_config import DM_MAIN_MODEL
 
 @dataclass
 class PlotPromptGuide:
@@ -344,14 +342,28 @@ For arrays, return just the array.
 For objects, return just the object.
 """
         
-        response = client.chat.completions.create(
-            model=DM_MAIN_MODEL,
-            temperature=0.7,
-            messages=[
-                {"role": "system", "content": "You are an expert 5e adventure designer. Return only the requested data in the exact format needed."},
-                {"role": "user", "content": prompt}
-            ]
-        )
+        client = create_chat_client()
+        config = get_model_config("plot_generator", DM_MAIN_MODEL)
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model=config["model"],
+                    **config.get("extra_body", {}),
+                    temperature=0.7,
+                    messages=[
+                        {"role": "system", "content": "You are an expert 5e adventure designer. Return only the requested data in the exact format needed."},
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                break
+            except Exception as e:
+                error_result = handle_provider_error(e, "generate_plot_field")
+                if error_result["should_fallback"] and attempt < max_retries - 1:
+                    client = create_chat_client(use_fallback=True)
+                    continue
+                raise
         
         content = response.choices[0].message.content.strip()
         
@@ -364,16 +376,56 @@ For objects, return just the object.
         
         return content
     
+    def _slim_context_for_plot(self, context: Any) -> Dict[str, Any]:
+        """Extract only narrative-essential info to prevent prompt size explosion"""
+        # Handle dict or object
+        ctx_dict = context.to_dict() if hasattr(context, 'to_dict') else dict(context)
+        
+        slim = {
+            "module_name": ctx_dict.get("module_name", ""),
+            "areas": {},
+            "locations": {},
+            "npcs": {}
+        }
+        
+        # Summarize areas
+        for a_id, a_data in ctx_dict.get("areas", {}).items():
+            slim["areas"][a_id] = {
+                "name": a_data.get("name"),
+                "type": a_data.get("type")
+            }
+            
+        # Summarize locations
+        for l_id, l_data in ctx_dict.get("locations", {}).items():
+            slim["locations"][l_id] = {
+                "name": l_data.get("name"),
+                "type": l_data.get("type"),
+                "area_id": l_data.get("area_id")
+            }
+            
+        # Summarize NPCs
+        for n_id, n_data in ctx_dict.get("npcs", {}).items():
+            slim["npcs"][n_id] = {
+                "name": n_data.get("name"),
+                "role": n_data.get("role"),
+                "faction": n_data.get("faction"),
+                "appears_in": n_data.get("appears_in", [])
+            }
+            
+        return slim
+
     def generate_plot_structure(self, num_plot_points: int, 
                                 context: Dict[str, Any],
                                 context_header: str = "") -> Dict[str, Any]:
         """Generate the complete plot structure"""
         
+        slim_context = self._slim_context_for_plot(context)
+        
         # Generate a full plot structure in one go for better coherence
         prompt = f"""{context_header}Create a complete plot structure for a 5e adventure with {num_plot_points} main plot points.
 
 Context:
-{json.dumps(context.to_dict() if hasattr(context, 'to_dict') else context, indent=2)}
+{json.dumps(slim_context, indent=2)}
 
 The plot should:
 1. Connect logically to the module theme
@@ -411,15 +463,29 @@ Return a JSON object with this structure:
 IMPORTANT: Each plot point should have its sideQuests array (can be empty). Side quests are nested within plot points, not at the root level.
 """
         
-        response = client.chat.completions.create(
-            model=DM_MAIN_MODEL,
-            temperature=0.8,
-            messages=[
-                {"role": "system", "content": "You are an expert 5e adventure designer."},
-                {"role": "user", "content": prompt}
-            ],
-            response_format={"type": "json_object"}
-        )
+        client = create_chat_client()
+        config = get_model_config("plot_generator", DM_MAIN_MODEL)
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model=config["model"],
+                    **config.get("extra_body", {}),
+                    temperature=0.8,
+                    messages=[
+                        {"role": "system", "content": "You are an expert 5e adventure designer."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    response_format={"type": "json_object"}
+                )
+                break
+            except Exception as e:
+                error_result = handle_provider_error(e, "generate_plot_structure")
+                if error_result["should_fallback"] and attempt < max_retries - 1:
+                    client = create_chat_client(use_fallback=True)
+                    continue
+                raise
         
         return json.loads(response.choices[0].message.content)
     

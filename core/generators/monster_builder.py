@@ -61,11 +61,11 @@ import re
 # Add the project root to the Python path so we can import from utils, core, etc.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from openai import OpenAI
 from jsonschema import validate, ValidationError
 import config
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.ai_client_factory import create_chat_client, get_model_config, handle_provider_error
 
 # Set script name for logging
 set_script_name("monster_builder")
@@ -74,11 +74,6 @@ GREEN = "\033[32m"
 RED = "\033[31m"
 YELLOW = "\033[33m"
 RESET = "\033[0m"
-
-# Use OPENAI_API_KEY from config
-client = OpenAI(api_key=config.OPENAI_API_KEY)
-# Note: The original monster_builder.py had a hardcoded API key here.
-# It's better practice to use the one from config.py.
 
 def load_schema(file_name):
     try:
@@ -178,12 +173,26 @@ Schema: {json.dumps(schema)}"""
     ]
 
     try:
-        response = client.chat.completions.create(
-            model=config.MONSTER_BUILDER_MODEL, # Use imported model name
-            temperature=0.7,
-            messages=prompt
-        )
-
+        client = create_chat_client()
+        model_config = get_model_config("monster_builder", config.MONSTER_BUILDER_MODEL)
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model=model_config["model"],
+                    **model_config.get("extra_body", {}),
+                    temperature=0.7,
+                    messages=prompt
+                )
+                break
+            except Exception as e:
+                error_result = handle_provider_error(e, "generate_monster")
+                if error_result["should_fallback"] and attempt < max_retries - 1:
+                    client = create_chat_client(use_fallback=True)
+                    continue
+                raise
+                
         ai_response = response.choices[0].message.content.strip()
         print(f"{YELLOW}AI Response:{RESET}\n{ai_response}")
 

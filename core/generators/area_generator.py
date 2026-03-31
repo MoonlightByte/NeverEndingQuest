@@ -40,12 +40,9 @@ import json
 import random
 from typing import Dict, List, Any, Tuple
 from dataclasses import dataclass
-from openai import OpenAI
-from config import OPENAI_API_KEY, DM_MAIN_MODEL
+from utils.ai_client_factory import create_chat_client, get_model_config, handle_provider_error
+from model_config import DM_MAIN_MODEL
 from utils.module_path_manager import ModulePathManager
-
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 @dataclass
 class AreaConfig:
@@ -123,14 +120,27 @@ Please respond with ONLY a JSON array of names in the exact order listed above:
 
 No explanations, just the JSON array of thematic location names."""
 
-            response = client.chat.completions.create(
-                model=DM_MAIN_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are an expert at creating immersive 5th edition of the world's most popular roleplaying game location names that enhance storytelling and world-building."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.8
-            )
+            client = create_chat_client()
+            config = get_model_config("generate_thematic_names", DM_MAIN_MODEL)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = client.chat.completions.create(
+                        model=config["model"],
+                        **config.get("extra_body", {}),
+                        messages=[
+                            {"role": "system", "content": "You are an expert at creating immersive 5th edition of the world's most popular roleplaying game location names that enhance storytelling and world-building."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.8
+                    )
+                    break
+                except Exception as e:
+                    error_result = handle_provider_error(e, "generate_thematic_names")
+                    if error_result["should_fallback"] and attempt < max_retries - 1:
+                        client = create_chat_client(use_fallback=True)
+                        continue
+                    raise
             
             response_text = response.choices[0].message.content.strip()
             
@@ -379,7 +389,7 @@ class AreaGenerator:
     
     def __init__(self):
         self.map_gen = MapLayoutGenerator()
-        self.client = client  # Use the module-level OpenAI client
+        self.client = create_chat_client()  # Use factory client
     
     def generate_area_name_and_description(self, initial_name: str, config: AreaConfig) -> tuple[str, str]:
         """
@@ -410,15 +420,27 @@ class AreaGenerator:
 """
 
         try:
-            response = self.client.chat.completions.create(
-                model=DM_MAIN_MODEL,
-                temperature=0.8,
-                messages=[
-                    {"role": "system", "content": "You are an expert fantasy world builder specializing in creating evocative names and descriptions for 5th edition of the world's most popular roleplaying game areas."},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"}
-            )
+            model_config = get_model_config("generate_area_name", DM_MAIN_MODEL)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = self.client.chat.completions.create(
+                        model=model_config["model"],
+                        **model_config.get("extra_body", {}),
+                        temperature=0.8,
+                        messages=[
+                            {"role": "system", "content": "You are an expert fantasy world builder specializing in creating evocative names and descriptions for 5th edition of the world's most popular roleplaying game areas."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        response_format={"type": "json_object"}
+                    )
+                    break
+                except Exception as e:
+                    error_result = handle_provider_error(e, "generate_area_name")
+                    if error_result["should_fallback"] and attempt < max_retries - 1:
+                        self.client = create_chat_client(use_fallback=True)
+                        continue
+                    raise
             
             result = json.loads(response.choices[0].message.content)
             refined_name = result.get("refinedName", initial_name)
@@ -555,14 +577,26 @@ Requirements:
 Return ONLY the area description text, no additional formatting or labels."""
 
         try:
-            response = client.chat.completions.create(
-                model=DM_MAIN_MODEL,
-                temperature=0.8,  # Higher temperature for more creative variety
-                messages=[
-                    {"role": "system", "content": "You are an expert fantasy world builder. Create unique, atmospheric descriptions for 5th edition of the world's most popular roleplaying game areas that avoid cliches and generic phrases."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
+            model_config = get_model_config("generate_area_description", DM_MAIN_MODEL)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = self.client.chat.completions.create(
+                        model=model_config["model"],
+                        **model_config.get("extra_body", {}),
+                        temperature=0.8,  # Higher temperature for more creative variety
+                        messages=[
+                            {"role": "system", "content": "You are an expert fantasy world builder. Create unique, atmospheric descriptions for 5th edition of the world's most popular roleplaying game areas that avoid cliches and generic phrases."},
+                            {"role": "user", "content": prompt}
+                        ]
+                    )
+                    break
+                except Exception as e:
+                    error_result = handle_provider_error(e, "generate_area_description")
+                    if error_result["should_fallback"] and attempt < max_retries - 1:
+                        self.client = create_chat_client(use_fallback=True)
+                        continue
+                    raise
             
             description = response.choices[0].message.content.strip()
             

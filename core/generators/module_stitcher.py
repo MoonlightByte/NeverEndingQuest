@@ -100,7 +100,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
-from openai import OpenAI
+from utils.ai_client_factory import create_chat_client, get_model_config, handle_provider_error
 import config
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
@@ -119,7 +119,7 @@ class ModuleStitcher:
         self.root_dir = os.path.dirname(self.modules_dir)
         self.world_registry_file = os.path.join(self.modules_dir, "world_registry.json")
         self.party_tracker_file = os.path.join(self.root_dir, "party_tracker.json")
-        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
+        self.client = create_chat_client()
 
         # Ensure directories exist
         os.makedirs(self.modules_dir, exist_ok=True)
@@ -408,14 +408,26 @@ FIRST AREA: {first_area_name} ({first_area_type})
 
 Create atmospheric travel narration that leads into this adventure."""
             
-            response = self.client.chat.completions.create(
-                model=config.DM_SUMMARIZATION_MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.8
-            )
+            model_config = get_model_config("travel_narration", config.DM_SUMMARIZATION_MODEL)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = self.client.chat.completions.create(
+                        model=model_config["model"],
+                        **model_config.get("extra_body", {}),
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        temperature=0.8
+                    )
+                    break
+                except Exception as e:
+                    error_result = handle_provider_error(e, "module_stitcher_travel")
+                    if error_result["should_fallback"] and attempt < max_retries - 1:
+                        self.client = create_chat_client(use_fallback=True)
+                        continue
+                    raise
             
             # Parse AI response
             ai_response = response.choices[0].message.content
@@ -1066,14 +1078,26 @@ Check for:
 Respond with JSON:
 {{"safe": true/false, "reason": "explanation if unsafe"}}"""
             
-            response = self.client.chat.completions.create(
-                model=config.DM_SUMMARIZATION_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are a content safety reviewer for family-friendly fantasy gaming content. Be strict but reasonable in your assessment."},
-                    {"role": "user", "content": safety_prompt}
-                ],
-                temperature=0.1
-            )
+            model_config = get_model_config("safety_review", config.DM_SUMMARIZATION_MODEL)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = self.client.chat.completions.create(
+                        model=model_config["model"],
+                        **model_config.get("extra_body", {}),
+                        messages=[
+                            {"role": "system", "content": "You are a content safety reviewer for family-friendly fantasy gaming content. Be strict but reasonable in your assessment."},
+                            {"role": "user", "content": safety_prompt}
+                        ],
+                        temperature=0.1
+                    )
+                    break
+                except Exception as e:
+                    error_result = handle_provider_error(e, "safety_review")
+                    if error_result["should_fallback"] and attempt < max_retries - 1:
+                        self.client = create_chat_client(use_fallback=True)
+                        continue
+                    raise
             
             ai_response = response.choices[0].message.content
             try:

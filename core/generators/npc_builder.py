@@ -38,10 +38,10 @@ import re
 # Add the project root to the Python path so we can import from utils, core, etc.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from openai import OpenAI
 from jsonschema import validate, ValidationError
 # Import model configuration from config.py
-from config import OPENAI_API_KEY, NPC_BUILDER_MODEL # Assuming API key might also be in config eventually
+from config import NPC_BUILDER_MODEL
+from utils.ai_client_factory import create_chat_client, get_model_config, handle_provider_error
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
@@ -59,13 +59,6 @@ GREEN = "\033[32m"
 RED = "\033[31m"
 YELLOW = "\033[33m"
 RESET = "\033[0m"
-
-# Use OPENAI_API_KEY from config
-client = OpenAI(api_key=OPENAI_API_KEY)
-# Note: The original npc_builder.py had a hardcoded API key here.
-# It's better practice to use the one from config.py.
-# If your config.py does not yet have OPENAI_API_KEY, you'll need to add it or adjust.
-# For now, I'll assume OPENAI_API_KEY is correctly defined in your config.py as used by other scripts.
 
 def load_schema(file_name):
     try:
@@ -123,11 +116,25 @@ Adhere strictly to 5e rules and the provided schema."""
     ]
 
     try:
-        response = client.chat.completions.create(
-            model=NPC_BUILDER_MODEL, # Use imported model name
-            temperature=0.7,
-            messages=prompt_messages
-        )
+        client = create_chat_client()
+        config = get_model_config("npc_builder", NPC_BUILDER_MODEL)
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model=config["model"],
+                    **config.get("extra_body", {}),
+                    temperature=0.7,
+                    messages=prompt_messages
+                )
+                break
+            except Exception as e:
+                error_result = handle_provider_error(e, "generate_npc")
+                if error_result["should_fallback"] and attempt < max_retries - 1:
+                    client = create_chat_client(use_fallback=True)
+                    continue
+                raise
 
         ai_response = response.choices[0].message.content.strip()
         #print(f"{YELLOW}AI Response:{RESET}\n{ai_response}")
