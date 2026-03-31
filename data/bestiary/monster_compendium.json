@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "created": "2025-08-13",
-  "total_monsters": 166,
+  "total_monsters": 191,
   "monsters": {
     "bandit_sentry": {
       "name": "Bandit Sentry",
@@ -245,14 +245,16 @@
     "silent_king_effigy": {
       "name": "Silent King Effigy",
       "type": "construct",
-      "description": "An 8-foot tall stone construct carved in the likeness of an ancient king, standing eternally in the flooded sanctum. Its form is regal yet weathered, draped in sculpted robes that seem to ripple despite being solid stone. The crown upon its head is part of the carving itself, inset with dark crystals that pulse with shadow energy. Water damage has left mineral deposits streaking down its face like eternal tears. When dormant, it appears as merely another statue among the effigies, but when awakened, purple-black energy courses through the carved channels in its body. Its movements are deliberate and ceremonial, each gesture reminiscent of royal decrees. The construct's stone flesh shows signs of shadow corruption - veins of dark crystal spreading like infection through the marble. In its right hand it holds a scepter of office that serves as both symbol and weapon. The left hand bears a shield emblazoned with forgotten heraldry. When it moves, water cascades from its joints, and its footsteps echo with the authority of dead kings. The eyes are empty sockets that burn with cold fire when active, judging all who would disturb the sanctity of the royal dead.",
+      "description": "The Silent King Effigy stands as a haunting silhouette against the flickering light of the cursed lighthouse, a towering figure of salt-encrusted stone and ancient wood. Its form is both regal and eerie, draped in tattered remnants of regal attire that flutter like whispers in the wind. A crown of barnacles and twisted coral crowns its head, glistening with moisture, while hollow eye sockets seem to absorb the very light around it, giving it an unsettling presence. The effigy's body is adorned with intricate carvings that depict the tales of the Drowned King, their details eroded yet still resonant with a tragic beauty. As the moonlight bathes it in ghostly hues, the effigy emits a soft, mournful hum, reminiscent of distant chimes echoing through the air, creating an atmosphere of sorrow and longing.\n\nWhen approached, the Silent King Effigy seems almost alive; it shifts subtly, as if responding to the emotions of those nearby. Shadows dance across its surface, weaving tales of loss and regret, while the air thickens with the scent of brine and decay. The surrounding atmosphere is charged with a palpable tension, as if the very essence of the sea and the echoes of the past conspire to protect this solemn monument. It stands as a sentinel of the cursed cliffs, a reminder of the sacrifices made and the shadows that linger, waiting for the unwary to disturb its eternal vigil.",
       "tags": [
         "construct",
-        "undead",
-        "guardian",
-        "shadow-touched"
+        "effigy",
+        "haunting",
+        "cursed",
+        "regal"
       ],
-      "source_file": "manual_addition"
+      "source_file": "bestiary_updater.py",
+      "generated_date": "2025-08-16T15:36:08.294476"
     },
     "stone_golem": {
       "name": "Stone Golem",
@@ -1697,20 +1699,6 @@
       "source_file": "bestiary_updater.py",
       "generated_date": "2025-08-16T15:36:00.396332"
     },
-    "silent_king_effigy": {
-      "name": "Silent King Effigy",
-      "type": "construct",
-      "description": "The Silent King Effigy stands as a haunting silhouette against the flickering light of the cursed lighthouse, a towering figure of salt-encrusted stone and ancient wood. Its form is both regal and eerie, draped in tattered remnants of regal attire that flutter like whispers in the wind. A crown of barnacles and twisted coral crowns its head, glistening with moisture, while hollow eye sockets seem to absorb the very light around it, giving it an unsettling presence. The effigy's body is adorned with intricate carvings that depict the tales of the Drowned King, their details eroded yet still resonant with a tragic beauty. As the moonlight bathes it in ghostly hues, the effigy emits a soft, mournful hum, reminiscent of distant chimes echoing through the air, creating an atmosphere of sorrow and longing.\n\nWhen approached, the Silent King Effigy seems almost alive; it shifts subtly, as if responding to the emotions of those nearby. Shadows dance across its surface, weaving tales of loss and regret, while the air thickens with the scent of brine and decay. The surrounding atmosphere is charged with a palpable tension, as if the very essence of the sea and the echoes of the past conspire to protect this solemn monument. It stands as a sentinel of the cursed cliffs, a reminder of the sacrifices made and the shadows that linger, waiting for the unwary to disturb its eternal vigil.",
-      "tags": [
-        "construct",
-        "effigy",
-        "haunting",
-        "cursed",
-        "regal"
-      ],
-      "source_file": "bestiary_updater.py",
-      "generated_date": "2025-08-16T15:36:08.294476"
-    },
     "swarm_of_bone_leeches": {
       "name": "Swarm of Bone Leeches",
       "type": "undead",
@@ -1800,7 +1788,193 @@
     "animated_weapon": {
       "name": "Animated Weapon",
       "description": "In the shadow-draped depths of Gloamwood, where ancient oaks loom like silent sentinels and ethereal mists coil like restless spirits, the Animated Weapon emerges as an eerie guardian of forgotten battles. This construct is not a mere tool of war but a spectral echo forged from the remnants of the keep's dark past. It takes shape as a rusted, jagged sword or battleaxe, its metal surface mottled with verdigris and streaked by the grime of centuries. Despite its decay, the weapon pulses with a faint, unnatural light--ghostly blue runes flicker along its blade or haft, mirroring the flickering witchlights that haunt the Witchlight Trailhead. The weapon floats inches above the forest floor, its movements unnervingly fluid yet mechanical, swaying and rotating as if searching for intruders. When it strikes, the air crackles with cold energy, and a faint whisper of clanging armor echoes through the mist. The Animated Weapon is relentless, its sole purpose to defend the cursed grounds of the keep, animated by the dark magic bleeding from the failing wards. Around it, the forest seems to hold its breath; the twisting shadows momentarily still as the weapon glides forward with deadly intent, a haunted remnant of war wielding silent fury in the spectral gloom."
+    },
+    "malarok_the_corruptor": {
+      "name": "Malarok the Corruptor",
+      "description": "Malarok the Corruptor stands as a towering figure cloaked in shadows and arcane malevolence, his presence twisting the very air around him with an oppressive chill. His gaunt face is framed by tangled, jet-black hair streaked with veins of shimmering, otherworldly purple--the unmistakable hue of Voidstone corruption. His eyes burn with a cold, violet fire that seems to pierce through the souls of those who dare meet his gaze. His once-human skin is mottled with dark, cracked veins pulsing faintly with necrotic energy, as if the corruption itself courses through his veins. Draped in tattered robes woven from shadow and thorn, the fabric seems alive, writhing subtly with corrupted tendrils that reach out like grasping fingers. From his fingertips drip strands of dark energy that coil and writhe like serpents, ready to unleash devastating spells. Behind him, the ruins of the Corrupted Nexus loom--a crumbling stone circle bathed in the eerie glow of a massive Voidstone shard pulsating with corrupted starlight. The ground beneath his feet is scarred with veins of sickly black sap, and the air hums with a palpable tension and dark magic. Malarok moves with a predatory grace, his voice a chilling monologue of superiority and dark ambition, echoing through the twisted woods. His presence warps nature itself, turning ancient trees into grotesque, thorny sentinels that groan beneath his corrupting influence."
+    },
+    "undead_giant_spider": {
+      "name": "Undead Giant Spider",
+      "description": "An 8-foot wide undead arachnid nightmare with a dark brown rotting carapace marked with blotchy red patterns. six and two halved hairy legs span 12 feet, each ending in broken hooks for climbing. Eight rotting eyes arranged on its head gleam with undead intelligence - two large main eyes and six smaller ones. Massive fangs drip with paralyzing venom that sizzles when it hits the ground. The abdomen is sickly bloated with a bright red hourglass marking. Coarse black hair covers its carcass body and broken legs. Spinnerets at the rear produce silk as thick as rope. The spider hangs in an enormous web in a dank dungeon, with cocooned victims visible. Its pedipalps spasm as it senses vibrations. Web strands glisten with dew and poison. Photorealistic detail showing the hair on each leg, the multiple eyes, and the terrifying size of this web-spinning undead predator.",
+      "type": "unknown",
+      "tags": []
+    },
+    "animated_scarecrow": {
+      "name": "Animated Scarecrow",
+      "description": "Core Visual Identity:\nA medium humanoid construct standing approximately 6 feet tall, composed of tattered burlap and patchwork fabric stretched over a crude wooden frame. The figure has an unsettling, almost lifelike quality despite its ragged construction.\nHead:\n- Hollowed gourd carved into a crude jack-o'-lantern face\n- The gourd surface is mottled with mold spots and age discoloration\n- Crude rune carvings etched into the gourd's surface, glowing faintly with sickly amber or pale green necromantic light\n- The carved smile is impossibly wide, stitched at the corners with coarse hemp twine\n- Empty eye sockets emit a faint, malevolent glow (dim amber or cold green)\n- Dried corn husks and straw protrude from the neck junction like a ragged collar\nBody:\n- Wrapped in layers of tattered, sun-bleached rags in muted earth tones—browns, grays, faded oranges\n- Patchwork clothing pieced together from discarded festival garments\n- Personal trinkets and odd tokens sewn into the fabric: rusted buttons, fragments of ribbon, small bones, a child's lost toy, scraps of prayer papers\n- Coarse hemp rope binding the limbs at joints\n- Straw and dried corn stalks visible through tears in the fabric\n- The overall silhouette is hunched and twisted, limbs at slightly wrong angles\nArms/Hands:\n- Long, spindly arms ending in crude mitts made of bundled straw\n- Wicked curved sickle gripped in one hand—rusted iron blade, wooden handle wrapped in stained cloth\n- Alternatively: long, lanky fingers made of twisted vine and straw\nLower Body:\n- Tattered trousers ending in a bundle of straw and dangling rope\n- No visible feet—straw bundle base that shuffles across ground\n- Dried mud and old bloodstains on lower rags\nAtmosphere/Context:\n- Standing motionless among leaning, worm-eaten wooden posts\n- Surrounded by tall, dead corn stalks in late autumn\n- Ground beneath is dark, churned earth sticky with sap and old blood\n- Faint wisps of spectral mist around the base\n- Dim, overcast lighting with long shadows\n- Harvest moon visible through gaps in dead corn",
+      "type": "unknown",
+      "tags": []
+    },
+    "blight_tendril": {
+      "name": "Blight Tendril",
+      "description": "A writhing mass of corrupted root systems that have grown sentient in the dark, emerging from sinkhole walls and ancient stone foundations to ensnare the living. The tendrils are thick, knotted vines covered in bulbous growths and sickly patches of necrotic decay, their surfaces slick with phosphorescent green sap that pulses with the same eerie bioluminescence as the surrounding fungi. Each tendril terminates in a cluster of barbed thorns and grasping, finger-like rootlets that twitch and coil like hungry serpents, seeking warmth and movement in the oppressive darkness.\nThe creature appears almost fungal in its corruption—patches of pale, threadlike mycelium web across the vine surfaces, and the joints pulse with a faint internal glow suggesting veins of necrotic energy rather than plant sap. When dormant it resembles nothing more than a tangle of dead roots protruding from damp earth, but when disturbed it unfurls with horrifying speed, multiple tendrils rising from the ground or emerging from cracks in ancient stonework to whip and grapple prey into the hungry earth below.",
+      "type": "unknown",
+      "tags": []
+    },
+    "lantern_husk": {
+      "name": "Lantern Husk",
+      "description": "A twisted scarecrow-like husk animated by lingering magic and the festering resentment of the forgotten dead, its ragged burlap body sodden with dripping wax that has melted and reformed across its frame in grotesque, candle-like accumulations. Where a head should be, a hollow iron lantern cage is fused to the neck, filled with a sickly, wavering flame of pale amber that casts long, dancing shadows—the trapped spirit of the deceased, burning eternally within its own prison. Tendrils of molten wax stream from its arms and hands, hardened into whip-like appendages that trail embers and smoke, ready to lash at intruders with burning, viscous strands that sear flesh and stick to clothing.\nThe creature shuffles with a hollow, grinding gait, its frame of splintered wood and rusted wire wrapped in the rotted remnants of festival garb—tattered ribbons of orange and black, scraps of ribbon from decades of harvest celebrations long forgotten. The air around it reeks of hot wax and char, and where it passes, the ground is spattered with cooling wax pools that harden into grotesque shapes. Dim, guttering flames lick from cracks in its torso where additional small lanterns or candle stubs have been embedded, creating an eerie, flickering aura that draws the eye even as the thing reaches forward with burning, waxy tendrils to consume the living.",
+      "type": "unknown",
+      "tags": []
+    },
+    "rune-scarred_vermin": {
+      "name": "Rune-Scarred Vermin",
+      "description": "A writhing swarm of rats corrupted by the necromantic energies saturating the cursed cornfields, their bodies twisted and enlarged beyond natural proportions. Each creature's mangy fur is patchy and matted with grime, but the true horror lies beneath—faint, luminescent runes carved directly into their flesh, glowing with sickly pale green or amber light that pulses in sync with the cursed land's heartbeat. Their eyes burn with an unnatural intelligence, teeth yellowed and overgrown into jagged needles, and their movements are jerky, puppet-like, as if guided by an external will rather than natural instinct. They emerge in chittering waves from hollowed pumpkin mounds and the shadows of toppled effigies, the runes on their bodies flaring brighter when they attack, suggesting they are less animals and more vessels for the land's festering malice.",
+      "type": "unknown",
+      "tags": []
+    },
+    "straw_husk": {
+      "name": "Straw Husk",
+      "description": "A small, shambling construct of dried corn stalks bound together with black hemp twine, roughly humanoid in shape but hunched and asymmetrical, limbs splayed at unsettling angles. The stalks are brittle and bleached to a pale golden-gray, leaves withered and curling like dead fingers, and the binding twine crisscrosses the body in patterns resembling crude sutures or ritual bindings. Where a face should be, two hollow sockets carved into the bundled stalks glow with a dim, pulsing orange light—the trapped ember of harvest magic or something far worse. The creature moves with jerky, unnatural motions, limbs twitching between steps as if fighting against its own construction, and attacks with sharp, whip-like appendages formed from knotted stalk-ends and dried corn husk barbs that rake and flay exposed skin.",
+      "type": "unknown",
+      "tags": []
+    },
+    "bloodshadow": {
+      "name": "Bloodshadow",
+      "description": "A looming, amorphous shadow given malignant life by the accumulated anguish of countless sacrifices made over generations at the ruined altar. The creature appears as a towering darkness, vaguely humanoid in shape but perpetually shifting and flowing like smoke caught in a vortex. Where eyes should be, two points of baleful crimson light burn like dying embers, casting a faint bloody glow that intensifies when the entity feeds. The air around it drops to an icy chill, and the shadow seems to drink in surrounding light—torches dim, colors leach to gray, and the temperature plummets as the Bloodshadow's hunger awakens. It moves with terrible speed despite its insubstantial form, flowing through cracks and under doors, reaching with tendrils of living darkness that drain warmth and vitality from anything they touch, leaving victims pale, weak, and marked with blackened veins that spread from the point of contact.",
+      "type": "unknown",
+      "tags": []
+    },
+    "cornfield_shadow": {
+      "name": "Cornfield Shadow",
+      "description": "An intangible wraith of coalesced darkness and hunger that haunts the shifting corn maze, born from ancient grievances and unpaid tithes to the Pumpkin King. The creature manifests as a flickering, semi-transparent shadow-shape that barely holds humanoid form, its edges constantly bleeding into the surrounding gloom. Hollow voids where eyes should be fix with predatory stillness, and when it moves, the corn stalks bend and whisper as if bowing to a grim monarch. The air turns frigid in its presence, frost crystallizing on nearby leaves even in high summer, and its touch is an agonizing cold that seeps through flesh to freeze the spirit within. The shadow can merge seamlessly with any darkness, vanishing between stalks only to reappear behind its prey, always watching, always waiting, bound to the maze's heart by chains of ancient debt.",
+      "type": "unknown",
+      "tags": []
+    },
+    "grain_wraith": {
+      "name": "Grain Wraith",
+      "description": "A translucent specter of a farmer eternally caught between life and death, its form composed of swirling motes of golden grain dust and spectral energy. The wraith appears as a gaunt, hollow-eyed figure draped in tattered ghostly rags that flutter despite the absence of wind, seed husks and dried chaff perpetually falling from its incorporeal cloak. Where its hands should be, withered fingers end in claws of compressed, necrotic grain that wither living flesh on contact—their touch leaching moisture and vitality, turning healthy skin to papery dryness like crops left too long in drought. The creature drifts through walls and threshing stones with ease, its presence announced by the susurrus of countless seeds rubbing together and the faint, distant sound of a scythe being sharpened. Faint runic patterns glow beneath its translucent skin, marking it as bound to the harvest cycle and the dark pact that created it.",
+      "type": "unknown",
+      "tags": []
+    },
+    "guardian_stone": {
+      "name": "Guardian Stone",
+      "description": "A weathered menhir or standing stone that has absorbed centuries of ritual sacrifice and dark worship, animating when the altar it guards is threatened. When dormant, it appears as an ordinary moss-covered boulder, ancient and unremarkable—but when roused, hairline cracks split across its surface revealing veins of pulsing, sickly amber light within. The stone slowly reshapes itself, grinding and groaning as it forms crude limbs and a suggestion of a face in the rock, eye-sockets blazing with the same amber glow. It moves with deliberate, inexorable force, each step causing the ground to tremble, attacking with crushing blows from massive stone fists that leave craters in the earth. Runic carvings across its surface flare to life when it defends the sacred site, granting it resistance to mundane weapons while the ancient wards hold.",
+      "type": "unknown",
+      "tags": []
+    },
+    "harvest_shade": {
+      "name": "Harvest Shade",
+      "description": "A spectral reaper born from the accumulated deaths of harvest laborers and those who disrespected the sacred shrines along the old paths. The shade manifests as a tall, robed figure of shifting shadow and rust-colored mist, its form flickering between solidity and transparency like heat-shimmer over summer fields. Where its face should be, only darkness prevails save for two pinpricks of cold blue light—hungry, malicious eyes that track the disrespectful. In its spectral hands it clutches a ghostly scythe, the blade appearing as crystallized moonlight edged with frost, the handle wrapped in the withered husks of corn leaves. The creature emerges from the shadows of ancient shrines when offerings are neglected or holy ground is defiled, its very presence causing crops to wither and the air to thicken with the smell of dried blood and old hay.",
+      "type": "unknown",
+      "tags": []
+    },
+    "nest_lurker": {
+      "name": "Nest Lurker",
+      "description": "A hunched, rat-like monstrosity that has evolved to lurk in the tight, maze-like spaces between hayricks and storage bundles. The creature stands roughly three feet tall, its body a nightmarish blend of rodent and something older and fouler. Patchy, matted fur in the colors of dried grass and mud covers a lean, sinewy frame, while oversized ears swivel independently, catching the faintest sounds. Its eyes are too large for its skull, gleaming with feral intelligence in the darkness, reflecting light with an eerie amber-green luminescence. A mouthful of needle-like yellow teeth protrudes from an elongated snout, and its front claws are overgrown, curved, and stained with old blood. The lurker moves with uncanny silence through confined spaces, its flexible spine allowing it to squeeze through gaps no larger than its skull, emerging from darkness to hamstring prey before dragging them back into the labyrinthine depths of its nest.",
+      "type": "unknown",
+      "tags": []
+    },
+    "noose_wraith": {
+      "name": "Noose Wraith",
+      "description": "A powerful spectral entity born from the collective anguish of those executed at the ancient Gallows Oak. It appears as a towering, hooded figure wrapped in tattered funeral shrouds, its lower body trailing away into wisps of incorporeal mist. Around its neck, a weathered rope noose hangs perpetually tight, the fibers still creaking as if the knot had just been pulled taut. Where a face should be beneath the hood, only void darkness remains, pierced by two points of cold blue-white light that burn with centuries of accumulated rage and despair. The wraith radiates an aura of hopelessness so profound that flowers wilt and birds fall silent in its presence. Multiple spectral nooses manifest from its form at will, ghostly ropes that snake through the air to ensnare victims, the phantom knots tightening with the grip of the dead. At half strength, the wraith's anguish grows so great it can summon the spirit of a condemned prisoner to aid its assault.",
+      "type": "unknown",
+      "tags": []
+    },
+    "protective_shadow": {
+      "name": "Protective Shadow",
+      "description": "A guardian spirit born from the desperate love of a parent who could not protect their child in death. The shadow manifests as a tall, billowing form of darkness that nonetheless carries a quality of vigilance rather than malevolence—its edges softer, more defined, suggesting the shape of a protective cloak being spread wide. Where eyes would be, pale white light glows with a fierce, watchful intensity, and when it moves to defend, it does so with purposeful grace rather than hunger. The shadow can interpose itself between threats and its charge, absorbing attacks into its dark form, the impacts rippling through its substance like stones dropped into still water. Cold emanates from it, but it is the protective chill of a parent wrapping a child against winter, not the predatory frost of the hungry dead. It forms only when the ghost child it guards is threatened, emerging from the darkness with silent, terrible resolve.",
+      "type": "unknown",
+      "tags": []
+    },
+    "pumpkin_stalkers": {
+      "name": "Pumpkin Stalkers",
+      "description": "Small, shambling plant-constructs spawned from the Pumpkin King's burning crown, appearing as animated jack-o'-lanterns grafted onto twisted corn-stalk bodies. Each stalker stands roughly three feet tall, its head a carved pumpkin with a leering, jagged face illuminated from within by flickering orange-yellow flame that pulses like a heartbeat. The stalk-body is a cluster of dried corn stems wound together with blackened vines and root tendrils, leaves withered and curling like skeletal fingers. Sharp thorns and hardened leaf-edges serve as claws, and the creature moves with a shambling, rolling gait, the pumpkin head wobbling precariously as if it might detach at any moment. When destroyed, the stalker ruptures in a burst of flame and flying seeds, showering the area with piercing shrapnel of hardened pumpkin rind and burning corn silk—the dark harvest's final, spiteful gift.",
+      "type": "unknown",
+      "tags": []
+    },
+    "rope_strangler": {
+      "name": "Rope Strangler",
+      "description": "A mass of coiled hemp rope and rough twine that has absorbed the dark intentions of those who once used it for punishment and restraint, animating to constrict and crush the greedy or hostile. The creature appears at first as an innocent coil of aged rope, perhaps six feet in length when fully extended, the fibers dark with age and stained with substances best left unidentified. When roused, the rope uncoils with horrifying speed, multiple strands separating and rising like serpents, the frayed ends forming crude heads that sway and strike with uncanny coordination. Knots tighten and shift along its length, creating joints and grip-points, and the entire length moves with the sinuous grace of a constrictor sensing prey. Old bloodstains darken the hemp in places, and when it wraps around a victim, the rope seems to constrict with remembered malice, the knots pulling tight in patterns once used for hog-tying prisoners.",
+      "type": "unknown",
+      "tags": []
+    },
+    "scarecrow_sentinel": {
+      "name": "Scarecrow Sentinel",
+      "description": "A towering scarecrow-construct approximately nine feet tall, roughly twice the size of common field scarecrows, animated by necromantic energy and the accumulated resentment of the forgotten dead. Its frame consists of ancient, blackened wood lashed together with grave-worm-eaten rope, the joints bound with iron wire that has rusted to the color of dried blood. The body is wrapped in layers of tattered black and orange festival ribbons—decades of harvest celebrations now reduced to fluttering rags that snap in an unfelt wind. The head is a massive hollowed gourd carved with crude, runic symbols that glow with sickly green necromantic fire, the carved face frozen in a permanent, too-wide grin of jagged triangle teeth. Its arms are overlong, ending in bundles of sharpened corn-husk barbs and rusted sickle-blades, and where its feet would be, only trailing straw bundles that shuffle through the churned earth of the hollow, leaving trails in the old blood and scattered bones.",
+      "type": "unknown",
+      "tags": []
+    },
+    "shadow_creeper": {
+      "name": "Shadow Creeper",
+      "description": "A mischievous, lesser shadow-spirit that haunts old lanterns and forgotten corners, more trickster than predator but capable of violence when cornered. The creeper appears as a compact, hunched humanoid shadow roughly four feet tall, its form unusually dense and defined for a shadow creature, suggesting it was once something more solid before being consumed by darkness. Its eyes burn with pale, flickering yellow light like candle flames seen through dirty glass, and its movements are quick, darting, almost playful—it prefers to steal shiny objects and vanish into lanterns, causing them to flicker ominously rather than attacking directly. When threatened, the creeper's demeanor shifts instantly from prankster to predator, its shadow form elongating and darkening, cold grasping hands reaching from the darkness to pull victims into the space between light and shadow where only cold and hunger await.",
+      "type": "unknown",
+      "tags": []
+    },
+    "stirge_swarm": {
+      "name": "Stirge Swarm",
+      "description": "A whirling, chittering cloud of oversized mosquito-like creatures drawn to the cursed cornfields by the abundance of blood and carrion. Each individual stirge is the size of a large bat, its body a bloated, leathery sac of dark red and black, veined wings beating with a sound like tearing paper. The creatures have six spindly, barbed legs that cling tenaciously to flesh or clothing, and their most horrifying feature is the proboscis—a needle-sharp, three-inch tube that uncoils from beneath the head, gleaming with a viscous fluid that prevents blood from clotting. In the swarm, hundreds of these creatures move as one mind, a living tornado of wings and hungry needles, the collective sound of their feeding a wet, horrible slurping as they descend on warm-blooded prey. Their bodies are covered in fine, bristly hairs that collect dust and pollen, giving the swarm an almost golden-brown shimmer in the light, belying the horror of their feeding.",
+      "type": "unknown",
+      "tags": []
+    },
+    "straw_blight": {
+      "name": "Straw Blight",
+      "description": "A small, twisted plant-creature born from cursed straw and the remnants of failed harvests, appearing as a roughly child-sized bundle of dried wheat stalks, husks, and blackened corn leaves all wound together with rough twine. The blight's form is hunched and asymmetrical, limbs splaying at wrong angles, and where hands should be, clusters of hardened, blade-like leaf-edges rake and slash. Its head is a featureless bundle of straw, but two deeper shadows suggest the hollows of eyes, and when it moves, a dry rustling whisper emanates from its core—the voices of crops that never reached maturity. The creature is remarkably stealthy for its construction, able to lie perfectly still among scattered straw piles before erupting into violent motion, its body ablaze with the frustration of harvests denied. Fire is its greatest fear, and the scent of smoke sends it fleeing, the dry materials of its body spectacularly vulnerable to flame.",
+      "type": "unknown",
+      "tags": []
+    },
+    "swarm_of_field_rats": {
+      "name": "Swarm Of Field Rats",
+      "description": "A writhing carpet of oversized, mangy rodents drawn by the scent of blood and the dark energies saturating the cursed fields. Each rat is roughly the size of a small cat, its fur patchy and matted with grime, old blood, and the residue of whatever foul substances have seeped into the soil. Their eyes gleam with an unusual intelligence—not the mindless hunger of natural rats, but something more coordinated, more purposeful, as if the swarm operates under a single malignant will. Teeth yellow and overgrown, filed to needle points by constant gnawing on bone and wood, and their claws are oversized, hooked, and permanently stained rusty-brown. The swarm moves like a living carpet, a wave of fur and teeth that flows over obstacles and through gaps, chittering and squealing with predatory anticipation. In the Pumpkin King's domain, the rats have grown bold and aggressive, attacking even armed prey when the swarm is sufficiently large.",
+      "type": "unknown",
+      "tags": []
+    },
+    "the_pumpkin_king": {
+      "name": "The Pumpkin King",
+      "description": "A towering nightmare of woven stalks and malevolent magic, the Pumpkin King stands nearly fifteen feet tall—a scarecrow-god born from centuries of broken pacts and sacrificed children. Its body is a massive construct of twisted corn stalks, dried vines, and blackened root systems, all woven together with an intelligence that mocks natural growth. The frame is wrapped in the tattered remnants of countless festival garments—orange and black ribbons, burlap patches, faded quilts, and strips of funeral shrouds—each a trophy from past harvests, each carrying the faint stain of old blood. The construct's torso is thick with gourds of various sizes embedded directly into its form, some rotting and split, others carved with crude faces that flicker with dim, hungry light.\nThe King's head is a colossal jack-o'-lantern nearly four feet in diameter, carved from a pumpkin that never grew in any natural field. The gourd's surface is mottled with unnatural patterns—bruised purples, sickly yellows, and the deep orange of dried blood. The carved face is a permanent expression of cunning malevolence, triangular eyes blazing with unholy amber fire that casts dancing shadows in all directions, and a jagged, impossible grin of serrated teeth through which smoke and embers constantly drift upward. A crown of seven smaller jack-o'-lanterns encircles its brow like a dark halo, each carved with a child's name in ancient script, their flames burning with a colder, paler light—the trapped souls of the first tithes.\nIn one massive hand, the King wields a scythe of crystallized moonlight and rusted iron, the curved blade perpetually wreathed in cold green flame that crackles and spits. The weapon's handle is wound with dried corn silk and strips of human hair, trophies taken from victims across generations. When the King moves, its joints creak and snap like breaking stalks, and each step leaves scorched footprints in the barren earth. Smoke rises from its shoulders like a dark mantle, and from within its chest, a deep rhythmic pulse can be seen—a burning ember heart that sustains its unholy existence.\nThe air around the Pumpkin King is thick with the cloying scent of roasted pumpkin, woodsmoke, and something sweeter underneath—the unmistakable copper tang of old blood. Shadows move independently around its feet, and the whispers of the Harvest Witnesses—countless spectral victims—can be heard murmuring in desperate chorus. When it speaks, the voice emerges from everywhere and nowhere, a hollow, rustling sound like wind through dead corn, carrying the weight of every bargain broken and every life taken in the name of the harvest.\nStyle keywords: dark fantasy boss, Halloween horror king, D&D final boss, scarecrow-god, jack-o'-lantern demon, folk horror deity, harvest festival nightmare, legendary creature, autumn terror",
+      "type": "unknown",
+      "tags": []
+    },
+    "drowned_retainer___copy": {
+      "name": "Drowned Retainer",
+      "type": "undead",
+      "description": "Emerging from the murky depths of the brackish waters surrounding the Stone Trough Altar, the Drowned Retainer is a haunting specter of servitude lost to sorrow and decay. Its form is gaunt and waterlogged, clad in the tattered remnants of once-fine servant's garb, now heavy with algae and mud. Pale, translucent skin stretches taut over sharp bones, streaked with dark veins pulsing faintly with a ghostly, sickly green light. Hollow, empty eyesockets leak a slow trickle of brine, while its lips part to reveal jagged, broken teeth that seem to drip with the foul water of its watery grave. Its movements are slow and deliberate, as if weighted by the centuries of regret and duty unfulfilled, with fingers elongated and webbed, ending in cracked, barnacle-encrusted nails. Surrounding the Retainer, the air chills and thickens with the scent of damp stone and drowned earth, and faint whispers of ancient prayers and hungry demands ripple like ripples across a still pond. The creature lingers near the altar's edges, bound eternally to its post, seeking to drag any who trespass into the cold embrace of the stagnant water, to serve forever as it once did in life--now as a cursed sentinel of the Pumpkin King's forsaken harvest.",
+      "tags": [
+        "undead",
+        "waterlogged",
+        "ghostly",
+        "servant",
+        "haunted",
+        "spectral",
+        "decayed",
+        "sinister"
+      ],
+      "source_file": "bestiary_updater.py",
+      "generated_date": "2026-03-31T19:32:07.583135"
+    },
+    "drowned_retainer_thumb___copy": {
+      "name": "Drowned Retainer Thumb",
+      "type": "undead",
+      "description": "Emerging from the sodden earth of the Fields of Supplication, the Drowned Retainer Thumb is a haunting remnant of a forgotten servant lost to the cursed harvest. Its form is grotesquely distorted, as if twisted by water and time. The creature's skin, pale and slick like drowned parchment, clings tightly to sinew and bone, revealing the ghastly outline of a clawed hand that terminates abruptly at the wrist--a cruel mimicry of a severed thumb. Dark, brackish water perpetually drips from its mottled flesh, pooling beneath it in murky puddles that seem to whisper with the voices of the drowned. Its hollow eye sockets glow faintly with an eerie green phosphorescence, the only sign of lingering life amid the decay. Tattered remnants of a once-fine retainer's garb hang in ragged strips, soaked through and heavy with mud, embroidered faintly with indistinct sigils that hint at servitude beneath a harvest lord long lost to time. The Drowned Retainer Thumb moves with unnatural jerks and spasms, shuffling forward with a relentless, mournful purpose--its clawed hand reaching out as if desperate to grasp at salvation or vengeance. Around it, the air chills noticeably, carrying the briny scent of drowned earth and the faintest echo of whispered prayers turned to wails. It is a grim sentinel of the Fields' tragic past, a cursed echo of loyalty drowned beneath the Pumpkin King's bitter curse.",
+      "tags": [
+        "undead",
+        "waterlogged",
+        "cursed",
+        "harvest",
+        "ghostly",
+        "mournful"
+      ],
+      "source_file": "bestiary_updater.py",
+      "generated_date": "2026-03-31T19:32:14.900450"
+    },
+    "cultist": {
+      "name": "Cultist",
+      "description": "A robed figure in tattered crimson vestments stained with old blood and candle wax, the garment's edges worn to frayed threads from creeping through crypt tunnels and kneeling on cold stone. The cultist's face is gaunt and hollow-eyed, pale from weeks spent in the cathedral's lightless depths, their expression a mask of desperate devotion mixed with the haunted look of one who has seen too much of what should remain buried. Around their neck hangs a crude pendant—a fragment of dark crystal or bone carved with necromantic sigils that pulse faintly with absorbed life force. Their hands are stained with grave-dirt and soot, fingernails cracked and blackened from inscribing blood-ritual circles, and at their belt a curved scimitar gleams with an oily sheen, its edge recently sharpened. Dark devotion burns behind their eyes—the fanatic certainty of one who has committed atrocities in service of what they believe is a greater good, beyond charm, beyond fear, beyond redemption.",
+      "type": "unknown",
+      "tags": []
+    },
+    "furtive_creatures": {
+      "name": "Furtive Creatures",
+      "description": "Small, hunched scavengers that have moved into the abandoned sanctuary, drawn by the scent of blood and the peculiar energies emanating from the broken ward beneath the cathedral. These creatures appear as oversized, mangy rats or weasel-like beasts roughly two feet in length, their fur matted and patchy, bald in places where strange growths or sores have taken hold. Their eyes gleam with an unusual intelligence—not the dull survival instinct of common vermin, but something keener, more aware, as if prolonged exposure to the necromantic energies has altered their minds as well as their bodies. They move with supernatural silence, their padded feet making no sound on stone, and they can squeeze through impossibly small gaps. When threatened, they bare needle-like yellow teeth, but prefer to flee into shadows rather than fight—unless cornered, when they strike with vicious precision, their bite carrying the faint chill of something that has fed on corrupted essence.",
+      "type": "unknown",
+      "tags": []
+    },
+    "spectral_traces": {
+      "name": "Spectral Traces",
+      "description": "Faint, flickering remnants of souls torn from their rest by the broken ward, appearing as pale, translucent wisps that drift through the sanctuary's shadows like breath made visible in winter air. Each trace is barely three feet tall—the partial imprint of whatever soul fragment remains, often showing only the suggestion of a hunched, child-like form or a kneeling supplicant frozen in eternal prayer. Their forms constantly shift and fade, bleeding into the darkness before reforming, never quite achieving solidity. Where faces should be, only hollow depressions remain, yet a cold, watchful awareness emanates from their direction. The air around them drops sharply in temperature, and candles gutter and dim in their presence. They cannot speak—only mouthe silent words, their gestures pleading or warning depending on the viewer. Their touch is an icy chill that saps warmth and will alike, the merest brush leaving frost-burn marks. Unlike greater ghosts, these traces have no anchor to the mortal world—they simply are, caught between existence and dissolution, unable to move on until the ward is restored.",
+      "type": "unknown",
+      "tags": []
     }
   },
-  "last_updated": "2025-09-02T22:08:34.451842"
+  "last_updated": "2026-03-31T19:32:14.907296"
 }
