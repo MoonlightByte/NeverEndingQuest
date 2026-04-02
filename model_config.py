@@ -244,6 +244,24 @@ COMBAT_VALID_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 # LM Studio (local passthrough)
 COMBAT_VALID_LMSTUDIO = {"model": "local-model"}
 
+# ----- T051 Character Validator -----
+# Validates character AC calculations per 5e rules.
+# Full-tier callsite, temperature=0.1, JSON output.
+# GPT-5.4 reviewer: gpt-5.2|none = 3/3 pass (4.0/5), gemini-flash|minimal = 3/3 pass (4.3/5)
+# Easy callsite -- all next-gen models pass. gpt-5.4-mini DISQUALIFIED (miscalculated Dex modifier)
+
+# OpenAI (gpt-5.2 with no reasoning -- 3/3 correct, 6.0s avg, temp=0.1 passes through)
+CHAR_VALIDATOR_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
+
+# Gemini (3-flash with minimal thinking -- 3/3 correct, 4.0s avg, fastest + cheapest)
+CHAR_VALIDATOR_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+
+# Legacy (no extra params)
+CHAR_VALIDATOR_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+
+# LM Studio (local passthrough)
+CHAR_VALIDATOR_LMSTUDIO = {"model": "local-model"}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures

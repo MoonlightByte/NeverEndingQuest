@@ -66,8 +66,9 @@ import hashlib
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Union
 from openai import OpenAI
+from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T051", "core/validation/character_validator.py", 963)
+register_callsite("T051", "core/validation/character_validator.py", 1050)
 register_callsite("T052", "core/validation/character_validator.py", 1049)
 register_callsite("T053", "core/validation/character_validator.py", 1625)
 register_callsite("T054", "core/validation/character_validator.py", 2015)
@@ -154,6 +155,7 @@ except:
     USAGE_TRACKING_AVAILABLE = False
     def track_response(r): pass
 from config import OPENAI_API_KEY, CHARACTER_VALIDATOR_MODEL
+import config
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
@@ -1032,12 +1034,27 @@ class AICharacterValidator:
         print(f"DEBUG: [Validation Cache] Running AC validation for {character_name} - new/changed data")
         info(f"[Validation Cache] Running AC validation for {character_name} - new/changed data", category="character_validation")
         validation_prompt = self.build_ac_validation_prompt(ac_relevant_data)
-        
+
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            validator_config = config.CHAR_VALIDATOR_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            validator_config = config.CHAR_VALIDATOR_GEMINI_FLASH_MINIMAL
+        elif MODEL_PROVIDER == "lmstudio":
+            validator_config = config.CHAR_VALIDATOR_LMSTUDIO
+        else:  # legacy
+            validator_config = config.CHAR_VALIDATOR_LEGACY
+
         try:
-            response = capture_and_fanout("T051", self.client.chat.completions.create, messages=[
+            response = capture_and_fanout("T051", api_client.create_completion,
+                messages=[
                     {"role": "system", "content": self.get_validator_system_prompt()},
                     {"role": "user", "content": validation_prompt}
-                ], model=CHARACTER_VALIDATOR_MODEL, temperature=0.1)
+                ],
+                model=validator_config["model"],
+                temperature=0.1,
+                **{k: v for k, v in validator_config.items() if k != "model"})
 
             # Track usage if available
             if USAGE_TRACKING_AVAILABLE:
