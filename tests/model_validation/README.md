@@ -16,6 +16,7 @@ These are NOT unit tests -- they make real API calls and cost real money.
 | `test_t079_gemini_schema.py` | T079 (char updates) | All Gemini models with auto-converted response_schema on 6 artificial scenarios | flash-lite\|minimal=4/6, flash\|low=4/6. Zero narration with schema. |
 | `test_t017_compression.py` | T017 (combat compression) | Plain text tag compression, NO JSON mode (response_format=None) | gpt-5-mini\|low=5/6, gemini-flash\|low=6/6. v5 prompt required. |
 | `test_t046_initiative.py` | T046 (initiative) | gpt-5.2 none/low, gemini-3-flash minimal/low, baselines | gpt-5.2\|none=4/4, gemini-flash\|minimal=4/4. gpt-5-mini DISQUALIFIED. |
+| `test_t040_combat_validation.py` | T040 (combat validation) | gpt-5.4 none/5.2 none/low, gemini-flash low/medium/high | gpt-5.4\|none=4/4 (SELECTED). gpt-5.2 fails. Requires v4 prompt. |
 
 ## Usage
 
@@ -54,3 +55,4 @@ When testing a new callsite:
 | T017 | Combat compression | gpt-5-mini low | gemini-3-flash low + response_format=None | Done |
 | T046 | Initiative tracker | gpt-5.2 none | gemini-3-flash minimal | Done |
 | T078 | Character effects | gpt-5.2 none | gemini-3-flash high | Done |
+| T040 | Combat validation | gpt-5.4 none | gemini-3-flash low | Done |
