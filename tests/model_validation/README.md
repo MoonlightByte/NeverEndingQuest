@@ -56,3 +56,4 @@ When testing a new callsite:
 | T046 | Initiative tracker | gpt-5.2 none | gemini-3-flash minimal | Done |
 | T078 | Character effects | gpt-5.2 none | gemini-3-flash high | Done |
 | T040 | Combat validation | gpt-5.4 none | gemini-3-flash low | Done |
+| T051 | Character validator | gpt-5.2 none | gemini-3-flash minimal | Done |

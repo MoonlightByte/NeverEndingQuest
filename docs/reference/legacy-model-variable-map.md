@@ -16,7 +16,7 @@
 | DM_FULL_MODEL | gpt-4.1-2025-04-14 | 0 dedicated | (used dynamically by ~~T067~~(DONE) via selected_model) | Complex actions requiring JSON operations |
 | DM_VALIDATION_MODEL | gpt-4.1-2025-04-14 | 3 | ~~T040~~(DONE),T048,~~T065~~(DONE) | AI response validation, combat validation |
 | COMBAT_MAIN_MODEL | gpt-4.1-2025-04-14 | 3 | T043,T044,T045 | Primary combat loop (T045 uses dynamic assignment) |
-| CHARACTER_VALIDATOR_MODEL | gpt-4.1-2025-04-14 | 5 (active) | T050-T054 | Character sheet validation (+4 in backup: T055-T058) |
+| CHARACTER_VALIDATOR_MODEL | gpt-4.1-2025-04-14 | 5 (active) | T050,~~T051~~(DONE),T052-T054 | Character sheet validation (+4 in backup: T055-T058) |
 | NPC_BUILDER_MODEL | gpt-4.1-2025-04-14 | 1 | T035 | NPC generation |
 | MONSTER_BUILDER_MODEL | gpt-4.1-2025-04-14 | 1 | T034 | Monster generation |
 | LEVEL_UP_MODEL | gpt-4.1-2025-04-14 | 2 | T047,T086 | Level up conversation + validation |
