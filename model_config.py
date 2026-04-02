@@ -225,6 +225,25 @@ CHAR_EFFECTS_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 # LM Studio (local passthrough)
 CHAR_EFFECTS_LMSTUDIO = {"model": "local-model"}
 
+# ----- T040 Combat Validation -----
+# Validates AI combat responses for D&D rules compliance.
+# Full-tier callsite, temperature=0.3, JSON output.
+# GPT-5.4 reviewer: gpt-5.4|none = 4/4 pass (4.50/5), gemini-flash|low = 4/4 pass (4.0/5)
+# gpt-5.2 FAILS validation (over-rejects valid responses at all reasoning levels)
+# REQUIRES v4 prompt changes to combat_validation_prompt_compressed.txt
+
+# OpenAI (gpt-5.4 with no reasoning -- 4/4 correct, 2.5s avg, temp=0.3 passes through)
+COMBAT_VALID_GPT54_NONE = {"model": "gpt-5.4", "reasoning_effort": "none"}
+
+# Gemini (3-flash with low thinking -- 4/4 correct, 1.6s avg, cheapest)
+COMBAT_VALID_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
+
+# Legacy (no extra params)
+COMBAT_VALID_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+
+# LM Studio (local passthrough)
+COMBAT_VALID_LMSTUDIO = {"model": "local-model"}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures

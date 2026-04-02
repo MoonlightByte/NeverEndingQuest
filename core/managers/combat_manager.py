@@ -121,8 +121,10 @@ from model_config import USE_COMPRESSED_COMBAT
 from datetime import datetime
 from utils.xp import main as calculate_xp
 from openai import OpenAI
+from core.ai import api_client
+import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T040", "core/managers/combat_manager.py", 783)
+register_callsite("T040", "core/managers/combat_manager.py", 796)
 register_callsite("T041", "core/managers/combat_manager.py", 1010)
 register_callsite("T042", "core/managers/combat_manager.py", 1804)
 register_callsite("T043", "core/managers/combat_manager.py", 2199)
@@ -777,10 +779,25 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
     print(f"DEBUG: [VALIDATION] Exported validation messages to validation_messages_to_api.json")
     print(f"DEBUG: [VALIDATION] Total validation context size: {validation_size:,} characters ({len(validation_conversation)} messages)")
 
+    # Select model config per provider
+    from model_config import MODEL_PROVIDER
+    if MODEL_PROVIDER == "openai":
+        validation_config = config.COMBAT_VALID_GPT54_NONE
+    elif MODEL_PROVIDER == "gemini":
+        validation_config = config.COMBAT_VALID_GEMINI_FLASH_LOW
+    elif MODEL_PROVIDER == "lmstudio":
+        validation_config = config.COMBAT_VALID_LMSTUDIO
+    else:  # legacy
+        validation_config = config.COMBAT_VALID_LEGACY
+
     max_validation_retries = 5
     for attempt in range(max_validation_retries):
         try:
-            validation_result = capture_and_fanout("T040", client.chat.completions.create, messages=validation_conversation, model=DM_VALIDATION_MODEL, temperature=0.3)
+            validation_result = capture_and_fanout("T040", api_client.create_completion,
+                messages=validation_conversation,
+                model=validation_config["model"],
+                temperature=0.3,
+                **{k: v for k, v in validation_config.items() if k != "model"})
 
             # Log API call to master log
             try:
