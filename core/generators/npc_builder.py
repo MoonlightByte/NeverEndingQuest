@@ -108,7 +108,23 @@ def generate_npc(npc_name, schema, npc_race=None, npc_class=None, npc_level=None
 
     system_message = f"""You are an assistant that creates NPC schema JSON files from a master NPC schema template for a 5e game. Given an NPC name and optional details, create a JSON representation of the NPC's stats and abilities according to 5e rules following the NPC schema template exactly. Ensure your new NPC JSON adheres to the provided schema template. Do not include any additional properties or nested 'type' and 'value' fields. Return only the JSON content without any markdown formatting.
 
-If the input name contains a status descriptor (like 'corrupted', 'wounded', 'elite'), ensure the `name` field in the output JSON contains only the character's base name. For example, an input of 'Corrupted Ranger Thane' should result in a `name` field of 'Ranger Thane'.
+NAME HANDLING: The `name` field must preserve the NPC's full name including any title or role prefix (Scout, Guard, Captain, Ranger, etc.). ONLY strip status condition words: 'corrupted', 'wounded', 'elite', 'enhanced'. Examples:
+- 'Corrupted Ranger Thane' -> 'Ranger Thane'
+- 'Scout Kira' -> 'Scout Kira'
+- 'Guard Marcus' -> 'Guard Marcus'
+
+EQUIPMENT REQUIREMENTS: Equip the NPC fully. Minimum 5 equipped items including:
+- Armor appropriate for class (studded leather for rogues, chain mail for fighters, etc.)
+- Primary weapon (matching class proficiencies)
+- Secondary/ranged weapon
+- Shield (if class supports and build uses one)
+- Class tools (thieves' tools, holy symbol, component pouch, etc.)
+- At least 2 adventuring items (backpack, rope, rations, torches, etc.)
+
+RACIAL TRAITS: Include ALL racial traits as separate entries in the racialTraits array. Every trait the race grants must be listed, including ability score increases. Examples:
+- Human: [{{"name":"Ability Score Increase","description":"Your ability scores each increase by 1."}},{{"name":"Extra Language","description":"You can speak, read, and write one extra language of your choice."}}]
+- Wood Elf: Darkvision, Keen Senses, Fey Ancestry, Trance, Mask of the Wild (5 traits)
+- Hill Dwarf: Darkvision, Dwarven Resilience, Dwarven Combat Training, Stonecunning, Dwarven Toughness (5 traits)
 
 Use the following rules information when creating the NPC:
 
