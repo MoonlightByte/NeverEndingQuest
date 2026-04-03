@@ -10,17 +10,10 @@ Compresses location JSON into compact structured format
 import json
 import re
 from typing import Dict, Any, List, Optional
-from openai import OpenAI
+from core.ai import api_client
+import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T085", "utils/compression/location_compressor.py", 138)
-
-# Load configuration
-try:
-    import config
-    from model_config import LOCATION_COMPRESSION_MODEL
-    client = OpenAI(api_key=config.OPENAI_API_KEY)
-except ImportError:
-    raise ImportError("Missing config.py or model_config.py")
+register_callsite("T085", "utils/compression/location_compressor.py", 198)
 
 # Import token tracking
 try:
@@ -191,12 +184,24 @@ Remove ALL role prefixes: "Kira" not "Scout_Kira", "Dorun" not "Elder_Dorun", "T
 """
             user_message = f"{example_format}This is a LOCATION MODULE requiring all location tables. Compress this location data:\n\n{location_json_str}"
             
-            response = capture_and_fanout("T085", client.chat.completions.create, messages=[
+            # Select model config per provider
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                compress_config = config.LOC_COMPRESS_GPT52_NONE
+            elif MODEL_PROVIDER == "gemini":
+                compress_config = config.LOC_COMPRESS_GEMINI_PRO_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                compress_config = config.LOC_COMPRESS_LMSTUDIO
+            else:  # legacy
+                compress_config = config.LOC_COMPRESS_LEGACY
+
+            response = capture_and_fanout("T085", api_client.create_completion, messages=[
                     {"role": "system", "content": LOCATION_SYSTEM_PROMPT},
                     {"role": "user", "content": user_message}
-                ], model=LOCATION_COMPRESSION_MODEL,
-                temperature=0.1
-            )
+                ],
+                model=compress_config["model"],
+                temperature=0.1,
+                **{k: v for k, v in compress_config.items() if k != "model"})
             
             # Track token usage
             if USAGE_TRACKING_AVAILABLE:

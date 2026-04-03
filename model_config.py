@@ -339,6 +339,16 @@ LEVELUP_VAL_GEMINI_PRO_LOW = {"model": "gemini-3-pro-preview", "thinking_level":
 LEVELUP_VAL_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 LEVELUP_VAL_LMSTUDIO = {"model": "local-model"}
 
+# ----- T085 Location Compression -----
+# Compresses location JSON into token-based @-tag format for runtime context.
+# Full-tier callsite, temperature=0.1, PLAIN TEXT output (response_format=None).
+# Gemini-pro outputs JSON format instead of @-tags -- both work for downstream DM model.
+# Gemini-flash NOT viable (too shallow on extraction).
+LOC_COMPRESS_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none", "response_format": None}
+LOC_COMPRESS_GEMINI_PRO_LOW = {"model": "gemini-3-pro-preview", "thinking_level": "low", "response_format": None}
+LOC_COMPRESS_LEGACY = {"model": "gpt-4.1-2025-04-14", "response_format": None}
+LOC_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures
