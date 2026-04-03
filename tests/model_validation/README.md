@@ -68,3 +68,4 @@ When testing a new callsite:
 | T021 | Transition validation | gpt-5.2 none | gemini-3-flash minimal | Done |
 | T048 | Level-up validation | gpt-5.2 none | gemini-3-pro low | Done |
 | T085 | Location compression | gpt-5.2 none | gemini-3-pro low | Done |
+| T020 | Narrative compression | gpt-5.4-mini none | gemini-3-flash minimal | Done |
