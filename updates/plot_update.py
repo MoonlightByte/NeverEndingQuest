@@ -5,7 +5,8 @@
 
 import json
 from jsonschema import validate, ValidationError
-from openai import OpenAI
+from core.ai import api_client
+import config
 import time
 
 # Import OpenAI usage tracking (safe - won't break if fails)
@@ -17,7 +18,6 @@ except:
     def track_response(r): pass
 
 # Import model configuration from config.py
-from config import OPENAI_API_KEY, PLOT_UPDATE_MODEL
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_write_json, safe_read_json
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -25,9 +25,8 @@ from utils.enhanced_logger import debug, info, warning, error, set_script_name
 # Set script name for logging
 set_script_name("plot_update")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T077", "updates/plot_update.py", 151)
+register_callsite("T077", "updates/plot_update.py", 161)
 
 # Constants
 TEMPERATURE = 0.7
@@ -148,11 +147,22 @@ Examples:
             {"role": "user", "content": f"Current plot info: {json.dumps(plot_info_data)}\n\nPlot point to update: {plot_point_id_param}\nNew status: {new_status_param}\nPlot impact: {plot_impact_param}"}
         ]
 
-        response = capture_and_fanout("T077", client.chat.completions.create,
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            plot_config = config.PLOT_UPD_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            plot_config = config.PLOT_UPD_GEMINI_FLASH_MINIMAL
+        elif MODEL_PROVIDER == "lmstudio":
+            plot_config = config.PLOT_UPD_LMSTUDIO
+        else:  # legacy
+            plot_config = config.PLOT_UPD_LEGACY
+
+        response = capture_and_fanout("T077", api_client.create_completion,
             messages=prompt_messages,
-            model=PLOT_UPDATE_MODEL, # Use imported model name
-            temperature=TEMPERATURE
-        )
+            model=plot_config["model"],
+            temperature=TEMPERATURE,
+            **{k: v for k, v in plot_config.items() if k != "model"})
         
         # Track usage if available
         if USAGE_TRACKING_AVAILABLE:
