@@ -103,7 +103,7 @@ Notes:
 
 * **Tables**:
   * `@C` people only; reuse existing IDs where names match exactly.
-  * `@L` longest canonical names (e.g., "Black Lantern Hearth", not "Hearth").
+  * `@L` reuse existing canon location names EXACTLY as written in CANON.codebook.L. Do NOT rename, paraphrase, or expand them. Only create new @L entries for locations not in the canon. For new locations, use the longest canonical name from the passage.
   * `@S` small known list (Aid, Bless, Shield, Mage Armor, Cure Wounds, Guidance, Light, Detect Magic).
   * `@I` compact tokens (lowercase): `armor, boots, ssword×2, sbow, cloak, weapons, gear, stew, ale, porridge`.
 
@@ -124,6 +124,7 @@ Notes:
   * Example: "3) @L2 prep with:1,2,3,4. Eirik arranges gear; casts Aid spell twice; party readies for journey."
   * `with:` uses **IDs only**, up to 6.
   * End every beat with a period. Number beats `1)..N)`.
+  * **Game-mechanical values**: When the passage states specific numeric outcomes (damage dealt, HP healed, spell slots recovered, DC checks, dice rolls), preserve these numbers in the beat text. They are load-bearing game state, not expendable flavor. Example: "Aldric casts Cure Wounds on Tarin, healing 8 HP" NOT "Aldric heals Tarin".
   * If a known spell appears in the passage (e.g., Aid), include it in @S and reference it in at least one beat.
 
 ## Agentic freedoms (what you can decide)
