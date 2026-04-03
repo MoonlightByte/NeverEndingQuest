@@ -2186,9 +2186,10 @@ You must:
 - Ammunition with quantities: "Quiver with 30 arrows", "Bundle of 15 bolts"
 - Loose ammunition: "handful of arrows", "some crossbow bolts"
 
-**DO NOT CONSOLIDATE (keep in equipment):**
-- Magical ammunition: "+1 arrows", "flaming arrows", "arrows of slaying"
+**DO NOT CONSOLIDATE (keep in equipment -- these are SPECIAL and must stay as inventory items):**
+- Magical ammunition: "+1 arrows", "flaming arrows", "arrows of slaying", any item with "+" prefix
 - Special ammunition: "silvered arrows", "adamantine bolts"
+- CRITICAL: If an ammunition item name contains "+1", "+2", "+3", "flaming", "frost", "slaying", "silvered", "adamantine", or any other magical/special descriptor, it MUST remain in equipment. Do NOT move it to the ammunition section.
 - Ammunition containers without clear count: "empty quiver", "bolt case"
 - Non-standard ammunition: "ballista bolts", "special ammunition"
 
@@ -2211,6 +2212,8 @@ You must:
 - platinum (pp) = 10 gold
 - gold (gp) = 1 gold
 - electrum (ep) = 0.5 gold
+
+IMPORTANT: Include ALL currency types that change in the output, including electrum and platinum if they change. Do not omit any denomination.
 - silver (sp) = 0.1 gold  
 - copper (cp) = 0.01 gold
 
@@ -2259,7 +2262,9 @@ CRITICAL:
 - Only list items that should be removed
 - Calculate new totals by adding consolidated amounts to existing currency/ammunition
 - For ammunition, maintain the same name format (e.g., "Crossbow bolt" not "crossbow bolts")
-- Preserve player agency - when in doubt, don't consolidate"""
+- Preserve player agency - when in doubt, don't consolidate
+- Trade goods with gold values (silk worth 100gp, rare spices) are NOT currency -- keep in inventory
+- Containers described as "containing" or "with" gold but seeming locked/unopened MUST stay in inventory"""
     
     def build_inventory_consolidation_prompt(self, character_data: Dict[str, Any]) -> str:
         """
