@@ -8,17 +8,15 @@ are appropriate given exploration status, encounters, and plot progression.
 import json
 import os
 from typing import Dict, List, Any, Optional
-from openai import OpenAI
+from core.ai import api_client
+import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T021", "core/ai/transition_validator.py", 153)
-from config import OPENAI_API_KEY
-from model_config import TRANSITION_VALIDATOR_MODEL, TRANSITION_VALIDATOR_TEMPERATURE
+register_callsite("T021", "core/ai/transition_validator.py", 162)
+from model_config import TRANSITION_VALIDATOR_TEMPERATURE
 from utils.enhanced_logger import debug, info, warning, error
 from utils.file_operations import safe_read_json
 
 
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 
 def load_transition_validation_prompt() -> str:
@@ -150,17 +148,31 @@ at an intermediate location due to unexplored encounters. Respond with JSON only
         # Call AI agent
         debug("Sending request to transition validator AI", category="transition_validation")
 
-        response = capture_and_fanout("T021", client.chat.completions.create, messages=[
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            transition_config = config.TRANSITION_VAL_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            transition_config = config.TRANSITION_VAL_GEMINI_FLASH_MINIMAL
+        elif MODEL_PROVIDER == "lmstudio":
+            transition_config = config.TRANSITION_VAL_LMSTUDIO
+        else:  # legacy
+            transition_config = config.TRANSITION_VAL_LEGACY
+
+        response = capture_and_fanout("T021", api_client.create_completion, messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
-            ], model=TRANSITION_VALIDATOR_MODEL, temperature=TRANSITION_VALIDATOR_TEMPERATURE)
+            ],
+            model=transition_config["model"],
+            temperature=TRANSITION_VALIDATOR_TEMPERATURE,
+            **{k: v for k, v in transition_config.items() if k != "model"})
 
         # Log API call
         try:
             from utils.api_logger import log_api_call
             log_api_call(
                 call_type="transition_agent",
-                model=TRANSITION_VALIDATOR_MODEL,
+                model=transition_config["model"],
                 request_data={
                     "messages": [
                         {"role": "system", "content": system_prompt},
