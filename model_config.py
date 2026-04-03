@@ -302,6 +302,33 @@ NPC_BUILD_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 # LM Studio (local passthrough)
 NPC_BUILD_LMSTUDIO = {"model": "local-model"}
 
+# ----- T081 Encounter Update -----
+# Updates encounter creature data after combat actions.
+# Mini-tier callsite, temperature=0.7, JSON output.
+# GPT-5.4 reviewer: all models 3/3 pass. gemini-flash|minimal = 5.0/5 avg.
+ENCOUNTER_UPD_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
+ENCOUNTER_UPD_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+ENCOUNTER_UPD_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+ENCOUNTER_UPD_LMSTUDIO = {"model": "local-model"}
+
+# ----- T077 Plot Update -----
+# Updates plot progression after game events.
+# Mini-tier callsite, temperature=0.7, JSON output.
+# GPT-5.4 reviewer: all models 2/2 pass. gpt-5.2|none = 5.0/5 avg.
+PLOT_UPD_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
+PLOT_UPD_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+PLOT_UPD_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+PLOT_UPD_LMSTUDIO = {"model": "local-model"}
+
+# ----- T021 Transition Validation -----
+# Validates location transitions (path blocking, encounter checks).
+# Mini-tier callsite, temperature from TRANSITION_VALIDATOR_TEMPERATURE (0.3), JSON output.
+# GPT-5.4 reviewer: all models 2/2 pass. gpt-5.2|none = 5.0/5 avg.
+TRANSITION_VAL_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
+TRANSITION_VAL_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+TRANSITION_VAL_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+TRANSITION_VAL_LMSTUDIO = {"model": "local-model"}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures
