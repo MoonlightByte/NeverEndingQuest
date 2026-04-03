@@ -262,6 +262,41 @@ CHAR_VALIDATOR_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 # LM Studio (local passthrough)
 CHAR_VALIDATOR_LMSTUDIO = {"model": "local-model"}
 
+# ----- T034 Monster Builder -----
+# Creates monster stat blocks from name + party level.
+# Full-tier callsite, temperature=0.7, JSON output.
+# GPT-5.4 reviewer: gemini-flash|minimal = 3/3 pass (4.3/5), gpt-5.2|none = 3/3 pass (3.7/5)
+
+# OpenAI (gpt-5.2 with no reasoning -- 3/3 correct, 5.1s avg, temp=0.7 passes through)
+MONSTER_BUILD_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
+
+# Gemini (3-flash with minimal thinking -- 3/3 correct, 2.7s avg, highest quality + cheapest)
+MONSTER_BUILD_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+
+# Legacy (no extra params)
+MONSTER_BUILD_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+
+# LM Studio (local passthrough)
+MONSTER_BUILD_LMSTUDIO = {"model": "local-model"}
+
+# ----- T035 NPC Builder -----
+# Creates full NPC character sheets from name + race/class/level.
+# Full-tier callsite, temperature=0.7, JSON output.
+# GPT-5.4 reviewer: gpt-5.2|none = 3/3 pass (4.0/5), gemini-flash|minimal = 3/3 pass (4.0/5)
+# REQUIRES v4 prompt changes in npc_builder.py (name handling, equipment, racial traits)
+
+# OpenAI (gpt-5.2 with no reasoning -- 3/3 correct, 34s avg, temp=0.7 passes through)
+NPC_BUILD_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
+
+# Gemini (3-flash with minimal thinking -- 3/3 correct, 10s avg, 3x faster + cheaper)
+NPC_BUILD_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+
+# Legacy (no extra params)
+NPC_BUILD_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+
+# LM Studio (local passthrough)
+NPC_BUILD_LMSTUDIO = {"model": "local-model"}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures
