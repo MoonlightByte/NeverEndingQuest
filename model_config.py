@@ -349,6 +349,15 @@ LOC_COMPRESS_GEMINI_PRO_LOW = {"model": "gemini-3-pro-preview", "thinking_level"
 LOC_COMPRESS_LEGACY = {"model": "gpt-4.1-2025-04-14", "response_format": None}
 LOC_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
 
+# ----- T020 Narrative Compression -----
+# Compresses game conversation into 2-3 paragraph narrative summary.
+# Mini-tier callsite, temperature=0.3, PLAIN TEXT output (response_format=None).
+# gpt-5.4-mini|none = 5.0/5 avg, 2.7s. gemini-flash|minimal = 4.0/5, 3.1s.
+NARR_COMPRESS_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none", "response_format": None}
+NARR_COMPRESS_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal", "response_format": None}
+NARR_COMPRESS_LEGACY = {"model": "gpt-4.1-mini-2025-04-14", "response_format": None}
+NARR_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures
