@@ -44,9 +44,10 @@ import json
 import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
-from openai import OpenAI
+from core.ai import api_client
+import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T050", "core/validation/character_effects_validator.py", 334)
+register_callsite("T050", "core/validation/character_effects_validator.py", 344)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -56,7 +57,6 @@ except:
     USAGE_TRACKING_AVAILABLE = False
     def track_response(r): pass
 
-from config import OPENAI_API_KEY, CHARACTER_VALIDATOR_MODEL
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.module_path_manager import ModulePathManager
 
@@ -64,7 +64,6 @@ class AICharacterEffectsValidator:
     def __init__(self):
         """Initialize AI-powered effects validator"""
         self.logger = logging.getLogger(__name__)
-        self.client = OpenAI(api_key=OPENAI_API_KEY)
         self.corrections_made = []
         # Get current module from party tracker for consistent path resolution
         try:
@@ -329,12 +328,27 @@ class AICharacterEffectsValidator:
             return character_data
         
         categorization_prompt = self.build_categorization_prompt(character_data, game_time)
-        
+
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            effects_config = config.CHAR_VALIDATOR_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            effects_config = config.CHAR_VALIDATOR_GEMINI_FLASH_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            effects_config = config.CHAR_VALIDATOR_LMSTUDIO
+        else:  # legacy
+            effects_config = config.CHAR_VALIDATOR_LEGACY
+
         try:
-            response = capture_and_fanout("T050", self.client.chat.completions.create, messages=[
+            response = capture_and_fanout("T050", api_client.create_completion,
+                messages=[
                     {"role": "system", "content": self.get_effects_system_prompt()},
                     {"role": "user", "content": categorization_prompt}
-                ], model=CHARACTER_VALIDATOR_MODEL, temperature=0.1)
+                ],
+                model=effects_config["model"],
+                temperature=0.1,
+                **{k: v for k, v in effects_config.items() if k != "model"})
             
             # Track usage if available
             if USAGE_TRACKING_AVAILABLE:
