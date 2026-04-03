@@ -38,14 +38,13 @@ import re
 # Add the project root to the Python path so we can import from utils, core, etc.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from openai import OpenAI
 from jsonschema import validate, ValidationError
-# Import model configuration from config.py
-from config import OPENAI_API_KEY, NPC_BUILDER_MODEL # Assuming API key might also be in config eventually
+import config
+from core.ai import api_client
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T035", "core/generators/npc_builder.py", 126)
+register_callsite("T035", "core/generators/npc_builder.py", 149)
 
 # Token tracking import
 try:
@@ -62,11 +61,6 @@ RED = "\033[31m"
 YELLOW = "\033[33m"
 RESET = "\033[0m"
 
-# Use OPENAI_API_KEY from config
-client = OpenAI(api_key=OPENAI_API_KEY)
-# Note: The original npc_builder.py had a hardcoded API key here.
-# It's better practice to use the one from config.py.
-# If your config.py does not yet have OPENAI_API_KEY, you'll need to add it or adjust.
 # For now, I'll assume OPENAI_API_KEY is correctly defined in your config.py as used by other scripts.
 
 def load_schema(file_name):
@@ -140,8 +134,23 @@ Adhere strictly to 5e rules and the provided schema."""
         {"role": "user", "content": f"Create an NPC named '{npc_name}' using 5e rules. Race: {npc_race or 'Any appropriate race'}, Class: {npc_class or 'Any appropriate class'}, Level: {level_guidance}, Background: {npc_background or 'Any appropriate background'}. Schema: {json.dumps(schema)}"}
     ]
 
+    # Select model config per provider
+    from model_config import MODEL_PROVIDER
+    if MODEL_PROVIDER == "openai":
+        npc_config = config.NPC_BUILD_GPT52_NONE
+    elif MODEL_PROVIDER == "gemini":
+        npc_config = config.NPC_BUILD_GEMINI_FLASH_MINIMAL
+    elif MODEL_PROVIDER == "lmstudio":
+        npc_config = config.NPC_BUILD_LMSTUDIO
+    else:  # legacy
+        npc_config = config.NPC_BUILD_LEGACY
+
     try:
-        response = capture_and_fanout("T035", client.chat.completions.create, messages=prompt_messages, model=NPC_BUILDER_MODEL, temperature=0.7)
+        response = capture_and_fanout("T035", api_client.create_completion,
+            messages=prompt_messages,
+            model=npc_config["model"],
+            temperature=0.7,
+            **{k: v for k, v in npc_config.items() if k != "model"})
 
         ai_response = response.choices[0].message.content.strip()
         #print(f"{YELLOW}AI Response:{RESET}\n{ai_response}")
