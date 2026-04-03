@@ -53,9 +53,11 @@ import json
 import os
 import sys
 from openai import OpenAI
+from core.ai import api_client
+import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T047", "core/managers/level_up_manager.py", 204)
-register_callsite("T048", "core/managers/level_up_manager.py", 230)
+register_callsite("T047", "core/managers/level_up_manager.py", 206)
+register_callsite("T048", "core/managers/level_up_manager.py", 243)
 from config import OPENAI_API_KEY, LEVEL_UP_MODEL, DM_VALIDATION_MODEL
 from utils.file_operations import safe_read_json
 from updates.update_character_info import update_character_info, normalize_character_name
@@ -225,9 +227,24 @@ class LevelUpSession:
             {"role": "system", "content": f"LEVELING INFORMATION (Reference):\n{leveling_info}"},
             {"role": "user", "content": f"Validate this final level up action JSON. Is it a valid, complete, and rules-compliant update?\n\n{ai_response}"}
         ]
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            val_config = config.LEVELUP_VAL_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            val_config = config.LEVELUP_VAL_GEMINI_PRO_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            val_config = config.LEVELUP_VAL_LMSTUDIO
+        else:  # legacy
+            val_config = config.LEVELUP_VAL_LEGACY
+
         # Use a separate call to the validation model
         try:
-            response = capture_and_fanout("T048", client.chat.completions.create, messages=validation_messages, model=DM_VALIDATION_MODEL, temperature=0.2)
+            response = capture_and_fanout("T048", api_client.create_completion,
+                messages=validation_messages,
+                model=val_config["model"],
+                temperature=0.2,
+                **{k: v for k, v in val_config.items() if k != "model"})
             
             # Track token usage with context for telemetry
             if USAGE_TRACKING_AVAILABLE:

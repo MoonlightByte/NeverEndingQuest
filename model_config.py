@@ -329,6 +329,16 @@ TRANSITION_VAL_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "think
 TRANSITION_VAL_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 TRANSITION_VAL_LMSTUDIO = {"model": "local-model"}
 
+# ----- T048 Level Up Validation -----
+# Validates AI-generated level-up actions against 5e rules.
+# Full-tier callsite, temperature=0.2, JSON output.
+# 8/8 perfect on expanded synthetic tests (v4 prompt + leveling_info.txt).
+# Uses gemini-3-PRO (not flash -- flash missed Barbarian wrong-die edge case)
+LEVELUP_VAL_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
+LEVELUP_VAL_GEMINI_PRO_LOW = {"model": "gemini-3-pro-preview", "thinking_level": "low"}
+LEVELUP_VAL_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+LEVELUP_VAL_LMSTUDIO = {"model": "local-model"}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures
