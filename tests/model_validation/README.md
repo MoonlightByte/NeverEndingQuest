@@ -63,3 +63,6 @@ When testing a new callsite:
 | T052 | Inventory validator | gpt-5.2 none | gemini-3-flash minimal | Done |
 | T053 | Batched validator | gpt-5.2 none | gemini-3-flash minimal | Done |
 | T054 | Currency consolidation | gpt-5.2 none | gemini-3-flash low | Done |
+| T081 | Encounter update | gpt-5.2 none | gemini-3-flash minimal | Done |
+| T077 | Plot update | gpt-5.2 none | gemini-3-flash minimal | Done |
+| T021 | Transition validation | gpt-5.2 none | gemini-3-flash minimal | Done |
