@@ -6,14 +6,14 @@
 import json
 import os
 from jsonschema import validate, ValidationError
-from openai import OpenAI
+from core.ai import api_client
+import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T081", "updates/update_encounter.py", 85)
+register_callsite("T081", "updates/update_encounter.py", 95)
 import time
 import re
 import copy
 # Import model configuration from config.py
-from config import OPENAI_API_KEY, ENCOUNTER_UPDATE_MODEL
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -34,7 +34,6 @@ set_script_name("update_encounter")
 # Constants
 TEMPERATURE = 0.7
 
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 def load_encounter_schema():
     with open("schemas/encounter_schema.json", "r") as schema_file:
@@ -81,12 +80,23 @@ Remember to only update monster information and leave player and NPC data unchan
             {"role": "user", "content": f"Current encounter info: {json.dumps(encounter_info)}\n\nChanges to apply: {changes}\n\nRespond with ONLY the updated JSON object representing the changed sections of the encounter data, with no additional text or explanation."}
         ]
 
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            encounter_config = config.ENCOUNTER_UPD_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            encounter_config = config.ENCOUNTER_UPD_GEMINI_FLASH_MINIMAL
+        elif MODEL_PROVIDER == "lmstudio":
+            encounter_config = config.ENCOUNTER_UPD_LMSTUDIO
+        else:  # legacy
+            encounter_config = config.ENCOUNTER_UPD_LEGACY
+
         # Get AI's response
-        response = capture_and_fanout("T081", client.chat.completions.create,
+        response = capture_and_fanout("T081", api_client.create_completion,
             messages=prompt,
-            model=ENCOUNTER_UPDATE_MODEL,
-            temperature=TEMPERATURE
-        )
+            model=encounter_config["model"],
+            temperature=TEMPERATURE,
+            **{k: v for k, v in encounter_config.items() if k != "model"})
         
         # Track usage
         if USAGE_TRACKING_AVAILABLE:
