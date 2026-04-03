@@ -65,13 +65,12 @@ import os
 import hashlib
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Union
-from openai import OpenAI
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T051", "core/validation/character_validator.py", 1050)
-register_callsite("T052", "core/validation/character_validator.py", 1049)
-register_callsite("T053", "core/validation/character_validator.py", 1625)
-register_callsite("T054", "core/validation/character_validator.py", 2015)
+register_callsite("T051", "core/validation/character_validator.py", 1036)
+register_callsite("T052", "core/validation/character_validator.py", 1137)
+register_callsite("T053", "core/validation/character_validator.py", 1733)
+register_callsite("T054", "core/validation/character_validator.py", 2138)
 
 CHARACTER_VALIDATOR_SCHEMA = {
     "required": [
@@ -154,7 +153,6 @@ try:
 except:
     USAGE_TRACKING_AVAILABLE = False
     def track_response(r): pass
-from config import OPENAI_API_KEY, CHARACTER_VALIDATOR_MODEL
 import config
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -166,18 +164,6 @@ class AICharacterValidator:
     def __init__(self):
         """Initialize AI-powered validator with caching"""
         self.logger = logging.getLogger(__name__)
-        try:
-            self.client = OpenAI(api_key=OPENAI_API_KEY)
-        except Exception as e:
-            # Handle OpenAI client initialization error
-            error(f"Failed to initialize OpenAI client: {str(e)}", exception=e, category="character_validation")
-            error(f"OpenAI client initialization failed. This is likely an environment issue.", category="character_validation")
-            error(f"Error details: {type(e).__name__}: {str(e)}", category="character_validation")
-            info("Possible solutions:", category="character_validation")
-            info("1. Check if OpenAI library is properly installed: pip install openai==1.30.3", category="character_validation")
-            info("2. There may be a proxy or environment configuration issue", category="character_validation")
-            info("3. Try running in a different environment", category="character_validation")
-            raise
         self.corrections_made = []
         
         # Load prompts from external files
@@ -1136,11 +1122,26 @@ class AICharacterValidator:
             try:
                 # Build prompt with filtered inventory data
                 validation_prompt = self.build_inventory_validation_prompt(inventory_data)
-                
-                response = capture_and_fanout("T052", self.client.chat.completions.create, messages=[
+
+                # Select model config per provider
+                from model_config import MODEL_PROVIDER
+                if MODEL_PROVIDER == "openai":
+                    inv_config = config.CHAR_VALIDATOR_GPT52_NONE
+                elif MODEL_PROVIDER == "gemini":
+                    inv_config = config.CHAR_VALIDATOR_GEMINI_FLASH_MINIMAL
+                elif MODEL_PROVIDER == "lmstudio":
+                    inv_config = config.CHAR_VALIDATOR_LMSTUDIO
+                else:  # legacy
+                    inv_config = config.CHAR_VALIDATOR_LEGACY
+
+                response = capture_and_fanout("T052", api_client.create_completion,
+                    messages=[
                         {"role": "system", "content": self.get_inventory_validator_system_prompt()},
                         {"role": "user", "content": validation_prompt}
-                    ], model=CHARACTER_VALIDATOR_MODEL, temperature=0.1)
+                    ],
+                    model=inv_config["model"],
+                    temperature=0.1,
+                    **{k: v for k, v in inv_config.items() if k != "model"})
                 
                 # Track usage if available
                 if USAGE_TRACKING_AVAILABLE:
@@ -1716,12 +1717,27 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
         
         # Build combined validation prompt
         validation_prompt = self.build_combined_validation_prompt(character_data)
-        
+
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            batch_config = config.CHAR_VALIDATOR_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            batch_config = config.CHAR_VALIDATOR_GEMINI_FLASH_MINIMAL
+        elif MODEL_PROVIDER == "lmstudio":
+            batch_config = config.CHAR_VALIDATOR_LMSTUDIO
+        else:  # legacy
+            batch_config = config.CHAR_VALIDATOR_LEGACY
+
         try:
-            response = capture_and_fanout("T053", self.client.chat.completions.create, messages=[
+            response = capture_and_fanout("T053", api_client.create_completion,
+                messages=[
                     {"role": "system", "content": self.get_combined_validator_system_prompt()},
                     {"role": "user", "content": validation_prompt}
-                ], model=CHARACTER_VALIDATOR_MODEL, temperature=0.1)
+                ],
+                model=batch_config["model"],
+                temperature=0.1,
+                **{k: v for k, v in batch_config.items() if k != "model"})
 
             # Track usage if available
             if USAGE_TRACKING_AVAILABLE:
@@ -2107,11 +2123,26 @@ Remember to return a single JSON response with all four validation results."""
             try:
                 # Build prompt with filtered data
                 consolidation_prompt = self.build_inventory_consolidation_prompt(consolidation_data)
-                
-                response = capture_and_fanout("T054", self.client.chat.completions.create, messages=[
+
+                # Select model config per provider
+                from model_config import MODEL_PROVIDER
+                if MODEL_PROVIDER == "openai":
+                    consol_config = config.CHAR_VALIDATOR_GPT52_NONE
+                elif MODEL_PROVIDER == "gemini":
+                    consol_config = config.CHAR_VALIDATOR_GEMINI_FLASH_LOW
+                elif MODEL_PROVIDER == "lmstudio":
+                    consol_config = config.CHAR_VALIDATOR_LMSTUDIO
+                else:  # legacy
+                    consol_config = config.CHAR_VALIDATOR_LEGACY
+
+                response = capture_and_fanout("T054", api_client.create_completion,
+                    messages=[
                         {"role": "system", "content": self.get_inventory_consolidation_system_prompt()},
                         {"role": "user", "content": consolidation_prompt}
-                    ], model=CHARACTER_VALIDATOR_MODEL, temperature=0.1)
+                    ],
+                    model=consol_config["model"],
+                    temperature=0.1,
+                    **{k: v for k, v in consol_config.items() if k != "model"})
                 
                 # Track usage if available
                 if USAGE_TRACKING_AVAILABLE:
