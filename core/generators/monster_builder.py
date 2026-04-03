@@ -61,13 +61,13 @@ import re
 # Add the project root to the Python path so we can import from utils, core, etc.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from openai import OpenAI
+from core.ai import api_client
 from jsonschema import validate, ValidationError
 import config
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T034", "core/generators/monster_builder.py", 181)
+register_callsite("T034", "core/generators/monster_builder.py", 190)
 
 # Set script name for logging
 set_script_name("monster_builder")
@@ -77,10 +77,6 @@ RED = "\033[31m"
 YELLOW = "\033[33m"
 RESET = "\033[0m"
 
-# Use OPENAI_API_KEY from config
-client = OpenAI(api_key=config.OPENAI_API_KEY)
-# Note: The original monster_builder.py had a hardcoded API key here.
-# It's better practice to use the one from config.py.
 
 def load_schema(file_name):
     try:
@@ -179,8 +175,23 @@ Schema: {json.dumps(schema)}"""
         {"role": "user", "content": user_content}
     ]
 
+    # Select model config per provider
+    from model_config import MODEL_PROVIDER
+    if MODEL_PROVIDER == "openai":
+        monster_config = config.MONSTER_BUILD_GPT52_NONE
+    elif MODEL_PROVIDER == "gemini":
+        monster_config = config.MONSTER_BUILD_GEMINI_FLASH_MINIMAL
+    elif MODEL_PROVIDER == "lmstudio":
+        monster_config = config.MONSTER_BUILD_LMSTUDIO
+    else:  # legacy
+        monster_config = config.MONSTER_BUILD_LEGACY
+
     try:
-        response = capture_and_fanout("T034", client.chat.completions.create, messages=prompt, model=config.MONSTER_BUILDER_MODEL, temperature=0.7)
+        response = capture_and_fanout("T034", api_client.create_completion,
+            messages=prompt,
+            model=monster_config["model"],
+            temperature=0.7,
+            **{k: v for k, v in monster_config.items() if k != "model"})
 
         ai_response = response.choices[0].message.content.strip()
         print(f"{YELLOW}AI Response:{RESET}\n{ai_response}")
