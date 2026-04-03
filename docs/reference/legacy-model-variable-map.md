@@ -21,7 +21,7 @@
 | MONSTER_BUILDER_MODEL | gpt-4.1-2025-04-14 | 1 | ~~T034~~(DONE) | Monster generation |
 | LEVEL_UP_MODEL | gpt-4.1-2025-04-14 | 2 | T047,T086 | Level up conversation + validation |
 | ACTION_PREDICTION_MODEL | gpt-4.1-2025-04-14 | 1 | ~~T082~~(DONE) | Predicting player action types |
-| LOCATION_COMPRESSION_MODEL | gpt-4.1-2025-04-14 | 1 | T085 | Location data compression |
+| LOCATION_COMPRESSION_MODEL | gpt-4.1-2025-04-14 | 1 | ~~T085~~(DONE) | Location data compression |
 | DM_EFFECTS_MODEL | gpt-4.1-2025-04-14 | 1 | ~~T078~~(DONE) | Character effect tracking |
 
 ### Mini Tier (10 variables -> gpt-4.1-mini-2025-04-14)
