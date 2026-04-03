@@ -59,3 +59,7 @@ When testing a new callsite:
 | T051 | Character validator | gpt-5.2 none | gemini-3-flash minimal | Done |
 | T034 | Monster builder | gpt-5.2 none | gemini-3-flash minimal | Done |
 | T035 | NPC builder | gpt-5.2 none | gemini-3-flash minimal | Done |
+| T050 | Effects categorizer | gpt-5.2 none | gemini-3-flash low | Done |
+| T052 | Inventory validator | gpt-5.2 none | gemini-3-flash minimal | Done |
+| T053 | Batched validator | gpt-5.2 none | gemini-3-flash minimal | Done |
+| T054 | Currency consolidation | gpt-5.2 none | gemini-3-flash low | Done |
