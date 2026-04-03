@@ -262,6 +262,11 @@ CHAR_VALIDATOR_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 # LM Studio (local passthrough)
 CHAR_VALIDATOR_LMSTUDIO = {"model": "local-model"}
 
+# ----- T050 Effects / T054 Currency Gemini Config -----
+# T050 effects categorization and T054 currency consolidation need gemini-flash|low
+# (minimal fails on complex categorization and currency edge cases)
+CHAR_VALIDATOR_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
+
 # ----- T034 Monster Builder -----
 # Creates monster stat blocks from name + party level.
 # Full-tier callsite, temperature=0.7, JSON output.
