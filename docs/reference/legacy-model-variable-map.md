@@ -19,7 +19,7 @@
 | CHARACTER_VALIDATOR_MODEL | gpt-4.1-2025-04-14 | 5 (active) | ~~T050~~(DONE),~~T051~~(DONE),~~T052~~(DONE),~~T053~~(DONE),~~T054~~(DONE) | Character sheet validation (+4 in backup: T055-T058) |
 | NPC_BUILDER_MODEL | gpt-4.1-2025-04-14 | 1 | ~~T035~~(DONE) | NPC generation |
 | MONSTER_BUILDER_MODEL | gpt-4.1-2025-04-14 | 1 | ~~T034~~(DONE) | Monster generation |
-| LEVEL_UP_MODEL | gpt-4.1-2025-04-14 | 2 | T047,T086 | Level up conversation + validation |
+| LEVEL_UP_MODEL | gpt-4.1-2025-04-14 | 2 | ~~T047~~(DONE),~~T086~~(DONE) | Level up conversation + validation |
 | ACTION_PREDICTION_MODEL | gpt-4.1-2025-04-14 | 1 | ~~T082~~(DONE) | Predicting player action types |
 | LOCATION_COMPRESSION_MODEL | gpt-4.1-2025-04-14 | 1 | ~~T085~~(DONE) | Location data compression |
 | DM_EFFECTS_MODEL | gpt-4.1-2025-04-14 | 1 | ~~T078~~(DONE) | Character effect tracking |

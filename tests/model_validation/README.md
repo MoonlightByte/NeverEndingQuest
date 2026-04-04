@@ -70,3 +70,5 @@ When testing a new callsite:
 | T085 | Location compression | gpt-5.2 none | gemini-3-pro low | Done |
 | T020 | Narrative compression | gpt-5.4-mini none | gemini-3-flash minimal | Done |
 | T084 | Agentic compression | gpt-5.4-mini none | gemini-3-pro low | Done |
+| T047 | Level-up conversation | gpt-5.2 none | gemini-3-flash low | Done |
+| T086 | NPC auto-level-up | gpt-5.2 none | gemini-3-flash low | Done |
