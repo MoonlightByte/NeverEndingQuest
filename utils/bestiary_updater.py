@@ -12,28 +12,14 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-# OpenAI imports
-try:
-    from openai import OpenAI
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
-    print("Warning: OpenAI library not available")
+from core.ai import api_client
+import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T083", "utils/bestiary_updater.py", 214)
+register_callsite("T083", "utils/bestiary_updater.py", 202)
 
-# Import safe file operations
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.encoding_utils import safe_json_load, safe_json_dump, sanitize_text
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
-from model_config import DM_MINI_MODEL
-
-# Import API key
-try:
-    from config import OPENAI_API_KEY
-except ImportError:
-    OPENAI_API_KEY = None
-    print("Warning: Could not import OPENAI_API_KEY from config.py")
 
 # Set up logging
 set_script_name("bestiary_updater")
@@ -41,15 +27,8 @@ set_script_name("bestiary_updater")
 class BestiaryUpdater:
     """Handles automatic generation of monster descriptions from module context"""
     
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self):
         """Initialize the bestiary updater"""
-        self.api_key = api_key or OPENAI_API_KEY
-        if self.api_key and OPENAI_AVAILABLE:
-            self.client = OpenAI(api_key=self.api_key)
-        else:
-            self.client = None
-            error("OpenAI client not available - check API key and library installation")
-        
         # Rate limiting settings (being conservative)
         self.requests_per_minute = 30
         self.request_delay = 60.0 / self.requests_per_minute  # ~2 seconds between requests
@@ -172,10 +151,6 @@ class BestiaryUpdater:
         Returns:
             Dictionary with monster data or None if failed
         """
-        if not self.client:
-            error("OpenAI client not available")
-            return None
-        
         # Rate limiting
         current_time = time.time()
         time_since_last = current_time - self.last_request_time
@@ -190,7 +165,8 @@ class BestiaryUpdater:
         - Be suitable for use in image generation prompts
         - Maintain consistency with 5th edition of the world's most popular roleplaying game lore while adding creative details
         - Be approximately 150-250 words
-        
+        - Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols
+
         Return your response as a JSON object with these fields:
         {
             "name": "Proper Name",
@@ -213,13 +189,25 @@ image-generation-ready description that would fit this adventure."""
             try:
                 info(f"Generating description for: {monster_name} (attempt {attempt + 1}/{max_retries})")
                 
-                response = capture_and_fanout("T083", self.client.chat.completions.create, messages=[
+                from model_config import MODEL_PROVIDER
+                if MODEL_PROVIDER == "openai":
+                    mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
+                elif MODEL_PROVIDER == "gemini":
+                    mini_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
+                elif MODEL_PROVIDER == "lmstudio":
+                    mini_cfg = config.MINI_UTIL_LMSTUDIO
+                else:  # legacy
+                    mini_cfg = config.MINI_UTIL_LEGACY
+
+                response = capture_and_fanout("T083", api_client.create_completion,
+                    messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
-                    ], model=DM_MINI_MODEL,
+                    ],
+                    model=mini_cfg["model"],
                     temperature=0.7,
-                    response_format={"type": "json_object"}
-                )
+                    response_format={"type": "json_object"},
+                    **{k: v for k, v in mini_cfg.items() if k != "model"})
                 
                 # Update last request time
                 self.last_request_time = time.time()

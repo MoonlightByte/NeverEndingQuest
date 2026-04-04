@@ -20,9 +20,10 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 from openai import OpenAI
+from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T092", "utils/startup_wizard.py", 1624)
-register_callsite("T093", "utils/startup_wizard.py", 1723)
+register_callsite("T092", "utils/startup_wizard.py", 1628)
+register_callsite("T093", "utils/startup_wizard.py", 1735)
 from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
 
@@ -1709,6 +1710,8 @@ Please analyze the module's plot, areas, and locations to determine:
 2. The best starting location within that area (tavern, shop, or quest-giving location)
 3. Appropriate initial weather and political climate
 
+Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
+
 Respond with ONLY a JSON object in this exact format:
 {{
   "areaId": "area_id",
@@ -1719,10 +1722,22 @@ Respond with ONLY a JSON object in this exact format:
   "politicalClimate": "brief political situation"
 }}"""
 
-        client = OpenAI(api_key=config.OPENAI_API_KEY)
-        response = capture_and_fanout("T093", client.chat.completions.create, messages=[{"role": "user", "content": prompt}], model=config.DM_MINI_MODEL,
-            temperature=0.7
-        )
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
+        elif MODEL_PROVIDER == "gemini":
+            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
+        elif MODEL_PROVIDER == "lmstudio":
+            mini_cfg = config.MINI_UTIL_LMSTUDIO
+        else:  # legacy
+            mini_cfg = config.MINI_UTIL_LEGACY
+
+        response = capture_and_fanout("T093", api_client.create_completion,
+            messages=[{"role": "user", "content": prompt}],
+            model=mini_cfg["model"],
+            temperature=0.7,
+            response_format=None,
+            **{k: v for k, v in mini_cfg.items() if k != "model"})
         
         # Parse AI response
         ai_response = response.choices[0].message.content.strip()
