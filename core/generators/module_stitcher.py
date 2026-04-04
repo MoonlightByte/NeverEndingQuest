@@ -101,11 +101,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from openai import OpenAI
+from core.ai import api_client
 import config
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T032", "core/generators/module_stitcher.py", 411)
-register_callsite("T033", "core/generators/module_stitcher.py", 1069)
+register_callsite("T032", "core/generators/module_stitcher.py", 427)
+register_callsite("T033", "core/generators/module_stitcher.py", 1095)
 
 # Set script name for logging
 set_script_name("module_stitcher")
@@ -413,10 +414,24 @@ FIRST AREA: {first_area_name} ({first_area_type})
 
 Create atmospheric travel narration that leads into this adventure."""
             
-            response = capture_and_fanout("T032", self.client.chat.completions.create, messages=[
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                summ_config = config.DM_SUMM_GPT54MINI_NONE
+            elif MODEL_PROVIDER == "gemini":
+                summ_config = config.DM_SUMM_GEMINI_FLASH_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                summ_config = config.DM_SUMM_LMSTUDIO
+            else:  # legacy
+                summ_config = config.DM_SUMM_LEGACY
+
+            response = capture_and_fanout("T032", api_client.create_completion,
+                messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
-                ], model=config.DM_SUMMARIZATION_MODEL, temperature=0.8)
+                ],
+                model=summ_config["model"],
+                temperature=0.8,
+                **{k: v for k, v in summ_config.items() if k != "model"})
 
             # Parse AI response
             ai_response = response.choices[0].message.content
@@ -1067,10 +1082,24 @@ Check for:
 Respond with JSON:
 {{"safe": true/false, "reason": "explanation if unsafe"}}"""
             
-            response = capture_and_fanout("T033", self.client.chat.completions.create, messages=[
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                summ_config = config.DM_SUMM_GPT54MINI_NONE
+            elif MODEL_PROVIDER == "gemini":
+                summ_config = config.DM_SUMM_GEMINI_FLASH_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                summ_config = config.DM_SUMM_LMSTUDIO
+            else:  # legacy
+                summ_config = config.DM_SUMM_LEGACY
+
+            response = capture_and_fanout("T033", api_client.create_completion,
+                messages=[
                     {"role": "system", "content": "You are a content safety reviewer for family-friendly fantasy gaming content. Be strict but reasonable in your assessment."},
                     {"role": "user", "content": safety_prompt}
-                ], model=config.DM_SUMMARIZATION_MODEL, temperature=0.1)
+                ],
+                model=summ_config["model"],
+                temperature=0.1,
+                **{k: v for k, v in summ_config.items() if k != "model"})
 
             ai_response = response.choices[0].message.content
             try:
