@@ -394,6 +394,17 @@ ADV_SUMM_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level"
 ADV_SUMM_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 ADV_SUMM_LMSTUDIO = {"model": "local-model"}
 
+# --- T043/T044/T045: Combat Main Loop (scene setup, per-turn, resume) ---
+# 100% on 16-criteria audit after V5 prompt (4/4 blind runs).
+# Full-tier (COMBAT_MAIN_MODEL). Uses floating temperature from get_combat_temperature().
+# gpt-5.4|none: best rules accuracy + narration. gemini-pro|low: best math transparency.
+# gpt-5.2 DISQUALIFIED (hallucinated initiative orders).
+# gemini-flash DISQUALIFIED (turn boundary violations, drops out-of-turn actions).
+COMBAT_MAIN_GPT54_NONE = {"model": "gpt-5.4", "reasoning_effort": "none"}
+COMBAT_MAIN_GEMINI_PRO_LOW = {"model": "gemini-3-pro-preview", "thinking_level": "low"}
+COMBAT_MAIN_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+COMBAT_MAIN_LMSTUDIO = {"model": "local-model"}
+
 # ----- T085 Location Compression -----
 # Compresses location JSON into token-based @-tag format for runtime context.
 # Full-tier callsite, temperature=0.1, PLAIN TEXT output (response_format=None).
