@@ -139,14 +139,21 @@ def _enforce_provider_constraints(provider, model, temperature, kwargs):
         model_lower = model.lower() if model else ""
         reasoning = kwargs.get("reasoning_effort")
 
-        # GPT-5-mini: NEVER supports temperature
-        if "mini" in model_lower and "5" in model_lower:
+        # Mini model constraints -- substring matching:
+        #   "5-mini" matches "gpt-5-mini" but NOT "gpt-5.4-mini" (dot breaks the match)
+        #   "5.4-mini" matches "gpt-5.4-mini" only
+        # NOTE: Future mini variants (gpt-5.5-mini etc.) will fall through to the
+        # general GPT-5.x branch. Add explicit branches for new mini models as needed.
+        if "5-mini" in model_lower:
+            # gpt-5-mini: NEVER supports temperature, no reasoning_effort="none"
             kwargs["_strip_temperature"] = True
-            # gpt-5-mini does not support reasoning_effort="none"
             if reasoning and str(reasoning).lower() == "none":
                 kwargs["reasoning_effort"] = "low"
-
-        # GPT-5.x with reasoning > none: temperature must be stripped
+        elif "5.4-mini" in model_lower:
+            # gpt-5.4-mini: supports temperature ONLY with reasoning=none
+            if reasoning and str(reasoning).lower() != "none":
+                kwargs["_strip_temperature"] = True
+        # GPT-5.x (non-mini) with reasoning > none: temperature must be stripped
         elif reasoning and str(reasoning).lower() != "none":
             kwargs["_strip_temperature"] = True
 
