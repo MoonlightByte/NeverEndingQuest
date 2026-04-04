@@ -128,8 +128,8 @@ register_callsite("T040", "core/managers/combat_manager.py", 796)
 register_callsite("T041", "core/managers/combat_manager.py", 1037)
 register_callsite("T042", "core/managers/combat_manager.py", 1836)
 register_callsite("T043", "core/managers/combat_manager.py", 2233)
-register_callsite("T044", "core/managers/combat_manager.py", 2351)
-register_callsite("T045", "core/managers/combat_manager.py", 2894)
+register_callsite("T044", "core/managers/combat_manager.py", 2330)
+register_callsite("T045", "core/managers/combat_manager.py", 2882)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -144,9 +144,8 @@ except Exception as e:
 # Import model configurations from config.py
 from config import (
     OPENAI_API_KEY,
-    COMBAT_MAIN_MODEL,
     # Use the existing validation model instead of COMBAT_VALIDATION_MODEL
-    DM_VALIDATION_MODEL, 
+    DM_VALIDATION_MODEL,
     COMBAT_DIALOGUE_SUMMARY_MODEL,
     DM_MINI_MODEL
 )
@@ -2861,59 +2860,29 @@ Rules:
                except Exception as e:
                    debug(f"Could not update status: {e}", category="status")
                
-               # Import provider config
+               # Select model config per provider
                from model_config import MODEL_PROVIDER
-               from config import GPT5_USE_HIGH_REASONING_ON_RETRY
-
                if MODEL_PROVIDER == "openai":
-                   # OpenAI next-gen: Use mini model, increase reasoning effort after first failure
-                   from config import DM_MINI_MODEL as combat_model
+                   combat_config = config.COMBAT_MAIN_GPT54_NONE
+               elif MODEL_PROVIDER == "gemini":
+                   combat_config = config.COMBAT_MAIN_GEMINI_PRO_LOW
+               elif MODEL_PROVIDER == "lmstudio":
+                   combat_config = config.COMBAT_MAIN_LMSTUDIO
+               else:  # legacy
+                   combat_config = config.COMBAT_MAIN_LEGACY
 
-                   # After first failure, use high reasoning effort
-                   if attempt >= 1 and GPT5_USE_HIGH_REASONING_ON_RETRY:
-                       print(f"DEBUG: [COMBAT] OpenAI next-gen - Using HIGH reasoning effort after {attempt} attempts")
-                       # Compress conversation history before sending to AI
-                       messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
+               temperature_used = get_combat_temperature(encounter_data, validation_attempt=attempt)
 
-                       # Export compressed conversation for review
-                       with open("combat_messages_to_api.json", "w", encoding="utf-8") as f:
-                           json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
-                       print(f"DEBUG: [COMBAT] Exported compressed messages to combat_messages_to_api.json")
+               print(f"DEBUG: [COMBAT] Using model: {combat_config['model']} (temp: {temperature_used}, provider: {MODEL_PROVIDER}, attempt: {attempt + 1})")
 
-                       response = capture_and_fanout("T045", client.chat.completions.create, messages=messages_to_send, model=combat_model, reasoning_effort="high")
-                   else:
-                       # Default is medium reasoning (no need to specify)
-                       print(f"DEBUG: [COMBAT] Using OpenAI next-gen model: {combat_model} (default medium reasoning)")
-                       # Compress conversation history before sending to AI
-                       messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
+               # Compress conversation history before sending to AI
+               messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
 
-                       # Export compressed conversation for review
-                       with open("combat_messages_to_api.json", "w", encoding="utf-8") as f:
-                           json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
-                       print(f"DEBUG: [COMBAT] Exported compressed messages to combat_messages_to_api.json")
-
-                       response = client.chat.completions.create(
-                           model=combat_model,
-                           messages=messages_to_send
-                       )
-               else:
-                   # Legacy (GPT-4.1) or other providers: Keep existing temperature escalation
-                   temperature_used = get_combat_temperature(encounter_data, validation_attempt=attempt)
-
-                   print(f"DEBUG: [COMBAT] Using model: {COMBAT_MAIN_MODEL} (temp: {temperature_used}, provider: {MODEL_PROVIDER})")
-                   # Compress conversation history before sending to AI
-                   messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-
-                   # Export compressed conversation for review
-                   with open("combat_messages_to_api.json", "w", encoding="utf-8") as f:
-                       json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
-                   print(f"DEBUG: [COMBAT] Exported compressed messages to combat_messages_to_api.json")
-
-                   response = client.chat.completions.create(
-                       model=COMBAT_MAIN_MODEL,
-                       temperature=temperature_used,
-                       messages=messages_to_send
-                   )
+               response = capture_and_fanout("T045", api_client.create_completion,
+                   messages=messages_to_send,
+                   model=combat_config["model"],
+                   temperature=temperature_used,
+                   **{k: v for k, v in combat_config.items() if k != "model"})
                
                # Track usage
                if USAGE_TRACKING_AVAILABLE:
