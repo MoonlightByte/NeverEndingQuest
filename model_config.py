@@ -358,7 +358,7 @@ LEVELUP_CONV_LMSTUDIO = {"model": "local-model"}
 # T091: Monster reconciliation, temp=0.2, JSON ARRAY output (response_format=None).
 NPC_INFO_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
 NPC_INFO_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
-NPC_INFO_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+NPC_INFO_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 NPC_INFO_LMSTUDIO = {"model": "local-model"}
 
 # T091 uses response_format=None at the callsite (JSON array output, not object).
