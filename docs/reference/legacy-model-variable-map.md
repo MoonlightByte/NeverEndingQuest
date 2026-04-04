@@ -29,13 +29,13 @@
 | Model Variable | Legacy Model | Callsite Count | Task IDs | Primary Usage |
 |---|---|---|---|---|
 | DM_MINI_MODEL | gpt-4.1-mini-2025-04-14 | 10 | T042,T043,T083,T087,T088,T089,T090,T093,T094,T095 | Simple conversations, combat fallback, utilities, web UI |
-| DM_SUMMARIZATION_MODEL | gpt-4.1-mini-2025-04-14 | 5 | T030,T032,T033,T038,T066 | Module stitching, campaign export, response summarization |
+| DM_SUMMARIZATION_MODEL | gpt-4.1-mini-2025-04-14 | 5 | ~~T030~~(DONE),~~T032~~(DONE),~~T033~~(DONE),~~T038~~(DONE),~~T066~~(DONE) | Module stitching, campaign export, response summarization |
 | NARRATIVE_COMPRESSION_MODEL | gpt-4.1-mini-2025-04-14 | 3 | ~~T017~~(DONE),~~T020~~(DONE),~~T084~~(DONE) | Narrative/combat/incremental compression |
-| COMBAT_DIALOGUE_SUMMARY_MODEL | gpt-4.1-mini-2025-04-14 | 1 | T041 | Combat dialogue summarization |
+| COMBAT_DIALOGUE_SUMMARY_MODEL | gpt-4.1-mini-2025-04-14 | 1 | ~~T041~~(DONE) | Combat dialogue summarization |
 | ADVENTURE_SUMMARY_MODEL | gpt-4.1-mini-2025-04-14 | 4 | T015,T016,T018,T019 | Adventure summary, cumulative summary |
 | PLOT_UPDATE_MODEL | gpt-4.1-mini-2025-04-14 | 1 | ~~T077~~(DONE) | Plot state updates |
 | PLAYER_INFO_UPDATE_MODEL | gpt-4.1-mini-2025-04-14 | 1 | ~~T079~~(DONE) | Player character data updates (dynamic selection) |
-| NPC_INFO_UPDATE_MODEL | gpt-4.1-mini-2025-04-14 | 2 | T014,T091 | NPC data updates, location state reconciliation |
+| NPC_INFO_UPDATE_MODEL | gpt-4.1-mini-2025-04-14 | 2 | ~~T014~~(DONE),~~T091~~(DONE) | NPC data updates, location state reconciliation |
 | ENCOUNTER_UPDATE_MODEL | gpt-4.1-mini-2025-04-14 | 1 | ~~T081~~(DONE) | Encounter data updates |
 | TRANSITION_VALIDATOR_MODEL | gpt-4.1-mini-2025-04-14 | 1 | ~~T021~~(DONE) | Location transition validation |
 
