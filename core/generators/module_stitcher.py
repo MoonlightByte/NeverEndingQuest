@@ -383,6 +383,8 @@ Examples:
 - "Word of strange happenings draws the adventurers northward, where rumors speak of..."
 - "Following ancient trade routes, the party arrives at a region where..."
 
+Use only standard ASCII characters in all text -- no smart quotes, no em-dashes, no Unicode. Use straight quotes and regular dashes only.
+
 Return JSON with:
 {
   "travelNarration": "atmospheric description for players",

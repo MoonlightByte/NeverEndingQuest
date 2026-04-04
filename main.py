@@ -1724,7 +1724,7 @@ Write a compelling chronicle of these actual events:"""
 
                 response = capture_and_fanout("T066", client.chat.completions.create,
                     messages=[
-                        {"role": "system", "content": "You are an expert at creating beautiful adventure chronicles from 5th edition gameplay, focusing only on events that actually occurred."},
+                        {"role": "system", "content": "You are an expert at creating beautiful adventure chronicles from 5th edition gameplay, focusing only on events that actually occurred. Do NOT use markdown formatting (no **, no ###, no bullet points). Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode."},
                         {"role": "user", "content": summary_prompt}
                     ],
                     model=config.DM_SUMMARIZATION_MODEL,
@@ -1735,7 +1735,7 @@ Write a compelling chronicle of these actual events:"""
                 try:
                     from utils.api_logger import log_api_call
                     log_api_call("module_summary", [
-                        {"role": "system", "content": "You are an expert at creating beautiful adventure chronicles from 5th edition gameplay, focusing only on events that actually occurred."},
+                        {"role": "system", "content": "You are an expert at creating beautiful adventure chronicles from 5th edition gameplay, focusing only on events that actually occurred. Do NOT use markdown formatting (no **, no ###, no bullet points). Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode."},
                         {"role": "user", "content": summary_prompt}
                     ], response, metadata={"temperature": 0.7, "module": module_name})
                 except Exception as e:

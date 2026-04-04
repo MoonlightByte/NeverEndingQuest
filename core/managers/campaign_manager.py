@@ -505,7 +505,9 @@ Equally sacred are the intimate details that make each character a complete pers
 
 Then weave ALL of these throughout your chronicle. Use them liberally. When you write "Eirik turned to Kira," you have failed if there was a moment where he called her something more intimate. When you describe a rest, you have failed if you don't mention how someone always sleeps with their weapon, or needs three cups of tea to be civil in the morning. These details are how we know these are real people with real relationships, not just character classes moving through a plot.
 
-If the conversation doesn't explicitly state these details but the character's actions suggest them, you MUST extrapolate. Did someone always volunteer for night watch? Perhaps they have insomnia or nightmares. Did someone always suggest taverns? Perhaps they have a weakness for good ale or a fear of sleeping outdoors. Your sacred duty is to see beyond the actions to the person underneath."""
+If the conversation doesn't explicitly state these details but the character's actions suggest them, you MUST extrapolate. Did someone always volunteer for night watch? Perhaps they have insomnia or nightmares. Did someone always suggest taverns? Perhaps they have a weakness for good ale or a fear of sleeping outdoors. Your sacred duty is to see beyond the actions to the person underneath.
+
+FORMATTING RULES: Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode. Use straight quotes (') and regular dashes (-) only. Do NOT use markdown formatting (no **, no ###, no bullet points)."""
         
         # Prepare plot data summary
         plot_summary = ""
