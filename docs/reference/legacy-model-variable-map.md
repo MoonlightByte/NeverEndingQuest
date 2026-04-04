@@ -30,7 +30,7 @@
 |---|---|---|---|---|
 | DM_MINI_MODEL | gpt-4.1-mini-2025-04-14 | 10 | T042,T043,T083,T087,T088,T089,T090,T093,T094,T095 | Simple conversations, combat fallback, utilities, web UI |
 | DM_SUMMARIZATION_MODEL | gpt-4.1-mini-2025-04-14 | 5 | T030,T032,T033,T038,T066 | Module stitching, campaign export, response summarization |
-| NARRATIVE_COMPRESSION_MODEL | gpt-4.1-mini-2025-04-14 | 3 | ~~T017~~(DONE),~~T020~~(DONE),T084 | Narrative/combat/incremental compression |
+| NARRATIVE_COMPRESSION_MODEL | gpt-4.1-mini-2025-04-14 | 3 | ~~T017~~(DONE),~~T020~~(DONE),~~T084~~(DONE) | Narrative/combat/incremental compression |
 | COMBAT_DIALOGUE_SUMMARY_MODEL | gpt-4.1-mini-2025-04-14 | 1 | T041 | Combat dialogue summarization |
 | ADVENTURE_SUMMARY_MODEL | gpt-4.1-mini-2025-04-14 | 4 | T015,T016,T018,T019 | Adventure summary, cumulative summary |
 | PLOT_UPDATE_MODEL | gpt-4.1-mini-2025-04-14 | 1 | ~~T077~~(DONE) | Plot state updates |
