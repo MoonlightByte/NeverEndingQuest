@@ -120,16 +120,15 @@ import subprocess
 from model_config import USE_COMPRESSED_COMBAT
 from datetime import datetime
 from utils.xp import main as calculate_xp
-from openai import OpenAI
 from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T040", "core/managers/combat_manager.py", 796)
-register_callsite("T041", "core/managers/combat_manager.py", 1037)
-register_callsite("T042", "core/managers/combat_manager.py", 1836)
-register_callsite("T043", "core/managers/combat_manager.py", 2233)
-register_callsite("T044", "core/managers/combat_manager.py", 2330)
-register_callsite("T045", "core/managers/combat_manager.py", 2882)
+register_callsite("T040", "core/managers/combat_manager.py", 787)
+register_callsite("T041", "core/managers/combat_manager.py", 1028)
+register_callsite("T042", "core/managers/combat_manager.py", 1841)
+register_callsite("T043", "core/managers/combat_manager.py", 2243)
+register_callsite("T044", "core/managers/combat_manager.py", 2340)
+register_callsite("T045", "core/managers/combat_manager.py", 2892)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -144,10 +143,6 @@ except Exception as e:
 # Import model configurations from config.py
 from config import (
     OPENAI_API_KEY,
-    # Use the existing validation model instead of COMBAT_VALIDATION_MODEL
-    DM_VALIDATION_MODEL,
-    COMBAT_DIALOGUE_SUMMARY_MODEL,
-    DM_MINI_MODEL
 )
 from updates.update_character_info import update_character_info, normalize_character_name
 import updates.update_encounter as update_encounter
@@ -218,9 +213,6 @@ def get_combat_temperature(encounter_data, validation_attempt=0):
         print(f"[COMBAT_MANAGER] Lowering temperature from {base_temp:.1f} to {final_temp} after validation failure (attempt {validation_attempt + 1})")
     
     return final_temp
-
-# OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 conversation_history_file = "modules/conversation_history/combat_conversation_history.json"
 second_model_history_file = "modules/conversation_history/second_model_history.json"
@@ -1835,18 +1827,33 @@ CRITICAL RULES:
 - For narrative_highlights, extract the most dramatic moments. Keep each highlight to one evocative sentence.
 - Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."""
 
-        # Use the mini model for efficiency
-        response = capture_and_fanout("T042", client.chat.completions.create, messages=[
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
+        elif MODEL_PROVIDER == "gemini":
+            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
+        elif MODEL_PROVIDER == "lmstudio":
+            mini_cfg = config.MINI_UTIL_LMSTUDIO
+        else:  # legacy
+            mini_cfg = config.MINI_UTIL_LEGACY
+
+        response = capture_and_fanout("T042", api_client.create_completion,
+            messages=[
                 {"role": "system", "content": "You are a combat log analyzer. Extract mechanical game information and key narrative moments. Always return valid JSON."},
                 {"role": "user", "content": prompt}
-            ], model=DM_MINI_MODEL, temperature=0.1, response_format={"type": "json_object"})
+            ],
+            model=mini_cfg["model"],
+            temperature=0.1,
+            response_format={"type": "json_object"},
+            **{k: v for k, v in mini_cfg.items() if k != "model"})
         
         # Track usage with context for telemetry
         if USAGE_TRACKING_AVAILABLE:
             try:
                 from utils.openai_usage_tracker import get_global_tracker
                 tracker = get_global_tracker()
-                tracker.track(response, context={'endpoint': 'combat_dm', 'purpose': 'combat_turn_processing', 'model': selected_model})
+                tracker.track(response, context={'endpoint': 'combat_dm', 'purpose': 'combat_round_summary', 'model': mini_cfg["model"]})
             except:
                 pass
         
