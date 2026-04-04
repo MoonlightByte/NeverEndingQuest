@@ -52,10 +52,11 @@
 import json
 import os
 from datetime import datetime
-from openai import OpenAI
+from core.ai import api_client
+import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T018", "core/ai/cumulative_summary.py", 284)
-register_callsite("T019", "core/ai/cumulative_summary.py", 554)
+register_callsite("T018", "core/ai/cumulative_summary.py", 293)
+register_callsite("T019", "core/ai/cumulative_summary.py", 578)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -64,7 +65,6 @@ try:
 except:
     USAGE_TRACKING_AVAILABLE = False
     def track_response(r): pass
-from config import OPENAI_API_KEY, ADVENTURE_SUMMARY_MODEL
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_write_json, safe_read_json
 from utils.encoding_utils import sanitize_text, safe_json_load, safe_json_dump
@@ -75,7 +75,6 @@ from utils.enhanced_logger import debug, info, warning, error, set_script_name
 set_script_name("cumulative_summary")
 
 TEMPERATURE = 0.8
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 def debug_print(text, log_to_file=True):
     """Print debug message and optionally log to file"""
@@ -281,7 +280,22 @@ Use past tense and third person. Be vivid, specific, and emotional where appropr
     ]
     
     try:
-        response = capture_and_fanout("T018", client.chat.completions.create, messages=messages, model=ADVENTURE_SUMMARY_MODEL, temperature=TEMPERATURE)
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            adv_config = config.ADV_SUMM_GPT54MINI_NONE
+        elif MODEL_PROVIDER == "gemini":
+            adv_config = config.ADV_SUMM_GEMINI_FLASH_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            adv_config = config.ADV_SUMM_LMSTUDIO
+        else:  # legacy
+            adv_config = config.ADV_SUMM_LEGACY
+
+        response = capture_and_fanout("T018", api_client.create_completion,
+            messages=messages,
+            model=adv_config["model"],
+            temperature=TEMPERATURE,
+            response_format=None,
+            **{k: v for k, v in adv_config.items() if k != "model"})
 
         # Track usage if available
         if USAGE_TRACKING_AVAILABLE:
@@ -551,7 +565,22 @@ Keep the narrative engaging but factual. Use only standard ASCII characters -- n
         ]
         
         try:
-            response = capture_and_fanout("T019", client.chat.completions.create, messages=messages, model=ADVENTURE_SUMMARY_MODEL, temperature=TEMPERATURE)
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                adv_config = config.ADV_SUMM_GPT54MINI_NONE
+            elif MODEL_PROVIDER == "gemini":
+                adv_config = config.ADV_SUMM_GEMINI_FLASH_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                adv_config = config.ADV_SUMM_LMSTUDIO
+            else:  # legacy
+                adv_config = config.ADV_SUMM_LEGACY
+
+            response = capture_and_fanout("T019", api_client.create_completion,
+                messages=messages,
+                model=adv_config["model"],
+                temperature=TEMPERATURE,
+                response_format=None,
+                **{k: v for k, v in adv_config.items() if k != "model"})
 
             # Track usage if available
             if USAGE_TRACKING_AVAILABLE:
