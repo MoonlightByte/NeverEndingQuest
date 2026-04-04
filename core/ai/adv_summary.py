@@ -428,7 +428,7 @@ Do NOT:
 - Include any JSON, schemas, or DM notes.
 - Editorialize or guess what characters were thinking beyond observable behavior.
 
-Your writing should feel immersive, literary, and grounded—like a historical entry capturing a poignant moment in time."""
+Your writing should feel immersive, literary, and grounded -- like a historical entry capturing a poignant moment in time. Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode. Do NOT use markdown formatting (no **, no ###, no bullet points)."""
         },
         {"role": "user", "content": "Summarize this conversation per instructions:"},
         *conversation_history_data

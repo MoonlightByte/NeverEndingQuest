@@ -275,7 +275,7 @@ Your summary should capture the following, as specifically as possible:
 7. Interpersonal moments—conflict, bonding, romantic tension, loyalty shifts, leadership, etc.
 8. Any event that would leave a lasting memory for a character or NPC (such as a heroic act, death, reconciliation, or symbolic gesture)
 
-Use past tense and third person. Be vivid, specific, and emotional where appropriate. Focus on what actually happened—not what might happen. Avoid generic phrases. Prioritize character-driven consequences and story-critical developments. Include emotional tone, narrative closure, and forward momentum for what might come next."""
+Use past tense and third person. Be vivid, specific, and emotional where appropriate. Focus on what actually happened -- not what might happen. Avoid generic phrases. Prioritize character-driven consequences and story-critical developments. Include emotional tone, narrative closure, and forward momentum for what might come next. Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode. Do NOT use markdown formatting (no **, no ###, no bullet points)."""
 },
         {"role": "user", "content": dialogue}
     ]
@@ -546,7 +546,7 @@ def generate_enhanced_adventure_summary(conversation_history_data, party_tracker
 - Decisions made and their immediate consequences
 - State of the party when leaving
 
-Keep the narrative engaging but factual."""},
+Keep the narrative engaging but factual. Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode. Do NOT use markdown formatting (no **, no ###, no bullet points)."""},
             {"role": "user", "content": f"Original summary: {summary}\n\nPlease expand this into a comprehensive journal entry."}
         ]
         
