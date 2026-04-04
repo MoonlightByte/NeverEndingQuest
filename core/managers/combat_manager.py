@@ -127,7 +127,7 @@ from utils.capture.multi_model_capture import capture_and_fanout, register_calls
 register_callsite("T040", "core/managers/combat_manager.py", 796)
 register_callsite("T041", "core/managers/combat_manager.py", 1037)
 register_callsite("T042", "core/managers/combat_manager.py", 1836)
-register_callsite("T043", "core/managers/combat_manager.py", 2232)
+register_callsite("T043", "core/managers/combat_manager.py", 2233)
 register_callsite("T044", "core/managers/combat_manager.py", 2351)
 register_callsite("T045", "core/managers/combat_manager.py", 2894)
 
@@ -2214,56 +2214,35 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
            debug("RESUME: Requesting AI re-engagement response", category="combat_events")
            print("DEBUG: [RESUME] About to call AI for re-engagement")
            # Use base temperature for re-engagement (no validation failures)
-           # Import provider config
+           # Select model config per provider
            from model_config import MODEL_PROVIDER
-
            if MODEL_PROVIDER == "openai":
-               # OpenAI next-gen: Use mini model for re-engagement (resolved by set_provider)
-               from config import DM_MINI_MODEL
-               print(f"DEBUG: [COMBAT RE-ENGAGE] Using OpenAI next-gen model: {DM_MINI_MODEL}")
-               # Compress conversation history before sending to AI
-               messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
+               combat_config = config.COMBAT_MAIN_GPT54_NONE
+           elif MODEL_PROVIDER == "gemini":
+               combat_config = config.COMBAT_MAIN_GEMINI_PRO_LOW
+           elif MODEL_PROVIDER == "lmstudio":
+               combat_config = config.COMBAT_MAIN_LMSTUDIO
+           else:  # legacy
+               combat_config = config.COMBAT_MAIN_LEGACY
 
-               # Export compressed conversation for review
-               with open("debug/api_captures/combat_messages_to_api.json", "w", encoding="utf-8") as f:
-                   json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
-               print(f"DEBUG: [COMBAT] Exported compressed messages to debug/api_captures/combat_messages_to_api.json")
+           temperature_used = get_combat_temperature(encounter_data, validation_attempt=0)
 
-               response = capture_and_fanout("T043", client.chat.completions.create, messages=messages_to_send, model=DM_MINI_MODEL)
+           # Compress conversation history before sending to AI
+           messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
 
-               # Log API call to master log
-               try:
-                   from utils.api_logger import log_api_call
-                   log_api_call("combat", messages_to_send, response,
-                               metadata={"branch": "openai", "context": "re-engage"})
-               except Exception as e:
-                   print(f"[API_LOG] Warning: Failed to log combat call: {e}")
-           else:
-               # Legacy (GPT-4.1) or other providers: Use temperature
-               temperature_used = get_combat_temperature(encounter_data, validation_attempt=0)
+           response = capture_and_fanout("T043", api_client.create_completion,
+               messages=messages_to_send,
+               model=combat_config["model"],
+               temperature=temperature_used,
+               **{k: v for k, v in combat_config.items() if k != "model"})
 
-               print(f"DEBUG: [COMBAT RE-ENGAGE] Using model: {COMBAT_MAIN_MODEL} (temp: {temperature_used}, provider: {MODEL_PROVIDER})")
-               # Compress conversation history before sending to AI
-               messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-
-               # Export compressed conversation for review
-               with open("debug/api_captures/combat_messages_to_api.json", "w", encoding="utf-8") as f:
-                   json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
-               print(f"DEBUG: [COMBAT] Exported compressed messages to debug/api_captures/combat_messages_to_api.json")
-
-               response = client.chat.completions.create(
-                   model=COMBAT_MAIN_MODEL,
-                   temperature=temperature_used,
-                   messages=messages_to_send
-               )
-
-               # Log API call to master log
-               try:
-                   from utils.api_logger import log_api_call
-                   log_api_call("combat", messages_to_send, response,
-                               metadata={"temperature": temperature_used, "branch": MODEL_PROVIDER, "context": "re-engage"})
-               except Exception as e:
-                   print(f"[API_LOG] Warning: Failed to log combat call: {e}")
+           # Log API call to master log
+           try:
+               from utils.api_logger import log_api_call
+               log_api_call("combat", messages_to_send, response,
+                           metadata={"temperature": temperature_used, "branch": MODEL_PROVIDER, "context": "re-engage"})
+           except Exception as e:
+               print(f"[API_LOG] Warning: Failed to log combat call: {e}")
 
            # Track usage if available
            if USAGE_TRACKING_AVAILABLE:
