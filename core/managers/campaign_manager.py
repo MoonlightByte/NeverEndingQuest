@@ -72,9 +72,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from openai import OpenAI
+from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T038", "core/managers/campaign_manager.py", 539)
-register_callsite("T039", "core/managers/campaign_manager.py", 561)
+register_callsite("T038", "core/managers/campaign_manager.py", 552)
+register_callsite("T039", "core/managers/campaign_manager.py", 579)
 import config
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.module_path_manager import ModulePathManager
@@ -538,10 +539,25 @@ CONVERSATION CONTEXT:
 Focus on story outcomes, character development, and decisions that will matter in future adventures."""
         
         try:
-            response = capture_and_fanout("T038", self.client.chat.completions.create, messages=[
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                summ_config = config.DM_SUMM_GPT54MINI_NONE
+            elif MODEL_PROVIDER == "gemini":
+                summ_config = config.DM_SUMM_GEMINI_FLASH_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                summ_config = config.DM_SUMM_LMSTUDIO
+            else:  # legacy
+                summ_config = config.DM_SUMM_LEGACY
+
+            response = capture_and_fanout("T038", api_client.create_completion,
+                messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
-                ], model=config.DM_SUMMARIZATION_MODEL, temperature=0.6)
+                ],
+                model=summ_config["model"],
+                temperature=0.6,
+                response_format=None,
+                **{k: v for k, v in summ_config.items() if k != "model"})
             
             summary_text = response.choices[0].message.content
             
