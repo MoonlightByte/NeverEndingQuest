@@ -373,6 +373,17 @@ COMBAT_SUMMARY_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_
 COMBAT_SUMMARY_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 COMBAT_SUMMARY_LMSTUDIO = {"model": "local-model"}
 
+# --- T030/T032/T033/T038/T066: DM Summarization (parsing, narration, safety, summaries) ---
+# 24/24 synthetic tests passed. Mini-tier (DM_SUMMARIZATION_MODEL).
+# T030: narrative parsing (JSON, temp=0.3). T032: travel narration (JSON, temp=0.8).
+# T033: content safety (JSON, temp=0.1). T038: campaign saga (plain text, temp=0.6).
+# T066: transition summary (plain text, temp=0.7).
+# T038/T066 use response_format=None at callsite (plain text, not JSON).
+DM_SUMM_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
+DM_SUMM_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
+DM_SUMM_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+DM_SUMM_LMSTUDIO = {"model": "local-model"}
+
 # ----- T085 Location Compression -----
 # Compresses location JSON into token-based @-tag format for runtime context.
 # Full-tier callsite, temperature=0.1, PLAIN TEXT output (response_format=None).
