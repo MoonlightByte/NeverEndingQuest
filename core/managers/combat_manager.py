@@ -128,7 +128,7 @@ register_callsite("T040", "core/managers/combat_manager.py", 796)
 register_callsite("T041", "core/managers/combat_manager.py", 1037)
 register_callsite("T042", "core/managers/combat_manager.py", 1836)
 register_callsite("T043", "core/managers/combat_manager.py", 2232)
-register_callsite("T044", "core/managers/combat_manager.py", 2345)
+register_callsite("T044", "core/managers/combat_manager.py", 2351)
 register_callsite("T045", "core/managers/combat_manager.py", 2894)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
@@ -2328,21 +2328,31 @@ Player: {initial_prompt_text}"""
        max_retries = 3
        initial_response = None
        initial_conversation_length = len(conversation_history)
-       
+
+       # Select model config per provider (before retry loop)
+       from model_config import MODEL_PROVIDER
+       if MODEL_PROVIDER == "openai":
+           combat_config = config.COMBAT_MAIN_GPT54_NONE
+       elif MODEL_PROVIDER == "gemini":
+           combat_config = config.COMBAT_MAIN_GEMINI_PRO_LOW
+       elif MODEL_PROVIDER == "lmstudio":
+           combat_config = config.COMBAT_MAIN_LMSTUDIO
+       else:  # legacy
+           combat_config = config.COMBAT_MAIN_LEGACY
+
        for attempt in range(max_retries):
            try:
                # Calculate temperature with attempt number for dynamic adjustment
                temperature_used = get_combat_temperature(encounter_data, validation_attempt=attempt)
-               
+
                # Compress conversation history before sending to AI
                messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
-               
-               # Export compressed conversation for review
-               with open("debug/api_captures/combat_messages_to_api.json", "w", encoding="utf-8") as f:
-                   json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
-               print(f"DEBUG: [COMBAT] Exported compressed messages to debug/api_captures/combat_messages_to_api.json")
-               
-               response = capture_and_fanout("T044", client.chat.completions.create, messages=messages_to_send, model=COMBAT_MAIN_MODEL, temperature=temperature_used)
+
+               response = capture_and_fanout("T044", api_client.create_completion,
+                   messages=messages_to_send,
+                   model=combat_config["model"],
+                   temperature=temperature_used,
+                   **{k: v for k, v in combat_config.items() if k != "model"})
                
                # Track usage
                if USAGE_TRACKING_AVAILABLE:
