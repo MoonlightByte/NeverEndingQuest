@@ -77,12 +77,13 @@ import codecs
 import glob
 import time
 from openai import OpenAI
+from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T063", "main.py", 316)
 register_callsite("T064", "main.py", 393)
-register_callsite("T065", "main.py", 1227)
-register_callsite("T066", "main.py", 1713)
-register_callsite("T067", "main.py", 2338)
+register_callsite("T065", "main.py", 1239)
+register_callsite("T066", "main.py", 1731)
+register_callsite("T067", "main.py", 2352)
 register_callsite("T068", "main.py", 2316)
 from datetime import datetime, timedelta
 from termcolor import colored
@@ -150,7 +151,6 @@ set_script_name(__name__)
 from config import (
     OPENAI_API_KEY,
     DM_MAIN_MODEL,
-    DM_SUMMARIZATION_MODEL,
     DM_VALIDATION_MODEL
 )
 
@@ -1691,18 +1691,14 @@ def generate_module_summary(conversation_history, party_tracker_data, module_nam
         # If we have substantial conversation, generate AI summary from actual gameplay
         if len(meaningful_messages) >= 3:
             try:
-                from openai import OpenAI
                 import config
-                
+
                 # Prepare conversation for summarization
                 conversation_text = ""
                 for msg in meaningful_messages:  # All meaningful messages from this module
                     role = "Player" if msg.get("role") == "user" else "DM"
                     content = msg.get("content", "")
                     conversation_text += f"{role}: {content}\n\n"
-                
-                # Generate summary using AI
-                client = OpenAI(api_key=config.OPENAI_API_KEY)
                 
                 summary_prompt = f"""You are creating an adventure chronicle for a 5th edition session. Summarize this actual gameplay conversation from the {module_name} module into a compelling narrative story.
 
@@ -1722,14 +1718,25 @@ ACTUAL GAMEPLAY CONVERSATION:
 
 Write a compelling chronicle of these actual events:"""
 
-                response = capture_and_fanout("T066", client.chat.completions.create,
+                from model_config import MODEL_PROVIDER
+                if MODEL_PROVIDER == "openai":
+                    summ_config = config.DM_SUMM_GPT54MINI_NONE
+                elif MODEL_PROVIDER == "gemini":
+                    summ_config = config.DM_SUMM_GEMINI_FLASH_LOW
+                elif MODEL_PROVIDER == "lmstudio":
+                    summ_config = config.DM_SUMM_LMSTUDIO
+                else:  # legacy
+                    summ_config = config.DM_SUMM_LEGACY
+
+                response = capture_and_fanout("T066", api_client.create_completion,
                     messages=[
                         {"role": "system", "content": "You are an expert at creating beautiful adventure chronicles from 5th edition gameplay, focusing only on events that actually occurred. Do NOT use markdown formatting (no **, no ###, no bullet points). Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode."},
                         {"role": "user", "content": summary_prompt}
                     ],
-                    model=config.DM_SUMMARIZATION_MODEL,
-                    temperature=0.7
-                )
+                    model=summ_config["model"],
+                    temperature=0.7,
+                    response_format=None,
+                    **{k: v for k, v in summ_config.items() if k != "model"})
 
                 # Log API call to master log
                 try:
