@@ -50,7 +50,7 @@ from utils.npc_reconciler import NpcReconciler
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T028", "core/generators/module_builder.py", 674)
 register_callsite("T029", "core/generators/module_builder.py", 926)
-register_callsite("T030", "core/generators/module_builder.py", 1423)
+register_callsite("T030", "core/generators/module_builder.py", 1426)
 
 # Set script name for logging
 set_script_name("module_builder")
@@ -1355,11 +1355,9 @@ def parse_narrative_to_module_params(narrative: str) -> Dict[str, Any]:
     Returns:
         Dict containing parsed module parameters
     """
-    from openai import OpenAI
+    from core.ai import api_client
     import config
-    
-    client = OpenAI(api_key=config.OPENAI_API_KEY)
-    
+
     parsing_prompt = """You are a module configuration parser for the world's most popular 5th edition tabletop role-playing game. Extract adventure module parameters from a narrative description.
 
 Look for these elements in the narrative text:
@@ -1411,13 +1409,28 @@ Return ONLY the JSON object, no explanations or additional text."""
     
     max_retries = 3
     current_prompt = parsing_prompt
-    
+
+    # Select model config per provider (before retry loop)
+    from model_config import MODEL_PROVIDER
+    if MODEL_PROVIDER == "openai":
+        summ_config = config.DM_SUMM_GPT54MINI_NONE
+    elif MODEL_PROVIDER == "gemini":
+        summ_config = config.DM_SUMM_GEMINI_FLASH_LOW
+    elif MODEL_PROVIDER == "lmstudio":
+        summ_config = config.DM_SUMM_LMSTUDIO
+    else:  # legacy
+        summ_config = config.DM_SUMM_LEGACY
+
     for attempt in range(max_retries):
         try:
-            response = capture_and_fanout("T030", client.chat.completions.create, messages=[
+            response = capture_and_fanout("T030", api_client.create_completion,
+                messages=[
                     {"role": "system", "content": current_prompt},
                     {"role": "user", "content": f"Parse this module narrative:\n\n{narrative}"}
-                ], model=config.DM_SUMMARIZATION_MODEL, temperature=0.3)
+                ],
+                model=summ_config["model"],
+                temperature=0.3,
+                **{k: v for k, v in summ_config.items() if k != "model"})
             
             result = response.choices[0].message.content.strip()
             # Clean up potential code blocks
