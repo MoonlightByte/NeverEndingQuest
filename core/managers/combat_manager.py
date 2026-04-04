@@ -1818,8 +1818,8 @@ Create a JSON summary with EXACTLY this structure:
   "actions": [
     {{"actor": "name", "init": number, "action": "action_type", "target": "target_name", "roll": "dice+mod=total vs AC/DC", "result": "hit/miss/save/fail", "damage": "X type" or "heal": "X", "effects": "HP changes, conditions, etc"}}
   ],
-  "deaths": ["list of creatures that died this round"],
-  "status_changes": ["new conditions or effects applied"],
+  "deaths": ["ALL creatures with HP 0 or listed as dead in the creature states -- include every dead creature regardless of when they died"],
+  "status_changes": ["new conditions or effects applied this round"],
   "resource_usage": {{"character": "resources used (spell slots, abilities, etc)"}},
   "narrative_highlights": ["2-4 evocative single sentences capturing key dramatic moments, critical hits, deaths, powerful spells, or memorable character actions"],
   "round_end_state": {{
@@ -1829,7 +1829,11 @@ Create a JSON summary with EXACTLY this structure:
   }}
 }}
 
-Focus on mechanical accuracy for the actions. For narrative_highlights, extract the most dramatic or memorable moments that happened this round - critical hits, character deaths, powerful spells, clutch saves, or impactful dialogue. Keep each highlight to one evocative sentence."""
+CRITICAL RULES:
+- The "deaths" array MUST include every creature shown as dead or at 0 HP in the creature states, even if they died in a prior round. This is a complete death list for state tracking.
+- Focus on mechanical accuracy for the actions -- exact roll values, damage numbers, and HP totals.
+- For narrative_highlights, extract the most dramatic moments. Keep each highlight to one evocative sentence.
+- Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."""
 
         # Use the mini model for efficiency
         response = capture_and_fanout("T042", client.chat.completions.create, messages=[
