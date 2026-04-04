@@ -13,19 +13,10 @@ import sys
 import re
 from typing import Dict, Any, List
 from pathlib import Path
-from openai import OpenAI
+from core.ai import api_client
+import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T084", "utils/compression/ai_narrative_compressor_agentic.py", 230)
-
-# Load API configuration
-try:
-    import config
-    from model_config import NARRATIVE_COMPRESSION_MODEL
-    client = OpenAI(api_key=config.OPENAI_API_KEY)
-except ImportError as e:
-    print(f"ERROR: Missing configuration file - {e}")
-    print("Please ensure both config.py (with OPENAI_API_KEY) and model_config.py exist")
-    sys.exit(1)
+register_callsite("T084", "utils/compression/ai_narrative_compressor_agentic.py", 235)
 
 # Import token tracking
 try:
@@ -230,10 +221,22 @@ def compress_with_ai(narrative: str, canon: Dict[str, Any] = None, mode: str = "
                     "instruction": "Re-emit fixing the format issue. Ensure exactly one EVT block."
                 })})
             
-            response = capture_and_fanout("T084", client.chat.completions.create, messages=messages, model=NARRATIVE_COMPRESSION_MODEL,
+            # Select model config per provider
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                compress_config = config.AGENTIC_COMPRESS_GPT54MINI_NONE
+            elif MODEL_PROVIDER == "gemini":
+                compress_config = config.AGENTIC_COMPRESS_GEMINI_PRO_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                compress_config = config.AGENTIC_COMPRESS_LMSTUDIO
+            else:  # legacy
+                compress_config = config.AGENTIC_COMPRESS_LEGACY
+
+            response = capture_and_fanout("T084", api_client.create_completion,
+                messages=messages,
+                model=compress_config["model"],
                 temperature=0.1,
-                top_p=1
-            )
+                **{k: v for k, v in compress_config.items() if k != "model"})
             
             # Track token usage
             if USAGE_TRACKING_AVAILABLE:

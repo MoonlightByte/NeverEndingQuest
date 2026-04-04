@@ -358,6 +358,16 @@ NARR_COMPRESS_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinki
 NARR_COMPRESS_LEGACY = {"model": "gpt-4.1-mini-2025-04-14", "response_format": None}
 NARR_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
 
+# ----- T084 Agentic EVT Compression -----
+# Compresses narrative into structured JSON with codebook + EVT beats.
+# Mini-tier callsite, temperature=0.1, JSON output (default mode).
+# gpt-5.4-mini|none = 4.0/5 avg, 2.1s. gemini-pro|low = 3.7/5, 10.9s.
+# Gemini-flash NOT viable (too shallow on detail retention).
+AGENTIC_COMPRESS_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
+AGENTIC_COMPRESS_GEMINI_PRO_LOW = {"model": "gemini-3-pro-preview", "thinking_level": "low"}
+AGENTIC_COMPRESS_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+AGENTIC_COMPRESS_LMSTUDIO = {"model": "local-model"}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures
