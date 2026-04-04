@@ -12,11 +12,10 @@ Uses AI to convert DM-oriented quest descriptions into immersive player-friendly
 import json
 import os
 from datetime import datetime
-from openai import OpenAI
-from config import OPENAI_API_KEY
+from core.ai import api_client
+import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T090", "utils/quest_player_formatter.py", 83)
-from model_config import DM_MINI_MODEL
+register_callsite("T090", "utils/quest_player_formatter.py", 92)
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -25,10 +24,7 @@ from utils.encoding_utils import sanitize_text
 # Set script name for logging
 set_script_name("quest_player_formatter")
 
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-# Constants - model is imported from model_config
+# Constants
 TEMPERATURE = 0.3
 MAX_RETRIES = 3
 
@@ -43,6 +39,7 @@ CRITICAL RULES:
 6. Make it sound like a quest journal entry, not a module description
 7. Preserve important details like NPC names, locations, and objectives
 8. Keep descriptions concise but flavorful (1-3 sentences ideal)
+9. Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols. Use straight quotes and double hyphens instead.
 
 FORMATTING GUIDELINES:
 - Main quests: Clear objective + atmospheric context
@@ -81,13 +78,25 @@ def format_quest_batch(quests_to_format):
         user_prompt = f"Reformat these quest descriptions into player-friendly journal entries:\n\n{json.dumps(quest_input, indent=2)}"
         
         debug(f"AI_REQUEST: Sending {len(quest_input)} quests for reformatting", category="quest_formatting")
-        
-        response = capture_and_fanout("T090", client.chat.completions.create, messages=[
+
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
+        elif MODEL_PROVIDER == "gemini":
+            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
+        elif MODEL_PROVIDER == "lmstudio":
+            mini_cfg = config.MINI_UTIL_LMSTUDIO
+        else:  # legacy
+            mini_cfg = config.MINI_UTIL_LEGACY
+
+        response = capture_and_fanout("T090", api_client.create_completion,
+            messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
-            ], model=DM_MINI_MODEL,
-            temperature=TEMPERATURE
-        )
+            ],
+            model=mini_cfg["model"],
+            temperature=TEMPERATURE,
+            **{k: v for k, v in mini_cfg.items() if k != "model"})
         
         ai_response = response.choices[0].message.content.strip()
         

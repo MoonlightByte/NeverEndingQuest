@@ -434,6 +434,15 @@ AGENTIC_COMPRESS_GEMINI_PRO_LOW = {"model": "gemini-3-pro-preview", "thinking_le
 AGENTIC_COMPRESS_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 AGENTIC_COMPRESS_LMSTUDIO = {"model": "local-model"}
 
+# --- T087/T088/T089/T090: DM_MINI_MODEL utility callsites ---
+# NPC name canon (T087), NPC merge confirm (T088), prompt sanitizer (T089), quest formatter (T090).
+# All mini-tier utility calls. Synthetic test: 12/12, 11/12, 5/5, 3/3 respectively.
+# gpt-5.4-mini|none: best overall accuracy. gemini-flash|minimal: best on sanitization.
+MINI_UTIL_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
+MINI_UTIL_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+MINI_UTIL_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+MINI_UTIL_LMSTUDIO = {"model": "local-model"}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures

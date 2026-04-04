@@ -4,20 +4,16 @@ Prompt sanitization for DALL-E content policy violations.
 Only used after a failure - no pre-processing.
 """
 
-from openai import OpenAI
+from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T089", "utils/prompt_sanitizer.py", 33)
-import re
-from model_config import DM_MINI_MODEL
+register_callsite("T089", "utils/prompt_sanitizer.py", 41)
 
 def sanitize_prompt(prompt: str) -> str:
     """
     Sanitize a prompt that was rejected by DALL-E.
-    Uses GPT-4-mini to clean problematic content while preserving narrative.
+    Uses AI to clean problematic content while preserving narrative.
     """
-    client = OpenAI(api_key=config.OPENAI_API_KEY)
-    
     sanitization_request = """You are a prompt sanitizer for DALL-E 3. The following prompt was rejected for content policy violations.
 
 Your task is to rewrite it to be safe while preserving the dark fantasy atmosphere. Make these replacements:
@@ -32,11 +28,24 @@ Original prompt: """ + prompt + """
 
 Return ONLY the sanitized prompt, no explanations."""
 
-    response = capture_and_fanout("T089", client.chat.completions.create, messages=[
+    from model_config import MODEL_PROVIDER
+    if MODEL_PROVIDER == "openai":
+        mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
+    elif MODEL_PROVIDER == "gemini":
+        mini_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
+    elif MODEL_PROVIDER == "lmstudio":
+        mini_cfg = config.MINI_UTIL_LMSTUDIO
+    else:  # legacy
+        mini_cfg = config.MINI_UTIL_LEGACY
+
+    response = capture_and_fanout("T089", api_client.create_completion,
+        messages=[
             {"role": "system", "content": "You are a prompt sanitizer. Return only the cleaned prompt text."},
             {"role": "user", "content": sanitization_request}
-        ], model=DM_MINI_MODEL,
-        temperature=0.3
-    )
-    
+        ],
+        model=mini_cfg["model"],
+        temperature=0.3,
+        response_format=None,
+        **{k: v for k, v in mini_cfg.items() if k != "model"})
+
     return response.choices[0].message.content.strip()

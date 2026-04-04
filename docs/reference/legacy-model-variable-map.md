@@ -15,7 +15,7 @@
 | DM_MAIN_MODEL | gpt-4.1-2025-04-14 | 17 | ~~T013~~(DONE),T022-T028,T031,T036,T037,~~T046~~(DONE),T059,T063,T064,T092 | Main DM narration, transitions, generators, stitching |
 | DM_FULL_MODEL | gpt-4.1-2025-04-14 | 0 dedicated | (used dynamically by ~~T067~~(DONE) via selected_model) | Complex actions requiring JSON operations |
 | DM_VALIDATION_MODEL | gpt-4.1-2025-04-14 | 3 | ~~T040~~(DONE),~~T048~~(DONE),~~T065~~(DONE) | AI response validation, combat validation |
-| COMBAT_MAIN_MODEL | gpt-4.1-2025-04-14 | 3 | T043,T044,T045 | Primary combat loop (T045 uses dynamic assignment) |
+| COMBAT_MAIN_MODEL | gpt-4.1-2025-04-14 | 3 | ~~T043~~(DONE),~~T044~~(DONE),~~T045~~(DONE) | Primary combat loop (T045 uses dynamic assignment) |
 | CHARACTER_VALIDATOR_MODEL | gpt-4.1-2025-04-14 | 5 (active) | ~~T050~~(DONE),~~T051~~(DONE),~~T052~~(DONE),~~T053~~(DONE),~~T054~~(DONE) | Character sheet validation (+4 in backup: T055-T058) |
 | NPC_BUILDER_MODEL | gpt-4.1-2025-04-14 | 1 | ~~T035~~(DONE) | NPC generation |
 | MONSTER_BUILDER_MODEL | gpt-4.1-2025-04-14 | 1 | ~~T034~~(DONE) | Monster generation |
@@ -28,11 +28,11 @@
 
 | Model Variable | Legacy Model | Callsite Count | Task IDs | Primary Usage |
 |---|---|---|---|---|
-| DM_MINI_MODEL | gpt-4.1-mini-2025-04-14 | 10 | T042,T043,T083,T087,T088,T089,T090,T093,T094,T095 | Simple conversations, combat fallback, utilities, web UI |
+| DM_MINI_MODEL | gpt-4.1-mini-2025-04-14 | 10 | T042,~~T043~~(DONE),T083,~~T087~~(DONE),~~T088~~(DONE),~~T089~~(DONE),~~T090~~(DONE),T093,T094,T095 | Simple conversations, combat fallback, utilities, web UI |
 | DM_SUMMARIZATION_MODEL | gpt-4.1-mini-2025-04-14 | 5 | ~~T030~~(DONE),~~T032~~(DONE),~~T033~~(DONE),~~T038~~(DONE),~~T066~~(DONE) | Module stitching, campaign export, response summarization |
 | NARRATIVE_COMPRESSION_MODEL | gpt-4.1-mini-2025-04-14 | 3 | ~~T017~~(DONE),~~T020~~(DONE),~~T084~~(DONE) | Narrative/combat/incremental compression |
 | COMBAT_DIALOGUE_SUMMARY_MODEL | gpt-4.1-mini-2025-04-14 | 1 | ~~T041~~(DONE) | Combat dialogue summarization |
-| ADVENTURE_SUMMARY_MODEL | gpt-4.1-mini-2025-04-14 | 4 | T015,T016,T018,T019 | Adventure summary, cumulative summary |
+| ADVENTURE_SUMMARY_MODEL | gpt-4.1-mini-2025-04-14 | 4 | ~~T015~~(DONE),~~T016~~(DONE),~~T018~~(DONE),~~T019~~(DONE) | Adventure summary, cumulative summary |
 | PLOT_UPDATE_MODEL | gpt-4.1-mini-2025-04-14 | 1 | ~~T077~~(DONE) | Plot state updates |
 | PLAYER_INFO_UPDATE_MODEL | gpt-4.1-mini-2025-04-14 | 1 | ~~T079~~(DONE) | Player character data updates (dynamic selection) |
 | NPC_INFO_UPDATE_MODEL | gpt-4.1-mini-2025-04-14 | 2 | ~~T014~~(DONE),~~T091~~(DONE) | NPC data updates, location state reconciliation |

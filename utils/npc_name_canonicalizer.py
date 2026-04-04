@@ -16,11 +16,10 @@ import json
 import os
 from pathlib import Path
 from typing import Dict, Optional
-import openai
+from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T087", "utils/npc_name_canonicalizer.py", 119)
-
-from model_config import DM_MINI_MODEL
+register_callsite("T087", "utils/npc_name_canonicalizer.py", 125)
+import config
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.enhanced_logger import debug, info, warning, error
 
@@ -100,38 +99,45 @@ def call_mini_model_for_name(full_name: str) -> str:
     Raises:
         Exception: If API call fails
     """
-    from config import OPENAI_API_KEY
-
-    # Initialize OpenAI client
-    client = openai.OpenAI(api_key=OPENAI_API_KEY)
-
     prompt = f"""Extract the person's actual first name from this D&D character name: '{full_name}'
 
 Examples:
-- "Sir Aldric Stoneheart" → "Aldric"
-- "James the Magnificent" → "James"
-- "Scout Kira" → "Kira"
-- "Brother Marcus of the Light" → "Marcus"
-- "Lady Elara Moonwhisper" → "Elara"
-- "Elder Dorun Ironforge" → "Dorun"
+- "Sir Aldric Stoneheart" -> "Aldric"
+- "James the Magnificent" -> "James"
+- "Scout Kira" -> "Kira"
+- "Brother Marcus of the Light" -> "Marcus"
+- "Lady Elara Moonwhisper" -> "Elara"
+- "Elder Dorun Ironforge" -> "Dorun"
 
 Return ONLY the first name, nothing else. No quotes, no explanation."""
 
     try:
-        response = capture_and_fanout("T087", client.chat.completions.create, messages=[
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
+        elif MODEL_PROVIDER == "gemini":
+            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
+        elif MODEL_PROVIDER == "lmstudio":
+            mini_cfg = config.MINI_UTIL_LMSTUDIO
+        else:  # legacy
+            mini_cfg = config.MINI_UTIL_LEGACY
+
+        response = capture_and_fanout("T087", api_client.create_completion,
+            messages=[
                 {"role": "system", "content": "You are a name extraction assistant. Extract only the person's actual first name from character names."},
                 {"role": "user", "content": prompt}
-            ], model=DM_MINI_MODEL,
+            ],
+            model=mini_cfg["model"],
             temperature=0.0,
-            max_tokens=20
-        )
+            response_format=None,
+            **{k: v for k, v in mini_cfg.items() if k != "model"})
 
         canonical = response.choices[0].message.content.strip()
 
         # Remove any quotes that might have been added
         canonical = canonical.strip('"\'')
 
-        debug(f"AI normalized '{full_name}' → '{canonical}'", category="name_normalization")
+        debug(f"AI normalized '{full_name}' -> '{canonical}'", category="name_normalization")
 
         return canonical
 

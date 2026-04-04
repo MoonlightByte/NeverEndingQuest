@@ -6,10 +6,10 @@ import re
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.module_context import ModuleContext
-from openai import OpenAI
+from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T088", "utils/npc_reconciler.py", 68)
+register_callsite("T088", "utils/npc_reconciler.py", 77)
 
 class NpcReconciler:
     """
@@ -21,8 +21,6 @@ class NpcReconciler:
         self.context_path = self.path_manager.get_context_path()
         self.context = None
         self.canonical_map = {}
-        # --- ADD THIS LINE ---
-        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
 
     def load_context(self):
         """Loads the module context and builds a map of all aliases to their canonical name."""
@@ -58,25 +56,36 @@ class NpcReconciler:
         print(f"WARNING: [NpcReconciler] Could not find canonical name for '{original_name}'. Using original.")
         return original_name
 
-    # --- ADD THIS NEW METHOD ---
     def _ai_confirm_merge(self, npc1_name: str, npc2_name: str) -> bool:
         """Uses a cheap AI call to confirm if two NPCs are the same entity."""
         prompt = f"""Are these two fantasy characters likely the same person, just described differently?
 - NPC 1: "{npc1_name}"
 - NPC 2: "{npc2_name}"
 
-Respond with JSON: {"answer": true} or {"answer": false}."""
+Respond with JSON: {{"answer": true}} or {{"answer": false}}."""
         try:
-            response = capture_and_fanout("T088", self.client.chat.completions.create, messages=[{"role": "user", "content": prompt}], model=config.DM_MINI_MODEL,
-                max_tokens=20,
-                temperature=0.0
-            )
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
+            elif MODEL_PROVIDER == "gemini":
+                mini_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
+            elif MODEL_PROVIDER == "lmstudio":
+                mini_cfg = config.MINI_UTIL_LMSTUDIO
+            else:  # legacy
+                mini_cfg = config.MINI_UTIL_LEGACY
+
+            response = capture_and_fanout("T088", api_client.create_completion,
+                messages=[{"role": "user", "content": prompt}],
+                model=mini_cfg["model"],
+                temperature=0.0,
+                response_format=None,
+                **{k: v for k, v in mini_cfg.items() if k != "model"})
             import json as _json
             result = _json.loads(response.choices[0].message.content)
             return result.get("answer", False)
         except Exception as e:
             print(f"WARNING: [NpcReconciler] AI merge confirmation failed: {e}")
-            return False # Default to not merging if AI fails
+            return False
 
     # --- ADD THIS NEW METHOD ---
     def _find_and_merge_semantic_duplicates(self):
