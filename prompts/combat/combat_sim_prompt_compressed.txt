@@ -120,6 +120,7 @@
 
 @ATTACK_RESOLUTION={
   attack_roll: "Use creature_attacks preroll + action.attackBonus vs target AC",
+  preroll_weapon_mapping: "Preroll dice are listed in the SAME ORDER as the creature's available attacks. The FIRST die maps to the FIRST weapon listed, the SECOND die maps to the SECOND weapon. Example: 'Skeleton_3: Attack[3], Attack[16] (2 attacks: Shortsword, Shortbow)' means Attack[3] is ONLY for Shortsword, Attack[16] is ONLY for Shortbow. Always match die position to weapon position.",
   damage_on_hit_only: "Only roll/consume damage dice if attack >= AC after bonuses",
   damage_source: "Use GENERIC DIE matching action.damageDice (e.g., 1d6) + action.damageBonus",
   dr_modifiers: "Apply vulnerabilities/resistances/immunities after base damage",
@@ -153,13 +154,17 @@
 @SPIRIT_GUARDIANS="Enemy starting turn within 15ft: WIS save vs caster DC or 3d8 radiant (half on save), use GENERIC DIE, log damage in plan+updateCharacterInfo"
 
 @HOLDING={
-  trigger: "Player declares action out-of-turn",
-  step1: "Acknowledge intent in narration only",
-  step2: "Defer execution until player's turn",
-  step3: "Remind at player's turn and confirm before executing",
+  trigger: "Player declares action out-of-turn (any spell, attack, ability, or movement declared before their initiative)",
+  CRITICAL: "NEVER silently ignore a player's declared action. If the player declares ANY action and it is not their turn, you MUST acknowledge it in your narration.",
+  scope: "Holding ONLY defers the PLAYER's declared action. All other actors in the turn window (monsters, NPCs) MUST still act normally with full attack resolution, preroll consumption, and actions[] logging. Do NOT skip the current actor's turn just because a player declared something out of turn.",
+  step1: "Process the current actor's turn normally FIRST (resolve attacks, consume prerolls, log actions)",
+  step2: "THEN acknowledge the player's pending action in narration (e.g., 'You raise your holy symbol, power gathering...')",
+  step3: "End narration with a prompt referencing their pending action (e.g., 'Your spell is ready -- unleash it?')",
   constraints: {
-    no_logging: "Do not add to actions[] when deferred",
-    no_break: "Never break initiative order"
+    no_logging: "Do not add the PLAYER's deferred action to actions[]",
+    no_break: "Never break initiative order",
+    no_silent_drop: "A player declaration that goes unacknowledged in narration is a CRITICAL ERROR",
+    no_current_actor_skip: "The current actor's turn MUST still resolve fully even when a player action is being held"
   }
 }
 
@@ -306,6 +311,7 @@
 
 @NARRATION={
   style: "Cinematic; active verbs; varied cadence",
+  perspective_rule: "MANDATORY: Write the ENTIRE narration as if the player is THERE, using second person (you/your). Frame ALL events through what the player sees, hears, and feels -- even events happening to others. Examples: 'You hear the snap of a bowstring -- an arrow slams into Thane beside you' NOT 'The skeleton fires at Thane.' 'You watch Kira duck behind cover' NOT 'Kira ducks behind cover.' When the player is directly affected: 'Pain erupts in your side as the arrow finds a gap in your armor.' Every sentence should connect to the player's sensory experience.",
   quotas:{
     per_turn: {
       sensory: ">=1 concrete sensory beat (sound/light/wind/space)",
@@ -337,7 +343,8 @@
 @STOP_RULES={
   stop_points: ["On player's turn","On round end"],
   save_pause: "Stop immediately after declaring save",
-  holding: "Stop until deferred player's turn"
+  holding: "Stop until deferred player's turn",
+  HARD_STOP: "'STOP AT: [player_name]' in the tracker means your response MUST NOT include ANY resolution of the player's turn. Even if the player declared an action in PLAYER ACTION, do NOT roll saves, calculate damage, or process their spell. ONLY acknowledge their intent in narration. The player's turn will be processed in the NEXT API call, not this one."
 }
 
 @VALIDATORS={
@@ -352,7 +359,8 @@
   v_turnwindow: "Invalid if not all names in turn_window are processed before stopping",
   v_round_complete: "If tracker signaled '>>> ROUND COMPLETE', MUST increment combat_round by +1 and stop",
   v_round_end_process: "If tracker signaled '>>> PROCESS TO END ROUND' and consumed list, MUST increment combat_round at response end",
-  v_damage_timing: "Invalid if damage dice are consumed/mentioned when the attack missed"
+  v_damage_timing: "Invalid if damage dice are consumed/mentioned when the attack missed",
+  v_stop_boundary: "Invalid if response resolves the player's spell/attack/ability when tracker says 'STOP AT' player -- player actions resolve in the NEXT call only"
 }
 
 @FLAVOR={
