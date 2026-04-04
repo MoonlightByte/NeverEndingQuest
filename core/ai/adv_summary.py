@@ -22,10 +22,11 @@ from datetime import datetime
 # Add the project root to the Python path so we can import from utils, core, etc.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from openai import OpenAI
+from core.ai import api_client
+import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T015", "core/ai/adv_summary.py", 231)
-register_callsite("T016", "core/ai/adv_summary.py", 462)
+register_callsite("T015", "core/ai/adv_summary.py", 240)
+register_callsite("T016", "core/ai/adv_summary.py", 485)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -36,7 +37,6 @@ except:
     def track_response(r): pass
 
 from jsonschema import validate, ValidationError
-from config import OPENAI_API_KEY, ADVENTURE_SUMMARY_MODEL
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import sanitize_text, safe_json_load, safe_json_dump
 from core.managers.status_manager import status_generating_summary
@@ -46,7 +46,6 @@ from utils.enhanced_logger import debug, info, warning, error, set_script_name
 set_script_name("adv_summary")
 
 TEMPERATURE = 0.8
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 def get_current_location():
     try:
@@ -228,7 +227,21 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
     for attempt in range(max_retries):
         debug_print(f"Attempt {attempt + 1} to update location JSON")
         try:
-            response = capture_and_fanout("T015", client.chat.completions.create, messages=location_updater_prompt, model=ADVENTURE_SUMMARY_MODEL, temperature=TEMPERATURE)
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                adv_config = config.ADV_SUMM_GPT54MINI_NONE
+            elif MODEL_PROVIDER == "gemini":
+                adv_config = config.ADV_SUMM_GEMINI_FLASH_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                adv_config = config.ADV_SUMM_LMSTUDIO
+            else:  # legacy
+                adv_config = config.ADV_SUMM_LEGACY
+
+            response = capture_and_fanout("T015", api_client.create_completion,
+                messages=location_updater_prompt,
+                model=adv_config["model"],
+                temperature=TEMPERATURE,
+                **{k: v for k, v in adv_config.items() if k != "model"})
             
             # Track usage if available
             if USAGE_TRACKING_AVAILABLE:
@@ -459,7 +472,22 @@ Your writing should feel immersive, literary, and grounded -- like a historical 
 
 
     try:
-        response = capture_and_fanout("T016", client.chat.completions.create, messages=dialogue_data, model=ADVENTURE_SUMMARY_MODEL, temperature=TEMPERATURE)
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            adv_config = config.ADV_SUMM_GPT54MINI_NONE
+        elif MODEL_PROVIDER == "gemini":
+            adv_config = config.ADV_SUMM_GEMINI_FLASH_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            adv_config = config.ADV_SUMM_LMSTUDIO
+        else:  # legacy
+            adv_config = config.ADV_SUMM_LEGACY
+
+        response = capture_and_fanout("T016", api_client.create_completion,
+            messages=dialogue_data,
+            model=adv_config["model"],
+            temperature=TEMPERATURE,
+            response_format=None,
+            **{k: v for k, v in adv_config.items() if k != "model"})
         
         # Track usage if available
         if USAGE_TRACKING_AVAILABLE:
