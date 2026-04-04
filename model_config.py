@@ -339,6 +339,19 @@ LEVELUP_VAL_GEMINI_PRO_LOW = {"model": "gemini-3-pro-preview", "thinking_level":
 LEVELUP_VAL_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 LEVELUP_VAL_LMSTUDIO = {"model": "local-model"}
 
+# --- T047: Level-Up Conversation (interactive interview, temp=0.7) ---
+# v3 prompt tested: 100% pass rate across 24 synthetic tests (8 scenarios x 3 models).
+# gpt-5.2|none: 3.6s avg, best narrative. gemini-flash|low: 1.9s avg, best HP math.
+# gpt-5-mini DISQUALIFIED (no temperature support, interview needs temp=0.7).
+LEVELUP_CONV_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
+LEVELUP_CONV_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
+LEVELUP_CONV_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+LEVELUP_CONV_LMSTUDIO = {"model": "local-model"}
+
+# --- T086: NPC Auto-Level-Up (single-shot JSON, temp=0.3) ---
+# Same model selections as T047 -- simpler task, all models pass easily.
+# Uses same LEVELUP_CONV configs (no separate dicts needed -- same models work).
+
 # ----- T085 Location Compression -----
 # Compresses location JSON into token-based @-tag format for runtime context.
 # Full-tier callsite, temperature=0.1, PLAIN TEXT output (response_format=None).
