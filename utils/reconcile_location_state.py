@@ -10,20 +10,18 @@ import os
 import shutil
 import re
 from datetime import datetime
-from openai import OpenAI
+from core.ai import api_client
+import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T091", "utils/reconcile_location_state.py", 133)
+register_callsite("T091", "utils/reconcile_location_state.py", 144)
 
 # Import project-specific modules
-from config import OPENAI_API_KEY, NPC_INFO_UPDATE_MODEL # Using a smaller, faster model is fine
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
 # Set script name for logging
 set_script_name("reconcile_location_state")
-
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 def create_area_backup(area_file_path):
     """Creates a timestamped backup of an area file before modification."""
@@ -132,9 +130,23 @@ Based on the conversation, what is the final list of active, hostile monsters re
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            response = capture_and_fanout("T091", client.chat.completions.create, messages=messages, model=NPC_INFO_UPDATE_MODEL,
-                temperature=0.2
-            )
+            # Select model config per provider
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                npc_config = config.NPC_INFO_GPT54MINI_NONE
+            elif MODEL_PROVIDER == "gemini":
+                npc_config = config.NPC_INFO_GEMINI_FLASH_MINIMAL
+            elif MODEL_PROVIDER == "lmstudio":
+                npc_config = config.NPC_INFO_LMSTUDIO
+            else:  # legacy
+                npc_config = config.NPC_INFO_LEGACY
+
+            response = capture_and_fanout("T091", api_client.create_completion,
+                messages=messages,
+                model=npc_config["model"],
+                temperature=0.2,
+                response_format=None,
+                **{k: v for k, v in npc_config.items() if k != "model"})
             raw_response = response.choices[0].message.content.strip()
 
             # Clean and parse JSON response
