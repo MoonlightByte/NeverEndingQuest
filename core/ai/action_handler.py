@@ -61,7 +61,7 @@ import model_config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T013", "core/ai/action_handler.py", 1005)
 register_callsite("T012", "core/ai/action_handler.py", 553)
-register_callsite("T014", "core/ai/action_handler.py", 2017)
+register_callsite("T014", "core/ai/action_handler.py", 2026)
 import config
 from core.managers.location_manager import get_location_data
 from utils.module_path_manager import ModulePathManager
@@ -1897,8 +1897,6 @@ def find_npc_in_areas(npc_name, path_manager, location_hint=None):
 def get_ai_npc_movement_decision(npc_name, context, npc_data, area_data, location_id, module_name, party_npcs=None, attempt=1):
     """Use AI to determine what to do with the NPC based on context"""
     try:
-        client = OpenAI(api_key=config.OPENAI_API_KEY)
-        
         # Get available locations for potential moves
         available_locations = []
         for location in area_data.get("locations", []):
@@ -2014,10 +2012,25 @@ Based on this narrative context, determine the most appropriate action for this 
 
 Remember: This is a background NPC management action, not party NPC management."""
 
-        response = capture_and_fanout("T014", client.chat.completions.create, messages=[
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            npc_config = config.NPC_INFO_GPT54MINI_NONE
+        elif MODEL_PROVIDER == "gemini":
+            npc_config = config.NPC_INFO_GEMINI_FLASH_MINIMAL
+        elif MODEL_PROVIDER == "lmstudio":
+            npc_config = config.NPC_INFO_LMSTUDIO
+        else:  # legacy
+            npc_config = config.NPC_INFO_LEGACY
+
+        response = capture_and_fanout("T014", api_client.create_completion,
+            messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
-            ], model=config.NPC_INFO_UPDATE_MODEL, temperature=0.7)
+            ],
+            model=npc_config["model"],
+            temperature=0.7,
+            **{k: v for k, v in npc_config.items() if k != "model"})
         
         # Track token usage
         if USAGE_TRACKING_AVAILABLE:
