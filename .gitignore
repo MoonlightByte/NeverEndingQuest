@@ -12,6 +12,17 @@ ENV/
 # Development and test files
 compression_development/
 development/
+tests/model_validation/
+tests/synthetic_results/
+tests/audit/
+docs/superpowers/plans/
+docs/plans/
+docs/audit/
+docs/issues/
+reviews/
+scripts/
+tools/openai_callsite_inventory.py
+AGENTS.md
 combat_conversation_compressed_output.json
 compress_monster_videos.py
 restore_character_backup.py
