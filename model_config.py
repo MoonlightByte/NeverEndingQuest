@@ -364,6 +364,15 @@ NPC_INFO_LMSTUDIO = {"model": "local-model"}
 # T091 uses response_format=None at the callsite (JSON array output, not object).
 # T014 uses default JSON mode (JSON object output).
 
+# --- T041: Combat Dialogue Summary (narrative summary of combat encounters) ---
+# 10/10 on v2 prompt (5 scenarios x 2 models). Mini-tier (COMBAT_DIALOGUE_SUMMARY_MODEL).
+# Creative writing, temp=0.8. PLAIN TEXT output (response_format=None).
+# gpt-5-mini DISQUALIFIED (no temperature support at 0.8).
+COMBAT_SUMMARY_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
+COMBAT_SUMMARY_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
+COMBAT_SUMMARY_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+COMBAT_SUMMARY_LMSTUDIO = {"model": "local-model"}
+
 # ----- T085 Location Compression -----
 # Compresses location JSON into token-based @-tag format for runtime context.
 # Full-tier callsite, temperature=0.1, PLAIN TEXT output (response_format=None).
