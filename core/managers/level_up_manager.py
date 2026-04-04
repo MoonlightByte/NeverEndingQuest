@@ -52,13 +52,11 @@ Features:
 import json
 import os
 import sys
-from openai import OpenAI
 from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T047", "core/managers/level_up_manager.py", 206)
-register_callsite("T048", "core/managers/level_up_manager.py", 243)
-from config import OPENAI_API_KEY, LEVEL_UP_MODEL, DM_VALIDATION_MODEL
+register_callsite("T047", "core/managers/level_up_manager.py", 212)
+register_callsite("T048", "core/managers/level_up_manager.py", 253)
 from utils.file_operations import safe_read_json
 from updates.update_character_info import update_character_info, normalize_character_name
 from utils.encoding_utils import safe_json_dump
@@ -70,9 +68,6 @@ try:
     USAGE_TRACKING_AVAILABLE = True
 except ImportError:
     USAGE_TRACKING_AVAILABLE = False
-
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 # --- Class-based Level Up Manager ---
 
@@ -203,17 +198,32 @@ class LevelUpSession:
 
     def _get_ai_response(self):
         try:
-            response = capture_and_fanout("T047", client.chat.completions.create, messages=self.conversation, model=LEVEL_UP_MODEL, temperature=0.7)
-            
+            # Select model config per provider
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                conv_config = config.LEVELUP_CONV_GPT52_NONE
+            elif MODEL_PROVIDER == "gemini":
+                conv_config = config.LEVELUP_CONV_GEMINI_FLASH_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                conv_config = config.LEVELUP_CONV_LMSTUDIO
+            else:  # legacy
+                conv_config = config.LEVELUP_CONV_LEGACY
+
+            response = capture_and_fanout("T047", api_client.create_completion,
+                messages=self.conversation,
+                model=conv_config["model"],
+                temperature=0.7,
+                **{k: v for k, v in conv_config.items() if k != "model"})
+
             # Track token usage with context for telemetry
             if USAGE_TRACKING_AVAILABLE:
                 try:
                     from utils.openai_usage_tracker import get_global_tracker
                     tracker = get_global_tracker()
-                    tracker.track(response, context={'endpoint': 'level_up', 'purpose': 'level_up_processing', 'character': character_name})
+                    tracker.track(response, context={'endpoint': 'level_up', 'purpose': 'level_up_processing', 'character': self.character_name})
                 except:
                     pass
-            
+
             return response.choices[0].message.content
         except Exception as e:
             print(f"[ERROR] Getting AI response: {e}")
@@ -251,7 +261,7 @@ class LevelUpSession:
                 try:
                     from utils.openai_usage_tracker import get_global_tracker
                     tracker = get_global_tracker()
-                    tracker.track(response, context={'endpoint': 'level_up', 'purpose': 'level_up_processing', 'character': character_name})
+                    tracker.track(response, context={'endpoint': 'level_up', 'purpose': 'level_up_processing', 'character': self.character_name})
                 except:
                     pass
             
