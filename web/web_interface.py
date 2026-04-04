@@ -62,9 +62,10 @@ import io
 import zipfile
 from contextlib import redirect_stdout, redirect_stderr
 from openai import OpenAI
+from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T094", "web/web_interface.py", 1592)
-register_callsite("T095", "web/web_interface.py", 3705)
+register_callsite("T094", "web/web_interface.py", 1605)
+register_callsite("T095", "web/web_interface.py", 3735)
 from PIL import Image
 
 # Token tracking import
@@ -83,7 +84,6 @@ import main as dm_main
 import utils.reset_campaign as reset_campaign
 from core.managers.status_manager import set_status_callback, set_compression_callback
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
-from model_config import DM_MINI_MODEL
 
 # Import toolkit components for API support
 try:
@@ -1588,17 +1588,29 @@ def promote_to_bestiary():
         monster_name = monster_id.replace('_', ' ').title()
         prompt = f"""Generate a compelling 5th edition of the world's most popular roleplaying game style bestiary description for a monster named "{monster_name}".
         The description should be concise (around 100-150 words) and focus on its appearance, typical behavior, and combat tactics.
-        Make it sound like an entry from an official monster manual. Do not include stat blocks."""
+        Make it sound like an entry from an official monster manual. Do not include stat blocks.
+        Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."""
         
-        from config import OPENAI_API_KEY
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        
-        response = capture_and_fanout("T094", client.chat.completions.create, messages=[
+        import config
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
+        elif MODEL_PROVIDER == "gemini":
+            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
+        elif MODEL_PROVIDER == "lmstudio":
+            mini_cfg = config.MINI_UTIL_LMSTUDIO
+        else:  # legacy
+            mini_cfg = config.MINI_UTIL_LEGACY
+
+        response = capture_and_fanout("T094", api_client.create_completion,
+            messages=[
                 {"role": "system", "content": "You are a creative writer for a fantasy role-playing game, specializing in monster lore."},
                 {"role": "user", "content": prompt}
-            ], model=DM_MINI_MODEL,
-            temperature=0.7
-        )
+            ],
+            model=mini_cfg["model"],
+            temperature=0.7,
+            response_format=None,
+            **{k: v for k, v in mini_cfg.items() if k != "model"})
 
         # Track token usage with context for telemetry
         if USAGE_TRACKING_AVAILABLE:
@@ -3656,23 +3668,13 @@ def fetch_npc_descriptions():
     def generate_descriptions():
         try:
             import time
-            from openai import OpenAI
             from utils.file_operations import safe_read_json, safe_write_json
             from utils.encoding_utils import sanitize_text
-            
-            # Get API key
-            try:
-                from config import OPENAI_API_KEY
-            except ImportError:
-                OPENAI_API_KEY = None
-                error("TOOLKIT: OpenAI API key not found")
-                return
-            
-            if not OPENAI_API_KEY:
+
+            import config
+            if not config.OPENAI_API_KEY:
                 error("TOOLKIT: OpenAI API key not configured")
                 return
-                
-            client = OpenAI(api_key=OPENAI_API_KEY)
             
             # Load NPC compendium
             npc_compendium_path = 'data/bestiary/npc_compendium.json'
@@ -3712,19 +3714,33 @@ The output should be a single paragraph (150-200 words) that is itself a high-qu
 4.  **Atmosphere & Lighting:** Keywords for the mood (e.g., 'cinematic lighting', 'magical aura', 'dust motes in the air', 'soft morning light').
 
 The character must appear friendly, capable, and trustworthy, like a potential party ally. Do NOT use words like 'photorealistic', 'photo', 'cosplay', '3D render'. Focus on descriptive language for a digital painting.
+Use only standard ASCII characters in the prompt -- no smart quotes, no em-dashes, no Unicode symbols.
 
 Example Output Format:
 "A stunning digital painting of Elara, a female wood elf ranger with emerald green eyes and long braided auburn hair. She wears masterfully crafted green leather armor with leaf-like patterns. A longbow is slung over her shoulder and a sheathed shortsword hangs at her hip. She stands in a misty, ancient forest at dawn, with golden morning light filtering through the canopy, creating a magical and serene atmosphere."
 """
 
                 try:
-                    # Call OpenAI API with the new system message and prompt
-                    response = capture_and_fanout("T095", client.chat.completions.create, messages=[
+                    import config
+                    from model_config import MODEL_PROVIDER
+                    if MODEL_PROVIDER == "openai":
+                        mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
+                    elif MODEL_PROVIDER == "gemini":
+                        mini_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
+                    elif MODEL_PROVIDER == "lmstudio":
+                        mini_cfg = config.MINI_UTIL_LMSTUDIO
+                    else:  # legacy
+                        mini_cfg = config.MINI_UTIL_LEGACY
+
+                    response = capture_and_fanout("T095", api_client.create_completion,
+                        messages=[
                             {"role": "system", "content": "You are an expert AI prompt engineer specializing in fantasy character art. Your task is to write image generation prompts, not narrative descriptions. The prompts you write will be used to create digital paintings."},
                             {"role": "user", "content": prompt}
-                        ], model=DM_MINI_MODEL,
-                        temperature=0.8
-                    )
+                        ],
+                        model=mini_cfg["model"],
+                        temperature=0.8,
+                        response_format=None,
+                        **{k: v for k, v in mini_cfg.items() if k != "model"})
                     
                     # Track token usage
                     if USAGE_TRACKING_AVAILABLE:
