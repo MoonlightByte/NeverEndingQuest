@@ -384,6 +384,16 @@ DM_SUMM_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level":
 DM_SUMM_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 DM_SUMM_LMSTUDIO = {"model": "local-model"}
 
+# --- T015/T016/T018/T019: Adventure Summaries (location updates, chronicles, journals) ---
+# 12/12 synthetic tests passed (4 scenarios x 3 models). Mini-tier (ADVENTURE_SUMMARY_MODEL).
+# T015: location JSON update (temp=0.8). T016: adventure chronicle (temp=0.8, plain text).
+# T018: concise location summary (temp=0.8, plain text). T019: expanded journal (temp=0.8, plain text).
+# T016/T018/T019 use response_format=None at callsite (plain text, not JSON).
+ADV_SUMM_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
+ADV_SUMM_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
+ADV_SUMM_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+ADV_SUMM_LMSTUDIO = {"model": "local-model"}
+
 # ----- T085 Location Compression -----
 # Compresses location JSON into token-based @-tag format for runtime context.
 # Full-tier callsite, temperature=0.1, PLAIN TEXT output (response_format=None).
