@@ -352,6 +352,18 @@ LEVELUP_CONV_LMSTUDIO = {"model": "local-model"}
 # Same model selections as T047 -- simpler task, all models pass easily.
 # Uses same LEVELUP_CONV configs (no separate dicts needed -- same models work).
 
+# --- T014/T091: NPC Info Updates (movement decisions + monster reconciliation) ---
+# 40/40 synthetic tests passed. Mini-tier callsite (NPC_INFO_UPDATE_MODEL).
+# T014: NPC movement decision, temp=0.7, JSON object output.
+# T091: Monster reconciliation, temp=0.2, JSON ARRAY output (response_format=None).
+NPC_INFO_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
+NPC_INFO_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+NPC_INFO_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+NPC_INFO_LMSTUDIO = {"model": "local-model"}
+
+# T091 uses response_format=None at the callsite (JSON array output, not object).
+# T014 uses default JSON mode (JSON object output).
+
 # ----- T085 Location Compression -----
 # Compresses location JSON into token-based @-tag format for runtime context.
 # Full-tier callsite, temperature=0.1, PLAIN TEXT output (response_format=None).
