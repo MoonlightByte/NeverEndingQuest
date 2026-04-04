@@ -6,13 +6,11 @@
 # level_up.py - Simplified level up system that returns changes dict
 
 import json
-from openai import OpenAI
-from config import OPENAI_API_KEY, LEVEL_UP_MODEL
+from core.ai import api_client
+import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T086", "utils/level_up.py", 99)
+register_callsite("T086", "utils/level_up.py", 110)
 from .file_operations import safe_read_json
-
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 def load_leveling_info():
     """Load leveling information from text file"""
@@ -97,13 +95,26 @@ Example response format:
 }}"""
 
     try:
+        # Select model config per provider
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            conv_config = config.LEVELUP_CONV_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            conv_config = config.LEVELUP_CONV_GEMINI_FLASH_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            conv_config = config.LEVELUP_CONV_LMSTUDIO
+        else:  # legacy
+            conv_config = config.LEVELUP_CONV_LEGACY
+
         # Get AI response
-        response = capture_and_fanout("T086", client.chat.completions.create, messages=[
+        response = capture_and_fanout("T086", api_client.create_completion,
+            messages=[
                 {"role": "system", "content": "You are a 5th edition of the world's most popular roleplaying game rules expert. Provide only valid JSON responses."},
                 {"role": "user", "content": prompt}
-            ], model=LEVEL_UP_MODEL,
-            temperature=0.3
-        )
+            ],
+            model=conv_config["model"],
+            temperature=0.3,
+            **{k: v for k, v in conv_config.items() if k != "model"})
         
         ai_response = response.choices[0].message.content.strip()
         
