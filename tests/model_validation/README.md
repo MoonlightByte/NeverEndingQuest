@@ -75,3 +75,8 @@ When testing a new callsite:
 | T014 | NPC movement decision | gpt-5.4-mini none | gemini-3-flash minimal | Done |
 | T091 | Monster reconciliation | gpt-5.4-mini none | gemini-3-flash minimal | Done |
 | T041 | Combat dialogue summary | gpt-5.4-mini none | gemini-3-flash low | Done |
+| T030 | Narrative parsing | gpt-5.4-mini none | gemini-3-flash low | Done |
+| T032 | Travel narration | gpt-5.4-mini none | gemini-3-flash low | Done |
+| T033 | Content safety | gpt-5.4-mini none | gemini-3-flash low | Done |
+| T038 | Campaign saga summary | gpt-5.4-mini none | gemini-3-flash low | Done |
+| T066 | Transition summary | gpt-5.4-mini none | gemini-3-flash low | Done |
