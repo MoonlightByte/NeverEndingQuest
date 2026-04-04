@@ -125,11 +125,11 @@ from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T040", "core/managers/combat_manager.py", 796)
-register_callsite("T041", "core/managers/combat_manager.py", 1010)
-register_callsite("T042", "core/managers/combat_manager.py", 1804)
-register_callsite("T043", "core/managers/combat_manager.py", 2199)
-register_callsite("T044", "core/managers/combat_manager.py", 2312)
-register_callsite("T045", "core/managers/combat_manager.py", 2860)
+register_callsite("T041", "core/managers/combat_manager.py", 1037)
+register_callsite("T042", "core/managers/combat_manager.py", 1836)
+register_callsite("T043", "core/managers/combat_manager.py", 2232)
+register_callsite("T044", "core/managers/combat_manager.py", 2345)
+register_callsite("T045", "core/managers/combat_manager.py", 2894)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -1023,8 +1023,23 @@ def summarize_dialogue(conversation_history_param, location_data, party_tracker_
         {"role": "user", "content": clean_text}
     ]
 
-    # Generate dialogue summary
-    response = capture_and_fanout("T041", client.chat.completions.create, messages=dialogue_summary_prompt, model=COMBAT_DIALOGUE_SUMMARY_MODEL, temperature=TEMPERATURE)
+    # Generate dialogue summary -- select model config per provider
+    from model_config import MODEL_PROVIDER
+    if MODEL_PROVIDER == "openai":
+        summary_config = config.COMBAT_SUMMARY_GPT54MINI_NONE
+    elif MODEL_PROVIDER == "gemini":
+        summary_config = config.COMBAT_SUMMARY_GEMINI_FLASH_LOW
+    elif MODEL_PROVIDER == "lmstudio":
+        summary_config = config.COMBAT_SUMMARY_LMSTUDIO
+    else:  # legacy
+        summary_config = config.COMBAT_SUMMARY_LEGACY
+
+    response = capture_and_fanout("T041", api_client.create_completion,
+        messages=dialogue_summary_prompt,
+        model=summary_config["model"],
+        temperature=TEMPERATURE,
+        response_format=None,
+        **{k: v for k, v in summary_config.items() if k != "model"})
 
     # Log API call to master log
     try:
