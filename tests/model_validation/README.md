@@ -74,3 +74,4 @@ When testing a new callsite:
 | T086 | NPC auto-level-up | gpt-5.2 none | gemini-3-flash low | Done |
 | T014 | NPC movement decision | gpt-5.4-mini none | gemini-3-flash minimal | Done |
 | T091 | Monster reconciliation | gpt-5.4-mini none | gemini-3-flash minimal | Done |
+| T041 | Combat dialogue summary | gpt-5.4-mini none | gemini-3-flash low | Done |
