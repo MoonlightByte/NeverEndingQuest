@@ -76,14 +76,13 @@ import sys
 import codecs
 import glob
 import time
-from openai import OpenAI
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T063", "main.py", 316)
-register_callsite("T064", "main.py", 393)
-register_callsite("T065", "main.py", 1239)
-register_callsite("T066", "main.py", 1731)
-register_callsite("T067", "main.py", 2352)
+register_callsite("T063", "main.py", 318)
+register_callsite("T064", "main.py", 406)
+register_callsite("T065", "main.py", 1253)
+register_callsite("T066", "main.py", 1745)
+register_callsite("T067", "main.py", 2366)
 register_callsite("T068", "main.py", 2316)
 from datetime import datetime, timedelta
 from termcolor import colored
@@ -147,14 +146,7 @@ from utils.enhanced_logger import debug, info, warning, error, set_script_name
 # Set script name for logging
 set_script_name(__name__)
 
-# Import model configurations from config.py
-from config import (
-    OPENAI_API_KEY,
-    DM_MAIN_MODEL,
-    DM_VALIDATION_MODEL
-)
-
-client = OpenAI(api_key=OPENAI_API_KEY)
+import config
 
 # LocationGraph will be initialized inside main() after modules are integrated
 location_graph = None
@@ -313,11 +305,22 @@ def generate_arrival_narration(departure_narration, party_tracker_data, conversa
     ]
 
     try:
-        response = capture_and_fanout("T063", client.chat.completions.create,
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            narr_cfg = config.MINI_UTIL_GPT54MINI_NONE
+        elif MODEL_PROVIDER == "gemini":
+            narr_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
+        elif MODEL_PROVIDER == "lmstudio":
+            narr_cfg = config.MINI_UTIL_LMSTUDIO
+        else:  # legacy
+            narr_cfg = config.MINI_UTIL_LEGACY
+
+        response = capture_and_fanout("T063", api_client.create_completion,
             messages=narration_request_messages,
-            model=DM_MAIN_MODEL,  # Use the main model for high-quality narration
-            temperature=TEMPERATURE
-        )
+            model=narr_cfg["model"],
+            temperature=TEMPERATURE,
+            response_format=None,
+            **{k: v for k, v in narr_cfg.items() if k != "model"})
 
         # Log API call to master log
         try:
@@ -390,14 +393,25 @@ Now, provide the rewritten, seamless narration.
 """
 
     try:
-        response = capture_and_fanout("T064", client.chat.completions.create,
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            narr_cfg = config.MINI_UTIL_GPT54MINI_NONE
+        elif MODEL_PROVIDER == "gemini":
+            narr_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
+        elif MODEL_PROVIDER == "lmstudio":
+            narr_cfg = config.MINI_UTIL_LMSTUDIO
+        else:  # legacy
+            narr_cfg = config.MINI_UTIL_LEGACY
+
+        response = capture_and_fanout("T064", api_client.create_completion,
             messages=[
                 {"role": "system", "content": "You are a master storyteller and editor, skilled at weaving separate narrative fragments into a single, seamless, and immersive piece of prose."},
                 {"role": "user", "content": stitching_prompt}
             ],
-            model=DM_MAIN_MODEL,  # Use the main model for high-quality writing
-            temperature=TEMPERATURE
-        )
+            model=narr_cfg["model"],
+            temperature=TEMPERATURE,
+            response_format=None,
+            **{k: v for k, v in narr_cfg.items() if k != "model"})
 
         # Log API call to master log
         try:
