@@ -443,6 +443,15 @@ MINI_UTIL_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_l
 MINI_UTIL_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 MINI_UTIL_LMSTUDIO = {"model": "local-model"}
 
+# --- T031+: DM_MAIN_MODEL callsites (module generation, DM narration, transitions) ---
+# First DM_MAIN_MODEL migration (T031). These dicts will be reused by all 12 DM_MAIN_MODEL callsites.
+# Full-tier. gpt-5.2|none: best creative generation. gemini-pro|low: highest quality at higher cost.
+# Synthetic test: 5/5 all models on module field generation.
+DM_MAIN_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
+DM_MAIN_GEMINI_PRO_LOW = {"model": "gemini-3-pro-preview", "thinking_level": "low"}
+DM_MAIN_LEGACY = {"model": "gpt-4.1-2025-04-14"}
+DM_MAIN_LMSTUDIO = {"model": "local-model"}
+
 # --- Model Routing Settings ---
 ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures
