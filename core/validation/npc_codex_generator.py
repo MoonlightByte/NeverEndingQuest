@@ -48,9 +48,9 @@ import time
 import tempfile
 import shutil
 from datetime import datetime
-from openai import OpenAI
+from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T059", "core/validation/npc_codex_generator.py", 258)
+register_callsite("T059", "core/validation/npc_codex_generator.py", 266)
 import config
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import safe_json_load, safe_json_dump, sanitize_text
@@ -204,8 +204,6 @@ def extract_npcs_with_ai(module_content, module_name):
         list: List of dictionaries with NPC name and source information
     """
     try:
-        client = OpenAI(api_key=config.OPENAI_API_KEY)
-        
         # Create extraction prompt - avoid f-string issues with JSON content
         plot_content = module_content.get('plot_content', 'No plot content found')
         area_content = module_content.get('area_content', 'No area content found')
@@ -255,10 +253,25 @@ EXISTING CHARACTER FILES:
 
 Extract all legitimate NPC names now:"""
 
-        response = capture_and_fanout("T059", client.chat.completions.create, messages=[
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            main_cfg = config.DM_MAIN_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            main_cfg = config.DM_MAIN_GEMINI_PRO_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            main_cfg = config.DM_MAIN_LMSTUDIO
+        else:  # legacy
+            main_cfg = config.DM_MAIN_LEGACY
+
+        response = capture_and_fanout("T059", api_client.create_completion,
+            messages=[
                 {"role": "system", "content": "You are an expert at analyzing 5th edition of the world's most popular roleplaying game module content and extracting NPC names. You understand the difference between NPCs, locations, and monsters."},
                 {"role": "user", "content": extraction_prompt}
-            ], model=config.DM_MAIN_MODEL, temperature=0.1)
+            ],
+            model=main_cfg["model"],
+            temperature=0.1,
+            response_format=None,
+            **{k: v for k, v in main_cfg.items() if k != "model"})
         
         # Parse the response
         response_text = response.choices[0].message.content.strip()
