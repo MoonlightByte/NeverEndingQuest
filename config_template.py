@@ -44,8 +44,17 @@
 # Import model configuration settings
 from model_config import *
 
-# WARNING: Replace with your actual OpenAI API key and move to environment variables in production
+# --- API Keys ---
+# WARNING: Replace with your actual API keys and move to environment variables in production
+#
+# OPENAI_API_KEY (Required): Used for Legacy (GPT-4.1) and OpenAI (GPT-5.x) providers
+# Get your key at: https://platform.openai.com/api-keys
 OPENAI_API_KEY = "your_openai_api_key_here"
+
+# GEMINI_API_KEY (Optional): Used for Gemini 3.1 provider
+# Only needed if you want to use Gemini as an alternative AI provider
+# Get your key at: https://aistudio.google.com/apikey
+GEMINI_API_KEY = "your_gemini_api_key_here"
 
 # --- Module folder structure ---
 MODULES_DIR = "modules"
