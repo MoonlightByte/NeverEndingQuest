@@ -40,16 +40,14 @@ import json
 import random
 from typing import Dict, List, Any, Tuple
 from dataclasses import dataclass
-from openai import OpenAI
-from config import OPENAI_API_KEY, DM_MAIN_MODEL
+from core.ai import api_client
+import config as app_config
 from utils.module_path_manager import ModulePathManager
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T022", "core/generators/area_generator.py", 126)
-register_callsite("T023", "core/generators/area_generator.py", 413)
-register_callsite("T024", "core/generators/area_generator.py", 558)
+register_callsite("T022", "core/generators/area_generator.py", 139)
+register_callsite("T023", "core/generators/area_generator.py", 437)
+register_callsite("T024", "core/generators/area_generator.py", 593)
 
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 @dataclass
 class AreaConfig:
@@ -125,12 +123,28 @@ EXAMPLES OF GOOD NAMES:
 Please respond with ONLY a JSON array of names in the exact order listed above:
 ["Name 1", "Name 2", "Name 3", ...]
 
-No explanations, just the JSON array of thematic location names."""
+No explanations, just the JSON array of thematic location names.
+Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."""
 
-            response = capture_and_fanout("T022", client.chat.completions.create, messages=[
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                main_cfg = app_config.DM_MAIN_GPT52_NONE
+            elif MODEL_PROVIDER == "gemini":
+                main_cfg = app_config.DM_MAIN_GEMINI_PRO_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                main_cfg = app_config.DM_MAIN_LMSTUDIO
+            else:  # legacy
+                main_cfg = app_config.DM_MAIN_LEGACY
+
+            response = capture_and_fanout("T022", api_client.create_completion,
+                messages=[
                     {"role": "system", "content": "You are an expert at creating immersive 5th edition of the world's most popular roleplaying game location names that enhance storytelling and world-building."},
                     {"role": "user", "content": prompt}
-                ], model=DM_MAIN_MODEL, temperature=0.8)
+                ],
+                model=main_cfg["model"],
+                temperature=0.8,
+                response_format=None,
+                **{k: v for k, v in main_cfg.items() if k != "model"})
             
             response_text = response.choices[0].message.content.strip()
             
@@ -379,7 +393,6 @@ class AreaGenerator:
     
     def __init__(self):
         self.map_gen = MapLayoutGenerator()
-        self.client = client  # Use the module-level OpenAI client
     
     def generate_area_name_and_description(self, initial_name: str, config: AreaConfig) -> tuple[str, str]:
         """
@@ -407,13 +420,29 @@ class AreaGenerator:
   "refinedName": "Your New, More General Area Name",
   "description": "Your 1-2 sentence atmospheric description."
 }}
+Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
 """
 
         try:
-            response = capture_and_fanout("T023", self.client.chat.completions.create, messages=[
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                main_cfg = app_config.DM_MAIN_GPT52_NONE
+            elif MODEL_PROVIDER == "gemini":
+                main_cfg = app_config.DM_MAIN_GEMINI_PRO_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                main_cfg = app_config.DM_MAIN_LMSTUDIO
+            else:  # legacy
+                main_cfg = app_config.DM_MAIN_LEGACY
+
+            response = capture_and_fanout("T023", api_client.create_completion,
+                messages=[
                     {"role": "system", "content": "You are an expert fantasy world builder specializing in creating evocative names and descriptions for 5th edition of the world's most popular roleplaying game areas."},
                     {"role": "user", "content": prompt}
-                ], model=DM_MAIN_MODEL, temperature=0.8, response_format={"type": "json_object"})
+                ],
+                model=main_cfg["model"],
+                temperature=0.8,
+                response_format={"type": "json_object"},
+                **{k: v for k, v in main_cfg.items() if k != "model"})
             
             result = json.loads(response.choices[0].message.content)
             refined_name = result.get("refinedName", initial_name)
@@ -547,13 +576,29 @@ Requirements:
 - Avoid using the exact phrase "where civilization meets the frontier"
 - Match the danger level and complexity in the description
 
-Return ONLY the area description text, no additional formatting or labels."""
+Return ONLY the area description text, no additional formatting or labels.
+Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."""
 
         try:
-            response = capture_and_fanout("T024", client.chat.completions.create, messages=[
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                main_cfg = app_config.DM_MAIN_GPT52_NONE
+            elif MODEL_PROVIDER == "gemini":
+                main_cfg = app_config.DM_MAIN_GEMINI_PRO_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                main_cfg = app_config.DM_MAIN_LMSTUDIO
+            else:  # legacy
+                main_cfg = app_config.DM_MAIN_LEGACY
+
+            response = capture_and_fanout("T024", api_client.create_completion,
+                messages=[
                     {"role": "system", "content": "You are an expert fantasy world builder. Create unique, atmospheric descriptions for 5th edition of the world's most popular roleplaying game areas that avoid cliches and generic phrases."},
                     {"role": "user", "content": prompt}
-                ], model=DM_MAIN_MODEL, temperature=0.8)
+                ],
+                model=main_cfg["model"],
+                temperature=0.8,
+                response_format=None,
+                **{k: v for k, v in main_cfg.items() if k != "model"})
             
             description = response.choices[0].message.content.strip()
             
