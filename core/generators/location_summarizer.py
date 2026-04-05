@@ -22,11 +22,11 @@ from dataclasses import dataclass
 
 # Import local modules
 from utils.token_estimator import TokenEstimator
-from openai import OpenAI
+from core.ai import api_client
 import config
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T027", "core/generators/location_summarizer.py", 530)
+register_callsite("T027", "core/generators/location_summarizer.py", 538)
 
 # Set script name for logging
 set_script_name("location_summarizer")
@@ -45,14 +45,10 @@ class GameEvent:
 class LocationSummarizer:
     """Generate intelligent summaries of location transition groups"""
     
-    def __init__(self, ai_model: str = None):
+    def __init__(self):
         """Initialize summarizer with AI model configuration"""
-        self.ai_model = ai_model or config.DM_SUMMARIZATION_MODEL
         self.token_estimator = TokenEstimator()
         self.summarization_history = []
-        
-        # Initialize OpenAI client
-        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
         
         # No artificial compression parameters - purely agentic AI generation
         
@@ -528,12 +524,26 @@ CRITICAL: Your narrative must include all location names from the journey progre
 
 Your output should read like a published game codex, narrative recap, or campaign journal entry written by a bard who was intimate with the party's secrets. Never reference this prompt or the data format -- just write the immersive chronicle that shows both the party's journey through every listed location AND the evolution of their bonds."""
 
-                # Make API call to OpenAI - purely agentic, no artificial limits
-                response = capture_and_fanout("T027", self.client.chat.completions.create, messages=[
+                # Select model config per provider
+                from model_config import MODEL_PROVIDER
+                if MODEL_PROVIDER == "openai":
+                    summ_cfg = config.DM_SUMM_GPT54MINI_NONE
+                elif MODEL_PROVIDER == "gemini":
+                    summ_cfg = config.DM_SUMM_GEMINI_FLASH_LOW
+                elif MODEL_PROVIDER == "lmstudio":
+                    summ_cfg = config.DM_SUMM_LMSTUDIO
+                else:  # legacy
+                    summ_cfg = config.DM_SUMM_LEGACY
+
+                response = capture_and_fanout("T027", api_client.create_completion,
+                    messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
-                    ], model=self.ai_model, temperature=0.6)
-                    # No max_tokens limit - let AI decide optimal length
+                    ],
+                    model=summ_cfg["model"],
+                    temperature=0.6,
+                    response_format=None,
+                    **{k: v for k, v in summ_cfg.items() if k != "model"})
                 
                 # Extract the generated chronicle
                 chronicle = response.choices[0].message.content.strip()
