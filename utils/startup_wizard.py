@@ -19,11 +19,10 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from openai import OpenAI
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T092", "utils/startup_wizard.py", 1628)
-register_callsite("T093", "utils/startup_wizard.py", 1735)
+register_callsite("T092", "utils/startup_wizard.py", 1634)
+register_callsite("T093", "utils/startup_wizard.py", 1744)
 from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
 
@@ -93,9 +92,6 @@ def status_callback(message, is_processing):
 # In web mode, the web interface will have already set its own callback
 if not web_mode:
     status_manager.set_callback(status_callback)
-
-# Initialize OpenAI client
-client = OpenAI(api_key=config.OPENAI_API_KEY)
 
 # Conversation file for character creation (separate from main game)
 STARTUP_CONVERSATION_FILE = "modules/conversation_history/startup_conversation.json"
@@ -1614,7 +1610,7 @@ def initialize_startup_conversation():
     conversation = [
         {
             "role": "system",
-            "content": "You are a helpful 5th edition assistant guiding a new player through character creation and module selection. Be friendly, encouraging, and clear in your explanations. Keep responses concise but informative. Do not use emojis or special characters in your responses."
+            "content": "You are a helpful 5th edition assistant guiding a new player through character creation and module selection. Be friendly, encouraging, and clear in your explanations. Keep responses concise but informative. Do not use emojis or special characters in your responses. Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."
         }
     ]
     
@@ -1625,9 +1621,22 @@ def get_ai_response(conversation):
     """Get AI response for character creation"""
     try:
         status_processing_ai()
-        response = capture_and_fanout("T092", client.chat.completions.create, messages=conversation, model=config.DM_MAIN_MODEL,
-            temperature=0.7
-        )
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            main_cfg = config.DM_MAIN_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            main_cfg = config.DM_MAIN_GEMINI_PRO_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            main_cfg = config.DM_MAIN_LMSTUDIO
+        else:  # legacy
+            main_cfg = config.DM_MAIN_LEGACY
+
+        response = capture_and_fanout("T092", api_client.create_completion,
+            messages=conversation,
+            model=main_cfg["model"],
+            temperature=0.7,
+            response_format=None,
+            **{k: v for k, v in main_cfg.items() if k != "model"})
         
         content = response.choices[0].message.content.strip()
         conversation.append({"role": "assistant", "content": content})
