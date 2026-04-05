@@ -13,17 +13,15 @@ import json
 import os
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
-from openai import OpenAI
-from config import OPENAI_API_KEY, DM_MAIN_MODEL
+from core.ai import api_client
+import config
 import jsonschema
 import random
 from utils.module_path_manager import ModulePathManager
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T025", "core/generators/location_generator.py", 419)
-register_callsite("T026", "core/generators/location_generator.py", 542)
+register_callsite("T025", "core/generators/location_generator.py", 431)
+register_callsite("T026", "core/generators/location_generator.py", 566)
 
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 @dataclass
 class LocationPromptGuide:
@@ -417,12 +415,28 @@ Return ONLY the value for this field in the correct format.
 For strings, return just the string.
 For arrays, return just the array.
 For objects, return just the object.
+Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
 """
-        
-        response = capture_and_fanout("T025", client.chat.completions.create, messages=[
+
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            main_cfg = config.DM_MAIN_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            main_cfg = config.DM_MAIN_GEMINI_PRO_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            main_cfg = config.DM_MAIN_LMSTUDIO
+        else:  # legacy
+            main_cfg = config.DM_MAIN_LEGACY
+
+        response = capture_and_fanout("T025", api_client.create_completion,
+            messages=[
                 {"role": "system", "content": "You are an expert 5e location designer. Return only the requested data in the exact format needed."},
                 {"role": "user", "content": prompt}
-            ], model=DM_MAIN_MODEL, temperature=0.7)
+            ],
+            model=main_cfg["model"],
+            temperature=0.7,
+            response_format=None,
+            **{k: v for k, v in main_cfg.items() if k != "model"})
 
         content = response.choices[0].message.content.strip()
 
@@ -536,12 +550,28 @@ AREA CONNECTIVITY RULES:
 - NEVER include the location's own area ID in areaConnectivityId
 
 Check the location schema carefully for all required fields.
+Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
 """
-        
-        response = capture_and_fanout("T026", client.chat.completions.create, messages=[
+
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            main_cfg = config.DM_MAIN_GPT52_NONE
+        elif MODEL_PROVIDER == "gemini":
+            main_cfg = config.DM_MAIN_GEMINI_PRO_LOW
+        elif MODEL_PROVIDER == "lmstudio":
+            main_cfg = config.DM_MAIN_LMSTUDIO
+        else:  # legacy
+            main_cfg = config.DM_MAIN_LEGACY
+
+        response = capture_and_fanout("T026", api_client.create_completion,
+            messages=[
                 {"role": "system", "content": "You are an expert 5e dungeon designer creating cohesive, interconnected locations."},
                 {"role": "user", "content": batch_prompt}
-            ], model=DM_MAIN_MODEL, temperature=0.8, response_format={"type": "json_object"})
+            ],
+            model=main_cfg["model"],
+            temperature=0.8,
+            response_format={"type": "json_object"},
+            **{k: v for k, v in main_cfg.items() if k != "model"})
 
         return json.loads(response.choices[0].message.content)
     
