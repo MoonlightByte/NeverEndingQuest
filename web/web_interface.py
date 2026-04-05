@@ -2875,18 +2875,17 @@ def handle_user_exit():
     except Exception as e:
         print(f"ERROR handling user exit: {e}")
 
-@socketio.on('toggle_model')
-def handle_model_toggle(data):
-    """Handle model toggle - legacy compatibility until UI is updated."""
+@socketio.on('get_model_provider')
+def handle_get_provider():
+    """Return current provider setting for UI sync on page load."""
     try:
         import model_config
-        use_gpt5 = data.get('use_gpt5', False)
-        model_config.set_provider('openai' if use_gpt5 else 'legacy')
-        debug(f"Model provider set to: {model_config.get_provider()}", category="web_interface")
-        emit('model_toggled', {'use_gpt5': use_gpt5}, broadcast=True)
+        provider = model_config.get_provider()
+        emit('provider_changed', {'provider': provider})
     except Exception as e:
-        error(f"Error toggling model: {e}", exception=e, category="web_interface")
-        emit('error', {'message': f"Failed to toggle model: {str(e)}"})
+        error(f"Error getting provider: {e}", exception=e, category="web_interface")
+        emit('provider_changed', {'provider': 'legacy'})  # Safe fallback
+
 
 @socketio.on('set_model_provider')
 def handle_set_provider(data):

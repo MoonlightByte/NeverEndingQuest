@@ -198,8 +198,15 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         }
         primary_cost = _calculate_cost(model, primary_token_usage, cfg)
 
-        # Get variants (check task_overrides first)
+        # Get variants (check task_overrides first, then per-callsite configs)
         variants = cfg.get("task_overrides", {}).get(task_id)
+
+        # Then try per-callsite config dicts from model_config.py
+        if variants is None:
+            from model_config import get_capture_variants_for_task
+            variants = get_capture_variants_for_task(task_id)
+
+        # Fall back to tier-based variants (backwards compatibility)
         if variants is None:
             variants = cfg.get(f"{tier}_tier_variants", [])
 

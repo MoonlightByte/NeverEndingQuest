@@ -43,21 +43,33 @@ def _get_client():
         with _client_lock:
             if _gemini_client is None:
                 from google import genai
-                # Look for API key file in project root (where run_web.py runs)
-                import sys
-                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                api_key_file = os.path.join(project_root, "google_api.pi")
-                if os.path.exists(api_key_file):
-                    with open(api_key_file, 'r') as f:
-                        content = f.read().strip()
-                        if 'api_key=' in content:
-                            api_key = content.split('api_key=')[1].strip()
-                        else:
-                            api_key = content
-                else:
-                    raise FileNotFoundError(
-                        f"google_api.pi not found at {api_key_file} - Gemini API key required for capture"
+                api_key = None
+
+                # First try config.GEMINI_API_KEY
+                try:
+                    import config
+                    if hasattr(config, 'GEMINI_API_KEY') and config.GEMINI_API_KEY:
+                        api_key = config.GEMINI_API_KEY
+                except ImportError:
+                    pass
+
+                # Fall back to google_api.pi file
+                if not api_key:
+                    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    api_key_file = os.path.join(project_root, "google_api.pi")
+                    if os.path.exists(api_key_file):
+                        with open(api_key_file, 'r') as f:
+                            content = f.read().strip()
+                            if 'api_key=' in content:
+                                api_key = content.split('api_key=')[1].strip()
+                            else:
+                                api_key = content
+
+                if not api_key:
+                    raise RuntimeError(
+                        "Gemini API key not found. Set config.GEMINI_API_KEY or create google_api.pi"
                     )
+
                 os.environ['GEMINI_API_KEY'] = api_key
                 _gemini_client = genai.Client()
     return _gemini_client
@@ -153,7 +165,7 @@ def build_gemini_config(variant, caller_temperature=None, use_json=False):
     """Build the config dict for generate_content call.
 
     Args:
-        variant: variant config dict with thinking_level and use_caller_temp
+        variant: variant config dict with thinking_level, use_caller_temp, response_schema
         caller_temperature: temperature from original callsite, or None
         use_json: True if JSON output is expected (detected or explicit)
 
@@ -174,6 +186,11 @@ def build_gemini_config(variant, caller_temperature=None, use_json=False):
     # This prevents Gemini from returning plain prose or markdown-wrapped JSON
     if use_json:
         config["response_mime_type"] = "application/json"
+
+    # Pass through response_schema if provided in variant config
+    # (used for structured output callsites like T079 character updates)
+    if "response_schema" in variant:
+        config["response_schema"] = variant["response_schema"]
 
     return config
 
@@ -220,6 +237,10 @@ def call_gemini_variant(variant, messages, caller_temperature=None, caller_kwarg
     # CRITICAL: Set response_mime_type for JSON-expecting calls
     if "response_mime_type" in cfg:
         config_kwargs["response_mime_type"] = cfg["response_mime_type"]
+
+    # Pass through response_schema for structured output (e.g., T079 character updates)
+    if "response_schema" in cfg:
+        config_kwargs["response_schema"] = cfg["response_schema"]
 
     if system_instruction:
         config_kwargs["system_instruction"] = system_instruction

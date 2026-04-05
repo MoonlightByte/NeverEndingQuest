@@ -644,3 +644,121 @@ def load_persisted_provider():
 
 # Load persisted provider on import
 load_persisted_provider()
+
+
+# --- Capture System Per-Callsite Model Configs ---
+# Maps task_id -> (OpenAI config dict name, Gemini config dict name)
+# Used by capture_and_fanout() to fire per-callsite variants instead of tier-based variants.
+# Callsites not in this map fall back to tier-based variants from capture_config.json.
+TASK_CAPTURE_CONFIGS = {
+    # Full-tier callsites
+    "T067": ("DM_FULL_MODEL_GPT52_NONE", "DM_FULL_MODEL_GEMINI_PRO_LOW"),
+    "T065": ("DM_VALIDATION_GPT52_LOW", "DM_VALIDATION_GEMINI_FLASH_MEDIUM"),
+    "T046": ("INIT_TRACKER_GPT52_NONE", "INIT_TRACKER_GEMINI_FLASH_MINIMAL"),
+    "T078": ("CHAR_EFFECTS_GPT52_NONE", "CHAR_EFFECTS_GEMINI_FLASH_HIGH"),
+    "T040": ("COMBAT_VALID_GPT54_NONE", "COMBAT_VALID_GEMINI_FLASH_LOW"),
+    "T051": ("CHAR_VALIDATOR_GPT52_NONE", "CHAR_VALIDATOR_GEMINI_FLASH_MINIMAL"),
+    "T034": ("MONSTER_BUILD_GPT52_NONE", "MONSTER_BUILD_GEMINI_FLASH_MINIMAL"),
+    "T035": ("NPC_BUILD_GPT52_NONE", "NPC_BUILD_GEMINI_FLASH_MINIMAL"),
+    "T048": ("LEVELUP_VAL_GPT52_NONE", "LEVELUP_VAL_GEMINI_PRO_LOW"),
+    "T047": ("LEVELUP_CONV_GPT52_NONE", "LEVELUP_CONV_GEMINI_FLASH_LOW"),
+    "T086": ("LEVELUP_CONV_GPT52_NONE", "LEVELUP_CONV_GEMINI_FLASH_LOW"),
+    "T043": ("COMBAT_MAIN_GPT54_NONE", "COMBAT_MAIN_GEMINI_PRO_LOW"),
+    "T044": ("COMBAT_MAIN_GPT54_NONE", "COMBAT_MAIN_GEMINI_PRO_LOW"),
+    "T045": ("COMBAT_MAIN_GPT54_NONE", "COMBAT_MAIN_GEMINI_PRO_LOW"),
+    "T085": ("LOC_COMPRESS_GPT52_NONE", "LOC_COMPRESS_GEMINI_PRO_LOW"),
+    "T059": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
+    "T092": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
+
+    # Module generation (T022-T029, T031, T036-T037)
+    "T022": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
+    "T023": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
+    "T024": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
+    "T025": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
+    "T026": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
+    "T028": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
+    "T029": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
+    "T031": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
+    "T036": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
+    "T037": ("DM_MAIN_GPT52_NONE", "DM_MAIN_GEMINI_PRO_LOW"),
+
+    # Mini-tier callsites
+    "T017": ("COMBAT_COMPRESS_GPT5MINI_LOW", "COMBAT_COMPRESS_GEMINI_FLASH_LOW"),
+    "T079": ("CHAR_UPDATE_GPT5MINI_LOW", "CHAR_UPDATE_GEMINI_FLASHLITE_MINIMAL"),
+    "T082": ("ACTION_PRED_GPT5MINI_LOW", "ACTION_PRED_GEMINI_FLASH_MINIMAL"),
+    "T081": ("ENCOUNTER_UPD_GPT52_NONE", "ENCOUNTER_UPD_GEMINI_FLASH_MINIMAL"),
+    "T077": ("PLOT_UPD_GPT52_NONE", "PLOT_UPD_GEMINI_FLASH_MINIMAL"),
+    "T021": ("TRANSITION_VAL_GPT52_NONE", "TRANSITION_VAL_GEMINI_FLASH_MINIMAL"),
+    "T014": ("NPC_INFO_GPT54MINI_NONE", "NPC_INFO_GEMINI_FLASH_MINIMAL"),
+    "T091": ("NPC_INFO_GPT54MINI_NONE", "NPC_INFO_GEMINI_FLASH_MINIMAL"),
+    "T041": ("COMBAT_SUMMARY_GPT54MINI_NONE", "COMBAT_SUMMARY_GEMINI_FLASH_LOW"),
+    "T020": ("NARR_COMPRESS_GPT54MINI_NONE", "NARR_COMPRESS_GEMINI_FLASH_MINIMAL"),
+    "T084": ("AGENTIC_COMPRESS_GPT54MINI_NONE", "AGENTIC_COMPRESS_GEMINI_PRO_LOW"),
+    "T027": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
+
+    # DM summarization (T030, T032, T033, T038, T066)
+    "T030": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
+    "T032": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
+    "T033": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
+    "T038": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
+    "T066": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
+
+    # Adventure summaries (T015, T016, T018, T019)
+    "T015": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),
+    "T016": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),
+    "T018": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),
+    "T019": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),
+
+    # Mini utilities (T042, T063, T064, T087-T090, T093-T095)
+    "T042": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
+    "T063": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
+    "T064": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
+    "T087": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
+    "T088": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
+    "T089": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
+    "T090": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
+    "T093": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
+    "T094": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
+    "T095": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
+}
+
+
+def get_capture_variants_for_task(task_id):
+    """Get per-callsite capture variants for a task_id.
+
+    Returns list of variant dicts for use by capture system.
+    Each dict has: provider, model, and provider-specific params.
+    Returns None if task_id not mapped (falls back to tier-based).
+    """
+    config_names = TASK_CAPTURE_CONFIGS.get(task_id)
+    if not config_names:
+        return None  # Fall back to tier-based
+
+    openai_dict_name, gemini_dict_name = config_names
+    variants = []
+
+    # Get OpenAI variant
+    openai_cfg = globals().get(openai_dict_name)
+    if openai_cfg:
+        variant = {
+            "provider": "openai",
+            "model": openai_cfg.get("model"),
+            "label": f"{openai_cfg.get('model')}|effort={openai_cfg.get('reasoning_effort', 'none')}",
+        }
+        if "reasoning_effort" in openai_cfg:
+            variant["reasoning_effort"] = openai_cfg["reasoning_effort"]
+        variants.append(variant)
+
+    # Get Gemini variant
+    gemini_cfg = globals().get(gemini_dict_name)
+    if gemini_cfg:
+        variant = {
+            "provider": "gemini",
+            "model": gemini_cfg.get("model"),
+            "label": f"{gemini_cfg.get('model')}|thinking={gemini_cfg.get('thinking_level', 'none')}",
+        }
+        if "thinking_level" in gemini_cfg:
+            variant["thinking_level"] = gemini_cfg["thinking_level"]
+        variants.append(variant)
+
+    return variants if variants else None
