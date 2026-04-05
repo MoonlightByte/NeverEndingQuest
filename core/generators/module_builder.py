@@ -48,9 +48,9 @@ from utils.module_context import ModuleContext
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.npc_reconciler import NpcReconciler
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T028", "core/generators/module_builder.py", 674)
-register_callsite("T029", "core/generators/module_builder.py", 926)
-register_callsite("T030", "core/generators/module_builder.py", 1426)
+register_callsite("T028", "core/generators/module_builder.py", 685)
+register_callsite("T029", "core/generators/module_builder.py", 943)
+register_callsite("T030", "core/generators/module_builder.py", 1449)
 
 # Set script name for logging
 set_script_name("module_builder")
@@ -572,11 +572,8 @@ The plot title should reference this specific area, not other locations.
             self.log("Warning: No plots to unify")
             return
             
-        # Import OpenAI at the function level to avoid circular imports
-        from openai import OpenAI
-        from config import OPENAI_API_KEY, DM_MAIN_MODEL
-        
-        client = OpenAI(api_key=OPENAI_API_KEY)
+        from core.ai import api_client
+        import config
         
         # Prepare context for unification
         area_summaries = []
@@ -675,10 +672,25 @@ IMPORTANT:
 - Maintain all existing content but improve flow and connections"""
 
         try:
-            response = capture_and_fanout("T028", client.chat.completions.create, messages=[
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                main_cfg = config.DM_MAIN_GPT52_NONE
+            elif MODEL_PROVIDER == "gemini":
+                main_cfg = config.DM_MAIN_GEMINI_PRO_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                main_cfg = config.DM_MAIN_LMSTUDIO
+            else:  # legacy
+                main_cfg = config.DM_MAIN_LEGACY
+
+            response = capture_and_fanout("T028", api_client.create_completion,
+                messages=[
                     {"role": "system", "content": "You are an expert 5th edition module designer specializing in creating coherent, engaging adventure narratives."},
                     {"role": "user", "content": prompt}
-                ], model=DM_MAIN_MODEL, response_format={"type": "json_object"}, temperature=0.7)
+                ],
+                model=main_cfg["model"],
+                temperature=0.7,
+                response_format={"type": "json_object"},
+                **{k: v for k, v in main_cfg.items() if k != "model"})
 
             unified_plot = json.loads(response.choices[0].message.content)
             
@@ -759,17 +771,14 @@ IMPORTANT:
             self.log(f"Warning: Could not load unified plot for hook updates: {e}")
             return
         
-        # Import here to avoid circular imports
-        from openai import OpenAI
-        from config import OPENAI_API_KEY, DM_MAIN_MODEL
-        
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        
+        from core.ai import api_client
+        import config
+
         # Update each area's plot hooks
         for area_id in self.areas_data:
-            self._update_single_area_plot_hooks(area_id, unified_plot, client)
-    
-    def _update_single_area_plot_hooks(self, area_id, unified_plot, client):
+            self._update_single_area_plot_hooks(area_id, unified_plot)
+
+    def _update_single_area_plot_hooks(self, area_id, unified_plot):
         """Atomically update plot hooks for a single area with deep merge and safety guards"""
         # Import here to avoid circular imports
         from utils.file_operations import safe_write_json, safe_read_json
@@ -825,11 +834,10 @@ IMPORTANT:
         # STEP 5: Generate updated plot hooks using AI
         try:
             updated_hooks = self._generate_enhanced_plot_hooks(
-                area_id, 
-                original_area_data, 
-                relevant_plot_points, 
-                relevant_side_quests, 
-                client
+                area_id,
+                original_area_data,
+                relevant_plot_points,
+                relevant_side_quests
             )
             
             if not updated_hooks:
@@ -865,10 +873,10 @@ IMPORTANT:
             except:
                 self.log(f"Critical error: Could not restore {area_id} from backup")
     
-    def _generate_enhanced_plot_hooks(self, area_id, area_data, plot_points, side_quests, client):
+    def _generate_enhanced_plot_hooks(self, area_id, area_data, plot_points, side_quests):
         """Generate enhanced plot hooks that reference specific plot points and side quests"""
-        # Import here to avoid circular imports
-        from config import DM_MAIN_MODEL
+        from core.ai import api_client
+        import config
         
         # Extract existing plot hooks from all locations in the area
         existing_hooks = []
@@ -922,10 +930,25 @@ IMPORTANT:
 - Make hooks more specific and actionable"""
 
         try:
-            response = capture_and_fanout("T029", client.chat.completions.create, messages=[
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                main_cfg = config.DM_MAIN_GPT52_NONE
+            elif MODEL_PROVIDER == "gemini":
+                main_cfg = config.DM_MAIN_GEMINI_PRO_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                main_cfg = config.DM_MAIN_LMSTUDIO
+            else:  # legacy
+                main_cfg = config.DM_MAIN_LEGACY
+
+            response = capture_and_fanout("T029", api_client.create_completion,
+                messages=[
                     {"role": "system", "content": "You are an expert 5th edition module designer specializing in creating actionable plot hooks that reference specific plot elements."},
                     {"role": "user", "content": prompt}
-                ], model=DM_MAIN_MODEL, response_format={"type": "json_object"}, temperature=0.6)
+                ],
+                model=main_cfg["model"],
+                temperature=0.6,
+                response_format={"type": "json_object"},
+                **{k: v for k, v in main_cfg.items() if k != "model"})
 
             result = json.loads(response.choices[0].message.content)
             return result.get("plotHookUpdates", [])
