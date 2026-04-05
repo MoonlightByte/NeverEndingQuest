@@ -75,17 +75,15 @@ import random
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
-from openai import OpenAI
-from config import OPENAI_API_KEY, DM_MAIN_MODEL
+from core.ai import api_client
+import config
 import jsonschema
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_write_json as save_json_safely
 from utils.enhanced_logger import debug, info, warning, error
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T031", "core/generators/module_generator.py", 513)
+register_callsite("T031", "core/generators/module_generator.py", 524)
 
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Location ID prefix mapping to ensure unique IDs across areas
 LOCATION_PREFIX_MAP = {
@@ -505,17 +503,33 @@ Return ONLY the value for this field in the correct format (not wrapped in a JSO
 If the field expects a string, return just the string.
 If the field expects an array, return just the array.
 If the field expects an object, return just the object.
+Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
 """
         
-        print(f"DEBUG: [ModuleGenerator] Making API call to {DM_MAIN_MODEL}...")
+        print(f"DEBUG: [ModuleGenerator] Making API call for {field_path}...")
         print(f"DEBUG: [ModuleGenerator] Prompt length: {len(prompt)} characters")
         print(f"INFO: Calling OpenAI API for {field_path}... This may take 10-30 seconds.")
         start_time = time.time()
         try:
-            response = capture_and_fanout("T031", client.chat.completions.create, messages=[
+            from model_config import MODEL_PROVIDER
+            if MODEL_PROVIDER == "openai":
+                main_cfg = config.DM_MAIN_GPT52_NONE
+            elif MODEL_PROVIDER == "gemini":
+                main_cfg = config.DM_MAIN_GEMINI_PRO_LOW
+            elif MODEL_PROVIDER == "lmstudio":
+                main_cfg = config.DM_MAIN_LMSTUDIO
+            else:  # legacy
+                main_cfg = config.DM_MAIN_LEGACY
+
+            response = capture_and_fanout("T031", api_client.create_completion,
+                messages=[
                     {"role": "system", "content": "You are an expert 5e module designer. Return only the requested data in the exact format needed."},
                     {"role": "user", "content": prompt}
-                ], model=DM_MAIN_MODEL, temperature=0.7)
+                ],
+                model=main_cfg["model"],
+                temperature=0.7,
+                response_format=None,
+                **{k: v for k, v in main_cfg.items() if k != "model"})
             elapsed = time.time() - start_time
             print(f"DEBUG: [ModuleGenerator] API call completed successfully in {elapsed:.1f} seconds")
         except Exception as e:
