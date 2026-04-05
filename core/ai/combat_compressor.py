@@ -34,7 +34,8 @@ class CombatUserMessageCompressor:
         self.progress_lock = threading.Lock()  # Thread safety for progress tracking
         self.completed_count = 0
         self.total_messages = 0
-        self.combat_compressor = CombatCompressor(api_key=api_key, enable_caching=False)  # Pass API key, we handle caching ourselves
+        # CombatCompressor no longer accepts an API key; it reads provider config internally.
+        self.combat_compressor = CombatCompressor(enable_caching=False)
         
     def load_cache(self) -> Dict[str, str]:
         """Load existing cache from file."""
