@@ -4215,6 +4215,29 @@
             line-height: 1.4;
         }
 
+        /* Provider section needs a stacked layout so help text doesn't collapse */
+        .settings-item-provider {
+            display: block;
+            padding-top: 2px;
+        }
+
+        .settings-provider-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .settings-item-provider .settings-select {
+            width: 170px;
+            flex-shrink: 0;
+        }
+
+        .settings-provider-help {
+            margin-top: 8px;
+            margin-left: 0;
+        }
+
         .voice-controls {
             display: flex;
             align-items: center;
@@ -4414,16 +4437,18 @@
                     </div>
                     <div class="settings-section">
                         <div class="settings-section-title">AI Provider</div>
-                        <div class="settings-item">
-                            <label for="model-provider-select">Provider</label>
-                            <select class="settings-select" id="model-provider-select"
-                                    title="Each AI task uses a model selected specifically for that task type based on quality testing">
-                                <option value="legacy">Legacy (GPT-4.1) - Stable baseline</option>
-                                <option value="openai">OpenAI (GPT-5.x) - Next-gen, tested per task</option>
-                                <option value="gemini">Gemini 3.1 - Alternative provider, tested per task</option>
-                                <option value="lmstudio">LM Studio (Local) - Zero API cost</option>
-                            </select>
-                            <div class="settings-help">
+                        <div class="settings-item settings-item-provider">
+                            <div class="settings-provider-row">
+                                <label for="model-provider-select">Provider</label>
+                                <select class="settings-select" id="model-provider-select"
+                                        title="Each AI task uses a model selected specifically for that task type based on quality testing">
+                                    <option value="legacy">Legacy (GPT-4.1) - Stable baseline</option>
+                                    <option value="openai">OpenAI (GPT-5.x) - Next-gen, tested per task</option>
+                                    <option value="gemini">Gemini 3.1 - Alternative provider, tested per task</option>
+                                    <option value="lmstudio">LM Studio (Local) - Zero API cost</option>
+                                </select>
+                            </div>
+                            <div class="settings-help settings-provider-help">
                                 Models are selected per-task based on quality testing.
                                 Legacy is recommended for stability.
                             </div>
@@ -8178,4 +8203,4 @@
     </div>
     
 </body>
-</html>
+</html>
