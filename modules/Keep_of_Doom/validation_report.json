@@ -1,10 +1,10 @@
 {
   "module": "Keep_of_Doom",
-  "timestamp": "2026-03-15T16:42:30.348053",
+  "timestamp": "2026-04-06T14:11:38.199886",
   "summary": {
-    "total_files": 54,
-    "total_passed": 55,
-    "total_failed": 0
+    "total_files": 65,
+    "total_passed": 65,
+    "total_failed": 2
   },
   "results": {
     "area": {
@@ -101,6 +101,54 @@
       "passed": 1,
       "failed": 0,
       "errors": []
+    },
+    "runtime_room_reachability": {
+      "files": [
+        "areas/G001.json",
+        "areas/HH001.json",
+        "areas/SK001.json",
+        "areas/TBM001.json",
+        "areas/TCD001.json"
+      ],
+      "passed": 5,
+      "failed": 0,
+      "errors": []
+    },
+    "map_area_parity": {
+      "files": [
+        "G001.json <-> map_G001.json",
+        "HH001.json <-> map_HH001.json",
+        "SK001.json <-> map_SK001.json",
+        "TBM001.json <-> map_TBM001.json",
+        "TCD001.json <-> map_TCD001.json"
+      ],
+      "passed": 4,
+      "failed": 1,
+      "errors": [
+        "/Users/zeug/Projects/NeverEndingQuest/modules/Keep_of_Doom/areas/HH001.json vs /Users/zeug/Projects/NeverEndingQuest/modules/Keep_of_Doom/map_HH001.json: room AE06 exists in area but not in map",
+        "/Users/zeug/Projects/NeverEndingQuest/modules/Keep_of_Doom/areas/HH001.json vs /Users/zeug/Projects/NeverEndingQuest/modules/Keep_of_Doom/map_HH001.json: room AE03 missing map edges AE05, AE06",
+        "/Users/zeug/Projects/NeverEndingQuest/modules/Keep_of_Doom/areas/HH001.json vs /Users/zeug/Projects/NeverEndingQuest/modules/Keep_of_Doom/map_HH001.json: room AE05 missing map edges AE03, AE06"
+      ]
+    },
+    "plot_progression": {
+      "files": [
+        "module_plot.json"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "connectivity": {
+      "files": [],
+      "passed": 0,
+      "failed": 1,
+      "errors": [
+        "HH001 (Harrow's Hollow) is unreachable from starting area G001",
+        "SK001 (Shadowfall Keep) is unreachable from starting area G001",
+        "TBM001 (The Blighted Marches) is unreachable from starting area G001",
+        "TCD001 (The Cursed Dungeons) is unreachable from starting area G001",
+        "Starting area G001 (Gloamwood) has no connections - players cannot leave!"
+      ]
     }
   }
 }

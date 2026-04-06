@@ -40,6 +40,8 @@ from core.memory.session_diary import (
     compute_world_sort_key,
     confirm_diary_for_save,
     list_diary_entries,
+    remediate_diary_entries,
+    rebuild_diary_from_journal,
     refresh_draft_if_stale,
 )
 from core.memory.story_so_far_compiler import (
@@ -74,6 +76,8 @@ __all__ = [
     "confirm_diary_for_exit",
     "confirm_diary_for_save",
     "list_diary_entries",
+    "remediate_diary_entries",
+    "rebuild_diary_from_journal",
     "build_confirmed_story_text",
     "render_story_pdf",
     "get_or_build_story_pdf",

@@ -1021,6 +1021,31 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Bonsai Narration Provider Pilot Planning + Rollback (COMPLETED - 2026-04-06)
+
+**Status:** COMPLETED - Documentation/planning artifacts created and archived; runtime Bonsai code wiring intentionally rolled back (no provider behavior change merged).
+
+**Objective:**
+- Evaluate local Bonsai API viability for narration-only (`dm_main`) in a fail-closed pilot without widening risk into validation/combat/builder paths.
+- Keep this slice planning-first and preserve current OpenAI/OpenRouter runtime behavior until explicit implementation approval.
+
+**Implementation Summary:**
+- Added version-2 planning note: `plans/version-2/bonsai-narration-provider-pilot.md`.
+- Authored and archived OpenSpec pilot change with bounded scope:
+  - `openspec/changes/archive/2026-04-06-bonsai-narration-provider-pilot/`
+- Reverted all temporary Bonsai runtime/config/test edits in:
+  - `main.py`
+  - `utils/ai_client_factory.py`
+  - `model_config.py`
+  - `config_template.py`
+  - `config.py`
+  - `scripts/test_bonsai_narration_pilot_contract.py` (removed)
+
+**Verification:**
+- `python3 -m py_compile main.py utils/ai_client_factory.py model_config.py config_template.py config.py` -> PASS
+- `openspec archive bonsai-narration-provider-pilot --yes --skip-specs` -> PASS
+- Runtime routing remains unchanged from pre-pilot baseline.
+
 ### Scene-Entity Combat Validity Contract + Cross-Module Audit/Backfill (COMPLETED - 2026-04-06)
 
 **Status:** COMPLETED - Added reusable scene-entity combat-validity contract and applied targeted Track 1 annotations across current modules.

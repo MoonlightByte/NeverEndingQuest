@@ -99,6 +99,7 @@ class TestSessionDiaryMVP(unittest.TestCase):
         first = refresh_draft_if_stale(self.db_path, world_conditions)
         self.assertEqual(first.get("status"), "success")
         self.assertEqual(first.get("action"), "updated")
+        self.assertEqual(first.get("generation_mode"), "fallback")
 
         second = refresh_draft_if_stale(self.db_path, world_conditions)
         self.assertEqual(second.get("status"), "success")
@@ -111,6 +112,32 @@ class TestSessionDiaryMVP(unittest.TestCase):
         self.assertEqual(third.get("status"), "success")
         self.assertEqual(third.get("action"), "updated")
         self.assertEqual(self._count_rows("status = 'draft'"), 1)
+
+    def test_refresh_draft_includes_checkpoint_worldline_stamps(self) -> None:
+        self._ingest_entry("The party entered the ossuary crypt.", "journal:meta_1")
+
+        world_conditions = {
+            "year": 1492,
+            "month": "Ches",
+            "day": 25,
+            "time": "14:20:00",
+            "module": "Night_of_the_Restless_Dead",
+            "currentLocation": "Cathedral Undercroft",
+            "currentLocationId": "NIG03",
+            "currentArea": "Nightgrave Cathedral",
+            "currentAreaId": "NIG001",
+        }
+
+        result = refresh_draft_if_stale(self.db_path, world_conditions)
+        self.assertEqual(result.get("status"), "success")
+        self.assertEqual(result.get("source_mode"), "journal")
+        draft = result.get("draft", {})
+        checkpoint = draft.get("checkpoint", {})
+        self.assertEqual(checkpoint.get("module"), "Night_of_the_Restless_Dead")
+        self.assertEqual(checkpoint.get("location"), "Cathedral Undercroft")
+        self.assertEqual(checkpoint.get("location_id"), "NIG03")
+        self.assertEqual(checkpoint.get("area"), "Nightgrave Cathedral")
+        self.assertEqual(checkpoint.get("area_id"), "NIG001")
 
     def test_confirm_checkpoint_is_idempotent_by_save_id(self) -> None:
         self._ingest_entry("Scout Kira warned of movement at the gate.", "journal:4")
@@ -125,6 +152,7 @@ class TestSessionDiaryMVP(unittest.TestCase):
         created = confirm_diary_for_save(self.db_path, "save_abc_001", world_conditions)
         self.assertEqual(created.get("status"), "success")
         self.assertEqual(created.get("action"), "created")
+        self.assertEqual(created.get("generation_mode"), "fallback")
 
         reused = confirm_diary_for_save(self.db_path, "save_abc_001", world_conditions)
         self.assertEqual(reused.get("status"), "success")
@@ -166,6 +194,7 @@ class TestSessionDiaryMVP(unittest.TestCase):
         self.assertEqual(exit_result.get("status"), "success")
         self.assertEqual(exit_result.get("action"), "created")
         self.assertEqual(exit_result.get("entry", {}).get("checkpoint_type"), "exit")
+        self.assertEqual(exit_result.get("generation_mode"), "fallback")
         self.assertEqual(self._count_rows("status = 'confirmed' AND checkpoint_type = 'exit'"), 1)
         self.assertEqual(self._count_rows("status = 'draft'"), 0)
 
@@ -219,6 +248,36 @@ class TestSessionDiaryMVP(unittest.TestCase):
         self.assertEqual(result.get("action"), "updated")
         self.assertIn("ruined cathedral", result.get("draft", {}).get("summary", "").lower())
 
+    def test_refresh_draft_filters_structured_journal_payloads(self) -> None:
+        self._ingest_entry('{"plan":"json leak", "actions":[{"action":"updateEncounter"}]}', "journal:structured")
+        self._ingest_entry("The party crossed the broken nave and found claw marks near the altar.", "journal:clean")
+
+        result = refresh_draft_if_stale(
+            self.db_path,
+            {"year": 1492, "month": "Ches", "day": 24, "time": "12:30:00"},
+        )
+        self.assertEqual(result.get("status"), "success")
+        summary = result.get("draft", {}).get("summary", "")
+        self.assertIn("broken nave", summary.lower())
+        self.assertNotIn("updateencounter", summary.lower())
+        self.assertNotIn("\"plan\"", summary)
+
+    def test_refresh_draft_strips_journal_headers(self) -> None:
+        self._ingest_entry(
+            "Journal Entry - Cathedral Watch\nDate: Early Autumn\nThe party fortified the bell tower and lit warning braziers.",
+            "journal:header_strip",
+        )
+
+        result = refresh_draft_if_stale(
+            self.db_path,
+            {"year": 1492, "month": "Ches", "day": 24, "time": "12:40:00"},
+        )
+        self.assertEqual(result.get("status"), "success")
+        summary = result.get("draft", {}).get("summary", "")
+        self.assertNotIn("journal entry", summary.lower())
+        self.assertNotIn("date:", summary.lower())
+        self.assertIn("bell tower", summary.lower())
+
     def test_build_fallback_summary_is_deterministic(self) -> None:
         events = [
             {"summary": "Acheron forced open the sealed door."},
@@ -227,7 +286,7 @@ class TestSessionDiaryMVP(unittest.TestCase):
         summary = build_fallback_summary(events)
         self.assertEqual(
             summary,
-            "The chapter opened with Acheron forced open the sealed door and closed with The party crossed the flooded gallery.",
+            "At Unknown Location, Acheron forced open the sealed door. Later, The party crossed the flooded gallery.",
         )
 
 

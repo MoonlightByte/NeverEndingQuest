@@ -1,9 +1,9 @@
 {
   "module": "The_Pumpkin_Kings_Curse",
-  "timestamp": "2026-03-15T16:42:30.584416",
+  "timestamp": "2026-04-06T14:11:38.189743",
   "summary": {
-    "total_files": 36,
-    "total_passed": 37,
+    "total_files": 43,
+    "total_passed": 45,
     "total_failed": 0
   },
   "results": {
@@ -73,6 +73,33 @@
       "files": [
         "module_context.json"
       ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "runtime_room_reachability": {
+      "files": [
+        "areas/BOO001.json",
+        "areas/CMS001.json",
+        "areas/GRV001.json",
+        "areas/HFG001.json",
+        "areas/HLF001.json",
+        "areas/VO001.json"
+      ],
+      "passed": 6,
+      "failed": 0,
+      "errors": []
+    },
+    "plot_progression": {
+      "files": [
+        "module_plot.json"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "connectivity": {
+      "files": [],
       "passed": 1,
       "failed": 0,
       "errors": []

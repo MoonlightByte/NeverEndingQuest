@@ -63,6 +63,9 @@ ENABLE_BROWSER_WORD_SYNC = False                       # Browser TTS word-bounda
 # Future: Non-browser TTS timing estimation (Phase 2 - scaffold only, not active)
 ENABLE_TTS_ESTIMATED_TIMING = False                    # Estimated timing sync for OpenAI TTS (future Phase 2)
 
+# --- Session Diary Generation ---
+ENABLE_SESSION_DIARY_LLM = True                       # Use LLM prompt path for diary checkpoints; fallback remains deterministic
+
 # --- Conversation Compression Settings ---
 # Enable/disable compression types before API calls
 COMPRESSION_ENABLED = True                              # Master switch for all compression

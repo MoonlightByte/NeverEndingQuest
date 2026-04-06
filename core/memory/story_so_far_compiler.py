@@ -124,6 +124,13 @@ def _load_confirmed_entries(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
                 "summary": row["summary"],
                 "generation_mode": row["generation_mode"],
                 "llm_model": row["llm_model"],
+                "checkpoint": {
+                    "module": row["checkpoint_module"] if "checkpoint_module" in row.keys() else None,
+                    "location": row["checkpoint_location"] if "checkpoint_location" in row.keys() else None,
+                    "location_id": row["checkpoint_location_id"] if "checkpoint_location_id" in row.keys() else None,
+                    "area": row["checkpoint_area"] if "checkpoint_area" in row.keys() else None,
+                    "area_id": row["checkpoint_area_id"] if "checkpoint_area_id" in row.keys() else None,
+                },
                 "world": {
                     "year": row["world_year"],
                     "month": row["world_month"],
@@ -305,10 +312,17 @@ def _build_fallback_story(entries: List[Dict[str, Any]], context: Dict[str, Any]
     paragraphs = [f"The story so far in {campaign_name} unfolded across these remembered chapters."]
     for entry in entries:
         world = entry.get("world", {})
+        checkpoint = entry.get("checkpoint", {}) if isinstance(entry.get("checkpoint"), dict) else {}
         time_text = f"{world.get('month', '')} {world.get('day', 0)}, {world.get('year', 0)} at {world.get('time', '00:00:00')}"
+        location = str(checkpoint.get("location", "") or "Unknown Location").strip() or "Unknown Location"
+        module = str(checkpoint.get("module", "") or "").strip()
+        if module:
+            location_text = f"{location} ({module})"
+        else:
+            location_text = location
         summary = str(entry.get("summary", "")).strip()
         if summary:
-            paragraphs.append(f"On {time_text}, {summary}")
+            paragraphs.append(f"On {time_text} at {location_text}, {summary}")
     return _sanitize_story_text("\n\n".join(paragraphs))
 
 

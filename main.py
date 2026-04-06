@@ -178,7 +178,12 @@ from config import (
 )
 
 # Initialize AI client using factory (supports OpenAI and OpenRouter)
-from utils.ai_client_factory import create_chat_client, reset_fallback_status, get_chat_model_name, handle_provider_error
+from utils.ai_client_factory import (
+    create_chat_client,
+    reset_fallback_status,
+    get_chat_model_name,
+    handle_provider_error,
+)
 reset_fallback_status()  # Reset fallback tracking at module load
 client = create_chat_client()
 

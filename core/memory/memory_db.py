@@ -499,6 +499,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_session_diary_checkpoint_identity_unique
 """
 
 
+MIGRATION_006_SESSION_DIARY_WORLDLINE_STAMPS = """
+ALTER TABLE session_diary_entries ADD COLUMN checkpoint_module TEXT;
+ALTER TABLE session_diary_entries ADD COLUMN checkpoint_location TEXT;
+ALTER TABLE session_diary_entries ADD COLUMN checkpoint_location_id TEXT;
+ALTER TABLE session_diary_entries ADD COLUMN checkpoint_area TEXT;
+ALTER TABLE session_diary_entries ADD COLUMN checkpoint_area_id TEXT;
+
+UPDATE session_diary_entries
+SET checkpoint_location = COALESCE(NULLIF(TRIM(checkpoint_location), ''), 'Unknown Location')
+WHERE checkpoint_location IS NULL OR TRIM(checkpoint_location) = '';
+
+UPDATE session_diary_entries
+SET checkpoint_module = COALESCE(NULLIF(TRIM(checkpoint_module), ''), 'Unknown Module')
+WHERE checkpoint_module IS NULL OR TRIM(checkpoint_module) = '';
+
+CREATE INDEX IF NOT EXISTS idx_session_diary_checkpoint_location
+    ON session_diary_entries(status, checkpoint_location, world_sort_key DESC);
+"""
+
+
 def run_memory_migrations(db_path: str = DEFAULT_MEMORY_DB_PATH) -> Dict[str, Any]:
     """Run all pending memory DB migrations and return summary."""
     _ensure_parent_dir(db_path)
@@ -509,6 +529,7 @@ def run_memory_migrations(db_path: str = DEFAULT_MEMORY_DB_PATH) -> Dict[str, An
         ("003_world_narrative_tables", MIGRATION_003_WORLD_NARRATIVE_TABLES),
         ("004_session_diary_tables", MIGRATION_004_SESSION_DIARY_TABLES),
         ("005_session_diary_checkpoint_identity", MIGRATION_005_SESSION_DIARY_CHECKPOINT_IDENTITY),
+        ("006_session_diary_worldline_stamps", MIGRATION_006_SESSION_DIARY_WORLDLINE_STAMPS),
     ]
 
     applied_count = 0
