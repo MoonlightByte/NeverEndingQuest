@@ -748,10 +748,12 @@ You MUST:
 
 FINALIZATION BEHAVIOR:
 - If the player confirms the build (for example: "looks great", "ready", "go ahead", "confirm"), first provide a concise plain-text character summary.
-- After the summary, ask whether they want the machine-readable character sheet JSON now.
-- Output raw JSON ONLY if the player explicitly asks for JSON with phrases like "finalize JSON", "output JSON", "show raw JSON", or "save character sheet JSON".
+- Use immersive natural prose for the summary. Avoid technical phrasing in this conversational response.
+- Optionally include a short "Key details" section in plain text bullets.
+- NEVER mention JSON, machine-readable data, schema, export, or system mechanics in player-facing responses.
 - In prose-summary responses, NEVER include a JSON object, braces block, or code fence.
 - Treat this prose-first policy as highest priority.
+- PLAYER-FACING MODE DEFAULT: unless an explicit instruction contains the exact phrase "INTERNAL SYSTEM STEP", you are in player-facing mode and MUST output prose only.
 
 NEVER output the final JSON unless the player says they are ready. If you're unsure of a choice, ask. Focus on helping the player make decisions they're excited about. Encourage fun, story-driven, rules-compliant choices. Keep it immersive, but not overwhelming."""
         enhanced_system_prompt = f"""{base_system_content}
@@ -772,7 +774,8 @@ RACE AND CLASS RULES:
 {npc_rules}
 
 JSON OUTPUT REQUIREMENTS:
-When the player explicitly asks for JSON finalization, you MUST respond with ONLY a valid JSON object that matches the provided character schema exactly.
+When an INTERNAL system instruction asks for finalization JSON, respond with ONLY a valid JSON object that matches the provided character schema exactly.
+This JSON-only response is for system processing and should not include any player-facing prose.
 
 SKILL PROFICIENCY REQUIREMENTS:
 - The "skills" field MUST be an array of skill names, NOT an object with bonuses
@@ -846,7 +849,7 @@ CHARACTER SCHEMA:
                         creation_conversation.append({"role": "assistant", "content": response})
                         creation_conversation.append({"role": "user", "content": "There was an error processing the character data. Please provide a clean JSON object with only standard ASCII characters."})
                         continue
-                
+
                 # Add AI response to conversation immediately
                 creation_conversation.append({"role": "assistant", "content": response})
                 
