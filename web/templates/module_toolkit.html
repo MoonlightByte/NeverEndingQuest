@@ -2558,7 +2558,29 @@
                             <p class="intro-text">
                                 This tool allows for the manual creation of a new adventure module. The AI will generate a complete, playable module based on your concept. The more detail you provide in the prompt, the richer and more tailored the adventure will be.
                             </p>
-                    
+
+                            <div class="section" style="margin-top: 15px; margin-bottom: 20px;">
+                                <h2 style="font-size: 1.2em; margin-bottom: 10px;">Homebrew Upload (.md)</h2>
+                                <p style="color: #b0b0b0; margin-bottom: 12px;">
+                                    Upload a Homebrewery markdown file and ingest it directly through the shared strict pipeline.
+                                    This first slice supports <code>.md</code> only.
+                                </p>
+                                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                    <input
+                                        type="file"
+                                        id="homebrew-md-file"
+                                        class="game-input"
+                                        accept=".md,text/markdown"
+                                        style="max-width: 420px;"
+                                    >
+                                    <button type="button" class="game-button" id="homebrew-upload-btn">Import Homebrew Markdown</button>
+                                </div>
+                                <div id="homebrew-upload-status" style="display: none; margin-top: 12px; padding: 10px; background: #141414; border: 1px solid #444;">
+                                    <div id="homebrew-upload-message" style="margin-bottom: 8px; color: #ddd;"></div>
+                                    <pre id="homebrew-upload-details" style="max-height: 260px; overflow: auto; color: #bbb; font-size: 0.9em; white-space: pre-wrap;"></pre>
+                                </div>
+                            </div>
+                     
                             <!-- Input Form -->
                             <form id="module-form">
                                 <label for="module-name">Module Name</label>
@@ -2614,6 +2636,7 @@
                                     <li data-stage="6">Connections</li>
                                     <li data-stage="7">Finalizing</li>
                                     <li data-stage="8">Saving</li>
+                                    <li data-stage="9">Post-Build Finishing</li>
                                 </ul>
                                 <p id="status-message">Initializing module builder...</p>
                                 <button class="game-button cancel" id="cancel-btn">Cancel Generation</button>
@@ -5724,6 +5747,12 @@
         let progressPercentage = null;
         let progressStages = null;
         let modulesListContainer = null;
+        let homebrewMdFileInput = null;
+        let homebrewUploadButton = null;
+        let homebrewUploadStatus = null;
+        let homebrewUploadMessage = null;
+        let homebrewUploadDetails = null;
+        let homebrewUploadPollTimer = null;
         
         // Initialize module builder elements after DOM is ready
         function initializeModuleBuilderElements() {
@@ -5740,6 +5769,11 @@
             progressPercentage = document.getElementById('progress-percentage');
             progressStages = document.querySelectorAll('#progress-stages li');
             modulesListContainer = document.getElementById('modules-list');
+            homebrewMdFileInput = document.getElementById('homebrew-md-file');
+            homebrewUploadButton = document.getElementById('homebrew-upload-btn');
+            homebrewUploadStatus = document.getElementById('homebrew-upload-status');
+            homebrewUploadMessage = document.getElementById('homebrew-upload-message');
+            homebrewUploadDetails = document.getElementById('homebrew-upload-details');
         }
         
         // Set up module builder event listeners
@@ -5787,6 +5821,12 @@
                             input.placeholder = defaultLocationsInput.value;
                         }
                     }
+                });
+            }
+
+            if (homebrewUploadButton) {
+                homebrewUploadButton.addEventListener('click', () => {
+                    startToolkitHomebrewUpload();
                 });
             }
             
@@ -5919,14 +5959,28 @@
         socket.on('module_complete', (data) => {
             if (progressSection) progressSection.style.display = 'none';
             if (resultsSection) resultsSection.style.display = 'block';
-            const output = `Module Name: ${data.module_name}\n\n${data.message}\n\nThe module has been created successfully and is ready to use!`;
+            const finalStatus = data.final_status || 'success';
+            const postBuildStatus = data.post_build_status || finalStatus;
+            const parityNote = data.publication_parity_note || '';
+            const buildReport = data.build_report ? `\n\nBuild Report:\n${JSON.stringify(data.build_report, null, 2)}` : '';
+            const output =
+                `Module Name: ${data.module_name}\n` +
+                `Final Status: ${finalStatus}\n` +
+                `Post-Build Status: ${postBuildStatus}\n\n` +
+                `${data.message}\n\n` +
+                `${parityNote}${buildReport}`;
             const moduleOutput = document.getElementById('module-output');
             if (moduleOutput) moduleOutput.textContent = output;
             socket.emit('request_module_list');
         });
         
         socket.on('module_error', (data) => {
-            showError(data.error);
+            let message = data.error || 'Unknown module build error';
+            if (data.generation_succeeded && data.finishing_report) {
+                message += `\n\nGeneration completed, but finishing failed:\n${JSON.stringify(data.finishing_report, null, 2)}`;
+                socket.emit('request_module_list');
+            }
+            showError(message);
             if (progressSection) progressSection.style.display = 'none';
         });
         
@@ -5936,6 +5990,176 @@
                 resetBuilderUI();
             }, 2000);
         });
+
+        function renderHomebrewUploadStatus(type, message, details = '') {
+            if (!homebrewUploadStatus || !homebrewUploadMessage || !homebrewUploadDetails) {
+                return;
+            }
+
+            const colorByType = {
+                info: '#4aa3ff',
+                success: '#4CAF50',
+                warning: '#ff9800',
+                error: '#f44336',
+            };
+
+            homebrewUploadStatus.style.display = 'block';
+            homebrewUploadStatus.style.borderColor = colorByType[type] || '#444';
+            homebrewUploadMessage.style.color = colorByType[type] || '#ddd';
+            homebrewUploadMessage.textContent = message;
+            homebrewUploadDetails.textContent = details;
+        }
+
+        function stopHomebrewUploadPolling() {
+            if (homebrewUploadPollTimer) {
+                clearInterval(homebrewUploadPollTimer);
+                homebrewUploadPollTimer = null;
+            }
+        }
+
+        async function pollToolkitHomebrewJob(jobId) {
+            stopHomebrewUploadPolling();
+
+            homebrewUploadPollTimer = setInterval(async () => {
+                try {
+                    const response = await fetch(`/api/toolkit/homebrew/jobs/${jobId}`);
+                    const payload = await response.json();
+
+                    if (!response.ok || payload.status !== 'success' || !payload.job) {
+                        renderHomebrewUploadStatus('error', 'Unable to read Homebrew ingest job status.', JSON.stringify(payload, null, 2));
+                        stopHomebrewUploadPolling();
+                        if (homebrewUploadButton) {
+                            homebrewUploadButton.disabled = false;
+                        }
+                        return;
+                    }
+
+                    const job = payload.job;
+                    const stage = job.stage || 'unknown';
+                    const pipelineStatus = job.pipeline_status || 'pending';
+
+                    if (job.status === 'queued' || job.status === 'running') {
+                        renderHomebrewUploadStatus(
+                            'info',
+                            `Homebrew ingest running [stage: ${stage}]`,
+                            JSON.stringify({
+                                job_id: job.job_id,
+                                status: job.status,
+                                stage: stage,
+                                pipeline_status: pipelineStatus,
+                                source_filename: job.source_filename,
+                            }, null, 2)
+                        );
+                        return;
+                    }
+
+                    if (job.status === 'completed') {
+                        const result = job.result || {};
+                        const moduleSlug = result.module_slug || 'unknown';
+                        const finalStatus = job.pipeline_status || result.status || 'success';
+                        const details = JSON.stringify(result, null, 2);
+
+                        if (finalStatus === 'degraded') {
+                            renderHomebrewUploadStatus('warning', `Homebrew ingest completed with degraded status for module '${moduleSlug}'.`, details);
+                        } else {
+                            renderHomebrewUploadStatus('success', `Homebrew ingest completed successfully for module '${moduleSlug}'.`, details);
+                        }
+
+                        socket.emit('request_module_list');
+                        loadModulesForMediaGen();
+                        stopHomebrewUploadPolling();
+                        if (homebrewUploadButton) {
+                            homebrewUploadButton.disabled = false;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'quarantined') {
+                        renderHomebrewUploadStatus(
+                            'warning',
+                            `Homebrew ingest quarantined [stage: ${stage}] reason: ${job.quarantine_reason || 'unknown'}`,
+                            JSON.stringify(job.result || job, null, 2)
+                        );
+                        stopHomebrewUploadPolling();
+                        if (homebrewUploadButton) {
+                            homebrewUploadButton.disabled = false;
+                        }
+                        return;
+                    }
+
+                    renderHomebrewUploadStatus(
+                        'error',
+                        `Homebrew ingest failed [stage: ${stage}]`,
+                        JSON.stringify(job.result || job, null, 2)
+                    );
+                    stopHomebrewUploadPolling();
+                    if (homebrewUploadButton) {
+                        homebrewUploadButton.disabled = false;
+                    }
+                } catch (pollError) {
+                    renderHomebrewUploadStatus('error', `Homebrew ingest polling error: ${pollError.message}`);
+                    stopHomebrewUploadPolling();
+                    if (homebrewUploadButton) {
+                        homebrewUploadButton.disabled = false;
+                    }
+                }
+            }, 1200);
+        }
+
+        async function startToolkitHomebrewUpload() {
+            if (!homebrewMdFileInput || !homebrewMdFileInput.files || homebrewMdFileInput.files.length === 0) {
+                renderHomebrewUploadStatus('error', 'Select a Homebrew markdown (.md) file before importing.');
+                return;
+            }
+
+            const sourceFile = homebrewMdFileInput.files[0];
+            const filename = (sourceFile.name || '').toLowerCase();
+            if (!filename.endsWith('.md')) {
+                renderHomebrewUploadStatus('error', 'Only .md files are supported for Homebrew upload in this phase.');
+                return;
+            }
+
+            if (homebrewUploadButton) {
+                homebrewUploadButton.disabled = true;
+            }
+
+            renderHomebrewUploadStatus('info', `Uploading ${sourceFile.name} and starting ingest job...`);
+
+            const formData = new FormData();
+            formData.append('file', sourceFile);
+
+            try {
+                const response = await fetch('/api/toolkit/homebrew/upload', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const payload = await response.json();
+
+                if (!response.ok || payload.status !== 'success' || !payload.job_id) {
+                    renderHomebrewUploadStatus(
+                        'error',
+                        payload.message || 'Failed to start Homebrew ingest job.',
+                        JSON.stringify(payload, null, 2)
+                    );
+                    if (homebrewUploadButton) {
+                        homebrewUploadButton.disabled = false;
+                    }
+                    return;
+                }
+
+                renderHomebrewUploadStatus(
+                    'info',
+                    `Homebrew ingest job started [job_id: ${payload.job_id}]`,
+                    JSON.stringify(payload, null, 2)
+                );
+                await pollToolkitHomebrewJob(payload.job_id);
+            } catch (uploadError) {
+                renderHomebrewUploadStatus('error', `Homebrew upload failed: ${uploadError.message}`);
+                if (homebrewUploadButton) {
+                    homebrewUploadButton.disabled = false;
+                }
+            }
+        }
         
         function showError(message) {
             if (errorSection) {
@@ -5945,6 +6169,7 @@
         }
         
         function resetBuilderUI() {
+            stopHomebrewUploadPolling();
             if(moduleForm) {
                 moduleForm.style.display = 'block';
                 if (progressSection) progressSection.style.display = 'none';
@@ -5954,6 +6179,9 @@
                 if (progressPercentage) progressPercentage.textContent = '0%';
                 progressStages.forEach(stage => stage.classList.remove('stage-active', 'stage-complete'));
                 moduleForm.reset();
+            }
+            if (homebrewUploadButton) {
+                homebrewUploadButton.disabled = false;
             }
         }
 

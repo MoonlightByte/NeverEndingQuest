@@ -24,7 +24,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # Local script imports
-from homebrew_preflight import _extract_metadata_block, _extract_title, _strip_title_prefix
+try:
+    from homebrew_preflight import _extract_metadata_block, _extract_title, _strip_title_prefix
+except ImportError:
+    from scripts.homebrew_preflight import _extract_metadata_block, _extract_title, _strip_title_prefix
 
 
 def _extract_location_candidates(source_text: str) -> List[Dict[str, str]]:

@@ -34,11 +34,18 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.importers.homebrewery_importer import import_homebrewery_adventure_to_module
 
 # Local scripts (same directory)
-from homebrew_preflight import assess_source_readiness
-from homebrew_registry_guard import check_duplicate, verify_present
-from homebrew_sidecar_audit import audit_sidecar
-from homebrew_transform_to_deterministic import transform_source_to_deterministic
-from continuity_cross_ref_enrichment import enrich_continuity_cross_refs
+try:
+    from homebrew_preflight import assess_source_readiness
+    from homebrew_registry_guard import check_duplicate, verify_present
+    from homebrew_sidecar_audit import audit_sidecar
+    from homebrew_transform_to_deterministic import transform_source_to_deterministic
+    from continuity_cross_ref_enrichment import enrich_continuity_cross_refs
+except ImportError:
+    from scripts.homebrew_preflight import assess_source_readiness
+    from scripts.homebrew_registry_guard import check_duplicate, verify_present
+    from scripts.homebrew_sidecar_audit import audit_sidecar
+    from scripts.homebrew_transform_to_deterministic import transform_source_to_deterministic
+    from scripts.continuity_cross_ref_enrichment import enrich_continuity_cross_refs
 from utils.file_operations import safe_write_json
 
 # Shared entrypoint for watcher parity (Prompt 1)

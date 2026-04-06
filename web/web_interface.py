@@ -114,6 +114,14 @@ from web.extensions.tabletop_socket_handlers import (
     handle_storage_data_request_impl,
 )
 
+# TABLETOP MODE: Toolkit module post-build finishing helper for publication parity.
+try:
+    from web.extensions.toolkit_module_finisher import run_toolkit_module_postbuild_finishing
+    TOOLKIT_MODULE_FINISHER_AVAILABLE = True
+except ImportError:
+    run_toolkit_module_postbuild_finishing = None
+    TOOLKIT_MODULE_FINISHER_AVAILABLE = False
+
 # TABLETOP MODE: Import missing media auto-generation worker for allied NPC portrait healing
 try:
     from web.extensions.missing_media_autogen import (
@@ -144,6 +152,7 @@ from web.routes.character_sheet_routes import (
 )
 from web.routes.memory_routes import register_memory_routes
 from web.routes.tabletop_party_routes import register_tabletop_party_routes
+from web.routes.toolkit_homebrew_routes import register_toolkit_homebrew_routes
 from web.routes.world_narrative_routes import register_world_narrative_routes
 from core.memory.memory_db import (
     DEFAULT_MEMORY_DB_PATH,
@@ -2510,6 +2519,8 @@ register_browser_settings_routes(
 )
 # TABLETOP MODE: Read-only memory timeline inspection route.
 register_memory_routes(app)
+# TABLETOP MODE: Toolkit Homebrew markdown upload + ingest job routes.
+register_toolkit_homebrew_routes(app)
 # TABLETOP MODE: World narrative source upload/extract/build/ingest routes.
 register_world_narrative_routes(app)
 
@@ -5166,11 +5177,12 @@ def simulate_build_process(params):
                 'plots': 5,
                 'connections': 6,
                 'finalizing': 7,
-                'saving': 8
+                'saving': 8,
+                'post_build_finishing': 9
             }
             
             stage_num = stage_mapping.get(stage.lower().replace(' ', '_'), 0)
-            percentage = ((stage_num + 1) / 9) * 100
+            percentage = ((stage_num + 1) / 10) * 100
             
             socketio.emit('module_progress', {
                 'stage': stage_num,
@@ -5230,6 +5242,38 @@ def simulate_build_process(params):
             info(f"Calling builder.build_module with narrative: {narrative[:100]}...")
             builder.build_module(narrative)
             info(f"Module build completed successfully")
+
+            # TABLETOP MODE: Post-build finishing parity stages.
+            socketio.emit('module_progress', {
+                'stage': 9,
+                'stage_name': 'Post Build Finishing',
+                'percentage': 95,
+                'message': 'Running publication-readiness parity stages...'
+            })
+
+            finishing_report = {
+                'status': 'degraded',
+                'module_slug': module_name,
+                'reason': 'Toolkit module finisher unavailable',
+                'stages': {},
+            }
+
+            if TOOLKIT_MODULE_FINISHER_AVAILABLE and run_toolkit_module_postbuild_finishing:
+                finishing_report = run_toolkit_module_postbuild_finishing(module_name, strict=True)
+
+            finishing_status = str(finishing_report.get('status', 'failed'))
+
+            if finishing_status == 'failed':
+                socketio.emit('module_error', {
+                    'error': (
+                        f"Module generation succeeded, but post-build finishing failed. "
+                        f"Module: {module_name}"
+                    ),
+                    'generation_succeeded': True,
+                    'module_name': module_name,
+                    'finishing_report': finishing_report,
+                })
+                return
             
             # Module generation complete
             if per_area_locations and len(per_area_locations) == num_areas:
@@ -5238,10 +5282,22 @@ def simulate_build_process(params):
                 complete_message = f'Module "{module_name}" successfully generated with {num_areas} areas and {total_locations} total locations ({location_detail})'
             else:
                 complete_message = f'Module "{module_name}" successfully generated with {num_areas} areas and {locations_per_area} locations per area.'
+
+            if finishing_status == 'degraded':
+                complete_message = (
+                    complete_message +
+                    ' Post-build finishing completed with degraded status. Review the build report for details.'
+                )
             
             socketio.emit('module_complete', {
                 'module_name': module_name,
-                'message': complete_message
+                'message': complete_message,
+                'final_status': finishing_status,
+                'post_build_status': finishing_status,
+                'build_report': finishing_report,
+                'publication_parity_note': (
+                    'Post-build parity improves publication readiness but does not include full semantic publication probes.'
+                ),
             })
         except Exception as build_error:
             error(f"Error during build_module execution: {build_error}")
