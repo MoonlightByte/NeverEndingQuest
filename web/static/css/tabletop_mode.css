@@ -54,6 +54,22 @@
     background-color: #2d4a2d;
 }
 
+.help-character-tab {
+    padding: 8px 12px;
+    background-color: #1a2a1a;
+    color: #4CAF50;
+    border: 1px solid #2e7d32;
+    border-bottom: none;
+    border-radius: 5px 5px 0 0;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.help-character-tab:hover {
+    background-color: #2d4a2d;
+    box-shadow: 0 0 8px rgba(76, 175, 80, 0.4);
+}
+
 
 /* =====================================================
    MULTI-PC COMBAT MODE STYLES

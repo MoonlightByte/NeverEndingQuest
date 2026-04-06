@@ -6870,6 +6870,26 @@
             }
         }
         
+        // TABLETOP MODE: Help tab function - injects /help command
+        function showHelp() {
+            const input = document.getElementById('user-input');
+            if (!input) {
+                console.log('[HELP] Cannot show help - input unavailable');
+                return;
+            }
+            if (!connected) {
+                console.log('[HELP] Cannot show help - not connected');
+                return;
+            }
+            if (!gameStarted) {
+                console.log('[HELP] Cannot show help - game not started');
+                return;
+            }
+            
+            input.value = '/help';
+            sendInput();
+        }
+        
         function handleKeyDown(event) {
             if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
@@ -9967,15 +9987,21 @@
         function formatDiaryWorldMeta(entry) {
             if (!entry || !entry.world) return 'Unknown time';
             const world = entry.world;
-            return `${journalEscapeHtml(world.month || 'Unknown Month')} ${journalEscapeHtml(world.day || 0)}, ${journalEscapeHtml(world.year || 0)} at ${journalEscapeHtml(world.time || '00:00:00')}`;
+            const checkpoint = entry.checkpoint || {};
+            const location = checkpoint.location || 'Unknown Location';
+            const module = checkpoint.module || '';
+            const locationStamp = module ? `${location} (${module})` : location;
+            return `${journalEscapeHtml(world.month || 'Unknown Month')} ${journalEscapeHtml(world.day || 0)}, ${journalEscapeHtml(world.year || 0)} at ${journalEscapeHtml(world.time || '00:00:00')} -- ${journalEscapeHtml(locationStamp)}`;
         }
 
         function renderDiaryEntryHtml(entry, isDraft) {
-            const title = isDraft ? 'Current Session (Unsaved Draft)' : 'Confirmed Chronicle';
             const entryClass = isDraft ? 'diary-entry draft' : 'diary-entry';
+            const titleHtml = isDraft
+                ? '<div class="diary-entry-title">Current Session (Unsaved Draft)</div>'
+                : '';
             return `
                 <div class="${entryClass}">
-                    <div class="diary-entry-title">${title}</div>
+                    ${titleHtml}
                     <div class="diary-entry-meta">${formatDiaryWorldMeta(entry)}</div>
                     <div class="diary-entry-body">${journalEscapeHtml(entry.summary || '')}</div>
                 </div>
