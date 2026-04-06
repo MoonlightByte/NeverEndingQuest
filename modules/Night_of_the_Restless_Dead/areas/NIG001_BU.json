@@ -274,7 +274,12 @@
         {
           "name": "Red (The Crimson Binder)",
           "description": "A crimson-robed enforcer of the Pumpkin King demanding the ring and the cult's submission.",
-          "attitude": "Hostile"
+          "attitude": "Hostile",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         }
       ]
     },

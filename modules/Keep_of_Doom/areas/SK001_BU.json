@@ -363,7 +363,12 @@
         {
           "name": "Father Aldren",
           "description": "The sorrowful spirit of the keep's former chaplain, now trapped between worlds. He appears as a translucent elderly man in tattered clerical vestments, his expression one of perpetual grief. He seeks to warn visitors about the shadows but can only communicate through cryptic phrases and gestures due to the curse binding him.",
-          "attitude": "Helpful but limited by supernatural constraints"
+          "attitude": "Helpful but limited by supernatural constraints",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         }
       ],
       "monsters": [
@@ -560,7 +565,12 @@
         {
           "name": "The Spectral Scribe",
           "description": "A translucent figure bent over a phantom writing desk, endlessly documenting the keep's history. Once Sir Garran's trusted chronicler, now cursed to record the unfolding tragedy for eternity. He appears scholarly but worn, with hollow eyes that have witnessed centuries of horror.",
-          "attitude": "Neutral, obsessed with historical accuracy"
+          "attitude": "Neutral, obsessed with historical accuracy",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         }
       ],
       "monsters": [

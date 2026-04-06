@@ -556,7 +556,12 @@
         {
           "name": "The Lingering Spirit",
           "description": "A translucent, flickering spirit appearing as a hooded forest guardian. It conveys a grave warning about failing wards and escaping shadows, urging restoration of the rites to prevent darkness from overwhelming the forest. It gestures toward the altar, offerings, and a faint trail heading north, signaling the next direction of the party's quest.",
-          "attitude": "Neutral, urgent and seeking aid to restore protections"
+          "attitude": "Neutral, urgent and seeking aid to restore protections",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         }
       ],
       "monsters": [],
@@ -765,12 +770,22 @@
         {
           "name": "Echo of Scout Elen",
           "description": "A spectral reflection of Scout Elen created by her passage through this supernaturally charged area. The echo repeats fragments of Elen's experiences and fears, providing clues to her fate.",
-          "attitude": "Neutral, reactive to questions related to Elen's journey"
+          "attitude": "Neutral, reactive to questions related to Elen's journey",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         },
         {
           "name": "Mournful Ghost",
           "description": "A sorrowful ghostly figure hovering beyond the faerie circle, communicating cryptic guidance about restoring a broken oath and finding a lost relic to break a lingering curse.",
-          "attitude": "Helpful but cryptic"
+          "attitude": "Helpful but cryptic",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         }
       ],
       "monsters": [],

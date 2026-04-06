@@ -56,7 +56,12 @@
         {
           "name": "Ghost of the Last Judge",
           "description": "The spirit of a stern magistrate who presided over the graveyard's final executions. He appears as a translucent figure in judicial robes, eternally reading from a scroll of the condemned. He speaks in riddles about justice and redemption.",
-          "attitude": "Solemn and cryptic; will provide guidance to those who prove they seek justice, but becomes hostile toward those with evil intentions."
+          "attitude": "Solemn and cryptic; will provide guidance to those who prove they seek justice, but becomes hostile toward those with evil intentions.",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         }
       ],
       "monsters": [

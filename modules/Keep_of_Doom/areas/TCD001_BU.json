@@ -273,7 +273,12 @@
         {
           "name": "Prisoner Echo",
           "description": "Not a true NPC but a phenomenon--cell 7 contains a partially substantial echo of Scout Elen, endlessly reliving her capture and questioning. This echo can provide limited information but cannot be physically freed.",
-          "attitude": "Confused and frightened, repeating the same sequences"
+          "attitude": "Confused and frightened, repeating the same sequences",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         }
       ],
       "monsters": [

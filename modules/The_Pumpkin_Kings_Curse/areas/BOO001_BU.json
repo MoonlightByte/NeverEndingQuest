@@ -203,7 +203,12 @@
         {
           "name": "Spirit of Supplication",
           "description": "A translucent, sorrowful figure clad in tattered festival garb, eternally relighting lanterns and murmuring desperate prayers for deliverance. It attempts to guide visitors to make proper offerings, warning them of the dangers that stalk the fields.",
-          "attitude": "Anxious, hopeful for aid but wary of outsiders disrespecting the rituals."
+          "attitude": "Anxious, hopeful for aid but wary of outsiders disrespecting the rituals.",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         }
       ],
       "monsters": [
@@ -349,7 +354,12 @@
         {
           "name": "Wandering Supplicant",
           "description": "A ragged, shell-shocked villager spirit who endlessly retraces the path, muttering lost prayers. They are desperate for rest but afraid to leave the path's protection.",
-          "attitude": "Fearful, will offer information in exchange for protection or a ritual item."
+          "attitude": "Fearful, will offer information in exchange for protection or a ritual item.",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         }
       ],
       "monsters": [
@@ -427,7 +437,12 @@
         {
           "name": "Petitioning Shade",
           "description": "The echo of a villager who once begged the spirits for mercy. Now bound to the collapsed altar, it offers riddles and warnings in exchange for tokens of remembrance.",
-          "attitude": "Resigned but curious, eager to barter for peace but easily angered by disrespect."
+          "attitude": "Resigned but curious, eager to barter for peace but easily angered by disrespect.",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         }
       ],
       "monsters": [
@@ -496,7 +511,12 @@
         {
           "name": "Thresher's Ghost",
           "description": "The spirit of a master thresher who died during the harvest festival's darkest hour. He endlessly sorts phantom grain, occasionally pausing to warn travelers about the 'bitter harvest' that approaches.",
-          "attitude": "Melancholy but helpful; will share knowledge of proper harvest rituals if treated with respect."
+          "attitude": "Melancholy but helpful; will share knowledge of proper harvest rituals if treated with respect.",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         }
       ],
       "monsters": [
@@ -674,7 +694,12 @@
         {
           "name": "Altar Keeper's Shade",
           "description": "The ghostly form of a former ritual priest who once tended this altar. He appears only when the Ember Gourd is present and speaks in cryptic riddles about its proper use.",
-          "attitude": "Mysterious and aloof; will provide guidance about the Ember Gourd's power if approached respectfully."
+          "attitude": "Mysterious and aloof; will provide guidance about the Ember Gourd's power if approached respectfully.",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         },
         {
           "name": "Sybil Nettlemire",
@@ -780,7 +805,12 @@
         {
           "name": "Hay-Bound Spirit",
           "description": "The essence of a storage keeper who was buried alive in a hay collapse years ago. The spirit is trapped within the straw and speaks in whispered warnings about hidden dangers.",
-          "attitude": "Fearful and desperate; eager to warn others but unable to leave the confines of the hayricks."
+          "attitude": "Fearful and desperate; eager to warn others but unable to leave the confines of the hayricks.",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         }
       ],
       "monsters": [

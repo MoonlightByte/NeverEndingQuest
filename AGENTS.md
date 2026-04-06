@@ -1021,6 +1021,54 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Scene-Entity Combat Validity Contract + Cross-Module Audit/Backfill (COMPLETED - 2026-04-06)
+
+**Status:** COMPLETED - Added reusable scene-entity combat-validity contract and applied targeted Track 1 annotations across current modules.
+
+**Objective:**
+- Separate visible scene NPC presence from formal combat-valid monster identities.
+- Prevent apparition/scene-only entities from being misrouted into `createEncounter.monsters[]`.
+- Preserve deterministic Python authority for no-effect and helpless scene-entity violence outcomes.
+
+**Implementation Summary:**
+- Added shared runtime helper: `utils/scene_entity_contract.py`
+  - Resolves scene-only vs escalatable scene entities before combat builder invocation.
+  - Enforces explicit fail-closed errors (`non_combat_valid_scene_entity`, missing proxy cases).
+  - Supports deterministic helpless scene mutation persistence without formal combat.
+- Integrated preflight guard into `core/ai/action_handler.py` for `createEncounter` handling.
+- Fixed misleading success log ordering in `core/ai/action_handler.py` so success logs emit only after confirmed builder success.
+- Extended prompt/validator contracts for scene-entity exceptions:
+  - `prompts/system_prompt_compressed.txt`
+  - `prompts/system_prompt.txt`
+  - `prompts/validation/validation_prompt_compressed.txt`
+  - `prompts/validation/validation_prompt.txt`
+- Extended location schema with optional additive `sceneEntity` metadata:
+  - `schemas/loca_schema.json`
+- Added targeted regressions:
+  - `scripts/test_scene_entity_contract.py`
+  - `scripts/test_createencounter_failure_surfacing.py`
+- OpenSpec change authored and completed:
+  - `openspec/changes/scene-entity-combat-validity-contract/`
+
+**Track 1 Current-Module Annotation Pass (Applied):**
+- Added `sceneEntity` metadata (`scene_only`, `incorporeal`, `incorporeal_no_effect`) for 17 audited entities in:
+  - `modules/A_Pottsfield_Burial/areas/TCR002.json`
+  - `modules/Keep_of_Doom/areas/G001_BU.json`
+  - `modules/Keep_of_Doom/areas/SK001_BU.json`
+  - `modules/Keep_of_Doom/areas/TCD001_BU.json`
+  - `modules/The_Pumpkin_Kings_Curse/areas/BOO001_BU.json`
+  - `modules/The_Pumpkin_Kings_Curse/areas/CMS001_BU.json`
+  - `modules/The_Pumpkin_Kings_Curse/areas/GRV001_BU.json`
+  - `modules/The_Pumpkin_Kings_Curse/areas/HLF001_BU.json`
+  - plus runtime mirror area files where tracked for parity.
+
+**Verification:**
+- `.venv/bin/python scripts/test_scene_entity_contract.py` -> PASS
+- `.venv/bin/python scripts/test_createencounter_failure_surfacing.py` -> PASS
+- `.venv/bin/python scripts/test_npc_arrival_state_sync.py` -> PASS
+- `openspec validate scene-entity-combat-validity-contract` -> PASS
+- `.venv/bin/python core/validation/validate_module_files.py --module The_Pumpkin_Kings_Curse` -> PASS (100%)
+
 ### Spatial Mapping Foundation Plans (COMPLETED - 2026-03-31)
 
 **Status:** COMPLETED - Drafted and organized v2 mapping architecture plans.

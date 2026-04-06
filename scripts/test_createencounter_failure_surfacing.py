@@ -47,6 +47,16 @@ class TestCreateEncounterErrorMessage(unittest.TestCase):
         self.assertEqual(monster_match.group(1), "Cornfield Shadow", "Should extract monster name")
         self.assertEqual(monster_match.group(2), "modules/The_Pumpkin_Kings_Curse/monsters/cornfield_shadow.json", "Should extract expected file path")
 
+    def test_scene_entity_error_class_is_explicit(self):
+        """Scene-entity combat rejection should surface dedicated failure class."""
+        sample_error = (
+            "non_combat_valid_scene_entity: 'Red (The Crimson Binder)' is authored "
+            "as scene-only content (manifestation=incorporeal, policy=incorporeal_no_effect) "
+            "and cannot be used in createEncounter.monsters[]."
+        )
+        self.assertIn("non_combat_valid_scene_entity", sample_error)
+        self.assertIn("scene-only", sample_error)
+
 
 class TestCreateEncounterNarrationGate(unittest.TestCase):
     """Test createEncounter narration gating contracts."""

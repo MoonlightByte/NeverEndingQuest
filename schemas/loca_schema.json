@@ -44,7 +44,26 @@
               "properties": {
                 "name": { "type": "string" },
                 "description": { "type": "string" },
-                "attitude": { "type": "string" }
+                "attitude": { "type": "string" },
+                "sceneEntity": {
+                  "type": "object",
+                  "properties": {
+                    "combatValidity": {
+                      "type": "string",
+                      "enum": ["scene_only", "escalatable"]
+                    },
+                    "manifestation": {
+                      "type": "string",
+                      "enum": ["corporeal", "incorporeal"]
+                    },
+                    "violencePolicy": {
+                      "type": "string",
+                      "enum": ["incorporeal_no_effect", "helpless_kill_else_escalate"]
+                    },
+                    "combatProxy": { "type": "string" },
+                    "helpless": { "type": "boolean" }
+                  }
+                }
               },
               "required": ["name", "description", "attitude"]
             },

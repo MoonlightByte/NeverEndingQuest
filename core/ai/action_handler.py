@@ -78,6 +78,10 @@ from utils.save_roll_contract import (
 )
 from utils.authoritative_transition_validator import validate_same_module_transition_authority
 from utils.combat_summary_history import build_historical_combat_summary_message
+from utils.scene_entity_contract import (
+    apply_helpless_scene_entity_resolution,
+    evaluate_scene_entity_encounter_resolution,
+)
 
 # Import token tracking
 try:
@@ -812,6 +816,78 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
         except Exception as e:
             debug(f"TABLETOP MODE: Error filtering party members from NPCs: {e}", category="combat_processing")
 
+        # TABLETOP MODE: Scene-entity contract preflight.
+        # Distinguish visible scene entities from combat-valid monster identities
+        # before invoking combat_builder monster authorization/hydration paths.
+        try:
+            scene_entity_decision = evaluate_scene_entity_encounter_resolution(
+                parameters.get("monsters", []),
+                location_data if isinstance(location_data, dict) else {},
+            )
+            decision_status = scene_entity_decision.get("status", "no_scene_entities")
+
+            if decision_status == "error":
+                scene_error_message = str(
+                    scene_entity_decision.get("error_message")
+                    or "non_combat_valid_scene_entity: scene entity cannot be used in createEncounter.monsters[]."
+                )
+                warning(scene_error_message, category="combat_processing")
+                print(f"[DEBUG ACTION_HANDLER] TABLETOP MODE: {scene_error_message}")
+                return {"status": "error", "error_message": scene_error_message}
+
+            helpless_records = scene_entity_decision.get("helpless_resolutions", [])
+            if isinstance(helpless_records, list) and helpless_records:
+                resolved_names = []
+                for helpless_record in helpless_records:
+                    apply_result = apply_helpless_scene_entity_resolution(helpless_record, party_tracker_data)
+                    if not apply_result.get("ok"):
+                        resolution_error = (
+                            "scene_entity_helpless_resolution_failed: "
+                            f"Could not persist deterministic scene-state mutation for "
+                            f"'{helpless_record.get('name', 'unknown scene entity')}' "
+                            f"({apply_result.get('reason', 'unknown reason')})."
+                        )
+                        error(resolution_error, category="combat_processing")
+                        return {"status": "error", "error_message": resolution_error}
+                    resolved_names.append(str(apply_result.get("scene_name", "")).strip())
+
+                resolved_names = [name for name in resolved_names if name]
+                if resolved_names:
+                    conversation_history.append(
+                        {
+                            "role": "system",
+                            "content": (
+                                "[SYSTEM] Violence resolved without formal combat for helpless scene entity: "
+                                f"{', '.join(resolved_names)}"
+                            ),
+                        }
+                    )
+
+                if decision_status == "resolved_without_combat":
+                    needs_conversation_history_update = True
+                    print("[DEBUG ACTION_HANDLER] TABLETOP MODE: Scene-entity helpless resolution completed without combat")
+                    return create_return(status="continue", needs_update=True)
+
+            if decision_status == "ok":
+                resolved_monsters = scene_entity_decision.get("resolved_monsters")
+                if isinstance(resolved_monsters, list):
+                    parameters["monsters"] = resolved_monsters
+                    action["parameters"] = parameters
+                    debug(
+                        f"TABLETOP MODE: Scene-entity preflight normalized monsters => {resolved_monsters}",
+                        category="combat_processing",
+                    )
+        except Exception as e:
+            error(
+                f"TABLETOP MODE: Scene-entity preflight failed: {e}",
+                exception=e,
+                category="combat_processing",
+            )
+            return {
+                "status": "error",
+                "error_message": f"Scene-entity combat preflight failed: {e}",
+            }
+
         # TABLETOP MODE: Single active encounter ownership guard.
         # Prevent duplicate createEncounter startups while another unresolved
         # encounter already owns facilitator combat input.
@@ -855,10 +931,10 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
             print(f"[DEBUG ACTION_HANDLER] Output: {result.stdout[:200]}...")  # First 200 chars
             debug(f"SUBPROCESS: combat_builder.py output: {result.stdout}", category="combat_processing")
             debug(f"SUBPROCESS: combat_builder.py status: {result.stderr}", category="combat_processing")
-            info("SUCCESS: Combat encounter created successfully", category="combat_processing")
 
             print(f"[DEBUG ACTION_HANDLER] Checking for success in output...")
             if "Encounter successfully built and saved to" in result.stdout:
+                info("SUCCESS: Combat encounter created successfully", category="combat_processing")
                 # Extract encounter ID from the full path
                 # Example: "modules/encounters/encounter_TW03-E2.json" -> "TW03-E2"
                 for line in result.stdout.split('\n'):

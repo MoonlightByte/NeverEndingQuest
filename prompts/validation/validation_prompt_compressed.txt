@@ -102,6 +102,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   protocol: STOP narrative; createEncounter IMMEDIATELY at commitment point
   historical: "[COMBAT CONCLUDED--HISTORICAL RECORD]" = exempt from validation
   validation_fail: Combat actions after awareness without createEncounter = INVALID
+  scene_entity_exception: If target is an incorporeal sceneEntity with violencePolicy=incorporeal_no_effect, narration-only no-effect with actions:[] is VALID and should not be forced into createEncounter.
   exceptions: Messages marked "[COMBAT CONCLUDED]" already resolved--no validation
 }
 

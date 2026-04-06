@@ -478,7 +478,12 @@
         {
           "name": "Echo of the Lost Farmer",
           "description": "A ghostly apparition of a farmer who fell into the sinkhole decades ago, still trying to tend his crops. The spirit is confused and disoriented, repeating fragments of agricultural advice and warnings about 'the hungry earth'.",
-          "attitude": "Neutral but melancholy; will answer questions if treated with respect, but becomes agitated if ignored or mocked."
+          "attitude": "Neutral but melancholy; will answer questions if treated with respect, but becomes agitated if ignored or mocked.",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         },
         {
           "name": "Elric Dawlish",
@@ -569,7 +574,12 @@
         {
           "name": "Little Meg (Ghost Child)",
           "description": "The spirit of a young girl who became lost in the cornfields during a previous harvest festival. She appears only to those who show kindness and speaks in whispers about the 'tall man with the pumpkin head' who visits her hollow.",
-          "attitude": "Shy and frightened but curious about visitors; will trust those who offer toys or treats, but flees if threatened."
+          "attitude": "Shy and frightened but curious about visitors; will trust those who offer toys or treats, but flees if threatened.",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         }
       ],
       "monsters": [

@@ -56,7 +56,12 @@
         {
           "name": "The Harvest Witnesses",
           "description": "Spectral forms of all the villagers who have been claimed by the Pumpkin King's curse over the years. They stand silently around the circle's perimeter, their faces bearing expressions of sorrow and warning. They cannot speak, but their presence serves as a grim reminder of what's at stake.",
-          "attitude": "Mournful and desperate; they silently plead with the party to end the curse and free them from their eternal torment."
+          "attitude": "Mournful and desperate; they silently plead with the party to end the curse and free them from their eternal torment.",
+          "sceneEntity": {
+            "combatValidity": "scene_only",
+            "manifestation": "incorporeal",
+            "violencePolicy": "incorporeal_no_effect"
+          }
         }
       ],
       "monsters": [

@@ -1578,6 +1578,7 @@ Remember to maintain the immersive storytelling experience while accurately mana
 3. If you realize you've forgotten to update the inventory, or update the time, do so in your very next response, even if the player has already provided a roll or moved on to a different topic.
 4. ALWAYS update the plot status IMMEDIATELY when any significant plot point is reached or completed, without exception.
 5. When initiating a combat encounter, ALWAYS use the "createEncounter" action with the correct player and monster information. Wait for the encounter to be created before proceeding with combat narration.
+5a. Visible location NPCs with `sceneEntity` metadata are NOT automatically combat-valid monsters. For incorporeal no-effect scene entities, keep narration-only no-effect resolution with `actions: []` and do NOT force createEncounter.
 6. ALWAYS ask the player if they want to go into a new area after they unlock a door or discover a secret passage. Don't assume a player wants to go through a door or entrance unless they specifically state they want to go through the door in their action.
 7. ALWAYS structure your entire response as a single, well-formed JSON object with a "narration" field and an "actions" array containing all necessary actions. Never split your response into multiple JSON objects.
 
