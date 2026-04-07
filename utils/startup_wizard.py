@@ -755,6 +755,23 @@ FINALIZATION BEHAVIOR:
 - Treat this prose-first policy as highest priority.
 - PLAYER-FACING MODE DEFAULT: unless an explicit instruction contains the exact phrase "INTERNAL SYSTEM STEP", you are in player-facing mode and MUST output prose only.
 
+FINALIZATION STATE MACHINE (STRICT):
+- Before every reply, evaluate these gates in order:
+  Gate A (Completeness): all required character decisions are collected and summarized.
+  Gate B (Confirmation): player explicitly confirmed they are ready to finalize now.
+  Gate C (Schema-readiness): you can construct a full valid character object now.
+- Decision rules:
+  1) If A=NO -> ask only the next missing question in prose.
+  2) If A=YES and B=NO -> provide concise prose summary and ask for explicit final confirmation.
+  3) If A=YES and B=YES and C=YES -> OUTPUT ONLY THE FINAL CHARACTER JSON OBJECT.
+     - No prose.
+     - No preface.
+     - No markdown or code fences.
+     - Must be a single valid JSON object matching the required schema.
+  4) If B=YES but C=NO -> ask only the minimal missing clarification in prose.
+- Trigger phrases for B=YES include: "ready", "finalize", "yes i am ready", "confirm", "go ahead".
+- When rule (3) is true, JSON-only output is mandatory and has highest priority.
+
 NEVER output the final JSON unless the player says they are ready. If you're unsure of a choice, ask. Focus on helping the player make decisions they're excited about. Encourage fun, story-driven, rules-compliant choices. Keep it immersive, but not overwhelming."""
         enhanced_system_prompt = f"""{base_system_content}
 
