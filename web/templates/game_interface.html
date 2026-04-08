@@ -5166,7 +5166,7 @@
                 messageDiv.appendChild(avatar);
                 messageDiv.appendChild(contentDiv);
                 
-            } else if (message.type === 'system' || message.type === 'error') {
+            } else if (message.type === 'system' || message.type === 'error' || message.type === 'startup') {
                 const contentDiv = document.createElement('div');
                 contentDiv.className = 'message-content';
                 const text = document.createElement('div');
@@ -5483,6 +5483,34 @@
             loadCharacterStats();
             loadLocationData();
             requestInitiativeData(); // Check for combat on game start
+        });
+
+        socket.on('startup_status', (data) => {
+            if (data.status === 'in_progress') {
+                document.getElementById('start-button').textContent = 'Starting...';
+                document.getElementById('start-button').disabled = true;
+                document.getElementById('user-input').disabled = true;
+                document.getElementById('send-button').disabled = true;
+            } else if (data.status === 'failed') {
+                addMessage('game-output', { type: 'error', content: 'Startup handoff failed. You can use recovery from settings.' });
+            }
+        });
+
+        socket.on('startup_recovery_response', (data) => {
+            const status = data?.status || 'failed';
+            if (status === 'recovered') {
+                addMessage('game-output', { type: 'system', content: 'Startup recovery completed. Adventure flow resumed.' });
+            } else if (status === 'already_ready') {
+                addMessage('game-output', { type: 'system', content: 'Startup is already complete.' });
+            } else if (status === 'in_progress') {
+                addMessage('game-output', { type: 'system', content: 'Startup recovery is already in progress.' });
+            } else if (status === 'not_recoverable') {
+                addMessage('game-output', { type: 'error', content: 'Startup recovery not allowed in current state.' });
+            } else {
+                const reason = data?.error ? ` (${data.error})` : '';
+                const retryHint = data?.retryAfterSeconds ? ` Retry in ${data.retryAfterSeconds}s.` : '';
+                addMessage('game-output', { type: 'error', content: `Startup recovery failed${reason}.${retryHint}` });
+            }
         });
 
         // Handle cached messages from previous session

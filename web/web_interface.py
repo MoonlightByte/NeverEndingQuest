@@ -162,6 +162,12 @@ game_thread = None
 original_stdout = sys.stdout
 original_stderr = sys.stderr
 original_stdin = sys.stdin
+STARTUP_RECOVERY_ACTION_COOLDOWN_SECONDS = 10
+startup_recovery_attempts = {}
+startup_recovery_attempts_lock = threading.Lock()
+startup_handoff_active = False
+startup_ready_emitted = False
+startup_ready_pending = False
 
 # Message cache for persistence across restarts
 MESSAGE_CACHE_FILE = "modules/conversation_history/game_interface_cache.json"
@@ -200,6 +206,14 @@ def add_to_message_cache(message):
         message_cache.append(message)
         save_message_cache()
 
+def log_web_audit(event_name, **fields):
+    """Emit a compact audit/debug log line for web actions."""
+    details = ", ".join(f"{key}={value}" for key, value in fields.items())
+    message = f"AUDIT: {event_name}"
+    if details:
+        message = f"{message} | {details}"
+    debug(message, category="web_interface")
+
 # Status callback function
 def emit_status_update(status_message, is_processing):
     """Emit status updates to the frontend"""
@@ -227,8 +241,49 @@ class WebOutputCapture:
         self.buffer = ""
         self.in_dm_section = False
         self.dm_buffer = []
+        self.dm_section_is_startup = False
+
+    def _flush_dm_buffer(self):
+        global startup_ready_emitted, startup_ready_pending
+        if not self.dm_buffer:
+            return
+        try:
+            combined_content = '\n'.join(self.dm_buffer)
+            combined_content = combined_content.replace('Dungeon Master:', '', 1).strip()
+            if combined_content.strip():
+                message_type = 'startup' if self.dm_section_is_startup else 'narration'
+                message = {
+                    'type': message_type,
+                    'content': combined_content
+                }
+                game_output_queue.put(message)
+                if message_type == 'narration':
+                    add_to_message_cache(message)
+                debug_output_queue.put({
+                    'type': 'debug',
+                    'content': f"[OUTPUT_TRACE] Sent DM content to game_output: {len(combined_content)} chars",
+                    'timestamp': datetime.now().isoformat()
+                })
+                if startup_ready_pending and not startup_ready_emitted:
+                    startup_ready_emitted = True
+                    startup_ready_pending = False
+                    socketio.emit('game_started', {'message': 'Game started successfully'})
+        except Exception as e:
+            try:
+                debug_output_queue.put({
+                    'type': 'debug',
+                    'content': f"[OUTPUT_ERROR] DM content processing failed: {str(e)} - Buffer: {str(self.dm_buffer)}",
+                    'timestamp': datetime.now().isoformat()
+                })
+            except Exception:
+                pass
+        finally:
+            self.in_dm_section = False
+            self.dm_buffer = []
+            self.dm_section_is_startup = False
     
     def write(self, text):
+        global startup_handoff_active, startup_ready_emitted, startup_ready_pending
         # Write to original stream for console visibility (with error handling)
         try:
             # Ensure text is a string and handle encoding issues
@@ -254,6 +309,46 @@ class WebOutputCapture:
             for line in lines[:-1]:
                 # Clean the line of ANSI codes for checking content
                 clean_line = self.strip_ansi_codes(line)
+
+                # Startup marker stream: drive web readiness state.
+                marker_line = False
+                if "STARTUP_MARKER:" in clean_line:
+                    try:
+                        marker_line = True
+                        marker_payload = clean_line.split("STARTUP_MARKER:", 1)[1].strip()
+                        marker_data = json.loads(marker_payload)
+                        phase = marker_data.get("phase", "")
+                        if phase in {
+                            "startup_handoff_begin",
+                            "startup_wizard_sync",
+                            "startup_wizard_complete",
+                            "startup_context_built",
+                            "startup_kickoff_attempted",
+                        }:
+                            startup_handoff_active = True
+                            socketio.emit("startup_status", {"status": "in_progress", "phase": phase})
+                        if phase == "startup_kickoff_done":
+                            startup_handoff_active = False
+                            socketio.emit("startup_status", {"status": "ready", "phase": phase})
+                            startup_ready_pending = True
+                            if not self.in_dm_section and not startup_ready_emitted:
+                                startup_ready_emitted = True
+                                startup_ready_pending = False
+                                socketio.emit('game_started', {'message': 'Game started successfully'})
+                        elif phase == "startup_kickoff_skipped":
+                            if marker_data.get("result") == "already_done":
+                                startup_handoff_active = False
+                                socketio.emit("startup_status", {"status": "ready", "phase": phase})
+                                if not startup_ready_emitted:
+                                    startup_ready_emitted = True
+                                    socketio.emit('game_started', {'message': 'Game started successfully'})
+                        elif phase in {"startup_kickoff_failed", "startup_kickoff_stale_discarded"}:
+                            startup_handoff_active = False
+                            socketio.emit("startup_status", {"status": "failed", "phase": phase})
+                    except Exception:
+                        pass
+                    if marker_line:
+                        continue
                 
                 # Check if this is a player status/prompt line
                 if clean_line.startswith('[') and ('HP:' in clean_line or 'XP:' in clean_line):
@@ -269,6 +364,7 @@ class WebOutputCapture:
                         # Start capturing DM content
                         self.in_dm_section = True
                         self.dm_buffer = [clean_line]
+                        self.dm_section_is_startup = startup_handoff_active
                         # Debug trace for combat output
                         debug_output_queue.put({
                             'type': 'debug',
@@ -296,37 +392,7 @@ class WebOutputCapture:
                          clean_line.startswith('[') and ('HP:' in clean_line or 'XP:' in clean_line) or \
                          clean_line.startswith('>'):
                         # This ends the DM section - send accumulated DM content as single message
-                        if self.dm_buffer:
-                            try:
-                                combined_content = '\n'.join(self.dm_buffer)
-                                # Remove "Dungeon Master:" prefix from the beginning if present
-                                combined_content = combined_content.replace('Dungeon Master:', '', 1).strip()
-                                if combined_content.strip():  # Only send if there's actual content
-                                    message = {
-                                        'type': 'narration',
-                                        'content': combined_content
-                                    }
-                                    game_output_queue.put(message)
-                                    add_to_message_cache(message)
-                                    # Debug trace for successful DM output
-                                    debug_output_queue.put({
-                                        'type': 'debug',
-                                        'content': f"[OUTPUT_TRACE] Sent DM content to game_output: {len(combined_content)} chars",
-                                        'timestamp': datetime.now().isoformat()
-                                    })
-                            except Exception as e:
-                                # If DM content processing fails, send raw content to debug
-                                try:
-                                    debug_output_queue.put({
-                                        'type': 'debug',
-                                        'content': f"[OUTPUT_ERROR] DM content processing failed: {str(e)} - Buffer: {str(self.dm_buffer)}",
-                                        'timestamp': datetime.now().isoformat()
-                                    })
-                                except Exception:
-                                    # If even debug fails, just continue
-                                    pass
-                        self.in_dm_section = False
-                        self.dm_buffer = []
+                        self._flush_dm_buffer()
                         # Send this line to debug
                         try:
                             debug_output_queue.put({
@@ -2079,10 +2145,128 @@ def handle_action(data):
         except Exception as e:
             emit('error', {'message': f'Campaign reset failed: {str(e)}'})
 
+    elif action_type == 'recover_startup_handoff':
+        session_id = getattr(request, 'sid', None) or 'unknown-session'
+        recovery_token = parameters.get('recoveryToken')
+        startup_attempt_id = parameters.get('startupAttemptId')
+        source = 'socketio.action'
+
+        try:
+            import config
+
+            expected_token = getattr(config, 'STARTUP_RECOVERY_TOKEN', None)
+            if not expected_token:
+                log_web_audit(
+                    'recover_startup_handoff',
+                    source=source,
+                    session=session_id,
+                    result='failed',
+                    reason='missing_server_token',
+                )
+                payload = {'status': 'failed', 'error': 'server_token_not_configured'}
+                emit('startup_recovery_response', payload)
+                return payload
+
+            if not recovery_token or recovery_token != expected_token:
+                log_web_audit(
+                    'recover_startup_handoff',
+                    source=source,
+                    session=session_id,
+                    result='failed',
+                    reason='invalid_token',
+                )
+                payload = {'status': 'failed', 'error': 'invalid_recovery_token'}
+                emit('startup_recovery_response', payload)
+                return payload
+
+            current_state = dm_main.load_startup_state()
+            expected_attempt_id = current_state.get('startup_attempt_id')
+            if not startup_attempt_id:
+                payload = {'status': 'failed', 'error': 'missing_startup_attempt_id'}
+                emit('startup_recovery_response', payload)
+                return payload
+            if expected_attempt_id and startup_attempt_id != expected_attempt_id:
+                payload = {
+                    'status': 'failed',
+                    'error': 'stale_startup_attempt_id',
+                    'expectedStartupAttemptId': expected_attempt_id,
+                }
+                emit('startup_recovery_response', payload)
+                return payload
+
+            now = time.monotonic()
+            with startup_recovery_attempts_lock:
+                last_attempt = startup_recovery_attempts.get(session_id)
+                if last_attempt is not None:
+                    elapsed = now - last_attempt
+                    if elapsed < STARTUP_RECOVERY_ACTION_COOLDOWN_SECONDS:
+                        retry_after = max(
+                            1,
+                            int(
+                                STARTUP_RECOVERY_ACTION_COOLDOWN_SECONDS - elapsed + 0.999
+                            ),
+                        )
+                        log_web_audit(
+                            'recover_startup_handoff',
+                            source=source,
+                            session=session_id,
+                            result='failed',
+                            reason='cooldown_active',
+                            retry_after_seconds=retry_after,
+                        )
+                        payload = {
+                            'status': 'failed',
+                            'error': 'cooldown_active',
+                            'retryAfterSeconds': retry_after,
+                        }
+                        emit('startup_recovery_response', payload)
+                        return payload
+                startup_recovery_attempts[session_id] = now
+
+            log_web_audit(
+                'recover_startup_handoff',
+                source=source,
+                session=session_id,
+                result='attempting',
+            )
+            recovery_result = dm_main.recover_startup_handoff() or {}
+            status = recovery_result.get('status', 'failed')
+            if status not in {'recovered', 'already_ready', 'failed', 'in_progress', 'not_recoverable'}:
+                status = 'failed'
+
+            payload = {'status': status}
+            if status == 'failed':
+                payload['error'] = (
+                    recovery_result.get('error')
+                    or recovery_result.get('reason')
+                    or 'unknown'
+                )
+
+            log_web_audit(
+                'recover_startup_handoff',
+                source=source,
+                session=session_id,
+                result=status,
+            )
+            emit('startup_recovery_response', payload)
+            return payload
+        except Exception as e:
+            log_web_audit(
+                'recover_startup_handoff',
+                source=source,
+                session=session_id,
+                result='failed',
+                reason='exception',
+                error=str(e),
+            )
+            payload = {'status': 'failed', 'error': str(e)}
+            emit('startup_recovery_response', payload)
+            return payload
+
 @socketio.on('start_game')
 def handle_start_game():
     """Start the game in a separate thread"""
-    global game_thread
+    global game_thread, startup_handoff_active, startup_ready_emitted, startup_ready_pending, message_cache
     
     if game_thread and game_thread.is_alive():
         emit('error', {'message': 'Game is already running'})
@@ -2097,10 +2281,15 @@ def handle_start_game():
     sys.stdin = WebInput(user_input_queue)
     
     # Start the game in a separate thread
+    startup_handoff_active = True
+    startup_ready_emitted = False
+    startup_ready_pending = False
+    message_cache.clear()
+    save_message_cache()
     game_thread = threading.Thread(target=run_game_loop, daemon=True)
     game_thread.start()
-    
-    emit('game_started', {'message': 'Game started successfully'})
+
+    emit('startup_status', {'status': 'in_progress', 'phase': 'launching'})
 
 @socketio.on('request_player_data')
 def handle_player_data_request(data):

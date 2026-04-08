@@ -71,6 +71,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from openai import OpenAI
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
@@ -79,6 +80,8 @@ register_callsite("T039", "core/managers/campaign_manager.py", 579)
 import config
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.module_path_manager import ModulePathManager
+from utils.module_refresh_lock import module_refresh_lock
+from utils.commit_state import begin_refresh_commit, mark_commit_phase, complete_refresh_commit, recover_incomplete_refresh_commit
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
 
 # Set script name for logging
@@ -100,9 +103,9 @@ class CampaignManager:
         
         # Load or create campaign state
         self.campaign_data = self._load_campaign_data()
-        
-        # Scan for new modules on startup (delayed import to avoid circular imports)
-        self._scan_for_new_modules()
+
+        # Callers may opt-in to refresh; constructor remains side-effect free.
+        self.party_tracker_data = None
     
     def _load_campaign_data(self) -> Dict[str, Any]:
         """Load campaign data or create default"""
@@ -132,49 +135,101 @@ class CampaignManager:
             safe_json_dump(default_campaign, self.campaign_file)
             return default_campaign
     
-    def _scan_for_new_modules(self):
-        """Scan for new modules using module stitcher and sync with world registry"""
+    def refresh_modules(self):
+        """Scan and integrate modules explicitly, then sync campaign availability."""
+        with module_refresh_lock() as acquired:
+            if not acquired:
+                return {
+                    "success": False,
+                    "newly_integrated": [],
+                    "available_modules": self.campaign_data.get("availableModules", []),
+                    "error": "module_refresh_lock_timeout",
+                }
+            commit_state = None
+            refresh_ok = False
+            try:
+                recover_incomplete_refresh_commit()
+                commit_state = begin_refresh_commit()
+                mark_commit_phase("commit")
+                from core.generators.module_stitcher import get_module_stitcher
+
+                stitcher = get_module_stitcher()
+                newly_integrated = stitcher.scan_and_integrate_new_modules()
+
+                self.party_tracker_data = safe_json_load("party_tracker.json")
+                if self.party_tracker_data and newly_integrated:
+                    updated_loc = self.party_tracker_data.get("worldConditions", {}).get("currentLocationId", "Unknown")
+                    info(
+                        f"INITIALIZATION: Reloaded party tracker after integration. Location: {updated_loc}",
+                        category="module_loading",
+                    )
+
+                world_registry = stitcher.world_registry
+                if world_registry and "modules" in world_registry:
+                    world_modules = set(world_registry["modules"].keys())
+                    current_available = set(self.campaign_data.get("availableModules", []))
+                    missing_modules = world_modules - current_available
+
+                    if newly_integrated or missing_modules:
+                        all_updates = set(newly_integrated) | missing_modules
+                        current_available.update(all_updates)
+                        self.campaign_data["availableModules"] = list(current_available)
+                        self.campaign_data["lastUpdated"] = datetime.now().isoformat()
+                        safe_json_dump(self.campaign_data, self.campaign_file)
+
+                        if newly_integrated:
+                            info(
+                                f"INITIALIZATION: Integrated {len(newly_integrated)} new modules: {', '.join(newly_integrated)}",
+                                category="module_loading",
+                            )
+                        if missing_modules:
+                            info(
+                                f"INITIALIZATION: Synced {len(missing_modules)} existing modules: {', '.join(missing_modules)}",
+                                category="module_loading",
+                            )
+
+                refresh_ok = True
+                return {
+                    "success": True,
+                    "newly_integrated": list(newly_integrated),
+                    "available_modules": self.campaign_data.get("availableModules", []),
+                }
+            except Exception as e:
+                # Best-effort rollback on failure during refresh commit.
+                try:
+                    recover_incomplete_refresh_commit()
+                except Exception:
+                    pass
+                warning(f"INITIALIZATION: Failed to scan for new modules: {e}", category="module_loading")
+                return {
+                    "success": False,
+                    "newly_integrated": [],
+                    "available_modules": self.campaign_data.get("availableModules", []),
+                    "error": str(e),
+                }
+            finally:
+                if commit_state and refresh_ok:
+                    try:
+                        complete_refresh_commit()
+                    except Exception:
+                        pass
+
+    def refresh_modules_async(self, max_seconds: int = 3):
+        """Run refresh with a bounded wait; return quickly on timeout."""
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(self.refresh_modules)
         try:
-            # Delayed import to avoid circular imports
-            from core.generators.module_stitcher import get_module_stitcher
-            
-            # Get module stitcher and scan for new modules
-            stitcher = get_module_stitcher()
-            newly_integrated = stitcher.scan_and_integrate_new_modules()
-
-            # CRITICAL: Reload party_tracker after integration (may have updated location IDs)
-            # Store in instance for use by calling code
-            self.party_tracker_data = safe_json_load("party_tracker.json")
-            if self.party_tracker_data and newly_integrated:
-                updated_loc = self.party_tracker_data.get('worldConditions', {}).get('currentLocationId', 'Unknown')
-                info(f"INITIALIZATION: Reloaded party tracker after integration. Location: {updated_loc}", category="module_loading")
-
-            # Also sync with existing modules in world registry
-            world_registry = stitcher.world_registry
-            if world_registry and 'modules' in world_registry:
-                world_modules = set(world_registry['modules'].keys())
-                current_available = set(self.campaign_data.get('availableModules', []))
-                
-                # Find any modules that exist in world registry but not in campaign
-                missing_modules = world_modules - current_available
-                
-                if newly_integrated or missing_modules:
-                    # Update available modules with both newly integrated and previously missing
-                    all_updates = set(newly_integrated) | missing_modules
-                    current_available.update(all_updates)
-                    self.campaign_data['availableModules'] = list(current_available)
-                    
-                    # Save updated campaign data
-                    self.campaign_data['lastUpdated'] = datetime.now().isoformat()
-                    safe_json_dump(self.campaign_data, self.campaign_file)
-                    
-                    if newly_integrated:
-                        info(f"INITIALIZATION: Integrated {len(newly_integrated)} new modules: {', '.join(newly_integrated)}", category="module_loading")
-                    if missing_modules:
-                        info(f"INITIALIZATION: Synced {len(missing_modules)} existing modules: {', '.join(missing_modules)}", category="module_loading")
-            
-        except Exception as e:
-            warning(f"INITIALIZATION: Failed to scan for new modules: {e}", category="module_loading")
+            return future.result(timeout=max_seconds)
+        except FuturesTimeoutError:
+            future.cancel()
+            return {
+                "success": False,
+                "newly_integrated": [],
+                "available_modules": self.campaign_data.get("availableModules", []),
+                "error": "refresh_timeout",
+            }
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
     
     def get_campaign_context(self) -> str:
         """Get campaign context for AI conversations"""

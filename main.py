@@ -85,7 +85,7 @@ register_callsite("T066", "main.py", 1745)
 register_callsite("T067", "main.py", 2366)
 from datetime import datetime, timedelta
 from termcolor import colored
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 
 # Import encoding utilities
 from utils.encoding_utils import (
@@ -137,10 +137,24 @@ from utils.file_operations import safe_write_json, safe_read_json
 from utils.module_path_manager import ModulePathManager
 from core.managers.campaign_manager import CampaignManager
 from core.ai.inventory_context_integration import build_enhanced_dm_note
+from utils.reconcile_campaign_state import reconcile_campaign_state
 
 # Import training data collection
 # from simple_training_collector import log_complete_interaction  # DISABLED
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.startup_handoff_state import (
+    load_state as load_startup_state,
+    sync_wizard_completion,
+    mark_wizard_complete,
+    claim_kickoff_lease,
+    mark_kickoff_done,
+    mark_kickoff_failed,
+    is_kickoff_claim_still_active,
+    try_consume_forced_recovery,
+    renew_kickoff_lease,
+    lock_kickoff_processing,
+    prepare_manual_recovery_state,
+)
 
 # Set script name for logging
 set_script_name(__name__)
@@ -197,6 +211,250 @@ def status_callback(message, is_processing):
 status_manager.set_callback(status_callback)
 
 # Note: Old summarization functions removed - using cumulative summary system instead
+
+
+def emit_startup_marker(phase, **extra):
+    """Emit structured startup marker logs for debugging startup handoff."""
+    payload = {
+        "phase": phase,
+        "timestamp": datetime.now().isoformat(),
+    }
+    payload.update(extra)
+    info(f"STARTUP_MARKER: {json.dumps(payload, ensure_ascii=False)}", category="startup")
+
+
+def _run_get_ai_response_with_timeout(conversation_history, timeout_seconds=120):
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(get_ai_response, conversation_history)
+    try:
+        return future.result(timeout=timeout_seconds)
+    except FuturesTimeoutError:
+        future.cancel()
+        raise
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
+def _run_startup_kickoff_once(
+    conversation_history,
+    party_tracker_data,
+    location_data,
+    source,
+    startup_state,
+    precomputed_response=None,
+):
+    claim = claim_kickoff_lease(source=source)
+    claim_status = claim.get("status")
+    state = claim.get("state", startup_state)
+
+    if claim_status in {"already_done", "lease_held", "not_ready", "lock_timeout"}:
+        emit_startup_marker(
+            "startup_kickoff_skipped",
+            source=source,
+            result=claim_status,
+            startup_attempt_id=state.get("startup_attempt_id"),
+            state_version=state.get("state_version"),
+            lease_owner=state.get("lease_owner"),
+            attempt_count=state.get("attempt_count"),
+        )
+        return claim_status
+
+    startup_attempt_id = claim.get("startup_attempt_id")
+    lease_owner = claim.get("lease_owner")
+    start_ts = time.time()
+    emit_startup_marker(
+        "startup_kickoff_attempted",
+        source=source,
+        result="claimed",
+        startup_attempt_id=startup_attempt_id,
+        state_version=state.get("state_version"),
+        lease_owner=lease_owner,
+        attempt_count=state.get("attempt_count"),
+    )
+
+    try:
+        if precomputed_response is not None:
+            initial_ai_response = precomputed_response
+        else:
+            initial_ai_response = _run_get_ai_response_with_timeout(conversation_history, timeout_seconds=120)
+
+        # Fence stale/expired workers before applying side effects.
+        if not is_kickoff_claim_still_active(startup_attempt_id, lease_owner):
+            emit_startup_marker(
+                "startup_kickoff_stale_discarded",
+                source=source,
+                result="stale_discarded",
+                startup_attempt_id=startup_attempt_id,
+                lease_owner=lease_owner,
+                attempt_count=state.get("attempt_count"),
+            )
+            return "stale_discarded"
+
+        lease_renew = renew_kickoff_lease(startup_attempt_id, lease_owner, lease_seconds=900)
+        if lease_renew.get("status") != "updated":
+            emit_startup_marker(
+                "startup_kickoff_stale_discarded",
+                source=source,
+                result=lease_renew.get("status", "stale"),
+                startup_attempt_id=startup_attempt_id,
+                lease_owner=lease_owner,
+            )
+            return "stale_discarded"
+
+        processing_lock = lock_kickoff_processing(startup_attempt_id, lease_owner, lease_seconds=3600)
+        if processing_lock.get("status") != "updated":
+            emit_startup_marker(
+                "startup_kickoff_stale_discarded",
+                source=source,
+                result=processing_lock.get("status", "stale"),
+                startup_attempt_id=startup_attempt_id,
+                lease_owner=lease_owner,
+            )
+            return "stale_discarded"
+
+        process_ai_response(initial_ai_response, party_tracker_data, location_data, conversation_history)
+        update_result = mark_kickoff_done(startup_attempt_id, lease_owner)
+        if update_result.get("status") != "updated":
+            emit_startup_marker(
+                "startup_kickoff_stale_discarded",
+                source=source,
+                result=update_result.get("status", "stale"),
+                startup_attempt_id=startup_attempt_id,
+                state_version=update_result.get("state", {}).get("state_version"),
+                lease_owner=lease_owner,
+                attempt_count=update_result.get("state", {}).get("attempt_count"),
+            )
+            return "stale_discarded"
+        elapsed_ms = int((time.time() - start_ts) * 1000)
+        emit_startup_marker(
+            "startup_kickoff_done",
+            source=source,
+            result=update_result.get("status", "updated"),
+            duration_ms=elapsed_ms,
+            startup_attempt_id=startup_attempt_id,
+            state_version=update_result.get("state", {}).get("state_version"),
+            lease_owner=lease_owner,
+            attempt_count=update_result.get("state", {}).get("attempt_count"),
+        )
+        return "done"
+    except FuturesTimeoutError:
+        fail_result = mark_kickoff_failed(startup_attempt_id, lease_owner, "kickoff_timeout")
+        emit_startup_marker(
+            "startup_kickoff_failed",
+            source=source,
+            result="timeout",
+            error_code="kickoff_timeout",
+            startup_attempt_id=startup_attempt_id,
+            state_version=fail_result.get("state", {}).get("state_version"),
+            lease_owner=lease_owner,
+            attempt_count=fail_result.get("state", {}).get("attempt_count"),
+        )
+        return "timeout"
+    except Exception as exc:
+        fail_result = mark_kickoff_failed(startup_attempt_id, lease_owner, str(exc))
+        emit_startup_marker(
+            "startup_kickoff_failed",
+            source=source,
+            result="error",
+            error_code=type(exc).__name__,
+            startup_attempt_id=startup_attempt_id,
+            state_version=fail_result.get("state", {}).get("state_version"),
+            lease_owner=lease_owner,
+            attempt_count=fail_result.get("state", {}).get("attempt_count"),
+        )
+        return "error"
+
+
+def run_startup_kickoff_with_recovery(
+    conversation_history,
+    party_tracker_data,
+    location_data,
+    precomputed_response=None,
+):
+    """Run startup kickoff with exactly-once lease and one fallback recovery attempt."""
+    startup_state = load_startup_state()
+    result = _run_startup_kickoff_once(
+        conversation_history,
+        party_tracker_data,
+        location_data,
+        source="normal",
+        startup_state=startup_state,
+        precomputed_response=precomputed_response,
+    )
+    if result == "done":
+        return {"status": "done"}
+
+    current = load_startup_state()
+    if current.get("status") == "kickoff_done":
+        return {"status": "done"}
+
+    # Never escalate to forced recovery while another active lease exists.
+    if result in {"lease_held", "not_ready", "lock_timeout", "stale_discarded"}:
+        return {"status": "pending", "reason": result}
+
+    # Circuit breaker: allow one forced recovery per startup attempt.
+    if current.get("status") != "kickoff_failed":
+        return {"status": "pending", "reason": result}
+
+    consumed = try_consume_forced_recovery(current.get("startup_attempt_id", ""))
+    if consumed.get("status") != "consumed":
+        return {"status": "failed", "reason": result}
+
+    emit_startup_marker(
+        "startup_watchdog_forced_kickoff",
+        source="watchdog",
+        result="forcing_recovery",
+        startup_attempt_id=current.get("startup_attempt_id"),
+        state_version=current.get("state_version"),
+        lease_owner=current.get("lease_owner"),
+        attempt_count=current.get("attempt_count"),
+    )
+    retry_result = _run_startup_kickoff_once(
+        conversation_history,
+        party_tracker_data,
+        location_data,
+        source="watchdog",
+        startup_state=load_startup_state(),
+    )
+    return {"status": "done" if retry_result == "done" else "failed", "reason": retry_result}
+
+
+def recover_startup_handoff():
+    """Manual recovery path for web action endpoint."""
+    prep = prepare_manual_recovery_state()
+    startup_state = prep.get("state", load_startup_state())
+    if prep.get("status") == "already_ready":
+        return {"status": "already_ready"}
+    if prep.get("status") == "in_progress":
+        return {"status": "in_progress"}
+    if prep.get("status") != "recoverable":
+        return {"status": "not_recoverable"}
+
+    party_tracker_data = load_json_file("party_tracker.json")
+    if not party_tracker_data:
+        return {"status": "failed", "error": "party_tracker_missing"}
+
+    conversation_history = load_json_file(json_file) or []
+    location_data = get_location_data_from_party_tracker(party_tracker_data)
+    if not location_data:
+        return {"status": "failed", "error": "party_tracker_world_state_invalid"}
+
+    emit_startup_marker(
+        "startup_manual_recovery_requested",
+        source="manual",
+        result="requested",
+        startup_attempt_id=startup_state.get("startup_attempt_id"),
+        state_version=startup_state.get("state_version"),
+        lease_owner=startup_state.get("lease_owner"),
+        attempt_count=startup_state.get("attempt_count"),
+    )
+    result = run_startup_kickoff_with_recovery(conversation_history, party_tracker_data, location_data)
+    if result.get("status") == "done":
+        return {"status": "recovered"}
+    if result.get("status") == "pending":
+        return {"status": "in_progress"}
+    return {"status": "failed", "error": result.get("reason", "unknown")}
+
 
 # Add this new function near the top of the file
 def exit_game():
@@ -264,6 +522,17 @@ def check_and_inject_return_message(conversation_history, is_combat_active=False
     conversation_history.append(return_message)
     debug("STATE_CHANGE: Injected 'player has returned' message at startup", category="session_management")
     return conversation_history, True
+
+
+def get_location_data_from_party_tracker(party_tracker_data):
+    """Build location_data using the current worldConditions from party tracker."""
+    world_conditions = (party_tracker_data or {}).get("worldConditions") or {}
+    current_area_id = world_conditions.get("currentAreaId")
+    current_location = world_conditions.get("currentLocation")
+    current_area = world_conditions.get("currentArea")
+    if not (current_area_id and current_location and current_area):
+        return None
+    return location_manager.get_location_info(current_location, current_area, current_area_id)
 
 def generate_arrival_narration(departure_narration, party_tracker_data, conversation_history):
     """
@@ -2632,6 +2901,17 @@ def main_game_loop():
     except Exception as e:
         debug(f"Could not initialize memories (non-fatal): {e}", category="startup")
 
+    startup_state = load_startup_state()
+    emit_startup_marker(
+        "startup_handoff_begin",
+        source="normal",
+        result="begin",
+        startup_attempt_id=startup_state.get("startup_attempt_id"),
+        state_version=startup_state.get("state_version"),
+        lease_owner=startup_state.get("lease_owner"),
+        attempt_count=startup_state.get("attempt_count"),
+    )
+
     # Check if first-time setup is needed
     try:
         from utils.startup_wizard import startup_required, run_startup_sequence
@@ -2645,6 +2925,30 @@ def main_game_loop():
             if not success:
                 print("[ERROR] Setup was cancelled or failed. Cannot start game loop.")
                 return
+            wizard_state = mark_wizard_complete().get("state", load_startup_state())
+            emit_startup_marker(
+                "startup_wizard_complete",
+                source="normal",
+                result="updated",
+                startup_attempt_id=wizard_state.get("startup_attempt_id"),
+                state_version=wizard_state.get("state_version"),
+                lease_owner=wizard_state.get("lease_owner"),
+                attempt_count=wizard_state.get("attempt_count"),
+            )
+        else:
+            party_data = load_json_file("party_tracker.json") or {}
+            has_character_data = bool(party_data.get("module")) and bool(party_data.get("partyMembers"))
+            sync_result = sync_wizard_completion(has_character_data)
+            synced_state = sync_result.get("state", load_startup_state())
+            emit_startup_marker(
+                "startup_wizard_sync",
+                source="normal",
+                result=sync_result.get("status", "unknown"),
+                startup_attempt_id=synced_state.get("startup_attempt_id"),
+                state_version=synced_state.get("state_version"),
+                lease_owner=synced_state.get("lease_owner"),
+                attempt_count=synced_state.get("attempt_count"),
+            )
     except Exception as e:
         error(f"FAILURE: Startup wizard failed", exception=e, category="startup")
         return
@@ -2775,17 +3079,19 @@ def main_game_loop():
         if not party_tracker_data:
             print("[ERROR] Party tracker not found after setup. Something went wrong.")
             return
+
+        # Reconcile startup-critical state before building conversation context.
+        try:
+            reconcile_result = reconcile_campaign_state()
+            debug(f"STATE_CHANGE: reconcile_campaign_state result: {reconcile_result}", category="startup")
+        except Exception as reconcile_exc:
+            warning(f"INITIALIZATION: reconcile_campaign_state failed: {reconcile_exc}", category="startup")
     
         # Path manager already initialized above for both paths
         # Just verify it's using the correct module
         debug(f"INITIALIZATION: Path manager already initialized - module_name: '{path_manager.module_name}', module_dir: '{path_manager.module_dir}'", category="module_management")
     
-        current_area_id = party_tracker_data["worldConditions"]["currentAreaId"]
-        location_data = location_manager.get_location_info( 
-            party_tracker_data["worldConditions"]["currentLocation"],
-            party_tracker_data["worldConditions"]["currentArea"],
-            current_area_id
-        )
+        location_data = get_location_data_from_party_tracker(party_tracker_data)
 
         # Use current module from party tracker for plot data  
         current_module_name = party_tracker_data.get("module", "").replace(" ", "_")
@@ -2800,8 +3106,20 @@ def main_game_loop():
         party_tracker_data = load_json_file("party_tracker.json")
         print(f"DEBUG: [Before first update_conversation_history] Reloaded party tracker after integration. Location: {party_tracker_data.get('worldConditions', {}).get('currentLocationId', 'Unknown')}")
 
+        location_data = get_location_data_from_party_tracker(party_tracker_data)
+
         conversation_history = ensure_main_system_prompt(conversation_history, main_system_prompt_text)
         debug(f"STATE_CHANGE: Before update_conversation_history - history has {len(conversation_history)} messages", category="conversation_management")
+        context_state = load_startup_state()
+        emit_startup_marker(
+            "startup_context_built",
+            source="normal",
+            result="pre_update_conversation_history",
+            startup_attempt_id=context_state.get("startup_attempt_id"),
+            state_version=context_state.get("state_version"),
+            lease_owner=context_state.get("lease_owner"),
+            attempt_count=context_state.get("attempt_count"),
+        )
         conversation_history = update_conversation_history(conversation_history, party_tracker_data, plot_data, module_data)
         debug(f"STATE_CHANGE: After update_conversation_history - history has {len(conversation_history)} messages", category="conversation_management")
         conversation_history = update_character_data(conversation_history, party_tracker_data)
@@ -2818,19 +3136,22 @@ def main_game_loop():
     
         save_conversation_history(conversation_history)
 
-        # Get initial AI response - either we already have one from return message or we need to generate it
-        if was_injected:
-            # We already generated a response for the return message above
-            # Now we need to process it (extract actions, update UI, etc.)
-            # The response is already in conversation history, get it from there
-            if conversation_history and conversation_history[-1]["role"] == "assistant":
-                initial_ai_response = conversation_history[-1]["content"]
-                process_ai_response(initial_ai_response, party_tracker_data, location_data, conversation_history)
-        else:
-            # Normal startup - get initial AI response
-            initial_ai_response = get_ai_response(conversation_history)
-            # Ensure location_data passed here is the one loaded for the initial state
-            process_ai_response(initial_ai_response, party_tracker_data, location_data, conversation_history) 
+        # Exactly-once kickoff with recovery; process precomputed return-response if present.
+        precomputed_response = None
+        if was_injected and conversation_history and conversation_history[-1]["role"] == "assistant":
+            precomputed_response = conversation_history[-1]["content"]
+
+        kickoff_result = run_startup_kickoff_with_recovery(
+            conversation_history,
+            party_tracker_data,
+            location_data,
+            precomputed_response=precomputed_response,
+        )
+        if kickoff_result.get("status") != "done":
+            warning(
+                f"INITIALIZATION: Startup kickoff did not complete cleanly: {kickoff_result}",
+                category="startup",
+            )
 
     # Add safeguard against infinite loops in non-interactive environments
     empty_input_count = 0

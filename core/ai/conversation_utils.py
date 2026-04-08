@@ -490,12 +490,6 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
         from core.managers.campaign_manager import CampaignManager
         campaign_manager = CampaignManager()
 
-        # CRITICAL: Use fresh party_tracker_data from campaign_manager if available
-        # CampaignManager reloads party_tracker after module integration, fixing stale location IDs
-        if hasattr(campaign_manager, 'party_tracker_data') and campaign_manager.party_tracker_data:
-            party_tracker_data = campaign_manager.party_tracker_data
-            print(f"DEBUG: [update_conversation_history] Using fresh party_tracker from CampaignManager. Location: {party_tracker_data.get('worldConditions', {}).get('currentLocationId', 'Unknown')}")
-
         available_modules = campaign_manager.campaign_data.get('availableModules', [])
 
         # Get current module from actual party_tracker.json file
