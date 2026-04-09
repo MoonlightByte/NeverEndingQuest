@@ -1028,6 +1028,42 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Players Diary Journal Cadence Hardening (COMPLETED - 2026-04-09)
+
+**Status:** COMPLETED - Journal checkpoint cadence now supports transition and long-rest triggers with deterministic idempotent dedupe and fail-open rest behavior.
+
+**OpenSpec Archive:**
+- `openspec/changes/archive/2026-04-09-players-diary-journal-cadence-hardening/`
+
+**Objective:**
+- Preserve transition-based `journal.json` checkpoint generation.
+- Add long-rest checkpoint generation without per-turn journaling.
+- Prevent duplicate rows across retries/resume flows using additive checkpoint metadata.
+- Keep long-rest journaling fail-open so successful rest completion is never blocked.
+
+**Implementation Summary:**
+- `core/ai/cumulative_summary.py`
+  - Added additive checkpoint metadata on journal entries (`checkpoint.kind`, `checkpoint.key`, source location/time/module).
+  - Added shared idempotency checks for transition and long-rest hooks.
+  - Added deterministic key builders (`build_transition_checkpoint_metadata`, `build_long_rest_checkpoint_metadata`).
+  - Added `maybe_create_long_rest_journal_checkpoint(...)` with duplicate suppression and no-delta no-op behavior.
+  - Refactored enhanced summary expansion into reusable helpers for cadence hooks.
+- `main.py`
+  - Transition journaling path remains active and now passes transition checkpoint metadata into `update_journal_with_summary(...)`.
+- `core/ai/action_handler.py`
+  - Added post-success long-rest checkpoint hook under `ACTION_REST` for `rest_type == "long"`.
+  - Hook is fail-open (degrades to warning logs only; no rest rollback).
+- Added coverage:
+  - `scripts/test_journal_cadence_hardening.py`
+  - `scripts/step_players_diary_cadence_smoke.py`
+
+**Verification:**
+- `.venv/bin/python -m py_compile core/ai/cumulative_summary.py main.py core/ai/action_handler.py scripts/test_journal_cadence_hardening.py scripts/step_players_diary_cadence_smoke.py` -> PASS
+- `.venv/bin/python scripts/test_journal_cadence_hardening.py` -> PASS
+- `.venv/bin/python scripts/test_cumulative_summary_transition.py` -> PASS
+- `.venv/bin/python scripts/step_players_diary_cadence_smoke.py` -> PASS
+- `openspec validate players-diary-journal-cadence-hardening` -> VALID
+
 ### Bonsai Narration Provider Pilot Planning + Rollback (COMPLETED - 2026-04-06)
 
 **Status:** COMPLETED - Documentation/planning artifacts created and archived; runtime Bonsai code wiring intentionally rolled back (no provider behavior change merged).

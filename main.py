@@ -145,6 +145,7 @@ from core.ai import action_handler
 from core.ai.cumulative_summary import (
     generate_enhanced_adventure_summary,
     update_journal_with_summary,
+    build_transition_checkpoint_metadata,
     compress_conversation_history_on_transition,
     check_and_compact_missing_summaries,
 )
@@ -3299,8 +3300,17 @@ def check_and_process_location_transitions(
 
         if adventure_summary:
             # Update journal with the summary
+            transition_checkpoint_metadata = build_transition_checkpoint_metadata(
+                last_transition_content,
+                party_tracker_data,
+                source_location=leaving_location_name,
+                source_location_id=leaving_location_id or "",
+            )
             update_journal_with_summary(
-                adventure_summary, party_tracker_data, leaving_location_name
+                adventure_summary,
+                party_tracker_data,
+                leaving_location_name,
+                checkpoint_metadata=transition_checkpoint_metadata,
             )
 
             # Compress conversation history
