@@ -31,10 +31,17 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 # 3. Internal module imports (grouped by layer)
 from utils.enhanced_logger import debug, error, info, warning
 from utils.file_operations import safe_write_json
+from utils.spatial_contract import (
+    build_location_aliases,
+    resolve_authored_adjacency,
+    resolve_semantic_spatial_plan,
+    build_tactical_grid,
+)
 
 # Guarded imports for optional dependencies
 try:
     from core.validation.validate_module_files import ModuleValidator
+
     VALIDATOR_AVAILABLE = True
 except Exception:
     VALIDATOR_AVAILABLE = False
@@ -42,6 +49,7 @@ except Exception:
 
 try:
     from core.generators.module_builder import ai_driven_module_creation
+
     AI_MODULE_BUILDER_AVAILABLE = True
 except Exception:
     AI_MODULE_BUILDER_AVAILABLE = False
@@ -49,6 +57,7 @@ except Exception:
 
 try:
     from core.generators.module_stitcher import ModuleStitcher
+
     STITCHER_AVAILABLE = True
 except Exception:
     STITCHER_AVAILABLE = False
@@ -66,7 +75,9 @@ def _sanitize_module_slug(raw_name: str) -> str:
 
 def _extract_metadata_title(source_text: str) -> Optional[str]:
     """Extract title from fenced metadata block when available."""
-    metadata_match = re.search(r"```metadata\s*(.*?)```", source_text, re.IGNORECASE | re.DOTALL)
+    metadata_match = re.search(
+        r"```metadata\s*(.*?)```", source_text, re.IGNORECASE | re.DOTALL
+    )
     if not metadata_match:
         return None
 
@@ -90,7 +101,9 @@ def _strip_presentation_blocks(source_text: str) -> str:
     cleaned = re.sub(r"```css\s*.*?```", "\n", cleaned, flags=re.IGNORECASE | re.DOTALL)
 
     # Remove HTML style blocks.
-    cleaned = re.sub(r"<style.*?>.*?</style>", "\n", cleaned, flags=re.IGNORECASE | re.DOTALL)
+    cleaned = re.sub(
+        r"<style.*?>.*?</style>", "\n", cleaned, flags=re.IGNORECASE | re.DOTALL
+    )
 
     # Remove common Homebrewery display macros and page markers.
     cleaned_lines: List[str] = []
@@ -152,8 +165,7 @@ def _parse_room_blocks(semantic_text: str) -> List[Dict[str, Any]]:
 
     # Pattern to match room headings: ## Room 1: Title or ## Room 100: Title
     room_pattern = re.compile(
-        r"^##\s+Room\s+(\d+):\s*(.+)$",
-        re.MULTILINE | re.IGNORECASE
+        r"^##\s+Room\s+(\d+):\s*(.+)$", re.MULTILINE | re.IGNORECASE
     )
 
     # Find all room positions
@@ -207,10 +219,7 @@ def _extract_subsections(room_content: str) -> Dict[str, Any]:
     }
 
     # Pattern for ### subsections
-    subsection_pattern = re.compile(
-        r"^###\s+(.+)$",
-        re.MULTILINE | re.IGNORECASE
-    )
+    subsection_pattern = re.compile(r"^###\s+(.+)$", re.MULTILINE | re.IGNORECASE)
 
     # Find all subsection positions
     matches = list(subsection_pattern.finditer(room_content))
@@ -229,7 +238,11 @@ def _extract_subsections(room_content: str) -> Dict[str, Any]:
             subsections["puzzle"] = section_content
         elif "solution" in title_lower:
             subsections["solution"] = section_content
-        elif "creature" in title_lower or "monster" in title_lower or "enemy" in title_lower:
+        elif (
+            "creature" in title_lower
+            or "monster" in title_lower
+            or "enemy" in title_lower
+        ):
             subsections["creatures"] = section_content
         elif "exit" in title_lower and "comment" in title_lower:
             subsections["exit_comment"] = section_content
@@ -267,8 +280,7 @@ def _extract_markdown_tables(content: str) -> List[Dict[str, Any]]:
 
     # Pattern for markdown tables
     table_pattern = re.compile(
-        r"\|(.+)\|\n\|[-:\s|]+\|\n((?:\|.+\|\n?)+)",
-        re.MULTILINE
+        r"\|(.+)\|\n\|[-:\s|]+\|\n((?:\|.+\|\n?)+)", re.MULTILINE
     )
 
     for match in table_pattern.finditer(content):
@@ -282,16 +294,20 @@ def _extract_markdown_tables(content: str) -> List[Dict[str, Any]]:
         rows: List[List[str]] = []
         for row_line in rows_text.strip().split("\n"):
             if "|" in row_line:
-                row_cells = [c.strip() for c in row_line.split("|") if c.strip() or c == ""]
+                row_cells = [
+                    c.strip() for c in row_line.split("|") if c.strip() or c == ""
+                ]
                 if row_cells:
                     rows.append(row_cells)
 
         if headers and rows:
-            tables.append({
-                "headers": headers,
-                "rows": rows,
-                "raw": match.group(0),
-            })
+            tables.append(
+                {
+                    "headers": headers,
+                    "rows": rows,
+                    "raw": match.group(0),
+                }
+            )
 
     return tables
 
@@ -319,7 +335,11 @@ def _build_intermediate_adventure(
 
     # Build chapter structure from room groups
     chapters: List[Dict[str, Any]] = []
-    current_chapter: Dict[str, Any] = {"title": "The Challenge Rooms", "summary": "", "rooms": []}
+    current_chapter: Dict[str, Any] = {
+        "title": "The Challenge Rooms",
+        "summary": "",
+        "rooms": [],
+    }
 
     for room in rooms:
         # Simple grouping: first room is introduction, last few are finale
@@ -337,23 +357,29 @@ def _build_intermediate_adventure(
 
         chapters = []
         if intro_rooms:
-            chapters.append({
-                "title": "Introduction",
-                "summary": "The hook and entry to the academy.",
-                "rooms": intro_rooms,
-            })
+            chapters.append(
+                {
+                    "title": "Introduction",
+                    "summary": "The hook and entry to the academy.",
+                    "rooms": intro_rooms,
+                }
+            )
         if challenge_rooms:
-            chapters.append({
-                "title": "The Challenge Rooms",
-                "summary": "A series of puzzles and trials.",
-                "rooms": challenge_rooms,
-            })
+            chapters.append(
+                {
+                    "title": "The Challenge Rooms",
+                    "summary": "A series of puzzles and trials.",
+                    "rooms": challenge_rooms,
+                }
+            )
         if finale_rooms:
-            chapters.append({
-                "title": "Finale",
-                "summary": "The final confrontation and resolution.",
-                "rooms": finale_rooms,
-            })
+            chapters.append(
+                {
+                    "title": "Finale",
+                    "summary": "The final confrontation and resolution.",
+                    "rooms": finale_rooms,
+                }
+            )
     else:
         chapters = [current_chapter]
 
@@ -379,7 +405,9 @@ def _build_intermediate_adventure(
     }
 
 
-def _generate_neq_ids(module_slug: str, rooms: List[Dict[str, Any]]) -> Tuple[str, List[str]]:
+def _generate_neq_ids(
+    module_slug: str, rooms: List[Dict[str, Any]]
+) -> Tuple[str, List[str]]:
     """
     Generate sequential NEQ area and location IDs.
     Returns (area_id, list_of_location_ids) where IDs are NEQ-sequential,
@@ -403,16 +431,16 @@ def _generate_neq_ids(module_slug: str, rooms: List[Dict[str, Any]]) -> Tuple[st
 
 def _load_bestiary_reference() -> Dict[str, Any]:
     """Load bestiary monster names for entity matching.
-    
+
     TABLETOP MODE: Added to support deterministic entity extraction
     from adventure text without LLM calls.
     """
     bestiary_path = Path("data/bestiary/monster_compendium.json")
     npc_path = Path("data/bestiary/npc_compendium.json")
-    
+
     monsters = set()
     npcs = set()
-    
+
     try:
         if bestiary_path.exists():
             with open(bestiary_path, "r", encoding="utf-8") as f:
@@ -424,7 +452,7 @@ def _load_bestiary_reference() -> Dict[str, Any]:
                     monsters.add(key.replace("_", " ").lower())
     except Exception:
         pass
-    
+
     # Conservative supplemental names not guaranteed in compendium.
     # Keep this list narrow to avoid hallucinated over-detection.
     common_monsters = {
@@ -440,7 +468,7 @@ def _load_bestiary_reference() -> Dict[str, Any]:
         "shrieker mushroom",
     }
     monsters.update(common_monsters)
-    
+
     try:
         if npc_path.exists():
             with open(npc_path, "r", encoding="utf-8") as f:
@@ -452,33 +480,32 @@ def _load_bestiary_reference() -> Dict[str, Any]:
                     npcs.add(first_name.lower())
     except Exception:
         pass
-    
+
     return {"monsters": monsters, "npcs": npcs}
 
 
 def _extract_entities_from_rooms(
-    rooms: List[Dict[str, Any]],
-    bestiary: Dict[str, Set[str]]
+    rooms: List[Dict[str, Any]], bestiary: Dict[str, Set[str]]
 ) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
     """Extract NPC and monster entities from room text deterministically.
-    
+
     TABLETOP MODE: Added to populate module_context with discoverable
     entities without requiring LLM processing.
-    
+
     Returns:
         Tuple of (npcs_dict, monsters_list)
     """
     npcs: Dict[str, Dict[str, Any]] = {}
     monsters: Set[str] = set()
-    
+
     monster_names = bestiary.get("monsters", set())
-    
+
     # Cue-driven NPC pattern (conservative):
     # Only capture title-cased names after explicit person cues.
     npc_cue_pattern = re.compile(
         r"(?:named|called|hired by|met|meet|guide is|escort is|adventurer|wizard|captain|merchant|hermit|ranger)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})"
     )
-    
+
     # Track which rooms mention which entities for area linkage
     for room in rooms:
         # Conservative monster search:
@@ -490,10 +517,12 @@ def _extract_entities_from_rooms(
         else:
             creatures_text = str(creatures_field)
 
-        desc_text = " ".join([
-            str(room.get("description", "")),
-            str(room.get("source_room_title", "")),
-        ])
+        desc_text = " ".join(
+            [
+                str(room.get("description", "")),
+                str(room.get("source_room_title", "")),
+            ]
+        )
 
         searchable_creatures = creatures_text.lower()
         searchable_desc = desc_text.lower()
@@ -512,22 +541,43 @@ def _extract_entities_from_rooms(
             if " " in monster_name and re.search(pattern, searchable_desc):
                 normalized_name = monster_name.title()
                 monsters.add(normalized_name)
-        
+
         # Search for NPCs using cue-driven conservative pattern
-        full_text = " ".join([
-            room.get("name", ""),
-            room.get("description", ""),
-            room.get("source_room_title", ""),
-        ])
+        full_text = " ".join(
+            [
+                room.get("name", ""),
+                room.get("description", ""),
+                room.get("source_room_title", ""),
+            ]
+        )
 
         for match in npc_cue_pattern.finditer(full_text):
             name = match.group(1)
             # Skip obvious non-name starters
             skip_words = {
-                "The", "A", "An", "This", "That", "They", "Room", "Main",
-                "Alternate", "General", "Northern", "Southern", "Eastern",
-                "Western", "Central", "Outer", "Inner", "Target", "Expected",
-                "North", "South", "East", "West"
+                "The",
+                "A",
+                "An",
+                "This",
+                "That",
+                "They",
+                "Room",
+                "Main",
+                "Alternate",
+                "General",
+                "Northern",
+                "Southern",
+                "Eastern",
+                "Western",
+                "Central",
+                "Outer",
+                "Inner",
+                "Target",
+                "Expected",
+                "North",
+                "South",
+                "East",
+                "West",
             }
             if name.split()[0] in skip_words:
                 continue
@@ -539,7 +589,7 @@ def _extract_entities_from_rooms(
                     "description": f"NPC encountered in {room.get('name', 'the adventure')}",
                     "type": "npc",
                 }
-    
+
     return npcs, sorted(list(monsters))
 
 
@@ -556,7 +606,7 @@ def _emit_module_context(
     rooms = intermediate.get("rooms", [])
     areas = {}
     locations = {}
-    
+
     # Extract entities from room text
     bestiary = _load_bestiary_reference()
     npcs, monsters = _extract_entities_from_rooms(rooms, bestiary)
@@ -596,11 +646,11 @@ def _emit_module_context(
 
     context_path = module_path / "module_context.json"
     safe_write_json(str(context_path), context)
-    
+
     # Emit deterministic seed artifacts for portrait prewarm
     # TABLETOP MODE: Seed files as single source of truth for prewarm planning
     _emit_seed_artifacts(module_path, module_slug, npcs, monsters)
-    
+
     return context_path
 
 
@@ -611,7 +661,7 @@ def _emit_seed_artifacts(
     monsters: List[str],
 ) -> None:
     """Emit deterministic seed artifacts for portrait prewarm.
-    
+
     TABLETOP MODE: Creates npcs_seed.json and monsters_seed.json as the
     primary contract for prewarm discovery, avoiding broad prose scanning.
     """
@@ -625,7 +675,7 @@ def _emit_seed_artifacts(
         "count": len(npcs),
     }
     safe_write_json(str(npcs_seed_path), npcs_seed)
-    
+
     # Emit monster seed
     monsters_seed_path = module_path / "monsters_seed.json"
     monsters_seed = {
@@ -702,6 +752,7 @@ def _emit_area_file(
     intermediate: Dict[str, Any],
     area_id: str,
     location_ids: List[str],
+    spatial_plan: Dict[str, Any],
 ) -> Path:
     """Emit areas/<AREA>.json with location definitions."""
     areas_dir = module_path / "areas"
@@ -717,7 +768,12 @@ def _emit_area_file(
         location = {
             "locationId": loc_id,
             "name": room["name"],
+            "type": "room",
             "description": room.get("description", ""),
+            "coordinates": spatial_plan["coordinates"].get(loc_id, "X10Y10"),
+            "connectivity": spatial_plan["connectivity"].get(loc_id, []),
+            "aliases": build_location_aliases(room["name"], loc_id),
+            "tactical_grid": build_tactical_grid(room["name"], "room"),
             "source_room_number": room.get("source_room_number"),
             "source_room_title": room.get("source_room_title"),
         }
@@ -741,6 +797,7 @@ def _emit_area_file(
         "areaName": f"{module_slug} Main Area",
         "areaDescription": intermediate["module_seed"].get("module_description", ""),
         "locations": locations,
+        "spatialContractVersion": 1,
     }
 
     area_path = areas_dir / f"{area_id}.json"
@@ -754,6 +811,7 @@ def _emit_map_file(
     intermediate: Dict[str, Any],
     area_id: str,
     location_ids: List[str],
+    spatial_plan: Dict[str, Any],
 ) -> Path:
     """Emit map_<AREA>.json with room connectivity."""
     rooms = intermediate.get("rooms", [])
@@ -763,30 +821,27 @@ def _emit_map_file(
     for i, room in enumerate(rooms):
         loc_id = location_ids[i]
 
-        # Determine connections (linear progression by default)
-        connections = []
-        if i > 0:
-            connections.append(location_ids[i - 1])  # Previous room
-        if i < len(rooms) - 1:
-            connections.append(location_ids[i + 1])  # Next room
+        connections = spatial_plan["connectivity"].get(loc_id, [])
 
         map_room = {
             "id": loc_id,
             "name": room["name"],
             "connections": connections,
-            "coordinates": f"X{i}Y0",  # Linear layout, schema requires string
+            "coordinates": spatial_plan["coordinates"].get(loc_id, "X10Y10"),
+            "directions": spatial_plan["directions"].get(loc_id, {}),
         }
         map_rooms.append(map_room)
 
-    # Simple 1D layout
-    layout = [[loc_id] for loc_id in location_ids]
+    layout = spatial_plan.get("layout", [[loc_id] for loc_id in location_ids])
 
     map_data = {
         "mapName": f"{module_slug} Map",
         "mapId": f"map_{area_id}",
         "totalRooms": len(rooms),
+        "startRoom": location_ids[0] if location_ids else "",
         "rooms": map_rooms,
         "layout": layout,
+        "spatialContractVersion": 1,
     }
 
     map_path = module_path / f"map_{area_id}.json"
@@ -810,22 +865,86 @@ def _emit_neq_artifacts(
     # Generate sequential NEQ IDs (NOT derived from source room numbers)
     area_id, location_ids = _generate_neq_ids(module_slug, rooms)
 
+    room_records: List[Dict[str, Any]] = []
+    sequential_connectivity: Dict[str, List[str]] = {}
+    total_rooms = len(rooms)
+    for index, room in enumerate(rooms):
+        loc_id = location_ids[index]
+        sequential_connections: List[str] = []
+        if index > 0:
+            sequential_connections.append(location_ids[index - 1])
+        if index < total_rooms - 1:
+            sequential_connections.append(location_ids[index + 1])
+        sequential_connectivity[loc_id] = sequential_connections
+
+        room_records.append(
+            {
+                "id": loc_id,
+                "name": room.get("name", loc_id),
+                "type": "room",
+                "description": room.get("description", ""),
+                "source_room_number": room.get("source_room_number"),
+                "source_room_title": room.get("source_room_title"),
+                "raw_content": room.get("raw_content", ""),
+                "exit_comment": room.get("exit_comment", ""),
+            }
+        )
+
+    # TABLETOP MODE: Prefer authored semantic room references and directional cues
+    # over source-order-only topology when building ingest connectivity.
+    authored_connectivity = resolve_authored_adjacency(
+        room_records,
+        fallback_connectivity=sequential_connectivity,
+    )
+    for room_record in room_records:
+        room_id = room_record.get("id")
+        if isinstance(room_id, str):
+            room_record["connections"] = authored_connectivity.get(
+                room_id,
+                sequential_connectivity.get(room_id, []),
+            )
+
+    spatial_plan = resolve_semantic_spatial_plan(
+        room_records,
+        start_x=10,
+        start_y=10,
+        use_llm=False,
+    )
+
     artifacts = []
 
     # Emit module_context.json
-    context_path = _emit_module_context(module_path, module_slug, intermediate, area_id, location_ids)
+    context_path = _emit_module_context(
+        module_path, module_slug, intermediate, area_id, location_ids
+    )
     artifacts.append(str(context_path))
 
     # Emit module_plot.json
-    plot_path = _emit_module_plot(module_path, module_slug, intermediate, area_id, location_ids)
+    plot_path = _emit_module_plot(
+        module_path, module_slug, intermediate, area_id, location_ids
+    )
     artifacts.append(str(plot_path))
 
     # Emit areas/<AREA>.json
-    area_path = _emit_area_file(module_path, module_slug, intermediate, area_id, location_ids)
+    area_path = _emit_area_file(
+        module_path,
+        module_slug,
+        intermediate,
+        area_id,
+        location_ids,
+        spatial_plan,
+    )
     artifacts.append(str(area_path))
 
     # Emit map_<AREA>.json
-    map_path = _emit_map_file(module_path, module_slug, intermediate, area_id, location_ids)
+    map_path = _emit_map_file(
+        module_path,
+        module_slug,
+        intermediate,
+        area_id,
+        location_ids,
+        spatial_plan,
+    )
     artifacts.append(str(map_path))
 
     return artifacts
@@ -833,7 +952,7 @@ def _emit_neq_artifacts(
 
 def _validate_module_artifacts(module_path: Path, schema_dir: Path) -> Dict[str, Any]:
     """Run module validation and return structured results.
-    
+
     Returns validation result dict with:
     - passed: bool - whether validation passed (best-effort for non-strict compatibility)
     - failed_count: int - number of failed validations
@@ -849,7 +968,9 @@ def _validate_module_artifacts(module_path: Path, schema_dir: Path) -> Dict[str,
             "passed": True,
             "failed_count": 0,
             "success_rate": 1.0,
-            "errors": ["Module validation skipped: jsonschema not installed. Install via 'pip install jsonschema'."],
+            "errors": [
+                "Module validation skipped: jsonschema not installed. Install via 'pip install jsonschema'."
+            ],
             "validator_unavailable": True,
             "note": "Validation skipped (validator dependencies unavailable)",
         }
@@ -938,7 +1059,9 @@ def _register_module_if_valid(
         if module_slug in stitcher.world_registry.get("modules", {}):
             result["registry_module_present"] = True
         else:
-            result["registration_errors"].append("Module not found in registry after integration")
+            result["registration_errors"].append(
+                "Module not found in registry after integration"
+            )
 
     except Exception as e:
         result["registration_attempted"] = True
@@ -978,7 +1101,10 @@ def import_homebrewery_adventure_to_module(
                 "status": "error",
                 "module_slug": module_slug,
                 "artifacts": [],
-                "validation": {"passed": False, "errors": [f"Source not found: {source_path}"]},
+                "validation": {
+                    "passed": False,
+                    "errors": [f"Source not found: {source_path}"],
+                },
                 "quarantine_reason": "source_not_found",
             }
 
@@ -1013,11 +1139,16 @@ def import_homebrewery_adventure_to_module(
                     "status": "error",
                     "module_slug": effective_slug,
                     "artifacts": [],
-                    "validation": {"passed": False, "errors": ["No rooms found in source"]},
+                    "validation": {
+                        "passed": False,
+                        "errors": ["No rooms found in source"],
+                    },
                     "quarantine_reason": "no_rooms_found",
                 }
 
-            intermediate = _build_intermediate_adventure(source_title, str(source_file), rooms)
+            intermediate = _build_intermediate_adventure(
+                source_title, str(source_file), rooms
+            )
             intermediate["module_seed"]["module_name"] = effective_slug
 
             module_path = Path(output_root) / effective_slug
@@ -1044,7 +1175,9 @@ def import_homebrewery_adventure_to_module(
                     "preview": {
                         "room_count": len(rooms),
                         "area_id": area_id,
-                        "location_ids": location_ids[:5] if len(location_ids) > 5 else location_ids,
+                        "location_ids": location_ids[:5]
+                        if len(location_ids) > 5
+                        else location_ids,
                     },
                 }
 
@@ -1055,7 +1188,10 @@ def import_homebrewery_adventure_to_module(
                     "status": "error",
                     "module_slug": effective_slug,
                     "artifacts": [],
-                    "validation": {"passed": False, "errors": ["Artifact emission failed"]},
+                    "validation": {
+                        "passed": False,
+                        "errors": ["Artifact emission failed"],
+                    },
                     "quarantine_reason": "emission_failed",
                 }
 
@@ -1068,11 +1204,18 @@ def import_homebrewery_adventure_to_module(
                     "status": "error",
                     "module_slug": effective_slug,
                     "artifacts": [],
-                    "validation": {"passed": False, "errors": ["AI module builder not available (missing dependencies)"]},
+                    "validation": {
+                        "passed": False,
+                        "errors": [
+                            "AI module builder not available (missing dependencies)"
+                        ],
+                    },
                     "quarantine_reason": "ai_builder_unavailable",
                 }
 
-            narrative = _build_import_narrative(source_title, str(source_file), semantic_text)
+            narrative = _build_import_narrative(
+                source_title, str(source_file), semantic_text
+            )
             params: Dict[str, Any] = {
                 "module_name": effective_slug,
                 "narrative": narrative,
@@ -1085,14 +1228,19 @@ def import_homebrewery_adventure_to_module(
                     "status": "error",
                     "module_slug": effective_slug,
                     "artifacts": [],
-                    "validation": {"passed": False, "errors": ["Module generation failed"]},
+                    "validation": {
+                        "passed": False,
+                        "errors": ["Module generation failed"],
+                    },
                     "quarantine_reason": "generation_failed",
                 }
 
             module_path = Path(output_root) / generated_module_name
             artifacts = _collect_artifacts(module_path=module_path, repo_root=repo_root)
 
-        validation = _validate_module_artifacts(module_path=module_path, schema_dir=schema_dir)
+        validation = _validate_module_artifacts(
+            module_path=module_path, schema_dir=schema_dir
+        )
 
         # Re-collect artifacts after validation (in case validation created temp files)
         artifacts = _collect_artifacts(module_path=module_path, repo_root=repo_root)
@@ -1119,7 +1267,9 @@ def import_homebrewery_adventure_to_module(
                     "registration_attempted": False,
                     "registration_success": False,
                     "registry_module_present": False,
-                    "registration_errors": ["Registration skipped: validator dependencies unavailable"],
+                    "registration_errors": [
+                        "Registration skipped: validator dependencies unavailable"
+                    ],
                 },
             }
 
@@ -1143,7 +1293,9 @@ def import_homebrewery_adventure_to_module(
                     "registration_attempted": False,
                     "registration_success": False,
                     "registry_module_present": False,
-                    "registration_errors": ["Registration skipped due to validation failure"],
+                    "registration_errors": [
+                        "Registration skipped due to validation failure"
+                    ],
                 },
             }
 

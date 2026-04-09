@@ -31,35 +31,59 @@ from datetime import datetime
 import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+try:
+    from utils.spatial_contract import (
+        CARDINAL_DIRECTIONS,
+        is_valid_coordinate,
+        parse_coordinate,
+    )
+except ModuleNotFoundError:
+    # Allow direct script execution: python core/validation/validate_module_files.py
+    repo_root = Path(__file__).resolve().parents[2]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from utils.spatial_contract import (
+        CARDINAL_DIRECTIONS,
+        is_valid_coordinate,
+        parse_coordinate,
+    )
+
 # jsonschema is optional at import time to allow --help to work without deps
 # Individual validators will raise clear errors if called without jsonschema
 try:
     from jsonschema import validate, ValidationError, Draft7Validator
+
     _JSONSCHEMA_AVAILABLE = True
 except Exception:  # ImportError or missing deps
     _JSONSCHEMA_AVAILABLE = False
+
     # Provide fallback stubs to keep type checks and runtime clear
     class Draft7Validator:
         def __init__(self, *args, **kwargs):
             raise RuntimeError("jsonschema is not installed")
+
         def iter_errors(self, *args, **kwargs):
             return []
+
     class ValidationError(Exception):
         pass
+
     def validate(*args, **kwargs):
         raise RuntimeError("jsonschema is not installed")
 
 
 class ModuleValidator:
     """Validates all module files against their schemas"""
-    
+
     def __init__(self, module_path, schema_dir):
         self.module_path = Path(module_path)
         self.schema_dir = Path(schema_dir)
-        self.results = defaultdict(lambda: {"files": [], "passed": 0, "failed": 0, "errors": []})
+        self.results = defaultdict(
+            lambda: {"files": [], "passed": 0, "failed": 0, "errors": []}
+        )
         self.schemas = {}
         self._verbose = False
-        
+
     def load_schemas(self):
         """Load all available schemas"""
         schema_mappings = {
@@ -73,16 +97,16 @@ class ModuleValidator:
             "encounter": "encounter_schema.json",
             "plan": "plan_schema.json",
             "journal": "journal_schema.json",
-            "random_encounter": "random_encounter_schema.json"
+            "random_encounter": "random_encounter_schema.json",
         }
-        
+
         if self._verbose:
             print("Loading schemas...")
         for file_type, schema_file in schema_mappings.items():
             schema_path = self.schema_dir / "schemas" / schema_file
             if schema_path.exists():
                 try:
-                    with open(schema_path, 'r') as f:
+                    with open(schema_path, "r") as f:
                         self.schemas[file_type] = json.load(f)
                     if self._verbose:
                         print(f"  [OK] Loaded {file_type} schema from {schema_file}")
@@ -92,7 +116,7 @@ class ModuleValidator:
             else:
                 if self._verbose:
                     print(f"  - Schema not found: {schema_file}")
-                
+
     def validate_file(self, file_path, schema_type):
         """Validate a single file against its schema"""
         # Runtime dependency check - allows --help to work without jsonschema
@@ -101,120 +125,148 @@ class ModuleValidator:
                 "jsonschema is not installed. Install it via 'pip install jsonschema' "
                 "to run module validation."
             )
-        
+
         try:
-            with open(file_path, 'r') as f:
+            with open(file_path, "r") as f:
                 data = json.load(f)
-                
+
             if schema_type not in self.schemas:
                 return False, f"No schema available for type: {schema_type}"
-                
+
             # Create validator to get better error messages
             validator = Draft7Validator(self.schemas[schema_type])
             errors = list(validator.iter_errors(data))
-            
+
             if errors:
                 error_messages = []
                 for error in errors:
-                    path = " -> ".join(str(p) for p in error.path) if error.path else "root"
+                    path = (
+                        " -> ".join(str(p) for p in error.path)
+                        if error.path
+                        else "root"
+                    )
                     error_messages.append(f"{path}: {error.message}")
                 return False, "; ".join(error_messages[:3])  # Limit to first 3 errors
-            
+
             return True, None
-            
+
         except json.JSONDecodeError as e:
             return False, f"Invalid JSON: {e}"
         except Exception as e:
             return False, f"Error: {str(e)}"
-            
+
     def validate_module_files(self):
         """Validate the main module file - DISABLED: *_module.json files not used in current architecture"""
         # *_module.json files are not used in the current architecture
         # The system uses individual JSON files (areas, plots, etc.) instead
         pass
-                
+
     def validate_area_files(self):
         """Validate area/location files"""
         # Find area files dynamically - check both areas/ subdirectory and root
         import glob
-        
+
         # First check the new areas/ subdirectory structure
         areas_dir = self.module_path / "areas"
         json_files = []
-        
+
         if areas_dir.exists():
             json_files.extend(glob.glob(os.path.join(str(areas_dir), "*.json")))
-        
+
         # Also check legacy root directory structure during migration
         root_json_files = glob.glob(os.path.join(str(self.module_path), "*.json"))
-        
+
         for file_path in root_json_files:
             # Skip backup, module, and system files
             filename = os.path.basename(file_path)
-            if any(part in filename for part in ["_BU", ".bak", ".backup", ".tmp", "module_", "party_", "campaign_", "map_"]):
+            if any(
+                part in filename
+                for part in [
+                    "_BU",
+                    ".bak",
+                    ".backup",
+                    ".tmp",
+                    "module_",
+                    "party_",
+                    "campaign_",
+                    "map_",
+                ]
+            ):
                 continue
-            
+
             # Check if it's an area file by loading and checking structure
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                
-                if data and 'areaId' in data and 'areaName' in data and 'locations' in data:
+
+                if (
+                    data
+                    and "areaId" in data
+                    and "areaName" in data
+                    and "locations" in data
+                ):
                     # This is an area file, add it to the list if not already found in areas/
                     area_filename = f"{data['areaId']}.json"
-                    areas_path = areas_dir / area_filename if areas_dir.exists() else None
-                    
+                    areas_path = (
+                        areas_dir / area_filename if areas_dir.exists() else None
+                    )
+
                     # Only add legacy file if not already found in areas/ directory
                     if not areas_path or not areas_path.exists():
                         json_files.append(file_path)
             except Exception as e:
                 # Not a valid JSON file, skip it
                 continue
-        
+
         # Validate all found area files
         for file_path in json_files:
             filename = os.path.basename(file_path)
-            
+
             # Check if it's an area file by loading and checking structure
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            
-            if data and 'areaId' in data and 'areaName' in data and 'locations' in data:
+
+            if data and "areaId" in data and "areaName" in data and "locations" in data:
                 # This is an area file
                 success, error = self.validate_file(Path(file_path), "area")
                 # Include path info for areas/ vs root location
                 path_info = "(areas/)" if "areas/" in str(file_path) else "(root)"
                 self.results["area"]["files"].append(f"{filename} {path_info}")
-                
+
                 if success:
                     self.results["area"]["passed"] += 1
                 else:
                     self.results["area"]["failed"] += 1
-                    self.results["area"]["errors"].append(f"{filename} {path_info}: {error}")
-                    
+                    self.results["area"]["errors"].append(
+                        f"{filename} {path_info}: {error}"
+                    )
+
     def validate_character_files(self):
         """Validate character files"""
         char_dir = self.module_path / "characters"
         if not char_dir.exists():
             return
-            
+
         for file_path in char_dir.glob("*.json"):
-            if any(part in str(file_path) for part in ["_BU", ".bak", ".backup", ".tmp", "copy"]):
+            if any(
+                part in str(file_path)
+                for part in ["_BU", ".bak", ".backup", ".tmp", "copy"]
+            ):
                 continue
-                
+
             success, error = self.validate_file(file_path, "character")
             self.results["character"]["files"].append(file_path.name)
-            
+
             if success:
                 self.results["character"]["passed"] += 1
             else:
                 self.results["character"]["failed"] += 1
                 self.results["character"]["errors"].append(f"{file_path.name}: {error}")
-                
+
     @staticmethod
     def _normalize_monster_name(name):
         """Normalize monster name to slug format used by combat loader
-        
+
         Lowercase, strip spaces, convert spaces to underscores,
         remove apostrophes and non-alphanumeric characters.
         """
@@ -227,7 +279,7 @@ class ModuleValidator:
         # Replace spaces and hyphens with underscores
         slug = slug.replace(" ", "_").replace("-", "_")
         # Remove any remaining non-alphanumeric except underscore
-        slug = ''.join(c for c in slug if c.isalnum() or c == '_')
+        slug = "".join(c for c in slug if c.isalnum() or c == "_")
         return slug
 
     def validate_monster_files(self):
@@ -237,90 +289,98 @@ class ModuleValidator:
             return
 
         for file_path in monster_dir.glob("*.json"):
-            if any(part in str(file_path) for part in ["_BU", ".bak", ".backup", ".tmp"]):
+            if any(
+                part in str(file_path) for part in ["_BU", ".bak", ".backup", ".tmp"]
+            ):
                 continue
-                
+
             success, error = self.validate_file(file_path, "monster")
             self.results["monster"]["files"].append(file_path.name)
-            
+
             if success:
                 self.results["monster"]["passed"] += 1
             else:
                 self.results["monster"]["failed"] += 1
                 self.results["monster"]["errors"].append(f"{file_path.name}: {error}")
-                
+
     def validate_map_files(self):
         """Validate map files"""
         map_files = list(self.module_path.glob("map_*.json"))
-        
+
         for file_path in map_files:
-            if any(part in str(file_path) for part in ["_BU", ".bak", ".backup", ".tmp"]):
+            if any(
+                part in str(file_path) for part in ["_BU", ".bak", ".backup", ".tmp"]
+            ):
                 continue
-                
+
             success, error = self.validate_file(file_path, "map")
             self.results["map"]["files"].append(file_path.name)
-            
+
             if success:
                 self.results["map"]["passed"] += 1
             else:
                 self.results["map"]["failed"] += 1
                 self.results["map"]["errors"].append(f"{file_path.name}: {error}")
-                
+
     def validate_plot_files(self):
         """Validate plot files"""
         plot_files = list(self.module_path.glob("*_plot.json"))
-        
+
         for file_path in plot_files:
-            if any(part in str(file_path) for part in ["_BU", ".bak", ".backup", ".tmp"]):
+            if any(
+                part in str(file_path) for part in ["_BU", ".bak", ".backup", ".tmp"]
+            ):
                 continue
-                
+
             success, error = self.validate_file(file_path, "plot")
             self.results["plot"]["files"].append(file_path.name)
-            
+
             if success:
                 self.results["plot"]["passed"] += 1
             else:
                 self.results["plot"]["failed"] += 1
                 self.results["plot"]["errors"].append(f"{file_path.name}: {error}")
-                
+
     def validate_party_tracker(self):
         """Validate party tracker file"""
         party_file = self.module_path / "party_tracker.json"
-        
+
         if party_file.exists():
             success, error = self.validate_file(party_file, "party")
             self.results["party"]["files"].append("party_tracker.json")
-            
+
             if success:
                 self.results["party"]["passed"] += 1
             else:
                 self.results["party"]["failed"] += 1
                 self.results["party"]["errors"].append(f"party_tracker.json: {error}")
-                
+
     def validate_module_context(self):
         """Skip validation for module_context.json as it's an internal tracking file"""
         context_file = self.module_path / "module_context.json"
-        
+
         if context_file.exists():
             # Mark as passed since it's an internal file that doesn't need validation
             self.results["module_context"]["files"].append("module_context.json")
             self.results["module_context"]["passed"] += 1
             if self._verbose:
                 print("  - Skipping module_context.json (internal tracking file)")
-                
+
     def validate_encounter_files(self):
         """Validate encounter files"""
         encounter_dir = self.module_path / "encounters"
         if not encounter_dir.exists():
             return
-            
+
         for file_path in encounter_dir.glob("*.json"):
-            if any(part in str(file_path) for part in ["_BU", ".bak", ".backup", ".tmp"]):
+            if any(
+                part in str(file_path) for part in ["_BU", ".bak", ".backup", ".tmp"]
+            ):
                 continue
-                
+
             success, error = self.validate_file(file_path, "encounter")
             self.results["encounter"]["files"].append(file_path.name)
-            
+
             if success:
                 self.results["encounter"]["passed"] += 1
             else:
@@ -350,7 +410,10 @@ class ModuleValidator:
         available_monsters = set()
         if monster_dir and monster_dir.exists():
             for file_path in monster_dir.glob("*.json"):
-                if any(part in str(file_path) for part in ["_BU", ".bak", ".backup", ".tmp"]):
+                if any(
+                    part in str(file_path)
+                    for part in ["_BU", ".bak", ".backup", ".tmp"]
+                ):
                     continue
                 # Store the slug name (without .json extension)
                 available_monsters.add(file_path.stem.lower())
@@ -361,34 +424,36 @@ class ModuleValidator:
 
         area_files = list(areas_dir.glob("*.json"))
         # BACKUP FILE EXCLUSION: Skip backup and temp files
-        exclude_patterns = ('_BU.json', '.bak', '.backup', '.tmp', '_backup.json')
+        exclude_patterns = ("_BU.json", ".bak", ".backup", ".tmp", "_backup.json")
         active_area_files = []
         for file_path in area_files:
             if any(part in str(file_path) for part in exclude_patterns):
                 continue
             active_area_files.append(file_path)
-        
+
         for file_path in active_area_files:
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
 
-                area_id = data.get('areaId', file_path.stem)
-                area_name = data.get('areaName', 'Unknown Area')
-                locations = data.get('locations', [])
+                area_id = data.get("areaId", file_path.stem)
+                area_name = data.get("areaName", "Unknown Area")
+                locations = data.get("locations", [])
 
                 for location in locations:
-                    location_id = location.get('locationId', 'unknown')
+                    location_id = location.get("locationId", "unknown")
                     # LOCATION NAME FALLBACK: locationName -> name -> locationId -> "Unknown Location"
-                    location_name = (location.get('locationName') or 
-                                     location.get('name') or 
-                                     location.get('locationId') or 
-                                     'Unknown Location')
-                    monsters = location.get('monsters', [])
+                    location_name = (
+                        location.get("locationName")
+                        or location.get("name")
+                        or location.get("locationId")
+                        or "Unknown Location"
+                    )
+                    monsters = location.get("monsters", [])
 
                     for monster_ref in monsters:
                         if isinstance(monster_ref, dict):
-                            monster_name = monster_ref.get('name', '')
+                            monster_name = monster_ref.get("name", "")
                         elif isinstance(monster_ref, str):
                             monster_name = monster_ref
                         else:
@@ -407,14 +472,16 @@ class ModuleValidator:
                                 continue
                             seen_refs.add(ref_key)
                             expected_path = f"monsters/{normalized}.json"
-                            unresolved_references.append({
-                                'area_id': area_id,
-                                'area_name': area_name,
-                                'location_id': location_id,
-                                'location_name': location_name,
-                                'source_name': monster_name,
-                                'expected_path': expected_path
-                            })
+                            unresolved_references.append(
+                                {
+                                    "area_id": area_id,
+                                    "area_name": area_name,
+                                    "location_id": location_id,
+                                    "location_name": location_name,
+                                    "source_name": monster_name,
+                                    "expected_path": expected_path,
+                                }
+                            )
 
             except Exception:
                 # Skip files that can't be loaded
@@ -424,8 +491,10 @@ class ModuleValidator:
         if unresolved_references:
             self.results["reference_integrity"]["failed"] = len(unresolved_references)
             for ref in unresolved_references:
-                error_msg = (f"{ref['source_name']} in {ref['area_name']}/{ref['location_name']} "
-                           f"-> expected {ref['expected_path']}")
+                error_msg = (
+                    f"{ref['source_name']} in {ref['area_name']}/{ref['location_name']} "
+                    f"-> expected {ref['expected_path']}"
+                )
                 self.results["reference_integrity"]["errors"].append(error_msg)
         else:
             # Mark as passed if we found no issues (or no monster references at all)
@@ -442,19 +511,21 @@ class ModuleValidator:
 
         # Load all area files (excluding backups)
         area_data = {}
-        exclude_patterns = ('_BU.json', '.bak', '.backup', '.tmp', '_backup.json')
+        exclude_patterns = ("_BU.json", ".bak", ".backup", ".tmp", "_backup.json")
         area_files = list(areas_dir.glob("*.json"))
-        active_area_files = [f for f in area_files if not any(p in str(f) for p in exclude_patterns)]
+        active_area_files = [
+            f for f in area_files if not any(p in str(f) for p in exclude_patterns)
+        ]
 
         for file_path in active_area_files:
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    area_id = data.get('areaId')
+                    area_id = data.get("areaId")
                     if area_id:
                         area_data[area_id] = {
-                            'name': data.get('areaName'),
-                            'locations': data.get('locations', [])
+                            "name": data.get("areaName"),
+                            "locations": data.get("locations", []),
                         }
             except Exception:
                 continue
@@ -462,26 +533,59 @@ class ModuleValidator:
         if len(area_data) <= 1:
             return True, []  # Single area modules don't need connectivity checks
 
+        # Build lookup indexes for cross-area resolution
+        area_name_to_id = {
+            data.get("name"): area_id
+            for area_id, data in area_data.items()
+            if isinstance(data.get("name"), str) and data.get("name")
+        }
+        location_id_to_area = {}
+        location_name_to_area = {}
+        for area_id, data in area_data.items():
+            for location in data["locations"]:
+                location_id = location.get("locationId")
+                if isinstance(location_id, str) and location_id:
+                    location_id_to_area[location_id] = area_id
+
+                location_name = (
+                    location.get("name")
+                    or location.get("locationName")
+                    or location.get("locationId")
+                )
+                if isinstance(location_name, str) and location_name:
+                    location_name_to_area[location_name] = area_id
+
         # Build connectivity graph
         area_connections = {}
         for area_id, data in area_data.items():
             area_connections[area_id] = set()
-            for location in data['locations']:
-                area_conn = location.get('areaConnectivity', [])
+            for location in data["locations"]:
+                for target_id in location.get("areaConnectivityId", []):
+                    if not isinstance(target_id, str) or not target_id:
+                        continue
+                    if target_id in area_data:
+                        target_area_id = target_id
+                    else:
+                        target_area_id = location_id_to_area.get(target_id)
+                    if target_area_id and target_area_id != area_id:
+                        area_connections[area_id].add(target_area_id)
 
-                # Map area names to area IDs
-                for area_name in area_conn:
-                    for target_id, target_data in area_data.items():
-                        if target_data['name'] == area_name:
-                            area_connections[area_id].add(target_id)
-                            break
+                area_conn = location.get("areaConnectivity", [])
+                for target_name in area_conn:
+                    if not isinstance(target_name, str) or not target_name:
+                        continue
+                    target_area_id = area_name_to_id.get(target_name)
+                    if not target_area_id:
+                        target_area_id = location_name_to_area.get(target_name)
+                    if target_area_id and target_area_id != area_id:
+                        area_connections[area_id].add(target_area_id)
 
         # Find starting area (prefer town areas)
         sorted_areas = sorted(area_data.keys())
         starting_area = None
 
         for area_id in sorted_areas:
-            if 'HFG' in area_id or 'VO' in area_id or 'TOWN' in area_id:
+            if "HFG" in area_id or "VO" in area_id or "TOWN" in area_id:
                 starting_area = area_id
                 break
 
@@ -509,12 +613,16 @@ class ModuleValidator:
         errors = []
         if unreachable:
             for area_id in sorted(unreachable):
-                area_name = area_data[area_id]['name']
-                errors.append(f"{area_id} ({area_name}) is unreachable from starting area {starting_area}")
+                area_name = area_data[area_id]["name"]
+                errors.append(
+                    f"{area_id} ({area_name}) is unreachable from starting area {starting_area}"
+                )
 
         # Check for isolated starting area
         if not area_connections.get(starting_area):
-            errors.append(f"Starting area {starting_area} ({area_data[starting_area]['name']}) has no connections - players cannot leave!")
+            errors.append(
+                f"Starting area {starting_area} ({area_data[starting_area]['name']}) has no connections - players cannot leave!"
+            )
 
         return len(errors) == 0, errors
 
@@ -774,7 +882,8 @@ class ModuleValidator:
             location_ids = [
                 location.get("locationId")
                 for location in locations
-                if isinstance(location.get("locationId"), str) and location.get("locationId")
+                if isinstance(location.get("locationId"), str)
+                and location.get("locationId")
             ]
 
             result = self.results["runtime_room_reachability"]
@@ -835,7 +944,9 @@ class ModuleValidator:
                     map_data = json.load(handle)
             except Exception as exc:
                 parity_result = self.results["map_area_parity"]
-                parity_result["files"].append(f"{area_record['path'].name} <-> {map_path.name}")
+                parity_result["files"].append(
+                    f"{area_record['path'].name} <-> {map_path.name}"
+                )
                 parity_result["failed"] += 1
                 parity_result["errors"].append(
                     f"{map_path}: failed to parse map JSON for parity check ({exc})"
@@ -867,7 +978,9 @@ class ModuleValidator:
                 map_edges[room_id] = targets
 
             parity_result = self.results["map_area_parity"]
-            parity_result["files"].append(f"{area_record['path'].name} <-> {map_path.name}")
+            parity_result["files"].append(
+                f"{area_record['path'].name} <-> {map_path.name}"
+            )
 
             area_rooms = set(area_edges.keys())
             map_rooms = set(map_edges.keys())
@@ -906,6 +1019,245 @@ class ModuleValidator:
             else:
                 parity_result["passed"] += 1
 
+    @staticmethod
+    def _has_spatial_contract_marker(
+        area_data: Dict[str, Any], map_data: Dict[str, Any]
+    ) -> bool:
+        """Return True when files advertise strict spatial contract versioning."""
+        area_version = area_data.get("spatialContractVersion")
+        map_version = map_data.get("spatialContractVersion")
+        return isinstance(area_version, int) or isinstance(map_version, int)
+
+    def validate_spatial_contracts(self):
+        """Validate spatial contract fields with strict-new and warn-first-legacy behavior."""
+        direction_delta = {
+            "north": (0, -1),
+            "south": (0, 1),
+            "east": (1, 0),
+            "west": (-1, 0),
+        }
+
+        area_records = self._load_active_area_records()
+        if not area_records:
+            return
+
+        strict_result = self.results["spatial_contract"]
+        warning_result = self.results["spatial_contract_warning"]
+
+        for area_id, area_record in sorted(area_records.items()):
+            area_path = area_record["path"]
+            area_data = area_record["data"]
+            map_path = self.module_path / f"map_{area_id}.json"
+            map_data: Dict[str, Any] = {}
+            map_label = map_path.name
+
+            if map_path.exists() and not self._is_excluded_json_file(map_path):
+                try:
+                    with open(map_path, "r", encoding="utf-8") as handle:
+                        map_data = json.load(handle)
+                except Exception:
+                    map_data = {}
+
+            if not map_data:
+                embedded_map = area_data.get("map")
+                if isinstance(embedded_map, dict) and embedded_map:
+                    map_data = embedded_map
+                    map_label = f"{area_path.name}:embedded_map"
+
+            is_strict = self._has_spatial_contract_marker(area_data, map_data)
+            issues: List[str] = []
+            check_label = f"{area_path.name} <-> map_{area_id}.json"
+
+            if is_strict and not map_data:
+                issues.append(
+                    f"{area_path}: strict spatial contract requires map data (external or embedded)"
+                )
+
+            map_rooms = {
+                room.get("id"): room
+                for room in map_data.get("rooms", [])
+                if isinstance(room, dict) and isinstance(room.get("id"), str)
+            }
+
+            def _append_non_adjacent_issue(
+                source_id: str,
+                target_id: str,
+                source_coordinate: Any,
+                target_coordinate: Any,
+                source_label: str,
+            ) -> None:
+                if not is_valid_coordinate(
+                    source_coordinate
+                ) or not is_valid_coordinate(target_coordinate):
+                    return
+                source_x, source_y = parse_coordinate(source_coordinate)
+                target_x, target_y = parse_coordinate(target_coordinate)
+                manhattan_distance = abs(target_x - source_x) + abs(target_y - source_y)
+                if manhattan_distance != 1:
+                    issues.append(
+                        f"{source_label}: connected rooms {source_id}->{target_id} are not cardinally adjacent ({source_coordinate} -> {target_coordinate})"
+                    )
+
+            for location in area_data.get("locations", []):
+                if not isinstance(location, dict):
+                    continue
+                location_id = location.get("locationId") or "<unknown_location>"
+
+                if not is_valid_coordinate(location.get("coordinates")):
+                    issues.append(
+                        f"{area_path}: location {location_id} missing valid coordinates X#Y#"
+                    )
+
+                aliases = location.get("aliases")
+                if (
+                    not isinstance(aliases, list)
+                    or not aliases
+                    or not all(
+                        isinstance(item, str) and item.strip() for item in aliases
+                    )
+                ):
+                    issues.append(
+                        f"{area_path}: location {location_id} missing non-empty aliases array"
+                    )
+
+                tactical_grid = location.get("tactical_grid")
+                if (
+                    not isinstance(tactical_grid, list)
+                    or len(tactical_grid) != 9
+                    or not all(isinstance(cell, str) for cell in tactical_grid)
+                ):
+                    issues.append(
+                        f"{area_path}: location {location_id} missing 9-cell tactical_grid"
+                    )
+
+                if location_id in map_rooms:
+                    map_coordinate = map_rooms[location_id].get("coordinates")
+                    if is_valid_coordinate(
+                        map_coordinate
+                    ) and map_coordinate != location.get("coordinates"):
+                        issues.append(
+                            f"{area_path} vs {map_label}: coordinate mismatch for {location_id}"
+                        )
+                elif is_strict:
+                    issues.append(
+                        f"{map_label}: strict spatial contract missing room entry for {location_id}"
+                    )
+
+                if is_strict:
+                    source_coordinate = location.get("coordinates")
+                    if location_id in map_rooms and is_valid_coordinate(
+                        map_rooms[location_id].get("coordinates")
+                    ):
+                        source_coordinate = map_rooms[location_id].get("coordinates")
+
+                    connectivity_links = location.get("connectivity", [])
+                    if isinstance(connectivity_links, list):
+                        for target_id in connectivity_links:
+                            if not isinstance(target_id, str):
+                                continue
+                            target_coordinate: Any = None
+                            if target_id in map_rooms:
+                                target_coordinate = map_rooms[target_id].get(
+                                    "coordinates"
+                                )
+                            else:
+                                for candidate in area_data.get("locations", []):
+                                    if (
+                                        isinstance(candidate, dict)
+                                        and candidate.get("locationId") == target_id
+                                    ):
+                                        target_coordinate = candidate.get("coordinates")
+                                        break
+
+                            _append_non_adjacent_issue(
+                                source_id=location_id,
+                                target_id=target_id,
+                                source_coordinate=source_coordinate,
+                                target_coordinate=target_coordinate,
+                                source_label=area_path.name,
+                            )
+
+            for room in map_rooms.values():
+                room_id = room.get("id")
+                if not is_valid_coordinate(room.get("coordinates")):
+                    issues.append(
+                        f"{map_label}: room {room_id} missing valid coordinates X#Y#"
+                    )
+
+                directions = room.get("directions", {})
+                if is_strict and "directions" not in room:
+                    issues.append(
+                        f"{map_label}: room {room_id} missing directions object under strict spatial contract"
+                    )
+                if not isinstance(directions, dict):
+                    issues.append(
+                        f"{map_label}: room {room_id} directions must be an object"
+                    )
+                    continue
+
+                for direction_key, target in directions.items():
+                    if direction_key not in CARDINAL_DIRECTIONS:
+                        issues.append(
+                            f"{map_label}: room {room_id} has invalid direction key {direction_key}"
+                        )
+                    if not isinstance(target, str) or not target:
+                        issues.append(
+                            f"{map_label}: room {room_id} direction {direction_key} missing target room id"
+                        )
+                    if target not in room.get("connections", []):
+                        issues.append(
+                            f"{map_label}: room {room_id} direction {direction_key} target {target} not in connections"
+                        )
+                        continue
+
+                    target_room = map_rooms.get(target)
+                    if not target_room:
+                        continue
+
+                    source_coordinate = room.get("coordinates")
+                    target_coordinate = target_room.get("coordinates")
+                    if not is_valid_coordinate(
+                        source_coordinate
+                    ) or not is_valid_coordinate(target_coordinate):
+                        continue
+
+                    source_x, source_y = parse_coordinate(source_coordinate)
+                    target_x, target_y = parse_coordinate(target_coordinate)
+                    delta = (target_x - source_x, target_y - source_y)
+                    expected_delta = direction_delta.get(direction_key)
+                    if delta != expected_delta:
+                        issues.append(
+                            f"{map_label}: room {room_id} direction {direction_key}->{target} contradicts coordinate delta {delta}"
+                        )
+
+                if is_strict:
+                    for target in room.get("connections", []):
+                        if not isinstance(target, str):
+                            continue
+                        target_room = map_rooms.get(target)
+                        if not target_room:
+                            continue
+                        _append_non_adjacent_issue(
+                            source_id=str(room_id),
+                            target_id=target,
+                            source_coordinate=room.get("coordinates"),
+                            target_coordinate=target_room.get("coordinates"),
+                            source_label=map_label,
+                        )
+
+            if is_strict:
+                strict_result["files"].append(check_label)
+                if issues:
+                    strict_result["failed"] += 1
+                    strict_result["errors"].extend(issues)
+                else:
+                    strict_result["passed"] += 1
+            else:
+                warning_result["files"].append(check_label)
+                warning_result["passed"] += 1
+                if issues:
+                    warning_result["errors"].extend(issues)
+
     def validate_plot_progression_paths(self):
         """Validate deterministic plot progression against runtime graph."""
         plot_files = [
@@ -935,7 +1287,9 @@ class ModuleValidator:
                 continue
 
             plot_points = plot_data.get("plotPoints", [])
-            start_reference = self._resolve_module_start_location(plot_data, location_index)
+            start_reference = self._resolve_module_start_location(
+                plot_data, location_index
+            )
 
             if not start_reference:
                 progression_result["failed"] += 1
@@ -986,7 +1340,9 @@ class ModuleValidator:
                             f"{plot_file}: plot {plot_id} location {location_id} unreachable from start {start_location}"
                         )
 
-            for branch in self._extract_branch_paths(plot_data.get("branch_metadata", {})):
+            for branch in self._extract_branch_paths(
+                plot_data.get("branch_metadata", {})
+            ):
                 steps = branch.get("steps", [])
                 context = branch.get("context", "branch_metadata")
                 branch_id = branch.get("branch_id")
@@ -1028,7 +1384,9 @@ class ModuleValidator:
                             )
                         continue
 
-                    reachable_from_source = self._bfs_reachable(source_id, runtime_edges)
+                    reachable_from_source = self._bfs_reachable(
+                        source_id, runtime_edges
+                    )
                     if target_id not in reachable_from_source:
                         file_errors.append(
                             f"{plot_file}: {context_label} broken step {source_ref} -> {target_ref}"
@@ -1070,16 +1428,16 @@ class ModuleValidator:
         """Validate all files and return results (required by module_stitcher)"""
         self.execute_full_validation(verbose=False)
         return self.results
-    
+
     def get_success_rate(self):
         """Get overall validation success rate"""
         total_passed = sum(r["passed"] for r in self.results.values())
         total_failed = sum(r["failed"] for r in self.results.values())
         total_files = total_passed + total_failed
-        
+
         if total_files == 0:
             return 1.0  # 100% if no files to validate
-        
+
         return total_passed / total_files
 
     def run_all_validations(self):
@@ -1096,6 +1454,7 @@ class ModuleValidator:
         self.validate_encounter_files()
         self.validate_runtime_room_reachability()
         self.validate_map_area_parity()
+        self.validate_spatial_contracts()
         self.validate_plot_progression_paths()
 
         # Run connectivity validation
@@ -1119,11 +1478,11 @@ class ModuleValidator:
             print("\nRunning validations...")
 
         self.run_all_validations()
-                
+
     def run_validation(self):
         """Backward-compatible wrapper around canonical execution path."""
         self.execute_full_validation(verbose=True)
-        
+
     def print_report(self):
         """Print comprehensive validation report"""
         print("\n" + "=" * 80)
@@ -1132,23 +1491,23 @@ class ModuleValidator:
         print(f"Module: {self.module_path.name}")
         print(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("\n")
-        
+
         # Summary statistics
         total_passed = sum(r["passed"] for r in self.results.values())
         total_failed = sum(r["failed"] for r in self.results.values())
         total_files = total_passed + total_failed
-        
+
         print(f"SUMMARY: {total_files} files validated")
         print(f"  [OK] Passed: {total_passed}")
         print(f"  [ERROR] Failed: {total_failed}")
         if total_files > 0:
-            print(f"  Success Rate: {(total_passed/total_files)*100:.1f}%")
+            print(f"  Success Rate: {(total_passed / total_files) * 100:.1f}%")
         print("\n")
-        
+
         # Detailed results by file type
         print("DETAILED RESULTS BY FILE TYPE:")
         print("-" * 80)
-        
+
         file_type_order = [
             "module",
             "area",
@@ -1162,10 +1521,12 @@ class ModuleValidator:
             "encounter",
             "runtime_room_reachability",
             "map_area_parity",
+            "spatial_contract",
+            "spatial_contract_warning",
             "plot_progression",
             "connectivity",
         ]
-        
+
         for file_type in file_type_order:
             if file_type not in self.results:
                 continue
@@ -1200,6 +1561,24 @@ class ModuleValidator:
                     print(f"  Status: [SKIPPED] No multi-area module")
                 continue
 
+            # Special handling for spatial warn-first legacy checks
+            if file_type == "spatial_contract_warning":
+                result = self.results[file_type]
+                if not result.get("files"):
+                    continue
+                print("\nSPATIAL CONTRACT LEGACY WARNINGS")
+                print("  Status: [WARN-FIRST] Legacy module checks")
+                print(f"  Checked: {len(result.get('files', []))}")
+                if result.get("errors"):
+                    print("  Warnings:")
+                    for warning_text in result.get("errors", [])[:5]:
+                        print(f"    - {warning_text}")
+                    if len(result.get("errors", [])) > 5:
+                        print(
+                            f"    ... and {len(result.get('errors', [])) - 5} more warnings"
+                        )
+                continue
+
             if not self.results[file_type].get("files"):
                 continue
 
@@ -1207,7 +1586,9 @@ class ModuleValidator:
             total = result["passed"] + result["failed"]
 
             print(f"\n{file_type.upper()} FILES ({total} files)")
-            print(f"  Status: {'[OK] ALL PASSED' if result['failed'] == 0 else '[ERROR] FAILURES DETECTED'}")
+            print(
+                f"  Status: {'[OK] ALL PASSED' if result['failed'] == 0 else '[ERROR] FAILURES DETECTED'}"
+            )
             print(f"  Passed: {result['passed']}/{total}")
 
             if result["failed"] > 0:
@@ -1217,43 +1598,46 @@ class ModuleValidator:
                     print(f"    - {error}")
                 if len(result["errors"]) > 5:
                     print(f"    ... and {len(result['errors']) - 5} more errors")
-                    
+
         # Schema recommendations
         print("\n" + "-" * 80)
         print("SCHEMA RECOMMENDATIONS:")
-        
+
         missing_schemas = []
         needs_refactoring = []
-        
+
         # Check for missing schemas
-        if "module_context" in self.results and self.results["module_context"]["failed"] > 0:
+        if (
+            "module_context" in self.results
+            and self.results["module_context"]["failed"] > 0
+        ):
             for error in self.results["module_context"]["errors"]:
                 if "No schema available" in error:
                     missing_schemas.append("module_context_schema.json")
-                    
+
         # Check for high failure rates indicating schema issues
         for file_type, result in self.results.items():
             if result["files"] and result["failed"] > 0:
                 failure_rate = result["failed"] / (result["passed"] + result["failed"])
                 if failure_rate > 0.5:  # More than 50% failure rate
                     needs_refactoring.append(file_type)
-                    
+
         if missing_schemas:
             print("\nMissing Schemas:")
             for schema in missing_schemas:
                 print(f"  - {schema}")
-                
+
         if needs_refactoring:
             print("\nSchemas Needing Review (high failure rate):")
             for file_type in needs_refactoring:
                 schema_name = self.get_schema_name(file_type)
                 print(f"  - {schema_name} ({file_type} files)")
-                
+
         if not missing_schemas and not needs_refactoring:
             print("\n  [OK] All required schemas are present and functioning well")
-            
+
         print("\n" + "=" * 80)
-        
+
     def get_schema_name(self, file_type):
         """Get the schema filename for a file type"""
         mapping = {
@@ -1264,29 +1648,29 @@ class ModuleValidator:
             "map": "map_schema.json",
             "plot": "plot_schema.json",
             "party": "party_schema.json",
-            "encounter": "encounter_schema.json"
+            "encounter": "encounter_schema.json",
         }
         return mapping.get(file_type, f"{file_type}_schema.json")
-        
+
     def save_report(self, output_file=None):
         """Save validation report to JSON file"""
         if not output_file:
             output_file = self.module_path / "validation_report.json"
-            
+
         report = {
             "module": str(self.module_path.name),
             "timestamp": datetime.now().isoformat(),
             "summary": {
                 "total_files": sum(len(r["files"]) for r in self.results.values()),
                 "total_passed": sum(r["passed"] for r in self.results.values()),
-                "total_failed": sum(r["failed"] for r in self.results.values())
+                "total_failed": sum(r["failed"] for r in self.results.values()),
             },
-            "results": dict(self.results)
+            "results": dict(self.results),
         }
-        
-        with open(output_file, 'w') as f:
+
+        with open(output_file, "w") as f:
             json.dump(report, f, indent=2)
-            
+
         print(f"\nDetailed report saved to: {output_file}")
 
 
@@ -1296,12 +1680,18 @@ def _discover_all_modules():
     if not modules_dir.exists():
         return []
     exclude = {
-        "ingest", "conversation_history", "campaign_summaries", "backups",
-        ".git", "__pycache__", "template", "example"
+        "ingest",
+        "conversation_history",
+        "campaign_summaries",
+        "backups",
+        ".git",
+        "__pycache__",
+        "template",
+        "example",
     }
     candidates = []
     for entry in sorted(modules_dir.iterdir()):
-        if not entry.is_dir() or entry.name in exclude or entry.name.startswith('.'):
+        if not entry.is_dir() or entry.name in exclude or entry.name.startswith("."):
             continue
         areas_dir = entry / "areas"
         if areas_dir.exists() and any(areas_dir.glob("*.json")):
@@ -1337,29 +1727,27 @@ def main():
     """Main execution with argparse"""
     parser = argparse.ArgumentParser(
         description="Validate module files against schemas",
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--module",
         help="Validate a specific module by slug (e.g. The_Pumpkin_Kings_Curse)",
         type=str,
-        default=None
+        default=None,
     )
     parser.add_argument(
         "--module-path",
         help="Validate an explicit module path (absolute or relative)",
         type=str,
-        default=None
+        default=None,
     )
     parser.add_argument(
         "--all-modules",
         help="Validate all detected modules (registry plus module-like folders)",
-        action="store_true"
+        action="store_true",
     )
     parser.add_argument(
-        "--json",
-        help="Output combined JSON summary to stdout",
-        action="store_true"
+        "--json", help="Output combined JSON summary to stdout", action="store_true"
     )
 
     args = parser.parse_args()
@@ -1381,7 +1769,10 @@ def main():
             parser.error(f"Module is not module-like: modules/{args.module}")
         targets.append(base)
     elif args.all_modules:
-        targets = [Path(__file__).parent.parent.parent / "modules" / name for name in _discover_all_modules()]
+        targets = [
+            Path(__file__).parent.parent.parent / "modules" / name
+            for name in _discover_all_modules()
+        ]
     else:
         # Backward compatible default: Keep_of_Doom (if it exists), otherwise first discovered module
         default_path = Path(__file__).parent.parent.parent / "modules" / "Keep_of_Doom"
@@ -1391,7 +1782,9 @@ def main():
             # Fallback to discovery of any module to avoid complete failure
             discovered = _discover_all_modules()
             if discovered:
-                targets = [Path(__file__).parent.parent.parent / "modules" / discovered[0]]
+                targets = [
+                    Path(__file__).parent.parent.parent / "modules" / discovered[0]
+                ]
             else:
                 parser.error("No modules found. Provide --module or --module-path.")
 
@@ -1419,7 +1812,7 @@ def main():
                 "module": str(module_path.name),
                 "total_passed": sum(r["passed"] for r in validator.results.values()),
                 "total_failed": total_failed,
-                "files": dict(validator.results)
+                "files": dict(validator.results),
             }
             all_results[module_path.name] = summary
         else:
@@ -1430,10 +1823,7 @@ def main():
     if args.json:
         combined = {
             "modules": all_results,
-            "summary": {
-                "modules_total": len(targets),
-                "any_failed": overall_failed
-            }
+            "summary": {"modules_total": len(targets), "any_failed": overall_failed},
         }
         print(json.dumps(combined, indent=2))
 
