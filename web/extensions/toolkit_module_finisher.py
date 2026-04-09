@@ -18,11 +18,17 @@ from typing import Any, Dict
 
 from utils.enhanced_logger import error, info
 from utils.file_operations import safe_read_json, safe_write_json
+from utils.module_semantic_authority import enrich_module_semantic_authority
 
 
 def _utc_now_iso() -> str:
     """Return UTC timestamp in ISO-8601 format."""
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def _normalize_stage_status(status: str) -> str:
@@ -35,7 +41,9 @@ def _normalize_stage_status(status: str) -> str:
     return "failed"
 
 
-def _run_continuity_stage(module_slug: str, module_dir: Path, strict: bool) -> Dict[str, Any]:
+def _run_continuity_stage(
+    module_slug: str, module_dir: Path, strict: bool
+) -> Dict[str, Any]:
     """Run continuity normalization/enrichment stage."""
     from scripts.homebrew_ingest_dev import (
         _ensure_continuity_contract_keys,
@@ -67,7 +75,9 @@ def _run_continuity_stage(module_slug: str, module_dir: Path, strict: bool) -> D
     )
     module_context = continuity_enrichment.get("module_context", module_context)
 
-    changed = bool(continuity_patch.get("changed")) or bool(continuity_enrichment.get("changed"))
+    changed = bool(continuity_patch.get("changed")) or bool(
+        continuity_enrichment.get("changed")
+    )
     if changed:
         write_ok = safe_write_json(str(context_path), module_context)
         if not write_ok:
@@ -147,6 +157,59 @@ def _run_registry_stage(module_slug: str) -> Dict[str, Any]:
     }
 
 
+def _run_semantic_authority_stage(module_slug: str, module_dir: Path) -> Dict[str, Any]:
+    """Run semantic-authority enrichment stage (non-blocking in this phase)."""
+    context_path = module_dir / "module_context.json"
+    plot_path = module_dir / "module_plot.json"
+
+    if not context_path.exists() or not plot_path.exists():
+        return {
+            "status": "degraded",
+            "reason": "Semantic authority stage skipped due to missing context/plot file",
+            "context_path": str(context_path),
+            "plot_path": str(plot_path),
+            "semantic_authority": {},
+            "warnings": ["semantic_authority_missing_context_or_plot"],
+            "errors": [],
+        }
+
+    module_context = safe_read_json(str(context_path)) or {}
+    module_plot = safe_read_json(str(plot_path)) or {}
+
+    stage_result = enrich_module_semantic_authority(
+        module_slug=module_slug,
+        module_context=module_context,
+        module_plot=module_plot,
+        module_dir=module_dir,
+    )
+
+    if stage_result.get("changed"):
+        write_ok = safe_write_json(
+            str(context_path), stage_result.get("module_context") or module_context
+        )
+        if not write_ok:
+            stage_result["status"] = "degraded"
+            stage_result.setdefault("warnings", []).append(
+                f"Failed to persist semantic authority payload to {context_path}"
+            )
+
+    if stage_result.get("status") == "failed":
+        return {
+            "status": "degraded",
+            "reason": "Semantic authority enrichment reported failure (fail-open this phase)",
+            "semantic_authority": stage_result.get("semantic_authority", {}),
+            "warnings": stage_result.get("warnings", []),
+            "errors": stage_result.get("errors", []),
+        }
+
+    return {
+        "status": stage_result.get("status", "success"),
+        "semantic_authority": stage_result.get("semantic_authority", {}),
+        "warnings": stage_result.get("warnings", []),
+        "errors": stage_result.get("errors", []),
+    }
+
+
 def _run_monster_materialization_stage(module_slug: str) -> Dict[str, Any]:
     """Run module-local monster materialization stage."""
     script_path = Path("scripts") / "homebrew_materialize_monsters.py"
@@ -192,7 +255,11 @@ def _run_monster_materialization_stage(module_slug: str) -> Dict[str, Any]:
 
     missing_count = int(parsed_output.get("missing_in_bestiary_count", 0) or 0)
     parsed_status = _normalize_stage_status(parsed_output.get("status", "success"))
-    stage_status = "degraded" if (parsed_status != "failed" and missing_count > 0) else parsed_status
+    stage_status = (
+        "degraded"
+        if (parsed_status != "failed" and missing_count > 0)
+        else parsed_status
+    )
 
     if stage_status == "failed":
         stage_reason = "Monster materialization reported failure"
@@ -209,7 +276,9 @@ def _run_monster_materialization_stage(module_slug: str) -> Dict[str, Any]:
     }
 
 
-def run_toolkit_module_postbuild_finishing(module_slug: str, strict: bool = True) -> Dict[str, Any]:
+def run_toolkit_module_postbuild_finishing(
+    module_slug: str, strict: bool = True
+) -> Dict[str, Any]:
     """Run post-build publication parity stages for toolkit-generated modules."""
     module_slug = str(module_slug or "").strip()
     if not module_slug:
@@ -238,11 +307,23 @@ def run_toolkit_module_postbuild_finishing(module_slug: str, strict: bool = True
     stages: Dict[str, Dict[str, Any]] = {}
     overall_status = "success"
 
-    continuity_stage = _run_continuity_stage(module_slug=module_slug, module_dir=module_dir, strict=strict)
+    continuity_stage = _run_continuity_stage(
+        module_slug=module_slug, module_dir=module_dir, strict=strict
+    )
     stages["continuity"] = continuity_stage
     if continuity_stage.get("status") == "failed":
         overall_status = "failed"
     elif continuity_stage.get("status") == "degraded":
+        overall_status = "degraded"
+
+    semantic_authority_stage = _run_semantic_authority_stage(
+        module_slug=module_slug, module_dir=module_dir
+    )
+    stages["semantic_authority"] = semantic_authority_stage
+    if (
+        semantic_authority_stage.get("status") in {"failed", "degraded"}
+        and overall_status != "failed"
+    ):
         overall_status = "degraded"
 
     registry_stage = _run_registry_stage(module_slug=module_slug)
@@ -256,7 +337,9 @@ def run_toolkit_module_postbuild_finishing(module_slug: str, strict: bool = True
     stages["monster_materialization"] = materialization_stage
     if materialization_stage.get("status") == "failed":
         overall_status = "failed"
-    elif materialization_stage.get("status") == "degraded" and overall_status != "failed":
+    elif (
+        materialization_stage.get("status") == "degraded" and overall_status != "failed"
+    ):
         overall_status = "degraded"
 
     report: Dict[str, Any] = {
@@ -267,6 +350,9 @@ def run_toolkit_module_postbuild_finishing(module_slug: str, strict: bool = True
         "stages": stages,
         "publication_parity_note": (
             "Post-build parity improves publication readiness but does not include full semantic publication probes."
+        ),
+        "semantic_authority_note": (
+            "Semantic authority enrichment is additive in this phase and does not yet define repo-level publishable gating."
         ),
     }
 

@@ -52,24 +52,25 @@ Define a stronger module-publication workflow so a module is only publishable wh
 - semantically grounded for runtime play
 - safe for natural-language travel and NPC interactions
 
-## Current Status (2026-04-09)
+## Current Status (2026-04-10)
 
-This plan remains **active future work**.
+This plan remains **active future work**, but the foundation is now clearer than it was when this plan was first written.
 
-Adjacent work that is now in place:
-- narrower structural/readiness and toolkit/ingest parity slices have landed
-- spatial contract preparation exists through `tt-spatial-coordinate-grounding`
-- some scene-authority and location-exclusivity groundwork now exists in narrower changes
+Completed adjacent slices:
+- continuity normalization and readiness-gate substrate are in place
+- toolkit builder post-build finishing parity is in place
+- spatial contract field shape and tactical-grid generation are in place
+- authored-adjacency ingest and strict spatial coherence for new spatial-contract outputs are in place
 
-But the full publication workflow described here is still **not** implemented:
-- there is no dedicated `publishable` gate distinct from `ready`
-- there is no full deterministic destination phrase map built during publication
-- there is no complete NPC scene-authority map for all visible and revealable NPCs
-- there is no synthetic gameplay probe suite enforcing publication-time semantics
-- there is no single semantic publication audit that hard-fails unsafe modules before release
+Still missing from the full publication workflow:
+- no deterministic semantic-authority layer for destination phrases and NPC scene authority
+- no dedicated semantic publication audit distinct from existing readiness checks
+- no synthetic gameplay probe harness for live-play destination/NPC semantics
+- no repo-level `publishable` gate distinct from `ready`
 
 Conclusion:
-- completed narrower changes should not be treated as completion of this full plan
+- completed narrower changes should be treated as prerequisites, not completion of this plan
+- the next change should start the semantic-authority substrate, not try to land the entire publication stack at once
 - this plan should not be archived yet
 
 ## Publication Standard
@@ -182,17 +183,31 @@ Rationale:
 - scales better than manual bug testing across 50+ adventures
 - forces missing semantics to be fixed once in the pipeline rather than repeatedly in runtime patches
 
-## Proposed OpenSpec Change
+## Proposed OpenSpec Sequence
 
-Suggested change name:
-- `module-publishability-semantic-readiness`
+This work should be split into phased OpenSpec changes rather than one oversized publication change.
 
-Suggested scope:
-- deterministic destination alias extraction
-- hidden/revealable NPC authority enrichment
-- semantic publishability audit
-- readiness gate upgrade from pass to publishable
-- synthetic probe coverage for live-play travel/NPC semantics
+Recommended sequence:
+
+1. `module-publication-semantic-authority-foundation`
+- deterministic location alias extraction
+- deterministic destination phrase map generation
+- deterministic NPC scene-authority map generation for visible and revealable NPCs
+- shared persistence/report surfaces for later audit and probe work
+- no `publishable` gate yet
+
+2. `module-publication-semantic-audit`
+- dedicated semantic publication audit
+- blocking classes for unresolved/ambiguous destination phrases and NPC authority gaps
+- still separate from synthetic gameplay probes
+
+3. `module-publication-live-play-probes`
+- publication-time travel, escort, and hidden-NPC probe harness
+- deterministic expected-target assertions
+
+4. `module-publication-publishable-gate`
+- split `ready` from `publishable`
+- wire semantic audit + probe results into release decisions
 
 ## Expected Outcome
 
@@ -209,8 +224,8 @@ After this work:
 - remediation and validator support exist for that narrower spatial slice
 
 2. **But publication-grade semantics still do not**
-- ingest topology is still partly synthetic rather than fully authored-semantic
-- validator coherence still does not enforce the stronger spatial publishability audit described below
+- ingest now extracts stronger authored adjacency when source semantics support it, but that still does not solve destination/NPC publication semantics
+- validator coherence is stronger for new spatial-contract outputs, but it still does not implement the broader publication audit described below
 - broader destination/NPC publication semantics remain outside completed slices
 
 3. **This plan therefore stays open**
@@ -230,9 +245,9 @@ Add a "Spatial Resolution Pass" to the `core/importers/homebrewery_importer.py` 
 - **Prompt Logic:** "Analyze these rooms for directional cues (north, stairs down, east wing) and logical adjacency. Output a JSON map assigning a relative X,Y coordinate to each room, starting at X10Y10 for the entrance. Ensure North is Y-1, South is Y+1, East is X+1, and West is X-1."
 - **Pipeline Integration:** Replace the linear logic in `_emit_map_file()`. Emit these semantically grounded coordinates in both `areas/<AREA>.json` and `map_<AREA>.json`.
 
-**Status (2026-04-09):**
-- Partially implemented.
-- New ingest outputs now emit the spatial contract fields, but ingest still derives base topology from source ordering in places rather than from full authored semantic adjacency extraction.
+**Status (2026-04-10):**
+- Implemented for the current spatial foundation slice.
+- New ingest outputs now prefer authored adjacency extraction and fall back to safe sequential topology only when authored evidence is weak or ambiguous.
 
 ### 2. Backfill Tooling (Legacy Modules)
 Create targeted developer remediation tooling for existing modules.
@@ -249,7 +264,7 @@ This solves semantic grounding issues for spatial movement:
 - **Semantic Reality:** Ensures coordinates match the prose. When a player says "We head North through the door", the Python travel validator (using the 3x3 local grid) naturally aligns with the authored reality of the module.
 - **Publishability Audit:** Add a "Spatial Coherence" check to the readiness validator (`validate_module_files.py`). A module fails publication if connected rooms are mathematically distant (e.g., connected but >2 coordinate steps away) without a narrative justification (like a teleport trap). This ensures broken local grids never reach the runtime.
 
-**Status (2026-04-09):**
+**Status (2026-04-10):**
 - Partially implemented.
 - Current validator checks field presence, map/area parity, and direction consistency, but it does **not** yet enforce the stronger distance-based spatial coherence audit described here.
 
@@ -264,35 +279,118 @@ A 3x3 tactical grid representing the physical room or clearing. It contains *no 
 **Status (2026-04-09):**
 - Implemented for the current spatial contract validation slice.
 
-## Path Ahead
+## Revised Delivery Phasing
 
-To move this plan toward completion, the next work should be:
+### Phase 0 - Foundations Already Shipped
 
-1. **Finish spatial publishability foundations**
-- complete authored-semantic ingest adjacency extraction
-- add strict geometric spatial coherence validation for new outputs
-- keep legacy modules warn-first until remediated
+Status:
+- complete
 
-2. **Add deterministic semantic enrichment for publication**
-- destination phrase map
-- canonical location alias map
-- NPC scene-authority map
-- hidden/revealable NPC bindings
+Completed outputs:
+- continuity contract + readiness substrate
+- toolkit post-build finishing parity
+- spatial contract field parity
+- tactical-grid generation + validation
+- authored-adjacency ingest grounding
+- strict spatial coherence for new spatial-contract outputs
 
-3. **Introduce a dedicated publication audit layer**
-- hard-fail unresolved destination phrases
-- hard-fail NPCs that can appear in scene without deterministic authority mapping
-- hard-fail likely player phrases that can drift to the wrong valid destination
+What Phase 0 does **not** provide:
+- no deterministic destination phrase authority
+- no complete NPC scene-authority layer
+- no publication-only audit
+- no synthetic probes
+- no `publishable` gate
 
-4. **Add probe-based publication tests**
-- travel probes
-- escort probes
-- hidden/revealable NPC probes
-- authored destination resolution probes
+### Phase 1 - Semantic Authority Foundation
 
-5. **Split readiness from publishable**
-- preserve current structural readiness checks
-- add a stricter `publishable` level for tester/player release decisions
+Status:
+- implemented
+
+Goal:
+- build the deterministic semantic substrate that later audits and probes will consume
+
+Step-by-step:
+1. extract canonical location aliases from authored room titles, location aliases, and bounded authored destination labels
+2. derive a deterministic destination phrase map with source provenance and ambiguity recording
+3. derive a deterministic NPC scene-authority map covering visible NPCs plus hidden/revealable NPC bindings
+4. persist the semantic-authority payload into shared module/report surfaces so ingest and toolkit finishing converge on one contract
+5. add focused validation/audit coverage for uniqueness, traceability, and fail-open handling of weak source prose
+
+Exit criteria:
+- a shared semantic-authority artifact exists
+- new ingests and toolkit-finished modules can emit the same artifact
+- audit/report surfaces can inspect the artifact deterministically
+- this phase does **not** yet claim full publication safety
+
+Implementation note:
+- `module-publication-semantic-authority-foundation` now exists and provides the additive substrate for later publication blockers
+
+### Phase 2 - Semantic Publication Audit
+
+Status:
+- implemented
+
+Goal:
+- turn the semantic-authority substrate into explicit publication blockers
+
+Step-by-step:
+1. classify blocking semantic failures vs warnings
+2. fail unresolved named destinations that cannot map uniquely
+3. fail NPCs that can appear in-scene without deterministic authority mapping
+4. fail phrase collisions that would route likely player language to the wrong valid location
+5. produce audit output that is stable enough for CI/readiness integration
+
+Exit criteria:
+- a dedicated semantic audit exists and can fail independently of schema/readiness
+
+Implementation note:
+- `module-publication-semantic-audit` now exists and upgrades semantic publication findings into deterministic blocker classes while remaining standalone from repo-wide publishable gating.
+
+### Phase 3 - Live-Play Probe Harness
+
+Status:
+- pending
+
+Goal:
+- prove the authored semantics behave correctly under publication-time synthetic gameplay probes
+
+Step-by-step:
+1. define deterministic travel probe fixtures
+2. define deterministic escort and handoff probes
+3. define hidden/revealable NPC discovery probes
+4. assert canonical expected targets and failure classes
+5. keep probes source-driven rather than runtime-heuristic-driven
+
+Exit criteria:
+- publication-time probe coverage exists for travel, escort, and hidden-NPC semantics
+
+### Phase 4 - Publishable Gate
+
+Status:
+- pending
+
+Goal:
+- promote publication from a soft planning concept into an explicit repo gate
+
+Step-by-step:
+1. add a `publishable` result tier distinct from `ready`
+2. wire semantic audit results into publication decisions
+3. wire probe results into publication decisions
+4. expose `ready` vs `publishable` clearly in CLI/toolkit reporting
+5. document release policy for tester/player shipment
+
+Exit criteria:
+- the repo can distinguish structurally ready modules from semantically publishable modules
+
+## Next Recommended OpenSpec Change
+
+The next change should be:
+- `module-publication-live-play-probes`
+
+Why this next:
+- Phase 1 and Phase 2 now exist and provide substrate + blocker policy
+- probe coverage is the remaining proof layer before final publishable gate wiring
+- probe outcomes should remain source-driven and deterministic before any release policy integration
 
 ## Archive Gate
 

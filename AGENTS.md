@@ -1028,6 +1028,46 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Module Publication Semantic Audit + Authority Foundation (COMPLETED - 2026-04-10)
+
+**Status:** COMPLETED - Publication Phase 1 (semantic-authority substrate) and Phase 2 (semantic publication blockers) implemented and archived as standalone slices.
+
+**OpenSpec Archives:**
+- `openspec/changes/archive/2026-04-09-module-publication-semantic-authority-foundation/`
+- `openspec/changes/archive/2026-04-09-module-publication-semantic-audit/`
+
+**Objective:**
+- Build deterministic semantic-authority substrate for destination and NPC scene semantics.
+- Promote publication-unsafe semantic contradictions into explicit blocker classes while keeping audit standalone from repo-wide `publishable` gating.
+
+**Implementation Summary:**
+- Added shared helper: `utils/module_semantic_authority.py`
+  - Deterministic location alias map and destination phrase map with provenance.
+  - NPC scene-authority map for visible and revealable authored NPC semantics.
+  - Additive diagnostics for ambiguity, unresolved destinations, and missing NPC authority.
+- Integrated enrichment into ingest and toolkit finishing:
+  - `scripts/homebrew_ingest_dev.py`
+  - `web/extensions/toolkit_module_finisher.py`
+- Added standalone audit surface: `scripts/module_semantic_authority_audit.py`
+  - Structured blocker outputs (`blocker_classes`, `blocking_findings`, `blocking_errors`).
+  - Deterministic publication blocker classes for unresolved/ambiguous player-facing destinations, phrase-collision drift risk, and authored-presence NPC authority gaps.
+- Added and extended regression coverage:
+  - `scripts/test_module_semantic_authority.py`
+  - `scripts/test_homebrew_ingest_dev.py`
+- Synced main specs:
+  - `openspec/specs/module-semantic-authority-enrichment/spec.md`
+  - `openspec/specs/module-semantic-authority-audit/spec.md`
+  - `openspec/specs/module-semantic-publication-audit/spec.md`
+  - `openspec/specs/module-semantic-publication-blockers/spec.md`
+
+**Verification:**
+- `.venv/bin/python -m py_compile utils/module_semantic_authority.py scripts/module_semantic_authority_audit.py scripts/homebrew_ingest_dev.py web/extensions/toolkit_module_finisher.py scripts/test_module_semantic_authority.py scripts/test_homebrew_ingest_dev.py` -> PASS
+- `.venv/bin/python scripts/test_module_semantic_authority.py` -> PASS
+- `.venv/bin/python scripts/test_homebrew_ingest_dev.py` -> PASS
+- `.venv/bin/python scripts/module_semantic_authority_audit.py --module Night_of_the_Restless_Dead --json` -> FAIL (expected blocker: missing semantic payload in legacy module)
+- `openspec validate module-publication-semantic-authority-foundation` -> VALID
+- `openspec validate module-publication-semantic-audit` -> VALID
+
 ### Players Diary Journal Cadence Hardening (COMPLETED - 2026-04-09)
 
 **Status:** COMPLETED - Journal checkpoint cadence now supports transition and long-rest triggers with deterministic idempotent dedupe and fail-open rest behavior.

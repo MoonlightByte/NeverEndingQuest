@@ -296,3 +296,32 @@ All tests pass: `Ran 6 tests in 0.002s OK`
 - Potential: Serve WebP variants alongside PNG for bandwidth
 - Potential: Expose resolution choice in download dialog
 
+---
+
+## 2026-04-10 - Module Publication Semantic Phases Archived
+
+### Summary
+
+Completed and archived two publication-semantics OpenSpec slices:
+
+- `openspec/changes/archive/2026-04-09-module-publication-semantic-authority-foundation/`
+- `openspec/changes/archive/2026-04-09-module-publication-semantic-audit/`
+
+### What Landed
+
+1. **Semantic Authority Foundation**
+   - Added shared helper `utils/module_semantic_authority.py`.
+   - Emits deterministic location alias map, destination phrase map, and NPC scene-authority map with provenance.
+   - Integrated into ingest and toolkit finisher:
+     - `scripts/homebrew_ingest_dev.py`
+     - `web/extensions/toolkit_module_finisher.py`
+
+2. **Semantic Publication Audit**
+   - Added standalone audit script `scripts/module_semantic_authority_audit.py`.
+   - Added explicit blocker classes and structured findings for publication-unsafe semantics.
+   - Keeps audit standalone from repo-wide `publishable` gate in this phase.
+
+### Notes
+
+- Legacy module smoke (`Night_of_the_Restless_Dead`) correctly fails with semantic payload missing blocker when semantic authority is absent.
+- Next publication plan step is Phase 3 probe harness (`module-publication-live-play-probes`).
