@@ -276,6 +276,29 @@ def _run_monster_materialization_stage(module_slug: str) -> Dict[str, Any]:
     }
 
 
+def _run_publishability_stage(module_slug: str) -> Dict[str, Any]:
+    """Run standalone publishability audit stage."""
+    from scripts.audit_module_publishability import audit_module_publishability
+
+    report = audit_module_publishability(module_slug)
+    ready_status = str(report.get("ready_status", "fail") or "fail")
+    publishable_status = str(report.get("publishable_status", "fail") or "fail")
+
+    if publishable_status == "pass":
+        stage_status = "success"
+    elif ready_status == "pass":
+        stage_status = "degraded"
+    else:
+        stage_status = "failed"
+
+    return {
+        "status": stage_status,
+        "ready_status": ready_status,
+        "publishable_status": publishable_status,
+        "report": report,
+    }
+
+
 def run_toolkit_module_postbuild_finishing(
     module_slug: str, strict: bool = True
 ) -> Dict[str, Any]:
@@ -342,17 +365,33 @@ def run_toolkit_module_postbuild_finishing(
     ):
         overall_status = "degraded"
 
+    publishability_stage = _run_publishability_stage(module_slug=module_slug)
+    stages["publishability"] = publishability_stage
+    if publishability_stage.get("status") == "failed":
+        overall_status = "failed"
+    elif (
+        publishability_stage.get("status") == "degraded" and overall_status != "failed"
+    ):
+        overall_status = "degraded"
+
+    ready_status = str(publishability_stage.get("ready_status", "fail") or "fail")
+    publishable_status = str(
+        publishability_stage.get("publishable_status", "fail") or "fail"
+    )
+
     report: Dict[str, Any] = {
         "generated_at": _utc_now_iso(),
         "module_slug": module_slug,
         "status": overall_status,
+        "ready_status": ready_status,
+        "publishable_status": publishable_status,
         "strict": bool(strict),
         "stages": stages,
         "publication_parity_note": (
-            "Post-build parity improves publication readiness but does not include full semantic publication probes."
+            "Post-build parity now reports both structural readiness and semantic publishability."
         ),
         "semantic_authority_note": (
-            "Semantic authority enrichment is additive in this phase and does not yet define repo-level publishable gating."
+            "Semantic authority and semantic probes now feed a standalone publishable gate distinct from readiness."
         ),
     }
 

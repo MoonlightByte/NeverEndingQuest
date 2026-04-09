@@ -1028,17 +1028,21 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
-### Module Publication Semantic Audit + Authority Foundation (COMPLETED - 2026-04-10)
+### Module Publication Workflow Completion (COMPLETED - 2026-04-10)
 
-**Status:** COMPLETED - Publication Phase 1 (semantic-authority substrate) and Phase 2 (semantic publication blockers) implemented and archived as standalone slices.
+**Status:** COMPLETED - Publication Phases 1-4 implemented, archived, and closed. The repository now distinguishes structural readiness from semantic publishability.
 
 **OpenSpec Archives:**
 - `openspec/changes/archive/2026-04-09-module-publication-semantic-authority-foundation/`
 - `openspec/changes/archive/2026-04-09-module-publication-semantic-audit/`
+- `openspec/changes/archive/2026-04-09-module-publication-live-play-probes/`
+- `openspec/changes/archive/2026-04-09-module-publication-publishable-gate/`
 
 **Objective:**
 - Build deterministic semantic-authority substrate for destination and NPC scene semantics.
 - Promote publication-unsafe semantic contradictions into explicit blocker classes while keeping audit standalone from repo-wide `publishable` gating.
+- Add deterministic publication-time semantic probes for travel, handoff, and hidden-NPC discovery.
+- Add final publishability gate layered over readiness, semantic audit, and probes.
 
 **Implementation Summary:**
 - Added shared helper: `utils/module_semantic_authority.py`
@@ -1051,22 +1055,49 @@ character_data["is_active_pc"] = True
 - Added standalone audit surface: `scripts/module_semantic_authority_audit.py`
   - Structured blocker outputs (`blocker_classes`, `blocking_findings`, `blocking_errors`).
   - Deterministic publication blocker classes for unresolved/ambiguous player-facing destinations, phrase-collision drift risk, and authored-presence NPC authority gaps.
+- Added standalone semantic probe harness: `scripts/module_semantic_probe_harness.py`
+  - Deterministic probe fixtures and results for travel, handoff continuity, and hidden/revealable NPC discovery.
+  - Structured per-probe pass/degraded/fail results with blocking errors and warnings.
+- Added standalone publishability audit: `scripts/audit_module_publishability.py`
+  - Distinct `ready_status` vs `publishable_status`.
+  - Publishability now composes readiness, semantic audit, and semantic probes.
+- Updated reporting surfaces:
+  - `web/extensions/toolkit_module_finisher.py` now reports `ready_status` and `publishable_status`
+  - `scripts/validate_modules_bulk.py` now includes publishability reporting alongside existing readiness-oriented bulk output
 - Added and extended regression coverage:
   - `scripts/test_module_semantic_authority.py`
   - `scripts/test_homebrew_ingest_dev.py`
+  - `scripts/test_module_semantic_probe_harness.py`
+  - `scripts/test_audit_module_publishability.py`
+  - `scripts/test_toolkit_module_build_publication_parity.py`
 - Synced main specs:
   - `openspec/specs/module-semantic-authority-enrichment/spec.md`
   - `openspec/specs/module-semantic-authority-audit/spec.md`
   - `openspec/specs/module-semantic-publication-audit/spec.md`
   - `openspec/specs/module-semantic-publication-blockers/spec.md`
+  - `openspec/specs/module-semantic-publication-probes/spec.md`
+  - `openspec/specs/module-semantic-probe-fixtures/spec.md`
+  - `openspec/specs/module-publishable-gate/spec.md`
+  - `openspec/specs/module-publishability-reporting/spec.md`
+
+**Plan Archive:**
+- `plans/archive/module-publication.md`
 
 **Verification:**
-- `.venv/bin/python -m py_compile utils/module_semantic_authority.py scripts/module_semantic_authority_audit.py scripts/homebrew_ingest_dev.py web/extensions/toolkit_module_finisher.py scripts/test_module_semantic_authority.py scripts/test_homebrew_ingest_dev.py` -> PASS
+- `.venv/bin/python -m py_compile utils/module_semantic_authority.py scripts/module_semantic_authority_audit.py scripts/module_semantic_probe_harness.py scripts/audit_module_publishability.py scripts/homebrew_ingest_dev.py scripts/validate_modules_bulk.py web/extensions/toolkit_module_finisher.py scripts/test_module_semantic_authority.py scripts/test_homebrew_ingest_dev.py scripts/test_module_semantic_probe_harness.py scripts/test_audit_module_publishability.py scripts/test_toolkit_module_build_publication_parity.py` -> PASS
 - `.venv/bin/python scripts/test_module_semantic_authority.py` -> PASS
 - `.venv/bin/python scripts/test_homebrew_ingest_dev.py` -> PASS
+- `.venv/bin/python scripts/test_module_semantic_probe_harness.py` -> PASS
+- `.venv/bin/python scripts/test_audit_module_publishability.py` -> PASS
+- `.venv/bin/python scripts/test_toolkit_module_build_publication_parity.py` -> PASS
 - `.venv/bin/python scripts/module_semantic_authority_audit.py --module Night_of_the_Restless_Dead --json` -> FAIL (expected blocker: missing semantic payload in legacy module)
+- `.venv/bin/python scripts/module_semantic_probe_harness.py --module Night_of_the_Restless_Dead --json` -> FAIL (expected publication probe gaps in legacy module)
+- `.venv/bin/python scripts/audit_module_publishability.py --module Keep_of_Doom --json` -> FAIL (expected not-ready and not-publishable outcome for current module state)
 - `openspec validate module-publication-semantic-authority-foundation` -> VALID
 - `openspec validate module-publication-semantic-audit` -> VALID
+- `openspec validate module-publication-live-play-probes` -> VALID
+- `openspec validate module-publication-publishable-gate` -> VALID
+- `openspec validate --specs` -> PASS
 
 ### Players Diary Journal Cadence Hardening (COMPLETED - 2026-04-09)
 

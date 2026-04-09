@@ -349,7 +349,7 @@ Implementation note:
 ### Phase 3 - Live-Play Probe Harness
 
 Status:
-- pending
+- implemented
 
 Goal:
 - prove the authored semantics behave correctly under publication-time synthetic gameplay probes
@@ -364,10 +364,13 @@ Step-by-step:
 Exit criteria:
 - publication-time probe coverage exists for travel, escort, and hidden-NPC semantics
 
+Implementation note:
+- `module-publication-live-play-probes` now exists and provides a standalone deterministic semantic probe harness for travel, handoff, and hidden-NPC discovery semantics.
+
 ### Phase 4 - Publishable Gate
 
 Status:
-- pending
+- implemented
 
 Goal:
 - promote publication from a soft planning concept into an explicit repo gate
@@ -382,21 +385,24 @@ Step-by-step:
 Exit criteria:
 - the repo can distinguish structurally ready modules from semantically publishable modules
 
+Implementation note:
+- `module-publication-publishable-gate` now exists and adds a standalone publishability audit layered over readiness, semantic audit, and semantic probes, with `ready` vs `publishable` exposed in CLI/toolkit reporting.
+
 ## Next Recommended OpenSpec Change
 
-The next change should be:
-- `module-publication-live-play-probes`
+No further publication change is required for the plan described in this document.
 
-Why this next:
-- Phase 1 and Phase 2 now exist and provide substrate + blocker policy
-- probe coverage is the remaining proof layer before final publishable gate wiring
-- probe outcomes should remain source-driven and deterministic before any release policy integration
+Completed sequence:
+- `module-publication-semantic-authority-foundation`
+- `module-publication-semantic-audit`
+- `module-publication-live-play-probes`
+- `module-publication-publishable-gate`
 
 ## Archive Gate
 
-This plan should **not** be archived yet.
+This plan is now complete and ready to archive.
 
-Archive only when:
+Archive checklist satisfied:
 - the repository has a real `publishable` gate
 - semantic enrichment and publication audit are implemented
 - synthetic probe validation exists

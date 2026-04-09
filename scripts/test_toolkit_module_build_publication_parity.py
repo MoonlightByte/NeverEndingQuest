@@ -36,21 +36,39 @@ class TestToolkitModuleFinisher(unittest.TestCase):
         self.original_continuity = finisher._run_continuity_stage
         self.original_registry = finisher._run_registry_stage
         self.original_materialization = finisher._run_monster_materialization_stage
+        self.original_publishability = finisher._run_publishability_stage
 
     def tearDown(self) -> None:
         finisher._run_continuity_stage = self.original_continuity
         finisher._run_registry_stage = self.original_registry
         finisher._run_monster_materialization_stage = self.original_materialization
+        finisher._run_publishability_stage = self.original_publishability
 
         os.chdir(self.original_cwd)
         self.temp_dir.cleanup()
 
     def test_finisher_success_writes_report(self) -> None:
-        finisher._run_continuity_stage = lambda *args, **kwargs: {"status": "success", "stage": "continuity"}
-        finisher._run_registry_stage = lambda *args, **kwargs: {"status": "success", "stage": "registry"}
-        finisher._run_monster_materialization_stage = lambda *args, **kwargs: {"status": "success", "stage": "monster_materialization"}
+        finisher._run_continuity_stage = lambda *args, **kwargs: {
+            "status": "success",
+            "stage": "continuity",
+        }
+        finisher._run_registry_stage = lambda *args, **kwargs: {
+            "status": "success",
+            "stage": "registry",
+        }
+        finisher._run_monster_materialization_stage = lambda *args, **kwargs: {
+            "status": "success",
+            "stage": "monster_materialization",
+        }
+        finisher._run_publishability_stage = lambda *args, **kwargs: {
+            "status": "success",
+            "ready_status": "pass",
+            "publishable_status": "pass",
+        }
 
-        result = finisher.run_toolkit_module_postbuild_finishing(self.module_slug, strict=True)
+        result = finisher.run_toolkit_module_postbuild_finishing(
+            self.module_slug, strict=True
+        )
 
         self.assertEqual(result.get("status"), "success")
         report_path = Path(result.get("report_path", ""))
@@ -59,23 +77,69 @@ class TestToolkitModuleFinisher(unittest.TestCase):
         report_payload = json.loads(report_path.read_text(encoding="utf-8"))
         self.assertEqual(report_payload.get("status"), "success")
         self.assertIn("publication_parity_note", report_payload)
+        self.assertEqual(report_payload.get("ready_status"), "pass")
+        self.assertEqual(report_payload.get("publishable_status"), "pass")
 
     def test_finisher_degraded_maps_status(self) -> None:
         finisher._run_continuity_stage = lambda *args, **kwargs: {"status": "success"}
         finisher._run_registry_stage = lambda *args, **kwargs: {"status": "success"}
-        finisher._run_monster_materialization_stage = lambda *args, **kwargs: {"status": "degraded", "reason": "missing bestiary entries"}
+        finisher._run_monster_materialization_stage = lambda *args, **kwargs: {
+            "status": "degraded",
+            "reason": "missing bestiary entries",
+        }
+        finisher._run_publishability_stage = lambda *args, **kwargs: {
+            "status": "success",
+            "ready_status": "pass",
+            "publishable_status": "pass",
+        }
 
-        result = finisher.run_toolkit_module_postbuild_finishing(self.module_slug, strict=True)
+        result = finisher.run_toolkit_module_postbuild_finishing(
+            self.module_slug, strict=True
+        )
         self.assertEqual(result.get("status"), "degraded")
 
     def test_finisher_failed_registry_maps_failed(self) -> None:
         finisher._run_continuity_stage = lambda *args, **kwargs: {"status": "success"}
-        finisher._run_registry_stage = lambda *args, **kwargs: {"status": "failed", "reason": "registry missing"}
-        finisher._run_monster_materialization_stage = lambda *args, **kwargs: {"status": "success"}
+        finisher._run_registry_stage = lambda *args, **kwargs: {
+            "status": "failed",
+            "reason": "registry missing",
+        }
+        finisher._run_monster_materialization_stage = lambda *args, **kwargs: {
+            "status": "success"
+        }
+        finisher._run_publishability_stage = lambda *args, **kwargs: {
+            "status": "degraded",
+            "ready_status": "pass",
+            "publishable_status": "fail",
+        }
 
-        result = finisher.run_toolkit_module_postbuild_finishing(self.module_slug, strict=True)
+        result = finisher.run_toolkit_module_postbuild_finishing(
+            self.module_slug, strict=True
+        )
         self.assertEqual(result.get("status"), "failed")
-        self.assertEqual((result.get("stages") or {}).get("registry", {}).get("reason"), "registry missing")
+        self.assertEqual(
+            (result.get("stages") or {}).get("registry", {}).get("reason"),
+            "registry missing",
+        )
+
+    def test_finisher_publishable_failure_is_degraded_when_ready_passes(self) -> None:
+        finisher._run_continuity_stage = lambda *args, **kwargs: {"status": "success"}
+        finisher._run_registry_stage = lambda *args, **kwargs: {"status": "success"}
+        finisher._run_monster_materialization_stage = lambda *args, **kwargs: {
+            "status": "success"
+        }
+        finisher._run_publishability_stage = lambda *args, **kwargs: {
+            "status": "degraded",
+            "ready_status": "pass",
+            "publishable_status": "fail",
+        }
+
+        result = finisher.run_toolkit_module_postbuild_finishing(
+            self.module_slug, strict=True
+        )
+        self.assertEqual(result.get("status"), "degraded")
+        self.assertEqual(result.get("ready_status"), "pass")
+        self.assertEqual(result.get("publishable_status"), "fail")
 
 
 class TestToolkitPublicationParitySourceContracts(unittest.TestCase):

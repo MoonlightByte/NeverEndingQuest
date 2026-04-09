@@ -325,3 +325,41 @@ Completed and archived two publication-semantics OpenSpec slices:
 
 - Legacy module smoke (`Night_of_the_Restless_Dead`) correctly fails with semantic payload missing blocker when semantic authority is absent.
 - Next publication plan step is Phase 3 probe harness (`module-publication-live-play-probes`).
+
+---
+
+## 2026-04-10 - Module Publication Plan Fully Closed
+
+### Summary
+
+Finished the remaining publication workflow slices and archived the publication master plan.
+
+### What Landed
+
+1. **Live-Play Probe Harness**
+   - Added `scripts/module_semantic_probe_harness.py`.
+   - Deterministic publication probes now cover:
+     - travel destination resolution
+     - continuity handoff refs
+     - hidden/revealable NPC discovery authority
+
+2. **Publishable Gate**
+   - Added `scripts/audit_module_publishability.py`.
+   - Distinguishes:
+     - `ready_status`
+     - `publishable_status`
+   - Publishability now composes readiness + semantic audit + semantic probes.
+
+3. **Reporting Surface**
+   - `web/extensions/toolkit_module_finisher.py` now reports ready vs publishable.
+   - `scripts/validate_modules_bulk.py` now includes publishability reporting.
+
+4. **Archives**
+   - `openspec/changes/archive/2026-04-09-module-publication-live-play-probes/`
+   - `openspec/changes/archive/2026-04-09-module-publication-publishable-gate/`
+   - `plans/archive/module-publication.md`
+
+### Notes
+
+- Current legacy modules correctly remain not publishable under the stricter semantic gate.
+- The plan is now complete: substrate -> blockers -> probes -> publishable gate.
