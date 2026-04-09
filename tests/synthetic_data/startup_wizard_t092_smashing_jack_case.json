@@ -1,0 +1,17 @@
+{
+  "name": "T092 Smashing Jack Finalization",
+  "description": "Exact replay selection from real capture where finalization followed 'Yes, this loosk good'.",
+  "source_capture_file": "/mnt/c/dm_testing/model_captures/T092.json",
+  "source_record_timestamp": "2026-04-08T06:04:12Z",
+  "source_task_id": "T092",
+  "constraints": {
+    "must_be_valid_json_object": true,
+    "must_validate_schema_file": "schemas/char_schema.json",
+    "required_top_level_fields": [
+      "ammunition"
+    ],
+    "field_type_requirements": {
+      "ammunition": "array"
+    }
+  }
+}
