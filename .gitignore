@@ -41,6 +41,8 @@ journal.json
 journal.json.bak
 chronology.json
 data/story_so_far_cache/
+data/players_diary.md
+data/players_diary_bookmark.json
 modules/conversation_history/
 player_storage.json
 # Character files - all should be local only
