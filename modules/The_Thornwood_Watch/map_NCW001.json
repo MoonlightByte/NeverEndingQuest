@@ -11,7 +11,11 @@
         "NC03"
       ],
       "coordinates": "X2Y2",
-      "name": "Gloomsap Cavern"
+      "name": "Gloomsap Cavern",
+      "directions": {
+        "west": "NC02",
+        "south": "NC03"
+      }
     },
     {
       "id": "NC02",
@@ -22,17 +26,27 @@
         "NC05"
       ],
       "coordinates": "X1Y2",
-      "name": "Twisted Briar Grove"
+      "name": "Twisted Briar Grove",
+      "directions": {
+        "east": "NC01",
+        "south": "NC04",
+        "north": "NC05"
+      }
     },
     {
       "id": "NC03",
       "type": "cave",
       "connections": [
         "NC01",
-        "NC04"
+        "NC04",
+        "NC05"
       ],
       "coordinates": "X2Y3",
-      "name": "Hollow Shade Den"
+      "name": "Hollow Shade Den",
+      "directions": {
+        "north": "NC01",
+        "west": "NC04"
+      }
     },
     {
       "id": "NC04",
@@ -42,16 +56,24 @@
         "NC03"
       ],
       "coordinates": "X1Y3",
-      "name": "Forsaken Hearth Encampment"
+      "name": "Forsaken Hearth Encampment",
+      "directions": {
+        "north": "NC02",
+        "east": "NC03"
+      }
     },
     {
       "id": "NC05",
       "type": "hilltop",
       "connections": [
-        "NC02"
+        "NC02",
+        "NC03"
       ],
       "coordinates": "X1Y1",
-      "name": "Shrouded Sentinel Rise"
+      "name": "Shrouded Sentinel Rise",
+      "directions": {
+        "south": "NC02"
+      }
     }
   ],
   "layout": [
@@ -67,5 +89,7 @@
       "NC04",
       "NC03"
     ]
-  ]
+  ],
+  "startRoom": "NC01",
+  "spatialContractVersion": 1
 }

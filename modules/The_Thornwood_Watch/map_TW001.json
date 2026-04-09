@@ -8,10 +8,15 @@
       "type": "clearing",
       "connections": [
         "TW02",
-        "TW04"
+        "TW04",
+        "TW06"
       ],
       "coordinates": "X2Y2",
-      "name": "Ambush Site"
+      "name": "Ambush Site",
+      "directions": {
+        "east": "TW02",
+        "north": "TW04"
+      }
     },
     {
       "id": "TW02",
@@ -22,7 +27,12 @@
         "TW05"
       ],
       "coordinates": "X3Y2",
-      "name": "Bandit Trail"
+      "name": "Bandit Trail",
+      "directions": {
+        "west": "TW01",
+        "north": "TW03",
+        "south": "TW05"
+      }
     },
     {
       "id": "TW03",
@@ -32,18 +42,25 @@
         "TW04"
       ],
       "coordinates": "X3Y1",
-      "name": "Abandoned Camp"
+      "name": "Abandoned Camp",
+      "directions": {
+        "south": "TW02",
+        "west": "TW04"
+      }
     },
     {
       "id": "TW04",
       "type": "grove",
       "connections": [
         "TW01",
-        "TW03",
-        "TW06"
+        "TW03"
       ],
       "coordinates": "X2Y1",
-      "name": "Thornheart Grove"
+      "name": "Thornheart Grove",
+      "directions": {
+        "south": "TW01",
+        "east": "TW03"
+      }
     },
     {
       "id": "TW05",
@@ -52,7 +69,10 @@
         "TW02"
       ],
       "coordinates": "X3Y3",
-      "name": "Bandit Stronghold"
+      "name": "Bandit Stronghold",
+      "directions": {
+        "north": "TW02"
+      }
     },
     {
       "id": "TW06",
@@ -61,7 +81,10 @@
         "TW04"
       ],
       "coordinates": "X1Y1",
-      "name": "Wolf's Den Cave"
+      "name": "Wolf's Den Cave",
+      "directions": {
+        "east": "TW04"
+      }
     }
   ],
   "layout": [
@@ -80,5 +103,7 @@
       "   ",
       "TW05"
     ]
-  ]
+  ],
+  "startRoom": "TW01",
+  "spatialContractVersion": 1
 }

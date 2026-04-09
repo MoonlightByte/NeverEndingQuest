@@ -3,7 +3,7 @@
   "module_id": "The_Thornwood_Watch",
   "areas": {
     "RO001": {
-      "name": "Rangers\u2019 Outpost",
+      "name": "Rangers’ Outpost",
       "type": "wilderness",
       "locations": [],
       "npcs": [
@@ -191,5 +191,43 @@
   "validation_issues": [
     "NPC 'Corrupted Woodland Creatures' is referenced in ['module:plotStages'] but not placed in any location"
   ],
-  "generated_at": "2025-06-22T22:27:41.391154"
+  "generated_at": "2025-06-22T22:27:41.391154",
+  "continuity": {
+    "continuity_version": "v1",
+    "entry_state_variants": {
+      "cold_start": {
+        "summary": "Party enters The Thornwood Watch with no prior continuity context. Present the opening conflict and immediate objective clearly."
+      },
+      "partial_context": {
+        "summary": "Party enters The Thornwood Watch with partial prior context. Reinforce known clues before branch-critical decisions."
+      },
+      "late_arc": {
+        "summary": "Party enters The Thornwood Watch in late-arc state. Provide compact recap and maintain path to a valid ending."
+      }
+    },
+    "cross_module_refs": [
+      {
+        "target_module": "Keep_of_Doom",
+        "entity_id": "scout_elen",
+        "relation": "reference",
+        "confidence": "high",
+        "notes": "Narrative handoff references Scout Elen and Harrow's Hollow."
+      },
+      {
+        "target_module": "Keep_of_Doom",
+        "entity_id": "shadow_relic",
+        "relation": "artifact_link",
+        "confidence": "medium",
+        "notes": "Shadow relic thread echoes in adjacent module lore."
+      }
+    ],
+    "standalone_fallback": {
+      "enabled": true,
+      "clue_sources": [
+        "module_context",
+        "module_plot"
+      ],
+      "notes": "The_Thornwood_Watch remains fully playable as a standalone module when cross-module continuity is unavailable."
+    }
+  }
 }

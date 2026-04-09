@@ -12,7 +12,12 @@
         "RO04"
       ],
       "coordinates": "X2Y2",
-      "name": "Forked Trails Crossing"
+      "name": "Forked Trails Crossing",
+      "directions": {
+        "south": "RO02",
+        "west": "RO03",
+        "east": "RO04"
+      }
     },
     {
       "id": "RO02",
@@ -22,7 +27,10 @@
         "RO04"
       ],
       "coordinates": "X2Y3",
-      "name": "Moonlit Waters Edge"
+      "name": "Moonlit Waters Edge",
+      "directions": {
+        "north": "RO01"
+      }
     },
     {
       "id": "RO03",
@@ -33,17 +41,24 @@
         "RO06"
       ],
       "coordinates": "X1Y2",
-      "name": "Shattered Sentinel Stones"
+      "name": "Shattered Sentinel Stones",
+      "directions": {
+        "east": "RO01",
+        "north": "RO05",
+        "south": "RO06"
+      }
     },
     {
       "id": "RO04",
       "type": "riverside",
       "connections": [
-        "RO01",
-        "RO02"
+        "RO01"
       ],
       "coordinates": "X3Y2",
-      "name": "Mistshadow Ford"
+      "name": "Mistshadow Ford",
+      "directions": {
+        "west": "RO01"
+      }
     },
     {
       "id": "RO05",
@@ -52,7 +67,10 @@
         "RO03"
       ],
       "coordinates": "X1Y1",
-      "name": "Forgotten Waystation"
+      "name": "Forgotten Waystation",
+      "directions": {
+        "south": "RO03"
+      }
     },
     {
       "id": "RO06",
@@ -61,7 +79,10 @@
         "RO03"
       ],
       "coordinates": "X1Y3",
-      "name": "North Tower Overlook"
+      "name": "North Tower Overlook",
+      "directions": {
+        "north": "RO03"
+      }
     }
   ],
   "layout": [
@@ -85,5 +106,7 @@
       "   ",
       "   "
     ]
-  ]
+  ],
+  "startRoom": "RO01",
+  "spatialContractVersion": 1
 }

@@ -27,7 +27,8 @@
         "id": "RO02",
         "type": "riverside",
         "connections": [
-          "RO01"
+          "RO01",
+          "RO04"
         ],
         "coordinates": "X2Y3",
         "name": "Moonlit Waters Edge"
@@ -37,7 +38,8 @@
         "type": "ruins",
         "connections": [
           "RO01",
-          "RO05"
+          "RO05",
+          "RO06"
         ],
         "coordinates": "X1Y2",
         "name": "Shattered Sentinel Stones"

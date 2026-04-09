@@ -17,7 +17,8 @@
         "type": "clearing",
         "connections": [
           "TW02",
-          "TW04"
+          "TW04",
+          "TW06"
         ],
         "coordinates": "X2Y2",
         "name": "Ambush Site"
@@ -48,8 +49,7 @@
         "type": "grove",
         "connections": [
           "TW01",
-          "TW03",
-          "TW06"
+          "TW03"
         ],
         "coordinates": "X2Y1",
         "name": "Hermit's Refuge"
