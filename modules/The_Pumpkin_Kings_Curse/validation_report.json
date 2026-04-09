@@ -1,9 +1,9 @@
 {
   "module": "The_Pumpkin_Kings_Curse",
-  "timestamp": "2026-04-06T14:11:38.189743",
+  "timestamp": "2026-04-09T13:59:36.956214",
   "summary": {
-    "total_files": 43,
-    "total_passed": 45,
+    "total_files": 49,
+    "total_passed": 51,
     "total_failed": 0
   },
   "results": {
@@ -87,6 +87,25 @@
         "areas/VO001.json"
       ],
       "passed": 6,
+      "failed": 0,
+      "errors": []
+    },
+    "spatial_contract": {
+      "files": [
+        "BOO001.json <-> map_BOO001.json",
+        "CMS001.json <-> map_CMS001.json",
+        "GRV001.json <-> map_GRV001.json",
+        "HFG001.json <-> map_HFG001.json",
+        "HLF001.json <-> map_HLF001.json",
+        "VO001.json <-> map_VO001.json"
+      ],
+      "passed": 6,
+      "failed": 0,
+      "errors": []
+    },
+    "spatial_contract_warning": {
+      "files": [],
+      "passed": 0,
       "failed": 0,
       "errors": []
     },

@@ -11,7 +11,10 @@
         "NIG08",
         "NIG04"
       ],
-      "coordinates": "X0Y0"
+      "coordinates": "X0Y0",
+      "directions": {
+        "east": "NIG02"
+      }
     },
     {
       "id": "NIG08",
@@ -20,7 +23,10 @@
         "NIG01",
         "NIG02"
       ],
-      "coordinates": "X1Y1"
+      "coordinates": "X1Y1",
+      "directions": {
+        "north": "NIG02"
+      }
     },
     {
       "id": "NIG02",
@@ -30,7 +36,12 @@
         "NIG01",
         "NIG03"
       ],
-      "coordinates": "X1Y0"
+      "coordinates": "X1Y0",
+      "directions": {
+        "south": "NIG08",
+        "west": "NIG01",
+        "east": "NIG03"
+      }
     },
     {
       "id": "NIG03",
@@ -39,7 +50,11 @@
         "NIG02",
         "NIG04"
       ],
-      "coordinates": "X2Y0"
+      "coordinates": "X2Y0",
+      "directions": {
+        "west": "NIG02",
+        "east": "NIG04"
+      }
     },
     {
       "id": "NIG04",
@@ -49,7 +64,11 @@
         "NIG03",
         "NIG05"
       ],
-      "coordinates": "X3Y0"
+      "coordinates": "X3Y0",
+      "directions": {
+        "west": "NIG03",
+        "east": "NIG05"
+      }
     },
     {
       "id": "NIG05",
@@ -58,7 +77,11 @@
         "NIG04",
         "NIG06"
       ],
-      "coordinates": "X4Y0"
+      "coordinates": "X4Y0",
+      "directions": {
+        "west": "NIG04",
+        "east": "NIG06"
+      }
     },
     {
       "id": "NIG06",
@@ -67,7 +90,11 @@
         "NIG05",
         "NIG07"
       ],
-      "coordinates": "X5Y0"
+      "coordinates": "X5Y0",
+      "directions": {
+        "west": "NIG05",
+        "east": "NIG07"
+      }
     },
     {
       "id": "NIG07",
@@ -75,7 +102,10 @@
       "connections": [
         "NIG06"
       ],
-      "coordinates": "X6Y0"
+      "coordinates": "X6Y0",
+      "directions": {
+        "west": "NIG06"
+      }
     }
   ],
   "layout": [
@@ -103,5 +133,7 @@
     [
       "NIG07"
     ]
-  ]
+  ],
+  "startRoom": "NIG01",
+  "spatialContractVersion": 1
 }

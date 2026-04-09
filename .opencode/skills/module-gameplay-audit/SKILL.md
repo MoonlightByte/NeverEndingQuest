@@ -19,6 +19,9 @@ The module only passes when all enabled gates are green.
 - "validate module readiness"
 - "full module gate"
 - "module validator"
+- "spatial backfill"
+- "remediate module spatial"
+- "module spatial contract"
 
 ## Default Command (Strict)
 
@@ -128,6 +131,84 @@ python3 scripts/enrich_module_cross_refs.py --all --apply
 Then re-run strict readiness validation:
 
 ```bash
+python3 scripts/audit_module_readiness.py --module <module_slug>
+```
+
+## Legacy Spatial Remediation
+
+For existing modules created before spatial contract enforcement, remediate spatial fields before strict schema validation:
+
+### Safe Rollout Order
+
+1. Analyze current area/map structure first.
+2. Dry-run remediation for one module.
+3. Verify area location IDs align with map room IDs.
+4. Apply remediation only after checking that authored topology/layout is preserved.
+5. Re-run schema validation immediately.
+
+### Commands
+
+Dry-run one module:
+
+```bash
+python3 scripts/remediate_module_coordinates.py --module <module_slug> --dry-run
+```
+
+Analyze parity and predicted remediation impact before apply:
+
+```bash
+python3 scripts/analyze_module_spatial_parity.py --module <module_slug>
+```
+
+JSON output:
+
+```bash
+python3 scripts/analyze_module_spatial_parity.py --module <module_slug> --json
+```
+
+Apply one module:
+
+```bash
+python3 scripts/remediate_module_coordinates.py --module <module_slug> --apply
+```
+
+Bulk dry-run:
+
+```bash
+python3 scripts/remediate_module_coordinates.py --dry-run
+```
+
+Validate after apply:
+
+```bash
+python3 core/validation/validate_module_files.py --module <module_slug>
+```
+
+### Expected Remediation Effects
+
+- Add `aliases` per location
+- Add 9-cell `tactical_grid` per location
+- Add/normalize `coordinates` to align area locations with map rooms
+- Add cardinal `directions` in map rooms
+- Add `spatialContractVersion: 1` to remediated area/map files
+
+### Safety Contract
+
+- Preserve authored `connectivity`
+- Preserve authored map `layout` when present
+- Preserve existing map room metadata fields during backfill
+- Treat map/location parity failure after remediation as a blocker
+
+### Suggested Audit Pattern
+
+Run this sequence when spatial remediation is in scope:
+
+```bash
+python3 scripts/analyze_module_spatial_parity.py --module <module_slug>
+python3 scripts/remediate_module_coordinates.py --module <module_slug> --dry-run
+python3 core/validation/validate_module_files.py --module <module_slug>
+python3 scripts/remediate_module_coordinates.py --module <module_slug> --apply
+python3 core/validation/validate_module_files.py --module <module_slug>
 python3 scripts/audit_module_readiness.py --module <module_slug>
 ```
 

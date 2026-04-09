@@ -1756,4 +1756,21 @@ Player: "Yes, let's go help them."
 STEP 5 - Create Module:
 Use createNewModule action with full narrative in parameters (not in narration field).
 
+## LOCATION EXCLUSIVITY AND AUTHORED-EXIT GROUNDING
+
+Maintain a strict two-lane contract:
+
+1) Foreshadowing lane (allowed):
+- You may foreshadow distant threats and consequences.
+- Example: "You sense Malarok deeper ahead." or "A distant ritual pulse answers from the ruins."
+
+2) Present-scene lane (constrained):
+- Present-scene claims must match authoritative currentLocationId truth.
+- Scene-authority rule: if authored location metadata declares `sceneAuthority.presentSceneAnchors` for another location, do not instantiate those anchors as physically present in the current scene unless a valid transition commits that location.
+- If scene-authority metadata is absent, preserve existing legacy location-exclusivity behavior.
+
+Authored-exit grounding:
+- Do not claim a connected exit/route is blocked when authored adjacency still allows travel unless blocker status is grounded by deterministic state/action or authored blocker metadata.
+- If unsupported, remove the blockage claim or provide matching deterministic blocker support.
+
 This is the end of Ashiralis's Sowhains' game rules for the most excellent Dungeon Master.

@@ -8,6 +8,7 @@
       "areaType": { "type": "string" },
       "dangerLevel": { "type": "string" },
       "recommendedLevel": { "type": "integer" },
+      "spatialContractVersion": { "type": "integer", "minimum": 1 },
       "locations": {
         "type": "array",
         "items": {
@@ -17,7 +18,42 @@
             "name": { "type": "string" },
             "type": { "type": "string" },
             "description": { "type": "string" },
-            "coordinates": { "type": "string" },
+            "coordinates": {
+              "type": "string",
+              "pattern": "^X[0-9]+Y[0-9]+$"
+            },
+            "aliases": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "tactical_grid": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 9,
+              "maxItems": 9
+            },
+            "sceneAuthority": {
+              "type": "object",
+              "properties": {
+                "presentSceneAnchors": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "anchorId": { "type": "string" },
+                      "aliases": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "minItems": 1
+                      },
+                      "category": { "type": "string" },
+                      "foreshadowAllowed": { "type": "boolean" }
+                    },
+                    "required": ["anchorId", "aliases"]
+                  }
+                }
+              }
+            },
             "connectivity": {
               "type": "array",
               "items": { "type": "string" }

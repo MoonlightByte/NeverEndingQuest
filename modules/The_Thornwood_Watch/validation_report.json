@@ -1,9 +1,9 @@
 {
   "module": "The_Thornwood_Watch",
-  "timestamp": "2026-03-15T16:42:30.230695",
+  "timestamp": "2026-04-09T13:27:43.180548",
   "summary": {
-    "total_files": 35,
-    "total_passed": 36,
+    "total_files": 46,
+    "total_passed": 48,
     "total_failed": 0
   },
   "results": {
@@ -51,9 +51,10 @@
         "ashbound_bandit.json",
         "wounded_bandit.json",
         "whispering_ashling.json",
-        "corrupted_owlbear.json"
+        "corrupted_owlbear.json",
+        "writhing_grubs.json"
       ],
-      "passed": 24,
+      "passed": 25,
       "failed": 0,
       "errors": []
     },
@@ -79,6 +80,56 @@
       "files": [
         "module_context.json"
       ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "runtime_room_reachability": {
+      "files": [
+        "areas/NCW001.json",
+        "areas/RO001.json",
+        "areas/TW001.json"
+      ],
+      "passed": 3,
+      "failed": 0,
+      "errors": []
+    },
+    "map_area_parity": {
+      "files": [
+        "NCW001.json <-> map_NCW001.json",
+        "RO001.json <-> map_RO001.json",
+        "TW001.json <-> map_TW001.json"
+      ],
+      "passed": 3,
+      "failed": 0,
+      "errors": []
+    },
+    "spatial_contract": {
+      "files": [
+        "NCW001.json <-> map_NCW001.json",
+        "RO001.json <-> map_RO001.json",
+        "TW001.json <-> map_TW001.json"
+      ],
+      "passed": 3,
+      "failed": 0,
+      "errors": []
+    },
+    "spatial_contract_warning": {
+      "files": [],
+      "passed": 0,
+      "failed": 0,
+      "errors": []
+    },
+    "plot_progression": {
+      "files": [
+        "module_plot.json"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "connectivity": {
+      "files": [],
       "passed": 1,
       "failed": 0,
       "errors": []

@@ -4258,6 +4258,50 @@
             white-space: pre-wrap;
         }
 
+        .diary-markdown {
+            font-size: 0.96em;
+            line-height: 1.6;
+            color: #3a2f24;
+        }
+
+        .diary-markdown h2,
+        .diary-markdown h3,
+        .diary-markdown h4 {
+            color: #6a4f3a;
+            margin-top: 14px;
+            margin-bottom: 8px;
+            font-family: 'Georgia', serif;
+        }
+
+        .diary-markdown h2 {
+            font-size: 1.08em;
+            border-bottom: 1px solid #d4c7b3;
+            padding-bottom: 4px;
+        }
+
+        .diary-markdown h3 {
+            font-size: 1em;
+        }
+
+        .diary-markdown p {
+            margin: 0 0 10px 0;
+        }
+
+        .diary-markdown hr {
+            border: none;
+            border-top: 1px dashed #c8bda8;
+            margin: 12px 0;
+        }
+
+        .diary-markdown ul {
+            margin: 8px 0 10px 18px;
+            padding: 0;
+        }
+
+        .diary-markdown li {
+            margin: 3px 0;
+        }
+
         .diary-download-wrap {
             margin-bottom: 16px;
             padding-bottom: 14px;
@@ -10008,10 +10052,129 @@
             `;
         }
 
+        function formatDiaryInlineMarkdown(text) {
+            let rendered = String(text || '');
+            rendered = rendered.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            rendered = rendered.replace(/\*(.+?)\*/g, '<em>$1</em>');
+            return rendered;
+        }
+
+        function renderDiaryMarkdownToHtml(markdownText) {
+            const source = journalEscapeHtml(markdownText || '');
+            if (!source.trim()) return '';
+
+            const lines = source.split('\n');
+            let html = '';
+            let inList = false;
+
+            const closeList = () => {
+                if (inList) {
+                    html += '</ul>';
+                    inList = false;
+                }
+            };
+
+            lines.forEach((line) => {
+                const trimmed = line.trim();
+                if (!trimmed) {
+                    closeList();
+                    return;
+                }
+
+                if (/^---+$/.test(trimmed)) {
+                    closeList();
+                    html += '<hr />';
+                    return;
+                }
+
+                if (trimmed.startsWith('### ')) {
+                    closeList();
+                    html += `<h3>${formatDiaryInlineMarkdown(trimmed.slice(4))}</h3>`;
+                    return;
+                }
+
+                if (trimmed.startsWith('## ')) {
+                    closeList();
+                    html += `<h2>${formatDiaryInlineMarkdown(trimmed.slice(3))}</h2>`;
+                    return;
+                }
+
+                if (trimmed.startsWith('# ')) {
+                    closeList();
+                    html += `<h2>${formatDiaryInlineMarkdown(trimmed.slice(2))}</h2>`;
+                    return;
+                }
+
+                if (trimmed.startsWith('- ')) {
+                    if (!inList) {
+                        html += '<ul>';
+                        inList = true;
+                    }
+                    html += `<li>${formatDiaryInlineMarkdown(trimmed.slice(2))}</li>`;
+                    return;
+                }
+
+                closeList();
+                html += `<p>${formatDiaryInlineMarkdown(trimmed)}</p>`;
+            });
+
+            closeList();
+            return html;
+        }
+
+        function splitDiaryMarkdownPages(markdownText) {
+            const source = String(markdownText || '').trim();
+            if (!source) {
+                return {
+                    left: '',
+                    right: '',
+                };
+            }
+
+            const sections = source.split(/\n(?=##\s+)/g);
+            if (sections.length > 1) {
+                const midpoint = Math.ceil(sections.length / 2);
+                return {
+                    left: sections.slice(0, midpoint).join('\n'),
+                    right: sections.slice(midpoint).join('\n'),
+                };
+            }
+
+            const midpoint = Math.ceil(source.length / 2);
+            const splitAt = source.indexOf('\n', midpoint) > 0 ? source.indexOf('\n', midpoint) : midpoint;
+            return {
+                left: source.slice(0, splitAt),
+                right: source.slice(splitAt),
+            };
+        }
+
         function renderDiaryToPages(response) {
             if (!response || response.status !== 'success') {
                 leftPage.innerHTML = '<h2>Diary</h2><p class="journal-empty-state">Could not load diary data.</p>';
                 rightPage.innerHTML = '<div class="diary-download-wrap"><button class="diary-download-button" type="button" onclick="downloadStorySoFar(event)">Download the story so far...</button></div>';
+                return;
+            }
+
+            const playersDiary = response.players_diary || {};
+            const confirmedMarkdown = String(playersDiary.markdown || '').trim();
+
+            if (confirmedMarkdown) {
+                const split = splitDiaryMarkdownPages(confirmedMarkdown);
+                let leftHtml = '<h2>Diary</h2>';
+                if (response.draft) {
+                    leftHtml += renderDiaryEntryHtml(response.draft, true);
+                }
+                leftHtml += `<div class="diary-markdown">${renderDiaryMarkdownToHtml(split.left)}</div>`;
+
+                let rightHtml = '<div class="diary-download-wrap"><button class="diary-download-button" type="button" onclick="downloadStorySoFar(event)">Download the story so far...</button></div>';
+                if (split.right.trim()) {
+                    rightHtml += `<div class="diary-markdown">${renderDiaryMarkdownToHtml(split.right)}</div>`;
+                } else {
+                    rightHtml += '<p class="journal-empty-state">New chronicle entries will appear here as the campaign continues.</p>';
+                }
+
+                leftPage.innerHTML = leftHtml;
+                rightPage.innerHTML = rightHtml;
                 return;
             }
 

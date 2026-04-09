@@ -33,6 +33,40 @@
             "pattern": "^X[0-9]+Y[0-9]+$",
             "description": "The location's coordinates in the format 'XnYn' where n is a number."
           },
+          "aliases": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Alternate names or lookup aliases for this location."
+          },
+          "tactical_grid": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 9,
+            "maxItems": 9,
+            "description": "3x3 environmental tactical grid flattened row-major to 9 cells."
+          },
+          "sceneAuthority": {
+            "type": "object",
+            "properties": {
+              "presentSceneAnchors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "anchorId": { "type": "string" },
+                    "aliases": {
+                      "type": "array",
+                      "items": { "type": "string" },
+                      "minItems": 1
+                    },
+                    "category": { "type": "string" },
+                    "foreshadowAllowed": { "type": "boolean" }
+                  },
+                  "required": ["anchorId", "aliases"]
+                }
+              }
+            }
+          },
           "accessibility": { 
             "type": "string",
             "description": "Description of how easily the location can be accessed."

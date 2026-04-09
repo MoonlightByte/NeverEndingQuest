@@ -23,6 +23,11 @@
       "type": "string",
       "description": "Schema version (optional, for tracking updates)"
     },
+    "spatialContractVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Spatial contract version marker for strict validation paths"
+    },
     "notes": {
       "type": "string",
       "description": "Additional notes about the map (optional)"
@@ -49,6 +54,7 @@
           },
           "coordinates": {
             "type": "string",
+            "pattern": "^X[0-9]+Y[0-9]+$",
             "description": "Grid coordinates (e.g., 'X0Y1')"
           },
           "type": {
@@ -58,9 +64,13 @@
           "directions": {
             "type": "object",
             "description": "Cardinal directions to connected rooms (optional)",
-            "additionalProperties": {
-              "type": "string"
-            }
+            "properties": {
+              "north": { "type": "string" },
+              "south": { "type": "string" },
+              "east": { "type": "string" },
+              "west": { "type": "string" }
+            },
+            "additionalProperties": false
           },
           "tags": {
             "type": "array",

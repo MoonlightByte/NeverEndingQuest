@@ -38,10 +38,16 @@ class TestJournalDiaryUiMVP(unittest.TestCase):
         self.assertIn("/api/journal/diary", self.source)
         self.assertIn("renderDiaryToPages", self.source)
 
-    def test_diary_meta_uses_checkpoint_location_stamp(self) -> None:
+    def test_diary_meta_uses_checkpoint_location_stamp_for_draft_surface(self) -> None:
         self.assertIn("const checkpoint = entry.checkpoint || {};", self.source)
         self.assertIn("Unknown Location", self.source)
         self.assertIn("locationStamp", self.source)
+
+    def test_confirmed_diary_prefers_markdown_artifact_rendering(self) -> None:
+        self.assertIn("const playersDiary = response.players_diary || {};", self.source)
+        self.assertIn("const confirmedMarkdown = String(playersDiary.markdown || '').trim();", self.source)
+        self.assertIn("renderDiaryMarkdownToHtml", self.source)
+        self.assertIn("splitDiaryMarkdownPages", self.source)
 
     def test_confirmed_diary_entries_no_longer_use_fixed_title(self) -> None:
         self.assertIn("const titleHtml = isDraft", self.source)

@@ -359,6 +359,29 @@
         "NC02",
         "NC03"
       ],
+      "sceneAuthority": {
+        "presentSceneAnchors": [
+          {
+            "anchorId": "malarok_present",
+            "aliases": [
+              "Malarok",
+              "Malarok the Corruptor"
+            ],
+            "category": "boss_presence",
+            "foreshadowAllowed": true
+          },
+          {
+            "anchorId": "voidstone_altar",
+            "aliases": [
+              "Voidstone altar",
+              "Voidstone shard",
+              "ritual altar"
+            ],
+            "category": "finale_object",
+            "foreshadowAllowed": true
+          }
+        ]
+      },
       "areaConnectivity": [],
       "areaConnectivityId": [],
       "npcs": [

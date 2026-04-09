@@ -65,6 +65,7 @@ ENABLE_TTS_ESTIMATED_TIMING = False                    # Estimated timing sync f
 
 # --- Session Diary Generation ---
 ENABLE_SESSION_DIARY_LLM = True                       # Use LLM prompt path for diary checkpoints; fallback remains deterministic
+ENABLE_PLAYERS_DIARY_APPEND_LLM = True                # Use LLM append/rebuild path for players diary markdown artifact
 
 # --- Conversation Compression Settings ---
 # Enable/disable compression types before API calls

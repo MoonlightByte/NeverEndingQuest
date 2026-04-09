@@ -11,7 +11,10 @@
         "AA02",
         "AA03"
       ],
-      "coordinates": "X2Y1"
+      "coordinates": "X2Y1",
+      "directions": {
+        "east": "AA02"
+      }
     },
     {
       "id": "AA02",
@@ -22,7 +25,38 @@
         "AA04",
         "AA08"
       ],
-      "coordinates": "X3Y1"
+      "coordinates": "X3Y1",
+      "directions": {
+        "west": "AA01",
+        "south": "AA04",
+        "east": "AA08"
+      }
+    },
+    {
+      "id": "AA08",
+      "name": "Secret Forest Path",
+      "type": "path",
+      "connections": [
+        "AA02",
+        "AA09"
+      ],
+      "coordinates": "X4Y1",
+      "directions": {
+        "west": "AA02",
+        "east": "AA09"
+      }
+    },
+    {
+      "id": "AA09",
+      "name": "Hidden Keep Entrance",
+      "type": "entrance",
+      "connections": [
+        "AA08"
+      ],
+      "coordinates": "X5Y1",
+      "directions": {
+        "west": "AA08"
+      }
     },
     {
       "id": "AA03",
@@ -33,7 +67,10 @@
         "AA05",
         "AA06"
       ],
-      "coordinates": "X1Y2"
+      "coordinates": "X1Y2",
+      "directions": {
+        "south": "AA05"
+      }
     },
     {
       "id": "AA04",
@@ -43,7 +80,11 @@
         "AA02",
         "AA07"
       ],
-      "coordinates": "X3Y2"
+      "coordinates": "X3Y2",
+      "directions": {
+        "north": "AA02",
+        "south": "AA07"
+      }
     },
     {
       "id": "AA05",
@@ -53,7 +94,11 @@
         "AA03",
         "AA06"
       ],
-      "coordinates": "X1Y3"
+      "coordinates": "X1Y3",
+      "directions": {
+        "north": "AA03",
+        "east": "AA06"
+      }
     },
     {
       "id": "AA06",
@@ -64,7 +109,11 @@
         "AA05",
         "AA07"
       ],
-      "coordinates": "X2Y3"
+      "coordinates": "X2Y3",
+      "directions": {
+        "west": "AA05",
+        "east": "AA07"
+      }
     },
     {
       "id": "AA07",
@@ -74,26 +123,11 @@
         "AA04",
         "AA06"
       ],
-      "coordinates": "X3Y3"
-    },
-    {
-      "id": "AA08",
-      "name": "Secret Forest Path",
-      "type": "path",
-      "connections": [
-        "AA02",
-        "AA09"
-      ],
-      "coordinates": "X4Y1"
-    },
-    {
-      "id": "AA09",
-      "name": "Hidden Keep Entrance",
-      "type": "entrance",
-      "connections": [
-        "AA08"
-      ],
-      "coordinates": "X5Y1"
+      "coordinates": "X3Y3",
+      "directions": {
+        "north": "AA04",
+        "west": "AA06"
+      }
     }
   ],
   "layout": [
@@ -118,5 +152,7 @@
       "   ",
       "   "
     ]
-  ]
+  ],
+  "startRoom": "AA01",
+  "spatialContractVersion": 1
 }

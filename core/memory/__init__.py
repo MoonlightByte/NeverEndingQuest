@@ -44,6 +44,11 @@ from core.memory.session_diary import (
     rebuild_diary_from_journal,
     refresh_draft_if_stale,
 )
+from core.memory.players_diary import (
+    append_players_diary_from_journal,
+    get_or_update_players_diary,
+    rebuild_players_diary_from_journal,
+)
 from core.memory.story_so_far_compiler import (
     build_confirmed_story_text,
     get_or_build_story_pdf,
@@ -78,6 +83,9 @@ __all__ = [
     "list_diary_entries",
     "remediate_diary_entries",
     "rebuild_diary_from_journal",
+    "append_players_diary_from_journal",
+    "rebuild_players_diary_from_journal",
+    "get_or_update_players_diary",
     "build_confirmed_story_text",
     "render_story_pdf",
     "get_or_build_story_pdf",

@@ -16,6 +16,7 @@ from flask import Flask, jsonify, request, send_file
 
 from core.memory.memory_db import DEFAULT_MEMORY_DB_PATH
 from core.memory.memory_retrieval import get_entity_timeline
+from core.memory.players_diary import get_or_update_players_diary
 from core.memory.session_diary import list_diary_entries
 from core.memory.story_so_far_compiler import get_or_build_story_pdf
 from utils.enhanced_logger import error
@@ -83,6 +84,15 @@ def register_memory_routes(app: Flask) -> None:
                 limit=limit,
                 before_sort_key=before_sort_key,
             )
+            players_diary = get_or_update_players_diary()
+            result['players_diary'] = {
+                'status': players_diary.get('status', 'error'),
+                'mode': players_diary.get('mode', ''),
+                'message': players_diary.get('message', ''),
+                'markdown': players_diary.get('markdown', ''),
+                'bookmark': players_diary.get('bookmark', {}),
+                'update': players_diary.get('update', {}),
+            }
             status_code = 200 if result.get('status') == 'success' else 200
             return jsonify(result), status_code
         except Exception as route_error:
@@ -95,8 +105,39 @@ def register_memory_routes(app: Flask) -> None:
                 'status': 'error',
                 'draft': None,
                 'entries': [],
+                'players_diary': {
+                    'status': 'error',
+                    'mode': 'error',
+                    'message': 'Players diary unavailable',
+                    'markdown': '',
+                    'bookmark': {},
+                    'update': {},
+                },
                 'next_before_sort_key': None,
                 'message': 'Journal diary unavailable',
+            }), 200
+
+    @app.route('/api/journal/players-diary', methods=['GET'])
+    def get_players_diary() -> Any:
+        """Return confirmed players diary markdown artifact."""
+        try:
+            force_rebuild_raw = str(request.args.get('rebuild', 'false')).strip().lower()
+            force_rebuild = force_rebuild_raw in ('true', '1', 'yes')
+            result = get_or_update_players_diary(force_rebuild=force_rebuild)
+            status_code = 200 if result.get('status') in ('success', 'error') else 200
+            return jsonify(result), status_code
+        except Exception as route_error:
+            error(
+                f"MEMORY_ROUTE: Failed to fetch players diary markdown: {route_error}",
+                exception=route_error,
+                category="web_interface",
+            )
+            return jsonify({
+                'status': 'error',
+                'mode': 'error',
+                'message': 'Players diary unavailable',
+                'markdown': '',
+                'bookmark': {},
             }), 200
 
     @app.route('/api/journal/story-so-far/pdf', methods=['GET'])

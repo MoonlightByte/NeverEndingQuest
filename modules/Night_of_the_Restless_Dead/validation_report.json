@@ -1,9 +1,9 @@
 {
   "module": "Night_of_the_Restless_Dead",
-  "timestamp": "2026-04-06T13:53:42.894995",
+  "timestamp": "2026-04-07T22:34:42.713171",
   "summary": {
-    "total_files": 15,
-    "total_passed": 17,
+    "total_files": 16,
+    "total_passed": 18,
     "total_failed": 0
   },
   "results": {
@@ -73,6 +73,20 @@
         "NIG001.json <-> map_NIG001.json"
       ],
       "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "spatial_contract": {
+      "files": [
+        "NIG001.json <-> map_NIG001.json"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "errors": []
+    },
+    "spatial_contract_warning": {
+      "files": [],
+      "passed": 0,
       "failed": 0,
       "errors": []
     },

@@ -17,6 +17,7 @@ See LICENSE file for full terms.
 
 import sys
 import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import json
@@ -37,6 +38,7 @@ from core.importers.homebrewery_importer import (
     _emit_map_file,
     import_homebrewery_adventure_to_module,
 )
+from utils.spatial_contract import build_linear_spatial_plan
 
 
 class TestModuleSlugSanitization(unittest.TestCase):
@@ -68,7 +70,7 @@ class TestMetadataExtraction(unittest.TestCase):
 
     def test_extract_title_from_metadata(self):
         """Title extracted from fenced metadata block."""
-        text = '```metadata\ntitle: My Great Adventure\n```\n\nContent here'
+        text = "```metadata\ntitle: My Great Adventure\n```\n\nContent here"
         result = _extract_metadata_title(text)
         self.assertEqual(result, "My Great Adventure")
 
@@ -80,7 +82,7 @@ class TestMetadataExtraction(unittest.TestCase):
 
     def test_empty_title_returns_none(self):
         """Empty title in metadata returns None."""
-        text = '```metadata\ntitle: \n```\n\nContent'
+        text = "```metadata\ntitle: \n```\n\nContent"
         result = _extract_metadata_title(text)
         self.assertIsNone(result)
 
@@ -118,7 +120,7 @@ class TestRoomBlockExtraction(unittest.TestCase):
         """Single room extracted correctly."""
         text = "## Room 1: The Entrance\n\nYou enter a dark room.\n\n### The Puzzle\nSolve the riddle."
         rooms = _parse_room_blocks(text)
-        
+
         self.assertEqual(len(rooms), 1)
         self.assertEqual(rooms[0]["source_room_number"], 1)
         self.assertEqual(rooms[0]["source_room_title"], "The Entrance")
@@ -135,7 +137,7 @@ Description 2
 ## Room 3: Third Room
 Description 3"""
         rooms = _parse_room_blocks(text)
-        
+
         self.assertEqual(len(rooms), 3)
         self.assertEqual(rooms[0]["source_room_number"], 1)
         self.assertEqual(rooms[1]["source_room_number"], 2)
@@ -152,7 +154,7 @@ Middle desc
 ## Room 100: Finale
 Finale desc"""
         rooms = _parse_room_blocks(text)
-        
+
         self.assertEqual(len(rooms), 3)
         self.assertEqual(rooms[0]["source_room_number"], 1)
         self.assertEqual(rooms[1]["source_room_number"], 2)
@@ -172,7 +174,7 @@ class TestSequentialIDGeneration(unittest.TestCase):
             {"source_room_number": 100, "name": "Room 100"},
         ]
         area_id, location_ids = _generate_neq_ids("Test_Module", rooms)
-        
+
         self.assertEqual(area_id, "TES001")
         # Location IDs are sequential: 01, 02, 03
         # NOT matching source room numbers
@@ -185,7 +187,7 @@ class TestSequentialIDGeneration(unittest.TestCase):
             {"source_room_number": 100, "name": "Room 100: Finale"},
         ]
         area_id, location_ids = _generate_neq_ids("Birble_Adventure", rooms)
-        
+
         # Room 100 is second in list, gets ID 02
         self.assertEqual(location_ids[1], "BIR02")
         self.assertNotEqual(location_ids[1], "BIR100")
@@ -196,10 +198,10 @@ class TestSequentialIDGeneration(unittest.TestCase):
             {"source_room_number": 1, "name": "Room 1"},
             {"source_room_number": 2, "name": "Room 2"},
         ]
-        
+
         area_id1, location_ids1 = _generate_neq_ids("Test", rooms)
         area_id2, location_ids2 = _generate_neq_ids("Test", rooms)
-        
+
         self.assertEqual(area_id1, area_id2)
         self.assertEqual(location_ids1, location_ids2)
 
@@ -211,7 +213,7 @@ class TestDryRunContract(unittest.TestCase):
         """Create temp directory for test isolation."""
         self.temp_dir = tempfile.mkdtemp()
         self.source_file = Path(self.temp_dir) / "test_adventure.txt"
-        
+
         # Create a minimal test source
         self.source_file.write_text("""```metadata
 title: Test Adventure
@@ -231,7 +233,7 @@ Another test room.
     def test_dry_run_no_files_created(self):
         """Dry-run must not create module directory or artifacts."""
         output_root = Path(self.temp_dir) / "modules"
-        
+
         result = import_homebrewery_adventure_to_module(
             source_path=str(self.source_file),
             module_slug="DryRun_Test",
@@ -239,9 +241,9 @@ Another test room.
             use_deterministic=True,
             dry_run=True,
         )
-        
+
         self.assertEqual(result["status"], "dry_run")
-        
+
         # Verify no module directory was created
         expected_module_path = output_root / "DryRun_Test"
         self.assertFalse(expected_module_path.exists())
@@ -255,7 +257,7 @@ Another test room.
             use_deterministic=True,
             dry_run=True,
         )
-        
+
         self.assertIn("preview", result)
         self.assertEqual(result["preview"]["room_count"], 2)
         self.assertIn("area_id", result["preview"])
@@ -269,7 +271,7 @@ class TestRoomMetadataPreservation(unittest.TestCase):
         """Source room number stored in room record."""
         text = "## Room 100: The Finale\n\nEpic final battle."
         rooms = _parse_room_blocks(text)
-        
+
         self.assertEqual(len(rooms), 1)
         self.assertEqual(rooms[0]["source_room_number"], 100)
         self.assertEqual(rooms[0]["source_room_title"], "The Finale")
@@ -285,11 +287,15 @@ class TestIntermediateAdventureStructure(unittest.TestCase):
         rooms = [
             {"source_room_number": 1, "name": "Room 1", "description": "Start"},
             {"source_room_number": 2, "name": "Room 2", "description": "Middle"},
-            {"source_room_number": 100, "name": "Room 100: Finale", "description": "End"},
+            {
+                "source_room_number": 100,
+                "name": "Room 100: Finale",
+                "description": "End",
+            },
         ]
-        
+
         intermediate = _build_intermediate_adventure("Test", "/test.txt", rooms)
-        
+
         self.assertIn("chapters", intermediate)
         self.assertIn("rooms", intermediate)
         self.assertEqual(len(intermediate["rooms"]), 3)
@@ -298,14 +304,20 @@ class TestIntermediateAdventureStructure(unittest.TestCase):
         """Room 100 triggers finale chapter creation."""
         rooms = [
             {"source_room_number": 1, "name": "Room 1", "description": "Start"},
-            {"source_room_number": 100, "name": "Room 100: Boss", "description": "Boss fight"},
+            {
+                "source_room_number": 100,
+                "name": "Room 100: Boss",
+                "description": "Boss fight",
+            },
         ]
-        
+
         intermediate = _build_intermediate_adventure("Test", "/test.txt", rooms)
-        
+
         # Should have multiple chapters including finale
         chapters = intermediate.get("chapters", [])
-        finale_chapters = [c for c in chapters if "finale" in c.get("title", "").lower()]
+        finale_chapters = [
+            c for c in chapters if "finale" in c.get("title", "").lower()
+        ]
         # Note: current implementation may group into standard chapters
         # This test verifies structure is reasonable
         self.assertGreater(len(chapters), 0)
@@ -317,21 +329,23 @@ class TestRegistrationGateBehavior(unittest.TestCase):
     def test_registration_success_contract(self):
         """Success requires validation pass + registry presence."""
         from core.importers.homebrewery_importer import _register_module_if_valid
-        
+
         # Stub ModuleStitcher
         class MockStitcher:
             def integrate_module(self, slug):
                 return True
+
             world_registry = {"modules": {"Test_Module": {}}}
-        
+
         # Patch STITCHER_AVAILABLE and ModuleStitcher
         import core.importers.homebrewery_importer as importer
+
         orig_stitcher = importer.ModuleStitcher
         orig_available = importer.STITCHER_AVAILABLE
-        
+
         importer.ModuleStitcher = MockStitcher
         importer.STITCHER_AVAILABLE = True
-        
+
         try:
             result = _register_module_if_valid(
                 module_slug="Test_Module",
@@ -349,19 +363,21 @@ class TestRegistrationGateBehavior(unittest.TestCase):
     def test_registration_failure_integration_false(self):
         """Registration fails when integrate_module returns False."""
         from core.importers.homebrewery_importer import _register_module_if_valid
-        
+
         class MockStitcher:
             def integrate_module(self, slug):
                 return False
+
             world_registry = {"modules": {}}  # Empty registry
-        
+
         import core.importers.homebrewery_importer as importer
+
         orig_stitcher = importer.ModuleStitcher
         orig_available = importer.STITCHER_AVAILABLE
-        
+
         importer.ModuleStitcher = MockStitcher
         importer.STITCHER_AVAILABLE = True
-        
+
         try:
             result = _register_module_if_valid(
                 module_slug="Test_Module",
@@ -371,7 +387,9 @@ class TestRegistrationGateBehavior(unittest.TestCase):
             self.assertTrue(result["registration_attempted"])
             self.assertFalse(result["registration_success"])
             self.assertFalse(result["registry_module_present"])
-            self.assertIn("Module integration returned False", result["registration_errors"])
+            self.assertIn(
+                "Module integration returned False", result["registration_errors"]
+            )
         finally:
             importer.ModuleStitcher = orig_stitcher
             importer.STITCHER_AVAILABLE = orig_available
@@ -379,19 +397,21 @@ class TestRegistrationGateBehavior(unittest.TestCase):
     def test_registration_failure_registry_absence(self):
         """Registration fails when module missing from registry after integration."""
         from core.importers.homebrewery_importer import _register_module_if_valid
-        
+
         class MockStitcher:
             def integrate_module(self, slug):
                 return True  # Integration reports success
+
             world_registry = {"modules": {}}  # But registry is empty
-        
+
         import core.importers.homebrewery_importer as importer
+
         orig_stitcher = importer.ModuleStitcher
         orig_available = importer.STITCHER_AVAILABLE
-        
+
         importer.ModuleStitcher = MockStitcher
         importer.STITCHER_AVAILABLE = True
-        
+
         try:
             result = _register_module_if_valid(
                 module_slug="Test_Module",
@@ -401,7 +421,10 @@ class TestRegistrationGateBehavior(unittest.TestCase):
             self.assertTrue(result["registration_attempted"])
             self.assertTrue(result["registration_success"])  # Integration succeeded
             self.assertFalse(result["registry_module_present"])  # But not in registry
-            self.assertIn("Module not found in registry after integration", result["registration_errors"])
+            self.assertIn(
+                "Module not found in registry after integration",
+                result["registration_errors"],
+            )
         finally:
             importer.ModuleStitcher = orig_stitcher
             importer.STITCHER_AVAILABLE = orig_available
@@ -409,7 +432,7 @@ class TestRegistrationGateBehavior(unittest.TestCase):
     def test_registration_skipped_in_non_strict_mode(self):
         """Registration not attempted in non-strict mode."""
         from core.importers.homebrewery_importer import _register_module_if_valid
-        
+
         result = _register_module_if_valid(
             module_slug="Test_Module",
             validation_passed=True,
@@ -418,7 +441,9 @@ class TestRegistrationGateBehavior(unittest.TestCase):
         self.assertFalse(result["registration_attempted"])
         self.assertFalse(result["registration_success"])
         self.assertFalse(result["registry_module_present"])
-        self.assertIn("Registration skipped in non-strict mode", result["registration_errors"])
+        self.assertIn(
+            "Registration skipped in non-strict mode", result["registration_errors"]
+        )
 
 
 class TestFailClosedQuarantinePath(unittest.TestCase):
@@ -444,20 +469,22 @@ Another test room.
     def test_strict_quarantine_without_registry_presence(self):
         """Strict success requires registry presence - fail-closed."""
         from core.importers.homebrewery_importer import _register_module_if_valid
-        
+
         # Stub that simulates integration success but registry miss
         class MockStitcher:
             def integrate_module(self, slug):
                 return True
+
             world_registry = {"modules": {}}  # Missing our module
-        
+
         import core.importers.homebrewery_importer as importer
+
         orig_stitcher = importer.ModuleStitcher
         orig_available = importer.STITCHER_AVAILABLE
-        
+
         importer.ModuleStitcher = MockStitcher
         importer.STITCHER_AVAILABLE = True
-        
+
         try:
             # Simulate validation pass
             registration_result = _register_module_if_valid(
@@ -465,10 +492,10 @@ Another test room.
                 validation_passed=True,
                 strict=True,
             )
-            
+
             # Core invariant: strict requires registry presence
             self.assertFalse(registration_result["registry_module_present"])
-            
+
             # If we were to call the full importer, this would trigger quarantine
             # with quarantine_reason == "registry_integration_failed"
             # The invariant is checked in importer around line 934
@@ -493,6 +520,7 @@ class TestMapCoordinateSchemaContract(unittest.TestCase):
             }
             area_id = "TST001"
             location_ids = ["TST001_L01", "TST001_L02", "TST001_L03"]
+            spatial_plan = build_linear_spatial_plan(location_ids)
 
             map_path = _emit_map_file(
                 module_path=module_path,
@@ -500,6 +528,7 @@ class TestMapCoordinateSchemaContract(unittest.TestCase):
                 intermediate=intermediate,
                 area_id=area_id,
                 location_ids=location_ids,
+                spatial_plan=spatial_plan,
             )
 
             data = json.loads(map_path.read_text(encoding="utf-8"))
@@ -507,7 +536,8 @@ class TestMapCoordinateSchemaContract(unittest.TestCase):
 
             for i, room in enumerate(data["rooms"]):
                 self.assertIsInstance(room["coordinates"], str)
-                self.assertEqual(room["coordinates"], f"X{i}Y0")
+                self.assertEqual(room["coordinates"], f"X{10 + i}Y10")
+                self.assertIn("directions", room)
         finally:
             shutil.rmtree(temp_dir)
 

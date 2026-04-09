@@ -194,14 +194,16 @@ class TestSessionDiaryRebuild(unittest.TestCase):
         try:
             rows = conn.execute(
                 """
-                SELECT checkpoint_type, checkpoint_module, checkpoint_location, checkpoint_location_id, summary
+                SELECT checkpoint_type, checkpoint_id, checkpoint_module, checkpoint_location, checkpoint_location_id, summary, generation_mode, source_counts_json
                 FROM session_diary_entries
                 ORDER BY world_sort_key ASC, diary_id ASC
                 """
             ).fetchall()
             self.assertEqual(len(rows), 3)
             self.assertTrue(all(str(row["checkpoint_type"]) == "rebuild" for row in rows))
+            self.assertTrue(all(str(row["checkpoint_id"]).startswith("journal_chapter:") for row in rows))
             self.assertTrue(all(str(row["checkpoint_module"]) == "The_Thornwood_Watch" for row in rows))
+            self.assertTrue(all(str(row["generation_mode"]) == "fallback" for row in rows))
 
             first = rows[0]
             self.assertEqual(first["checkpoint_location"], "Rangers' Command Post")
@@ -212,6 +214,10 @@ class TestSessionDiaryRebuild(unittest.TestCase):
                 summary_text = str(row["summary"] or "")
                 self.assertNotIn("Rangers' Command Post, Thornwood Borderlands", summary_text)
                 self.assertFalse(summary_text.lower().startswith("- date:"))
+                source_counts = json.loads(str(row["source_counts_json"] or "{}"))
+                self.assertIn("chapter_source_start_index", source_counts)
+                self.assertIn("chapter_source_end_index", source_counts)
+                self.assertIn("chapter_source_entry_count", source_counts)
 
             location_ids = {str(row["checkpoint_location_id"] or "") for row in rows}
             self.assertIn("TW04", location_ids)
@@ -233,6 +239,45 @@ class TestSessionDiaryRebuild(unittest.TestCase):
         cleaned = _sanitize_rebuild_summary(raw)
         self.assertTrue(cleaned.startswith("This morning"))
         self.assertNotIn("Arrival at Rangers' Command Post and Journey to the Hermit's Glade", cleaned)
+
+    def test_rebuild_preserves_journal_source_order_over_world_time(self) -> None:
+        reordered_payload = {
+            "module": "Keep_of_Doom",
+            "entries": [
+                {
+                    "date": "1492 Springmonth 5",
+                    "time": "23:00:00",
+                    "location": "Late Camp",
+                    "summary": "The party camped after dusk and tended to wounds.",
+                },
+                {
+                    "date": "1492 Springmonth 5",
+                    "time": "01:00:00",
+                    "location": "Early Gate",
+                    "summary": "At first light, the party crossed the old gate.",
+                },
+            ],
+        }
+        with open("journal.json", "w", encoding="utf-8") as handle:
+            json.dump(reordered_payload, handle, ensure_ascii=True)
+
+        applied = rebuild_diary_from_journal(self.db_path, dry_run=False)
+        self.assertEqual(applied.get("status"), "success")
+        self.assertEqual(applied.get("replaced"), 2)
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = conn.execute(
+                "SELECT checkpoint_location, world_time FROM session_diary_entries ORDER BY world_sort_key ASC, diary_id ASC"
+            ).fetchall()
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(str(rows[0]["checkpoint_location"]), "Late Camp")
+            self.assertEqual(str(rows[0]["world_time"]), "23:00:00")
+            self.assertEqual(str(rows[1]["checkpoint_location"]), "Early Gate")
+            self.assertEqual(str(rows[1]["world_time"]), "01:00:00")
+        finally:
+            conn.close()
 
 
 if __name__ == "__main__":

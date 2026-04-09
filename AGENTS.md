@@ -58,6 +58,13 @@ python test_compression.py
 python analyze_telemetry.py
 ```
 
+### Python Interpreter Rule
+- Use `.venv/bin/python` as the default interpreter for repository runtime, rebuild, migration, and dependency-sensitive test commands.
+- Treat `.venv/bin/python` as REQUIRED for any path that may import third-party runtime dependencies such as `openai`, provider clients, Flask/web stack, or schema tooling.
+- Use bare `python` or `python3` only for clearly interpreter-agnostic commands or when the command is explicitly documented that way and does not depend on project-installed packages.
+- If a command changes runtime data or validates behavior that should match the app's real environment, prefer `.venv/bin/python`.
+- Diary-specific rule: all Diary rebuild, remediation, Story PDF, and diary/runtime hook verification commands should use `.venv/bin/python` to avoid silent fallback caused by missing dependencies in the system interpreter.
+
 ### Dependency Installation
 ```bash
 pip install -r requirements.txt

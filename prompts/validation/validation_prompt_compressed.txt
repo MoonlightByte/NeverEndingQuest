@@ -203,6 +203,16 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
    fail_reason: "Explicit arrival claim detected (arrives/enters/joins/etc) for off-location NPC but missing required state action. Add moveBackgroundNPC or updatePartyNPCs add, or remove explicit arrival wording from narration."
 }
 
+@LOCATION_EXCLUSIVITY_VALIDATION={
+    foreshadow_lane_valid: Distant-threat foreshadowing is VALID when it avoids present-scene instantiation (example: "you sense Malarok deeper ahead").
+    present_scene_rule: Present-scene claims must match authoritative currentLocationId truth.
+    metadata_scope: When authored sceneAuthority.presentSceneAnchors identify anchors owned by another location, narrating those anchors as present in the current scene is INVALID unless response includes deterministic transition to the owning location.
+    authored_exit_grounding_rule: If narration claims adjacent route/exit is blocked while authored connectivity still exists, this is INVALID unless deterministic blocker support exists (action/state) or authored blocker metadata supports the claim.
+    invalid_example_present_scene: "The Nexus Warden stands before you at the ritual altar" in current location with no transition to owning location -> INVALID.
+    valid_example_foreshadow: "You sense the Nexus Warden deeper ahead" with no present-scene instantiation -> VALID.
+    invalid_example_false_block: "The path to B02 is blocked" while current connectivity includes B02 and no blocker support -> INVALID.
+}
+
 @PARLAY_LOOP_PREVENTION={
     rule: Travel intent from peacefully resolved location must not loop back to same hostile blocker without action.
     trigger: Player expresses intent to leave/travel onward from current location
@@ -245,10 +255,12 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
    false_wrong_join_action: {"valid":false,"reason":"Used updateCharacterInfo to document NPC joining but missing updatePartyNPCs. When NPC joins party, MUST use updatePartyNPCs action. updateCharacterInfo is for stat/inventory changes, NOT party composition"}
    true_npc_arrival_with_action: {"valid":true,"reason":"Narration claims Scout Elen arrived from the trail and includes matching moveBackgroundNPC action with npcName='Scout Elen'. State sync maintained."}
    true_npc_join_with_action: {"valid":true,"reason":"Narration states Kira joins the party and includes matching updatePartyNPCs add action. Correct party composition update."}
-    false_npc_arrival_no_action: {"valid":false,"reason":"Narration claims 'Scout Elen emerges from the forest and greets you' but no moveBackgroundNPC or updatePartyNPCs action present. Off-location NPC arrival claims require matching state action. Add moveBackgroundNPC with npcName='Scout Elen' or remove arrival claim."}
-    true_already_present_npc: {"valid":true,"reason":"Narration mentions NPC already at current location requires no additional state action. Correct behavior."}
-    true_umpire_direct_answer: {"valid":true,"reason":"Direct rules question answered with ruling-first sentence and actions:[] because no state mutation was required."}
-    false_umpire_no_ruling: {"valid":false,"reason":"Direct adjudication question received only atmospheric narration without a clear ruling-first answer."}
+     false_npc_arrival_no_action: {"valid":false,"reason":"Narration claims 'Scout Elen emerges from the forest and greets you' but no moveBackgroundNPC or updatePartyNPCs action present. Off-location NPC arrival claims require matching state action. Add moveBackgroundNPC with npcName='Scout Elen' or remove arrival claim."}
+     true_already_present_npc: {"valid":true,"reason":"Narration mentions NPC already at current location requires no additional state action. Correct behavior."}
+     false_location_exclusive_present_scene: {"valid":false,"reason":"Narration instantiated a location-exclusive present-scene anchor owned by another location without transition. Remove present-scene claim, keep it as foreshadow, or add transition first."}
+     false_unsupported_exit_block: {"valid":false,"reason":"Narration claimed a connected exit was blocked while authored adjacency remained available and no deterministic blocker support was provided."}
+     true_umpire_direct_answer: {"valid":true,"reason":"Direct rules question answered with ruling-first sentence and actions:[] because no state mutation was required."}
+     false_umpire_no_ruling: {"valid":false,"reason":"Direct adjudication question received only atmospheric narration without a clear ruling-first answer."}
 }
 
 @CORRECT_ACTION_FORMAT={

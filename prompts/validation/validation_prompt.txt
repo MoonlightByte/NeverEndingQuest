@@ -1096,3 +1096,39 @@ Correction: Add updatePartyNPCs with operation="add" and npc details.
 - Describing NPC joining party without updatePartyNPCs add action
 - Assuming NPC presence without proper state tracking
 - Confusing already-present NPCs with off-location arrivals
+
+## LOCATION EXCLUSIVITY AND AUTHORED-EXIT GROUNDING VALIDATION RULES
+
+Apply a contradiction-class location truth check:
+
+### Foreshadow vs Present-Scene Contract:
+- **VALID**: Foreshadowing distant threats without claiming they are physically present now.
+- **INVALID**: Present-scene instantiation of location-exclusive finale anchors at the wrong location.
+
+### Scene-Authority Metadata Rule:
+- When authored location metadata declares `sceneAuthority.presentSceneAnchors` for another location, those anchors are location-exclusive present-scene content.
+- Narrating those anchors as physically present in the current scene is **INVALID** unless the same response includes deterministic location transition support committing the owning location.
+- If scene-authority metadata is absent, use the legacy runtime fallback behavior for exclusivity checks.
+
+### Authored-Exit Grounding Rule:
+- If narration claims a connected route/exit is blocked while authored connectivity remains available, require deterministic blocker support:
+  - supported action/state, or
+  - authored blocker metadata.
+- Without support, mark INVALID as unsupported route-blocking drift.
+
+### Validation Examples:
+
+**VALID - Foreshadow:**
+Narration: "You sense the ritual guardian deeper ahead in the ruins."
+No transition action.
+Result: VALID - foreshadow lane only.
+
+**INVALID - Location-Exclusive Present-Scene Leakage:**
+Narration: "The ritual guardian stands before you at the nexus altar."
+No transition to the anchor-owning location.
+Result: INVALID - location-exclusive present-scene contradiction.
+
+**INVALID - Unsupported Adjacent Exit Blocking:**
+Narration: "The path to B02 is blocked and impassable."
+Current connectivity still includes B02 and no deterministic blocker support present.
+Result: INVALID - unsupported route-block claim.

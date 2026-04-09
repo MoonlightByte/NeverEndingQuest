@@ -16,13 +16,19 @@ from dataclasses import dataclass, field
 import jsonschema
 import random
 from utils.module_path_manager import ModulePathManager
-from utils.ai_client_factory import create_chat_client, get_model_config, handle_provider_error
+from utils.ai_client_factory import (
+    create_chat_client,
+    get_model_config,
+    handle_provider_error,
+)
 from model_config import DM_MAIN_MODEL
+from utils.spatial_contract import build_location_aliases, build_tactical_grid
+
 
 @dataclass
 class LocationPromptGuide:
     """Detailed prompts and examples for each location field"""
-    
+
     name: str = """
     Location names should be evocative and specific to their purpose.
     They should hint at what players might find or experience.
@@ -36,7 +42,7 @@ class LocationPromptGuide:
     Format: 2-5 words, capitalize major words
     Style: Atmospheric, hints at location's nature
     """
-    
+
     type: str = """
     Location type defines its primary function and layout.
     Must match the area's theme (dungeon, wilderness, town, etc.)
@@ -55,7 +61,7 @@ class LocationPromptGuide:
     
     Choose based on location's role in the adventure.
     """
-    
+
     description: str = """
     The main description paints a vivid picture for players.
     Include sensory details and atmosphere.
@@ -78,7 +84,7 @@ class LocationPromptGuide:
     Length: 3-5 sentences
     Style: Present tense, immersive, specific details
     """
-    
+
     dmInstructions: str = """
     DM instructions provide practical running advice not obvious to players.
     Include mechanics, secrets, and pacing guidance.
@@ -102,7 +108,7 @@ class LocationPromptGuide:
     Length: 3-5 sentences
     Style: Mechanical, specific DCs and effects
     """
-    
+
     accessibility: str = """
     How easily can this location be accessed?
     Describes physical entry/exit challenges.
@@ -116,7 +122,7 @@ class LocationPromptGuide:
     
     Include: Physical barriers, skill checks, special requirements
     """
-    
+
     npcs: str = """
     NPCs found in this location (if any).
     List inhabitants with their disposition and purpose.
@@ -140,7 +146,7 @@ class LocationPromptGuide:
     
     Note: Your main.py will generate full stats when needed.
     """
-    
+
     monsters: str = """
     Creatures that may be encountered here.
     Include quantity ranges for scalability.
@@ -169,7 +175,7 @@ class LocationPromptGuide:
     
     Note: Combat stats generated separately by your system.
     """
-    
+
     plotHooks: str = """
     Story elements that draw players deeper into the adventure.
     Brief hints that connect to larger plot or offer side quests.
@@ -184,7 +190,7 @@ class LocationPromptGuide:
     Quantity: 1-3 hooks per location
     Purpose: Guide players, provide clues, create tension
     """
-    
+
     lootTable: str = """
     Potential treasures found through search or victory.
     Mix of monetary and useful items.
@@ -199,7 +205,7 @@ class LocationPromptGuide:
     Balance value with danger level and effort required.
     Important items should require investigation or risk.
     """
-    
+
     dangerLevel: str = """
     Overall threat assessment for the location.
     Must be one of: "Low", "Medium", "High", "Very High"
@@ -212,7 +218,7 @@ class LocationPromptGuide:
     
     Should match the area's overall danger level but can vary.
     """
-    
+
     connectivity: str = """
     Direct physical connections to other locations.
     List locationIds of adjacent rooms/areas.
@@ -225,7 +231,7 @@ class LocationPromptGuide:
     - Create interesting navigation choices
     - Allow multiple paths when possible
     """
-    
+
     traps: str = """
     Mechanical or magical hazards in the location.
     Each trap needs detection, disabling, and effect details.
@@ -250,7 +256,7 @@ class LocationPromptGuide:
     
     Balance lethality with level appropriateness.
     """
-    
+
     features: str = """
     Notable non-trap elements that define the location.
     Interactive or descriptive elements.
@@ -268,7 +274,7 @@ class LocationPromptGuide:
     
     Features add character and opportunities for interaction.
     """
-    
+
     dcChecks: str = """
     Skill challenges available in the location.
     Format: "SkillName DC XX: Result description"
@@ -283,7 +289,7 @@ class LocationPromptGuide:
     Provide 2-4 meaningful checks per location.
     Results should offer advantages or information.
     """
-    
+
     encounters: str = """
     Pre-planned encounters that occurred or may occur here.
     Used to track module history and planned events.
@@ -309,7 +315,7 @@ class LocationPromptGuide:
     
     Used for continuity and world persistence.
     """
-    
+
     doors: str = """
     Detailed information about entrances and exits.
     Each door/passage needs security and condition details.
@@ -340,7 +346,7 @@ class LocationPromptGuide:
     
     Doors control flow and present challenges.
     """
-    
+
     areaConnectivity: str = """
     Connections to different areas/maps entirely.
     Used for zone transitions.
@@ -356,7 +362,7 @@ class LocationPromptGuide:
     
     Helps track large-scale navigation.
     """
-    
+
     areaConnectivityId: str = """
     Area IDs corresponding to areaConnectivity names.
     Maintains technical references.
@@ -374,61 +380,63 @@ class LocationPromptGuide:
     Used by system for area transitions.
     """
 
+
 class LocationGenerator:
     def __init__(self):
         self.prompt_guide = LocationPromptGuide()
         self.schema = self.load_schema()
-    
+
     def load_schema(self) -> Dict[str, Any]:
         """Load the location schema for validation"""
         with open("schemas/loca_schema.json", "r") as f:
             return json.load(f)
-    
+
     def _slim_context_for_location(self, context: Any) -> Dict[str, Any]:
         """Extract only narrative-essential info for location generation"""
-        ctx_dict = context.to_dict() if hasattr(context, 'to_dict') else dict(context)
-        
+        ctx_dict = context.to_dict() if hasattr(context, "to_dict") else dict(context)
+
         slim = {
             "module_name": ctx_dict.get("module_name", ""),
             "areas": {},
             "locations": {},
-            "npcs": {}
+            "npcs": {},
         }
-        
+
         for a_id, a_data in ctx_dict.get("areas", {}).items():
             slim["areas"][a_id] = {
                 "name": a_data.get("name"),
-                "type": a_data.get("type")
+                "type": a_data.get("type"),
             }
-            
+
         for l_id, l_data in ctx_dict.get("locations", {}).items():
             slim["locations"][l_id] = {
                 "name": l_data.get("name"),
-                "type": l_data.get("type")
+                "type": l_data.get("type"),
             }
-            
+
         for n_id, n_data in ctx_dict.get("npcs", {}).items():
             slim["npcs"][n_id] = {
                 "name": n_data.get("name"),
                 "role": n_data.get("role"),
                 "faction": n_data.get("faction"),
-                "appears_in": n_data.get("appears_in", [])
+                "appears_in": n_data.get("appears_in", []),
             }
-            
+
         return slim
 
-    def generate_field(self, field_path: str, schema_info: Dict[str, Any], 
-                      context: Dict[str, Any]) -> Any:
+    def generate_field(
+        self, field_path: str, schema_info: Dict[str, Any], context: Dict[str, Any]
+    ) -> Any:
         """Generate content for a specific field"""
         field_name = field_path.split(".")[-1]
         guide_attr = field_name
-        
+
         # Handle nested fields with underscores
         if "." in field_path:
             guide_attr = field_path.replace(".", "_")
-        
+
         guide_text = getattr(self.prompt_guide, guide_attr, "")
-        
+
         prompt = f"""Generate content for the '{field_path}' field of a 5e location.
 
 Field Schema:
@@ -445,10 +453,10 @@ For strings, return just the string.
 For arrays, return just the array.
 For objects, return just the object.
 """
-        
+
         client = create_chat_client()
         config = get_model_config("location_generator", DM_MAIN_MODEL)
-        
+
         max_retries = 3
         for attempt in range(max_retries):
             try:
@@ -457,9 +465,12 @@ For objects, return just the object.
                     **config.get("extra_body", {}),
                     temperature=0.7,
                     messages=[
-                        {"role": "system", "content": "You are an expert 5e location designer. Return only the requested data in the exact format needed."},
-                        {"role": "user", "content": prompt}
-                    ]
+                        {
+                            "role": "system",
+                            "content": "You are an expert 5e location designer. Return only the requested data in the exact format needed.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
                 )
                 break
             except Exception as e:
@@ -468,66 +479,74 @@ For objects, return just the object.
                     client = create_chat_client(use_fallback=True)
                     continue
                 raise
-        
+
         content = response.choices[0].message.content.strip()
-        
+
         # Try to parse as JSON if it looks like JSON
-        if content.startswith(('[', '{')):
+        if content.startswith(("[", "{")):
             try:
                 return json.loads(content)
             except json.JSONDecodeError:
                 pass
-        
+
         return content
-    
-    def generate_location_batch(self, 
-                               area_data: Dict[str, Any],
-                               plot_data: Dict[str, Any],
-                               module_data: Dict[str, Any],
-                               location_stubs: List[Dict[str, Any]],
-                               context=None,
-                               excluded_names=None,
-                               context_header: str = "") -> Dict[str, Any]:
+
+    def generate_location_batch(
+        self,
+        area_data: Dict[str, Any],
+        plot_data: Dict[str, Any],
+        module_data: Dict[str, Any],
+        location_stubs: List[Dict[str, Any]],
+        context=None,
+        excluded_names=None,
+        context_header: str = "",
+    ) -> Dict[str, Any]:
         """Generate all locations for an area in one go for better coherence"""
-        
+
         generation_context = {
             "module": {
                 "name": module_data.get("moduleName", ""),
                 "description": module_data.get("moduleDescription", ""),
                 "theme": module_data.get("worldSettings", {}).get("era", ""),
-                "magicLevel": module_data.get("worldSettings", {}).get("magicPrevalence", "")
+                "magicLevel": module_data.get("worldSettings", {}).get(
+                    "magicPrevalence", ""
+                ),
             },
             "area": {
                 "name": area_data.get("areaName", ""),
                 "type": area_data.get("areaType", "dungeon"),
                 "description": area_data.get("areaDescription", ""),
                 "dangerLevel": area_data.get("dangerLevel", "medium"),
-                "recommendedLevel": area_data.get("recommendedLevel", 1)
+                "recommendedLevel": area_data.get("recommendedLevel", 1),
             },
             "plot": {
                 "title": plot_data.get("plotTitle", ""),
                 "objective": plot_data.get("mainObjective", ""),
-                "currentStage": plot_data.get("plotPoints", [{}])[0].get("description", "") if plot_data.get("plotPoints") else ""
+                "currentStage": plot_data.get("plotPoints", [{}])[0].get(
+                    "description", ""
+                )
+                if plot_data.get("plotPoints")
+                else "",
             },
-            "locationStubs": location_stubs
+            "locationStubs": location_stubs,
         }
-        
+
         # Add validation requirements if context provided
         validation_prompt = ""
         if context:
             validation_prompt = context.get_validation_prompt()
-        
+
         # Add party name exclusion to prompt
         party_exclusion_prompt = ""
         if excluded_names:
             party_exclusion_prompt = f"""
-CRITICAL: Do NOT use these names for NPCs as they are existing party members: {', '.join(excluded_names)}
+CRITICAL: Do NOT use these names for NPCs as they are existing party members: {", ".join(excluded_names)}
 Create entirely different names that don't conflict with or resemble these party member names.
 Avoid any variations, surnames, or titles using these names.
 """
-        
+
         # Generate all locations with a single comprehensive prompt
-        batch_prompt = f"""{context_header}Generate detailed 5e locations for {area_data.get('areaName', 'this area')}.
+        batch_prompt = f"""{context_header}Generate detailed 5e locations for {area_data.get("areaName", "this area")}.
 
 {party_exclusion_prompt}
 
@@ -543,7 +562,7 @@ Ensure locations:
 3. If a location stub already has an NPC entry (like a pre-placed antagonist), you MUST include that NPC. You can enhance their description, but their name and presence are mandatory
 4. Vary in purpose and challenge
 5. Include a mix of combat, exploration, and roleplay opportunities
-6. Feel cohesive as part of the same {area_data.get('areaType', 'area')}
+6. Feel cohesive as part of the same {area_data.get("areaType", "area")}
 
 Return a JSON object with a 'locations' array containing all complete location objects.
 Each location must include ALL required fields from the location schema.
@@ -582,10 +601,10 @@ AREA CONNECTIVITY RULES:
 
 Check the location schema carefully for all required fields.
 """
-        
+
         client = create_chat_client()
         config = get_model_config("location_generator_batch", DM_MAIN_MODEL)
-        
+
         max_retries = 3
         for attempt in range(max_retries):
             try:
@@ -594,10 +613,13 @@ Check the location schema carefully for all required fields.
                     **config.get("extra_body", {}),
                     temperature=0.8,
                     messages=[
-                        {"role": "system", "content": "You are an expert 5e dungeon designer creating cohesive, interconnected locations."},
-                        {"role": "user", "content": batch_prompt}
+                        {
+                            "role": "system",
+                            "content": "You are an expert 5e dungeon designer creating cohesive, interconnected locations.",
+                        },
+                        {"role": "user", "content": batch_prompt},
                     ],
-                    response_format={"type": "json_object"}
+                    response_format={"type": "json_object"},
                 )
                 break
             except Exception as e:
@@ -606,21 +628,23 @@ Check the location schema carefully for all required fields.
                     client = create_chat_client(use_fallback=True)
                     continue
                 raise
-        
+
         return json.loads(response.choices[0].message.content)
-    
-    def generate_locations(self,
-                          area_data: Dict[str, Any],
-                          plot_data: Dict[str, Any],
-                          module_data: Dict[str, Any],
-                          context=None,
-                          excluded_names=None,
-                          context_header: str = "") -> Dict[str, Any]:
+
+    def generate_locations(
+        self,
+        area_data: Dict[str, Any],
+        plot_data: Dict[str, Any],
+        module_data: Dict[str, Any],
+        context=None,
+        excluded_names=None,
+        context_header: str = "",
+    ) -> Dict[str, Any]:
         """Generate all locations for an area"""
-        
+
         # Get location stubs from area data or create from map
         location_stubs = area_data.get("locations", [])
-        
+
         if not location_stubs and "map" in area_data:
             # Create location stubs from map rooms
             location_stubs = []
@@ -630,34 +654,45 @@ Check the location schema carefully for all required fields.
                     "name": room["name"],
                     "type": room["type"],
                     "connections": room["connections"],
-                    "coordinates": room["coordinates"]
+                    "coordinates": room["coordinates"],
                 }
                 location_stubs.append(location_stub)
-        
+
         if not location_stubs:
-            print("DEBUG: [Location Generator] Warning: No location stubs or map found in area data")
+            print(
+                "DEBUG: [Location Generator] Warning: No location stubs or map found in area data"
+            )
             return {"locations": []}
-        
-        print(f"DEBUG: [Location Generator] Generating {len(location_stubs)} locations for {area_data.get('areaName', 'area')}...")
-        
+
+        print(
+            f"DEBUG: [Location Generator] Generating {len(location_stubs)} locations for {area_data.get('areaName', 'area')}..."
+        )
+
         # Generate all locations in batch
         location_data = self.generate_location_batch(
-            area_data, plot_data, module_data, location_stubs, context, excluded_names, context_header)
-        
+            area_data,
+            plot_data,
+            module_data,
+            location_stubs,
+            context,
+            excluded_names,
+            context_header,
+        )
+
         # Ensure each location has required fields and connections
         locations = location_data.get("locations", [])
-        
+
         # Post-process to ensure consistency
         location_ids = set()
         for loc in locations:
             if isinstance(loc, dict) and "locationId" in loc:
                 location_ids.add(loc["locationId"])
-        
+
         for location in locations:
             # Validate connections exist
             raw_connectivity = location.get("connectivity", [])
             validated_connectivity = []
-            
+
             for conn in raw_connectivity:
                 # Handle both string and dict formats
                 if isinstance(conn, str):
@@ -666,9 +701,9 @@ Check the location schema carefully for all required fields.
                 elif isinstance(conn, dict) and "locationId" in conn:
                     if conn["locationId"] in location_ids:
                         validated_connectivity.append(conn["locationId"])
-            
+
             location["connectivity"] = validated_connectivity
-            
+
             # CRITICAL FIX: Update context with actual NPC placements
             if context:
                 area_id = area_data.get("areaId")
@@ -680,34 +715,59 @@ Check the location schema carefully for all required fields.
                     if npc_name and area_id and location_id:
                         # Update context with full NPC info for better matching
                         context.add_npc(
-                            npc_name=npc_name, 
-                            area_id=area_id, 
+                            npc_name=npc_name,
+                            area_id=area_id,
                             location_id=location_id,
-                            description=npc_description  # Pass the description
+                            description=npc_description,  # Pass the description
                         )
-                        print(f"DEBUG: [Location Generator] Registered/Updated context for: {npc_name} in {area_id}:{location_id}")
-            
+                        print(
+                            f"DEBUG: [Location Generator] Registered/Updated context for: {npc_name} in {area_id}:{location_id}"
+                        )
+
             # Ensure plot-critical locations have appropriate content
             location_id = location["locationId"]
-            
+
             # Check if this location is referenced in plot
             for plot_point in plot_data.get("plotPoints", []):
                 if plot_point.get("location") == location_id:
                     # This is a plot-critical location
                     if not location.get("plotHooks"):
                         location["plotHooks"] = []
-                    
+
                     # Add a plot hook if not already present
                     plot_hint = f"This area seems connected to {plot_point.get('title', 'current events')}"
                     if plot_hint not in location["plotHooks"]:
                         location["plotHooks"].append(plot_hint)
-            
+
             # Set default values for optional fields
             if "encounters" not in location:
                 location["encounters"] = []
             if "adventureSummary" not in location:
                 location["adventureSummary"] = ""
-        
+            aliases = location.get("aliases")
+            if (
+                not isinstance(aliases, list)
+                or not aliases
+                or not all(isinstance(item, str) and item.strip() for item in aliases)
+            ):
+                location["aliases"] = build_location_aliases(
+                    location.get("name", ""),
+                    location.get("locationId", ""),
+                    existing_aliases=aliases if isinstance(aliases, list) else None,
+                )
+            if (
+                "tactical_grid" not in location
+                or not isinstance(location.get("tactical_grid"), list)
+                or len(location.get("tactical_grid", [])) != 9
+                or not all(
+                    isinstance(cell, str) for cell in location.get("tactical_grid", [])
+                )
+            ):
+                location["tactical_grid"] = build_tactical_grid(
+                    location.get("name", ""),
+                    location.get("type", "room"),
+                )
+
         # Post-process: ensure name consistency between map and locations
         if "map" in area_data and "rooms" in area_data["map"]:
             for location in locations:
@@ -717,15 +777,17 @@ Check the location schema carefully for all required fields.
                         # If names differ, update map room name to match location
                         if room["name"] != location["name"]:
                             room["name"] = location["name"]
-                            print(f"DEBUG: [Location Generator] Updated map room {room['id']} name to match location: {location['name']}")
+                            print(
+                                f"DEBUG: [Location Generator] Updated map room {room['id']} name to match location: {location['name']}"
+                            )
                         break
-        
+
         return {"locations": locations}
-    
+
     def validate_locations(self, location_data: Dict[str, Any]) -> List[str]:
         """Validate location data against schema and logical consistency"""
         errors = []
-        
+
         # Schema validation for the container
         try:
             # Validate each location individually
@@ -734,83 +796,98 @@ Check the location schema carefully for all required fields.
         except jsonschema.ValidationError as e:
             errors.append(f"Schema validation error: {e.message}")
             return errors
-        
+
         # Content validation
         locations = location_data.get("locations", [])
         location_ids = {loc["locationId"] for loc in locations}
-        
+
         for location in locations:
             loc_id = location["locationId"]
-            
+
             # Check connections are valid
             for conn_id in location.get("connectivity", []):
                 if conn_id not in location_ids:
-                    errors.append(f"Location {loc_id} connects to non-existent location {conn_id}")
-            
+                    errors.append(
+                        f"Location {loc_id} connects to non-existent location {conn_id}"
+                    )
+
             # Check trap DCs are reasonable
             for trap in location.get("traps", []):
                 for dc_field in ["detectDC", "disableDC"]:
                     dc_value = trap.get(dc_field, 0)
                     if dc_value < 10 or dc_value > 30:
-                        errors.append(f"Location {loc_id} trap '{trap['name']}' has unreasonable {dc_field}: {dc_value}")
-            
+                        errors.append(
+                            f"Location {loc_id} trap '{trap['name']}' has unreasonable {dc_field}: {dc_value}"
+                        )
+
             # Check danger level consistency
             danger_level = location.get("dangerLevel", "Medium")
-            monster_count = sum(m.get("quantity", {}).get("max", 0) for m in location.get("monsters", []))
+            monster_count = sum(
+                m.get("quantity", {}).get("max", 0)
+                for m in location.get("monsters", [])
+            )
             trap_count = len(location.get("traps", []))
-            
+
             if danger_level == "Low" and (monster_count > 2 or trap_count > 1):
-                errors.append(f"Location {loc_id} marked as Low danger but has many threats")
-            elif danger_level == "Very High" and (monster_count == 0 and trap_count == 0):
-                errors.append(f"Location {loc_id} marked as Very High danger but has no threats")
-        
+                errors.append(
+                    f"Location {loc_id} marked as Low danger but has many threats"
+                )
+            elif danger_level == "Very High" and (
+                monster_count == 0 and trap_count == 0
+            ):
+                errors.append(
+                    f"Location {loc_id} marked as Very High danger but has no threats"
+                )
+
         return errors
-    
-    def save_locations(self, location_data: Dict[str, Any], area_id: str, module_name: str = None):
+
+    def save_locations(
+        self, location_data: Dict[str, Any], area_id: str, module_name: str = None
+    ):
         """Save location data to file using ModulePathManager"""
         path_manager = ModulePathManager(module_name)
-        
+
         # Ensure areas directory exists
         path_manager.ensure_areas_directory()
-        
+
         # Get the proper area file path
         filename = path_manager.get_area_path(area_id)
-        
+
         # Update the area file with full location data if it exists
         if os.path.exists(filename):
             with open(filename, "r") as f:
                 area_data = json.load(f)
-            
+
             area_data["locations"] = location_data["locations"]
-            
+
             with open(filename, "w") as f:
                 json.dump(area_data, f, indent=2)
-            
-            print(f"DEBUG: [Location Generator] Updated area file with locations: {filename}")
+
+            print(
+                f"DEBUG: [Location Generator] Updated area file with locations: {filename}"
+            )
         else:
             # If area file doesn't exist, just save locations
             with open(filename, "w") as f:
                 json.dump(location_data, f, indent=2)
-            
+
             print(f"DEBUG: [Location Generator] Saved locations to: {filename}")
+
 
 def main():
     """Interactive location generator for testing"""
     generator = LocationGenerator()
-    
+
     print("Location Generator Test")
     print("-" * 50)
-    
+
     # Mock data for testing
     mock_module = {
         "moduleName": "Echoes of the Elemental Forge",
         "moduleDescription": "Ancient dwarven magic threatens the realm",
-        "worldSettings": {
-            "era": "Age of Reclamation",
-            "magicPrevalence": "uncommon"
-        }
+        "worldSettings": {"era": "Age of Reclamation", "magicPrevalence": "uncommon"},
     }
-    
+
     mock_area = {
         "areaId": "EM001",
         "areaName": "Ember Hollow Mines",
@@ -819,14 +896,39 @@ def main():
         "dangerLevel": "medium",
         "recommendedLevel": 3,
         "locations": [
-            {"locationId": "R01", "name": "Mine Entrance", "type": "entrance", "connections": ["R02"]},
-            {"locationId": "R02", "name": "Guard Post", "type": "room", "connections": ["R01", "R03"]},
-            {"locationId": "R03", "name": "Main Shaft", "type": "corridor", "connections": ["R02", "R04", "R05"]},
-            {"locationId": "R04", "name": "Crystal Chamber", "type": "chamber", "connections": ["R03"]},
-            {"locationId": "R05", "name": "Forge Room", "type": "hall", "connections": ["R03"]}
-        ]
+            {
+                "locationId": "R01",
+                "name": "Mine Entrance",
+                "type": "entrance",
+                "connections": ["R02"],
+            },
+            {
+                "locationId": "R02",
+                "name": "Guard Post",
+                "type": "room",
+                "connections": ["R01", "R03"],
+            },
+            {
+                "locationId": "R03",
+                "name": "Main Shaft",
+                "type": "corridor",
+                "connections": ["R02", "R04", "R05"],
+            },
+            {
+                "locationId": "R04",
+                "name": "Crystal Chamber",
+                "type": "chamber",
+                "connections": ["R03"],
+            },
+            {
+                "locationId": "R05",
+                "name": "Forge Room",
+                "type": "hall",
+                "connections": ["R03"],
+            },
+        ],
     }
-    
+
     mock_plot = {
         "plotTitle": "Secrets of the Ember Forge",
         "mainObjective": "Stop the Ember cult from awakening the forge",
@@ -835,21 +937,21 @@ def main():
                 "id": "PP001",
                 "title": "The Abandoned Mine",
                 "description": "Investigate strange activities in the old mines",
-                "location": "R01"
+                "location": "R01",
             },
             {
-                "id": "PP002", 
+                "id": "PP002",
                 "title": "The Crystal Discovery",
                 "description": "Find the source of the elemental crystals",
-                "location": "R04"
-            }
-        ]
+                "location": "R04",
+            },
+        ],
     }
-    
+
     # Generate locations
     print("\nGenerating locations...")
     locations = generator.generate_locations(mock_area, mock_plot, mock_module)
-    
+
     # Validate
     errors = generator.validate_locations(locations)
     if errors:
@@ -858,10 +960,10 @@ def main():
             print(f"  - {error}")
     else:
         print("\nValidation successful!")
-        
+
         # Save
         generator.save_locations(locations, mock_area["areaId"])
-        
+
         # Display summary
         print(f"\nGenerated {len(locations.get('locations', []))} locations")
         for loc in locations.get("locations", []):
@@ -870,6 +972,7 @@ def main():
             print(f"    Monsters: {len(loc.get('monsters', []))}")
             print(f"    NPCs: {len(loc.get('npcs', []))}")
             print(f"    Traps: {len(loc.get('traps', []))}")
+
 
 if __name__ == "__main__":
     main()

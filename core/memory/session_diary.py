@@ -66,6 +66,7 @@ DIARY_TEMPLATE_PATH = "prompts/tabletop/session_diary_entry.txt"
 REBUILD_SUMMARY_MAX_CHARS = 680
 REBUILD_UNKNOWN_MONTH_BASE = 50
 JOURNAL_SOURCE_PREFIX = "journal.json:"
+REBUILD_SOURCE_ORDER_SORT_BASE = 10000000000000
 REBUILD_STRICT_NEAR_DUP_SECONDS = 900
 REBUILD_NEAR_DUP_SECONDS = 2700
 REBUILD_NEAR_DUP_SIMILARITY = 0.14
@@ -572,56 +573,24 @@ def _sanitize_rebuild_summary(summary_text: Any) -> str:
     return cleaned
 
 
-def _build_rebuild_candidates(conn: sqlite3.Connection, journal_entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Build normalized rebuild candidates from DB journal rows and journal.json source refs."""
+def _build_rebuild_candidates(journal_entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Build normalized rebuild candidates from ordered journal.json entries."""
     if not journal_entries:
-        return []
-
-    rows = conn.execute(
-        """
-        SELECT entry_id, entry_ts, title, content, source_ref
-        FROM journal_entries
-        WHERE source_type = 'journal'
-        ORDER BY entry_id ASC
-        """
-    ).fetchall()
-
-    if not rows:
         return []
 
     unknown_month_index_map: Dict[str, int] = {}
     candidates: List[Dict[str, Any]] = []
-    fallback_order = 0
 
-    for row in rows:
-        fallback_order += 1
-        source_index = _parse_source_ref_index(row["source_ref"])
-        resolved_source = None
-        if source_index is not None and 0 <= source_index < len(journal_entries):
-            resolved_source = journal_entries[source_index]
-        else:
-            source_index = fallback_order
+    for source_index, entry in enumerate(journal_entries, start=1):
+        if not isinstance(entry, dict):
+            continue
 
-        date_text = ""
-        time_text = ""
-        raw_location = ""
-        raw_summary = ""
-
-        if isinstance(resolved_source, dict):
-            date_text = str(resolved_source.get("date", "") or "").strip()
-            time_text = str(resolved_source.get("time", "") or "").strip()
-            raw_location = str(resolved_source.get("location", "") or "").strip()
-            raw_summary = str(resolved_source.get("summary", "") or "").strip()
-
-        if not time_text:
-            parsed_time = _parse_time_parts(str(row["entry_ts"] or ""))
-            time_text = f"{parsed_time[0]:02d}:{parsed_time[1]:02d}:{parsed_time[2]:02d}"
-
-        if not raw_location:
-            raw_location = str(row["title"] or "").strip() or "Unknown Location"
-
+        date_text = str(entry.get("date", "") or "").strip()
+        time_text = str(entry.get("time", "") or "").strip() or "00:00:00"
+        raw_location = str(entry.get("location", "") or "").strip() or "Unknown Location"
+        raw_summary = str(entry.get("summary", "") or "").strip()
         if not raw_summary:
-            raw_summary = str(row["content"] or "").strip()
+            raw_summary = str(entry.get("content", "") or "").strip()
 
         sanitized_summary = _sanitize_rebuild_summary(raw_summary)
         if not sanitized_summary:
@@ -629,8 +598,8 @@ def _build_rebuild_candidates(conn: sqlite3.Connection, journal_entries: List[Di
 
         location_parts = _split_location_label(raw_location)
         world_fields = _parse_journal_date_fields(date_text, source_index, unknown_month_index_map)
-        world_fields["world_time"] = time_text or "00:00:00"
-        world_fields["world_sort_key"] = _compute_rebuild_sort_key(world_fields, source_index)
+        world_fields["world_time"] = time_text
+        world_fields["world_sort_key"] = REBUILD_SOURCE_ORDER_SORT_BASE + source_index
 
         group_key = "|".join(
             [
@@ -644,7 +613,7 @@ def _build_rebuild_candidates(conn: sqlite3.Connection, journal_entries: List[Di
 
         candidates.append(
             {
-                "entry_id": _safe_int(row["entry_id"], 0),
+                "entry_id": source_index,
                 "source_index": source_index,
                 "summary": sanitized_summary,
                 "raw_location": raw_location,
@@ -655,7 +624,7 @@ def _build_rebuild_candidates(conn: sqlite3.Connection, journal_entries: List[Di
             }
         )
 
-    candidates.sort(key=lambda item: (item["source_index"], item["entry_id"]))
+    candidates.sort(key=lambda item: item["source_index"])
     return candidates
 
 
@@ -787,6 +756,200 @@ def _merge_near_duplicate_groups(groups: List[List[Dict[str, Any]]]) -> List[Lis
         merged.append(list(next_group))
 
     return merged
+
+
+def _build_rebuild_source_counts(group: List[Dict[str, Any]], source_start: int, source_end: int) -> str:
+    """Build source-count payload for one rebuilt chapter row."""
+    payload = {
+        "journal_entries": len(group),
+        "source_mode": "journal_chapter_rebuild",
+        "beat_count": len(group),
+        "source_type_counts": {"journal": len(group)},
+        "source_start_event_id": source_start,
+        "source_end_event_id": source_end,
+        "chapter_source_start_index": source_start,
+        "chapter_source_end_index": source_end,
+        "chapter_source_entry_count": len(group),
+    }
+    return json.dumps(payload, sort_keys=True)
+
+
+def _build_deterministic_chapter_summary(group: List[Dict[str, Any]]) -> str:
+    """Build deterministic chapter summary from grouped journal entries."""
+    if not group:
+        return "The chapter advanced, but no clear beats were available for recap."
+
+    seen: Dict[str, bool] = {}
+    beats: List[str] = []
+    for item in sorted(group, key=lambda row: _safe_int(row.get("source_index"), 0)):
+        beat = _sanitize_rebuild_summary(item.get("summary", ""))
+        if not beat:
+            continue
+        signature = re.sub(r"[^a-z0-9 ]", " ", beat.lower())
+        signature = re.sub(r"\s+", " ", signature).strip()
+        if signature and signature in seen:
+            continue
+        if signature:
+            seen[signature] = True
+        beats.append(beat)
+
+    if not beats:
+        return "The chapter advanced, but no clear beats were available for recap."
+
+    summary_parts: List[str] = [beats[0]]
+    for extra in beats[1:4]:
+        candidate = " ".join(summary_parts + [extra])
+        if len(candidate) > REBUILD_SUMMARY_MAX_CHARS:
+            break
+        summary_parts.append(extra)
+
+    summary = " ".join(summary_parts).strip()
+    if len(summary) > REBUILD_SUMMARY_MAX_CHARS:
+        summary = summary[:REBUILD_SUMMARY_MAX_CHARS].rstrip(" ,;:-") + "..."
+    return summary
+
+
+def _sanitize_generated_chapter_summary(summary_text: str, fallback_summary: str) -> str:
+    """Sanitize generated chapter summary and fail closed to fallback."""
+    cleaned = _sanitize_rebuild_summary(summary_text)
+    if not cleaned:
+        return fallback_summary
+    if _looks_like_structured_artifact(cleaned):
+        return fallback_summary
+    if len(cleaned) > REBUILD_SUMMARY_MAX_CHARS:
+        cleaned = cleaned[:REBUILD_SUMMARY_MAX_CHARS].rstrip(" ,;:-") + "..."
+    return cleaned
+
+
+def _render_chapter_summary_prompt(group: List[Dict[str, Any]], chapter_index: int) -> str:
+    """Render compact prompt for one chapter-summary generation."""
+    if not group:
+        return ""
+
+    ordered = sorted(group, key=lambda row: _safe_int(row.get("source_index"), 0))
+    first = ordered[0]
+    world_fields = first.get("world_fields", {})
+    month = str(world_fields.get("world_month", "") or "Unknown Month").strip() or "Unknown Month"
+    day = _safe_int(world_fields.get("world_day"), 0)
+    year = _safe_int(world_fields.get("world_year"), 0)
+    world_time = str(world_fields.get("world_time", "00:00:00") or "00:00:00").strip() or "00:00:00"
+    location = str(first.get("checkpoint_location", "") or "Unknown Location").strip() or "Unknown Location"
+
+    beats: List[str] = []
+    for item in ordered[:8]:
+        beat = str(item.get("summary", "") or "").strip()
+        if not beat:
+            continue
+        beats.append(f"- {beat}")
+
+    if not beats:
+        return ""
+
+    return (
+        f"Chapter {chapter_index} context:\n"
+        f"Date: {month} {day}, {year}\n"
+        f"Time: {world_time}\n"
+        f"Location: {location}\n"
+        "Summarize the chapter beats below into one concise diary paragraph (3-6 sentences), "
+        "in-world, player-facing, no headings, no JSON, no bullet points, no system terms.\n"
+        "Chapter beats:\n"
+        + "\n".join(beats)
+    )
+
+
+def _generate_rebuild_chapter_summary(group: List[Dict[str, Any]], chapter_index: int) -> Dict[str, Any]:
+    """Generate one chapter summary with optional LLM path and deterministic fallback."""
+    fallback_summary = _build_deterministic_chapter_summary(group)
+    fallback_payload = {
+        "summary": fallback_summary,
+        "generation_mode": "fallback",
+        "llm_model": None,
+    }
+
+    if not ENABLE_SESSION_DIARY_LLM:
+        return fallback_payload
+
+    if not AI_CLIENTS_AVAILABLE:
+        warning(
+            "SESSION_DIARY: LLM-enabled checkpoint summary degraded because AI client dependencies are unavailable in this interpreter",
+            category="memory_db",
+        )
+        return fallback_payload
+
+    prompt = _render_chapter_summary_prompt(group, chapter_index)
+    if not prompt:
+        return fallback_payload
+
+    config = get_model_config("summaries", DM_SUMMARIZATION_MODEL)
+    client = create_chat_client()
+
+    try:
+        response = client.chat.completions.create(
+            model=config["model"],
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Write concise in-world chapter recap prose and return only the paragraph.",
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            temperature=config.get("temperature", 0.7),
+            **config.get("extra_body", {}),
+        )
+        generated = ""
+        if response.choices and response.choices[0].message:
+            generated = str(response.choices[0].message.content or "").strip()
+        sanitized = _sanitize_generated_chapter_summary(generated, fallback_summary)
+        if sanitized == fallback_summary:
+            return fallback_payload
+        return {
+            "summary": sanitized,
+            "generation_mode": "llm",
+            "llm_model": config["model"],
+        }
+    except Exception as generation_error:
+        error_info = handle_provider_error(generation_error, context="session_diary_chapter_rebuild")
+        if error_info.get("should_fallback"):
+            try:
+                fallback_client = create_chat_client(use_fallback=True)
+                fallback_response = fallback_client.chat.completions.create(
+                    model=DM_SUMMARIZATION_MODEL,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "Write concise in-world chapter recap prose and return only the paragraph.",
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt,
+                        },
+                    ],
+                    temperature=config.get("temperature", 0.7),
+                )
+                generated = ""
+                if fallback_response.choices and fallback_response.choices[0].message:
+                    generated = str(fallback_response.choices[0].message.content or "").strip()
+                sanitized = _sanitize_generated_chapter_summary(generated, fallback_summary)
+                if sanitized != fallback_summary:
+                    return {
+                        "summary": sanitized,
+                        "generation_mode": "llm_fallback",
+                        "llm_model": DM_SUMMARIZATION_MODEL,
+                    }
+            except Exception as fallback_error:
+                warning(
+                    f"SESSION_DIARY: Rebuild chapter fallback generation failed: {fallback_error}",
+                    category="memory_db",
+                )
+
+        warning(
+            f"SESSION_DIARY: Rebuild chapter generation degraded: {generation_error}",
+            category="memory_db",
+        )
+        return fallback_payload
 
 
 def _resolve_rebuild_module(conn: sqlite3.Connection, journal_payload: Dict[str, Any]) -> str:
@@ -1325,6 +1488,10 @@ def _generate_checkpoint_summary(
         return fallback_payload
 
     if not AI_CLIENTS_AVAILABLE:
+        warning(
+            "SESSION_DIARY: LLM-enabled chapter rebuild degraded because AI client dependencies are unavailable in this interpreter",
+            category="memory_db",
+        )
         return fallback_payload
 
     if not source_beats:
@@ -2404,7 +2571,7 @@ def rebuild_diary_from_journal(
                 "dry_run": dry_run,
             }
 
-        candidates = _build_rebuild_candidates(conn, journal_entries)
+        candidates = _build_rebuild_candidates(journal_entries)
         if not candidates:
             return {
                 "status": "error",
@@ -2434,24 +2601,17 @@ def rebuild_diary_from_journal(
             world_fields = best["world_fields"]
             source_start = min(_safe_int(item.get("entry_id"), 0) for item in group)
             source_end = max(_safe_int(item.get("entry_id"), 0) for item in group)
-            source_counts = _build_source_counts(
-                [
-                    {
-                        "source_type": "journal",
-                    }
-                    for _ in group
-                ],
-                source_start,
-                source_end,
-                source_mode="journal_rebuild",
-                beat_count=len(group),
-            )
+            source_counts = _build_rebuild_source_counts(group, source_start, source_end)
+            summary_payload = _generate_rebuild_chapter_summary(group, chapter_index=index)
+            chapter_summary = str(summary_payload["summary"])
+            generation_mode = str(summary_payload.get("generation_mode", "fallback") or "fallback")
+            llm_model = summary_payload.get("llm_model")
 
             rebuilt_rows.append(
                 {
                     "checkpoint_type": "rebuild",
-                    "checkpoint_id": f"rebuild:{index:04d}",
-                    "summary": best["summary"],
+                    "checkpoint_id": f"journal_chapter:{index:04d}",
+                    "summary": chapter_summary,
                     "world_year": world_fields["world_year"],
                     "world_month": world_fields["world_month"],
                     "world_month_index": world_fields["world_month_index"],
@@ -2466,8 +2626,8 @@ def rebuild_diary_from_journal(
                     "checkpoint_location_id": best["checkpoint_location_id"],
                     "checkpoint_area": best["checkpoint_location"],
                     "checkpoint_area_id": "",
-                    "generation_mode": "rebuild",
-                    "llm_model": None,
+                    "generation_mode": generation_mode,
+                    "llm_model": llm_model,
                     "created_at": now_iso,
                     "updated_at": now_iso,
                 }
@@ -2569,7 +2729,7 @@ def rebuild_diary_from_journal(
                             ?,
                             ?,
                             ?,
-                            NULL,
+                            ?,
                             ?,
                             ?
                         )
@@ -2593,6 +2753,7 @@ def rebuild_diary_from_journal(
                             row["checkpoint_area"],
                             row["checkpoint_area_id"],
                             row["generation_mode"],
+                            row["llm_model"],
                             row["created_at"],
                             row["updated_at"],
                         ),
