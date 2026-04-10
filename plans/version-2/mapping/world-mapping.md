@@ -455,7 +455,7 @@ Success:
 
 ### 12.2 Required validation gates
 
-- `python core/validation/validate_module_files.py`
+- `.venv/bin/python core/validation/validate_module_files.py`
 - Verify map schema pass rate remains stable or improves
 - Verify no regression in movement, combat, and narration flows
 

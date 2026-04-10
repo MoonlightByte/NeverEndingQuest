@@ -26,7 +26,11 @@ from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import debug, error, warning
 
 try:
-    from utils.ai_client_factory import create_chat_client, get_model_config, handle_provider_error
+    from utils.ai_client_factory import (
+        create_chat_client,
+        get_model_config,
+        handle_provider_error,
+    )
 
     AI_CLIENTS_AVAILABLE = True
 except ImportError:
@@ -51,7 +55,12 @@ PROJECT_ROOT = MODULE_DIR.parents[1]
 
 def _utc_now_iso() -> str:
     """Return UTC timestamp in ISO-8601 format."""
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def _resolve_runtime_path(relative_path: str) -> str:
@@ -125,11 +134,21 @@ def _load_confirmed_entries(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
                 "generation_mode": row["generation_mode"],
                 "llm_model": row["llm_model"],
                 "checkpoint": {
-                    "module": row["checkpoint_module"] if "checkpoint_module" in row.keys() else None,
-                    "location": row["checkpoint_location"] if "checkpoint_location" in row.keys() else None,
-                    "location_id": row["checkpoint_location_id"] if "checkpoint_location_id" in row.keys() else None,
-                    "area": row["checkpoint_area"] if "checkpoint_area" in row.keys() else None,
-                    "area_id": row["checkpoint_area_id"] if "checkpoint_area_id" in row.keys() else None,
+                    "module": row["checkpoint_module"]
+                    if "checkpoint_module" in row.keys()
+                    else None,
+                    "location": row["checkpoint_location"]
+                    if "checkpoint_location" in row.keys()
+                    else None,
+                    "location_id": row["checkpoint_location_id"]
+                    if "checkpoint_location_id" in row.keys()
+                    else None,
+                    "area": row["checkpoint_area"]
+                    if "checkpoint_area" in row.keys()
+                    else None,
+                    "area_id": row["checkpoint_area_id"]
+                    if "checkpoint_area_id" in row.keys()
+                    else None,
                 },
                 "world": {
                     "year": row["world_year"],
@@ -162,12 +181,19 @@ def _load_story_template() -> str:
 def _get_current_campaign_context() -> Dict[str, Any]:
     """Load compact current campaign context for ending-state grounding."""
     party_tracker = safe_json_load(_resolve_runtime_path("party_tracker.json")) or {}
-    current_location = safe_json_load(_resolve_runtime_path("current_location.json")) or {}
+    current_location = (
+        safe_json_load(_resolve_runtime_path("current_location.json")) or {}
+    )
 
     module_name = str(party_tracker.get("module", "Unknown")).strip() or "Unknown"
     module_plot = {}
     if module_name and module_name.lower() != "unknown":
-        module_plot = safe_json_load(_resolve_runtime_path(f"modules/{module_name}/module_plot.json")) or {}
+        module_plot = (
+            safe_json_load(
+                _resolve_runtime_path(f"modules/{module_name}/module_plot.json")
+            )
+            or {}
+        )
 
     return {
         "campaign_name": module_name.replace("_", " "),
@@ -190,14 +216,28 @@ def _render_story_prompt(entries: List[Dict[str, Any]], context: Dict[str, Any])
         "{narrative_scope}": "Confirmed diary timeline only",
         "{target_length}": "Short chapter",
         "{chat_log}": "Confirmed diary entries already distilled the relevant source scenes.",
-        "{party_tracker_json}": json.dumps(context.get("party_tracker_json", {}), ensure_ascii=True, indent=2),
-        "{authoritative_state_packet_json}": json.dumps(context.get("party_tracker_json", {}), ensure_ascii=True, indent=2),
-        "{module_context_json}": json.dumps({"module": context.get("module_name", "Unknown Module")}, ensure_ascii=True, indent=2),
-        "{location_context_json}": json.dumps(context.get("location_context_json", {}), ensure_ascii=True, indent=2),
-        "{plot_json}": json.dumps(context.get("plot_json", {}), ensure_ascii=True, indent=2),
+        "{party_tracker_json}": json.dumps(
+            context.get("party_tracker_json", {}), ensure_ascii=True, indent=2
+        ),
+        "{authoritative_state_packet_json}": json.dumps(
+            context.get("party_tracker_json", {}), ensure_ascii=True, indent=2
+        ),
+        "{module_context_json}": json.dumps(
+            {"module": context.get("module_name", "Unknown Module")},
+            ensure_ascii=True,
+            indent=2,
+        ),
+        "{location_context_json}": json.dumps(
+            context.get("location_context_json", {}), ensure_ascii=True, indent=2
+        ),
+        "{plot_json}": json.dumps(
+            context.get("plot_json", {}), ensure_ascii=True, indent=2
+        ),
         "{journal_entries_json}": json.dumps(entries, ensure_ascii=True, indent=2),
         "{memory_events_json}": "[]",
-        "{confirmed_diary_entries_json}": json.dumps(entries, ensure_ascii=True, indent=2),
+        "{confirmed_diary_entries_json}": json.dumps(
+            entries, ensure_ascii=True, indent=2
+        ),
         "{campaign_history_blocks}": "",
         "{additional_context_json}": json.dumps({}, ensure_ascii=True, indent=2),
     }
@@ -208,7 +248,9 @@ def _render_story_prompt(entries: List[Dict[str, Any]], context: Dict[str, Any])
     return prompt
 
 
-def _generate_story_text_with_llm(entries: List[Dict[str, Any]], context: Dict[str, Any]) -> Dict[str, Any]:
+def _generate_story_text_with_llm(
+    entries: List[Dict[str, Any]], context: Dict[str, Any]
+) -> Dict[str, Any]:
     """Generate story text with the storyteller prompt and fallback handling."""
     if not AI_CLIENTS_AVAILABLE:
         return {
@@ -278,7 +320,9 @@ def _generate_story_text_with_llm(entries: List[Dict[str, Any]], context: Dict[s
                 )
                 story_text = ""
                 if fallback_response.choices and fallback_response.choices[0].message:
-                    story_text = str(fallback_response.choices[0].message.content or "").strip()
+                    story_text = str(
+                        fallback_response.choices[0].message.content or ""
+                    ).strip()
                 story_text = _sanitize_story_text(story_text)
                 if story_text:
                     return {
@@ -303,18 +347,31 @@ def _generate_story_text_with_llm(entries: List[Dict[str, Any]], context: Dict[s
         }
 
 
-def _build_fallback_story(entries: List[Dict[str, Any]], context: Dict[str, Any]) -> str:
+def _build_fallback_story(
+    entries: List[Dict[str, Any]], context: Dict[str, Any]
+) -> str:
     """Build deterministic fallback story text from confirmed diary summaries."""
-    campaign_name = str(context.get("campaign_name", "the campaign")).strip() or "the campaign"
+    campaign_name = (
+        str(context.get("campaign_name", "the campaign")).strip() or "the campaign"
+    )
     if not entries:
         return f"No confirmed chapters had yet been recorded for {campaign_name}."
 
-    paragraphs = [f"The story so far in {campaign_name} unfolded across these remembered chapters."]
+    paragraphs = [
+        f"The story so far in {campaign_name} unfolded across these remembered chapters."
+    ]
     for entry in entries:
         world = entry.get("world", {})
-        checkpoint = entry.get("checkpoint", {}) if isinstance(entry.get("checkpoint"), dict) else {}
+        checkpoint = (
+            entry.get("checkpoint", {})
+            if isinstance(entry.get("checkpoint"), dict)
+            else {}
+        )
         time_text = f"{world.get('month', '')} {world.get('day', 0)}, {world.get('year', 0)} at {world.get('time', '00:00:00')}"
-        location = str(checkpoint.get("location", "") or "Unknown Location").strip() or "Unknown Location"
+        location = (
+            str(checkpoint.get("location", "") or "Unknown Location").strip()
+            or "Unknown Location"
+        )
         module = str(checkpoint.get("module", "") or "").strip()
         if module:
             location_text = f"{location} ({module})"
@@ -341,7 +398,9 @@ def _build_pdf_pages(story_text: str) -> List[List[str]]:
     paragraphs = story_text.split("\n")
     pages: List[List[str]] = []
     current_page: List[str] = []
-    max_lines_per_page = max(1, int((PAGE_MARGIN_TOP - PAGE_MARGIN_BOTTOM) / LINE_HEIGHT))
+    max_lines_per_page = max(
+        1, int((PAGE_MARGIN_TOP - PAGE_MARGIN_BOTTOM) / LINE_HEIGHT)
+    )
 
     for paragraph in paragraphs:
         clean = paragraph.strip()
@@ -383,11 +442,20 @@ def _build_pdf_bytes(story_text: str) -> bytes:
 
     kids_refs = " ".join(f"{page_num} 0 R" for page_num in page_object_numbers)
     objects.append(b"<< /Type /Catalog /Pages 2 0 R >>")
-    objects.append(f"<< /Type /Pages /Kids [{kids_refs}] /Count {len(page_object_numbers)} >>".encode("ascii"))
+    objects.append(
+        f"<< /Type /Pages /Kids [{kids_refs}] /Count {len(page_object_numbers)} >>".encode(
+            "ascii"
+        )
+    )
     objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
 
     for page_index, lines in enumerate(pages):
-        content_lines = ["BT", f"/F1 12 Tf", f"{LINE_HEIGHT} TL", f"{PAGE_MARGIN_X} {PAGE_MARGIN_TOP} Td"]
+        content_lines = [
+            "BT",
+            f"/F1 12 Tf",
+            f"{LINE_HEIGHT} TL",
+            f"{PAGE_MARGIN_X} {PAGE_MARGIN_TOP} Td",
+        ]
         first_line_written = False
         for line in lines:
             if line:
@@ -430,7 +498,9 @@ def _build_pdf_bytes(story_text: str) -> bytes:
     for object_index in range(1, len(objects) + 1):
         pdf_parts.append(f"{offsets[object_index]:010d} 00000 n \n".encode("ascii"))
     pdf_parts.append(
-        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n".encode("ascii")
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n".encode(
+            "ascii"
+        )
     )
     return b"".join(pdf_parts)
 
@@ -461,7 +531,9 @@ def build_confirmed_story_text(db_path: str = DEFAULT_MEMORY_DB_PATH) -> Dict[st
         llm_result = _generate_story_text_with_llm(entries, context)
 
         if llm_result.get("status") == "success":
-            story_text = _sanitize_story_text(str(llm_result.get("story_text", "")).strip())
+            story_text = _sanitize_story_text(
+                str(llm_result.get("story_text", "")).strip()
+            )
             generation_mode = str(llm_result.get("generation_mode", "llm"))
             llm_model = llm_result.get("llm_model")
             if not story_text:
@@ -472,6 +544,12 @@ def build_confirmed_story_text(db_path: str = DEFAULT_MEMORY_DB_PATH) -> Dict[st
             story_text = _build_fallback_story(entries, context)
             generation_mode = "fallback"
             llm_model = None
+
+        if generation_mode == "fallback":
+            warning(
+                "STORY_SO_FAR: Story generation used deterministic fallback output; verify interpreter and AI dependencies if LLM output was expected.",
+                category="memory_db",
+            )
 
         return {
             "status": "success",
@@ -540,7 +618,9 @@ def get_or_build_story_pdf(db_path: str = DEFAULT_MEMORY_DB_PATH) -> Dict[str, A
         }
 
     _ensure_cache_dir()
-    cache_path = os.path.join(_resolve_runtime_path(STORY_CACHE_DIR), f"story_so_far_{fingerprint}.pdf")
+    cache_path = os.path.join(
+        _resolve_runtime_path(STORY_CACHE_DIR), f"story_so_far_{fingerprint}.pdf"
+    )
     conn: Optional[sqlite3.Connection] = None
 
     try:
@@ -568,7 +648,9 @@ def get_or_build_story_pdf(db_path: str = DEFAULT_MEMORY_DB_PATH) -> Dict[str, A
                     "generation_mode": story_result.get("generation_mode", "fallback"),
                 }
 
-        render_result = render_story_pdf(str(story_result.get("story_text", "")), cache_path)
+        render_result = render_story_pdf(
+            str(story_result.get("story_text", "")), cache_path
+        )
         if render_result.get("status") != "success":
             return render_result
 

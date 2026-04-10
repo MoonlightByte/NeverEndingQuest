@@ -363,3 +363,39 @@ Finished the remaining publication workflow slices and archived the publication 
 
 - Current legacy modules correctly remain not publishable under the stricter semantic gate.
 - The plan is now complete: substrate -> blockers -> probes -> publishable gate.
+
+---
+
+## 2026-04-10 - Venv Audit Remediation Pass
+
+### Summary
+
+Ran the planned interpreter audit and remediated the highest-risk mismatches.
+
+### What Landed
+
+1. **Command Guidance Cleanup**
+   - Active docs now point dependency-sensitive runtime and maintenance commands at `.venv/bin/python`.
+   - Touched:
+     - `AGENTS.md`
+     - `README.md`
+     - `plans/version-2/memory.md`
+     - `plans/version-2/module-import.md`
+     - `plans/version-2/mapping/world-mapping.md`
+
+2. **Diary Maintenance Hardening**
+   - `scripts/rebuild_session_diary_from_journal.py`
+   - `scripts/remediate_session_diary_entries.py`
+   - `--apply` now fails closed by default when AI client deps are missing while diary LLM mode is enabled, unless `--allow-fallback` is passed.
+
+3. **Story/Validator Visibility**
+   - `core/memory/story_so_far_compiler.py` now logs a loud warning when deterministic fallback story generation is used.
+   - `scripts/validate_modules_bulk.py` now warns when schema validation silently falls back to a different interpreter.
+
+4. **Audit Artifact**
+   - `docs/operations/venv-audit-report.md`
+
+### Notes
+
+- Remaining `python` references found by the audit scanner are in archived plans only and were intentionally left untouched.
+- `scripts/test_module_validation_cli.py` still has unrelated pre-existing failures; not introduced by this remediation pass.

@@ -180,7 +180,7 @@ Module naming convention should avoid collisions and remain deterministic.
 Run:
 
 ```bash
-python core/validation/validate_module_files.py
+.venv/bin/python core/validation/validate_module_files.py
 ```
 
 Publish policy:

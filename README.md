@@ -163,13 +163,13 @@ The installer automatically:
 
 1. **Install dependencies**: `pip install -r requirements.txt`
 2. **Add your OpenAI API key**: Copy `config_template.py` to `config.py` and add your key
-3. **Launch the game**: `python run_web.py` - opens the web interface at http://localhost:8357
+3. **Launch the game**: `.venv/bin/python run_web.py` - opens the web interface at http://localhost:8357
 4. **Start your adventure**: The AI will guide you through character creation and module selection
 
 ### Additional Launch Options
 
-- **Module Toolkit**: `python launch_toolkit.py` - Opens directly to the module creation interface
-- **Terminal Mode**: `python main.py` - Classic text-based interface (limited features)
+- **Module Toolkit**: `.venv/bin/python launch_toolkit.py` - Opens directly to the module creation interface
+- **Terminal Mode**: `.venv/bin/python main.py` - Classic text-based interface (limited features)
 
 > **Note**: The game is designed for the **web interface** which provides the optimal experience with real-time updates, character sheets, visual portraits, and the module toolkit.
 
@@ -220,7 +220,7 @@ The installer automatically:
 
 **NEW: Complete content creation suite for building custom adventures!**
 
-Access the toolkit from the web interface or launch directly with `python launch_toolkit.py`
+Access the toolkit from the web interface or launch directly with `.venv/bin/python launch_toolkit.py`
 
 ### Module Generator & Builder
 
@@ -336,15 +336,15 @@ See [LICENSING.md](LICENSING.md) for complete details, FAQ, and legal informatio
 
    ```bash
    # Full game with web interface (recommended)
-   python run_web.py
+   .venv/bin/python run_web.py
    # Opens at http://localhost:8357
 
    # Module Toolkit directly
-   python launch_toolkit.py
+   .venv/bin/python launch_toolkit.py
    # Opens at http://localhost:8357/toolkit
 
    # Terminal interface (basic)
-   python main.py
+   .venv/bin/python main.py
    ```
 
 ### First Time Setup
@@ -988,7 +988,7 @@ The AI analyzes area descriptions and themes to suggest natural narrative bridge
 
 ```bash
 # Launch the web interface
-python run_web.py
+.venv/bin/python run_web.py
 # Browser opens to http://localhost:8357
 # Follow the AI wizard for character creation
 ```
@@ -997,7 +997,7 @@ python run_web.py
 
 ```bash
 # Open toolkit directly
-python launch_toolkit.py
+.venv/bin/python launch_toolkit.py
 # Or navigate to http://localhost:8357/toolkit
 
 # Create a new module:

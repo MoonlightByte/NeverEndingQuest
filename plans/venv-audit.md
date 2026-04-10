@@ -1,8 +1,10 @@
 # Venv Audit Plan
 
-Status: Proposed
+Status: Completed (audit run 2026-04-10)
 Owner: OpenCode
 Purpose: Audit interpreter usage and silent dependency-fallback behavior so repository maintenance commands reliably use the same runtime environment as the application.
+
+Audit output: `docs/operations/venv-audit-report.md`
 
 ---
 

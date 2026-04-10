@@ -37,19 +37,19 @@ NeverEndingQuest is an AI-powered Dungeon Master system for running SRD 5.2.1 co
 ### Running the Application
 ```bash
 # Main web interface (recommended)
-python run_web.py          # Opens http://localhost:8357
+.venv/bin/python run_web.py          # Opens http://localhost:8357
 
 # Module toolkit directly
-python launch_toolkit.py    # Opens module creation interface
+.venv/bin/python launch_toolkit.py    # Opens module creation interface
 
 # Terminal mode (limited features)
-python main.py             # Classic text interface
+.venv/bin/python main.py             # Classic text interface
 ```
 
 ### Validation and Testing
 ```bash
 # Validate module schemas (run after JSON changes)
-python core/validation/validate_module_files.py   # Aim for 100% pass rate
+.venv/bin/python core/validation/validate_module_files.py   # Aim for 100% pass rate
 
 # Test compression system
 python test_compression.py
@@ -1027,6 +1027,42 @@ character_data["is_active_pc"] = True
 ---
 
 ## Recent Changes
+
+### Venv Interpreter Audit + Remediation (COMPLETED - 2026-04-10)
+
+**Status:** COMPLETED - Audited interpreter guidance and silent dependency fallback risk, then remediated the highest-priority doc and maintenance-path issues.
+
+**Objective:**
+- Make dependency-sensitive runtime and maintenance commands consistently point to `.venv/bin/python`.
+- Reduce silent wrong-interpreter degradation in diary/story maintenance workflows.
+- Surface schema-validator interpreter fallback more clearly.
+
+**Implementation Summary:**
+- Updated active command guidance to `.venv/bin/python` in:
+  - `AGENTS.md`
+  - `README.md`
+  - `plans/version-2/memory.md`
+  - `plans/version-2/module-import.md`
+  - `plans/version-2/mapping/world-mapping.md`
+- Hardened session diary maintenance wrappers:
+  - `scripts/rebuild_session_diary_from_journal.py`
+  - `scripts/remediate_session_diary_entries.py`
+  - `--apply` now fails closed by default when session-diary LLM mode is enabled but AI client dependencies are unavailable in the interpreter, unless `--allow-fallback` is passed.
+- Added loud fallback warning for Story So Far generation in:
+  - `core/memory/story_so_far_compiler.py`
+- Added schema interpreter transparency warning in:
+  - `scripts/validate_modules_bulk.py`
+- Wrote audit artifact:
+  - `docs/operations/venv-audit-report.md`
+- Marked audit plan complete:
+  - `plans/venv-audit.md`
+
+**Verification:**
+- `.venv/bin/python -m py_compile scripts/rebuild_session_diary_from_journal.py scripts/remediate_session_diary_entries.py core/memory/story_so_far_compiler.py scripts/validate_modules_bulk.py` -> PASS
+- `.venv/bin/python scripts/test_story_so_far_pdf_mvp.py` -> PASS
+- `.venv/bin/python scripts/rebuild_session_diary_from_journal.py --help` -> PASS
+- `.venv/bin/python scripts/remediate_session_diary_entries.py --help` -> PASS
+- `.venv/bin/python scripts/test_module_validation_cli.py` -> FAIL (pre-existing unrelated validator CLI expectations; not caused by these remediations)
 
 ### Module Publication Workflow Completion (COMPLETED - 2026-04-10)
 
@@ -4029,7 +4065,7 @@ Add Exit button to web GUI that gracefully stops all Python processes without re
 - Click "Exit" in pinned browser tab
 - Server acknowledges and gracefully shuts down
 - Terminal prints "Shutting down NeverEndingQuest Web Interface..."
-- User must manually restart with `python run_web.py`
+- User must manually restart with `.venv/bin/python run_web.py`
 
 **Phase 1 (Exit Only - Recommended):**
 - Modify `handle_user_exit()` in `web/web_interface.py` to gracefully stop server
@@ -5685,7 +5721,7 @@ Add operator-safe source selection and portability tooling so memory DB workflow
 **Validation:**
 - `python3 -m py_compile core/memory/memory_ingest.py core/memory/memory_portability.py core/memory/__init__.py scripts/backfill_memory_db.py scripts/test_memory_backfill_portability.py` -> PASS
 - `python3 scripts/test_memory_backfill_portability.py` -> PASS
-- `python3 scripts/backfill_memory_db.py --sources journal,foo` -> expected error (invalid selector)
+- `.venv/bin/python scripts/backfill_memory_db.py --sources journal,foo` -> expected error (invalid selector)
 
 **OpenSpec:**
 - Created and applied change: `memory-backfill-portability-tools`

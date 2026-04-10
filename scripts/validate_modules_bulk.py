@@ -91,6 +91,15 @@ def _pick_schema_python(repo_root: Path) -> str:
     return sys.executable
 
 
+def _warn_if_schema_python_differs(schema_python: str) -> None:
+    """Warn when schema validation is using a different interpreter."""
+    if str(schema_python) == str(sys.executable):
+        return
+    print(
+        f"[WARNING] Current interpreter lacks schema dependencies; using '{schema_python}' for schema validation instead of '{sys.executable}'."
+    )
+
+
 def _load_world_registry(modules_dir: Path) -> Set[str]:
     """Load registered module slugs from world_registry.json."""
     registry_path = modules_dir / "world_registry.json"
@@ -431,6 +440,8 @@ def main():
     results = {}
     any_failed = False
     schema_python = _pick_schema_python(repo_root)
+    if not args.json:
+        _warn_if_schema_python_differs(schema_python)
 
     for slug in targets:
         # Progress output only in human mode

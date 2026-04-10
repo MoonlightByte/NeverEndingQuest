@@ -1192,19 +1192,19 @@ After review and your approval, we can convert this directly into OpenSpec artif
 Run only journal source:
 
 ```bash
-python3 scripts/backfill_memory_db.py --sources journal
+.venv/bin/python scripts/backfill_memory_db.py --sources journal
 ```
 
 Run journal + combat only with safe preview:
 
 ```bash
-python3 scripts/backfill_memory_db.py --sources journal,combat --dry-run
+.venv/bin/python scripts/backfill_memory_db.py --sources journal,combat --dry-run
 ```
 
 Include system messages in source set:
 
 ```bash
-python3 scripts/backfill_memory_db.py --sources conversation,combat --include-system --dry-run
+.venv/bin/python scripts/backfill_memory_db.py --sources conversation,combat --include-system --dry-run
 ```
 
 ### Portability export/import
@@ -1212,25 +1212,25 @@ python3 scripts/backfill_memory_db.py --sources conversation,combat --include-sy
 Export package (DB copy + manifest):
 
 ```bash
-python3 scripts/backfill_memory_db.py --export-package exports/campaign_memory_pkg
+.venv/bin/python scripts/backfill_memory_db.py --export-package exports/campaign_memory_pkg
 ```
 
 Validate import compatibility without writing:
 
 ```bash
-python3 scripts/backfill_memory_db.py --import-package exports/campaign_memory_pkg --db-path data/memory.db --dry-run
+.venv/bin/python scripts/backfill_memory_db.py --import-package exports/campaign_memory_pkg --db-path data/memory.db --dry-run
 ```
 
 Import package into target DB (safe default blocks overwrite):
 
 ```bash
-python3 scripts/backfill_memory_db.py --import-package exports/campaign_memory_pkg --db-path data/memory.db
+.venv/bin/python scripts/backfill_memory_db.py --import-package exports/campaign_memory_pkg --db-path data/memory.db
 ```
 
 Force replace existing target DB only when intentional:
 
 ```bash
-python3 scripts/backfill_memory_db.py --import-package exports/campaign_memory_pkg --db-path data/memory.db --overwrite
+.venv/bin/python scripts/backfill_memory_db.py --import-package exports/campaign_memory_pkg --db-path data/memory.db --overwrite
 ```
 
 ### Manifest expectations
