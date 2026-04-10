@@ -352,6 +352,14 @@ class WebOutputCapture:
                 
                 # Check if this is a player status/prompt line
                 if clean_line.startswith('[') and ('HP:' in clean_line or 'XP:' in clean_line):
+                    # Fallback readiness handoff: if we reached the live player prompt,
+                    # startup is effectively complete even if marker propagation was missed.
+                    if not startup_ready_emitted:
+                        startup_handoff_active = False
+                        startup_ready_pending = False
+                        startup_ready_emitted = True
+                        socketio.emit("startup_status", {"status": "ready", "phase": "prompt_detected"})
+                        socketio.emit('game_started', {'message': 'Game started successfully'})
                     # This is a player prompt - send to debug
                     debug_output_queue.put({
                         'type': 'debug',
