@@ -167,7 +167,6 @@ startup_recovery_attempts = {}
 startup_recovery_attempts_lock = threading.Lock()
 startup_handoff_active = False
 startup_ready_emitted = False
-startup_ready_pending = False
 
 # Message cache for persistence across restarts
 MESSAGE_CACHE_FILE = "modules/conversation_history/game_interface_cache.json"
@@ -244,7 +243,7 @@ class WebOutputCapture:
         self.dm_section_is_startup = False
 
     def _flush_dm_buffer(self):
-        global startup_ready_emitted, startup_ready_pending
+        global startup_ready_emitted
         if not self.dm_buffer:
             return
         try:
@@ -264,10 +263,6 @@ class WebOutputCapture:
                     'content': f"[OUTPUT_TRACE] Sent DM content to game_output: {len(combined_content)} chars",
                     'timestamp': datetime.now().isoformat()
                 })
-                if startup_ready_pending and not startup_ready_emitted:
-                    startup_ready_emitted = True
-                    startup_ready_pending = False
-                    socketio.emit('game_started', {'message': 'Game started successfully'})
         except Exception as e:
             try:
                 debug_output_queue.put({
@@ -283,7 +278,7 @@ class WebOutputCapture:
             self.dm_section_is_startup = False
     
     def write(self, text):
-        global startup_handoff_active, startup_ready_emitted, startup_ready_pending
+        global startup_handoff_active, startup_ready_emitted
         # Write to original stream for console visibility (with error handling)
         try:
             # Ensure text is a string and handle encoding issues
@@ -330,10 +325,9 @@ class WebOutputCapture:
                         if phase == "startup_kickoff_done":
                             startup_handoff_active = False
                             socketio.emit("startup_status", {"status": "ready", "phase": phase})
-                            startup_ready_pending = True
-                            if not self.in_dm_section and not startup_ready_emitted:
+                            # Marker is authoritative - emit immediately when detected
+                            if not startup_ready_emitted:
                                 startup_ready_emitted = True
-                                startup_ready_pending = False
                                 socketio.emit('game_started', {'message': 'Game started successfully'})
                         elif phase == "startup_kickoff_skipped":
                             if marker_data.get("result") == "already_done":
@@ -352,12 +346,15 @@ class WebOutputCapture:
                 
                 # Check if this is a player status/prompt line
                 if clean_line.startswith('[') and ('HP:' in clean_line or 'XP:' in clean_line):
-                    # Fallback readiness handoff: if we reached the live player prompt,
-                    # startup is effectively complete even if marker propagation was missed.
+                    # Fallback: if primary marker path failed, emit on prompt detection
                     if not startup_ready_emitted:
                         startup_handoff_active = False
-                        startup_ready_pending = False
                         startup_ready_emitted = True
+                        debug_output_queue.put({
+                            'type': 'debug',
+                            'content': '[STARTUP_FALLBACK] game_started emitted via prompt detection - primary marker path may have failed',
+                            'timestamp': datetime.now().isoformat()
+                        })
                         socketio.emit("startup_status", {"status": "ready", "phase": "prompt_detected"})
                         socketio.emit('game_started', {'message': 'Game started successfully'})
                     # This is a player prompt - send to debug
@@ -2274,7 +2271,7 @@ def handle_action(data):
 @socketio.on('start_game')
 def handle_start_game():
     """Start the game in a separate thread"""
-    global game_thread, startup_handoff_active, startup_ready_emitted, startup_ready_pending, message_cache
+    global game_thread, startup_handoff_active, startup_ready_emitted, message_cache
     
     if game_thread and game_thread.is_alive():
         emit('error', {'message': 'Game is already running'})
@@ -2291,7 +2288,6 @@ def handle_start_game():
     # Start the game in a separate thread
     startup_handoff_active = True
     startup_ready_emitted = False
-    startup_ready_pending = False
     message_cache.clear()
     save_message_cache()
     game_thread = threading.Thread(target=run_game_loop, daemon=True)
