@@ -196,6 +196,7 @@ install_gh.sh
 testing/
 test_*.py
 !tests/test_startup_wizard_prompt_reliability.py
+!tests/test_startup_game_started_emission.py
 *_test.py
 
 # Reference documents (local working docs, do not commit)
