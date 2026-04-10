@@ -43,6 +43,7 @@ import config
 from core.ai import api_client
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.character_sheet_contract import repair_required_ammunition_field
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T035", "core/generators/npc_builder.py", 149)
 
@@ -162,6 +163,7 @@ Adhere strictly to 5e rules and the provided schema."""
             npc_data = json.loads(ai_response)
             # Remove nested 'value' fields if they exist
             npc_data = remove_nested_values(npc_data)
+            npc_data, _ = repair_required_ammunition_field(npc_data)
             validate(instance=npc_data, schema=schema)
             return npc_data
         except json.JSONDecodeError as e:

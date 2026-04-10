@@ -30,6 +30,8 @@ from collections import defaultdict
 from datetime import datetime
 import sys
 
+from utils.character_sheet_contract import repair_required_ammunition_field
+
 
 class ModuleValidator:
     """Validates all module files against their schemas"""
@@ -77,6 +79,9 @@ class ModuleValidator:
                 
             if schema_type not in self.schemas:
                 return False, f"No schema available for type: {schema_type}"
+
+            if schema_type == "character" and isinstance(data, dict):
+                data, _ = repair_required_ammunition_field(data)
                 
             # Create validator to get better error messages
             validator = Draft7Validator(self.schemas[schema_type])

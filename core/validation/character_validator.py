@@ -66,6 +66,7 @@ import hashlib
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Union
 from core.ai import api_client
+from utils.character_sheet_contract import repair_required_ammunition_field
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T051", "core/validation/character_validator.py", 1036)
 register_callsite("T052", "core/validation/character_validator.py", 1137)
@@ -1672,6 +1673,9 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
             if character_data is None:
                 self.logger.error(f"Could not read character file {file_path}")
                 return {}, False
+
+            if isinstance(character_data, dict):
+                character_data, _ = repair_required_ammunition_field(character_data)
             
             # AI validation and correction
             corrected_data = self.validate_and_correct_character(character_data)

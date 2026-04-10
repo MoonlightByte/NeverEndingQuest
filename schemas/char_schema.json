@@ -462,7 +462,7 @@
     "initiative", "speed", "abilities", "savingThrows", "skills", "proficiencyBonus",
     "senses", "languages", "proficiencies", "damageVulnerabilities", "damageResistances",
     "damageImmunities", "conditionImmunities", "classFeatures", "racialTraits", "backgroundFeature",
-    "temporaryEffects", "injuries", "equipment_effects", "feats", "equipment", "attacksAndSpellcasting", "spellcasting", "currency", "experience_points", 
+    "temporaryEffects", "injuries", "equipment_effects", "feats", "equipment", "ammunition", "attacksAndSpellcasting", "spellcasting", "currency", "experience_points", 
     "exp_required_for_next_level", "personality_traits", "ideals", "bonds", "flaws"
   ],
   "additionalProperties": false

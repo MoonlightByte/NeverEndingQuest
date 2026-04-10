@@ -81,6 +81,7 @@ import os
 import re
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import safe_json_load
+from utils.character_sheet_contract import normalize_for_runtime
 from utils.plot_formatting import format_plot_for_ai
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from core.ai.atlas_builder import build_atlas_for_module, format_atlas_for_conversation
@@ -728,6 +729,13 @@ def update_character_data(conversation_history, party_tracker_data):
                     if not isinstance(member_data, dict):
                         print(f"Warning: {member_file} contains corrupted data (not a dictionary). Skipping.")
                         continue
+
+                    member_data, repaired_fields = normalize_for_runtime(member_data, character_type="player")
+                    if repaired_fields:
+                        debug(
+                            f"REPAIR: Normalized player sheet for {member_data.get('name', member)}: {', '.join(repaired_fields)}",
+                            category="conversation_management",
+                        )
                     
                     # Format equipment list with quantities
                     equipment_list = []
@@ -832,6 +840,13 @@ FLAWS: {member_data['flaws']}
                     if not isinstance(npc_data, dict):
                         print(f"Warning: {npc_file} contains corrupted data (not a dictionary). Skipping.")
                         continue
+
+                    npc_data, repaired_fields = normalize_for_runtime(npc_data, character_type="npc")
+                    if repaired_fields:
+                        debug(
+                            f"REPAIR: Normalized NPC sheet for {npc_data.get('name', npc_name)}: {', '.join(repaired_fields)}",
+                            category="conversation_management",
+                        )
                     
                     # Format equipment list with quantities
                     equipment_list = []

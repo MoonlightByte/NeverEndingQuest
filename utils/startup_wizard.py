@@ -16,6 +16,7 @@ Portions derived from SRD 5.2.1, licensed under CC BY 4.0.
 
 import json
 import os
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -26,9 +27,15 @@ register_callsite("T093", "utils/startup_wizard.py", 1744)
 from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
 from utils.startup_prompt_builder import build_character_creation_system_prompt as _build_character_creation_system_prompt
+from utils.character_sheet_contract import (
+    extract_json_object,
+    repair_required_ammunition_field,
+    repair_startup_character_sheet,
+)
 
 import config
-from utils.encoding_utils import safe_json_load, safe_json_dump
+from utils.encoding_utils import safe_json_load
+from utils.file_operations import safe_write_json
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from core.managers.status_manager import (
@@ -494,294 +501,155 @@ def select_or_create_character(conversation, module):
 def create_new_character(conversation, module):
     """Main character creation flow using AI interview with error recovery"""
     print("\nDungeon Master: Let's create your character!")
-    
-    max_retries = 3
-    retry_count = 0
-    
-    while retry_count < max_retries:
-        # AI-powered character creation interview
-        character_data = ai_character_interview(conversation, module, retry_count)
-        
-        if not character_data:
-            retry_count += 1
-            if retry_count < max_retries:
-                print(f"Character creation failed. Retrying... (Attempt {retry_count + 1}/{max_retries})")
-                continue
-            else:
-                print("Error: Character creation failed after multiple attempts.")
-                return None
-        
-        # Validate character data with detailed error reporting
-        valid, error = validate_character_with_recovery(character_data)
-        if valid:
-            # Save character to module
-            character_name = character_data['name']
-            success = save_character_to_module(character_data, module['name'])
-            
-            if success:
-                print(f"Dungeon Master: Character {character_name} created successfully!")
-                from updates.update_character_info import normalize_character_name
-                return normalize_character_name(character_name)
-            else:
-                print(f"Error: Failed to save character {character_name}")
-                return None
-        else:
-            retry_count += 1
-            if retry_count < max_retries:
-                print(f"Character validation failed: {error}")
-                print(f"Attempting to fix and retry... (Attempt {retry_count + 1}/{max_retries})")
-                # Add validation error to conversation for AI to learn from
-                conversation.append({
-                    "role": "system", 
-                    "content": f"Previous character creation failed validation: {error}. Please create a valid character that follows the schema requirements."
-                })
-                continue
-            else:
-                print(f"Error: Character validation failed after {max_retries} attempts: {error}")
-                print("Dungeon Master: Let me try creating a simple backup character for you...")
-                # Try fallback character creation
-                fallback_character = create_fallback_character(module)
-                if fallback_character:
-                    character_name = fallback_character['name']
-                    success = save_character_to_module(fallback_character, module['name'])
-                    if success:
-                        print(f"Dungeon Master: I've created a basic {fallback_character['class']} character named {character_name} for you!")
-                        print("You can always create a new character later when the system is working better.")
-                        from updates.update_character_info import normalize_character_name
-                        return normalize_character_name(character_name)
-                
-                print("Error: All character creation methods failed. Please try again later.")
-                return None
-    
-    return None
 
-def create_fallback_character(module):
-    """Create a simple default character when AI creation fails"""
-    try:
-        fallback_char = {
-            "character_role": "player",
-            "character_type": "player",
-            "name": "Adventurer",
-            "type": "player",
-            "size": "Medium",
-            "level": 1,
-            "race": "Human",
-            "class": "Fighter",
-            "alignment": "neutral good",
-            "background": "Folk Hero",
-            "status": "alive",
-            "condition": "none",
-            "condition_affected": [],
-            "hitPoints": 12,
-            "maxHitPoints": 12,
-            "armorClass": 16,
-            "initiative": 1,
-            "speed": 30,
-            "abilities": {
-                "strength": 15,
-                "dexterity": 13,
-                "constitution": 14,
-                "intelligence": 12,
-                "wisdom": 13,
-                "charisma": 11
-            },
-            "savingThrows": ["Strength", "Constitution"],
-            "skills": ["Animal Handling", "Survival", "Athletics", "Intimidation"],
-            "proficiencyBonus": 2,
-            "senses": {
-                "darkvision": 0,
-                "passivePerception": 13
-            },
-            "languages": ["Common"],
-            "proficiencies": {
-                "armor": ["Light", "Medium", "Heavy", "Shields"],
-                "weapons": ["Simple", "Martial"],
-                "tools": []
-            },
-            "damageVulnerabilities": [],
-            "damageResistances": [],
-            "damageImmunities": [],
-            "conditionImmunities": [],
-            "classFeatures": [
-                {
-                    "name": "Fighting Style",
-                    "description": "Defense: +1 to AC while wearing armor",
-                    "source": "Fighter",
-                    "usage": {"current": 0, "max": 0, "refreshOn": "longRest"}
-                },
-                {
-                    "name": "Second Wind",
-                    "description": "Regain 1d10 + fighter level hit points as a bonus action",
-                    "source": "Fighter", 
-                    "usage": {"current": 1, "max": 1, "refreshOn": "shortRest"}
-                }
-            ],
-            "racialTraits": [
-                {
-                    "name": "Extra Language",
-                    "description": "You can speak, read, and write one extra language",
-                    "source": "Human"
-                }
-            ],
-            "backgroundFeature": {
-                "name": "Rustic Hospitality",
-                "description": "Since you come from the ranks of the common folk, you fit in among them with ease",
-                "source": "Folk Hero"
-            },
-            "temporaryEffects": [],
-            "injuries": [],
-            "equipment_effects": [],
-            "feats": [],
-            "equipment": [
-                {
-                    "item_name": "Chain Mail",
-                    "item_type": "armor",
-                    "item_subtype": "other",
-                    "description": "Heavy armor, base AC 16",
-                    "quantity": 1,
-                    "equipped": True,
-                    "magical": False,
-                    "consumable": False,
-                    "ac_base": 16,
-                    "ac_bonus": 0,
-                    "dex_limit": 0,
-                    "armor_category": "heavy",
-                    "stealth_disadvantage": True
-                },
-                {
-                    "item_name": "Longsword",
-                    "item_type": "weapon",
-                    "item_subtype": "other",
-                    "description": "Versatile melee weapon",
-                    "quantity": 1,
-                    "equipped": True,
-                    "magical": False,
-                    "consumable": False,
-                    "damage": "1d8",
-                    "attack_bonus": 4,
-                    "weapon_type": "melee",
-                    "effects": []
-                }
-            ],
-            "ammunition": [],
-            "attacksAndSpellcasting": [
-                {
-                    "name": "Longsword",
-                    "attackBonus": 4,
-                    "damageDice": "1d8",
-                    "damageBonus": 2,
-                    "damageType": "slashing",
-                    "type": "melee",
-                    "description": "Versatile (1d10 two-handed)"
-                }
-            ],
-            "spellcasting": {
-                "ability": "intelligence",
-                "spellSaveDC": 10,
-                "spellAttackBonus": 0,
-                "spells": {
-                    "cantrips": [], "level1": [], "level2": [], "level3": [],
-                    "level4": [], "level5": [], "level6": [], "level7": [],
-                    "level8": [], "level9": []
-                },
-                "spellSlots": {
-                    "level1": {"current": 0, "max": 0},
-                    "level2": {"current": 0, "max": 0},
-                    "level3": {"current": 0, "max": 0},
-                    "level4": {"current": 0, "max": 0},
-                    "level5": {"current": 0, "max": 0},
-                    "level6": {"current": 0, "max": 0},
-                    "level7": {"current": 0, "max": 0},
-                    "level8": {"current": 0, "max": 0},
-                    "level9": {"current": 0, "max": 0}
-                },
-                "preparedSpells": []
-            },
-            "currency": {
-                "gold": 15,
-                "silver": 0,
-                "copper": 0
-            },
-            "experience_points": 0,
-            "exp_required_for_next_level": 300,
-            "challengeRating": 0.25,
-            "personality_traits": "A reliable and sturdy adventurer ready for action",
-            "ideals": "Helping others and doing what's right",
-            "bonds": "Loyal to friends and companions",
-            "flaws": "Sometimes too eager to rush into danger"
-        }
-        
-        # Validate the fallback character
-        valid, error = validate_character(fallback_char)
-        if valid:
-            return fallback_char
-        else:
-            print(f"Warning: Even fallback character failed validation: {error}")
-            return None
-            
-    except Exception as e:
-        print(f"Error creating fallback character: {e}")
+    # The interview flow owns its own validation/requery loop.
+    character_data = ai_character_interview(conversation, module)
+    if not character_data:
+        print("Error: Character creation failed.")
         return None
+
+    # Final deterministic repair/validation pass before persistence.
+    character_data, _ = repair_startup_character_sheet(character_data)
+    valid, error = validate_character_with_recovery(character_data)
+    if not valid:
+        print(f"Error: Character validation failed after final repair: {error}")
+        return None
+
+    character_name = character_data['name']
+    success = save_character_to_module(character_data, module['name'])
+    if success:
+        print(f"Dungeon Master: Character {character_name} created successfully!")
+        from updates.update_character_info import normalize_character_name
+        return normalize_character_name(character_name)
+
+    print(f"Error: Failed to save character {character_name}")
+    return None
 
 def build_character_creation_system_prompt():
     """Build and return the startup wizard character-creation system prompt."""
     return _build_character_creation_system_prompt()
 
-def ai_character_interview(conversation, module, retry_count=0):
+def _is_confirmation_trigger(user_input):
+    if not isinstance(user_input, str):
+        return False
+
+    normalized = user_input.lower()
+    return any(word in normalized for word in ["yes", "confirm", "looks good", "perfect", "great", "ready"])
+
+
+def _build_json_retry_message(error_text):
+    return (
+        "INTERNAL SYSTEM STEP: Previous character JSON failed validation: "
+        f"{error_text}. Return only a single valid JSON object that matches the "
+        "character schema exactly. Include top-level \"ammunition\" as an array."
+    )
+
+
+def ai_character_interview(conversation, module):
     """AI-powered character creation interview using agentic approach"""
     
     try:
         enhanced_system_prompt = build_character_creation_system_prompt()
 
-        # Start the character creation conversation
-        creation_conversation = [
-            {"role": "system", "content": enhanced_system_prompt},
-            {"role": "user", "content": f"You are helping a new player create their first level 1 character for the {module['display_name']} adventure. Welcome them to the adventure, set an immersive tone that brings them into the game world, and begin the character creation process. Start by finding out what kind of hero they want to become. Use phrases like 'Let's get you started by finding out a little bit about you' to engage them in the process."}
-        ]
+        # Continue on the active startup conversation so retries and confirmations
+        # are preserved in the same history object the rest of startup uses.
+        creation_conversation = list(conversation or [])
+        creation_conversation.append({"role": "system", "content": enhanced_system_prompt})
+        creation_conversation.append({
+            "role": "user",
+            "content": (
+                f"You are helping a new player create their first level 1 character for the "
+                f"{module['display_name']} adventure. Welcome them to the adventure, set an "
+                "immersive tone that brings them into the game world, and begin the character "
+                "creation process. Start by finding out what kind of hero they want to become. "
+                "Use phrases like 'Let's get you started by finding out a little bit about you' "
+                "to engage them in the process."
+            )
+        })
         
         print("\nDungeon Master: Starting character creation with AI assistant...")
         print("=" * 50)
         
+        awaiting_final_json = False
+        final_json_attempts = 0
+
         # Interactive conversation loop
         while True:
             try:
                 # Get AI response
-                response = get_ai_response(creation_conversation)
-                
-                print(f"\nDungeon Master: {response}")
+                response = get_ai_response(
+                    creation_conversation,
+                    response_format={"type": "json_object"} if awaiting_final_json else None,
+                )
 
-                # Check if response looks like JSON (character finalization)
-                if response.strip().startswith('{') and response.strip().endswith('}'):
+                json_blob = extract_json_object(response) if awaiting_final_json else None
+                if json_blob:
+                    print("\nDungeon Master: Finalizing your hero...")
                     try:
-                        import re
-                        # Clean up any markdown formatting
-                        cleaned_response = re.sub(r'^```json\s*|\s*```$', '', response.strip(), flags=re.MULTILINE)
-
                         # Additional JSON sanitization for safe character data
-                        cleaned_response = sanitize_json_string(cleaned_response)
+                        cleaned_response = sanitize_json_string(json_blob)
 
                         character_data = json.loads(cleaned_response)
 
                         # Further sanitize the loaded character data
                         character_data = sanitize_character_data(character_data)
+                        character_data, _ = repair_required_ammunition_field(character_data)
+                        character_data, _ = repair_startup_character_sheet(character_data)
+                        valid, error = validate_character_with_recovery(character_data)
+                        if valid:
+                            print("\nDungeon Master: Character data received! Finalizing your hero...")
+                            return character_data
 
-                        print("\nDungeon Master: Character data received! Finalizing your hero...")
-                        return character_data
+                        final_json_attempts += 1
+                        creation_conversation.append({
+                            "role": "system",
+                            "content": _build_json_retry_message(error),
+                        })
+                        awaiting_final_json = True
+                        if final_json_attempts >= 3:
+                            print(f"\nError: Unable to validate finalized character JSON after retries: {error}")
+                            return None
+                        continue
                     except json.JSONDecodeError as e:
                         print(f"\nError: Invalid JSON received: {e}")
                         print("Asking AI to try again...")
-                        creation_conversation.append({"role": "assistant", "content": response})
-                        creation_conversation.append({"role": "user", "content": "That didn't look like valid JSON. Please provide the character as a properly formatted JSON object with only standard ASCII characters and no emojis or special symbols."})
+                        final_json_attempts += 1
+                        creation_conversation.append({
+                            "role": "system",
+                            "content": _build_json_retry_message(
+                                f"Invalid JSON: {e}"
+                            ),
+                        })
+                        awaiting_final_json = True
+                        if final_json_attempts >= 3:
+                            return None
                         continue
                     except Exception as e:
                         print(f"\nError: Error processing character data: {e}")
-                        creation_conversation.append({"role": "assistant", "content": response})
-                        creation_conversation.append({"role": "user", "content": "There was an error processing the character data. Please provide a clean JSON object with only standard ASCII characters."})
+                        final_json_attempts += 1
+                        creation_conversation.append({
+                            "role": "system",
+                            "content": _build_json_retry_message(f"Processing error: {e}"),
+                        })
+                        awaiting_final_json = True
+                        if final_json_attempts >= 3:
+                            return None
                         continue
 
-                # Add AI response to conversation immediately
-                creation_conversation.append({"role": "assistant", "content": response})
-                
+                print(f"\nDungeon Master: {response}")
+
+                if awaiting_final_json:
+                    final_json_attempts += 1
+                    creation_conversation.append({
+                        "role": "system",
+                        "content": _build_json_retry_message(
+                            "The assistant returned prose instead of JSON."
+                        ),
+                    })
+                    if final_json_attempts >= 3:
+                        return None
+                    continue
+
                 # === CORRECTED INPUT HANDLING LOGIC ===
                 user_input = None
                 while not user_input:
@@ -798,6 +666,15 @@ def ai_character_interview(conversation, module, retry_count=0):
                 
                 # Add valid user input to conversation
                 creation_conversation.append({"role": "user", "content": user_input})
+                if _is_confirmation_trigger(user_input):
+                    creation_conversation.append({
+                        "role": "system",
+                        "content": "INTERNAL SYSTEM STEP: The player has confirmed the character. Return only the finalized character JSON object. Use valid JSON only and include top-level \"ammunition\" as an array.",
+                    })
+                    awaiting_final_json = True
+                    final_json_attempts = 0
+                else:
+                    awaiting_final_json = False
                 
             except KeyboardInterrupt:
                 print("\nError: Character creation cancelled.")
@@ -1415,7 +1292,9 @@ def auto_fix_character_data(character_data):
     """Automatically fix common character data validation issues"""
     if not isinstance(character_data, dict):
         return character_data
-        
+
+    character_data, _ = repair_startup_character_sheet(character_data)
+
     # Fix equipment ac_base values that are too low
     if "equipment" in character_data and isinstance(character_data["equipment"], list):
         for item in character_data["equipment"]:
@@ -1462,6 +1341,7 @@ def save_character_to_module(character_data, module_name):
     """Save character file to module directory"""
     try:
         status_saving()
+        character_data, _ = repair_startup_character_sheet(character_data)
         # Use ModulePathManager for proper path handling
         path_manager = ModulePathManager(module_name)
         from updates.update_character_info import normalize_character_name
@@ -1472,9 +1352,11 @@ def save_character_to_module(character_data, module_name):
         char_dir = os.path.dirname(char_file)
         os.makedirs(char_dir, exist_ok=True)
         
-        # Save character file
-        safe_json_dump(character_data, char_file)
-        
+        # Save character file atomically
+        if not safe_write_json(char_file, character_data):
+            status_ready()
+            return False
+
         # Check if file was created successfully
         if os.path.exists(char_file):
             status_ready()
@@ -1531,7 +1413,7 @@ def update_party_tracker(module_name, character_name):
         #     party_data["activeQuests"] = []
         
         # Save updated party tracker
-        success = safe_json_dump(party_data, "party_tracker.json")
+        success = safe_write_json("party_tracker.json", party_data)
         return success
         
     except Exception as e:
@@ -1555,10 +1437,10 @@ def initialize_startup_conversation():
         }
     ]
     
-    safe_json_dump(conversation, STARTUP_CONVERSATION_FILE)
+    safe_write_json(STARTUP_CONVERSATION_FILE, conversation)
     return conversation
 
-def get_ai_response(conversation):
+def get_ai_response(conversation, response_format=None):
     """Get AI response for character creation"""
     try:
         status_processing_ai()
@@ -1576,7 +1458,7 @@ def get_ai_response(conversation):
             messages=conversation,
             model=main_cfg["model"],
             temperature=0.7,
-            response_format=None,
+            response_format=response_format,
             **{k: v for k, v in main_cfg.items() if k != "model"})
         
         content = response.choices[0].message.content.strip()
@@ -1584,7 +1466,7 @@ def get_ai_response(conversation):
         
         # Save conversation
         status_saving()
-        safe_json_dump(conversation, STARTUP_CONVERSATION_FILE)
+        safe_write_json(STARTUP_CONVERSATION_FILE, conversation)
         
         status_ready()
         return content
@@ -1625,7 +1507,7 @@ def get_ai_response(conversation):
 
 def save_startup_conversation(conversation):
     """Save startup conversation to file"""
-    safe_json_dump(conversation, STARTUP_CONVERSATION_FILE)
+    safe_write_json(STARTUP_CONVERSATION_FILE, conversation)
 
 def cleanup_startup_conversation():
     """Remove startup conversation file after completion"""

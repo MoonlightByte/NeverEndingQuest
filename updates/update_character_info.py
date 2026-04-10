@@ -998,6 +998,14 @@ def repair_character_data(character_data):
     Returns:
         dict: Repaired character data
     """
+    # Ensure the required top-level ammunition contract exists before validation.
+    if 'ammunition' not in character_data or character_data['ammunition'] is None:
+        character_data['ammunition'] = []
+        debug("REPAIR: Added missing top-level ammunition list", category="character_updates")
+    elif not isinstance(character_data['ammunition'], list):
+        character_data['ammunition'] = []
+        debug("REPAIR: Coerced invalid top-level ammunition field to list", category="character_updates")
+
     # Ensure ammunition has descriptions
     if 'ammunition' in character_data and isinstance(character_data['ammunition'], list):
         for ammo in character_data['ammunition']:
