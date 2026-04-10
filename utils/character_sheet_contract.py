@@ -491,3 +491,55 @@ def normalize_for_runtime(
         character_role=character_role,
         character_type=character_type,
     )
+
+
+def repair_and_persist_character(
+    character_file_path: str,
+    character_type: str = "player",
+) -> Optional[Tuple[Dict[str, Any], List[str]]]:
+    """Load a character file, repair it, and persist fixes back to disk.
+
+    This is the startup repair function that ensures legacy characters
+    are fixed permanently, not just in-memory.
+
+    Args:
+        character_file_path: Absolute or relative path to character JSON file
+        character_type: "player" or "npc" for role-specific defaults
+
+    Returns:
+        Tuple of (repaired_data, list_of_changes) if successful
+        None if file doesn't exist or is invalid JSON
+    """
+    import os
+    from utils.file_operations import safe_read_json, safe_write_json
+    from utils.enhanced_logger import debug, info, warning
+
+    # Load character file
+    if not os.path.exists(character_file_path):
+        return None
+
+    character_data = safe_read_json(character_file_path)
+    if not character_data or not isinstance(character_data, dict):
+        return None
+
+    # Run repair (runtime mode - comprehensive repairs for game execution)
+    repaired_data, raw_changes = normalize_for_runtime(character_data, character_type=character_type)
+
+    # Extract field names from changes (e.g., "ammunition=default_list" -> "ammunition")
+    changes = [change.split("=")[0] for change in raw_changes]
+
+    # Only persist if there were actual changes
+    if changes:
+        if not safe_write_json(character_file_path, repaired_data):
+            # Write failed, but still return in-memory repair
+            warning(
+                f"REPAIR: Could not persist repairs to {character_file_path}",
+                category="character_repair",
+            )
+        else:
+            info(
+                f"REPAIR: Persisted {len(changes)} fixes to {character_file_path}: {', '.join(raw_changes)}",
+                category="character_repair",
+            )
+
+    return repaired_data, changes

@@ -12,7 +12,7 @@
 
 | Model Variable | Legacy Model | Callsite Count | Task IDs | Primary Usage |
 |---|---|---|---|---|
-| DM_MAIN_MODEL | gpt-4.1-2025-04-14 | 17 | ~~T013~~(DONE),T022-T028,T031,T036,T037,~~T046~~(DONE),T059,T063,T064,T092 | Main DM narration, transitions, generators, stitching |
+| DM_MAIN_MODEL | gpt-4.1-2025-04-14 | 17 | ~~T013~~(DONE),~~T022~~(DONE),~~T023~~(DONE),~~T024~~(DONE),~~T025~~(DONE),~~T026~~(DONE),~~T027~~(DONE),~~T028~~(DONE),~~T031~~(DONE),~~T036~~(DONE),~~T037~~(DONE),~~T046~~(DONE),~~T059~~(DONE),~~T063~~(DONE),~~T064~~(DONE),~~T092~~(DONE) | Main DM narration, transitions, generators, stitching |
 | DM_FULL_MODEL | gpt-4.1-2025-04-14 | 0 dedicated | (used dynamically by ~~T067~~(DONE) via selected_model) | Complex actions requiring JSON operations |
 | DM_VALIDATION_MODEL | gpt-4.1-2025-04-14 | 3 | ~~T040~~(DONE),~~T048~~(DONE),~~T065~~(DONE) | AI response validation, combat validation |
 | COMBAT_MAIN_MODEL | gpt-4.1-2025-04-14 | 3 | ~~T043~~(DONE),~~T044~~(DONE),~~T045~~(DONE) | Primary combat loop (T045 uses dynamic assignment) |
@@ -28,7 +28,7 @@
 
 | Model Variable | Legacy Model | Callsite Count | Task IDs | Primary Usage |
 |---|---|---|---|---|
-| DM_MINI_MODEL | gpt-4.1-mini-2025-04-14 | 10 | T042,~~T043~~(DONE),T083,~~T087~~(DONE),~~T088~~(DONE),~~T089~~(DONE),~~T090~~(DONE),T093,T094,T095 | Simple conversations, combat fallback, utilities, web UI |
+| DM_MINI_MODEL | gpt-4.1-mini-2025-04-14 | 10 | ~~T042~~(DONE),~~T043~~(DONE),~~T083~~(DONE),~~T087~~(DONE),~~T088~~(DONE),~~T089~~(DONE),~~T090~~(DONE),~~T093~~(DONE),~~T094~~(DONE),~~T095~~(DONE) | **ALL DONE** |
 | DM_SUMMARIZATION_MODEL | gpt-4.1-mini-2025-04-14 | 5 | ~~T030~~(DONE),~~T032~~(DONE),~~T033~~(DONE),~~T038~~(DONE),~~T066~~(DONE) | Module stitching, campaign export, response summarization |
 | NARRATIVE_COMPRESSION_MODEL | gpt-4.1-mini-2025-04-14 | 3 | ~~T017~~(DONE),~~T020~~(DONE),~~T084~~(DONE) | Narrative/combat/incremental compression |
 | COMBAT_DIALOGUE_SUMMARY_MODEL | gpt-4.1-mini-2025-04-14 | 1 | ~~T041~~(DONE) | Combat dialogue summarization |

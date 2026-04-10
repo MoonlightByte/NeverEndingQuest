@@ -1,0 +1,268 @@
+================================================================================
+T042 COMBAT ROUND SUMMARY TEST DATA - FILE INDEX
+================================================================================
+
+PROJECT: NeverEndingQuest Multi-Provider Model Refactor
+CALLSITE: T042 (Combat Round Summary Compression)
+DATE: 2026-04-04
+
+================================================================================
+FILES CREATED
+================================================================================
+
+MAIN TEST DATA:
+  [1] model_captures/T042_synthetic_test_data.json
+      - Main JSON file with 3 test examples
+      - Each example includes round messages and metadata
+      - Ready for use with capture system or direct testing
+      - Size: 7.1 KB | Format: JSON | Status: Ready
+
+DOCUMENTATION:
+  [2] tests/synthetic_data/T042_COMBAT_ROUND_SUMMARY_TEST_DATA.md
+      - Comprehensive guide (8 KB markdown)
+      - Input/output format specifications
+      - Detailed breakdown of each example
+      - Expected JSON structure per example
+      - Validation checklist
+      - Data source attribution
+
+QUICK REFERENCE:
+  [3] tests/synthetic_data/T042_QUICK_REFERENCE.txt
+      - Quick lookup guide (7 KB text)
+      - Expected output for each example
+      - Key characteristics summary
+      - Common validation points
+      - Testing workflow
+
+PYTHON TESTING UTILITY:
+  [4] tests/synthetic_data/test_t042_examples.py
+      - Executable utility script
+      - Load and display test data
+      - Call actual T042 function
+      - Format and verify output
+      - Usage: python tests/synthetic_data/test_t042_examples.py
+
+SUMMARY DOCUMENT:
+  [5] T042_TEST_DATA_SUMMARY.md (this directory, root level)
+      - High-level overview
+      - Files created and their purposes
+      - Example descriptions
+      - T042 function specification
+      - Usage examples
+      - Next steps for integration
+
+THIS FILE:
+  [6] T042_TEST_DATA_INDEX.txt (this file)
+      - File listing and quick navigation
+
+================================================================================
+QUICK START GUIDE
+================================================================================
+
+1. UNDERSTAND THE DATA:
+   Read: tests/synthetic_data/T042_QUICK_REFERENCE.txt
+
+2. VIEW EXAMPLES:
+   Run: python tests/synthetic_data/test_t042_examples.py
+   Or:  python tests/synthetic_data/test_t042_examples.py --example=complex
+
+3. ACCESS RAW MESSAGES:
+   Load: model_captures/T042_synthetic_test_data.json
+   Examples: data['examples'][0|1|2]['messages']
+
+4. DETAILED DOCUMENTATION:
+   Read: tests/synthetic_data/T042_COMBAT_ROUND_SUMMARY_TEST_DATA.md
+
+5. NEXT STEPS:
+   See: T042_TEST_DATA_SUMMARY.md (Next Steps section)
+
+================================================================================
+EXAMPLE SUMMARY
+================================================================================
+
+EXAMPLE 1: SIMPLE_ROUND_1_vs_Snow_Rat
+  Round: 1
+  Type: Simple round (1 action, trivial scenario)
+  Creatures: 3 (Eirik Hearthwise, Scout Kira, Snow Rat)
+  Actions: 1 (creature flees)
+  Key Points: Basic smoke test, no complex mechanics
+  Test: JSON validity, round tracking, basic narration
+
+EXAMPLE 2: COMPLEX_ROUND_2_Multiparty_Combat
+  Round: 2
+  Type: Complex round (3 actions, mixed types)
+  Creatures: 4 (Malarok, Scout Kira, Corrupted Wolf, Ranger Thane)
+  Actions: 3 (Fireball spell + Shortbow attack + Melee attack)
+  Key Points: Spell saving throw, damage math, HP tracking
+  Test: Action accuracy, damage calculation, spell slot tracking
+
+EXAMPLE 3: DEATH_AND_HEALING_ROUND_5
+  Round: 5
+  Type: Complex round (3 actions, deaths, conditions)
+  Creatures: 5 (Lyssa, Vampire Lord, Draugr, 2x Thrall Guards)
+  Actions: 3 (Cure Wounds + Charm Person + Scimitar attack)
+  Key Points: Condition application (charmed, poisoned), healing
+  Test: Death tracking, condition management, complex state
+
+================================================================================
+T042 FUNCTION DETAILS
+================================================================================
+
+Location: core/managers/combat_manager.py:1801
+
+Function: generate_combat_round_summary(round_num, round_messages)
+
+Input:
+  - round_num: int (current combat round number)
+  - round_messages: list of {role, content} dicts
+
+Output:
+  - JSON dict with: round, actions, deaths, status_changes,
+                    resource_usage, narrative_highlights, round_end_state
+
+Purpose:
+  - Compress raw combat turn exchanges into structured data
+  - Extract mechanical facts (actions, rolls, damage, HP changes)
+  - Extract narrative moments (dramatic highlights)
+  - Track resource consumption (spell slots, hit dice, abilities)
+  - Track creature status (HP, conditions, alive/dead state)
+
+Model: DM_MINI_MODEL (see model_config.py)
+Temperature: 0.1
+Response Format: JSON object
+
+================================================================================
+VALIDATION WORKFLOW
+================================================================================
+
+Step 1: Load test data
+  File: model_captures/T042_synthetic_test_data.json
+  Read examples and their messages
+
+Step 2: Extract round messages
+  For each example:
+    - Get round_num
+    - Get messages (user message + assistant response)
+
+Step 3: Verify expected output structure
+  Check: All required fields present
+    - round (number)
+    - actions (array of objects)
+    - deaths (array of strings)
+    - status_changes (array of strings)
+    - resource_usage (object)
+    - narrative_highlights (array of strings)
+    - round_end_state (object with alive/dead/conditions)
+
+Step 4: Validate content accuracy
+  Example 1: 1 action (Snow Rat flee)
+  Example 2: 3 actions, Fireball 14 damage (halved), Shortbow 12 dmg, Wolf 8 dmg
+  Example 3: 3 actions, Cure 16 HP, Charm fails (charmed applied), Attack 10 dmg
+
+Step 5: Compare across models
+  - Run same messages through gpt-4.1, gpt-5.2, gemini-3-pro
+  - Use capture_quality_reviewer.py for scoring
+  - Compare accuracy, cost, latency
+
+================================================================================
+FOR NEXT PHASE: RUNNING CAPTURE TESTING
+================================================================================
+
+1. Ensure capture system is configured:
+   - MULTI_MODEL_CAPTURE = True in config.py
+   - All three providers configured (OpenAI, Gemini, LM Studio optional)
+
+2. Run capture on T042:
+   python -c "
+   from core.managers.combat_manager import generate_combat_round_summary
+   from utils.capture_and_fanout import capture_and_fanout
+   import json
+
+   with open('model_captures/T042_synthetic_test_data.json') as f:
+     data = json.load(f)
+
+   for example in data['examples']:
+     result = generate_combat_round_summary(
+       example['round_num'],
+       example['messages']
+     )
+   "
+
+3. Review capture results:
+   python tools/capture_quality_reviewer.py T042 --reviewer gpt
+
+4. Select winning model for each provider
+
+5. Update model_config.py with named configs
+
+6. Update callsite routing logic
+
+7. Merge to main after validation
+
+================================================================================
+COMMON USAGE PATTERNS
+================================================================================
+
+INSPECT TEST DATA:
+  from model_captures.T042_synthetic_test_data import *
+  
+  or
+  
+  python tests/synthetic_data/test_t042_examples.py
+
+EXTRACT SPECIFIC EXAMPLE:
+  import json
+  with open('model_captures/T042_synthetic_test_data.json') as f:
+    data = json.load(f)
+  complex_example = data['examples'][1]  # COMPLEX_ROUND_2
+
+GET RAW MESSAGES:
+  round_num = complex_example['round_num']
+  messages = complex_example['messages']
+
+CALL T042 DIRECTLY:
+  from core.managers.combat_manager import generate_combat_round_summary
+  result = generate_combat_round_summary(round_num, messages)
+  print(json.dumps(result, indent=2))
+
+VIEW IN TERMINAL:
+  python tests/synthetic_data/test_t042_examples.py \
+    --example=SIMPLE_ROUND_1_vs_Snow_Rat
+
+================================================================================
+VALIDATION CHECKLIST
+================================================================================
+
+Before using test data for capture, verify:
+
+  [ ] JSON file parses without errors
+  [ ] All 3 examples present
+  [ ] Each example has: name, description, round_num, creatures, messages
+  [ ] Each message has: role, content
+  [ ] User message contains creature state and action description
+  [ ] Assistant message is valid JSON with narration field
+  [ ] Round numbers are sequential (1, 2, 5 - representing different combats)
+  [ ] Creature names match across both messages in same example
+  [ ] No Unicode characters in Python code
+  [ ] Quick reference guide is readable
+  [ ] Documentation markdown renders correctly
+  [ ] Test utility script executes without errors
+
+Current Status: All checks PASSED as of 2026-04-04
+
+================================================================================
+CONTACT / SUPPORT
+================================================================================
+
+This test data was created for:
+  - T042 (Combat Round Summary) callsite testing
+  - Multi-provider model comparison (gpt-4.1, gpt-5.2, gemini-3-pro)
+  - Multi-model capture system validation
+  - Quality scoring with gpt-5.4 reasoning=medium
+
+For issues or enhancements, see:
+  - docs/reference/ for model specifications
+  - docs/plans/ for refactor context (historical documents)
+  - CLAUDE.md for project guidelines
+
+================================================================================
