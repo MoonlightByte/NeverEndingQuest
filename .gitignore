@@ -197,6 +197,7 @@ testing/
 test_*.py
 !tests/test_startup_wizard_prompt_reliability.py
 !tests/test_startup_game_started_emission.py
+!tests/test_legacy_character_repair.py
 *_test.py
 
 # Reference documents (local working docs, do not commit)
