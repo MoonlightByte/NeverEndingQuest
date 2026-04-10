@@ -693,15 +693,11 @@ def ai_character_interview(conversation, module):
 
                 print(f"\nDungeon Master: {response}")
 
-                # === CORRECTED INPUT HANDLING LOGIC ===
-                user_input = None
-                while not user_input:
-                    # Get user input and keep prompting if it's empty
-                    user_input = input("\nYour response: ").strip()
-                    if not user_input:
-                        # Silent continue - don't show any message to user
-                        continue # Re-prompt for input without calling AI
-                # =======================================
+                # Get user input - empty input handled by outer loop
+                user_input = input("\nYour response: ").strip()
+                if not user_input:
+                    # Empty input: continue outer loop without adding to conversation
+                    continue
                 
                 if user_input.lower() in ['quit', 'exit', 'cancel']:
                     print("Error: Character creation cancelled.")
