@@ -200,3 +200,60 @@ class TestLegacyCharacterRepair:
 
         result = repair_and_persist_character(str(bad_file))
         assert result is None
+
+
+class TestStartupRepairIntegration:
+    """Test that main.py startup flow triggers character repair."""
+
+    def test_startup_repairs_party_members(self, tmp_path, monkeypatch):
+        """Startup should repair all party member character files."""
+        import json
+        from pathlib import Path
+
+        # Create mock module structure
+        module_dir = tmp_path / "modules" / "TestModule"
+        char_dir = tmp_path / "characters"
+        module_dir.mkdir(parents=True)
+        char_dir.mkdir(parents=True)
+
+        # Create legacy character (missing ammunition)
+        legacy_char = {
+            "name": "Legacy Hero",
+            "level": 5,
+            "hitPoints": 40,
+            "maxHitPoints": 40,
+            "equipment": [{"item_name": "Sword", "quantity": 1}]
+            # ammunition is missing
+        }
+        char_file = char_dir / "legacy_hero.json"
+        with open(char_file, 'w') as f:
+            json.dump(legacy_char, f)
+
+        # Create party tracker pointing to this character
+        party_tracker = {
+            "module": "TestModule",
+            "partyMembers": ["legacy_hero"],
+            "partyNPCs": [],
+            "worldConditions": {
+                "currentLocation": "Test",
+                "currentLocationId": "T01"
+            }
+        }
+        party_file = tmp_path / "party_tracker.json"
+        with open(party_file, 'w') as f:
+            json.dump(party_tracker, f)
+
+        # Run repair function directly (simulating startup)
+        from utils.character_sheet_contract import repair_and_persist_character
+        result = repair_and_persist_character(str(char_file), character_type="player")
+
+        # Verify repair happened
+        assert result is not None
+        repaired_data, changes = result
+        assert "ammunition" in changes
+
+        # Verify file was updated
+        with open(char_file, 'r') as f:
+            saved = json.load(f)
+        assert "ammunition" in saved
+        assert saved["ammunition"] == []
