@@ -533,8 +533,36 @@ def _is_confirmation_trigger(user_input):
     if not isinstance(user_input, str):
         return False
 
-    normalized = user_input.lower()
-    return any(word in normalized for word in ["yes", "confirm", "looks good", "perfect", "great", "ready"])
+    normalized = re.sub(r"\s+", " ", user_input.strip().lower())
+    if not normalized:
+        return False
+
+    explicit_phrases = {
+        "yes",
+        "confirm",
+        "confirmed",
+        "looks good",
+        "this looks good",
+        "yes this looks good",
+        "yes, this looks good",
+        "please finalize",
+        "finalize",
+        "approved",
+        "approve",
+    }
+    if normalized in explicit_phrases:
+        return True
+
+    if re.search(r"\b(confirm|finalize|approved?)\b", normalized):
+        return True
+
+    if re.fullmatch(r"yes[!. ]*", normalized):
+        return True
+
+    if re.search(r"\b(looks good|all looks good)\b", normalized):
+        return True
+
+    return False
 
 
 def _build_json_retry_message(error_text):
@@ -572,6 +600,7 @@ def ai_character_interview(conversation, module):
         
         awaiting_final_json = False
         final_json_attempts = 0
+        nonfinal_json_attempts = 0
 
         # Interactive conversation loop
         while True:
@@ -582,8 +611,20 @@ def ai_character_interview(conversation, module):
                     response_format={"type": "json_object"} if awaiting_final_json else None,
                 )
 
-                json_blob = extract_json_object(response) if awaiting_final_json else None
+                json_blob = extract_json_object(response)
                 if json_blob:
+                    nonfinal_json_attempts = 0
+                    if not awaiting_final_json:
+                        creation_conversation.append({
+                            "role": "system",
+                            "content": (
+                                "INTERNAL SYSTEM STEP: You emitted machine-readable JSON during interview mode. "
+                                "Do not expose JSON to the player. Continue in normal in-world prose and ask "
+                                "for the next character-creation choice."
+                            ),
+                        })
+                        continue
+
                     print("\nDungeon Master: Finalizing your hero...")
                     try:
                         # Additional JSON sanitization for safe character data
@@ -636,8 +677,6 @@ def ai_character_interview(conversation, module):
                             return None
                         continue
 
-                print(f"\nDungeon Master: {response}")
-
                 if awaiting_final_json:
                     final_json_attempts += 1
                     creation_conversation.append({
@@ -649,6 +688,10 @@ def ai_character_interview(conversation, module):
                     if final_json_attempts >= 3:
                         return None
                     continue
+                else:
+                    nonfinal_json_attempts = 0
+
+                print(f"\nDungeon Master: {response}")
 
                 # === CORRECTED INPUT HANDLING LOGIC ===
                 user_input = None

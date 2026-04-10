@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.validation.validate_module_files import ModuleValidator
+from core.ai import conversation_utils
 from updates.update_character_info import repair_character_data
 from utils.character_sheet_contract import (
     extract_json_object,
@@ -126,3 +127,32 @@ def test_module_validator_repairs_legacy_character_ammunition():
 
         assert success is True
         assert error is None
+
+
+def test_update_character_data_handles_missing_ammunition(monkeypatch, tmp_path):
+    character_file = tmp_path / "smashing_jack.json"
+    sample = _load_sample_character()
+    sample.pop("ammunition", None)
+    character_file.write_text(json.dumps(sample), encoding="utf-8")
+
+    class DummyPathManager:
+        def __init__(self, _module):
+            pass
+
+        def get_character_path(self, _name):
+            return str(character_file)
+
+    monkeypatch.setattr(conversation_utils, "ModulePathManager", DummyPathManager)
+    monkeypatch.setattr(
+        "updates.update_character_info.normalize_character_name",
+        lambda value: value,
+    )
+
+    history = conversation_utils.update_character_data(
+        conversation_history=[],
+        party_tracker_data={"module": "The_Thornwood_Watch", "partyMembers": ["smashing_jack"], "partyNPCs": []},
+    )
+
+    character_msgs = [m for m in history if m["role"] == "system" and "Here's the updated character data for" in m["content"]]
+    assert character_msgs
+    assert "\nAMMO:" in character_msgs[0]["content"]
