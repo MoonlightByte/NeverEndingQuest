@@ -142,6 +142,7 @@ from utils.reconcile_campaign_state import reconcile_campaign_state
 # Import training data collection
 # from simple_training_collector import log_complete_interaction  # DISABLED
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.character_sheet_contract import repair_and_persist_character
 from utils.startup_handoff_state import (
     load_state as load_startup_state,
     sync_wizard_completion,
@@ -2938,6 +2939,38 @@ def main_game_loop():
         else:
             party_data = load_json_file("party_tracker.json") or {}
             has_character_data = bool(party_data.get("module")) and bool(party_data.get("partyMembers"))
+
+            # === LEGACY CHARACTER REPAIR ===
+            # Repair and persist any missing fields in party member character files
+            # This ensures players updating their game code don't hit broken bugs
+            if has_character_data:
+                repair_path_manager = ModulePathManager(party_data.get("module", ""))
+                for member_name in party_data.get("partyMembers", []):
+                    member_file = repair_path_manager.get_character_path(member_name)
+                    result = repair_and_persist_character(member_file, character_type="player")
+                    if result:
+                        _, repairs = result
+                        if repairs:
+                            debug(
+                                f"STARTUP_REPAIR: Fixed legacy character {member_name}: {', '.join(repairs)}",
+                                category="startup",
+                            )
+
+                # Also repair party NPCs
+                for npc_info in party_data.get("partyNPCs", []):
+                    npc_name = npc_info.get("name", "") if isinstance(npc_info, dict) else str(npc_info)
+                    if npc_name:
+                        npc_file = repair_path_manager.get_character_path(npc_name)
+                        result = repair_and_persist_character(npc_file, character_type="npc")
+                        if result:
+                            _, repairs = result
+                            if repairs:
+                                debug(
+                                    f"STARTUP_REPAIR: Fixed legacy NPC {npc_name}: {', '.join(repairs)}",
+                                    category="startup",
+                                )
+            # === END LEGACY CHARACTER REPAIR ===
+
             sync_result = sync_wizard_completion(has_character_data)
             synced_state = sync_result.get("state", load_startup_state())
             emit_startup_marker(

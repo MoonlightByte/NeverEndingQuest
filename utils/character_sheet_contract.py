@@ -10,8 +10,12 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
+
+from utils.file_operations import safe_read_json, safe_write_json
+from utils.enhanced_logger import info, warning
 
 
 STARTUP_ARRAY_DEFAULTS = {
@@ -510,23 +514,19 @@ def repair_and_persist_character(
         Tuple of (repaired_data, list_of_changes) if successful
         None if file doesn't exist or is invalid JSON
     """
-    import os
-    from utils.file_operations import safe_read_json, safe_write_json
-    from utils.enhanced_logger import debug, info, warning
-
     # Load character file
     if not os.path.exists(character_file_path):
         return None
 
     character_data = safe_read_json(character_file_path)
-    if not character_data or not isinstance(character_data, dict):
+    if not character_data:
         return None
 
     # Run repair (runtime mode - comprehensive repairs for game execution)
     repaired_data, raw_changes = normalize_for_runtime(character_data, character_type=character_type)
 
     # Extract field names from changes (e.g., "ammunition=default_list" -> "ammunition")
-    changes = [change.split("=")[0] for change in raw_changes]
+    changes = [change.split("=", 1)[0] for change in raw_changes]
 
     # Only persist if there were actual changes
     if changes:

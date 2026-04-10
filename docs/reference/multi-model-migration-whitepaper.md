@@ -603,6 +603,25 @@ After T092 stabilization, a critical race condition was discovered in the startu
 
 This fix eliminated the final blocking issue for startup handoff. Combined with T092's ammunition validation and prompt refactoring, the startup system is now stable across all provider configurations (Legacy/OpenAI/Gemini).
 
+### 10.7 Legacy Character Auto-Repair (April 10, 2026)
+
+**Issue:** Players updating their game code could experience crashes from legacy character files missing required fields (e.g., `ammunition`).
+
+**Root cause:** The `normalize_for_runtime()` repair function in `conversation_utils.py` only repairs character data in-memory for API calls. The actual character files on disk were never updated.
+
+**Fix:**
+1. Added `repair_and_persist_character()` function to `character_sheet_contract.py`
+2. Added startup repair step in `main.py` that runs after party tracker is loaded
+3. Repairs both party members and party NPCs
+4. Only writes to disk if changes were made (no unnecessary file churn)
+
+**Fields repaired:** 30+ potential missing fields including:
+- Arrays: ammunition, equipment, feats, classFeatures, racialTraits, etc.
+- Objects: abilities, spellcasting, currency, proficiencies, senses, etc.
+- Scalars: level, hitPoints, armorClass, status, condition, etc.
+
+**Verification:** Tests in `tests/test_legacy_character_repair.py`
+
 ---
 
 ## 11. Next Steps (Post-UI Completion)
