@@ -448,3 +448,9 @@ model_captures/
 CLAUDE.md
 docs/branding/
 .worktrees/
+
+# Additional ignores
+.codex
+ANALYSIS_*.md
+tests/capture/
+tests/synthetic_data/
