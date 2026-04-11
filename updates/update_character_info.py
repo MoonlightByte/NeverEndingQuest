@@ -1500,7 +1500,7 @@ Character Role: {character_role}
                 "attempt": attempt,
                 "changes_requested": changes,
                 "raw_ai_response": raw_response,
-                "model_used": model,
+                "model_used": char_update_config["model"],
                 "parsed_updates": None,
                 "validation_results": {},
                 "final_outcome": "pending"
