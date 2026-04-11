@@ -250,14 +250,15 @@ class WebOutputCapture:
             combined_content = '\n'.join(self.dm_buffer)
             combined_content = combined_content.replace('Dungeon Master:', '', 1).strip()
             if combined_content.strip():
-                message_type = 'startup' if self.dm_section_is_startup else 'narration'
+                # DM narration is always type 'narration' so the client renders it
+                # with the full DM message styling (avatar, header, Generate Image).
+                # The old 'startup' type rendered as plain text with no formatting.
                 message = {
-                    'type': message_type,
+                    'type': 'narration',
                     'content': combined_content
                 }
                 game_output_queue.put(message)
-                if message_type == 'narration':
-                    add_to_message_cache(message)
+                add_to_message_cache(message)
                 debug_output_queue.put({
                     'type': 'debug',
                     'content': f"[OUTPUT_TRACE] Sent DM content to game_output: {len(combined_content)} chars",
