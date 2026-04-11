@@ -622,3 +622,48 @@ Module transitions preserve conversation timeline:
 - Compression before API calls
 - Cached responses where appropriate
 - Batch operations when possible
+
+## Subagent Investigation Rules
+
+When dispatching subagents to investigate bugs or verify behavior in this codebase, follow
+these rules. They were learned from real failures where agents gave confident but wrong answers.
+
+### 1. Always diff before theorizing
+If something "used to work but doesn't now", the first agent action must be
+`git diff main..HEAD -- <file>`. Don't read code and reason about whether it SHOULD work.
+Find what CHANGED. This is the single highest-value action for regression hunts.
+
+### 2. Demand the specific line, not the conclusion
+Never accept "the narration IS displayed" or "this WORKS correctly" without the agent
+naming the EXACT function call and line number that does it. If the agent cannot point to
+a specific line, the scenario is broken. Agents optimize for plausible-sounding answers
+over verified ones.
+
+### 3. Split "does the infrastructure exist?" from "does it execute successfully?"
+"The updateCharacterInfo handler exists and is correct" does not mean it runs without
+crashing. Always ask: "Did the file actually get written? Check timestamps. Check the
+try/except handlers between the API call and the file save. Trace the full execution
+including error paths."
+
+### 4. Tell agents what failure looks like
+Agents default to confirming things work. Describe the broken state explicitly:
+- "The file shows gold=10 before AND after. The action was sent. Find where execution dies."
+- "The screen is blank. No print() was called. Trace what SKIPPED the display."
+
+### 5. Use parallel competing agents
+Dispatch two agents at the same problem from different angles. When both independently
+find the same bug, that's high confidence. When one says "works fine" and the other
+can't explain how, that's a red flag to investigate yourself.
+
+### 6. Codebase-specific traps
+- **Generic `except Exception` handlers** swallow errors silently in multiple files
+  (update_character_info.py, main.py concurrent executor, action_handler.py). Always
+  trace what happens when a function returns False or raises inside these handlers.
+- **`False` returns are ignored** by the ThreadPoolExecutor consumer in main.py:2277.
+  A failed character update produces no user-visible error.
+- **Startup lease state** (`startup_state.json`) persists across game sessions.
+  Any investigation of startup behavior must check the current state file contents.
+- **Character files live in module directories** (`modules/[module]/characters/`),
+  not root. Path resolution through `ModulePathManager` can silently fail.
+- **File existence != correctness.** After any write, verify the content changed,
+  not just that the function returned True.
