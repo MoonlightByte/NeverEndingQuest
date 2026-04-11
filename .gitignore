@@ -454,3 +454,5 @@ docs/branding/
 ANALYSIS_*.md
 tests/capture/
 tests/synthetic_data/
+tests/test_legacy_character_repair.py
+tests/test_startup_game_started_emission.py
