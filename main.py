@@ -3186,6 +3186,38 @@ def main_game_loop():
                 category="startup",
             )
 
+        # === CRITICAL FIX: Display existing DM message when resuming ===
+        # When startup was "already_done" (game resuming), the kickoff skips generating
+        # a new response. But we still need to display the existing DM narration to the player.
+        # Only do this if:
+        # 1. Kickoff was done (status == "done") but no new response was generated
+        # 2. There's a precomputed_response that wasn't processed (was_injected=False means no new AI call)
+        # 3. The last message is an assistant message with narration
+        kickoff_skipped_generation = (
+            kickoff_result.get("status") == "done" and
+            not was_injected and  # No return message was injected
+            precomputed_response is None  # No precomputed response was passed
+        )
+        if kickoff_skipped_generation:
+            if conversation_history and conversation_history[-1].get("role") == "assistant":
+                last_assistant_content = conversation_history[-1].get("content", "")
+                # Only process if it looks like a valid DM response (has narration JSON)
+                if last_assistant_content and '"narration"' in last_assistant_content:
+                    debug("RESUME: Displaying existing DM message from conversation history", category="startup")
+                    # Extract and print narration only - don't process actions to avoid side effects
+                    try:
+                        from core.ai.action_handler import extract_json_from_codeblock
+                        json_content = extract_json_from_codeblock(last_assistant_content)
+                        parsed = json.loads(json_content)
+                        narration = parsed.get("narration", "")
+                        if narration:
+                            sanitized_narration = sanitize_text(narration)
+                            print(colored("Dungeon Master:", "blue"), colored(sanitized_narration, "blue"))
+                            debug("RESUME: Successfully displayed existing narration", category="startup")
+                    except Exception as e:
+                        debug(f"RESUME: Could not parse existing DM message: {e}", category="startup")
+        # === END CRITICAL FIX ===
+
     # Add safeguard against infinite loops in non-interactive environments
     empty_input_count = 0
     max_empty_inputs = 5
