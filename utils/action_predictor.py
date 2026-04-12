@@ -63,6 +63,7 @@ ALWAYS RETURN TRUE for:
 - Requests to complete quests or plot points
 - Any mention of quest/plot completion or resolution
 - Questions about module completion status
+- Questions about inventory, currency, or equipment ("how much gold?", "what's in my inventory?", "check my equipment")
 
 NOTE: updateTime is excluded from prediction as it's called for almost every interaction.
 
@@ -91,8 +92,9 @@ TRUE INDICATORS:
 - Story-advancing dialogue that triggers responses → often updates plot
 - Calling out or initiating contact at new locations → often triggers NPC encounters and plot updates
 - Agreement to story directions ("let's do it", "aye") → often commits to plot advancement
-- NPC recruitment requests ("who can you spare?", "can anyone help?", "we need backup", "join us") → party composition changes
-- Responses accepting NPC offers ("yes", "sure", "that would be helpful") when context suggests NPC joining → updatePartyNPCs
+- NPC recruitment requests ("who can you spare?", "can anyone help?", "we need backup", "join us") -> party composition changes
+- Responses accepting NPC offers ("yes", "sure", "that would be helpful") when context suggests NPC joining -> updatePartyNPCs
+- Inventory/currency/equipment queries ("how much gold?", "what's in my inventory?", "check equipment") -> requires full model for data synthesis
 
 CRITICAL PATTERNS TO CATCH:
 - Dice roll outcomes ("natural 20", "I rolled") → Usually leads to updateCharacterInfo/updatePlot
@@ -130,7 +132,10 @@ Examples:
 - "What plots remain?" → TRUE (plot queries require full model for proper updatePlot handling)
 - "Who can you spare?" → TRUE (NPC recruitment request requires updatePartyNPCs action)
 - "Can anyone help us?" → TRUE (asking for NPC assistance likely results in party composition change)
-- "Join us, Kira" → TRUE (direct recruitment requires updatePartyNPCs action)"""
+- "Join us, Kira" → TRUE (direct recruitment requires updatePartyNPCs action)
+- "How much gold do I have?" -> TRUE (inventory/currency query requires cross-referencing character data)
+- "What's in my inventory?" -> TRUE (inventory status needs full model for accurate data synthesis)
+- "Check Kira's equipment" -> TRUE (party member inventory query needs full model)"""
 
 def predict_actions_required(user_input):
     """
