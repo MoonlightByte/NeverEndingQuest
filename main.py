@@ -3412,9 +3412,21 @@ def main_game_loop():
                         if slot_parts:
                             spell_slots_str = f", Spell Slots: {' '.join(slot_parts)}"
                 
-                    party_stats_formatted.append(f"{display_name}: Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}, {ability_str}{spell_slots_str}")
+                    # Extract currency
+                    currency = member_data_for_note.get("currency", {})
+                    gp = currency.get("gold", 0)
+                    sp = currency.get("silver", 0)
+                    cp = currency.get("copper", 0)
+                    currency_parts = []
+                    if gp: currency_parts.append(f"{gp}GP")
+                    if sp: currency_parts.append(f"{sp}SP")
+                    if cp: currency_parts.append(f"{cp}CP")
+                    currency_str = f", Currency: {' '.join(currency_parts)}" if currency_parts else ", Currency: 0GP"
+
+                    party_stats_formatted.append(f"{display_name}: Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}, {ability_str}{spell_slots_str}{currency_str}")
 
             party_stats_str = "; ".join(party_stats_formatted)
+            party_stats_str += ". (These values reflect the state before the player's current action.)"
             current_location_name_note = world_conditions["currentLocation"]
             current_location_id_note = world_conditions["currentLocationId"]
         
