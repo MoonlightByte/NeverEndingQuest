@@ -1,0 +1,79 @@
+{
+  "name": "Harvest Wight",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 27,
+  "maxHitPoints": 27,
+  "speed": 30,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 16,
+    "constitution": 15,
+    "intelligence": 10,
+    "wisdom": 12,
+    "charisma": 15
+  },
+  "savingThrows": [
+    "Wisdom",
+    "Charisma"
+  ],
+  "skills": {
+    "Stealth": 5,
+    "Perception": 3
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "necrotic",
+    "cold"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "Common, understands but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Harvest Touch",
+      "attackBonus": 5,
+      "damageDice": "1d6",
+      "damageBonus": 3,
+      "damageType": "necrotic"
+    },
+    {
+      "name": "Life Drain",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "necrotic"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Harvest Slash",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 3,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Harvest Touch",
+      "attackBonus": 5,
+      "damageDice": "1d6",
+      "damageBonus": 3,
+      "damageType": "necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

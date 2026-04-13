@@ -1,0 +1,78 @@
+{
+  "name": "Grave Wight",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 27,
+  "maxHitPoints": 27,
+  "speed": 30,
+  "abilities": {
+    "strength": 15,
+    "dexterity": 14,
+    "constitution": 16,
+    "intelligence": 10,
+    "wisdom": 13,
+    "charisma": 15
+  },
+  "savingThrows": [
+    "Constitution",
+    "Wisdom"
+  ],
+  "skills": {
+    "Perception": 3,
+    "Stealth": 4
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "Necrotic",
+    "Cold"
+  ],
+  "damageImmunities": [
+    "Poison"
+  ],
+  "conditionImmunities": [
+    "Poisoned",
+    "Exhaustion"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "Common, understands the languages it knew in life but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Sunlight Sensitivity",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Life Drain",
+      "attackBonus": 4,
+      "damageDice": "2d6",
+      "damageBonus": 2,
+      "damageType": "Necrotic"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Longsword",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "Slashing"
+    },
+    {
+      "name": "Life Drain",
+      "attackBonus": 4,
+      "damageDice": "2d6",
+      "damageBonus": 2,
+      "damageType": "Necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

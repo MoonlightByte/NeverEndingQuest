@@ -1,0 +1,432 @@
+{
+  "areaId": "TAC001",
+  "areaName": "The Shrouded Necropolis",
+  "areaType": "mixed",
+  "areaDescription": "A labyrinthine expanse of crumbling tombs and vine-choked mausoleums stretches beneath a perpetual, ghostly mist, where the air is thick with the scent of moss and decay. Shadows shift among broken statues and open graves, and the chill silence is broken only by the distant echo of hungry, restless dead.",
+  "dangerLevel": "high",
+  "recommendedLevel": 5,
+  "climate": "varied",
+  "terrain": "varied terrain",
+  "map": {
+    "mapId": "MAP_E_3",
+    "mapName": "Mixed Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "E01",
+        "type": "room",
+        "connections": [
+          "E02",
+          "E03"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "E02"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "high",
+        "name": "Mourner's Lantern Foyer"
+      },
+      {
+        "id": "E02",
+        "type": "room",
+        "connections": [
+          "E01"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "E01"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Withered Pall Alcove"
+      },
+      {
+        "id": "E03",
+        "type": "room",
+        "connections": [
+          "E01"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {},
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Silent Vigil Crypt"
+      }
+    ],
+    "layout": [
+      [
+        "E01",
+        "E02",
+        "E03"
+      ]
+    ],
+    "startRoom": "E01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "E01",
+      "name": "Mourner's Lantern Foyer",
+      "type": "room",
+      "description": "A broad, dimly lit antechamber just inside the entrance of The Ancient Crypts. Faded mosaics of cloaked mourners line the walls, their lanterns depicted as flickering with ghostly blue light. Thick dust carpets the flagstones, disturbed by recent shuffling tracks. Sconces fitted with everburning candles flicker uncertainly, casting odd shadows. The air is cold and heavy, carrying the scent of must and old incense.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "E02",
+        "E03"
+      ],
+      "areaConnectivity": [
+        "Pottsfield Hearthlands"
+      ],
+      "areaConnectivityId": [
+        "B03"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Grave Wight",
+          "description": "A shadowy undead, once a tomb guardian, now twisted by the necropolis's curse. It lurks in the gloom, eager to drive off intruders with chilling howls and necrotic touch.",
+          "count": 1
+        },
+        {
+          "name": "Tomb Rats",
+          "description": "Swollen, pallid rats with glimmering red eyes and patchy fur. They skitter in the shadows, attacking in desperate swarms.",
+          "count": 6
+        }
+      ],
+      "lootTable": [
+        "Lantern of Restless Spirits (casts dim blue light, repels lesser undead within 10ft)",
+        "Set of silver mourning beads (25 gp)",
+        "Ritual dagger etched with funerary runes"
+      ],
+      "plotHooks": [
+        "A faded mural here shows a secret symbol matching one found in Pottsfield's parish records.",
+        "Scribbled notes in the dust hint at a hidden switch in the next chamber."
+      ],
+      "dmInstructions": "Open with a scene of oppressive silence, broken only by the scurrying of rats. The Grave Wight attempts to frighten and warn the party before attacking, drawing power from the lantern mosaics if not disrupted. This foyer is a good place to foreshadow the necropolis's deeper threats.",
+      "doors": [
+        {
+          "name": "Stone Door to Withered Pall Alcove",
+          "description": "A squat stone door with a faded relief of a shrouded figure. Heavy, but appears to have seen frequent use.",
+          "type": "heavy",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 18,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Iron Gate to Silent Vigil Crypt",
+          "description": "Rusted iron bars set into the stonework, faintly humming with cold magic. The lock is corroded but present.",
+          "type": "regular",
+          "locked": true,
+          "lockDC": 15,
+          "breakDC": 17,
+          "keyname": "Tarnished Crypt Key",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 15,
+          "disableDC": 15,
+          "triggerDC": 12,
+          "damage": "2d6 necrotic (Grave Dust Cloud erupts if the mourner mosaics are disturbed)"
+        }
+      ],
+      "dcChecks": [
+        "Perception DC 13: Notice uneven stones hinting at a pressure plate near the iron gate.",
+        "Religion DC 14: Recognize the funerary rituals depicted in the mosaics are subtly altered from their usual form.",
+        "Investigation DC 12: Find recent footprints in the dust, likely from someone fleeing deeper into the crypt."
+      ],
+      "accessibility": "Entry from a moss-choked stairwell; accessible to Medium or smaller creatures. Slippery surfaces and loose stones require care.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "Crumbled corners, cracked flagstones, and faded murals betray the centuries of neglect."
+        },
+        {
+          "name": "Dust",
+          "description": "A thick layer of undisturbed dust covers every surface, except for recent tracks."
+        },
+        {
+          "name": "Everburning Lantern Sconces",
+          "description": "Flickering magical sconces provide perpetual but faltering blue light."
+        }
+      ],
+      "encounters": [
+        "Ambush by Grave Wight and Tomb Rats",
+        "Discovery of hidden mural clue"
+      ],
+      "adventureSummary": "The Foyer sets the mood: a decrepit, haunted threshold where the party will catch their first glimpse of the necropolis's guardians and its subtle clues.",
+      "aliases": [
+        "Mourner's Lantern Foyer",
+        "E01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Mourner's Lantern Foyer",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "E02",
+      "name": "Withered Pall Alcove",
+      "type": "room",
+      "description": "A claustrophobic side-chamber, the Withered Pall Alcove is dominated by a sagging stone bier draped in rotted velvet. The walls are carved with scenes of mourners weeping, their faces eroded into anonymous masks. The air here is stagnant, thick with mildew. Faintly, a strange keening sound seems to echo from the darkness beyond the alcove.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "E01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Bound Spirit",
+          "description": "A translucent ghost bound to the stone bier, weeping for a loss it cannot name. The spirit is tormented and desperate for release, but wary of strangers.",
+          "attitude": "Cautious, sorrowful, pleading. If approached respectfully and offered aid, it may reveal secrets."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Restless Remains",
+          "description": "The tattered remains of a noble, animated by necromantic energies. It stirs only if the bier is disturbed or the Bound Spirit is threatened.",
+          "count": 1
+        }
+      ],
+      "lootTable": [
+        "Silver mourning ring (10 gp)",
+        "Spirit's Tear (pearl-like gem; casting Speak with Dead on the Bound Spirit's remains here is easier)",
+        "Rotting velvet shroud (valuable to the right collector or for ritual use)"
+      ],
+      "plotHooks": [
+        "The Bound Spirit can hint at the true source of the necropolis's unrest if persuaded.",
+        "A hidden compartment in the bier contains a faded letter referencing 'the lantern that guards the heart below.'"
+      ],
+      "dmInstructions": "Roleplay the Bound Spirit as tragic but wary; it fears becoming like the hostile undead deeper in the tomb. The bier is trapped and only safe to open if the Bound Spirit is at peace.",
+      "doors": [
+        {
+          "name": "Archway to Mourner's Lantern Foyer",
+          "description": "A low, arched passage with crumbling reliefs of roses. No door, but thick cobwebs veil the entrance.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 14,
+          "disableDC": 13,
+          "triggerDC": 12,
+          "damage": "2d8 necrotic (Rotting Shroud: disturbing the bier releases a cloud of necrotic mildew and animates the Restless Remains unless the Bound Spirit is appeased first)"
+        }
+      ],
+      "dcChecks": [
+        "Arcana DC 12: Detect the lingering magic binding the Bound Spirit to the bier.",
+        "Persuasion DC 13: Calm and question the Bound Spirit.",
+        "Investigation DC 15: Locate the hidden letter in the bier's secret compartment."
+      ],
+      "accessibility": "Narrow archway, low ceiling. Accessible, but Large creatures move at half speed.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "Alcove walls carved with weeping figures whose faces have been intentionally defaced."
+        },
+        {
+          "name": "Dust",
+          "description": "Dust motes hang thick in the still air, disturbed by the faintest movement."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "Rotted velvet and crumbling plaster indicate the alcove's long abandonment."
+        }
+      ],
+      "encounters": [
+        "Roleplay opportunity with the Bound Spirit",
+        "Potential combat with animated Restless Remains"
+      ],
+      "adventureSummary": "The Alcove provides a key roleplay and investigation space, where the party can learn about the curse, retrieve clues, and face consequences for disrespecting the dead.",
+      "aliases": [
+        "Withered Pall Alcove",
+        "E02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Withered Pall Alcove",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "E03",
+      "name": "Silent Vigil Crypt",
+      "type": "room",
+      "description": "A long, narrow crypt lined with ornate sarcophagi, each crowned with a stone effigy of a silent watchman. Thin mist clings to the floor. The far end is dominated by a stained-glass window depicting a lantern shining over a sleeping town\u2014the only intact color in the necropolis. Echoes seem to linger here, and the oppressive silence is broken only by the party's movements.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "E01"
+      ],
+      "areaConnectivity": [
+        "The Reaping Fields"
+      ],
+      "areaConnectivityId": [
+        "F01"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Crypt Watchers",
+          "description": "Ancient skeletal sentinels that animate if the sarcophagi are disturbed or the stained-glass window is tampered with.",
+          "count": 2
+        }
+      ],
+      "lootTable": [
+        "Tarnished Crypt Key (unlocks the Iron Gate in the Foyer)",
+        "Set of bone prayer beads",
+        "Piece of stained glass (magically enchanted to glow faintly in undead presence)"
+      ],
+      "plotHooks": [
+        "The stained-glass window can be studied to reveal the history of Pottsfield's original curse.",
+        "A secret lever behind the third sarcophagus opens a passage to deeper crypts (future expansion)."
+      ],
+      "dmInstructions": "The Crypt Watchers only attack if the sanctity of the crypt is violated. This room allows cautious players to learn more about Pottsfield's history through the window and grave inscriptions.",
+      "doors": [
+        {
+          "name": "Iron Gate to Mourner's Lantern Foyer",
+          "description": "Rusted iron bars, locked but with a keyhole visible from both sides. Cold to the touch.",
+          "type": "regular",
+          "locked": true,
+          "lockDC": 15,
+          "breakDC": 17,
+          "keyname": "Tarnished Crypt Key",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 13,
+          "disableDC": 15,
+          "triggerDC": 14,
+          "damage": "3d6 radiant (Sunburst Trap: If the window is shattered, a burst of radiant energy fills the crypt)"
+        }
+      ],
+      "dcChecks": [
+        "Religion DC 12: Interpret the silent vigil symbolism and its connection to the necropolis's curse.",
+        "History DC 15: Decipher the stained-glass scene's connection to Pottsfield's founding tragedy.",
+        "Perception DC 14: Discover the secret lever behind the third sarcophagus."
+      ],
+      "accessibility": "Accessible by the iron gate from the Foyer. The crypt is narrow but navigable for most creatures.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "Rows of sarcophagi with carved effigies, each depicting a different silent guardian."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "Effigies worn smooth by centuries, chips of stone on the floor."
+        },
+        {
+          "name": "Dust",
+          "description": "Despite the dust, the stained-glass window is remarkably clear."
+        }
+      ],
+      "encounters": [
+        "Combat with Crypt Watchers if the crypt is disturbed",
+        "Discovery of the Tarnished Crypt Key"
+      ],
+      "adventureSummary": "The Crypt offers clues to the necropolis's origin, a key to progress further, and a challenge for those who disrespect the dead.",
+      "aliases": [
+        "Silent Vigil Crypt",
+        "E03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Silent Vigil Crypt",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 5 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 5 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 5 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 5 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 5 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 5 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 5 parties"
+    }
+  ],
+  "areaFeatures": [
+    "bridges",
+    "crossroads",
+    "ruins"
+  ],
+  "notes": "Balance combat, exploration, and social encounters. Transitions between areas should feel natural.",
+  "spatialContractVersion": 1
+}

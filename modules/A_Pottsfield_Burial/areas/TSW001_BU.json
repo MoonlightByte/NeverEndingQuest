@@ -1,0 +1,410 @@
+{
+  "areaId": "TSW001",
+  "areaName": "The Veilwood Expanse",
+  "areaType": "wilderness",
+  "areaDescription": "Ancient trees loom beneath a perpetual mist, their gnarled boughs twisting into shadowy forms that mask hidden dangers and whispered secrets. Every step in the Veilwood Expanse is haunted by the sense of unseen eyes, where even the bravest travelers vanish without a trace.",
+  "dangerLevel": "high",
+  "recommendedLevel": 4,
+  "climate": "arctic",
+  "terrain": "coast",
+  "map": {
+    "mapId": "MAP_D_3",
+    "mapName": "Wilderness Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "D01",
+        "type": "hilltop",
+        "connections": [
+          "D02"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "D02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Graven Summit"
+      },
+      {
+        "id": "D02",
+        "type": "ravine",
+        "connections": [
+          "D01",
+          "D03"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "D01",
+          "east": "D03"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "high",
+        "name": "Forgotten Hollow"
+      },
+      {
+        "id": "D03",
+        "type": "crossroads",
+        "connections": [
+          "D02"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {
+          "west": "D02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "transition",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Silent Fork"
+      }
+    ],
+    "layout": [
+      [
+        "D01",
+        "D02",
+        "D03"
+      ]
+    ],
+    "startRoom": "D02",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "D01",
+      "name": "Graven Summit",
+      "type": "hilltop",
+      "description": "A steep, bald hill rises above the canopy, its summit crowned with ancient standing stones bearing eroded, unreadable runes. The mist is thinner here, but an oppressive silence blankets the area, broken only by the occasional caw of a distant crow. From the summit, one can glimpse fleeting shadows moving within the treeline below.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "D02"
+      ],
+      "areaConnectivity": [
+        "The Reaping Fields"
+      ],
+      "areaConnectivityId": [
+        "F03"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Veilwood Wraith",
+          "description": "A restless spirit bound to the standing stones. It manifests at dusk, seeking to drain the life from intruders.",
+          "quantity": 1
+        }
+      ],
+      "lootTable": [
+        "Engraved obsidian amulet (value: 50 gp, runes hint at the Veilwood curse)",
+        "2d4 silvered arrowheads (useful against spirits)",
+        "Weathered map fragment (shows routes through the Expanse; fits with pieces in Forgotten Hollow)"
+      ],
+      "plotHooks": [
+        "The stones bear runes similar to those seen in Pottsfield\u2019s graveyard. Studying them may reveal links between the curse and whatever haunts the Veilwood.",
+        "A recent campfire suggests someone else recently braved the summit. Who\u2014and why?"
+      ],
+      "dmInstructions": "This hilltop offers a vantage point and a place for a haunting encounter. Adjust the Veilwood Wraith\u2019s challenge for party size. The runes can be deciphered with skill checks. The amulet is a potential key in the broader Pottsfield mystery.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Arcana DC 14: Decipher the runes for hints about necromantic rituals.",
+        "Perception DC 13: Notice the hidden map fragment wedged between two stones."
+      ],
+      "accessibility": "A steep, winding animal trail climbs the hill; movement is slow and exposed but unimpeded.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "A fine, ashen dust covers the stones, disturbed only by fresh footprints."
+        },
+        {
+          "name": "Standing Stones",
+          "description": "Six ancient menhirs form a rough circle at the summit; their surfaces are carved with weather-worn runes."
+        },
+        {
+          "name": "Overlook",
+          "description": "The summit offers a sweeping view of the Veilwood, with glimpses of movement far below."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "combat",
+          "description": "At dusk or if the stones are disturbed, a Veilwood Wraith arises and attacks."
+        },
+        {
+          "type": "exploration",
+          "description": "Searching the area reveals the map fragment, campfire remains, and fresh tracks."
+        }
+      ],
+      "adventureSummary": "A haunted hilltop with ancient stones, spectral guardians, and clues to the Veilwood's curse.",
+      "aliases": [
+        "Graven Summit",
+        "D01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_hilltop:Graven Summit",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "D02",
+      "name": "Forgotten Hollow",
+      "type": "ravine",
+      "description": "A deep, narrow ravine splits the woods, its sides shrouded in tangled roots and slick moss. The air is damp and stagnant. Rotting wooden beams hint at the remains of an old bridge. Echoes carry strangely here, and a cold draft rises from a hidden crevice below.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "D01",
+        "D03"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Specter of Jonny Harrow",
+          "description": "The restless ghost of a Pottsfield villager, bound here by ancient wrongs. He appears mournful, confused, and wary of strangers, but may be convinced to aid those seeking to break the curse.",
+          "attitude": "Wary, forlorn, haunted by regret"
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Veilwood Shadow",
+          "description": "Shifting, incorporeal fragments of dark magic, drawn to living energy and the presence of the Specter.",
+          "quantity": 2
+        }
+      ],
+      "lootTable": [
+        "Jonny Harrow\u2019s signet ring (proof of his identity, valuable for unlocking secrets elsewhere)",
+        "Tarnished silver locket containing a faded portrait (can calm the Specter if presented)",
+        "Rotten journal (pages detail failed escape attempts; contains a coded reference to 'the altar in the crossroads')"
+      ],
+      "plotHooks": [
+        "Jonny Harrow\u2019s ghost knows part of the story behind Pottsfield\u2019s curse, but will only share if given his locket or ring.",
+        "The coded journal hints at a hidden altar at Silent Fork, offering a direct lead onward."
+      ],
+      "dmInstructions": "Specter of Jonny Harrow must be present. Encourage roleplay: the party can learn crucial information or be attacked if they antagonize him. The Shadows attack if the Specter is distressed. The bridge remains may support a DC 15 Athletics check to cross, or players can descend and climb the ravine.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 13,
+          "disableDC": 14,
+          "triggerDC": 10,
+          "damage": "2d6 piercing (spiked pit concealed by leaves at the ravine base)"
+        }
+      ],
+      "dcChecks": [
+        "Investigation DC 12: Locate the hidden journal among the rubble.",
+        "Persuasion DC 13: Calm or befriend the Specter of Jonny Harrow.",
+        "Athletics DC 15: Cross the unstable bridge remains."
+      ],
+      "accessibility": "Steep descent on mud and roots; athletic checks needed for safe passage or bridge crossing.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "Remnants of a collapsed wooden bridge, its beams overgrown and rotten."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "Moldering bones and rusted trinkets scattered among the roots suggest many previous victims."
+        },
+        {
+          "name": "Dust",
+          "description": "Silt and ash coat much of the ravine floor."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "roleplay",
+          "description": "Interact with the Specter of Jonny Harrow, learn about Pottsfield\u2019s dark history."
+        },
+        {
+          "type": "combat",
+          "description": "Shadows attack if the Specter is angered or frightened."
+        }
+      ],
+      "adventureSummary": "A shadow-haunted ravine concealing tragic history, spectral secrets, and a dangerous crossing.",
+      "aliases": [
+        "Forgotten Hollow",
+        "D02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_ravine:Forgotten Hollow",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "D03",
+      "name": "Silent Fork",
+      "type": "crossroads",
+      "description": "A fork in the forest path where three moss-choked trails diverge. At the center stands a crumbling stone altar, its surface stained and engraved with cryptic symbols that pulse faintly in the mist. The silence here is absolute\u2014no birds, no wind, just heartbeats and the distant whisper of lost souls.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "D02"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Father Milgrom",
+          "description": "A gaunt, hollow-eyed priest in tattered vestments, bound unwillingly to the altar. He is lucid but despairing, haunted by his failure to stop the Veilwood\u2019s corruption. Milgrom is desperate for absolution and guidance, and holds vital knowledge about the curse\u2014and its undoing.",
+          "attitude": "Penitent, desperate, eager to help (if convinced of the party\u2019s good intent)"
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Veilwood Husk",
+          "description": "A twisted, undead guardian animated by the altar's magic. It remains dormant until intruders disturb the altar or threaten Father Milgrom.",
+          "quantity": 1
+        }
+      ],
+      "lootTable": [
+        "Consecrated vial of holy water (created by Father Milgrom; useful against undead)",
+        "Altar etching kit (can make a rubbing of the runes for study elsewhere)",
+        "Milgrom\u2019s journal fragment (details the true nature of the curse and hints at the next step\u2014seeking the heart of the Veilwood)"
+      ],
+      "plotHooks": [
+        "Father Milgrom can explain the altar\u2019s significance, the true nature of Pottsfield\u2019s affliction, and direct the party to the next leg of their quest.",
+        "The altar\u2019s runes match those on the stones of Graven Summit, suggesting a ritual connection."
+      ],
+      "dmInstructions": "Include Father Milgrom as a key roleplay encounter. If the party soothes or aids him, he provides guidance and a holy relic. The Veilwood Husk only attacks if the altar is disturbed or Milgrom is threatened. The crossroads paths can be explored for additional wilderness encounters or shortcuts.",
+      "doors": [
+        {
+          "name": "Stone Slab",
+          "description": "A heavy, moss-covered stone slab set into the ground beside the altar. It covers a root-choked crawlspace.",
+          "type": "heavy",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 18,
+          "keyname": "",
+          "trapped": true,
+          "trap": "Releasing the slab triggers poison thorns (DC 13 Con save or 2d4 poison damage)."
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 14,
+          "disableDC": 15,
+          "triggerDC": 12,
+          "damage": "2d4 poison (thorny roots beneath the slab lash out when moved)"
+        }
+      ],
+      "dcChecks": [
+        "Religion DC 12: Identify the altar as a site of necromantic rituals tied to the Pottsfield curse.",
+        "Medicine DC 10: Notice Father Milgrom\u2019s spiritual injuries.",
+        "Strength DC 18: Lift or move the stone slab.",
+        "Perception DC 13: Spot the hidden crawlspace beneath the slab."
+      ],
+      "accessibility": "Easy to reach along the main woodland path, but the silence and faint magical aura unsettle even the bravest travelers.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "A weathered altar, covered in cryptic runes and old bloodstains, dominates the crossroads."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "roleplay",
+          "description": "Father Milgrom offers lore, guidance, and solace, but is wary until trust is earned."
+        },
+        {
+          "type": "combat",
+          "description": "The Veilwood Husk attacks if the altar is desecrated or Milgrom is threatened."
+        }
+      ],
+      "adventureSummary": "A crossroads of fate, where truth, danger, and the next steps in the Veilwood mystery converge.",
+      "aliases": [
+        "Silent Fork",
+        "D03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_crossroads:Silent Fork",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 4 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 4 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 4 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 4 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 4 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 4 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 4 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 4 parties"
+    },
+    {
+      "roll": "81-90",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 4 parties"
+    }
+  ],
+  "areaFeatures": [
+    "animal dens",
+    "ancient trees",
+    "rock formations"
+  ],
+  "notes": "Weather and terrain should affect travel times. Random encounters keep exploration tense.",
+  "spatialContractVersion": 1
+}

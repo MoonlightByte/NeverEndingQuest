@@ -1,0 +1,67 @@
+{
+  "name": "Restless Skeleton",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Lawful Evil",
+  "armorClass": 13,
+  "hitPoints": 13,
+  "maxHitPoints": 13,
+  "speed": 30,
+  "abilities": {
+    "strength": 10,
+    "dexterity": 14,
+    "constitution": 15,
+    "intelligence": 6,
+    "wisdom": 8,
+    "charisma": 5
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [
+    "bludgeoning"
+  ],
+  "damageResistances": [
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "poison"
+  ],
+  "conditionImmunities": [
+    "poisoned",
+    "exhaustion"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 9
+  },
+  "languages": "Understands all languages it knew in life but can't speak",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Undead Fortitude",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Shortsword",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    },
+    {
+      "name": "Shortbow",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

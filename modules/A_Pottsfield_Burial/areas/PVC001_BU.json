@@ -1,0 +1,415 @@
+{
+  "areaId": "PVC001",
+  "areaName": "Pottsfield Hearthlands",
+  "areaType": "town",
+  "areaDescription": "Nestled among golden fields and twisting cobblestone lanes, the Pottsfield Hearthlands exude a rustic charm that belies a simmering tension beneath its harvest festivals and lantern-lit porches. Visitors soon sense watchful eyes behind lace-curtained windows and hear the low murmur of secrets carried on the autumn wind.",
+  "dangerLevel": "medium",
+  "recommendedLevel": 3,
+  "climate": "temperate",
+  "terrain": "urban streets and buildings",
+  "map": {
+    "mapId": "MAP_B_3",
+    "mapName": "Town Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "B01",
+        "type": "guild",
+        "connections": [
+          "B02"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "B02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "medium",
+        "name": "Gravebinders' Assembly"
+      },
+      {
+        "id": "B02",
+        "type": "gate",
+        "connections": [
+          "B01",
+          "B03"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "B01",
+          "east": "B03"
+        },
+        "tags": [
+          "hub"
+        ],
+        "purpose": "transition",
+        "landmark": false,
+        "dangerLevel": "medium",
+        "name": "Shrouded Barrow Gate"
+      },
+      {
+        "id": "B03",
+        "type": "guild",
+        "connections": [
+          "B02"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {
+          "west": "B02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "medium",
+        "name": "Harvestbound Hall"
+      }
+    ],
+    "layout": [
+      [
+        "B01",
+        "B02",
+        "B03"
+      ]
+    ],
+    "startRoom": "B02",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "B01",
+      "name": "Gravebinders' Assembly",
+      "type": "guild",
+      "description": "Once a stone barn, this assembly hall is the headquarters for Pottsfield's secretive undertakers' guild. Rows of rustic benches and faded banners bearing cryptic emblems flank a wide hearth, its embers cold despite the town's chill. Shelves of bone-handled tools and ledgers line the walls. The air carries the scent of old earth and dried rosemary.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "B02"
+      ],
+      "areaConnectivity": [
+        "The Pottsfield Parishlands"
+      ],
+      "areaConnectivityId": [
+        "C03"
+      ],
+      "npcs": [
+        {
+          "name": "Deputy Silas Cragg",
+          "description": "A gaunt, sharp-eyed man in a patched uniform, Deputy Silas Cragg acts as the town's unofficial law and the Gravebinders' chief enforcer. He is ever-watchful, wary of strangers, and harbors deep suspicions of anyone poking into the town\u2019s affairs. Cragg is terse, but may offer wary cooperation if convinced the party means no harm.",
+          "attitude": "Guarded, stern; will question the party's intentions and warn them against 'disturbing the peace'."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Set of bone-handled grave tools (set, 5 gp)",
+        "Ledger listing names and odd symbols (clue)",
+        "Phial of gravebloom oil (10 gp, faintly magical, necromancy)"
+      ],
+      "plotHooks": [
+        "A cryptic ledger hints at townsfolk who died but were seen alive later.",
+        "Deputy Cragg warns of trespassers in the Parish Grounds vanishing without a trace.",
+        "A locked chest beneath the hearth is rumored to contain forbidden rites."
+      ],
+      "dmInstructions": "Deputy Silas Cragg should question the party; if they seek information about recent disappearances or the town\u2019s strange custom, a DC 13 Persuasion check can soften his attitude. The ledger is a major clue. Combat is unlikely unless the party acts with clear hostility or tries to steal guild secrets.",
+      "doors": [
+        {
+          "name": "Main Hall Door",
+          "description": "Heavy oak double doors, weathered and creaking on iron hinges.",
+          "type": "regular",
+          "locked": true,
+          "lockDC": 12,
+          "breakDC": 15,
+          "keyname": "Guild Key",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Hearth Trapdoor",
+          "description": "Concealed beneath the hearth's ashes, a sturdy trapdoor with a brass ring.",
+          "type": "secret",
+          "locked": true,
+          "lockDC": 15,
+          "breakDC": 20,
+          "keyname": "Deputy's Brass Key",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Perception DC 13: Notice the faint outline of the hearth trapdoor.",
+        "Investigation DC 15: Decipher the ledger's coded entries."
+      ],
+      "accessibility": "Normal access during daylight; after dusk, only guild members can enter without raising suspicion.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "A heavy mantle of undisturbed dust covers ledgers and benches, except the hearth area\u2014recently disturbed."
+        },
+        {
+          "name": "Guild Emblems",
+          "description": "Faded banners display a scythe entwined with a lantern\u2014symbol of the Gravebinders."
+        }
+      ],
+      "encounters": [
+        "Deputy Silas Cragg interrogates the party about their purpose.",
+        "A hidden chest (DC 15 Perception) contains ritual scrolls (see loot)."
+      ],
+      "adventureSummary": "The party may gain critical information about Pottsfield\u2019s necromantic secrets and the guild\u2019s true role if they earn Cragg's trust or search the room.",
+      "aliases": [
+        "Gravebinders' Assembly",
+        "B01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_guild:Gravebinders' Assembly",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "B02",
+      "name": "Shrouded Barrow Gate",
+      "type": "gate",
+      "description": "A wrought-iron archway crowned with carved pumpkin lanterns\u2014some lit, some cold\u2014marks the entrance to Pottsfield\u2019s oldest burial grounds. A low, crumbling stone wall surrounds the gardens beyond. Fine mist lingers in the morning, thickening at dusk. The gate\u2019s hinges groan under the weight of years, and a faint chill seeps from beyond.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "B01",
+        "B03"
+      ],
+      "areaConnectivity": [
+        "Pottsfield Parish Grounds"
+      ],
+      "areaConnectivityId": [
+        "PPG001"
+      ],
+      "npcs": [
+        {
+          "name": "Widow Elsie Tallow",
+          "description": "A gaunt, veiled woman in black, tending a lantern and muttering prayers for the dead. She is both gatekeeper and mourner, fiercely protective of the grounds. Elsie knows much about Pottsfield\u2019s secret rites, but is haunted by memories of loved ones lost (and returned).",
+          "attitude": "Distrustful of outsiders but softened by genuine grief; will warn the party about disturbing the graves."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Iron gate key (worn by Widow Tallow)",
+        "Bundle of grave-lilies",
+        "Prayer beads carved from pumpkin seed (arcane focus, minor)"
+      ],
+      "plotHooks": [
+        "Widow Tallow reveals people sometimes leave the cemetery 'different' than they entered.",
+        "The lanterns' flames flicker seemingly in response to unspoken questions.",
+        "A hidden inscription on the archway hints at a ritual to appease restless spirits."
+      ],
+      "dmInstructions": "Widow Tallow should be roleplayed with deep sorrow and suspicion. The area is a threshold to the Parish Grounds (PPG001); she will reluctantly allow respectful adventurers to pass if convinced of their good intentions (DC 12 Persuasion, advantage if they share a story of loss). After sunset, spirits may manifest beyond the gate.",
+      "doors": [
+        {
+          "name": "Iron Barrow Gate",
+          "description": "Tall iron-barred gate, decorated with corroded pumpkin lanterns and curling vines.",
+          "type": "heavy",
+          "locked": true,
+          "lockDC": 14,
+          "breakDC": 18,
+          "keyname": "Iron gate key",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 12,
+          "disableDC": 13,
+          "triggerDC": 0,
+          "damage": "None; a silent bell alerts the Gravebinders if tampered with."
+        }
+      ],
+      "dcChecks": [
+        "Religion DC 10: Recognize the lanterns as symbols of warding against undeath.",
+        "Investigation DC 14: Find the hidden inscription on the archway."
+      ],
+      "accessibility": "Normally locked after sundown; daytime access permitted if a mourner or guild member is present.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "The archway is inlaid with faintly-glowing runes and pumpkin motifs, blending beauty and foreboding."
+        },
+        {
+          "name": "Dust",
+          "description": "A fine white dust covers the path beyond the gate, disturbed only by fresh footprints."
+        }
+      ],
+      "encounters": [
+        "Widow Elsie Tallow questions the party\u2019s motives, offering cryptic advice.",
+        "Lantern flames flicker in unnatural patterns, hinting at restless spirits."
+      ],
+      "adventureSummary": "This location serves as the literal and thematic threshold to the town's secrets; respectful negotiation or clever investigation here can open the way to deeper mysteries.",
+      "aliases": [
+        "Shrouded Barrow Gate",
+        "B02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_gate:Shrouded Barrow Gate",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "B03",
+      "name": "Harvestbound Hall",
+      "type": "guild",
+      "description": "This stately building of amber-brick and timber hosts the town\u2019s autumn festivals and council meetings. Long tables, festooned with dried corn husks and faded streamers, fill the main hall. The air smells of cider and old wax. Laughter echoes faintly\u2014even when the room is empty. Portraits of past mayors gaze down from the walls, eyes unsettlingly lifelike.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "B02"
+      ],
+      "areaConnectivity": [
+        "The Shrouded Necropolis"
+      ],
+      "areaConnectivityId": [
+        "E01"
+      ],
+      "npcs": [
+        {
+          "name": "Masked Reveler",
+          "description": "A jovial figure in a patchwork cloak and a carved pumpkin mask, the Masked Reveler is both entertainer and secret-keeper. They organize strange harvest games and encourage newcomers to take part. Beneath their mirth lies a calculating mind, ever watching the crowd for threats to Pottsfield\u2019s order.",
+          "attitude": "Cheerful and welcoming, but evasive; tests the party\u2019s intentions with riddles and games before revealing anything of substance."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Festival mask (pumpkin, minor illusion magic)",
+        "Bottle of spiced cider, 'Blessed of the Harvest'",
+        "Scroll of festival rites (contains minor abjuration magic, clue)"
+      ],
+      "plotHooks": [
+        "The Masked Reveler invites the party to participate in a harvest game with subtle, magical consequences.",
+        "A painting on the wall appears to move when observed from the corner of one\u2019s eye.",
+        "Winners of certain games are given keys or clues related to the town\u2019s deeper mysteries."
+      ],
+      "dmInstructions": "The Masked Reveler should encourage both roleplay and investigation. Success in festival games (see below) might grant minor magical boons, clues, or the trust of the townsfolk. If the party suspects the hall's enchantments, allow Arcana or Insight checks to uncover the truth behind the festivities.",
+      "doors": [
+        {
+          "name": "Main Entry",
+          "description": "Wide double doors, painted with harvest scenes and glowing faintly at night.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 8,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Council Chamber Door",
+          "description": "Solid pine door with a silvered leaf motif, leading to a private room.",
+          "type": "regular",
+          "locked": true,
+          "lockDC": 13,
+          "breakDC": 15,
+          "keyname": "Council Chamber Key",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Insight DC 12: Sense the Masked Reveler\u2019s hidden wariness.",
+        "Arcana DC 14: Detect a lingering festival enchantment on the hall."
+      ],
+      "accessibility": "Open to all during daylight and festivals; otherwise, council members or festival organizers must permit entry.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "Despite regular use, a layer of dust lingers in the corners, disturbed only during festival nights."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "Vaulted ceilings and magically-lit lanterns subtly change color with the hour."
+        }
+      ],
+      "encounters": [
+        "Masked Reveler challenges the party to a riddle or harvest game.",
+        "A festival-goer (Desperate Townsfolk, if needed elsewhere) is caught cheating and begs the party for help."
+      ],
+      "adventureSummary": "Winning the Reveler\u2019s games or earning their trust may provide vital clues or magical assistance for uncovering the secrets of Pottsfield.",
+      "aliases": [
+        "Harvestbound Hall",
+        "B03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_guild:Harvestbound Hall",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 3 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 3 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 3 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 3 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 3 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 3 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "territorial beast",
+      "description": "A territorial beast appropriate for level 3 parties"
+    }
+  ],
+  "areaFeatures": [
+    "merchant quarter",
+    "local tavern",
+    "guard posts"
+  ],
+  "notes": "NPCs should have daily routines. Political factions create roleplay opportunities.",
+  "spatialContractVersion": 1
+}

@@ -1,0 +1,72 @@
+{
+  "mapId": "MAP_E_3",
+  "mapName": "Mixed Map",
+  "totalRooms": 3,
+  "rooms": [
+    {
+      "id": "E01",
+      "type": "room",
+      "connections": [
+        "E02",
+        "E03"
+      ],
+      "coordinates": "X10Y10",
+      "directions": {
+        "east": "E02",
+        "south": "E03"
+      },
+      "tags": [],
+      "purpose": "unknown",
+      "landmark": false,
+      "dangerLevel": "high",
+      "name": "Mourner's Lantern Foyer"
+    },
+    {
+      "id": "E02",
+      "type": "room",
+      "connections": [
+        "E01"
+      ],
+      "coordinates": "X11Y10",
+      "directions": {
+        "west": "E01"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "high",
+      "name": "Withered Pall Alcove"
+    },
+    {
+      "id": "E03",
+      "type": "room",
+      "connections": [
+        "E01"
+      ],
+      "coordinates": "X10Y11",
+      "directions": {
+        "north": "E01"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "high",
+      "name": "Silent Vigil Crypt"
+    }
+  ],
+  "layout": [
+    [
+      "E01",
+      "E02",
+      "E03"
+    ]
+  ],
+  "startRoom": "E01",
+  "version": "1.1",
+  "notes": "Extended schema with AI-friendly navigation fields",
+  "spatialContractVersion": 1
+}

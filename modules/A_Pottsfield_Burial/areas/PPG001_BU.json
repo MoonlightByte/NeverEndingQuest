@@ -1,0 +1,417 @@
+{
+  "areaId": "PPG001",
+  "areaName": "The Pottsfield Parishlands",
+  "areaType": "mixed",
+  "areaDescription": "Mist drifts over tangled fields and weathered gravestones, where the toll of distant bells mingles with the low chant of unseen congregants. Beneath twisted yew trees, the ground feels soft and uncertain, as if something restless lingers just below the surface.",
+  "dangerLevel": "medium",
+  "recommendedLevel": 4,
+  "climate": "varied",
+  "terrain": "varied terrain",
+  "map": {
+    "mapId": "MAP_C_3",
+    "mapName": "Mixed Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "C01",
+        "type": "room",
+        "connections": [
+          "C02",
+          "C03"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "C02"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "medium",
+        "name": "Sable Crossroads"
+      },
+      {
+        "id": "C02",
+        "type": "room",
+        "connections": [
+          "C01"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "C01"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "medium",
+        "name": "Graven Stillhouse"
+      },
+      {
+        "id": "C03",
+        "type": "room",
+        "connections": [
+          "C01"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {},
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "medium",
+        "name": "Witherbone Alcove"
+      }
+    ],
+    "layout": [
+      [
+        "C01",
+        "C02",
+        "C03"
+      ]
+    ],
+    "startRoom": "C01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "C01",
+      "name": "Sable Crossroads",
+      "type": "room",
+      "description": "Where three narrow, rutted paths merge amid a circle of leaning headstones. The crossroads is shrouded in perpetual dimness, the air thick with dust and the scent of moss. The tolling of distant bells seems to linger here, echoing between the stones. Deep wagon grooves and scattered bone fragments suggest this was once a place of frequent passage\u2014and perhaps hasty burials.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "C02",
+        "C03"
+      ],
+      "areaConnectivity": [
+        "Fields of Pottsfield"
+      ],
+      "areaConnectivityId": [
+        "A03"
+      ],
+      "aliases": [
+        "Sable Crossroads",
+        "C01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Sable Crossroads",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ],
+      "npcs": [
+        {
+          "name": "Desperate Townsfolk",
+          "description": "A gaunt villager with haunted eyes, clothing stitched with wilted wildflowers. Their voice trembles as they plead for help, driven nearly mad by grief and fear. They clutch a broken lantern and speak in whispers about the 'sleeping beneath.'",
+          "attitude": "Fearful, desperate for help but wary of strangers."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Rusty Lantern (1gp, flickers with will-o'-wisp-like light)",
+        "Fragment of a burial record (mentions names and recent interments)"
+      ],
+      "plotHooks": [
+        "The townsfolk begs the party to find a missing loved one whose grave was disturbed last night.",
+        "Strange footprints lead east, deeper into the Parish Grounds."
+      ],
+      "dmInstructions": "Open with tense roleplay: the Desperate Townsfolk can reveal cryptic rumors or tempt the party with information for protection. If players linger, something unseen may scratch at the earth nearby (Perception DC 13). Use the crossroads as an atmospheric hub to set the tone.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Perception DC 13: Notice fresh disturbed earth and faint, unnatural scratching beneath a nearby stone.",
+        "Insight DC 12: Sense the townsfolk is hiding the full extent of their terror."
+      ],
+      "accessibility": "Easily reached by any of the main paths through the Parishlands.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "A thick, gray dust coats every surface, dulling colors and muffling sound. It tastes faintly of ash."
+        },
+        {
+          "name": "Converging Paths",
+          "description": "Three distinct, timeworn paths meet under a ring of leaning headstones, some chiseled with symbols of old faiths."
+        },
+        {
+          "name": "Recent Disturbance",
+          "description": "Fresh earth and a toppled grave marker hint at something recently unearthed."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "roleplay",
+          "description": "Desperate Townsfolk pleads for help, and may share cryptic warnings or direct the party to recent disturbances."
+        },
+        {
+          "type": "exploration",
+          "description": "Examining the area reveals clues about recent grave disturbances and the unnatural quiet that hangs over the crossroads."
+        }
+      ],
+      "adventureSummary": "The Sable Crossroads sets the tone for the haunted Parish Grounds, presenting a choice of paths and an immediate taste of the supernatural threat underlying Pottsfield\u2019s stillness."
+    },
+    {
+      "locationId": "C02",
+      "name": "Graven Stillhouse",
+      "type": "room",
+      "description": "A squat, stone outbuilding partially sunk into the ground. Its warped wooden door hangs askew, and faded carvings of harvest scenes are set into the lintel. Inside, the air is musty and cold. Cracked shelves are stacked with jars of earth and faded burial vestments. A broad central slab\u2014stained and marked with ritual sigils\u2014dominates the room, hinting at recent necromantic rites.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "C01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "aliases": [
+        "Graven Stillhouse",
+        "C02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Graven Stillhouse",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ],
+      "npcs": [
+        {
+          "name": "Bound Spirit",
+          "description": "A translucent, sorrowful apparition is tethered to the central slab by glowing runes. Their form flickers and writhes in distress, unable to speak above a whisper. The spirit gestures desperately toward the sigils, pleading for release.",
+          "attitude": "Agonized, fearful, but will try to aid the party if freed."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Crawling Claws (2)",
+          "description": "Necromantically animated hands emerge from jars and scuttle across the floor if the spirit\u2019s bindings are tampered with."
+        }
+      ],
+      "lootTable": [
+        "Silver Ritual Knife (25gp, faint necromantic residue)",
+        "Jar of Grave Dust (component for certain spells)",
+        "Set of Burial Vestments (worth 5gp to a collector or local priest)"
+      ],
+      "plotHooks": [
+        "The Bound Spirit begs the party to disrupt the runes binding them\u2014doing so may draw hostile attention or reveal hidden lore.",
+        "Etched on the slab is a fragmentary prayer referencing Father Milgrom and a 'harvest of souls.'"
+      ],
+      "dmInstructions": "The spirit\u2019s release requires an Arcana or Religion check (DC 14). If freed, the Bound Spirit can grant cryptic visions or directions. Disrupting the runes triggers the Crawling Claws attack and alerts other nearby undead.",
+      "doors": [
+        {
+          "name": "Main Door",
+          "description": "A warped wooden door, banded in iron, creaks loudly on its hinges.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 12,
+          "disableDC": 14,
+          "triggerDC": 12,
+          "damage": "1d8 necrotic (triggered by disturbing the slab without disrupting the runes first; magical backlash)."
+        }
+      ],
+      "dcChecks": [
+        "Arcana DC 14: Disrupt the binding runes holding the spirit.",
+        "Investigation DC 13: Notice subtle traces of a recent ritual and the presence of necromantic residue.",
+        "Religion DC 12: Recognize the sigils as a perversion of mourning rites."
+      ],
+      "accessibility": "Requires pushing aside the heavy door; otherwise, unbarred and easily entered.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "Crumbled mortar, rotting shelves, and faded carvings reveal centuries of weather and neglect."
+        },
+        {
+          "name": "Dust",
+          "description": "Layers of fine, gray dust coat everything, occasionally disturbed by unseen movement."
+        },
+        {
+          "name": "Ritual Slab",
+          "description": "A broad, central stone slab covered in glowing runes and dried blood. The focus of recent dark rites."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "roleplay",
+          "description": "Bound Spirit pleads for release, offering cryptic aid or warnings if freed."
+        },
+        {
+          "type": "combat",
+          "description": "Disturbing the runes or attempting to remove objects triggers Crawling Claws (2) attack."
+        },
+        {
+          "type": "exploration",
+          "description": "Careful examination yields clues about the necromantic rituals and the dark influence over Pottsfield."
+        }
+      ],
+      "adventureSummary": "The Graven Stillhouse offers a tense mix of roleplay and danger, allowing the party to interact with a tormented spirit and uncover critical evidence of the curse plaguing Pottsfield."
+    },
+    {
+      "locationId": "C03",
+      "name": "Witherbone Alcove",
+      "type": "room",
+      "description": "A shallow crypt-like alcove cut into the hillside, its entrance framed with twisted yew branches and bone charms. Shadows deepen here even in daylight, and the air is cold and close. The floor is littered with brittle, white roots and scraps of funerary masks. A faint, rhythmic thumping echoes from within\u2014a heartbeat or a distant bell?",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "C01"
+      ],
+      "areaConnectivity": [
+        "Pottsfield Hearthlands"
+      ],
+      "areaConnectivityId": [
+        "B01"
+      ],
+      "aliases": [
+        "Witherbone Alcove",
+        "C03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Witherbone Alcove",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ],
+      "npcs": [
+        {
+          "name": "Freed Spirits",
+          "description": "A chorus of faint, shimmering figures\u2014villagers lost to the Parish curse\u2014rise here if the Bound Spirit from the Stillhouse was released. They are grateful, speaking in riddles and blessing the party, but warn of a greater malignancy deeper within.",
+          "attitude": "Grateful, somber, desperate for rest."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Restless Skeleton",
+          "description": "If the Bound Spirit is not yet freed, a single animate skeleton guards this alcove, its skull carved with runes of binding."
+        }
+      ],
+      "lootTable": [
+        "Bone Talisman (functions as a charm against necrotic damage, one use)",
+        "Scrap of a funerary mask (depicts a stylized jack-o'-lantern, possible clue for village traditions)"
+      ],
+      "plotHooks": [
+        "The Freed Spirits beseech the party to stop Father Milgrom and break the curse.",
+        "A spirit whispers a riddle about the way to the hidden crypts beneath the Parish Grounds."
+      ],
+      "dmInstructions": "If the party has already freed the Bound Spirit, the Freed Spirits appear and can offer cryptic guidance and a small magical boon. If not, the Restless Skeleton attacks, compelled to defend the alcove. The scraps of funerary masks here can provide clues about Pottsfield\u2019s masked rituals.",
+      "doors": [
+        {
+          "name": "Yew-Framed Entrance",
+          "description": "Twisted yew branches and bone fetishes create a narrow, eerie archway.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 8,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Perception DC 12: Sense the faint presence of lingering spirits.",
+        "Arcana DC 12: Identify the bone charms as wards against restless dead.",
+        "Insight DC 13: Understand the cryptic warnings given by the Freed Spirits."
+      ],
+      "accessibility": "A steep, root-choked path leads to the alcove; passable but treacherous footing.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "Dry, powdery dust swirls in the alcove, faintly phosphorescent in darkness."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "The alcove walls are pitted and worn, with faded ancestral carvings barely visible."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "A fusion of natural roots and mortared stone, the alcove\u2019s construction is both organic and funerary."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "roleplay",
+          "description": "Freed Spirits appear if the Bound Spirit was aided, offering cryptic guidance and a minor blessing."
+        },
+        {
+          "type": "combat",
+          "description": "If the Bound Spirit wasn\u2019t freed, a Restless Skeleton (with a rune-carved skull) attacks anyone disturbing the alcove."
+        },
+        {
+          "type": "exploration",
+          "description": "The alcove contains hidden clues about Pottsfield\u2019s funerary practices and the deeper crypt network."
+        }
+      ],
+      "adventureSummary": "Witherbone Alcove serves as both a test and a reward for the party\u2019s choices, linking their actions to the fate of the Parish spirits and hinting at the greater evils lurking deeper beneath Pottsfield."
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 4 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 4 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 4 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 4 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 4 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "territorial beast",
+      "description": "A territorial beast appropriate for level 4 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 4 parties"
+    }
+  ],
+  "areaFeatures": [
+    "ruins",
+    "bridges",
+    "crossroads"
+  ],
+  "notes": "Balance combat, exploration, and social encounters. Transitions between areas should feel natural.",
+  "spatialContractVersion": 1
+}

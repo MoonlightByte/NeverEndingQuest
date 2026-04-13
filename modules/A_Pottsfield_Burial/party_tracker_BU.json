@@ -1,0 +1,26 @@
+{
+  "module": "A Pottsfield Burial",
+  "partyMembers": [],
+  "partyNPCs": [],
+  "worldConditions": {
+    "year": 1492,
+    "month": "Hammer",
+    "day": 1,
+    "time": "08:00:00",
+    "weather": "Clear",
+    "season": "Winter",
+    "dayNightCycle": "Day",
+    "moonPhase": "New Moon",
+    "currentLocation": "Silent Harvest Market",
+    "currentLocationId": "A01",
+    "currentArea": "Fields of Pottsfield",
+    "currentAreaId": "PO001",
+    "majorEventsUnderway": [],
+    "politicalClimate": "",
+    "activeEncounter": "",
+    "activeCombatEncounter": "",
+    "weatherConditions": "",
+    "lastCompletedEncounter": ""
+  },
+  "activeQuests": []
+}

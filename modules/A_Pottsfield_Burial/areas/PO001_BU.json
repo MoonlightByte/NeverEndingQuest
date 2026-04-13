@@ -1,0 +1,397 @@
+{
+  "areaId": "PO001",
+  "areaName": "Fields of Pottsfield",
+  "areaType": "town",
+  "areaDescription": "Golden fields ripple in gentle breezes around the tidy cottages and pumpkin patches of Pottsfield, where the air carries the scent of harvest and woodsmoke. Villagers greet newcomers with warm smiles, and the peaceful hush is broken only by distant laughter and the songs of larks.",
+  "dangerLevel": "low",
+  "recommendedLevel": 3,
+  "climate": "temperate",
+  "terrain": "urban streets and buildings",
+  "map": {
+    "mapId": "MAP_A_3",
+    "mapName": "Town Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "A01",
+        "type": "market",
+        "connections": [
+          "A02",
+          "A03"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "A02"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "low",
+        "name": "Silent Harvest Market"
+      },
+      {
+        "id": "A02",
+        "type": "guild",
+        "connections": [
+          "A01"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "A01"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "low",
+        "name": "Embalmer's Guildhall"
+      },
+      {
+        "id": "A03",
+        "type": "tavern",
+        "connections": [
+          "A01"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {},
+        "tags": [
+          "rest",
+          "dead_end"
+        ],
+        "purpose": "safe_haven",
+        "landmark": true,
+        "dangerLevel": "low",
+        "name": "The Stillroot Tavern"
+      }
+    ],
+    "layout": [
+      [
+        "A01",
+        "A02",
+        "A03"
+      ]
+    ],
+    "startRoom": "A01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "A01",
+      "name": "Silent Harvest Market",
+      "type": "market",
+      "description": "Set near the entry road to Pottsfield Outskirts, this open-air market is lined with rustic wooden stalls beneath awnings of faded calico. Each stall boasts seasonal vegetables, gourds, root crops, and preserved goods. A peculiar hush hangs over the market\u2014shoppers and vendors converse in soft tones, as if careful not to disturb something slumbering beneath the soil. The scent of fresh bread, apples, and dried herbs mingles pleasantly with the crisp autumn air.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "A02",
+        "A03"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Martha Finch",
+          "description": "The market warden and unofficial mayor, Martha is a middle-aged woman with straw-blonde hair tucked under a linen cap. She watches over the market and its people with a warm but wary gaze, always polite but never quite revealing what she knows. She is the first to greet newcomers, subtly steering conversations away from local mysteries.",
+          "attitude": "Welcoming, guarded"
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Fresh harvest basket (worth 10 gp)",
+        "Vial of sweet cider",
+        "Bundle of dried medicinal herbs (use as healer's kit, 1d6 uses)",
+        "Hand-carved wooden whistle"
+      ],
+      "plotHooks": [
+        "A masked reveler drops a pumpkin-shaped coin purse before vanishing into the crowd.",
+        "A nervous vendor insists they've seen something strange moving among the market stalls long after dusk.",
+        "Martha Finch offers the party a free meal at Stillroot Tavern if they help her find a missing delivery."
+      ],
+      "dmInstructions": "Silent Harvest Market is the party\u2019s first real introduction to Pottsfield's peculiar atmosphere. NPCs will not mention the curse or the embalmer\u2019s activities openly but can be persuaded with successful social skill checks (see DCs). Place Martha Finch here, who can introduce the main plot and redirect suspicious inquiries. Consider adding environmental clues: odd footprints, lingering spectral chill, or a stall unmanned but displaying goods.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Insight DC 12: Notice villagers seem nervous or overly polite.",
+        "Perception DC 13: Spot faint muddy footprints leading behind a vendor's tent.",
+        "Persuasion DC 14: Convince Martha Finch to reveal more about the town's troubles."
+      ],
+      "accessibility": "Easy to access from the main road with wide lanes between stalls; no barriers for most creatures.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Display Tables",
+          "description": "Sturdy oak tables covered with burlap, topped with a variety of produce, jars, and trinkets. Some cloths are stitched with strange symbols or protective wards."
+        },
+        {
+          "name": "Old Well",
+          "description": "A covered stone well at the market\u2019s center, ringed by faded scarecrows. Its waters are said to be especially sweet, but locals never drink after dusk."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "This is the town\u2019s social and economic center. Most villagers pass through here, and the market is a good place for the party to gather rumors, meet Martha Finch, and spot the first hints of Pottsfield\u2019s secret.",
+      "aliases": [
+        "Silent Harvest Market",
+        "A01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_market:Silent Harvest Market",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "A02",
+      "name": "Embalmer's Guildhall",
+      "type": "guild",
+      "description": "Tucked between the market and a patch of crooked trees, this somber stone building is draped with heavy black bunting and carved motifs of harvest and repose. The interior is uncomfortably clean, its silence broken only by the ticking of a metronome in the embalming room. The air smells of incense, preserving oils, and faintly of decay. Members of the guild wear pumpkin-orange sashes over plain brown smocks. Outsiders are not welcome beyond the foyer without permission.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "A01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Ezra Pike",
+          "description": "The chief embalmer, Ezra is a gaunt, hollow-eyed man in his late fifties with a rasping voice and the calm hands of a practiced mortician. He is intensely private but deeply knowledgeable about the fate of Pottsfield\u2019s dead.",
+          "attitude": "Reserved, businesslike"
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Vial of rare embalming oil (10 gp)",
+        "Set of bone carving tools (artisan\u2019s tools)",
+        "Silvered sickle (weapon)",
+        "Ledger of town burials (contains cryptic notes)"
+      ],
+      "plotHooks": [
+        "Ezra Pike is quietly seeking help to investigate a recent disturbance in the crypts beneath the parish grounds.",
+        "A masked Reveler is seen slipping out the back door, leaving muddy footprints.",
+        "A town burial is scheduled for sunset; Ezra quietly warns the party not to attend unless they wish to see 'things better left unseen.'"
+      ],
+      "dmInstructions": "The guildhall is a good place for the party to investigate the town's handling of death. Ezra Pike will not discuss the necromantic curse unless pressured or unless the party presents evidence. The ledger may contain hints about missing villagers or prior burials gone awry. Allow for stealth or social infiltration if the party wishes to explore deeper.",
+      "doors": [
+        {
+          "name": "Front Door",
+          "description": "Heavy oak reinforced with iron bands, bearing the guild's knotwork emblem.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 15,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Back Door",
+          "description": "Narrow, utilitarian, leads to a small herb garden.",
+          "type": "regular",
+          "locked": true,
+          "lockDC": 13,
+          "breakDC": 13,
+          "keyname": "Guildhall Key",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 14,
+          "disableDC": 12,
+          "triggerDC": 10,
+          "damage": "Poison needle trap (1d8 poison damage, CON save DC 12 to resist)"
+        }
+      ],
+      "dcChecks": [
+        "Investigation DC 13: Find the hidden ledger of burials.",
+        "Stealth DC 14: Sneak into the embalming chamber undetected.",
+        "Medicine DC 12: Identify traces of necromantic reagents."
+      ],
+      "accessibility": "Generally accessible during daytime; guild members scrutinize all visitors. Night access requires stealth or a key.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "Stonework is inlaid with fossilized corn husks and carved gourds, incorporating funerary symbols unique to Pottsfield."
+        },
+        {
+          "name": "Preparation Table",
+          "description": "A large marble slab, meticulously clean, surrounded by racks of embalming tools and vials."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "Here, the party may uncover evidence of the town\u2019s unusual burial practices and find their first real hint at the necromantic forces at work. Ezra Pike can offer information or a quest if persuaded.",
+      "aliases": [
+        "Embalmer's Guildhall",
+        "A02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_guild:Embalmer's Guildhall",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "A03",
+      "name": "The Stillroot Tavern",
+      "type": "tavern",
+      "description": "At the edge of the market, the Stillroot is a sprawling, timber-framed tavern with a thatched roof and a sign depicting a grinning pumpkin. Lanterns flicker from every beam, illuminating crowded tables, a roaring hearth, and a trophy wall displaying antique farming implements. The air here is lively with the scent of spiced ale and roasted squash. Locals gather to share stories and songs, but fall strangely quiet whenever certain topics arise.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "A01"
+      ],
+      "areaConnectivity": [
+        "The Pottsfield Parishlands"
+      ],
+      "areaConnectivityId": [
+        "C01"
+      ],
+      "npcs": [
+        {
+          "name": "Old Nan Berryman",
+          "description": "A sprightly old woman with a sharp tongue and a sharper memory. She spins tales for curious listeners, sometimes letting slip more truth than she intends. She is always surrounded by a crowd of townsfolk, eager for her latest story or bit of advice.",
+          "attitude": "Welcoming, mischievous"
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Jug of spiced pumpkin ale",
+        "Map to a hidden grove in the Shrouded Woods",
+        "Carved bone dice (worth 5 gp to collectors)",
+        "Tavern ledger with coded notes"
+      ],
+      "plotHooks": [
+        "Old Nan Berryman tells a tale about the 'Dancing Spirits of the Harvest,' hinting at the village\u2019s curse.",
+        "A drunken masked reveler offers to show the party a secret if they win a game of dice.",
+        "A wall trophy holds a hidden compartment containing a cryptic note."
+      ],
+      "dmInstructions": "This is the best place for roleplay and rumor-gathering. Old Nan Berryman provides both comic relief and clues if befriended. If the party pries too hard into the town's secrets, the patrons grow suspicious. The map in the lootTable can be used to direct the party to The Shrouded Woods.",
+      "doors": [
+        {
+          "name": "Front Door",
+          "description": "Twin swinging doors with carved pumpkin motifs.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Cellar Hatch",
+          "description": "Iron-bound wooden hatch behind the bar, leading to a root cellar.",
+          "type": "heavy",
+          "locked": true,
+          "lockDC": 12,
+          "breakDC": 15,
+          "keyname": "Tavern Cellar Key",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Insight DC 12: Notice the tavern staff growing anxious if the party asks about missing villagers.",
+        "Perception DC 13: Find the hidden compartment in the trophy display.",
+        "Performance DC 14: Win over the crowd and gain local trust."
+      ],
+      "accessibility": "Always open to travelers, but staff may refuse service to those causing trouble.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Bar Counter",
+          "description": "Worn oak bar lined with mismatched stools and jars of pickled eggs and vegetables."
+        },
+        {
+          "name": "Hearth",
+          "description": "A massive stone fireplace provides warmth; above it hangs a faded tapestry depicting a harvest festival."
+        },
+        {
+          "name": "Trophy Display",
+          "description": "A wall adorned with antique farming tools and strange, whimsical masks from past festivals."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "The Stillroot is the social heart of Pottsfield, perfect for rumor-gathering, games, and learning about the village's history. Old Nan can steer the party toward important plot threads.",
+      "aliases": [
+        "The Stillroot Tavern",
+        "A03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_tavern:The Stillroot Tavern",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 3 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 3 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 3 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "wandering animal",
+      "description": "A wandering animal appropriate for level 3 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 3 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 3 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 3 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 3 parties"
+    }
+  ],
+  "areaFeatures": [
+    "guard posts",
+    "merchant quarter",
+    "market square"
+  ],
+  "notes": "NPCs should have daily routines. Political factions create roleplay opportunities.",
+  "spatialContractVersion": 1
+}

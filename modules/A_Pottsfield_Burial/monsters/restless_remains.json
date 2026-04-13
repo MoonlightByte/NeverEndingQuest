@@ -1,0 +1,68 @@
+{
+  "name": "Restless Remains",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 16,
+  "maxHitPoints": 16,
+  "speed": 25,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 12,
+    "constitution": 15,
+    "intelligence": 6,
+    "wisdom": 10,
+    "charisma": 5
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "necrotic",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "poison"
+  ],
+  "conditionImmunities": [
+    "poisoned",
+    "exhaustion"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 10
+  },
+  "languages": "Understands the languages it knew in life but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Undead Fortitude",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Reassemble",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Rotting Slam",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "bludgeoning"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

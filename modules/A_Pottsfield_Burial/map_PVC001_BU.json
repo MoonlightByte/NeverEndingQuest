@@ -1,0 +1,74 @@
+{
+  "mapId": "MAP_B_3",
+  "mapName": "Town Map",
+  "totalRooms": 3,
+  "rooms": [
+    {
+      "id": "B01",
+      "type": "guild",
+      "connections": [
+        "B02"
+      ],
+      "coordinates": "X10Y10",
+      "directions": {
+        "east": "B02"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "medium",
+      "name": "Gravebinders' Assembly"
+    },
+    {
+      "id": "B02",
+      "type": "gate",
+      "connections": [
+        "B01",
+        "B03"
+      ],
+      "coordinates": "X11Y10",
+      "directions": {
+        "west": "B01",
+        "east": "B03"
+      },
+      "tags": [
+        "hub"
+      ],
+      "purpose": "transition",
+      "landmark": false,
+      "dangerLevel": "medium",
+      "name": "Shrouded Barrow Gate"
+    },
+    {
+      "id": "B03",
+      "type": "guild",
+      "connections": [
+        "B02"
+      ],
+      "coordinates": "X12Y10",
+      "directions": {
+        "west": "B02"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "medium",
+      "name": "Harvestbound Hall"
+    }
+  ],
+  "layout": [
+    [
+      "B01",
+      "B02",
+      "B03"
+    ]
+  ],
+  "startRoom": "B02",
+  "version": "1.1",
+  "notes": "Extended schema with AI-friendly navigation fields",
+  "spatialContractVersion": 1
+}

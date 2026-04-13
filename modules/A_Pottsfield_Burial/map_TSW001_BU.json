@@ -1,0 +1,72 @@
+{
+  "mapId": "MAP_D_3",
+  "mapName": "Wilderness Map",
+  "totalRooms": 3,
+  "rooms": [
+    {
+      "id": "D01",
+      "type": "hilltop",
+      "connections": [
+        "D02"
+      ],
+      "coordinates": "X10Y10",
+      "directions": {
+        "east": "D02"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "high",
+      "name": "Graven Summit"
+    },
+    {
+      "id": "D02",
+      "type": "ravine",
+      "connections": [
+        "D01",
+        "D03"
+      ],
+      "coordinates": "X11Y10",
+      "directions": {
+        "west": "D01",
+        "east": "D03"
+      },
+      "tags": [],
+      "purpose": "unknown",
+      "landmark": false,
+      "dangerLevel": "high",
+      "name": "Forgotten Hollow"
+    },
+    {
+      "id": "D03",
+      "type": "crossroads",
+      "connections": [
+        "D02"
+      ],
+      "coordinates": "X12Y10",
+      "directions": {
+        "west": "D02"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "transition",
+      "landmark": true,
+      "dangerLevel": "high",
+      "name": "Silent Fork"
+    }
+  ],
+  "layout": [
+    [
+      "D01",
+      "D02",
+      "D03"
+    ]
+  ],
+  "startRoom": "D02",
+  "version": "1.1",
+  "notes": "Extended schema with AI-friendly navigation fields",
+  "spatialContractVersion": 1
+}

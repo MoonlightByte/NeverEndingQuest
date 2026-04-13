@@ -1,0 +1,72 @@
+{
+  "mapId": "MAP_F_3",
+  "mapName": "Mixed Map",
+  "totalRooms": 3,
+  "rooms": [
+    {
+      "id": "F01",
+      "type": "room",
+      "connections": [
+        "F02",
+        "F03"
+      ],
+      "coordinates": "X10Y10",
+      "directions": {
+        "east": "F02",
+        "south": "F03"
+      },
+      "tags": [],
+      "purpose": "unknown",
+      "landmark": false,
+      "dangerLevel": "extreme",
+      "name": "Lanternlit Threshold"
+    },
+    {
+      "id": "F02",
+      "type": "room",
+      "connections": [
+        "F01"
+      ],
+      "coordinates": "X11Y10",
+      "directions": {
+        "west": "F01"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "extreme",
+      "name": "Harvestbound Hollow"
+    },
+    {
+      "id": "F03",
+      "type": "room",
+      "connections": [
+        "F01"
+      ],
+      "coordinates": "X10Y11",
+      "directions": {
+        "north": "F01"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "extreme",
+      "name": "Silent Furrow Rest"
+    }
+  ],
+  "layout": [
+    [
+      "F01",
+      "F02",
+      "F03"
+    ]
+  ],
+  "startRoom": "F01",
+  "version": "1.1",
+  "notes": "Extended schema with AI-friendly navigation fields",
+  "spatialContractVersion": 1
+}

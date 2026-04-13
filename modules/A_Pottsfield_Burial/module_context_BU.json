@@ -1,0 +1,1777 @@
+{
+  "module_name": "A Pottsfield Burial",
+  "module_id": "A_Pottsfield_Burial",
+  "areas": {
+    "PO001": {
+      "name": "Pottsfield Outskirts",
+      "type": "town",
+      "locations": [],
+      "npcs": [
+        "Martha Finch",
+        "Ezra Pike",
+        "Old Nan Berryman"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "PVC001": {
+      "name": "Pottsfield Village Center",
+      "type": "town",
+      "locations": [],
+      "npcs": [
+        "Deputy Silas Cragg",
+        "Widow Elsie Tallow",
+        "Masked Reveler"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "PPG001": {
+      "name": "Pottsfield Parish Grounds",
+      "type": "mixed",
+      "locations": [],
+      "npcs": [
+        "Desperate Townsfolk",
+        "Bound Spirit",
+        "Freed Spirits"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "TSW001": {
+      "name": "The Shrouded Woods",
+      "type": "wilderness",
+      "locations": [],
+      "npcs": [
+        "Specter of Jonny Harrow",
+        "Father Milgrom"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "TAC001": {
+      "name": "The Ancient Crypts",
+      "type": "mixed",
+      "locations": [],
+      "npcs": [
+        "Bound Spirit"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "THG001": {
+      "name": "The Harvest Grounds",
+      "type": "mixed",
+      "locations": [],
+      "npcs": [
+        "Desperate Townsfolk",
+        "Bound Spirit"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    }
+  },
+  "npcs": {
+    "martha_finch": {
+      "name": "Martha Finch",
+      "role": "",
+      "faction": "",
+      "description": "The market warden and unofficial mayor, Martha is a middle-aged woman with straw-blonde hair tucked under a linen cap. She watches over the market and its people with a warm but wary gaze, always polite but never quite revealing what she knows. She is the first to greet newcomers, subtly steering conversations away from local mysteries.",
+      "appears_in": [
+        {
+          "area": "PO001",
+          "location": "A01"
+        }
+      ],
+      "aliases": [
+        "Martha Finch (innkeeper)",
+        "Martha Finch"
+      ]
+    },
+    "deputy_silas_cragg": {
+      "name": "Deputy Silas Cragg",
+      "role": "",
+      "faction": "",
+      "description": "A gaunt, sharp-eyed man in a patched uniform, Deputy Silas Cragg acts as the town's unofficial law and the Gravebinders' chief enforcer. He is ever-watchful, wary of strangers, and harbors deep suspicions of anyone poking into the town\u2019s affairs. Cragg is terse, but may offer wary cooperation if convinced the party means no harm.",
+      "appears_in": [
+        {
+          "area": "PVC001",
+          "location": "B01"
+        }
+      ],
+      "aliases": [
+        "Deputy Silas Cragg"
+      ]
+    },
+    "old_nan_berryman": {
+      "name": "Old Nan Berryman",
+      "role": "",
+      "faction": "",
+      "description": "A sprightly old woman with a sharp tongue and a sharper memory. She spins tales for curious listeners, sometimes letting slip more truth than she intends. She is always surrounded by a crowd of townsfolk, eager for her latest story or bit of advice.",
+      "appears_in": [
+        {
+          "area": "PO001",
+          "location": "A03"
+        }
+      ],
+      "aliases": [
+        "Old Nan Berryman (local gossip)",
+        "Old Nan Berryman"
+      ]
+    },
+    "ezra_pike": {
+      "name": "Ezra Pike",
+      "role": "",
+      "faction": "",
+      "description": "The chief embalmer, Ezra is a gaunt, hollow-eyed man in his late fifties with a rasping voice and the calm hands of a practiced mortician. He is intensely private but deeply knowledgeable about the fate of Pottsfield\u2019s dead.",
+      "appears_in": [
+        {
+          "area": "PO001",
+          "location": "A02"
+        }
+      ],
+      "aliases": [
+        "Ezra Pike (gravekeeper)",
+        "Ezra Pike"
+      ]
+    },
+    "widow_elsie_tallow": {
+      "name": "Widow Elsie Tallow",
+      "role": "",
+      "faction": "",
+      "description": "A gaunt, veiled woman in black, tending a lantern and muttering prayers for the dead. She is both gatekeeper and mourner, fiercely protective of the grounds. Elsie knows much about Pottsfield\u2019s secret rites, but is haunted by memories of loved ones lost (and returned).",
+      "appears_in": [
+        {
+          "area": "PVC001",
+          "location": "B02"
+        }
+      ],
+      "aliases": [
+        "Widow Elsie Tallow"
+      ]
+    },
+    "specter_of_jonny_harrow": {
+      "name": "Specter of Jonny Harrow",
+      "role": "",
+      "faction": "",
+      "description": "The restless ghost of a Pottsfield villager, bound here by ancient wrongs. He appears mournful, confused, and wary of strangers, but may be convinced to aid those seeking to break the curse.",
+      "appears_in": [
+        {
+          "area": "TSW001",
+          "location": "D02"
+        }
+      ],
+      "aliases": [
+        "Specter of Jonny Harrow"
+      ]
+    },
+    "father_milgrom": {
+      "name": "Father Milgrom",
+      "role": "",
+      "faction": "",
+      "description": "A gaunt, hollow-eyed priest in tattered vestments, bound unwillingly to the altar. He is lucid but despairing, haunted by his failure to stop the Veilwood\u2019s corruption. Milgrom is desperate for absolution and guidance, and holds vital knowledge about the curse\u2014and its undoing.",
+      "appears_in": [
+        {
+          "area": "TSW001",
+          "location": "D03"
+        }
+      ],
+      "aliases": [
+        "Father Milgrom",
+        "Father Milgrom (in ritual trance)"
+      ]
+    },
+    "masked_reveler": {
+      "name": "Masked Reveler",
+      "role": "",
+      "faction": "",
+      "description": "A jovial figure in a patchwork cloak and a carved pumpkin mask, the Masked Reveler is both entertainer and secret-keeper. They organize strange harvest games and encourage newcomers to take part. Beneath their mirth lies a calculating mind, ever watching the crowd for threats to Pottsfield\u2019s order.",
+      "appears_in": [
+        {
+          "area": "PVC001",
+          "location": "B03"
+        }
+      ],
+      "aliases": [
+        "Masked Reveler (possessed townsfolk)",
+        "Masked Reveler"
+      ]
+    },
+    "bound_spirit": {
+      "name": "Bound Spirit",
+      "role": "",
+      "faction": "",
+      "description": "A translucent, sorrowful apparition is tethered to the central slab by glowing runes. Their form flickers and writhes in distress, unable to speak above a whisper. The spirit gestures desperately toward the sigils, pleading for release.",
+      "appears_in": [
+        {
+          "area": "PPG001",
+          "location": "C02"
+        },
+        {
+          "area": "TAC001",
+          "location": "E02"
+        },
+        {
+          "area": "THG001",
+          "location": "F03"
+        }
+      ],
+      "aliases": [
+        "Bound Spirit (ghostly child)",
+        "Bound Spirit"
+      ]
+    },
+    "desperate_townsfolk": {
+      "name": "Desperate Townsfolk",
+      "role": "",
+      "faction": "",
+      "description": "A gaunt villager with haunted eyes, clothing stitched with wilted wildflowers. Their voice trembles as they plead for help, driven nearly mad by grief and fear. They clutch a broken lantern and speak in whispers about the 'sleeping beneath.'",
+      "appears_in": [
+        {
+          "area": "PPG001",
+          "location": "C01"
+        },
+        {
+          "area": "THG001",
+          "location": "F02"
+        }
+      ],
+      "aliases": [
+        "Desperate Townsfolk"
+      ]
+    },
+    "freed_spirits": {
+      "name": "Freed Spirits",
+      "role": "",
+      "faction": "",
+      "description": "A chorus of faint, shimmering figures\u2014villagers lost to the Parish curse\u2014rise here if the Bound Spirit from the Stillhouse was released. They are grateful, speaking in riddles and blessing the party, but warn of a greater malignancy deeper within.",
+      "appears_in": [
+        {
+          "area": "PPG001",
+          "location": "C03"
+        }
+      ],
+      "aliases": [
+        "Freed Spirits"
+      ]
+    }
+  },
+  "locations": {},
+  "plot_scopes": {
+    "PP001": "THG001",
+    "PP002": "THG001",
+    "PP003": "THG001",
+    "PP004": "THG001"
+  },
+  "references": {
+    "npc:Martha Finch (innkeeper)": [
+      "module:plotStages"
+    ],
+    "npc:Deputy Silas Cragg": [
+      "module:plotStages"
+    ],
+    "npc:Old Nan Berryman (local gossip)": [
+      "module:plotStages"
+    ],
+    "npc:Ezra Pike (gravekeeper)": [
+      "module:plotStages"
+    ],
+    "npc:Widow Elsie Tallow": [
+      "module:plotStages"
+    ],
+    "npc:Specter of Jonny Harrow": [
+      "module:plotStages"
+    ],
+    "npc:Father Milgrom": [
+      "module:plotStages"
+    ],
+    "npc:Martha Finch": [
+      "module:plotStages"
+    ],
+    "npc:Masked Reveler (possessed townsfolk)": [
+      "module:plotStages"
+    ],
+    "npc:Ezra Pike": [
+      "module:plotStages"
+    ],
+    "npc:Bound Spirit (ghostly child)": [
+      "module:plotStages"
+    ],
+    "npc:Father Milgrom (in ritual trance)": [
+      "module:plotStages"
+    ],
+    "npc:Desperate Townsfolk": [
+      "module:plotStages"
+    ],
+    "npc:Freed Spirits": [
+      "module:plotStages"
+    ]
+  },
+  "validation_issues": [],
+  "generated_at": "2026-04-13T13:50:00.614103",
+  "continuity": {
+    "continuity_version": "v1",
+    "entry_state_variants": {
+      "cold_start": {
+        "summary": "Party enters Pottsfield with no prior continuity context. Present the silent harvest atmosphere and immediate stakes clearly."
+      },
+      "partial_context": {
+        "summary": "Party enters Pottsfield with some prior context. Establish the village's strange customs before branch-critical revelations."
+      },
+      "late_arc": {
+        "summary": "Party arrives at Pottsfield in late-arc state. Provide compact setup and maintain path to a valid resolution of the burial curse."
+      }
+    },
+    "cross_module_refs": [
+      {
+        "target_module": "The_Thornwood_Watch",
+        "entity_id": "martha_finch_handoff",
+        "relation": "reference",
+        "confidence": "high",
+        "notes": "Martha Finch handoff thread links Pottsfield mysteries to The Thornwood Watch."
+      }
+    ],
+    "standalone_fallback": {
+      "enabled": true,
+      "clue_sources": [
+        "module_context",
+        "module_plot"
+      ],
+      "notes": "A_Pottsfield_Burial remains fully playable as a standalone module."
+    }
+  },
+  "semantic_authority": {
+    "version": "v1",
+    "module_slug": "A_Pottsfield_Burial",
+    "location_aliases": {
+      "a01": {
+        "status": "resolved",
+        "location_id": "A01",
+        "location_name": "Silent Harvest Market",
+        "candidate_location_ids": [
+          "A01"
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A01].aliases"
+        ]
+      },
+      "a02": {
+        "status": "resolved",
+        "location_id": "A02",
+        "location_name": "Embalmer's Guildhall",
+        "candidate_location_ids": [
+          "A02"
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A02].aliases"
+        ]
+      },
+      "a03": {
+        "status": "resolved",
+        "location_id": "A03",
+        "location_name": "The Stillroot Tavern",
+        "candidate_location_ids": [
+          "A03"
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A03].aliases"
+        ]
+      },
+      "b01": {
+        "status": "resolved",
+        "location_id": "B01",
+        "location_name": "Gravebinders' Assembly",
+        "candidate_location_ids": [
+          "B01"
+        ],
+        "sources": [
+          "areas/PVC001.json#locations[B01].aliases"
+        ]
+      },
+      "b02": {
+        "status": "resolved",
+        "location_id": "B02",
+        "location_name": "Shrouded Barrow Gate",
+        "candidate_location_ids": [
+          "B02"
+        ],
+        "sources": [
+          "areas/PVC001.json#locations[B02].aliases"
+        ]
+      },
+      "b03": {
+        "status": "resolved",
+        "location_id": "B03",
+        "location_name": "Harvestbound Hall",
+        "candidate_location_ids": [
+          "B03"
+        ],
+        "sources": [
+          "areas/PVC001.json#locations[B03].aliases"
+        ]
+      },
+      "c01": {
+        "status": "resolved",
+        "location_id": "C01",
+        "location_name": "Sable Crossroads",
+        "candidate_location_ids": [
+          "C01"
+        ],
+        "sources": [
+          "areas/PPG001.json#locations[C01].aliases"
+        ]
+      },
+      "c02": {
+        "status": "resolved",
+        "location_id": "C02",
+        "location_name": "Graven Stillhouse",
+        "candidate_location_ids": [
+          "C02"
+        ],
+        "sources": [
+          "areas/PPG001.json#locations[C02].aliases"
+        ]
+      },
+      "c03": {
+        "status": "resolved",
+        "location_id": "C03",
+        "location_name": "Witherbone Alcove",
+        "candidate_location_ids": [
+          "C03"
+        ],
+        "sources": [
+          "areas/PPG001.json#locations[C03].aliases"
+        ]
+      },
+      "d01": {
+        "status": "resolved",
+        "location_id": "D01",
+        "location_name": "Graven Summit",
+        "candidate_location_ids": [
+          "D01"
+        ],
+        "sources": [
+          "areas/TSW001.json#locations[D01].aliases"
+        ]
+      },
+      "d02": {
+        "status": "resolved",
+        "location_id": "D02",
+        "location_name": "Forgotten Hollow",
+        "candidate_location_ids": [
+          "D02"
+        ],
+        "sources": [
+          "areas/TSW001.json#locations[D02].aliases"
+        ]
+      },
+      "d03": {
+        "status": "resolved",
+        "location_id": "D03",
+        "location_name": "Silent Fork",
+        "candidate_location_ids": [
+          "D03"
+        ],
+        "sources": [
+          "areas/TSW001.json#locations[D03].aliases"
+        ]
+      },
+      "e01": {
+        "status": "resolved",
+        "location_id": "E01",
+        "location_name": "Mourner's Lantern Foyer",
+        "candidate_location_ids": [
+          "E01"
+        ],
+        "sources": [
+          "areas/TAC001.json#locations[E01].aliases"
+        ]
+      },
+      "e02": {
+        "status": "resolved",
+        "location_id": "E02",
+        "location_name": "Withered Pall Alcove",
+        "candidate_location_ids": [
+          "E02"
+        ],
+        "sources": [
+          "areas/TAC001.json#locations[E02].aliases"
+        ]
+      },
+      "e03": {
+        "status": "resolved",
+        "location_id": "E03",
+        "location_name": "Silent Vigil Crypt",
+        "candidate_location_ids": [
+          "E03"
+        ],
+        "sources": [
+          "areas/TAC001.json#locations[E03].aliases"
+        ]
+      },
+      "embalmers guildhall": {
+        "status": "resolved",
+        "location_id": "A02",
+        "location_name": "Embalmer's Guildhall",
+        "candidate_location_ids": [
+          "A02"
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A02].aliases",
+          "areas/PO001.json#locations[A02].name"
+        ]
+      },
+      "f01": {
+        "status": "resolved",
+        "location_id": "F01",
+        "location_name": "Lanternlit Threshold",
+        "candidate_location_ids": [
+          "F01"
+        ],
+        "sources": [
+          "areas/THG001.json#locations[F01].aliases"
+        ]
+      },
+      "f02": {
+        "status": "resolved",
+        "location_id": "F02",
+        "location_name": "Harvestbound Hollow",
+        "candidate_location_ids": [
+          "F02"
+        ],
+        "sources": [
+          "areas/THG001.json#locations[F02].aliases"
+        ]
+      },
+      "f03": {
+        "status": "resolved",
+        "location_id": "F03",
+        "location_name": "Silent Furrow Rest",
+        "candidate_location_ids": [
+          "F03"
+        ],
+        "sources": [
+          "areas/THG001.json#locations[F03].aliases"
+        ]
+      },
+      "forgotten hollow": {
+        "status": "resolved",
+        "location_id": "D02",
+        "location_name": "Forgotten Hollow",
+        "candidate_location_ids": [
+          "D02"
+        ],
+        "sources": [
+          "areas/TSW001.json#locations[D02].aliases",
+          "areas/TSW001.json#locations[D02].name"
+        ]
+      },
+      "gravebinders assembly": {
+        "status": "resolved",
+        "location_id": "B01",
+        "location_name": "Gravebinders' Assembly",
+        "candidate_location_ids": [
+          "B01"
+        ],
+        "sources": [
+          "areas/PVC001.json#locations[B01].aliases",
+          "areas/PVC001.json#locations[B01].name"
+        ]
+      },
+      "graven stillhouse": {
+        "status": "resolved",
+        "location_id": "C02",
+        "location_name": "Graven Stillhouse",
+        "candidate_location_ids": [
+          "C02"
+        ],
+        "sources": [
+          "areas/PPG001.json#locations[C02].aliases",
+          "areas/PPG001.json#locations[C02].name"
+        ]
+      },
+      "graven summit": {
+        "status": "resolved",
+        "location_id": "D01",
+        "location_name": "Graven Summit",
+        "candidate_location_ids": [
+          "D01"
+        ],
+        "sources": [
+          "areas/TSW001.json#locations[D01].aliases",
+          "areas/TSW001.json#locations[D01].name"
+        ]
+      },
+      "harvestbound hall": {
+        "status": "resolved",
+        "location_id": "B03",
+        "location_name": "Harvestbound Hall",
+        "candidate_location_ids": [
+          "B03"
+        ],
+        "sources": [
+          "areas/PVC001.json#locations[B03].aliases",
+          "areas/PVC001.json#locations[B03].name"
+        ]
+      },
+      "harvestbound hollow": {
+        "status": "resolved",
+        "location_id": "F02",
+        "location_name": "Harvestbound Hollow",
+        "candidate_location_ids": [
+          "F02"
+        ],
+        "sources": [
+          "areas/THG001.json#locations[F02].aliases",
+          "areas/THG001.json#locations[F02].name"
+        ]
+      },
+      "lanternlit threshold": {
+        "status": "resolved",
+        "location_id": "F01",
+        "location_name": "Lanternlit Threshold",
+        "candidate_location_ids": [
+          "F01"
+        ],
+        "sources": [
+          "areas/THG001.json#locations[F01].aliases",
+          "areas/THG001.json#locations[F01].name"
+        ]
+      },
+      "mourners lantern foyer": {
+        "status": "resolved",
+        "location_id": "E01",
+        "location_name": "Mourner's Lantern Foyer",
+        "candidate_location_ids": [
+          "E01"
+        ],
+        "sources": [
+          "areas/TAC001.json#locations[E01].aliases",
+          "areas/TAC001.json#locations[E01].name"
+        ]
+      },
+      "sable crossroads": {
+        "status": "resolved",
+        "location_id": "C01",
+        "location_name": "Sable Crossroads",
+        "candidate_location_ids": [
+          "C01"
+        ],
+        "sources": [
+          "areas/PPG001.json#locations[C01].aliases",
+          "areas/PPG001.json#locations[C01].name"
+        ]
+      },
+      "shrouded barrow gate": {
+        "status": "resolved",
+        "location_id": "B02",
+        "location_name": "Shrouded Barrow Gate",
+        "candidate_location_ids": [
+          "B02"
+        ],
+        "sources": [
+          "areas/PVC001.json#locations[B02].aliases",
+          "areas/PVC001.json#locations[B02].name"
+        ]
+      },
+      "silent fork": {
+        "status": "resolved",
+        "location_id": "D03",
+        "location_name": "Silent Fork",
+        "candidate_location_ids": [
+          "D03"
+        ],
+        "sources": [
+          "areas/TSW001.json#locations[D03].aliases",
+          "areas/TSW001.json#locations[D03].name"
+        ]
+      },
+      "silent furrow rest": {
+        "status": "resolved",
+        "location_id": "F03",
+        "location_name": "Silent Furrow Rest",
+        "candidate_location_ids": [
+          "F03"
+        ],
+        "sources": [
+          "areas/THG001.json#locations[F03].aliases",
+          "areas/THG001.json#locations[F03].name"
+        ]
+      },
+      "silent harvest market": {
+        "status": "resolved",
+        "location_id": "A01",
+        "location_name": "Silent Harvest Market",
+        "candidate_location_ids": [
+          "A01"
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A01].aliases",
+          "areas/PO001.json#locations[A01].name"
+        ]
+      },
+      "silent vigil crypt": {
+        "status": "resolved",
+        "location_id": "E03",
+        "location_name": "Silent Vigil Crypt",
+        "candidate_location_ids": [
+          "E03"
+        ],
+        "sources": [
+          "areas/TAC001.json#locations[E03].aliases",
+          "areas/TAC001.json#locations[E03].name"
+        ]
+      },
+      "stillroot tavern": {
+        "status": "resolved",
+        "location_id": "A03",
+        "location_name": "The Stillroot Tavern",
+        "candidate_location_ids": [
+          "A03"
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A03].aliases",
+          "areas/PO001.json#locations[A03].name"
+        ]
+      },
+      "the stillroot tavern": {
+        "status": "resolved",
+        "location_id": "A03",
+        "location_name": "The Stillroot Tavern",
+        "candidate_location_ids": [
+          "A03"
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A03].aliases",
+          "areas/PO001.json#locations[A03].name"
+        ]
+      },
+      "witherbone alcove": {
+        "status": "resolved",
+        "location_id": "C03",
+        "location_name": "Witherbone Alcove",
+        "candidate_location_ids": [
+          "C03"
+        ],
+        "sources": [
+          "areas/PPG001.json#locations[C03].aliases",
+          "areas/PPG001.json#locations[C03].name"
+        ]
+      },
+      "withered pall alcove": {
+        "status": "resolved",
+        "location_id": "E02",
+        "location_name": "Withered Pall Alcove",
+        "candidate_location_ids": [
+          "E02"
+        ],
+        "sources": [
+          "areas/TAC001.json#locations[E02].aliases",
+          "areas/TAC001.json#locations[E02].name"
+        ]
+      }
+    },
+    "destination_phrases": {
+      "a01": {
+        "status": "resolved",
+        "location_id": "A01",
+        "candidate_location_ids": [
+          "A01"
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A01].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "a02": {
+        "status": "resolved",
+        "location_id": "A02",
+        "candidate_location_ids": [
+          "A02"
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A02].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "a03": {
+        "status": "resolved",
+        "location_id": "A03",
+        "candidate_location_ids": [
+          "A03"
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A03].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "b01": {
+        "status": "resolved",
+        "location_id": "B01",
+        "candidate_location_ids": [
+          "B01"
+        ],
+        "sources": [
+          "areas/PVC001.json#locations[B01].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "b02": {
+        "status": "resolved",
+        "location_id": "B02",
+        "candidate_location_ids": [
+          "B02"
+        ],
+        "sources": [
+          "areas/PVC001.json#locations[B02].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "b03": {
+        "status": "resolved",
+        "location_id": "B03",
+        "candidate_location_ids": [
+          "B03"
+        ],
+        "sources": [
+          "areas/PVC001.json#locations[B03].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "c01": {
+        "status": "resolved",
+        "location_id": "C01",
+        "candidate_location_ids": [
+          "C01"
+        ],
+        "sources": [
+          "areas/PPG001.json#locations[C01].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "c02": {
+        "status": "resolved",
+        "location_id": "C02",
+        "candidate_location_ids": [
+          "C02"
+        ],
+        "sources": [
+          "areas/PPG001.json#locations[C02].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "c03": {
+        "status": "resolved",
+        "location_id": "C03",
+        "candidate_location_ids": [
+          "C03"
+        ],
+        "sources": [
+          "areas/PPG001.json#locations[C03].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "d01": {
+        "status": "resolved",
+        "location_id": "D01",
+        "candidate_location_ids": [
+          "D01"
+        ],
+        "sources": [
+          "areas/TSW001.json#locations[D01].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "d02": {
+        "status": "resolved",
+        "location_id": "D02",
+        "candidate_location_ids": [
+          "D02"
+        ],
+        "sources": [
+          "areas/TSW001.json#locations[D02].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "d03": {
+        "status": "resolved",
+        "location_id": "D03",
+        "candidate_location_ids": [
+          "D03"
+        ],
+        "sources": [
+          "areas/TSW001.json#locations[D03].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "e01": {
+        "status": "resolved",
+        "location_id": "E01",
+        "candidate_location_ids": [
+          "E01"
+        ],
+        "sources": [
+          "areas/TAC001.json#locations[E01].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "e02": {
+        "status": "resolved",
+        "location_id": "E02",
+        "candidate_location_ids": [
+          "E02"
+        ],
+        "sources": [
+          "areas/TAC001.json#locations[E02].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "e03": {
+        "status": "resolved",
+        "location_id": "E03",
+        "candidate_location_ids": [
+          "E03"
+        ],
+        "sources": [
+          "areas/TAC001.json#locations[E03].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "embalmers guildhall": {
+        "status": "resolved",
+        "location_id": "A02",
+        "candidate_location_ids": [
+          "A02"
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A02].aliases",
+          "areas/PO001.json#locations[A02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "f01": {
+        "status": "resolved",
+        "location_id": "F01",
+        "candidate_location_ids": [
+          "F01"
+        ],
+        "sources": [
+          "areas/THG001.json#locations[F01].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "f02": {
+        "status": "resolved",
+        "location_id": "F02",
+        "candidate_location_ids": [
+          "F02"
+        ],
+        "sources": [
+          "areas/THG001.json#locations[F02].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "f03": {
+        "status": "resolved",
+        "location_id": "F03",
+        "candidate_location_ids": [
+          "F03"
+        ],
+        "sources": [
+          "areas/THG001.json#locations[F03].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "forgotten hollow": {
+        "status": "resolved",
+        "location_id": "D02",
+        "candidate_location_ids": [
+          "D02"
+        ],
+        "sources": [
+          "areas/TSW001.json#locations[D02].aliases",
+          "areas/TSW001.json#locations[D02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "gravebinders assembly": {
+        "status": "resolved",
+        "location_id": "B01",
+        "candidate_location_ids": [
+          "B01"
+        ],
+        "sources": [
+          "areas/PVC001.json#locations[B01].aliases",
+          "areas/PVC001.json#locations[B01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "graven stillhouse": {
+        "status": "resolved",
+        "location_id": "C02",
+        "candidate_location_ids": [
+          "C02"
+        ],
+        "sources": [
+          "areas/PPG001.json#locations[C02].aliases",
+          "areas/PPG001.json#locations[C02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "graven summit": {
+        "status": "resolved",
+        "location_id": "D01",
+        "candidate_location_ids": [
+          "D01"
+        ],
+        "sources": [
+          "areas/TSW001.json#locations[D01].aliases",
+          "areas/TSW001.json#locations[D01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "harvestbound hall": {
+        "status": "resolved",
+        "location_id": "B03",
+        "candidate_location_ids": [
+          "B03"
+        ],
+        "sources": [
+          "areas/PVC001.json#locations[B03].aliases",
+          "areas/PVC001.json#locations[B03].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 2
+      },
+      "harvestbound hollow": {
+        "status": "resolved",
+        "location_id": "F02",
+        "candidate_location_ids": [
+          "F02"
+        ],
+        "sources": [
+          "areas/THG001.json#locations[F02].aliases",
+          "areas/THG001.json#locations[F02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "lanternlit threshold": {
+        "status": "resolved",
+        "location_id": "F01",
+        "candidate_location_ids": [
+          "F01"
+        ],
+        "sources": [
+          "areas/THG001.json#locations[F01].aliases",
+          "areas/THG001.json#locations[F01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "mourners lantern foyer": {
+        "status": "resolved",
+        "location_id": "E01",
+        "candidate_location_ids": [
+          "E01"
+        ],
+        "sources": [
+          "areas/TAC001.json#locations[E01].aliases",
+          "areas/TAC001.json#locations[E01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "sable crossroads": {
+        "status": "resolved",
+        "location_id": "C01",
+        "candidate_location_ids": [
+          "C01"
+        ],
+        "sources": [
+          "areas/PPG001.json#locations[C01].aliases",
+          "areas/PPG001.json#locations[C01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "shrouded barrow gate": {
+        "status": "resolved",
+        "location_id": "B02",
+        "candidate_location_ids": [
+          "B02"
+        ],
+        "sources": [
+          "areas/PVC001.json#locations[B02].aliases",
+          "areas/PVC001.json#locations[B02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "silent fork": {
+        "status": "resolved",
+        "location_id": "D03",
+        "candidate_location_ids": [
+          "D03"
+        ],
+        "sources": [
+          "areas/TSW001.json#locations[D03].aliases",
+          "areas/TSW001.json#locations[D03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "silent furrow rest": {
+        "status": "resolved",
+        "location_id": "F03",
+        "candidate_location_ids": [
+          "F03"
+        ],
+        "sources": [
+          "areas/THG001.json#locations[F03].aliases",
+          "areas/THG001.json#locations[F03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "silent harvest market": {
+        "status": "resolved",
+        "location_id": "A01",
+        "candidate_location_ids": [
+          "A01"
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A01].aliases",
+          "areas/PO001.json#locations[A01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "silent vigil crypt": {
+        "status": "resolved",
+        "location_id": "E03",
+        "candidate_location_ids": [
+          "E03"
+        ],
+        "sources": [
+          "areas/TAC001.json#locations[E03].aliases",
+          "areas/TAC001.json#locations[E03].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 2
+      },
+      "stillroot tavern": {
+        "status": "resolved",
+        "location_id": "A03",
+        "candidate_location_ids": [
+          "A03"
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A03].aliases",
+          "areas/PO001.json#locations[A03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "the stillroot tavern": {
+        "status": "resolved",
+        "location_id": "A03",
+        "candidate_location_ids": [
+          "A03"
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A03].aliases",
+          "areas/PO001.json#locations[A03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "witherbone alcove": {
+        "status": "resolved",
+        "location_id": "C03",
+        "candidate_location_ids": [
+          "C03"
+        ],
+        "sources": [
+          "areas/PPG001.json#locations[C03].aliases",
+          "areas/PPG001.json#locations[C03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "withered pall alcove": {
+        "status": "resolved",
+        "location_id": "E02",
+        "candidate_location_ids": [
+          "E02"
+        ],
+        "sources": [
+          "areas/TAC001.json#locations[E02].aliases",
+          "areas/TAC001.json#locations[E02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "vigil crypt": {
+        "status": "resolved",
+        "location_id": "E03",
+        "candidate_location_ids": [
+          "E03"
+        ],
+        "sources": [
+          "areas/TAC001.json#locations[E03].aliases",
+          "areas/TAC001.json#locations[E03].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 2
+      }
+    },
+    "npc_scene_authority": {
+      "Bound Spirit": {
+        "name_slug": "bound spirit",
+        "visible_location_ids": [
+          "C02",
+          "E02",
+          "F03"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "C03",
+            "source": "areas/PPG001.json#locations[C03].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "C03",
+            "source": "areas/PPG001.json#locations[C03].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "F02",
+            "source": "areas/THG001.json#locations[F02].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TAC001",
+            "source": "module_plot.json#plotPoints[PP005].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/PPG001.json#locations[C02].dcChecks",
+          "areas/PPG001.json#locations[C02].dmInstructions",
+          "areas/PPG001.json#locations[C02].npcs",
+          "areas/PPG001.json#locations[C02].plotHooks",
+          "areas/PPG001.json#locations[C03].dmInstructions",
+          "areas/PPG001.json#locations[C03].plotHooks",
+          "areas/TAC001.json#locations[E02].dcChecks",
+          "areas/TAC001.json#locations[E02].dmInstructions",
+          "areas/TAC001.json#locations[E02].npcs",
+          "areas/TAC001.json#locations[E02].plotHooks",
+          "areas/THG001.json#locations[F02].dcChecks",
+          "areas/THG001.json#locations[F03].dcChecks",
+          "areas/THG001.json#locations[F03].dmInstructions",
+          "areas/THG001.json#locations[F03].features.description",
+          "areas/THG001.json#locations[F03].npcs",
+          "areas/THG001.json#locations[F03].plotHooks",
+          "module_context.json#npcs.bound_spirit",
+          "module_plot.json#plotPoints[PP005].description"
+        ],
+        "authored_mentions_count": 14,
+        "authored_mention_sources": [
+          "areas/PPG001.json#locations[C02].dcChecks",
+          "areas/PPG001.json#locations[C02].dmInstructions",
+          "areas/PPG001.json#locations[C02].plotHooks",
+          "areas/PPG001.json#locations[C03].dmInstructions",
+          "areas/PPG001.json#locations[C03].plotHooks",
+          "areas/TAC001.json#locations[E02].dcChecks",
+          "areas/TAC001.json#locations[E02].dmInstructions",
+          "areas/TAC001.json#locations[E02].plotHooks",
+          "areas/THG001.json#locations[F02].dcChecks",
+          "areas/THG001.json#locations[F03].dcChecks",
+          "areas/THG001.json#locations[F03].dmInstructions",
+          "areas/THG001.json#locations[F03].features.description",
+          "areas/THG001.json#locations[F03].plotHooks",
+          "module_plot.json#plotPoints[PP005].description"
+        ]
+      },
+      "Deputy Silas Cragg": {
+        "name_slug": "deputy silas cragg",
+        "visible_location_ids": [
+          "B01"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "PO001",
+            "source": "module_plot.json#plotPoints[PP001].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/PVC001.json#locations[B01].dmInstructions",
+          "areas/PVC001.json#locations[B01].npcs",
+          "areas/PVC001.json#locations[B01].plotHooks",
+          "module_context.json#npcs.deputy_silas_cragg",
+          "module_plot.json#plotPoints[PP001].description"
+        ],
+        "authored_mentions_count": 3,
+        "authored_mention_sources": [
+          "areas/PVC001.json#locations[B01].dmInstructions",
+          "areas/PVC001.json#locations[B01].plotHooks",
+          "module_plot.json#plotPoints[PP001].description"
+        ]
+      },
+      "Desperate Townsfolk": {
+        "name_slug": "desperate townsfolk",
+        "visible_location_ids": [
+          "C01",
+          "F02"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "B01",
+            "source": "areas/PVC001.json#locations[B01].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "B03",
+            "source": "areas/PVC001.json#locations[B03].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "PPG001",
+            "source": "module_plot.json#plotPoints[PP003].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TAC001",
+            "source": "module_plot.json#plotPoints[PP005].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/PPG001.json#locations[C01].dcChecks",
+          "areas/PPG001.json#locations[C01].dmInstructions",
+          "areas/PPG001.json#locations[C01].npcs",
+          "areas/PPG001.json#locations[C01].plotHooks",
+          "areas/PVC001.json#locations[B01].plotHooks",
+          "areas/PVC001.json#locations[B03].dmInstructions",
+          "areas/THG001.json#locations[F02].dcChecks",
+          "areas/THG001.json#locations[F02].dmInstructions",
+          "areas/THG001.json#locations[F02].npcs",
+          "areas/THG001.json#locations[F02].plotHooks",
+          "module_context.json#npcs.desperate_townsfolk",
+          "module_plot.json#plotPoints[PP003].description",
+          "module_plot.json#plotPoints[PP005].description"
+        ],
+        "authored_mentions_count": 10,
+        "authored_mention_sources": [
+          "areas/PPG001.json#locations[C01].dcChecks",
+          "areas/PPG001.json#locations[C01].dmInstructions",
+          "areas/PPG001.json#locations[C01].plotHooks",
+          "areas/PVC001.json#locations[B01].plotHooks",
+          "areas/PVC001.json#locations[B03].dmInstructions",
+          "areas/THG001.json#locations[F02].dcChecks",
+          "areas/THG001.json#locations[F02].dmInstructions",
+          "areas/THG001.json#locations[F02].plotHooks",
+          "module_plot.json#plotPoints[PP003].description",
+          "module_plot.json#plotPoints[PP005].description"
+        ]
+      },
+      "Ezra Pike": {
+        "name_slug": "ezra pike",
+        "visible_location_ids": [
+          "A02"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "A02",
+            "source": "manual_fix",
+            "reason": "visible_npc_fallback"
+          }
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A02].dmInstructions",
+          "areas/PO001.json#locations[A02].npcs",
+          "areas/PO001.json#locations[A02].plotHooks",
+          "module_context.json#npcs.ezra_pike"
+        ],
+        "authored_mentions_count": 2,
+        "authored_mention_sources": [
+          "areas/PO001.json#locations[A02].dmInstructions",
+          "areas/PO001.json#locations[A02].plotHooks"
+        ]
+      },
+      "Father Milgrom": {
+        "name_slug": "father milgrom",
+        "visible_location_ids": [
+          "D03"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "C02",
+            "source": "areas/PPG001.json#locations[C02].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "C03",
+            "source": "areas/PPG001.json#locations[C03].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TSW001",
+            "source": "module_plot.json#plotPoints[PP004].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/PPG001.json#locations[C02].plotHooks",
+          "areas/PPG001.json#locations[C03].plotHooks",
+          "areas/TSW001.json#locations[D03].dcChecks",
+          "areas/TSW001.json#locations[D03].dmInstructions",
+          "areas/TSW001.json#locations[D03].npcs",
+          "areas/TSW001.json#locations[D03].plotHooks",
+          "module_context.json#npcs.father_milgrom",
+          "module_plot.json#plotPoints[PP004].description"
+        ],
+        "authored_mentions_count": 6,
+        "authored_mention_sources": [
+          "areas/PPG001.json#locations[C02].plotHooks",
+          "areas/PPG001.json#locations[C03].plotHooks",
+          "areas/TSW001.json#locations[D03].dcChecks",
+          "areas/TSW001.json#locations[D03].dmInstructions",
+          "areas/TSW001.json#locations[D03].plotHooks",
+          "module_plot.json#plotPoints[PP004].description"
+        ]
+      },
+      "Freed Spirits": {
+        "name_slug": "freed spirits",
+        "visible_location_ids": [
+          "C03"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "A03",
+            "source": "areas/PO001.json#locations[A03].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "B02",
+            "source": "areas/PVC001.json#locations[B02].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "B02",
+            "source": "areas/PVC001.json#locations[B02].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "PO001",
+            "source": "module_plot.json#plotPoints[PP001].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "PO001",
+            "source": "module_plot.json#plotPoints[PP007].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "PPG001",
+            "source": "module_plot.json#plotPoints[PP003].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TAC001",
+            "source": "module_plot.json#plotPoints[PP005].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A03].plotHooks",
+          "areas/PPG001.json#locations[C03].dcChecks",
+          "areas/PPG001.json#locations[C03].dmInstructions",
+          "areas/PPG001.json#locations[C03].npcs",
+          "areas/PPG001.json#locations[C03].plotHooks",
+          "areas/PVC001.json#locations[B02].dmInstructions",
+          "areas/PVC001.json#locations[B02].plotHooks",
+          "module_context.json#npcs.freed_spirits",
+          "module_plot.json#plotPoints[PP001].description",
+          "module_plot.json#plotPoints[PP003].description",
+          "module_plot.json#plotPoints[PP005].description",
+          "module_plot.json#plotPoints[PP007].description"
+        ],
+        "authored_mentions_count": 10,
+        "authored_mention_sources": [
+          "areas/PO001.json#locations[A03].plotHooks",
+          "areas/PPG001.json#locations[C03].dcChecks",
+          "areas/PPG001.json#locations[C03].dmInstructions",
+          "areas/PPG001.json#locations[C03].plotHooks",
+          "areas/PVC001.json#locations[B02].dmInstructions",
+          "areas/PVC001.json#locations[B02].plotHooks",
+          "module_plot.json#plotPoints[PP001].description",
+          "module_plot.json#plotPoints[PP003].description",
+          "module_plot.json#plotPoints[PP005].description",
+          "module_plot.json#plotPoints[PP007].description"
+        ]
+      },
+      "Martha Finch": {
+        "name_slug": "martha finch",
+        "visible_location_ids": [
+          "A01"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "A01",
+            "source": "manual_fix",
+            "reason": "visible_npc_fallback"
+          }
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A01].dcChecks",
+          "areas/PO001.json#locations[A01].dmInstructions",
+          "areas/PO001.json#locations[A01].npcs",
+          "areas/PO001.json#locations[A01].plotHooks",
+          "module_context.json#npcs.martha_finch"
+        ],
+        "authored_mentions_count": 3,
+        "authored_mention_sources": [
+          "areas/PO001.json#locations[A01].dcChecks",
+          "areas/PO001.json#locations[A01].dmInstructions",
+          "areas/PO001.json#locations[A01].plotHooks"
+        ]
+      },
+      "Masked Reveler": {
+        "name_slug": "masked reveler",
+        "visible_location_ids": [
+          "B03"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "A01",
+            "source": "areas/PO001.json#locations[A01].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "A02",
+            "source": "areas/PO001.json#locations[A02].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "A03",
+            "source": "areas/PO001.json#locations[A03].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "PVC001",
+            "source": "module_plot.json#plotPoints[PP002].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A01].plotHooks",
+          "areas/PO001.json#locations[A02].plotHooks",
+          "areas/PO001.json#locations[A03].plotHooks",
+          "areas/PVC001.json#locations[B03].dcChecks",
+          "areas/PVC001.json#locations[B03].dmInstructions",
+          "areas/PVC001.json#locations[B03].npcs",
+          "areas/PVC001.json#locations[B03].plotHooks",
+          "module_context.json#npcs.masked_reveler",
+          "module_plot.json#plotPoints[PP002].description"
+        ],
+        "authored_mentions_count": 7,
+        "authored_mention_sources": [
+          "areas/PO001.json#locations[A01].plotHooks",
+          "areas/PO001.json#locations[A02].plotHooks",
+          "areas/PO001.json#locations[A03].plotHooks",
+          "areas/PVC001.json#locations[B03].dcChecks",
+          "areas/PVC001.json#locations[B03].dmInstructions",
+          "areas/PVC001.json#locations[B03].plotHooks",
+          "module_plot.json#plotPoints[PP002].description"
+        ]
+      },
+      "Old Nan Berryman": {
+        "name_slug": "old nan berryman",
+        "visible_location_ids": [
+          "A03"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "A03",
+            "source": "manual_fix",
+            "reason": "visible_npc_fallback"
+          }
+        ],
+        "sources": [
+          "areas/PO001.json#locations[A03].dmInstructions",
+          "areas/PO001.json#locations[A03].npcs",
+          "areas/PO001.json#locations[A03].plotHooks",
+          "module_context.json#npcs.old_nan_berryman"
+        ],
+        "authored_mentions_count": 2,
+        "authored_mention_sources": [
+          "areas/PO001.json#locations[A03].dmInstructions",
+          "areas/PO001.json#locations[A03].plotHooks"
+        ]
+      },
+      "Specter of Jonny Harrow": {
+        "name_slug": "specter of jonny harrow",
+        "visible_location_ids": [
+          "D02"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "TSW001",
+            "source": "module_plot.json#plotPoints[PP004].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/TSW001.json#locations[D02].dcChecks",
+          "areas/TSW001.json#locations[D02].dmInstructions",
+          "areas/TSW001.json#locations[D02].npcs",
+          "areas/TSW001.json#locations[D02].plotHooks",
+          "module_context.json#npcs.specter_of_jonny_harrow",
+          "module_plot.json#plotPoints[PP004].description"
+        ],
+        "authored_mentions_count": 4,
+        "authored_mention_sources": [
+          "areas/TSW001.json#locations[D02].dcChecks",
+          "areas/TSW001.json#locations[D02].dmInstructions",
+          "areas/TSW001.json#locations[D02].plotHooks",
+          "module_plot.json#plotPoints[PP004].description"
+        ]
+      },
+      "Widow Elsie Tallow": {
+        "name_slug": "widow elsie tallow",
+        "visible_location_ids": [
+          "B02"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "F02",
+            "source": "areas/THG001.json#locations[F02].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "PVC001",
+            "source": "module_plot.json#plotPoints[PP002].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/PVC001.json#locations[B02].dmInstructions",
+          "areas/PVC001.json#locations[B02].npcs",
+          "areas/PVC001.json#locations[B02].plotHooks",
+          "areas/THG001.json#locations[F02].description",
+          "module_context.json#npcs.widow_elsie_tallow",
+          "module_plot.json#plotPoints[PP002].description"
+        ],
+        "authored_mentions_count": 4,
+        "authored_mention_sources": [
+          "areas/PVC001.json#locations[B02].dmInstructions",
+          "areas/PVC001.json#locations[B02].plotHooks",
+          "areas/THG001.json#locations[F02].description",
+          "module_plot.json#plotPoints[PP002].description"
+        ]
+      }
+    },
+    "diagnostics": {
+      "duplicate_location_aliases": [],
+      "ambiguous_destination_phrases": [],
+      "unresolved_destination_phrases": 0,
+      "missing_npc_authority": []
+    },
+    "summary": {
+      "location_count": 18,
+      "location_alias_count": 37,
+      "destination_phrase_count": 102,
+      "npc_count": 11,
+      "ambiguous_destination_count": 0,
+      "missing_npc_authority_count": 0
+    }
+  }
+}

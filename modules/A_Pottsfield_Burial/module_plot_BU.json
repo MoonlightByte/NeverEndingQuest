@@ -1,0 +1,371 @@
+{
+  "plotTitle": "A Pottsfield Burial: The Harvest of Bound Spirits",
+  "mainObjective": "Unravel the necromantic curse binding Pottsfield and its lands, uncovering the truth behind ancient pacts, malevolent rituals, and restless dead before the entire region is lost to darkness.",
+  "plotPoints": [
+    {
+      "id": "PP001",
+      "title": "Shadows Over Pottsfield: Arrival at the Outskirts",
+      "description": "The party arrives at the edge of Pottsfield (PO001), greeted by golden fields and the anxious preparations for the Harvest Festival. Despite the cheerful facade, rumors of missing villagers and restless spirits abound. Deputy Silas Cragg requests their help investigating disappearances, while suggestions point toward the town center and the old parish grounds.",
+      "location": "PO001",
+      "nextPoints": [
+        "PP002"
+      ],
+      "status": "not started",
+      "plotImpact": "Establishes the module\u2019s tone, introduces key NPCs, and sets up initial mysteries that lead deeper into Pottsfield.",
+      "sideQuests": [
+        {
+          "id": "SQ001",
+          "title": "Pumpkin Patch Prowlers",
+          "description": "Ezra Pike asks the party to investigate his trampled pumpkin patch, believing mischievous spirits or vandals are at work. Clues may lead toward the Parish Grounds.",
+          "involvedLocations": [
+            "PO001"
+          ],
+          "status": "not started",
+          "plotImpact": "Reveals tracks leading to the Parish Grounds and hints about nocturnal activity."
+        },
+        {
+          "id": "SQ002",
+          "title": "The Lantern Maker's Secret",
+          "description": "Ezra Pike, the village lantern maker, offers to share what he knows if the party retrieves a stolen shipment of rare oils from a bandit hideout at the edge of the Outskirts, providing hints about the masked revelers.",
+          "involvedLocations": [
+            "PO001"
+          ],
+          "status": "not started",
+          "plotImpact": "Gaining Ezra\u2019s trust opens new avenues in the investigation and may earn the party specialized lanterns that reveal hidden spirits."
+        },
+        {
+          "id": "SQ003",
+          "title": "Old Nan\u2019s Omen",
+          "description": "Old Nan Berryman cryptically warns of 'soil disturbed and bargains kept.' If the party helps her gather herbs from the Shrouded Woods\u2019 edge, she offers a divination using bones.",
+          "involvedLocations": [
+            "PO001",
+            "TSW001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides an omen about a burial site, foreshadowing secrets in the crypts."
+        },
+        {
+          "id": "SQ004",
+          "title": "Martha\u2019s Lost Locket",
+          "description": "Martha Finch requests the party\u2019s help finding her lost locket, last seen near the edge of the Shrouded Woods.",
+          "involvedLocations": [
+            "PO001",
+            "TSW001"
+          ],
+          "status": "not started",
+          "plotImpact": "Finding the locket grants Martha\u2019s trust and a clue about spectral sightings in the woods."
+        }
+      ]
+    },
+    {
+      "id": "PP002",
+      "title": "Masks and Misdirection: The Hearthlands\u2019 Revels",
+      "description": "Following leads from the outskirts, the party heads into Pottsfield Hearthlands (PVC001), where a masked harvest masquerade is stirring unease amid forced cheer. The enigmatic Masked Reveler and Widow Elsie Tallow hold secrets about the town\u2019s pacts and the Parish Grounds. Social intrigue and careful questioning are vital, as villagers\u2019 attitudes depend on the party\u2019s tact.",
+      "location": "PVC001",
+      "nextPoints": [
+        "PP003"
+      ],
+      "status": "not started",
+      "plotImpact": "Deepens the mystery, introduces the masked cult, and directs the party toward the Parishlands and the roots of the hauntings.",
+      "sideQuests": [
+        {
+          "id": "SQ005",
+          "title": "A Widow\u2019s Grief",
+          "description": "Widow Elsie Tallow hints her late husband\u2019s death was not natural. Investigating his grave in secret could reveal tampered earth and spectral activity.",
+          "involvedLocations": [
+            "PVC001",
+            "PPG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides clues about spiritual unrest and the unholy rituals tying spirits to Pottsfield."
+        },
+        {
+          "id": "SQ006",
+          "title": "The Reveler's Wager",
+          "description": "The Masked Reveler challenges the party to supernatural festival games. Winning earns the respect of the townsfolk and a magical token; losing may invoke a minor curse or public suspicion.",
+          "involvedLocations": [
+            "PVC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Affects the party\u2019s reputation and how open villagers are with information."
+        }
+      ]
+    },
+    {
+      "id": "PP003",
+      "title": "The Unquiet Parish: Investigating the Parishlands",
+      "description": "The party moves to Pottsfield Parishlands (PPG001), where desperate townsfolk report ghostly apparitions, unearthed graves, and chilling voices at night. Bound spirits hint at an ancient pact sealed in the crypts beneath the Harvest Grounds. The party must navigate between the living and the dead, uncovering the truth behind Pottsfield\u2019s bargains and the origins of the curse.",
+      "location": "PPG001",
+      "nextPoints": [
+        "PP004"
+      ],
+      "status": "not started",
+      "plotImpact": "Reveals the nature of Pottsfield\u2019s curse\u2014a series of desperate bargains for prosperity. The party gains knowledge needed to break or perpetuate the pact.",
+      "sideQuests": [
+        {
+          "id": "SQ007",
+          "title": "Restless Ancestors",
+          "description": "Old Nan Berryman begs the party to recover a stolen heirloom from The Shrouded Necropolis to soothe her family\u2019s spirit.",
+          "involvedLocations": [
+            "PPG001",
+            "TAC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Returning the heirloom allows the party to commune with a Freed Spirit for crucial information."
+        },
+        {
+          "id": "SQ008",
+          "title": "Songs for the Departed",
+          "description": "A masked reveler insists that music might calm the spirits; the party may lead a midnight vigil to gain spiritual allies or antagonize ghosts.",
+          "involvedLocations": [
+            "PPG001",
+            "PVC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Success grants a charm against possession; failure may cause a haunting later."
+        },
+        {
+          "id": "SQ009",
+          "title": "Appease the Bound Spirit",
+          "description": "A Bound Spirit, trapped by unfinished business, offers information if the party finds and returns a lost token buried nearby.",
+          "involvedLocations": [
+            "TAC001",
+            "PPG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Reveals a hidden entrance to the crypts and insights into the ritual."
+        },
+        {
+          "id": "SQ010",
+          "title": "The Vigil's Plea",
+          "description": "Desperate Townsfolk beg for help defending their vigil from nightly attacks by the restless dead.",
+          "involvedLocations": [
+            "PPG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Protecting the vigil earns the party an ally and a blessing against undead."
+        }
+      ]
+    },
+    {
+      "id": "PP004",
+      "title": "Through the Shrouded Woods to Veilwood Expanse",
+      "description": "Spectral clues and omens direct the party to the Shrouded Woods (TSW001), a haunted wilderness separating Pottsfield from the deeper crypts. Here, they encounter the Specter of Jonny Harrow and Father Milgrom, both offering cryptic warnings or bargains. The woods\u2019 mists hint at a greater power\u2014Gloamroot\u2014whose corruption may be fueling Pottsfield\u2019s curse. The party discovers a hidden entrance to the Ancient Crypts and may choose to explore the Veilwood\u2019s heart.",
+      "location": "TSW001",
+      "nextPoints": [
+        "PP005"
+      ],
+      "status": "not started",
+      "plotImpact": "Connects the hauntings to a wider supernatural force, introduces the possibility of breaking the curse at its root, and bridges wilderness and cryptic threats.",
+      "sideQuests": [
+        {
+          "id": "SQ011",
+          "title": "The Harrow Bargain",
+          "description": "The Specter of Jonny Harrow offers secret information if the party agrees to deliver a message to Deputy Silas Cragg.",
+          "involvedLocations": [
+            "TSW001",
+            "PVC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides leverage with local law or a shortcut into the crypts."
+        },
+        {
+          "id": "SQ012",
+          "title": "Relics of the Forgotten",
+          "description": "Father Milgrom asks the party to recover sacred relics from the crypts, which could protect the village or empower the ritual.",
+          "involvedLocations": [
+            "TSW001",
+            "TAC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Relics can tip the final confrontation toward the townsfolk or the antagonist."
+        },
+        {
+          "id": "SQ013",
+          "title": "Lay Jonny Harrow to Rest",
+          "description": "Jonny Harrow's spirit cannot move on until his murderer is exposed in Pottsfield. The party can seek justice, gaining his aid.",
+          "involvedLocations": [
+            "TSW001",
+            "PPG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Secures ghostly assistance or a powerful artifact for the final encounter."
+        }
+      ]
+    },
+    {
+      "id": "PP005",
+      "title": "Secrets Beneath: The Shrouded Necropolis",
+      "description": "The party descends into the vine-choked tombs of the Shrouded Necropolis (TAC001), beneath the Harvest Grounds. Here, ancient graves have been disturbed and forbidden rituals echo in the gloom. The party must navigate shifting shadows, deathly traps, and confront the Bound Spirit\u2019s growing influence. The choices made thus far\u2014regarding spirits, relics, and townsfolk\u2014determine the necropolis\u2019 dangers and the outcome of the final ritual.",
+      "location": "TAC001",
+      "nextPoints": [
+        "PP006"
+      ],
+      "status": "not started",
+      "plotImpact": "The party must choose whether to break the pacts that bind Pottsfield, renew them, or attempt a new path\u2014each with great risk and cost.",
+      "sideQuests": [
+        {
+          "id": "SQ014",
+          "title": "A Grieving Widow\u2019s Plea",
+          "description": "Widow Elsie Tallow begs the party to retrieve a locket buried with her late husband in a mausoleum near the necropolis entrance.",
+          "involvedLocations": [
+            "PPG001",
+            "TAC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Completing this quest can grant the party a charm that protects against undead."
+        },
+        {
+          "id": "SQ015",
+          "title": "The Missing Gravedigger",
+          "description": "Ezra Pike, the local gravedigger, has gone missing after hearing whispers from the old crypts. Finding him could provide clues about the necropolis and its dangers.",
+          "involvedLocations": [
+            "PO001",
+            "TAC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Rescuing Ezra offers insights into the necropolis layout and hazards."
+        },
+        {
+          "id": "SQ016",
+          "title": "The Whispering Statues",
+          "description": "Shattered statues in the crypts whisper secrets about the necropolis\u2019 past. If reassembled or their riddles solved, they reveal hidden passages or ritual components.",
+          "involvedLocations": [
+            "TAC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Uncovers shortcuts or weaknesses of the Bound Spirit."
+        },
+        {
+          "id": "SQ017",
+          "title": "The Lost Key",
+          "description": "A hidden compartment in the altar holds a bone key, granting access to a sealed tomb rumored to house an artifact that can strengthen or disrupt the binding ritual.",
+          "involvedLocations": [
+            "TAC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides additional options for the module\u2019s climax."
+        },
+        {
+          "id": "SQ018",
+          "title": "The Spirits\u2019 Bargain",
+          "description": "Freed spirits offer cryptic assistance if the party rights a wrong or recovers a lost item from a rival spirit\u2019s crypt.",
+          "involvedLocations": [
+            "TAC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Can weaken the Bound Spirit or pacify minor undead."
+        }
+      ]
+    },
+    {
+      "id": "PP006",
+      "title": "The Reaping Fields: Curse\u2019s Heart",
+      "description": "To ensure the curse is truly broken, the party must journey to the infamous Reaping Fields (THG001), where vanishing travelers, crimson skies, and the Shadow Harvester threaten Pottsfield\u2019s future. Here, the party must use all they\u2019ve learned to uncover the origin of the curse, disrupt the final ritual, and face the Shadow Harvester in a climactic confrontation. The fate of Pottsfield and its restless dead hangs in the balance.",
+      "location": "THG001",
+      "nextPoints": [
+        "PP007"
+      ],
+      "status": "not started",
+      "plotImpact": "The final battle and choices here determine whether Pottsfield\u2019s cycle of bargains and hauntings is ended, renewed, or twisted into something worse.",
+      "sideQuests": [
+        {
+          "id": "SQ019",
+          "title": "A Farmer's Last Plea",
+          "description": "A spectral figure begs the party to retrieve a family heirloom lost in the overgrown remnants of their farmstead, promising insight into the fields' curse in return.",
+          "involvedLocations": [
+            "THG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides a protective charm and crucial lore about the curse."
+        },
+        {
+          "id": "SQ020",
+          "title": "The Sorrowful Scarecrow",
+          "description": "A scarecrow animated by grief searches for the soul of its lost creator. Helping it find peace could yield a powerful ally or key information.",
+          "involvedLocations": [
+            "THG001"
+          ],
+          "status": "not started",
+          "plotImpact": "If aided, the scarecrow spirit assists in the final battle; if ignored, it becomes a dangerous adversary later."
+        },
+        {
+          "id": "SQ021",
+          "title": "Harvest of the Lost",
+          "description": "Desperate townsfolk beg the party to rescue loved ones dragged deeper into the haunted fields by unseen hands.",
+          "involvedLocations": [
+            "THG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Rescued survivors provide information about weaknesses in the fields\u2019 defenses or a route to the ritual site."
+        },
+        {
+          "id": "SQ022",
+          "title": "Circle of Remembrance",
+          "description": "Restoring a broken circle of stones with tokens from the dead may allow spirits to intervene against the Shadow Harvester.",
+          "involvedLocations": [
+            "THG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Can turn restless spirits into allies or provide narrative advantages in the final battle."
+        },
+        {
+          "id": "SQ023",
+          "title": "Bound for Release",
+          "description": "A group of bound spirits pleads for release. The party can attempt a risky ritual to lay them to rest\u2014or bind them for future aid, at a moral cost.",
+          "involvedLocations": [
+            "THG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Granting peace earns boons; binding them grants power, but risks new hauntings."
+        },
+        {
+          "id": "SQ024",
+          "title": "The Last Harvest",
+          "description": "Desperate Townsfolk beg the party to save their loved ones among the Bound Spirits\u2014forcing a difficult choice about who can be saved.",
+          "involvedLocations": [
+            "THG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Personalizes the outcome for villagers, with social and moral consequences after the adventure."
+        },
+        {
+          "id": "SQ025",
+          "title": "Seeds of Renewal",
+          "description": "If the party recovers a lost relic from the crypt\u2019s heart, they can attempt a new ritual\u2014one that offers hope of breaking the cycle without destroying the town\u2019s prosperity.",
+          "involvedLocations": [
+            "THG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Unlocks a potential 'best ending' that frees spirits and preserves the harvest, but requires difficult checks and negotiation."
+        }
+      ]
+    },
+    {
+      "id": "PP007",
+      "title": "Breaking the Veil: Consequences and Dawn",
+      "description": "With the ritual disrupted and the curse\u2019s heart confronted, the mists begin to recede across Pottsfield, the Parishlands, and the haunted fields. Freed spirits guide the party back through the Veilwood Expanse. The survivors cautiously emerge, and the fate of Pottsfield\u2014salvation, spectral havoc, or a new cycle\u2014rests on the party\u2019s choices. The adventure closes with the region forever changed and the party\u2019s legacy echoing in Pottsfield\u2019s fields.",
+      "location": "PO001",
+      "nextPoints": [],
+      "status": "not started",
+      "plotImpact": "Wraps up the consequences of the party\u2019s choices and sets the stage for future adventures or regional changes.",
+      "sideQuests": [
+        {
+          "id": "SQ026",
+          "title": "Return What Was Taken",
+          "description": "A grateful spirit requests help returning a stolen relic to a sunken altar along the Veilwood. Doing so will lay the last of the restless dead to peace.",
+          "involvedLocations": [
+            "TSW001"
+          ],
+          "status": "not started",
+          "plotImpact": "Ensures lingering magical effects are dispelled\u2014failure may leave Pottsfield haunted."
+        }
+      ]
+    }
+  ],
+  "activeQuests": [],
+  "completedQuests": [],
+  "failedQuests": [],
+  "worldEvents": [],
+  "dmNotes": []
+}

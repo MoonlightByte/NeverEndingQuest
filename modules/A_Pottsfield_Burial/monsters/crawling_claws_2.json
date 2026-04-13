@@ -1,0 +1,66 @@
+{
+  "name": "Crawling Claw",
+  "size": "Tiny",
+  "type": "Undead",
+  "alignment": "Neutral Evil",
+  "armorClass": 12,
+  "hitPoints": 2,
+  "maxHitPoints": 2,
+  "speed": 20,
+  "abilities": {
+    "strength": 13,
+    "dexterity": 14,
+    "constitution": 11,
+    "intelligence": 5,
+    "wisdom": 10,
+    "charisma": 4
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "blinded",
+    "charmed",
+    "deafened",
+    "exhaustion",
+    "frightened",
+    "paralyzed",
+    "petrified",
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 30,
+    "passivePerception": 10
+  },
+  "languages": "understands the languages it knew in life but can't speak",
+  "challengeRating": 0,
+  "specialAbilities": [
+    {
+      "name": "Turn Immunity",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Blind Senses",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Claw",
+      "attackBonus": 3,
+      "damageDice": "1d4",
+      "damageBonus": 1,
+      "damageType": "bludgeoning"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

@@ -1,0 +1,75 @@
+{
+  "timestamp": "2026-04-13T13:50:00.805722",
+  "required": 12,
+  "existing_before": 0,
+  "generated": 12,
+  "unresolved": 0,
+  "details": {
+    "generation": {
+      "generated": [
+        {
+          "slug": "crawling_claws_2",
+          "display_name": "Crawling Claws (2)",
+          "path": "modules/A_Pottsfield_Burial/monsters/crawling_claws_2.json"
+        },
+        {
+          "slug": "restless_skeleton",
+          "display_name": "Restless Skeleton",
+          "path": "modules/A_Pottsfield_Burial/monsters/restless_skeleton.json"
+        },
+        {
+          "slug": "grave_wight",
+          "display_name": "Grave Wight",
+          "path": "modules/A_Pottsfield_Burial/monsters/grave_wight.json"
+        },
+        {
+          "slug": "tomb_rats",
+          "display_name": "Tomb Rats",
+          "path": "modules/A_Pottsfield_Burial/monsters/tomb_rats.json"
+        },
+        {
+          "slug": "restless_remains",
+          "display_name": "Restless Remains",
+          "path": "modules/A_Pottsfield_Burial/monsters/restless_remains.json"
+        },
+        {
+          "slug": "crypt_watchers",
+          "display_name": "Crypt Watchers",
+          "path": "modules/A_Pottsfield_Burial/monsters/crypt_watchers.json"
+        },
+        {
+          "slug": "harvest_wight",
+          "display_name": "Harvest Wight",
+          "path": "modules/A_Pottsfield_Burial/monsters/harvest_wight.json"
+        },
+        {
+          "slug": "strawbound_revenant",
+          "display_name": "Strawbound Revenant",
+          "path": "modules/A_Pottsfield_Burial/monsters/strawbound_revenant.json"
+        },
+        {
+          "slug": "grimcorn_stalker",
+          "display_name": "Grimcorn Stalker",
+          "path": "modules/A_Pottsfield_Burial/monsters/grimcorn_stalker.json"
+        },
+        {
+          "slug": "veilwood_wraith",
+          "display_name": "Veilwood Wraith",
+          "path": "modules/A_Pottsfield_Burial/monsters/veilwood_wraith.json"
+        },
+        {
+          "slug": "veilwood_shadow",
+          "display_name": "Veilwood Shadow",
+          "path": "modules/A_Pottsfield_Burial/monsters/veilwood_shadow.json"
+        },
+        {
+          "slug": "veilwood_husk",
+          "display_name": "Veilwood Husk",
+          "path": "modules/A_Pottsfield_Burial/monsters/veilwood_husk.json"
+        }
+      ],
+      "failed": [],
+      "skipped": []
+    }
+  }
+}

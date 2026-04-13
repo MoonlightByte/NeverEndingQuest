@@ -1,0 +1,413 @@
+{
+  "areaId": "THG001",
+  "areaName": "The Reaping Fields",
+  "areaType": "mixed",
+  "areaDescription": "Once verdant farmlands now sprawl as haunted, blood-soaked expanses where the wind carries the screams of the vanished. Sinister shadows move between withered crops under a perpetually crimson sky, promising swift and violent ends to any who trespass.",
+  "dangerLevel": "extreme",
+  "recommendedLevel": 5,
+  "climate": "varied",
+  "terrain": "varied terrain",
+  "map": {
+    "mapId": "MAP_F_3",
+    "mapName": "Mixed Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "F01",
+        "type": "room",
+        "connections": [
+          "F02",
+          "F03"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "F02"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "extreme",
+        "name": "Lanternlit Threshold"
+      },
+      {
+        "id": "F02",
+        "type": "room",
+        "connections": [
+          "F01"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "F01"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "extreme",
+        "name": "Harvestbound Hollow"
+      },
+      {
+        "id": "F03",
+        "type": "room",
+        "connections": [
+          "F01"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {},
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "extreme",
+        "name": "Silent Furrow Rest"
+      }
+    ],
+    "layout": [
+      [
+        "F01",
+        "F02",
+        "F03"
+      ]
+    ],
+    "startRoom": "F01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "F01",
+      "name": "Lanternlit Threshold",
+      "type": "room",
+      "description": "The transition into the Reaping Fields is marked by a warped, lantern-studded gateway. Crooked posts arch overhead, their rusted lanterns flickering with eldritch fire as unnatural wind tugs at brittle stalks. The earth is stained and cracked, the remnants of a ruined cart and broken tools scattered about. The oppressive air hums with anticipation, the boundary between the living and the dead palpable.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "F02",
+        "F03"
+      ],
+      "areaConnectivity": [
+        "The Shrouded Necropolis"
+      ],
+      "areaConnectivityId": [
+        "E03"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Harvest Wight",
+          "description": "A gaunt, soil-caked undead withering in tattered farmer's garb. Its sunken eyes burn with baleful, hungry light.",
+          "amount": 1,
+          "tactics": "Lurks in the shadowed corner near the ruined cart, waiting to ambush any who hesitate or make noise."
+        }
+      ],
+      "lootTable": [
+        "Tarnished Silver Sickle",
+        "Lantern Oil Flask (cursed)",
+        "Crumpled Prayer Locket"
+      ],
+      "plotHooks": [
+        "Faint bootprints leading away from the cart suggest someone fled through the fields recently.",
+        "A dropped funeral token hints at hurried, fearful passage."
+      ],
+      "dmInstructions": "This is the tense entry point to the Reaping Fields\u2014set the tone with unsettling noises, haunted wind, and the distant toll of a spectral bell. Use the Harvest Wight ambush to impress the danger level. If the party investigates the cart, allow a DC 13 Investigation to find a hidden locket clue.",
+      "doors": [
+        {
+          "name": "Lantern Gate",
+          "description": "An arched wooden gate entwined with lanterns and thorny vines, creaking eerily.",
+          "type": "heavy",
+          "locked": true,
+          "lockDC": 15,
+          "breakDC": 18,
+          "keyname": "Rusty Gate Key",
+          "trapped": true,
+          "trap": "Hidden sickle blade (DC 14 Perception to spot). If triggered, +4 to hit, 1d6 slashing damage plus DC 12 Constitution save or become poisoned (disadvantage on checks for 1 hour)."
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 14,
+          "disableDC": 14,
+          "triggerDC": 10,
+          "damage": "1d6 slashing, DC 12 Constitution save or poisoned for 1 hour (disadvantage on ability checks)."
+        }
+      ],
+      "dcChecks": [
+        "Investigation DC 13: Locate locket hidden beneath the debris.",
+        "Perception DC 14: Notice the sickle trap in the lantern gate's vines.",
+        "Survival DC 12: Identify multiple hurried sets of footprints leading east and north."
+      ],
+      "accessibility": "Difficult\u2014gate is locked and trapped, though the fence is low enough to climb with a successful DC 12 Athletics check.",
+      "dangerLevel": "Very High",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "A fine, gray dust coats every surface, disturbed by recent passage."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "Splintered wood, rusted metal, and faded carvings mark the gate\u2019s age."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "Twisted posts and mismatched lanterns create a grotesque archway, some lanterns burning with unnatural, silent flames."
+        }
+      ],
+      "encounters": [
+        {
+          "trigger": "Entering the gate or disturbing the ruined cart.",
+          "description": "A Harvest Wight rises from the shadows and attacks."
+        }
+      ],
+      "adventureSummary": "The haunted threshold to the Reaping Fields, priming the party for the dangers and mysteries beyond.",
+      "aliases": [
+        "Lanternlit Threshold",
+        "F01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Lanternlit Threshold",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "F02",
+      "name": "Harvestbound Hollow",
+      "type": "room",
+      "description": "A shallow depression among tangled, dead stalks forms a natural hollow. Bloodstains mar the cracked earth. Tallow candles\u2014half-melted and guttering\u2014line the edges, casting flickering, monstrous shadows. Scattered around are straw effigies and symbols etched in red across the soil, evidence of desperate rituals. The air is thick with the scent of iron and rotting grain.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "F01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Desperate Townsfolk",
+          "description": "A ragged, wild-eyed survivor from Pottsfield, clutching a broken candle and muttering frantic prayers. Covered in mud and dried blood, visibly traumatized.",
+          "attitude": "Fearful, desperate for help but wary; may offer scraps of information or plead for rescue."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Strawbound Revenant",
+          "description": "An undead effigy, animated by necromantic rites, with glowing ember eyes and straw bursting from its seams.",
+          "amount": 2,
+          "tactics": "Emerge if anyone tampers with the ritual markings or attempts to harm the Desperate Townsfolk."
+        }
+      ],
+      "lootTable": [
+        "Ritual Dagger (obsidian blade, minor necromantic aura)",
+        "Pouch of Grave Soil",
+        "Candle of Warding (burns for 1 hour, advantage vs. fear in 10 ft. radius)"
+      ],
+      "plotHooks": [
+        "The Desperate Townsfolk witnessed 'the masked ones' dragging townsfolk north, begging the party to stop them.",
+        "A half-burned parchment reveals the phrase: 'The harvest will not be denied.'"
+      ],
+      "dmInstructions": "Roleplay the Desperate Townsfolk encounter; they can be convinced to share information with successful Charisma (Persuasion) DC 12. The Strawbound Revenants attack to protect the ritual site or if the townsfolk is targeted. The candle, if kept lit, repels lesser undead in the immediate area.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 13,
+          "disableDC": 13,
+          "triggerDC": 12,
+          "damage": "2d6 necrotic (as runes flare and lash out at trespassers who step within the ritual circle)."
+        }
+      ],
+      "dcChecks": [
+        "Arcana DC 14: Identify the ritual as a desperate attempt to appease a harvest spirit.",
+        "Insight DC 12: Realize the Desperate Townsfolk is on the verge of panic.",
+        "Medicine DC 10: Note that the bloodstains are recent and mostly non-fatal, suggesting a frantic, living crowd."
+      ],
+      "accessibility": "Normal access from F01 through trampled crops and earth; some footing is loose, requiring DC 10 Acrobatics to avoid slipping when combat begins.",
+      "dangerLevel": "Very High",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "A thick, powdery ash settles over the ritual circle."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "Half-buried effigies suggest this place has seen similar rituals for years."
+        }
+      ],
+      "encounters": [
+        {
+          "trigger": "Interfering with ritual markings or threatening the townsfolk.",
+          "description": "Two Strawbound Revenants animate and attack."
+        }
+      ],
+      "adventureSummary": "A grisly ritual hollow where a terrified survivor offers clues and the party must balance compassion and caution.",
+      "aliases": [
+        "Harvestbound Hollow",
+        "F02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Harvestbound Hollow",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "F03",
+      "name": "Silent Furrow Rest",
+      "type": "room",
+      "description": "Deep in the withered fields, an abandoned resting station squats beside a long, straight furrow. Its roof sags, and its stone benches are stained with blood and strange sigils. Crimson cornshucks and tangled vines drape from the beams, shifting as if alive. The air is eerily silent save for the distant, echoing sobs of unseen mourners.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "F01"
+      ],
+      "areaConnectivity": [
+        "The Veilwood Expanse"
+      ],
+      "areaConnectivityId": [
+        "D01"
+      ],
+      "npcs": [
+        {
+          "name": "Bound Spirit",
+          "description": "The translucent apparition of a Pottsfield worker, weeping silently as it drags spectral chains across the furrow\u2019s edge. Its form flickers between agony and pleading.",
+          "attitude": "Melancholy, desperate to communicate but shackled by magic\u2014will answer questions through charades or writing in the dust."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Grimcorn Stalker",
+          "description": "A scarecrow-like undead, its limbs stiff with moldy husks, eyes glowing red beneath a cracked pumpkin mask.",
+          "amount": 1,
+          "tactics": "Lurks motionless among the hanging vines until the Bound Spirit is disturbed or the furrow is crossed."
+        }
+      ],
+      "lootTable": [
+        "Spectral Chain Link (can be used as a spell focus for bane or hold person)",
+        "Ancient Field Guide (tattered, contains clues about the necromantic curse)",
+        "Bloodstained Sigil Stone"
+      ],
+      "plotHooks": [
+        "The Bound Spirit pantomimes being dragged north, indicating that the root of the curse lies deeper in the Reaping Fields.",
+        "Carved into a bench: 'All must rest before the harvest takes them.'"
+      ],
+      "dmInstructions": "Encourage players to interact with the Bound Spirit through creative means\u2014allow Intelligence (Religion) DC 13 to interpret gestures. The Grimcorn Stalker attacks if the spirit is freed or the players disturb the sigil stones. Researching the Field Guide here may reveal a safe path through the next field segment (granting advantage on future Survival checks).",
+      "doors": [
+        {
+          "name": "Rest House Door",
+          "description": "A heavy, weathered wooden door hanging askew on rusted hinges, marked with old blood and warding runes.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 8,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Religion DC 13: Decipher the Bound Spirit\u2019s gestures and glean details about the curse.",
+        "Perception DC 11: Notice the Grimcorn Stalker among the vines.",
+        "History DC 12: Piece together the significance of the furrow and resting bench from the Field Guide."
+      ],
+      "accessibility": "Normal\u2014open, but the roof is partly collapsed. Entering requires pushing aside vines and cornshucks (no check needed).",
+      "dangerLevel": "Very High",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "Moss creeps over crumbled foundation stones, and the benches are deeply grooved from generations of use."
+        },
+        {
+          "name": "Dust",
+          "description": "A layer of undisturbed dust on the benches, except where the Bound Spirit writes clues."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "Low, sloping roof and thick stone benches built for communal rest, now bearing necromantic sigils."
+        }
+      ],
+      "encounters": [
+        {
+          "trigger": "Disturbing the Bound Spirit or sigil stones.",
+          "description": "The Grimcorn Stalker lurches to life and attacks."
+        }
+      ],
+      "adventureSummary": "A haunted resting station offering vital clues and a tragic spirit, with lurking threats adding to the tension and danger.",
+      "aliases": [
+        "Silent Furrow Rest",
+        "F03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Silent Furrow Rest",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 5 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 5 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "boss monster",
+      "description": "A boss monster appropriate for level 5 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "boss monster",
+      "description": "A boss monster appropriate for level 5 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "deadly trap",
+      "description": "A deadly trap appropriate for level 5 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "boss monster",
+      "description": "A boss monster appropriate for level 5 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "boss monster",
+      "description": "A boss monster appropriate for level 5 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "deadly trap",
+      "description": "A deadly trap appropriate for level 5 parties"
+    }
+  ],
+  "areaFeatures": [
+    "crossroads",
+    "landmarks",
+    "ruins"
+  ],
+  "notes": "Balance combat, exploration, and social encounters. Transitions between areas should feel natural.",
+  "spatialContractVersion": 1
+}

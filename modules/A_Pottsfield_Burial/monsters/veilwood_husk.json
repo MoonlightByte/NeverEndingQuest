@@ -1,0 +1,73 @@
+{
+  "name": "Veilwood Husk",
+  "size": "Medium",
+  "type": "Plant",
+  "alignment": "Neutral Evil",
+  "armorClass": 12,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 25,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 14,
+    "constitution": 12,
+    "intelligence": 6,
+    "wisdom": 10,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {
+    "Stealth": 4
+  },
+  "damageVulnerabilities": [
+    "fire"
+  ],
+  "damageResistances": [
+    "piercing",
+    "bludgeoning"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 10
+  },
+  "languages": "understands Sylvan but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "False Appearance",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Poisonous Husk",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "poison"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Claw",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Husk Spore",
+      "attackBonus": 0,
+      "damageDice": "2d6",
+      "damageBonus": 0,
+      "damageType": "poison"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}
