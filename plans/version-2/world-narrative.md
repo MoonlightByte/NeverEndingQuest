@@ -6,6 +6,11 @@ Owner: Narrative systems + memory integration
 Track reference: `plans/version-2/v2-narrative-track.md`
 Encounter escalation reference: `plans/version-2/encounterEscalationProfile.md`
 
+Related plans:
+- `plans/module-uploader.md` = interactive reviewed module-import lane for player-authored and approved source-preserving adventure uploads
+- `plans/version-2/module-import.md` = scaled canonical module-import lane that builds on uploader-era normalization/build contracts
+- `plans/version-2/titan-integration.md` = later interpreted-state consumer of world-narrative and continuity-qualified module signals
+
 ## Titan v2 Alignment Stub
 
 - Umbrella reference: `plans/version-2/titan-integration.md`
@@ -16,6 +21,14 @@ Encounter escalation reference: `plans/version-2/encounterEscalationProfile.md`
 ## Current Baseline
 
 A first operational continuity layer now exists for module ingest and validation. This is the current bridge from module-level narrative data into future world-narrative and Titan/EGO pipelines.
+
+Planning boundary:
+
+1. `plans/module-uploader.md` owns the public source-preserving reviewed upload flow for approved adventure/module inputs.
+2. `plans/version-2/module-import.md` owns the future scaled import lane that generalizes those contracts for bulk and canonical world expansion.
+3. This plan owns a different ingestion lane: local literary/worldbuilding source analysis that must become source-anonymous before it can influence committable derived outputs.
+
+This distinction is critical. World-narrative is not a replacement for the uploader, and the uploader should not be treated as a shortcut around the copyright firewall described in this document.
 
 Operational baseline:
 
@@ -44,6 +57,12 @@ Architectural note:
 ## Next Milestone
 
 Define the continuity-to-world-model bridge so module continuity signals become bounded interpreted inputs to `campaign_world_model` and `campaign_world_delta` workflows.
+
+Practical dependency note:
+
+1. uploader and module-import may complete earlier as source-preserving module-creation systems,
+2. world-narrative should then consume only safe interpreted signals from those systems,
+3. copyrighted literary ingestion under `/user_uploads/text/` remains a later, separate, source-anonymous narrative-web build.
 
 ## Exit Criteria
 
@@ -82,6 +101,8 @@ We want a rolling world narrative that:
 2. Reuses literary inspiration safely as abstract patterns.
 3. Preserves Python as SRD 5e mechanical truth.
 4. Integrates cleanly with current NeverEndingQuest hooks.
+
+This plan does not own the primary public adventure-upload/module-build workflow. It owns the interpreted narrative substrate that can later flavor narration, continuity pressure, and future module-builder context after sanitization.
 
 ---
 
@@ -122,6 +143,20 @@ Runtime/bootstrap policy:
 ---
 
 ## 4) Ingestion policy (strict)
+
+Two ingestion lanes must remain separate:
+
+1. Module lane:
+   - source-preserving reviewed module import for approved adventure inputs,
+   - owned by `plans/module-uploader.md` and later `plans/version-2/module-import.md`.
+
+2. World-narrative lane:
+   - local literary/worldbuilding ingestion for source-anonymous narrative abstraction,
+   - owned by this plan.
+
+Rule:
+- outputs from the world-narrative lane must obey the source-anonymous contract in this file.
+- outputs from the module lane may remain source-preserving locally when policy allows, but they must not be mistaken for source-anonymous world-narrative artifacts.
 
 Allowed to store in committable outputs:
 - motif labels
@@ -263,6 +298,12 @@ Key principle:
 Primary UI location:
 - Module Toolkit Web GUI (`/toolkit`) with a new "World Narrative Sources" panel.
 
+Important clarification:
+
+1. This panel is not the same as the public Homebrew module uploader described in `plans/module-uploader.md`.
+2. This panel is for the world-narrative lane only: local ingestion of copyrighted or otherwise restricted narrative sources that must be abstracted and anonymized before any committable derived output exists.
+3. The module uploader remains the separate player-facing lane for reviewed module creation from approved adventure sources.
+
 Upload contract:
 1. Accept `pdf` only.
 2. Save uploads under `/user_uploads/text/` only.
@@ -298,6 +339,12 @@ Retrieval injection:
 - `core/managers/campaign_manager.py` -> cross-module continuity pack
 - `core/generators/module_builder.py` -> continuity seed preamble
 - `core/generators/module_stitcher.py` -> write back module narrative seeds
+
+Uploader bridge note:
+
+1. The uploader may later contribute continuity-qualified module outputs and provenance-safe module narrative seeds.
+2. It should not directly write raw source-derived literary content into world-narrative state.
+3. Any bridge from uploader/module-import outputs into this plan must remain interpreted, bounded, and compatible with the facts-vs-interpretation split.
 
 ### 7.1 Character Sheet PDF mapping (deferred requirement)
 
@@ -443,6 +490,9 @@ Rule:
 Phase 0 - Policy lock
 - Approve copyright firewall + source-anonymous schema.
 - Approve facts-vs-interpretation boundary and write-permission contracts.
+- Approve lane separation:
+  - uploader/module-import = source-preserving module lane where policy permits
+  - world-narrative = source-anonymous literary ingestion lane
 
 Phase 1 - Foundation
 - Add migration 003 for source-anonymous inspiration tables + narrative tables.
@@ -455,6 +505,9 @@ Phase 2 - Ingestion tooling
 - Sanitized export pipeline to committable structures.
 - Cross-book convergence job to update atom statistics/relations.
 - Add toolkit upload endpoints and async job flow.
+
+Dependency note:
+- This phase should not absorb the public module uploader. The uploader is a sibling lane and may complete before or in parallel, but the world-narrative tooling here remains dedicated to source-anonymous narrative-web generation.
 
 Phase 3 - World model bootstrap and Ratio loop
 - Implement campaign-start world model bootstrap (`campaign_world_model` v1).
@@ -508,5 +561,8 @@ Please review and confirm:
 6. Campaign world model versioning (`campaign_world_model` + `campaign_world_delta`).
 7. Three LLM entry-point contracts and write permissions.
 8. Baseline seed DB distribution model and runtime bootstrap behavior.
+9. Explicit separation between:
+   - module uploader/module-import as reviewed module-creation lanes,
+   - world-narrative as the source-anonymous literary ingestion lane.
 
 If approved, next step is to implement Phase 1 and Phase 2 only.

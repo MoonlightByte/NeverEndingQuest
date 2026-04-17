@@ -253,18 +253,24 @@ def _run_monster_materialization_stage(module_slug: str) -> Dict[str, Any]:
             "parsed_output": parsed_output,
         }
 
-    missing_count = int(parsed_output.get("missing_in_bestiary_count", 0) or 0)
+    blocked_count = int(parsed_output.get("blocked_count", 0) or 0)
+    blocker_classes = parsed_output.get("blocker_classes") or {}
     parsed_status = _normalize_stage_status(parsed_output.get("status", "success"))
-    stage_status = (
-        "degraded"
-        if (parsed_status != "failed" and missing_count > 0)
-        else parsed_status
-    )
+    if blocked_count > 0:
+        stage_status = "failed"
+    else:
+        stage_status = parsed_status
 
     if stage_status == "failed":
-        stage_reason = "Monster materialization reported failure"
+        if blocked_count > 0:
+            stage_reason = (
+                "Monster hydration blocked by structured blocker classes: "
+                f"{', '.join(sorted(blocker_classes.keys())) or 'unknown'}"
+            )
+        else:
+            stage_reason = "Monster materialization reported failure"
     elif stage_status == "degraded":
-        stage_reason = "Some seed monsters were unresolved in bestiary"
+        stage_reason = "Monster materialization completed with degraded status"
     else:
         stage_reason = None
 

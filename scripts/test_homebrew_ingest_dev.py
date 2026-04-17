@@ -44,6 +44,26 @@ class TestPipelineStopConditions(TestCase):
         self.assertEqual(result["stage"], "preflight")
         self.assertEqual(result["exit_code"], 1)
 
+    def test_routes_readable_ambiguous_source_when_enabled(self):
+        """Should return normalization_required when routing path is enabled."""
+        source = self.temp_dir / "ambiguous.md"
+        source.write_text("# Chapter 1\n\nReadable but non-deterministic narrative text.")
+        workspace = self.temp_dir / "workspace"
+
+        result = run_ingest_pipeline(
+            str(source),
+            strict=True,
+            dry_run_only=False,
+            allow_normalization_routing=True,
+            artifact_workspace=str(workspace),
+        )
+
+        self.assertEqual(result["status"], "normalization_required")
+        self.assertEqual(result["stage"], "routing")
+        self.assertEqual(result["routing_outcome"], "normalization_required")
+        self.assertTrue((workspace / "source_preflight.json").exists())
+        self.assertTrue((workspace / "normalized_packet.json").exists())
+
     def test_stops_at_dry_run_for_validation_failure(self):
         """Should halt when dry-run validation fails."""
         source = self.temp_dir / "test.md"

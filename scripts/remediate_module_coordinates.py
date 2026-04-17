@@ -15,6 +15,7 @@ Backfills spatial contract fields for legacy modules in dry-run or apply mode.
 import argparse
 import json
 import sys
+from collections import deque
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -28,6 +29,7 @@ from utils.spatial_contract import (
     build_location_aliases,
     build_tactical_grid,
     is_valid_coordinate,
+    parse_coordinate,
     resolve_semantic_spatial_plan,
 )
 
@@ -80,14 +82,80 @@ def _build_plan_from_locations(locations: List[Dict[str, Any]]) -> Dict[str, Any
     )
 
 
+def _build_force_relayout_coordinates(locations: List[Dict[str, Any]]) -> Dict[str, str]:
+    """Assign adjacency-safe coordinates from authored connectivity."""
+    coordinates: Dict[str, str] = {}
+    occupied: set[Tuple[int, int]] = set()
+    order: List[str] = []
+    graph: Dict[str, List[str]] = {}
+
+    for location in locations:
+        if not isinstance(location, dict):
+            continue
+        location_id = location.get("locationId")
+        if not isinstance(location_id, str) or not location_id:
+            continue
+        order.append(location_id)
+        graph[location_id] = [
+            target
+            for target in location.get("connectivity", [])
+            if isinstance(target, str) and target
+        ]
+
+    component_index = 0
+    for location_id in order:
+        if location_id in coordinates:
+            continue
+
+        start = (10 + (component_index * 4), 10)
+        while start in occupied:
+            start = (start[0] + 1, start[1] + 1)
+
+        coordinates[location_id] = f"X{start[0]}Y{start[1]}"
+        occupied.add(start)
+
+        queue: deque[str] = deque([location_id])
+        while queue:
+            current_id = queue.popleft()
+            current_coordinate = coordinates[current_id]
+            current_x, current_y = parse_coordinate(current_coordinate)
+
+            for neighbor_id in graph.get(current_id, []):
+                if neighbor_id not in graph or neighbor_id in coordinates:
+                    continue
+                for delta_x, delta_y in [(1, 0), (0, 1), (-1, 0), (0, -1)]:
+                    candidate = (current_x + delta_x, current_y + delta_y)
+                    if candidate in occupied:
+                        continue
+                    coordinates[neighbor_id] = f"X{candidate[0]}Y{candidate[1]}"
+                    occupied.add(candidate)
+                    queue.append(neighbor_id)
+                    break
+
+        component_index += 1
+
+    for location_id in order:
+        if location_id in coordinates:
+            continue
+        fallback = (10 + len(occupied), 10)
+        while fallback in occupied:
+            fallback = (fallback[0] + 1, fallback[1])
+        coordinates[location_id] = f"X{fallback[0]}Y{fallback[1]}"
+        occupied.add(fallback)
+
+    return coordinates
+
+
 def remediate_area_map_pair(
     area_data: Dict[str, Any],
     map_data: Dict[str, Any],
+    force_relayout: bool = False,
 ) -> Tuple[Dict[str, Any], Dict[str, Any], int]:
     """Backfill spatial contract fields while preserving authored connectivity."""
     locations = area_data.get("locations", [])
     room_index = _build_room_index(map_data)
     fallback_plan = _build_plan_from_locations(locations)
+    forced_coordinates = _build_force_relayout_coordinates(locations) if force_relayout else {}
     changes = 0
 
     for index, location in enumerate(locations):
@@ -99,11 +167,14 @@ def remediate_area_map_pair(
 
         map_room = room_index.get(location_id, {})
         map_coordinate = map_room.get("coordinates")
-        fallback_coordinate = fallback_plan["coordinates"].get(
+        fallback_coordinate = forced_coordinates.get(location_id) or fallback_plan["coordinates"].get(
             location_id, f"X{10 + index}Y10"
         )
         coordinate = location.get("coordinates")
-        if is_valid_coordinate(map_coordinate) and coordinate != map_coordinate:
+        if force_relayout and coordinate != fallback_coordinate:
+            location["coordinates"] = fallback_coordinate
+            changes += 1
+        elif is_valid_coordinate(map_coordinate) and coordinate != map_coordinate:
             location["coordinates"] = map_coordinate
             changes += 1
         elif not is_valid_coordinate(coordinate):
@@ -204,7 +275,7 @@ def remediate_area_map_pair(
     return area_data, map_data, changes
 
 
-def remediate_module(module_path: Path, apply: bool) -> Dict[str, Any]:
+def remediate_module(module_path: Path, apply: bool, force_relayout: bool = False) -> Dict[str, Any]:
     """Remediate one module path and return summary metrics."""
     areas_dir = module_path / "areas"
     if not areas_dir.exists():
@@ -237,7 +308,9 @@ def remediate_module(module_path: Path, apply: bool) -> Dict[str, Any]:
                 map_data = embedded_map
 
             patched_area, patched_map, pair_changes = remediate_area_map_pair(
-                area_data, map_data
+                area_data,
+                map_data,
+                force_relayout=force_relayout,
             )
 
             processed += 1

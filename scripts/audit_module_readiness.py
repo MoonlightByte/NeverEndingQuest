@@ -235,6 +235,7 @@ def _build_fix_list(gates: Dict[str, Dict[str, Any]]) -> List[str]:
 
 def audit_module_readiness(
     module_slug: str,
+    include_gameplay_gate: bool = True,
     include_sidecar_gate: bool = True,
     include_continuity_gate: bool = True,
     include_schema_gate: bool = True,
@@ -246,18 +247,25 @@ def audit_module_readiness(
     gates: Dict[str, Dict[str, Any]] = {}
     blocking_errors: List[str] = []
 
-    gameplay_cmd = [
-        python_exec,
-        str(GAMEPLAY_AUDIT_SCRIPT),
-        "--module",
-        module_slug,
-        "--json",
-    ]
-    if strict_gameplay:
-        gameplay_cmd.append("--strict-instructions")
+    if include_gameplay_gate:
+        gameplay_cmd = [
+            python_exec,
+            str(GAMEPLAY_AUDIT_SCRIPT),
+            "--module",
+            module_slug,
+            "--json",
+        ]
+        if strict_gameplay:
+            gameplay_cmd.append("--strict-instructions")
 
-    gameplay_raw = run_gate_command(gameplay_cmd)
-    gates["gameplay"] = evaluate_gameplay_gate(gameplay_raw)
+        gameplay_raw = run_gate_command(gameplay_cmd)
+        gates["gameplay"] = evaluate_gameplay_gate(gameplay_raw)
+    else:
+        gates["gameplay"] = {
+            "status": "skipped",
+            "reason": "gate_disabled",
+            "exit_code": None,
+        }
 
     if include_sidecar_gate:
         sidecar_cmd = [
@@ -333,7 +341,7 @@ def audit_module_readiness(
         "blocking_errors": blocking_errors,
         "fix_list": fix_list,
         "strict_contract": {
-            "requires_gameplay": True,
+            "requires_gameplay": include_gameplay_gate,
             "requires_sidecar": include_sidecar_gate,
             "requires_continuity": include_continuity_gate,
             "requires_schema": include_schema_gate,

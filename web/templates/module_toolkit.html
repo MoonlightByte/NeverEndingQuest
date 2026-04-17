@@ -2579,6 +2579,20 @@
                                     <div id="homebrew-upload-message" style="margin-bottom: 8px; color: #ddd;"></div>
                                     <pre id="homebrew-upload-details" style="max-height: 260px; overflow: auto; color: #bbb; font-size: 0.9em; white-space: pre-wrap;"></pre>
                                 </div>
+                                <div id="homebrew-review-panel" style="display: none; margin-top: 12px; padding: 12px; background: #121212; border: 1px solid #666;">
+                                    <div id="homebrew-review-title" style="margin-bottom: 8px; color: #ffcc66; font-weight: bold;">Review Pending</div>
+                                    <pre id="homebrew-review-summary" style="max-height: 260px; overflow: auto; color: #bbb; font-size: 0.9em; white-space: pre-wrap;"></pre>
+                                    <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+                                        <button type="button" class="game-button" id="homebrew-review-approve-btn">Approve and Build Later</button>
+                                        <button type="button" class="game-button" id="homebrew-review-reject-btn" style="background-color: #5a2a2a; border-color: #8a3a3a;">Reject</button>
+                                        <button type="button" class="game-button" id="homebrew-build-start-btn" style="background-color: #2f4f2f; border-color: #4a7a4a;">Start Build from Packet</button>
+                                    </div>
+                                    <div id="homebrew-artifact-manifest-panel" style="display: none; margin-top: 10px; padding: 8px; background: #1a1a1a; border: 1px solid #444; border-radius: 4px;">
+                                        <div style="color: #aaa; font-size: 0.85em; margin-bottom: 6px;">Artifact Workspace Contents:</div>
+                                        <div id="homebrew-artifact-checklist" style="color: #ccc; font-size: 0.85em; font-family: monospace;"></div>
+                                        <div id="homebrew-artifact-actions" style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;"></div>
+                                    </div>
+                                </div>
                             </div>
                      
                             <!-- Input Form -->
@@ -5752,7 +5766,20 @@
         let homebrewUploadStatus = null;
         let homebrewUploadMessage = null;
         let homebrewUploadDetails = null;
+        let homebrewReviewPanel = null;
+        let homebrewReviewTitle = null;
+        let homebrewReviewSummary = null;
+        let homebrewReviewApproveButton = null;
+        let homebrewReviewRejectButton = null;
+        let homebrewBuildStartButton = null;
+        let homebrewArtifactManifestPanel = null;
+        let homebrewArtifactChecklist = null;
+        let homebrewArtifactActions = null;
+        let homebrewRetryFromPacketButton = null;
+        let homebrewRetryFromFinishingButton = null;
+        let homebrewCleanupButton = null;
         let homebrewUploadPollTimer = null;
+        let homebrewActiveReviewJobId = null;
         
         // Initialize module builder elements after DOM is ready
         function initializeModuleBuilderElements() {
@@ -5774,6 +5801,15 @@
             homebrewUploadStatus = document.getElementById('homebrew-upload-status');
             homebrewUploadMessage = document.getElementById('homebrew-upload-message');
             homebrewUploadDetails = document.getElementById('homebrew-upload-details');
+            homebrewReviewPanel = document.getElementById('homebrew-review-panel');
+            homebrewReviewTitle = document.getElementById('homebrew-review-title');
+            homebrewReviewSummary = document.getElementById('homebrew-review-summary');
+            homebrewReviewApproveButton = document.getElementById('homebrew-review-approve-btn');
+            homebrewReviewRejectButton = document.getElementById('homebrew-review-reject-btn');
+            homebrewBuildStartButton = document.getElementById('homebrew-build-start-btn');
+            homebrewArtifactManifestPanel = document.getElementById('homebrew-artifact-manifest-panel');
+            homebrewArtifactChecklist = document.getElementById('homebrew-artifact-checklist');
+            homebrewArtifactActions = document.getElementById('homebrew-artifact-actions');
         }
         
         // Set up module builder event listeners
@@ -5827,6 +5863,24 @@
             if (homebrewUploadButton) {
                 homebrewUploadButton.addEventListener('click', () => {
                     startToolkitHomebrewUpload();
+                });
+            }
+
+            if (homebrewReviewApproveButton) {
+                homebrewReviewApproveButton.addEventListener('click', () => {
+                    submitToolkitHomebrewReviewDecision('approve');
+                });
+            }
+
+            if (homebrewReviewRejectButton) {
+                homebrewReviewRejectButton.addEventListener('click', () => {
+                    submitToolkitHomebrewReviewDecision('reject');
+                });
+            }
+
+            if (homebrewBuildStartButton) {
+                homebrewBuildStartButton.addEventListener('click', () => {
+                    submitToolkitHomebrewStartBuild();
                 });
             }
             
@@ -6010,6 +6064,557 @@
             homebrewUploadDetails.textContent = details;
         }
 
+        function resolveHomebrewHydrationSummary(payload, job) {
+            const fromPayload = payload && payload.hydration_summary;
+            if (fromPayload && typeof fromPayload === 'object') {
+                return fromPayload;
+            }
+
+            const summary = {
+                phase: '',
+                blocked_count: 0,
+                blocker_classes: {},
+                hydration_modes: {},
+                candidate_sources: {},
+                sample_monsters: [],
+            };
+
+            const result = (job && job.result && typeof job.result === 'object') ? job.result : {};
+            const stages = (result.stages && typeof result.stages === 'object') ? result.stages : {};
+            const finisherHydration = (stages.monster_materialization && stages.monster_materialization.parsed_output && typeof stages.monster_materialization.parsed_output === 'object')
+                ? stages.monster_materialization.parsed_output
+                : {};
+
+            let readinessHydration = {};
+            if (Array.isArray(result.repair_attempts) && result.repair_attempts.length > 0) {
+                const latest = result.repair_attempts[result.repair_attempts.length - 1] || {};
+                const repairs = (latest.repairs && typeof latest.repairs === 'object') ? latest.repairs : {};
+                const monsterMaterialization = (repairs.monster_materialization && typeof repairs.monster_materialization === 'object')
+                    ? repairs.monster_materialization
+                    : {};
+                readinessHydration = (monsterMaterialization.hydration_result && typeof monsterMaterialization.hydration_result === 'object')
+                    ? monsterMaterialization.hydration_result
+                    : {};
+            }
+
+            const hydration = Object.keys(finisherHydration).length > 0 ? finisherHydration : readinessHydration;
+            if (!hydration || Object.keys(hydration).length === 0) {
+                return summary;
+            }
+
+            summary.phase = Object.keys(finisherHydration).length > 0 ? 'finisher' : 'readiness';
+            summary.blocked_count = Number(hydration.blocked_count || 0);
+            summary.blocker_classes = (hydration.blocker_classes && typeof hydration.blocker_classes === 'object') ? hydration.blocker_classes : {};
+            summary.hydration_modes = (hydration.hydration_modes && typeof hydration.hydration_modes === 'object') ? hydration.hydration_modes : {};
+            summary.candidate_sources = (hydration.candidate_sources && typeof hydration.candidate_sources === 'object') ? hydration.candidate_sources : {};
+
+            if (Array.isArray(hydration.monster_results)) {
+                summary.sample_monsters = hydration.monster_results.slice(0, 5).map((item) => {
+                    const record = (item && typeof item === 'object') ? item : {};
+                    return {
+                        requested_name: String(record.requested_name || ''),
+                        canonical_name: String(record.canonical_name || ''),
+                        canonical_slug: String(record.canonical_slug || ''),
+                        mode: String(record.mode || ''),
+                        blocker_class: String(record.blocker_class || ''),
+                    };
+                });
+            }
+
+            return summary;
+        }
+
+        function formatHomebrewHydrationSummary(payload, job) {
+            const summary = resolveHomebrewHydrationSummary(payload, job);
+            const hasSummary =
+                (summary.phase && summary.phase.length > 0) ||
+                Number(summary.blocked_count || 0) > 0 ||
+                Object.keys(summary.blocker_classes || {}).length > 0 ||
+                Object.keys(summary.hydration_modes || {}).length > 0;
+
+            if (!hasSummary) {
+                return '';
+            }
+
+            const lines = [];
+            lines.push('Hydration Summary:');
+            lines.push(`- Phase: ${summary.phase || 'unknown'}`);
+            lines.push(`- Blocked: ${Number(summary.blocked_count || 0)}`);
+
+            const blockerClasses = summary.blocker_classes || {};
+            if (Object.keys(blockerClasses).length > 0) {
+                lines.push('- Blocker Classes:');
+                Object.keys(blockerClasses).sort().forEach((name) => {
+                    lines.push(`  * ${name}: ${blockerClasses[name]}`);
+                });
+            }
+
+            const hydrationModes = summary.hydration_modes || {};
+            if (Object.keys(hydrationModes).length > 0) {
+                lines.push('- Hydration Modes:');
+                Object.keys(hydrationModes).sort().forEach((name) => {
+                    lines.push(`  * ${name}: ${hydrationModes[name]}`);
+                });
+            }
+
+            const candidateSources = summary.candidate_sources || {};
+            if (Object.keys(candidateSources).length > 0) {
+                const sourceBits = [];
+                if (candidateSources.seed_count !== undefined) {
+                    sourceBits.push(`seed_count=${candidateSources.seed_count}`);
+                }
+                if (candidateSources.authored_count !== undefined) {
+                    sourceBits.push(`authored_count=${candidateSources.authored_count}`);
+                }
+                if (candidateSources.seed_missing_fallback_used !== undefined) {
+                    sourceBits.push(
+                        `seed_missing_fallback_used=${candidateSources.seed_missing_fallback_used ? 'true' : 'false'}`
+                    );
+                }
+                if (sourceBits.length > 0) {
+                    lines.push(`- Candidate Sources: ${sourceBits.join(', ')}`);
+                }
+            }
+
+            const sampleMonsters = Array.isArray(summary.sample_monsters) ? summary.sample_monsters : [];
+            if (sampleMonsters.length > 0) {
+                lines.push('- Sample Monsters:');
+                sampleMonsters.forEach((monster) => {
+                    const requested = monster.requested_name || 'unknown';
+                    const canonical = monster.canonical_name || monster.canonical_slug || 'unknown';
+                    const mode = monster.mode || 'unknown';
+                    const blocker = monster.blocker_class ? ` blocker=${monster.blocker_class}` : '';
+                    lines.push(`  * ${requested} -> ${canonical} [mode=${mode}${blocker}]`);
+                });
+            }
+
+            return lines.join('\n');
+        }
+
+        function buildHomebrewHydrationAwareDetails(payload, job, rawPayload) {
+            const hydrationSummaryText = formatHomebrewHydrationSummary(payload, job);
+            const rawJson = JSON.stringify(rawPayload, null, 2);
+            if (!hydrationSummaryText) {
+                return rawJson;
+            }
+            return `${hydrationSummaryText}\n\nRaw Payload:\n${rawJson}`;
+        }
+
+        function setHomebrewReviewPanelVisible(isVisible) {
+            if (!homebrewReviewPanel) {
+                return;
+            }
+            homebrewReviewPanel.style.display = isVisible ? 'block' : 'none';
+        }
+
+        function formatReviewList(items) {
+            if (!Array.isArray(items) || items.length === 0) {
+                return '- none';
+            }
+            return items.map((item) => {
+                if (typeof item === 'string') {
+                    return `- ${item}`;
+                }
+                if (item && typeof item === 'object') {
+                    if (item.name) {
+                        return `- ${item.name}`;
+                    }
+                    if (item.type && item.message) {
+                        return `- ${item.type}: ${item.message}`;
+                    }
+                    return `- ${JSON.stringify(item)}`;
+                }
+                return `- ${String(item)}`;
+            }).join('\n');
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0 || bytes === null || bytes === undefined) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        function renderArtifactManifest(manifest, jobId) {
+            if (!homebrewArtifactManifestPanel || !homebrewArtifactChecklist || !homebrewArtifactActions) {
+                return;
+            }
+            if (!manifest || !manifest.artifacts) {
+                homebrewArtifactManifestPanel.style.display = 'none';
+                return;
+            }
+
+            const files = manifest.artifacts;
+            const rebuild = manifest.rebuild_eligible || {};
+            const cleanupAllowed = manifest.cleanup_allowed;
+
+            let checklistHTML = '';
+            const knownFiles = [
+                'source_original',
+                'normalized_packet',
+                'normalization_report',
+                'ui_review_snapshot',
+                'builder_input',
+                'build_result',
+                'readiness_validation_report',
+                'readiness_audit_report',
+                'repair_report',
+                'finishing_report',
+            ];
+            knownFiles.forEach(function(key) {
+                if (Object.prototype.hasOwnProperty.call(files, key)) {
+                    const fileInfo = files[key] || {};
+                    const exists = Boolean(fileInfo.exists);
+                    const hasSize = typeof fileInfo.size_bytes === 'number';
+                    const size = hasSize ? formatBytes(fileInfo.size_bytes) : '';
+                    const label = exists ? '[OK]' : '[  ]';
+                    const color = exists ? '#4caf50' : '#888';
+                    checklistHTML += `<div style="color: ${color};">${label} ${key}${size ? ' (' + size + ')' : ''}</div>`;
+                }
+            });
+            Object.keys(files).forEach(function(key) {
+                if (knownFiles.indexOf(key) === -1) {
+                    const fileInfo = files[key] || {};
+                    const exists = Boolean(fileInfo.exists);
+                    const hasSize = typeof fileInfo.size_bytes === 'number';
+                    const size = hasSize ? formatBytes(fileInfo.size_bytes) : '';
+                    const label = exists ? '[OK]' : '[  ]';
+                    const color = exists ? '#4caf50' : '#888';
+                    checklistHTML += `<div style="color: ${color};">${label} ${key}${size ? ' (' + size + ')' : ''}</div>`;
+                }
+            });
+
+            homebrewArtifactChecklist.innerHTML = checklistHTML;
+
+            let actionsHTML = '';
+            if (rebuild.from_packet) {
+                actionsHTML += `<button type="button" class="game-button" id="homebrew-retry-from-packet-btn" style="background-color: #1a3a1a; border-color: #2a5a2a; font-size: 0.85em;">Retry from Packet</button>`;
+            }
+            if (rebuild.from_finishing) {
+                actionsHTML += `<button type="button" class="game-button" id="homebrew-retry-from-finishing-btn" style="background-color: #1a2a3a; border-color: #2a4a5a; font-size: 0.85em;">Retry from Finishing</button>`;
+            }
+            if (cleanupAllowed) {
+                actionsHTML += `<button type="button" class="game-button" id="homebrew-cleanup-btn" style="background-color: #3a1a1a; border-color: #5a2a2a; font-size: 0.85em;">Cleanup Workspace</button>`;
+            }
+            homebrewArtifactActions.innerHTML = actionsHTML;
+
+            homebrewRetryFromPacketButton = document.getElementById('homebrew-retry-from-packet-btn');
+            homebrewRetryFromFinishingButton = document.getElementById('homebrew-retry-from-finishing-btn');
+            homebrewCleanupButton = document.getElementById('homebrew-cleanup-btn');
+
+            if (homebrewRetryFromPacketButton) {
+                homebrewRetryFromPacketButton.addEventListener('click', function() {
+                    submitToolkitHomebrewRetryFromPacket(jobId);
+                });
+            }
+            if (homebrewRetryFromFinishingButton) {
+                homebrewRetryFromFinishingButton.addEventListener('click', function() {
+                    submitToolkitHomebrewRetryFromFinishing(jobId);
+                });
+            }
+            if (homebrewCleanupButton) {
+                homebrewCleanupButton.addEventListener('click', function() {
+                    submitToolkitHomebrewCleanup(jobId);
+                });
+            }
+
+            homebrewArtifactManifestPanel.style.display = 'block';
+        }
+
+        function buildToolkitHomebrewReviewSummary(reviewPayload) {
+            const summary = reviewPayload.review_summary || {};
+            const levelMin = summary.estimated_level_min;
+            const levelMax = summary.estimated_level_max;
+            const levelRange = (levelMin !== null && levelMin !== undefined && levelMax !== null && levelMax !== undefined)
+                ? `${levelMin}-${levelMax}`
+                : 'unknown';
+
+            return [
+                `Title: ${summary.title || '(missing)'}`,
+                `Author: ${summary.author || '(missing)'}`,
+                `Description: ${summary.description || '(missing)'}`,
+                `Estimated Level Range: ${levelRange}`,
+                '',
+                'Locations:',
+                formatReviewList(summary.locations || []),
+                '',
+                'Major NPCs:',
+                formatReviewList(summary.npc_seeds || []),
+                '',
+                'Monster References:',
+                formatReviewList(summary.monster_refs || []),
+                '',
+                'Warnings:',
+                formatReviewList(summary.warnings || []),
+                '',
+                'Assumptions:',
+                formatReviewList(summary.assumptions || []),
+            ].join('\n');
+        }
+
+        async function loadToolkitHomebrewReview(jobId) {
+            if (!jobId) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/toolkit/homebrew/jobs/${jobId}/review`);
+                const payload = await response.json();
+                if (!response.ok || payload.status !== 'success' || !payload.review) {
+                    renderHomebrewUploadStatus(
+                        'error',
+                        'Unable to load Homebrew review details.',
+                        JSON.stringify(payload, null, 2)
+                    );
+                    setHomebrewReviewPanelVisible(false);
+                    return;
+                }
+
+                const review = payload.review;
+                homebrewActiveReviewJobId = jobId;
+                if (homebrewReviewTitle) {
+                    const reviewStatus = String(review.job_status || '').toLowerCase();
+                    if (reviewStatus === 'approved_for_build') {
+                        homebrewReviewTitle.textContent = `Review Approved - Build Ready [job: ${jobId}]`;
+                    } else if (reviewStatus === 'rejected') {
+                        homebrewReviewTitle.textContent = `Review Rejected [job: ${jobId}]`;
+                    } else {
+                        homebrewReviewTitle.textContent = `Review Required [job: ${jobId}]`;
+                    }
+                }
+                if (homebrewReviewSummary) {
+                    homebrewReviewSummary.textContent = buildToolkitHomebrewReviewSummary(review);
+                }
+
+                const canAct = Boolean(review.can_approve) && Boolean(review.can_reject);
+                const canStartBuild = Boolean(review.can_start_build);
+                if (homebrewReviewApproveButton) {
+                    homebrewReviewApproveButton.disabled = !canAct;
+                }
+                if (homebrewReviewRejectButton) {
+                    homebrewReviewRejectButton.disabled = !canAct;
+                }
+                if (homebrewBuildStartButton) {
+                    homebrewBuildStartButton.style.display = canStartBuild ? 'inline-block' : 'none';
+                    homebrewBuildStartButton.disabled = !canStartBuild;
+                }
+
+                setHomebrewReviewPanelVisible(true);
+
+                if (payload.artifact_manifest) {
+                    renderArtifactManifest(payload.artifact_manifest, jobId);
+                }
+            } catch (reviewError) {
+                renderHomebrewUploadStatus('error', `Homebrew review load failed: ${reviewError.message}`);
+                setHomebrewReviewPanelVisible(false);
+            }
+        }
+
+        async function submitToolkitHomebrewReviewDecision(decision) {
+            if (!homebrewActiveReviewJobId) {
+                renderHomebrewUploadStatus('error', 'No active Homebrew review job selected.');
+                return;
+            }
+
+            if (homebrewReviewApproveButton) {
+                homebrewReviewApproveButton.disabled = true;
+            }
+            if (homebrewReviewRejectButton) {
+                homebrewReviewRejectButton.disabled = true;
+            }
+
+            try {
+                const response = await fetch(`/api/toolkit/homebrew/jobs/${homebrewActiveReviewJobId}/review`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ decision }),
+                });
+                const payload = await response.json();
+                if (!response.ok || payload.status !== 'success' || !payload.job) {
+                    renderHomebrewUploadStatus(
+                        'error',
+                        'Homebrew review decision failed.',
+                        JSON.stringify(payload, null, 2)
+                    );
+                    await loadToolkitHomebrewReview(homebrewActiveReviewJobId);
+                    return;
+                }
+
+                const job = payload.job;
+                const statusLabel = job.status || 'unknown';
+                renderHomebrewUploadStatus(
+                    'success',
+                    `Homebrew review decision recorded [status: ${statusLabel}]`,
+                    JSON.stringify(job.review_snapshot || job, null, 2)
+                );
+                if (homebrewReviewTitle) {
+                    homebrewReviewTitle.textContent = `Review Recorded [status: ${statusLabel}]`;
+                }
+                if (homebrewReviewApproveButton) {
+                    homebrewReviewApproveButton.disabled = true;
+                }
+                if (homebrewReviewRejectButton) {
+                    homebrewReviewRejectButton.disabled = true;
+                }
+                if (homebrewBuildStartButton) {
+                    homebrewBuildStartButton.disabled = true;
+                }
+
+                await loadToolkitHomebrewReview(homebrewActiveReviewJobId);
+            } catch (reviewError) {
+                renderHomebrewUploadStatus('error', `Homebrew review request failed: ${reviewError.message}`);
+                await loadToolkitHomebrewReview(homebrewActiveReviewJobId);
+            }
+        }
+
+        async function submitToolkitHomebrewStartBuild(confirmOverwrite = false) {
+            if (!homebrewActiveReviewJobId) {
+                renderHomebrewUploadStatus('error', 'No approved Homebrew job selected for build start.');
+                return;
+            }
+
+            if (homebrewBuildStartButton) {
+                homebrewBuildStartButton.disabled = true;
+            }
+
+            try {
+                const response = await fetch(`/api/toolkit/homebrew/jobs/${homebrewActiveReviewJobId}/build`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        confirm_overwrite: Boolean(confirmOverwrite),
+                        overwrite_policy: 'backup_clean',
+                    }),
+                });
+                const payload = await response.json();
+                if (!response.ok || payload.status !== 'success' || !payload.job) {
+                    renderHomebrewUploadStatus(
+                        'error',
+                        'Homebrew build start failed.',
+                        JSON.stringify(payload, null, 2)
+                    );
+                    await loadToolkitHomebrewReview(homebrewActiveReviewJobId);
+                    return;
+                }
+
+                if (payload.requires_confirmation) {
+                    const collision = payload.collision || {};
+                    const moduleName = collision.module_name || 'unknown_module';
+                    const modulePath = collision.module_dir || `modules/${moduleName}`;
+                    const confirmed = confirm(
+                        `Module "${moduleName}" already exists at:\n${modulePath}\n\n` +
+                        'Rebuild will create a backup, clean the active module directory, and rebuild from the approved packet. Continue?'
+                    );
+
+                    if (!confirmed) {
+                        renderHomebrewUploadStatus(
+                            'warning',
+                            'Rebuild cancelled. Existing module left unchanged.',
+                            JSON.stringify(payload.job || payload, null, 2)
+                        );
+                        if (homebrewBuildStartButton) {
+                            homebrewBuildStartButton.disabled = false;
+                        }
+                        await loadToolkitHomebrewReview(homebrewActiveReviewJobId);
+                        return;
+                    }
+
+                    await submitToolkitHomebrewStartBuild(true);
+                    return;
+                }
+
+                renderHomebrewUploadStatus(
+                    'info',
+                    (payload.job.rebuild_mode
+                        ? 'Confirmed backup + clean rebuild started from approved Homebrew upload.'
+                        : 'Packet-driven build started from approved Homebrew upload.'),
+                    JSON.stringify(payload.job, null, 2)
+                );
+                await pollToolkitHomebrewJob(homebrewActiveReviewJobId);
+            } catch (buildError) {
+                renderHomebrewUploadStatus('error', `Homebrew build request failed: ${buildError.message}`);
+                await loadToolkitHomebrewReview(homebrewActiveReviewJobId);
+            }
+        }
+
+        async function submitToolkitHomebrewRetryFromPacket(jobId) {
+            const btn = homebrewRetryFromPacketButton;
+            if (btn) btn.disabled = true;
+            try {
+                const response = await fetch(`/api/toolkit/homebrew/jobs/${jobId}/retry-from-packet`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}),
+                });
+                const payload = await response.json();
+                if (!response.ok || payload.status !== 'success') {
+                    const errMsg = payload.message || 'Retry-from-packet request failed.';
+                    renderHomebrewUploadStatus('error', errMsg, JSON.stringify(payload, null, 2));
+                    await loadToolkitHomebrewReview(jobId);
+                    return;
+                }
+                renderHomebrewUploadStatus('info', 'Retry-from-packet accepted. Rebuild in progress.', JSON.stringify(payload.job || payload, null, 2));
+                await pollToolkitHomebrewJob(jobId);
+            } catch (err) {
+                renderHomebrewUploadStatus('error', `Retry-from-packet request error: ${err.message}`);
+                await loadToolkitHomebrewReview(jobId);
+            }
+        }
+
+        async function submitToolkitHomebrewRetryFromFinishing(jobId) {
+            const btn = homebrewRetryFromFinishingButton;
+            if (btn) btn.disabled = true;
+            try {
+                const response = await fetch(`/api/toolkit/homebrew/jobs/${jobId}/retry-from-finishing`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}),
+                });
+                const payload = await response.json();
+                if (!response.ok || payload.status !== 'success') {
+                    const errMsg = payload.message || 'Retry-from-finishing request failed.';
+                    renderHomebrewUploadStatus('error', errMsg, JSON.stringify(payload, null, 2));
+                    await loadToolkitHomebrewReview(jobId);
+                    return;
+                }
+                renderHomebrewUploadStatus('info', 'Retry-from-finishing accepted. Re-finishing in progress.', JSON.stringify(payload.job || payload, null, 2));
+                await pollToolkitHomebrewJob(jobId);
+            } catch (err) {
+                renderHomebrewUploadStatus('error', `Retry-from-finishing request error: ${err.message}`);
+                await loadToolkitHomebrewReview(jobId);
+            }
+        }
+
+        async function submitToolkitHomebrewCleanup(jobId) {
+            const btn = homebrewCleanupButton;
+            if (btn) btn.disabled = true;
+            try {
+                const confirmed = confirm(`Cleanup will remove the workspace directory for job ${jobId}. This cannot be undone. Continue?`);
+                if (!confirmed) {
+                    await loadToolkitHomebrewReview(jobId);
+                    return;
+                }
+                const response = await fetch(`/api/toolkit/homebrew/jobs/${jobId}/cleanup`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ force: true }),
+                });
+                const payload = await response.json();
+                if (!response.ok || payload.status !== 'success') {
+                    const errMsg = payload.message || 'Cleanup request failed.';
+                    renderHomebrewUploadStatus('error', errMsg, JSON.stringify(payload, null, 2));
+                    await loadToolkitHomebrewReview(jobId);
+                    return;
+                }
+                renderHomebrewUploadStatus('info', 'Workspace cleanup completed.', JSON.stringify(payload, null, 2));
+                await loadToolkitHomebrewReview(jobId);
+            } catch (err) {
+                renderHomebrewUploadStatus('error', `Cleanup request error: ${err.message}`);
+                await loadToolkitHomebrewReview(jobId);
+            }
+        }
+
         function stopHomebrewUploadPolling() {
             if (homebrewUploadPollTimer) {
                 clearInterval(homebrewUploadPollTimer);
@@ -6039,6 +6644,21 @@
                     const pipelineStatus = job.pipeline_status || 'pending';
 
                     if (job.status === 'queued' || job.status === 'running') {
+                        if (job.status === 'running' && stage === 'normalizing') {
+                            renderHomebrewUploadStatus(
+                                'info',
+                                'Homebrew normalization in progress before review handoff.',
+                                JSON.stringify({
+                                    job_id: job.job_id,
+                                    status: job.status,
+                                    stage: stage,
+                                    pipeline_status: pipelineStatus,
+                                    source_filename: job.source_filename,
+                                }, null, 2)
+                            );
+                            return;
+                        }
+
                         renderHomebrewUploadStatus(
                             'info',
                             `Homebrew ingest running [stage: ${stage}]`,
@@ -6053,17 +6673,269 @@
                         return;
                     }
 
+                    if (job.status === 'awaiting_normalization') {
+                        setHomebrewReviewPanelVisible(false);
+                        renderHomebrewUploadStatus(
+                            'warning',
+                            'Homebrew upload is waiting for normalization completion before review.',
+                            JSON.stringify(job.result || job, null, 2)
+                        );
+                        return;
+                    }
+
+                    if (job.status === 'awaiting_review') {
+                        const routing = job.routing_outcome || (job.result || {}).routing_outcome || 'normalization_required';
+                        renderHomebrewUploadStatus(
+                            'warning',
+                            `Homebrew upload is readable and awaiting operator review [routing: ${routing}]`,
+                            JSON.stringify(job.result || job, null, 2)
+                        );
+                        await loadToolkitHomebrewReview(jobId);
+                        stopHomebrewUploadPolling();
+                        if (homebrewUploadButton) {
+                            homebrewUploadButton.disabled = false;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'approved_for_build' || job.status === 'rejected') {
+                        const reviewSnapshot = job.review_snapshot || {};
+                        renderHomebrewUploadStatus(
+                            job.status === 'approved_for_build' ? 'success' : 'warning',
+                            `Homebrew review state updated [status: ${job.status}]`,
+                            JSON.stringify(reviewSnapshot, null, 2)
+                        );
+                        await loadToolkitHomebrewReview(jobId);
+                        stopHomebrewUploadPolling();
+                        if (homebrewUploadButton) {
+                            homebrewUploadButton.disabled = false;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'awaiting_overwrite_confirmation') {
+                        renderHomebrewUploadStatus(
+                            'warning',
+                            'Existing module detected. Awaiting overwrite confirmation before rebuild.',
+                            JSON.stringify(job.rebuild_collision || job, null, 2)
+                        );
+                        if (homebrewReviewTitle) {
+                            homebrewReviewTitle.textContent = `Rebuild Confirmation Required [job: ${jobId}]`;
+                        }
+                        await loadToolkitHomebrewReview(jobId);
+                        stopHomebrewUploadPolling();
+                        if (homebrewUploadButton) {
+                            homebrewUploadButton.disabled = false;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'rebuild_backup_running') {
+                        renderHomebrewUploadStatus(
+                            'warning',
+                            'Preparing rebuild backup of existing module.',
+                            JSON.stringify(job.result || job, null, 2)
+                        );
+                        if (homebrewReviewTitle) {
+                            homebrewReviewTitle.textContent = `Rebuild - Backup Running [job: ${jobId}]`;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'rebuild_clean_running') {
+                        renderHomebrewUploadStatus(
+                            'warning',
+                            'Existing module cleaned. Starting rebuild from approved packet.',
+                            JSON.stringify(job.result || job, null, 2)
+                        );
+                        if (homebrewReviewTitle) {
+                            homebrewReviewTitle.textContent = `Rebuild - Clean Complete [job: ${jobId}]`;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'building') {
+                        renderHomebrewUploadStatus(
+                            'info',
+                            `Packet-driven Homebrew build in progress [stage: ${stage}]`,
+                            JSON.stringify(job.result || job, null, 2)
+                        );
+                        if (homebrewReviewTitle) {
+                            homebrewReviewTitle.textContent = `Build Running [job: ${jobId}]`;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'build_completed') {
+                        const buildResult = job.result || {};
+                        renderHomebrewUploadStatus(
+                            'success',
+                            'Packet-driven Homebrew build completed. Entering shared finishing/publication stages.',
+                            JSON.stringify(buildResult, null, 2)
+                        );
+                        if (homebrewReviewTitle) {
+                            homebrewReviewTitle.textContent = `Build Completed - Finisher Pending [job: ${jobId}]`;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'validating') {
+                        renderHomebrewUploadStatus(
+                            'info',
+                            'Structural readiness validation in progress.',
+                            JSON.stringify(job.result || job, null, 2)
+                        );
+                        if (homebrewReviewTitle) {
+                            homebrewReviewTitle.textContent = `Readiness - Validating [job: ${jobId}]`;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'repairing_deterministic') {
+                        renderHomebrewUploadStatus(
+                            'warning',
+                            'Applying deterministic readiness repairs.',
+                            JSON.stringify(job.result || job, null, 2)
+                        );
+                        if (homebrewReviewTitle) {
+                            homebrewReviewTitle.textContent = `Readiness - Deterministic Repair [job: ${jobId}]`;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'repairing_semantic') {
+                        renderHomebrewUploadStatus(
+                            'warning',
+                            'Applying narrow semantic readiness repairs.',
+                            JSON.stringify(job.result || job, null, 2)
+                        );
+                        if (homebrewReviewTitle) {
+                            homebrewReviewTitle.textContent = `Readiness - Semantic Repair [job: ${jobId}]`;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'ready_for_finishing') {
+                        const readinessResult = job.result || {};
+                        renderHomebrewUploadStatus(
+                            'success',
+                            'Module reached structural readiness boundary (ready_for_finishing). Finisher handoff in progress.',
+                            JSON.stringify(readinessResult, null, 2)
+                        );
+                        if (homebrewReviewTitle) {
+                            homebrewReviewTitle.textContent = `Ready For Finishing [job: ${jobId}]`;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'finishing') {
+                        renderHomebrewUploadStatus(
+                            'info',
+                            'Shared finisher running publication parity stages.',
+                            JSON.stringify(job.result || job, null, 2)
+                        );
+                        if (homebrewReviewTitle) {
+                            homebrewReviewTitle.textContent = `Finishing [job: ${jobId}]`;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'publishability_audit') {
+                        renderHomebrewUploadStatus(
+                            'info',
+                            'Publishability audit in progress.',
+                            JSON.stringify(job.result || job, null, 2)
+                        );
+                        if (homebrewReviewTitle) {
+                            homebrewReviewTitle.textContent = `Publishability Audit [job: ${jobId}]`;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'build_system_failed' || job.status === 'repair_budget_exhausted') {
+                        const failurePayload = job.result || job;
+                        const failureMessage = job.status === 'build_system_failed'
+                            ? 'Readiness gate stopped due to build/runtime system defect.'
+                            : 'Readiness repair budget exhausted before convergence.';
+                        renderHomebrewUploadStatus(
+                            'error',
+                            failureMessage,
+                            buildHomebrewHydrationAwareDetails(payload, job, failurePayload)
+                        );
+                        if (homebrewReviewTitle) {
+                            homebrewReviewTitle.textContent = `Readiness Failed [state: ${job.status}]`;
+                        }
+                        await loadToolkitHomebrewReview(jobId);
+                        stopHomebrewUploadPolling();
+                        if (homebrewUploadButton) {
+                            homebrewUploadButton.disabled = false;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'rebuild_backup_failed' || job.status === 'rebuild_prepare_failed') {
+                        const failurePayload = job.result || job;
+                        renderHomebrewUploadStatus(
+                            'error',
+                            'Backup + clean rebuild preparation failed. Existing module was preserved from backup stage onward.',
+                            JSON.stringify(failurePayload, null, 2)
+                        );
+                        if (homebrewReviewTitle) {
+                            homebrewReviewTitle.textContent = `Rebuild Preparation Failed [state: ${job.status}]`;
+                        }
+                        await loadToolkitHomebrewReview(jobId);
+                        stopHomebrewUploadPolling();
+                        if (homebrewUploadButton) {
+                            homebrewUploadButton.disabled = false;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'finishing_failed') {
+                        const failurePayload = job.result || job;
+                        renderHomebrewUploadStatus(
+                            'error',
+                            'Shared finishing/publication pipeline failed before completion.',
+                            buildHomebrewHydrationAwareDetails(payload, job, failurePayload)
+                        );
+                        if (homebrewReviewTitle) {
+                            homebrewReviewTitle.textContent = `Finishing Failed [job: ${jobId}]`;
+                        }
+                        await loadToolkitHomebrewReview(jobId);
+                        stopHomebrewUploadPolling();
+                        if (homebrewUploadButton) {
+                            homebrewUploadButton.disabled = false;
+                        }
+                        return;
+                    }
+
+                    if (job.status === 'not_publishable') {
+                        const blockedPayload = job.result || job;
+                        renderHomebrewUploadStatus(
+                            'warning',
+                            'Upload reached finisher, but publishability remains blocked (not_publishable).',
+                            buildHomebrewHydrationAwareDetails(payload, job, blockedPayload)
+                        );
+                        if (homebrewReviewTitle) {
+                            homebrewReviewTitle.textContent = `Not Publishable [job: ${jobId}]`;
+                        }
+                        await loadToolkitHomebrewReview(jobId);
+                        socket.emit('request_module_list');
+                        loadModulesForMediaGen();
+                        stopHomebrewUploadPolling();
+                        if (homebrewUploadButton) {
+                            homebrewUploadButton.disabled = false;
+                        }
+                        return;
+                    }
+
                     if (job.status === 'completed') {
+                        setHomebrewReviewPanelVisible(false);
                         const result = job.result || {};
-                        const moduleSlug = result.module_slug || 'unknown';
-                        const finalStatus = job.pipeline_status || result.status || 'success';
+                        const moduleSlug = result.module_slug || result.module_name || job.module_name || 'unknown';
                         const details = JSON.stringify(result, null, 2);
 
-                        if (finalStatus === 'degraded') {
-                            renderHomebrewUploadStatus('warning', `Homebrew ingest completed with degraded status for module '${moduleSlug}'.`, details);
-                        } else {
-                            renderHomebrewUploadStatus('success', `Homebrew ingest completed successfully for module '${moduleSlug}'.`, details);
-                        }
+                        renderHomebrewUploadStatus('success', `Homebrew upload finished and publishable for module '${moduleSlug}'.`, details);
 
                         socket.emit('request_module_list');
                         loadModulesForMediaGen();
@@ -6075,6 +6947,7 @@
                     }
 
                     if (job.status === 'quarantined') {
+                        setHomebrewReviewPanelVisible(false);
                         renderHomebrewUploadStatus(
                             'warning',
                             `Homebrew ingest quarantined [stage: ${stage}] reason: ${job.quarantine_reason || 'unknown'}`,
@@ -6090,8 +6963,13 @@
                     renderHomebrewUploadStatus(
                         'error',
                         `Homebrew ingest failed [stage: ${stage}]`,
-                        JSON.stringify(job.result || job, null, 2)
+                        buildHomebrewHydrationAwareDetails(
+                            payload,
+                            job,
+                            (job.result && Object.keys(job.result).length > 0) ? job.result : job
+                        )
                     );
+                    setHomebrewReviewPanelVisible(false);
                     stopHomebrewUploadPolling();
                     if (homebrewUploadButton) {
                         homebrewUploadButton.disabled = false;
@@ -6111,6 +6989,9 @@
                 renderHomebrewUploadStatus('error', 'Select a Homebrew markdown (.md) file before importing.');
                 return;
             }
+
+            homebrewActiveReviewJobId = null;
+            setHomebrewReviewPanelVisible(false);
 
             const sourceFile = homebrewMdFileInput.files[0];
             const filename = (sourceFile.name || '').toLowerCase();
@@ -6170,6 +7051,8 @@
         
         function resetBuilderUI() {
             stopHomebrewUploadPolling();
+            homebrewActiveReviewJobId = null;
+            setHomebrewReviewPanelVisible(false);
             if(moduleForm) {
                 moduleForm.style.display = 'block';
                 if (progressSection) progressSection.style.display = 'none';

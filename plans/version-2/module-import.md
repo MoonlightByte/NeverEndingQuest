@@ -3,6 +3,7 @@
 ## Status
 
 - Lifecycle state: Planning in progress
+- Pre-v2 precursor: `plans/module-uploader.md` defines the interactive reviewed upload path that should complete before this plan expands into full v2 import scope
 - Default world mode: Canonical
 - Forking mode: Supported in architecture, disabled by default
 - Continuity baseline: Initial build implemented (ingest/readiness/sidecar/bulk contracts)
@@ -12,6 +13,16 @@
 ## Current Baseline
 
 The first continuity normalization build is now in place and should be treated as the default contract for future module ingest work.
+
+The next practical milestone is not bulk import first. It is completing the public interactive uploader so NEQ has one reviewed, artifact-persisted, LLM-assisted import path for player-authored and Homebrewery markdown adventures.
+
+That uploader should be treated as the end of the first pre-v2 phase of module import:
+
+1. it proves the raw prose -> normalized packet -> reviewed build -> validated module loop,
+2. it establishes the canonical markdown normalization contract,
+3. it establishes the review/quarantine boundary,
+4. it establishes artifact persistence and rebuild semantics,
+5. it becomes the markdown-side precursor for this broader v2 import plan.
 
 Operational baseline:
 
@@ -54,6 +65,72 @@ Build a strict, continuous import pipeline that ingests large volumes of communi
 
 The canonical world should be large enough to support long party progression without repetition fatigue, while still allowing future optional campaign-level forks ("many worlds") that remix module order and world mapping without duplicating module assets.
 
+This plan begins after the interactive uploader has established the single-source reviewed import lane. V2 import then generalizes and scales that lane into high-volume intake, canonicalization, and world-expansion operations.
+
+## Relationship To The Public Uploader
+
+`plans/module-uploader.md` and this plan are intentionally sequential, not competing.
+
+The relationship is:
+
+1. `plans/module-uploader.md`
+   - owns the public reviewed upload flow,
+   - owns the single-source markdown import experience,
+   - owns mandatory review before registry integration,
+   - owns the first source-preserving normalized packet contract.
+
+2. `plans/version-2/module-import.md`
+   - builds on the uploader contracts,
+   - expands from one-source reviewed import to many-source import operations,
+   - introduces bulk inventory scanning and incremental rebuilds,
+   - adds canonical world-scale stitching and progression ladders,
+   - becomes the higher-volume operational layer for the same family of ingest/build contracts.
+
+Short version:
+
+- uploader = interactive reviewed import
+- module-import = scaled canonical import
+
+## Import Modes
+
+This plan should explicitly support two modes.
+
+### Mode A: Interactive Reviewed Import
+
+Purpose:
+
+- player/developer uploads one adventure source and reviews it before apply.
+
+Characteristics:
+
+1. single source at a time,
+2. source-preserving local artifacts are allowed,
+3. explicit approve/reject gate,
+4. toolkit GUI first,
+5. registry integration happens only after review and validation.
+
+Primary owner:
+
+- `plans/module-uploader.md`
+
+### Mode B: Bulk Canonical Import
+
+Purpose:
+
+- scan and process many sources into the canonical module pool.
+
+Characteristics:
+
+1. inventory-driven,
+2. incremental and scheduled operation,
+3. batch quarantine behavior,
+4. may reuse the same normalization and build contracts,
+5. optimized for throughput and canonical world expansion.
+
+Primary owner:
+
+- this plan (`plans/version-2/module-import.md`)
+
 ## Product Direction
 
 1. Canonical first:
@@ -82,6 +159,7 @@ The canonical world should be large enough to support long party progression wit
 
 In scope:
 
+- Extension of the uploader's normalization/build contracts into bulk import operation
 - Bulk source discovery from local staging folders and Homebrewery markdown files
 - Automated extraction, normalization, conversion, validation, and stitching
 - Level-band campaign ladder generation (for party progression)
@@ -107,6 +185,31 @@ Staging approach:
 - Local intake root remains the source of truth for raw files.
 - Raw source files are considered import inputs, not runtime gameplay artifacts.
 
+## Source Rights And Provenance Classification
+
+This plan should explicitly distinguish source classes because later integration with world-narrative depends on it.
+
+Recommended classes:
+
+1. `user_authored`
+   - player-created or project-owned raw adventure content,
+   - source-preserving normalized packets and module artifacts are acceptable in local workflow,
+   - can proceed through reviewed module publication flow.
+
+2. `licensed_or_project_owned`
+   - approved internal content or content with rights permitting module conversion,
+   - may follow the same module import lane with policy-appropriate review.
+
+3. `third_party_copyright_restricted`
+   - locally processed source material whose raw identifying content must not enter committable derived outputs,
+   - may still inform future source-anonymous narrative abstractions,
+   - must not be treated as ordinary source-preserving module import by default.
+
+Architectural rule:
+
+- This module-import plan primarily targets `user_authored` and approved `licensed_or_project_owned` module sources.
+- Future bridges into `plans/version-2/world-narrative.md` must respect its stronger source-anonymous firewall for `third_party_copyright_restricted` material.
+
 ## Canonical Pipeline Architecture
 
 ### Stage 1: Intake and Inventory
@@ -127,7 +230,7 @@ Output:
 Use per-format extractors:
 
 - PDF extractor: text chunk extraction with page spans
-- MD extractor: heading-aware parsing for sections, encounters, hooks, and level hints
+- MD extractor: heading-aware parsing for sections, encounters, hooks, and level hints, building on the normalized packet contract proven by `plans/module-uploader.md`
 - ZIP extractor: map/media expansion into normalized media staging
 
 Output:
@@ -148,6 +251,8 @@ Convert extracted payloads into one canonical intermediate format (per source):
 
 This schema is not runtime gameplay data. It is conversion-grade data for module generation.
 
+For markdown sources, the first practical implementation of this stage should be the uploader's normalized packet contract. V2 import should refine and generalize that contract rather than inventing a separate markdown normalization model.
+
 ### Stage 4: World Consistency Rewrite (Canonical Worldline)
 
 Apply consistency policies from `plans/version-2/world-narrative.md`:
@@ -161,6 +266,12 @@ Apply consistency policies from `plans/version-2/world-narrative.md`:
 Output:
 
 - Canonicalized intermediate adventure package ready for NEQ module emission
+
+Boundary note:
+
+- This module-import rewrite stage is about canonical module cohesion and world placement.
+- It is not the same as the source-anonymous narrative atom pipeline in `plans/version-2/world-narrative.md`.
+- The world-narrative plan remains the later interpreted-state lane for narrative web, anonymized literary inspiration, and Titan-facing pressure systems.
 
 ### Stage 5: Emit NEQ Modules
 
@@ -371,16 +482,22 @@ World metrics:
 
 ## Implementation Phases
 
+Phase 0: Interactive uploader completion (pre-v2 dependency)
+
+- Complete `plans/module-uploader.md`
+- Lock normalized packet, review, artifact, and rebuild contracts
+- Use real Homebrewery corpus as regression fixtures
+
 Phase 1: Bulk intake foundation
 
 - Build inventory scanner
-- Add markdown extractor path
+- Add markdown extractor path using uploader-proven normalization contracts where possible
 - Add ZIP media unpack normalization
 
 Phase 2: Intermediate schema + emitter
 
 - Define canonical adventure intermediate schema
-- Build converters from extract payloads
+- Build converters from extract payloads and uploader-normalized packets
 - Emit NEQ module drafts
 
 Phase 3: Strict validation + quarantine
@@ -419,3 +536,10 @@ With strict continuous import active, NEQ evolves into a living campaign platfor
 - Parties can progress through a deep, varied, linked module ecosystem.
 - The canonical world remains coherent and scalable.
 - Future many-world forks remain possible without fragmenting core assets.
+
+This expected outcome assumes a continuity chain:
+
+1. uploader completes the interactive reviewed import lane,
+2. v2 module-import scales that lane into bulk canonical operations,
+3. world-narrative later adds source-anonymous narrative web and world-pressure interpretation,
+4. Titan integration later consumes those interpreted narrative structures without owning the module import path itself.

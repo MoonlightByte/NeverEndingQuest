@@ -98,6 +98,7 @@ def assess_source_readiness(source_path: str) -> Dict[str, Any]:
     if not source_file.exists() or not source_file.is_file():
         return {
             "ready": False,
+            "source_readable": False,
             "issues": [
                 {
                     "type": "source_missing",
@@ -108,6 +109,7 @@ def assess_source_readiness(source_path: str) -> Dict[str, Any]:
             ],
             "structure_class": "unknown",
             "can_auto_transform": False,
+            "routing_outcome": "blocked_unreadable",
         }
 
     try:
@@ -115,6 +117,7 @@ def assess_source_readiness(source_path: str) -> Dict[str, Any]:
     except Exception as exc:
         return {
             "ready": False,
+            "source_readable": False,
             "issues": [
                 {
                     "type": "read_error",
@@ -125,6 +128,7 @@ def assess_source_readiness(source_path: str) -> Dict[str, Any]:
             ],
             "structure_class": "unknown",
             "can_auto_transform": False,
+            "routing_outcome": "blocked_unreadable",
         }
 
     issues: List[Dict[str, Any]] = []
@@ -186,11 +190,19 @@ def assess_source_readiness(source_path: str) -> Dict[str, Any]:
         issue.get("type") == "metadata_missing" for issue in issues
     ) and not any(issue.get("type") == "title_hygiene" for issue in issues)
 
+    routing_outcome = "normalization_required"
+    if ready:
+        routing_outcome = "deterministic_ready"
+    elif can_auto_transform:
+        routing_outcome = "deterministic_transformable"
+
     return {
         "ready": ready,
+        "source_readable": True,
         "issues": issues,
         "structure_class": structure_class,
         "can_auto_transform": can_auto_transform,
+        "routing_outcome": routing_outcome,
         "source": str(source_file),
         "title": title,
         "normalized_title": normalized_title,
@@ -222,7 +234,9 @@ def main() -> None:
         print(f"Source: {result['source']}")
         print(f"Structure: {result['structure_class']}")
         print(f"Ready: {result['ready']}")
+        print(f"Readable: {result['source_readable']}")
         print(f"Can auto-transform: {result['can_auto_transform']}")
+        print(f"Routing: {result['routing_outcome']}")
         if result["issues"]:
             print("Issues:")
             for issue in result["issues"]:

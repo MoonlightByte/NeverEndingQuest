@@ -130,6 +130,7 @@ class TestStructureClassification(TestCase):
         
         self.assertEqual(result["structure_class"], "room_based")
         self.assertTrue(result["can_auto_transform"])
+        self.assertEqual(result["routing_outcome"], "deterministic_ready")
 
     def test_classifies_act_location_structure(self):
         """Should classify ACT/LOCATIONS format as act_location."""
@@ -149,6 +150,7 @@ class TestStructureClassification(TestCase):
         
         self.assertEqual(result["structure_class"], "act_location")
         self.assertTrue(result["can_auto_transform"])
+        self.assertEqual(result["routing_outcome"], "deterministic_transformable")
 
     def test_classifies_unknown_structure(self):
         """Should classify non-matching structures as unknown."""
@@ -159,6 +161,8 @@ class TestStructureClassification(TestCase):
         
         self.assertEqual(result["structure_class"], "unknown")
         self.assertFalse(result["can_auto_transform"])
+        self.assertTrue(result["source_readable"])
+        self.assertEqual(result["routing_outcome"], "normalization_required")
 
     def test_unknown_structure_returns_manual_required(self):
         """Should signal manual_required for unknown structures."""
@@ -180,7 +184,9 @@ class TestEdgeCases(TestCase):
         result = assess_source_readiness("/nonexistent/path/file.md")
         
         self.assertFalse(result["ready"])
+        self.assertFalse(result["source_readable"])
         self.assertEqual(result["structure_class"], "unknown")
+        self.assertEqual(result["routing_outcome"], "blocked_unreadable")
         source_issues = [i for i in result["issues"] if i["type"] == "source_missing"]
         self.assertEqual(len(source_issues), 1)
 

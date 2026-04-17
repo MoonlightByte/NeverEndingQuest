@@ -14,41 +14,41 @@ See LICENSE-APACHE file for full terms.
 # ============================================================================
 # MONSTER_BUILDER.PY - CONTENT GENERATION LAYER - MONSTERS
 # ============================================================================
-# 
+#
 # ARCHITECTURE ROLE: Content Generation Layer - AI-Powered Monster Creation
-# 
+#
 # This module implements our Factory Pattern for monster creation, using
 # AI-powered generation with strict schema validation. It demonstrates our
 # "Schema-Driven Development" approach to content creation.
-# 
+#
 # KEY RESPONSIBILITIES:
 # - Generate 5e compliant monsters using AI
 # - Validate all generated content against monster schema
 # - Handle AI response parsing and cleanup
 # - Provide robust error handling and validation feedback
 # - Save generated monsters to module-specific directories
-# 
+#
 # AI GENERATION PIPELINE:
 # Schema Template → AI Prompt → Response Generation → JSON Parsing →
 # Schema Validation → File Persistence → Path Resolution
-# 
+#
 # VALIDATION STRATEGY:
 # - JSON schema compliance checking
 # - Automatic cleanup of AI response artifacts
 # - Nested value field flattening
 # - 5e rule validation through schema constraints
-# 
+#
 # ARCHITECTURAL INTEGRATION:
 # - Uses ModulePathManager for file operations
 # - Integrates with mon_schema.json for validation
 # - Called by DMs and automated module generation
 # - Implements our "Defense in Depth" validation approach
-# 
+#
 # DESIGN PATTERNS:
 # - Factory Pattern: Creates monsters based on specifications
 # - Template Method: Consistent generation and validation pipeline
 # - Strategy Pattern: Configurable AI models for generation
-# 
+#
 # This module exemplifies our approach to AI-powered content generation
 # while maintaining strict data integrity and 5e rule compliance.
 # ============================================================================
@@ -57,15 +57,22 @@ import json
 import sys
 import os
 import re
+from typing import Any, Dict, Optional
 
 # Add the project root to the Python path so we can import from utils, core, etc.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
 from jsonschema import validate, ValidationError
 import config
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
-from utils.ai_client_factory import create_chat_client, get_model_config, handle_provider_error
+from utils.ai_client_factory import (
+    create_chat_client,
+    get_model_config,
+    handle_provider_error,
+)
 
 # Set script name for logging
 set_script_name("monster_builder")
@@ -75,9 +82,10 @@ RED = "\033[31m"
 YELLOW = "\033[33m"
 RESET = "\033[0m"
 
+
 def load_schema(file_name):
     try:
-        with open(file_name, 'r') as file:
+        with open(file_name, "r") as file:
             return json.load(file)
     except FileNotFoundError:
         print(f"{RED}Error: File {file_name} not found.{RESET}")
@@ -86,6 +94,7 @@ def load_schema(file_name):
         print(f"{RED}Error: Invalid JSON in {file_name}.{RESET}")
         return None
 
+
 def save_json(file_name, data):
     try:
         # Create directory if it doesn't exist
@@ -93,8 +102,8 @@ def save_json(file_name, data):
         if directory and not os.path.exists(directory):
             os.makedirs(directory)
             print(f"{YELLOW}Created directory: {directory}{RESET}")
-        
-        with open(file_name, 'w') as file:
+
+        with open(file_name, "w") as file:
             json.dump(data, file, indent=2)
         info(f"SUCCESS: Monster save ({file_name}) - PASS", category="monster_creation")
         return True
@@ -102,7 +111,61 @@ def save_json(file_name, data):
         print(f"{RED}Error saving to {file_name}: {str(e)}{RESET}")
         return False
 
-def generate_monster(monster_name, schema, party_level=1):
+
+def _format_authored_context(authored_context: Optional[Dict[str, Any]]) -> str:
+    """Build bounded authored context block for monster generation."""
+    if not isinstance(authored_context, dict):
+        return ""
+
+    lines = []
+
+    module_name = str(authored_context.get("module") or "").strip()
+    if module_name:
+        lines.append(f"Module: {module_name}")
+
+    level_range = authored_context.get("level_range")
+    if isinstance(level_range, str) and level_range.strip():
+        lines.append(f"Recommended level range: {level_range.strip()}")
+
+    difficulty = str(authored_context.get("difficulty") or "").strip()
+    if difficulty:
+        lines.append(f"Encounter difficulty guidance: {difficulty}")
+
+    area_context = authored_context.get("area_context")
+    if isinstance(area_context, list):
+        area_lines = []
+        for entry in area_context[:3]:
+            if not isinstance(entry, dict):
+                continue
+            area_name = str(entry.get("area_name") or "").strip()
+            location_name = str(entry.get("location_name") or "").strip()
+            location_id = str(entry.get("location_id") or "").strip()
+            prose = str(entry.get("location_prose") or "").strip()
+            label_parts = [
+                part for part in [area_name, location_name or location_id] if part
+            ]
+            label = " / ".join(label_parts)
+            if label and prose:
+                area_lines.append(f"- {label}: {prose[:220]}")
+            elif label:
+                area_lines.append(f"- {label}")
+
+        if area_lines:
+            lines.append("Authored location context:")
+            lines.extend(area_lines)
+
+    if not lines:
+        return ""
+
+    return "\n\nAUTHORED CONTEXT (USE ONLY IF PROVIDED):\n" + "\n".join(lines)
+
+
+def generate_monster(
+    monster_name,
+    schema,
+    party_level=1,
+    authored_context: Optional[Dict[str, Any]] = None,
+):
     # Build context-aware system prompt
     system_content = """You are an assistant that creates monster schema JSON files from a master monster schema template for a 5e game. Given a monster name, create a JSON representation of the monster's stats and abilities according to 5e rules following the monster schema template exactly.
 
@@ -150,6 +213,8 @@ SPELLCASTING MONSTERS:
 Ensure your new monster JSON adheres to the provided schema template. Do not include any additional properties or nested 'type' and 'value' fields. For non-spellcasters, omit the spellcasting property entirely. Return only the JSON content without any markdown formatting."""
 
     # Build context-aware user prompt
+    context_block = _format_authored_context(authored_context)
+
     user_content = f"""Create a monster named '{monster_name}' using 5e rules.
 
 PARTY LEVEL: {party_level}
@@ -165,17 +230,21 @@ Only create custom stats for unique named monsters or special variants (e.g., "C
 
 If this monster name includes terms like 'sorcerer', 'wizard', 'cleric', 'druid', 'warlock', 'mage', or other spellcasting classes, make sure to include the spellcasting property with appropriate spells for their CR.
 
+If AUTHORED CONTEXT is provided below, align creature type, movement style, and narrative flavor to that context while keeping strict 5e SRD-compatible mechanics and schema compliance.
+
+{context_block}
+
 Schema: {json.dumps(schema)}"""
-    
+
     prompt = [
         {"role": "system", "content": system_content},
-        {"role": "user", "content": user_content}
+        {"role": "user", "content": user_content},
     ]
 
     try:
         client = create_chat_client()
         model_config = get_model_config("monster_builder", config.MONSTER_BUILDER_MODEL)
-        
+
         max_retries = 3
         for attempt in range(max_retries):
             try:
@@ -183,7 +252,7 @@ Schema: {json.dumps(schema)}"""
                     model=model_config["model"],
                     **model_config.get("extra_body", {}),
                     temperature=0.7,
-                    messages=prompt
+                    messages=prompt,
                 )
                 break
             except Exception as e:
@@ -192,12 +261,14 @@ Schema: {json.dumps(schema)}"""
                     client = create_chat_client(use_fallback=True)
                     continue
                 raise
-                
+
         ai_response = response.choices[0].message.content.strip()
         print(f"{YELLOW}AI Response:{RESET}\n{ai_response}")
 
         # Remove markdown code block if present
-        ai_response = re.sub(r'^```json\s*|\s*```$', '', ai_response, flags=re.MULTILINE)
+        ai_response = re.sub(
+            r"^```json\s*|\s*```$", "", ai_response, flags=re.MULTILINE
+        )
 
         try:
             monster_data = json.loads(ai_response)
@@ -212,37 +283,57 @@ Schema: {json.dumps(schema)}"""
             print(f"{RED}Error: Invalid JSON in AI response. {str(e)}{RESET}")
             print(f"{YELLOW}Processed AI response:{RESET}\n{ai_response}")
         except ValidationError as e:
-            print(f"{RED}Error: Generated monster data does not match schema. {str(e)}{RESET}")
-            print(f"{YELLOW}Processed monster data:{RESET}\n{json.dumps(monster_data, indent=2)}") # Added indent for readability
+            print(
+                f"{RED}Error: Generated monster data does not match schema. {str(e)}{RESET}"
+            )
+            print(
+                f"{YELLOW}Processed monster data:{RESET}\n{json.dumps(monster_data, indent=2)}"
+            )  # Added indent for readability
     except Exception as e:
         print(f"{RED}Error: Failed to generate monster data. {str(e)}{RESET}")
 
     return None
 
+
 def remove_nested_values(data):
     if isinstance(data, dict):
-        return {k: remove_nested_values(v['value'] if isinstance(v, dict) and 'value' in v else v) for k, v in data.items()}
+        return {
+            k: remove_nested_values(
+                v["value"] if isinstance(v, dict) and "value" in v else v
+            )
+            for k, v in data.items()
+        }
     elif isinstance(data, list):
         return [remove_nested_values(item) for item in data]
     else:
         return data
 
+
 def main():
     import argparse
-    
-    parser = argparse.ArgumentParser(description='Generate monster stat blocks')
-    parser.add_argument('monster_name', help='Name of the monster to generate')
-    parser.add_argument('--module', '-m', help='Module name for path resolution (optional)')
-    parser.add_argument('--level', '-l', type=int, default=None, help='Average party level (optional)')
-    
+
+    parser = argparse.ArgumentParser(description="Generate monster stat blocks")
+    parser.add_argument("monster_name", help="Name of the monster to generate")
+    parser.add_argument(
+        "--module", "-m", help="Module name for path resolution (optional)"
+    )
+    parser.add_argument(
+        "--level", "-l", type=int, default=None, help="Average party level (optional)"
+    )
+    parser.add_argument(
+        "--context-file",
+        help="Optional JSON file with authored monster context metadata",
+    )
+
     args = parser.parse_args()
     monster_name_arg = args.monster_name
-    
+
     # Get average party level
     party_level = args.level if args.level else 1
     if not args.level:
         try:
             from utils.encoding_utils import safe_json_load
+
             party_tracker = safe_json_load("party_tracker.json")
             if party_tracker and party_tracker.get("partyMembers"):
                 levels = []
@@ -254,12 +345,26 @@ def main():
                     party_level = round(sum(levels) / len(levels))
         except:
             party_level = 1
-    
+
     schema_data = load_schema("schemas/mon_schema.json")
     if not schema_data:
         return
 
-    generated_monster_data = generate_monster(monster_name_arg, schema_data, party_level)
+    authored_context = None
+    if args.context_file:
+        authored_context = load_schema(args.context_file)
+        if authored_context is None:
+            warning(
+                f"AUTHORED_CONTEXT: Failed to load context file {args.context_file}; continuing without context",
+                category="monster_creation",
+            )
+
+    generated_monster_data = generate_monster(
+        monster_name_arg,
+        schema_data,
+        party_level,
+        authored_context=authored_context,
+    )
     if generated_monster_data:
         # Use provided module name or fall back to party tracker
         current_module = None
@@ -268,21 +373,36 @@ def main():
         else:
             try:
                 from utils.encoding_utils import safe_json_load
+
                 party_tracker = safe_json_load("party_tracker.json")
-                current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
+                current_module = (
+                    party_tracker.get("module", "").replace(" ", "_")
+                    if party_tracker
+                    else None
+                )
             except:
                 pass
-        
+
         path_manager = ModulePathManager(current_module)
         full_path = path_manager.get_monster_path(monster_name_arg)
         if save_json(full_path, generated_monster_data):
-            info(f"SUCCESS: Monster creation ({monster_name_arg}) - PASS", category="monster_creation")
+            info(
+                f"SUCCESS: Monster creation ({monster_name_arg}) - PASS",
+                category="monster_creation",
+            )
         else:
-            error(f"FAILURE: Monster save ({monster_name_arg}) - FAIL", category="monster_creation")
-            sys.exit(1) # Ensure exit with error code
+            error(
+                f"FAILURE: Monster save ({monster_name_arg}) - FAIL",
+                category="monster_creation",
+            )
+            sys.exit(1)  # Ensure exit with error code
     else:
-        error(f"FAILURE: Monster creation ({monster_name_arg}) - FAIL", category="monster_creation")
+        error(
+            f"FAILURE: Monster creation ({monster_name_arg}) - FAIL",
+            category="monster_creation",
+        )
         sys.exit(1)  # Exit with an error code
+
 
 if __name__ == "__main__":
     main()

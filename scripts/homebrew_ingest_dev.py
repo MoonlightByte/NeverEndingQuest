@@ -33,6 +33,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.importers.homebrewery_importer import import_homebrewery_adventure_to_module
 from utils.module_semantic_authority import enrich_module_semantic_authority
+from utils.toolkit_homebrew_upload_contract import (
+    SOURCE_RIGHTS_USER_AUTHORED,
+    VALID_SOURCE_RIGHTS_CLASSES,
+    build_normalized_packet_placeholder,
+    compute_sha256,
+    ensure_workspace_placeholders,
+    persist_normalized_packet_artifact,
+    persist_preflight_artifact,
+)
 
 # Local scripts (same directory)
 try:
@@ -49,7 +58,7 @@ except ImportError:
         transform_source_to_deterministic,
     )
     from scripts.continuity_cross_ref_enrichment import enrich_continuity_cross_refs
-from utils.file_operations import safe_write_json
+from utils.file_operations import safe_read_json, safe_write_json
 
 # Shared entrypoint for watcher parity (Prompt 1)
 __all__ = ["run_ingest_pipeline"]
@@ -472,6 +481,9 @@ def run_ingest_pipeline(
     no_prewarm: bool = False,
     media_timeout: int = 30,
     allow_provider: bool = False,
+    allow_normalization_routing: bool = False,
+    artifact_workspace: Optional[str] = None,
+    source_rights_class: str = SOURCE_RIGHTS_USER_AUTHORED,
 ) -> Dict[str, Any]:
     """Execute full developer ingest pipeline with stop-on-failure semantics."""
     source_file = Path(source_path)
@@ -486,6 +498,46 @@ def run_ingest_pipeline(
 
     # Stage 1: Preflight
     preflight = assess_source_readiness(str(source_file))
+
+    workspace_path: Optional[Path] = None
+    if artifact_workspace:
+        workspace_path = Path(artifact_workspace)
+        ensure_workspace_placeholders(workspace_path)
+        persist_preflight_artifact(workspace_path, preflight)
+
+    if source_rights_class not in VALID_SOURCE_RIGHTS_CLASSES:
+        source_rights_class = SOURCE_RIGHTS_USER_AUTHORED
+
+    routing_outcome = str(preflight.get("routing_outcome") or "")
+    source_readable = bool(preflight.get("source_readable", False))
+    if allow_normalization_routing and source_readable and routing_outcome == "normalization_required":
+        source_hash = compute_sha256(source_file)
+        normalized_packet = build_normalized_packet_placeholder(
+            source_path=source_file,
+            source_hash=source_hash,
+            preflight=preflight,
+            source_rights_class=source_rights_class,
+        )
+        normalized_packet_path = None
+        if workspace_path:
+            persist_normalized_packet_artifact(workspace_path, normalized_packet)
+            normalized_packet_path = str(
+                (workspace_path / "normalized_packet.json")
+            )
+        return {
+            "status": "normalization_required",
+            "stage": "routing",
+            "source": str(source_file),
+            "routing_outcome": routing_outcome,
+            "source_readable": source_readable,
+            "preflight": preflight,
+            "normalized_packet": normalized_packet,
+            "normalized_packet_path": normalized_packet_path,
+            "artifact_workspace": str(workspace_path) if workspace_path else None,
+            "exit_code": 0,
+            "note": "Readable source routed to normalization-required contract path",
+        }
+
     if not preflight.get("ready") and not preflight.get("can_auto_transform"):
         return {
             "status": "failed",

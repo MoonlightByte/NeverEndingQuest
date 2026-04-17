@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -32,6 +33,12 @@ class TestToolkitModuleFinisher(unittest.TestCase):
         self.module_dir.mkdir(parents=True, exist_ok=True)
         (self.module_dir / "module_context.json").write_text("{}", encoding="utf-8")
         (self.module_dir / "module_plot.json").write_text("{}", encoding="utf-8")
+        scripts_dir = self.repo_root / "scripts"
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        (scripts_dir / "homebrew_materialize_monsters.py").write_text(
+            "# fixture script placeholder\n",
+            encoding="utf-8",
+        )
 
         self.original_continuity = finisher._run_continuity_stage
         self.original_registry = finisher._run_registry_stage
@@ -141,17 +148,50 @@ class TestToolkitModuleFinisher(unittest.TestCase):
         self.assertEqual(result.get("ready_status"), "pass")
         self.assertEqual(result.get("publishable_status"), "fail")
 
+    def test_monster_materialization_stage_fails_on_blocked_count(self) -> None:
+        original_run = finisher.subprocess.run
+        try:
+            finisher.subprocess.run = lambda *args, **kwargs: SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "status": "degraded",
+                        "blocked_count": 1,
+                        "blocker_classes": {
+                            "authorized_monster_provider_unavailable": 1
+                        },
+                    }
+                ),
+                stderr="",
+            )
+
+            stage = finisher._run_monster_materialization_stage(self.module_slug)
+            self.assertEqual(stage.get("status"), "failed")
+            self.assertIn(
+                "authorized_monster_provider_unavailable",
+                str(stage.get("reason") or ""),
+            )
+            parsed_output = stage.get("parsed_output") or {}
+            self.assertEqual(int(parsed_output.get("blocked_count", 0)), 1)
+        finally:
+            finisher.subprocess.run = original_run
+
 
 class TestToolkitPublicationParitySourceContracts(unittest.TestCase):
     """Source-level contracts for web handler and toolkit UI integration."""
 
     def test_web_interface_invokes_finisher_and_reports_status(self) -> None:
         source = Path("web/web_interface.py").read_text(encoding="utf-8")
+        routes_source = Path("web/routes/toolkit_homebrew_routes.py").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn("run_toolkit_module_postbuild_finishing", source)
         self.assertIn("stage_name': 'Post Build Finishing'", source)
         self.assertIn("generation_succeeded", source)
         self.assertIn("publication_parity_note", source)
+        self.assertIn("_build_hydration_summary", routes_source)
+        self.assertIn('"hydration_summary"', routes_source)
 
     def test_toolkit_template_exposes_finishing_stage_and_parity_note(self) -> None:
         source = Path("web/templates/module_toolkit.html").read_text(encoding="utf-8")
@@ -159,6 +199,8 @@ class TestToolkitPublicationParitySourceContracts(unittest.TestCase):
         self.assertIn("Post-Build Finishing", source)
         self.assertIn("publication_parity_note", source)
         self.assertIn("Post-Build Status", source)
+        self.assertIn("Hydration Summary:", source)
+        self.assertIn("buildHomebrewHydrationAwareDetails", source)
 
 
 if __name__ == "__main__":
