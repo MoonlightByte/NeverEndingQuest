@@ -1028,6 +1028,57 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Toolkit Homebrew Uploader + Adventure Bundle Refresh (COMPLETED - 2026-04-18)
+
+**Status:** COMPLETED - Landed the module-uploader implementation/planning queue, synced OpenSpec uploader changes, and committed upgraded module adventure bundles plus NPC media.
+
+**Objective:**
+- Complete the `plans/module-uploader.md` implementation queue and related toolkit homebrew uploader hardening.
+- Commit OpenSpec change scaffolds/specs/tasks for uploader normalization, review/readiness gates, packet build, rebuild, artifact persistence, and monster hydration convergence.
+- Commit upgraded adventure module/runtime assets produced by the uploader and related module refresh flow.
+
+**Implementation Summary:**
+- Landed uploader workflow surfaces and contracts across toolkit routes/extensions, normalization, packet/rebuild/readiness utilities, and reporting integration:
+  - `web/routes/toolkit_homebrew_routes.py`
+  - `web/extensions/toolkit_homebrew_packet_builder.py`
+  - `web/extensions/toolkit_homebrew_readiness_gate.py`
+  - `web/extensions/toolkit_homebrew_rebuild_guard.py`
+  - `utils/toolkit_homebrew_normalizer.py`
+  - `utils/toolkit_homebrew_upload_contract.py`
+- Added/updated uploader pipeline scripts and regression coverage:
+  - `scripts/homebrew_ingest_dev.py`
+  - `scripts/homebrew_materialize_monsters.py`
+  - `scripts/homebrew_preflight.py`
+  - `scripts/test_toolkit_homebrew_readiness_gate.py`
+  - `scripts/test_toolkit_module_build_publication_parity.py`
+  - `scripts/test_module_authorized_monster_hydration.py`
+- Added OpenSpec uploader change suites under:
+  - `openspec/changes/toolkit-homebrew-artifact-persistence/`
+  - `openspec/changes/toolkit-homebrew-build-from-packet/`
+  - `openspec/changes/toolkit-homebrew-corpus-quality-gate/`
+  - `openspec/changes/toolkit-homebrew-existing-module-clean-rebuild/`
+  - `openspec/changes/toolkit-homebrew-finisher-publication-reattach/`
+  - `openspec/changes/toolkit-homebrew-monster-hydration-convergence/`
+  - `openspec/changes/toolkit-homebrew-normalization-engine/`
+  - `openspec/changes/toolkit-homebrew-structural-readiness-gate/`
+  - `openspec/changes/toolkit-homebrew-upload-normalization-contract/`
+  - `openspec/changes/toolkit-homebrew-upload-review-gate/`
+- Added/updated plan artifacts:
+  - `plans/module-uploader.md`
+  - `plans/archive/venv-audit.md`
+- Committed module adventure and NPC media refresh assets across:
+  - `modules/Keep_of_Doom/*`
+  - `modules/The_Pumpkin_Kings_Curse/*`
+  - `modules/The_Thornwood_Watch/*`
+  - `web/static/media/npcs/*`
+
+**Verification:**
+- `.venv/bin/python scripts/test_module_authorized_monster_hydration.py` -> PASS (14/14)
+- `.venv/bin/python scripts/test_homebrew_materialize_monsters.py` -> PASS
+- `.venv/bin/python scripts/test_toolkit_homebrew_readiness_gate.py` -> PASS (8 tests)
+- `.venv/bin/python scripts/test_toolkit_module_build_publication_parity.py` -> PASS (7 tests)
+- `openspec validate toolkit-homebrew-monster-hydration-convergence` -> VALID
+
 ### Venv Interpreter Audit + Remediation (COMPLETED - 2026-04-10)
 
 **Status:** COMPLETED - Audited interpreter guidance and silent dependency fallback risk, then remediated the highest-priority doc and maintenance-path issues.
