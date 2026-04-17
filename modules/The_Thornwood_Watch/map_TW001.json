@@ -8,8 +8,7 @@
       "type": "clearing",
       "connections": [
         "TW02",
-        "TW04",
-        "TW06"
+        "TW04"
       ],
       "coordinates": "X2Y2",
       "name": "Ambush Site",
@@ -53,13 +52,15 @@
       "type": "grove",
       "connections": [
         "TW01",
-        "TW03"
+        "TW03",
+        "TW06"
       ],
       "coordinates": "X2Y1",
       "name": "Thornheart Grove",
       "directions": {
         "south": "TW01",
-        "east": "TW03"
+        "east": "TW03",
+        "west": "TW06"
       }
     },
     {

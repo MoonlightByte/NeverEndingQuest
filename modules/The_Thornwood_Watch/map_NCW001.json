@@ -38,8 +38,7 @@
       "type": "cave",
       "connections": [
         "NC01",
-        "NC04",
-        "NC05"
+        "NC04"
       ],
       "coordinates": "X2Y3",
       "name": "Hollow Shade Den",
@@ -66,8 +65,7 @@
       "id": "NC05",
       "type": "hilltop",
       "connections": [
-        "NC02",
-        "NC03"
+        "NC02"
       ],
       "coordinates": "X1Y1",
       "name": "Shrouded Sentinel Rise",

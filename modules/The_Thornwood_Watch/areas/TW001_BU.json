@@ -17,8 +17,7 @@
         "type": "clearing",
         "connections": [
           "TW02",
-          "TW04",
-          "TW06"
+          "TW04"
         ],
         "coordinates": "X2Y2",
         "name": "Ambush Site"
@@ -49,7 +48,8 @@
         "type": "grove",
         "connections": [
           "TW01",
-          "TW03"
+          "TW03",
+          "TW06"
         ],
         "coordinates": "X2Y1",
         "name": "Hermit's Refuge"
@@ -100,8 +100,7 @@
       "coordinates": "X2Y2",
       "connectivity": [
         "TW02",
-        "TW04",
-        "TW06"
+        "TW04"
       ],
       "areaConnectivity": [
         "Rangers' Outpost"
@@ -303,7 +302,8 @@
       "coordinates": "X2Y1",
       "connectivity": [
         "TW01",
-        "TW03"
+        "TW03",
+        "TW06"
       ],
       "areaConnectivity": [],
       "areaConnectivityId": [],

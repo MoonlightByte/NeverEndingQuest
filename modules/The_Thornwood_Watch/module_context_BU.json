@@ -191,5 +191,1828 @@
   "validation_issues": [
     "NPC 'Corrupted Woodland Creatures' is referenced in ['module:plotStages'] but not placed in any location"
   ],
-  "generated_at": "2025-06-22T22:27:41.391154"
+  "generated_at": "2025-06-22T22:27:41.391154",
+  "continuity": {
+    "continuity_version": "v1",
+    "entry_state_variants": {
+      "cold_start": {
+        "summary": "Party enters The Thornwood Watch with no prior continuity context. Present the opening conflict and immediate objective clearly."
+      },
+      "partial_context": {
+        "summary": "Party enters The Thornwood Watch with partial prior context. Reinforce known clues before branch-critical decisions."
+      },
+      "late_arc": {
+        "summary": "Party enters The Thornwood Watch in late-arc state. Provide compact recap and maintain path to a valid ending."
+      }
+    },
+    "cross_module_refs": [
+      {
+        "target_module": "Keep_of_Doom",
+        "entity_id": "scout_elen",
+        "relation": "reference",
+        "confidence": "high",
+        "notes": "Narrative handoff references Scout Elen and Harrow's Hollow."
+      },
+      {
+        "target_module": "Keep_of_Doom",
+        "entity_id": "shadow_relic",
+        "relation": "artifact_link",
+        "confidence": "medium",
+        "notes": "Shadow relic thread echoes in adjacent module lore."
+      }
+    ],
+    "standalone_fallback": {
+      "enabled": true,
+      "clue_sources": [
+        "module_context",
+        "module_plot"
+      ],
+      "notes": "The_Thornwood_Watch remains fully playable as a standalone module when cross-module continuity is unavailable."
+    }
+  },
+  "semantic_authority": {
+    "version": "v1",
+    "module_slug": "The_Thornwood_Watch",
+    "location_aliases": {
+      "abandoned camp": {
+        "status": "resolved",
+        "location_id": "TW03",
+        "location_name": "Abandoned Camp",
+        "candidate_location_ids": [
+          "TW03"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW03].aliases",
+          "areas/TW001.json#locations[TW03].name"
+        ]
+      },
+      "ambush site": {
+        "status": "resolved",
+        "location_id": "TW01",
+        "location_name": "Ambush Site",
+        "candidate_location_ids": [
+          "TW01"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW01].aliases",
+          "areas/TW001.json#locations[TW01].name"
+        ]
+      },
+      "bandit stronghold": {
+        "status": "resolved",
+        "location_id": "TW05",
+        "location_name": "Bandit Stronghold",
+        "candidate_location_ids": [
+          "TW05"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW05].aliases",
+          "areas/TW001.json#locations[TW05].name"
+        ]
+      },
+      "bandit trail": {
+        "status": "resolved",
+        "location_id": "TW02",
+        "location_name": "Bandit Trail",
+        "candidate_location_ids": [
+          "TW02"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW02].aliases",
+          "areas/TW001.json#locations[TW02].name"
+        ]
+      },
+      "blighted thornbriar grove": {
+        "status": "resolved",
+        "location_id": "NC02",
+        "location_name": "Blighted Thornbriar Grove",
+        "candidate_location_ids": [
+          "NC02"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC02].aliases",
+          "areas/NCW001.json#locations[NC02].name"
+        ]
+      },
+      "corrupted entry cave": {
+        "status": "resolved",
+        "location_id": "NC01",
+        "location_name": "Corrupted Entry Cave",
+        "candidate_location_ids": [
+          "NC01"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC01].aliases",
+          "areas/NCW001.json#locations[NC01].name"
+        ]
+      },
+      "corrupted nexus": {
+        "status": "resolved",
+        "location_id": "NC05",
+        "location_name": "The Corrupted Nexus",
+        "candidate_location_ids": [
+          "NC05"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC05].aliases",
+          "areas/NCW001.json#locations[NC05].name"
+        ]
+      },
+      "doomed explorers camp": {
+        "status": "resolved",
+        "location_id": "NC04",
+        "location_name": "Doomed Explorer's Camp",
+        "candidate_location_ids": [
+          "NC04"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC04].aliases",
+          "areas/NCW001.json#locations[NC04].name"
+        ]
+      },
+      "forgotten waystation": {
+        "status": "resolved",
+        "location_id": "RO05",
+        "location_name": "Forgotten Waystation",
+        "candidate_location_ids": [
+          "RO05"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO05].aliases",
+          "areas/RO001.json#locations[RO05].name"
+        ]
+      },
+      "hermits refuge": {
+        "status": "resolved",
+        "location_id": "TW04",
+        "location_name": "Hermit's Refuge",
+        "candidate_location_ids": [
+          "TW04"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW04].aliases",
+          "areas/TW001.json#locations[TW04].name"
+        ]
+      },
+      "hollow of the withered hart": {
+        "status": "resolved",
+        "location_id": "NC03",
+        "location_name": "Hollow of the Withered Hart",
+        "candidate_location_ids": [
+          "NC03"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC03].aliases",
+          "areas/NCW001.json#locations[NC03].name"
+        ]
+      },
+      "nc01": {
+        "status": "resolved",
+        "location_id": "NC01",
+        "location_name": "Corrupted Entry Cave",
+        "candidate_location_ids": [
+          "NC01"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC01].aliases"
+        ]
+      },
+      "nc02": {
+        "status": "resolved",
+        "location_id": "NC02",
+        "location_name": "Blighted Thornbriar Grove",
+        "candidate_location_ids": [
+          "NC02"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC02].aliases"
+        ]
+      },
+      "nc03": {
+        "status": "resolved",
+        "location_id": "NC03",
+        "location_name": "Hollow of the Withered Hart",
+        "candidate_location_ids": [
+          "NC03"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC03].aliases"
+        ]
+      },
+      "nc04": {
+        "status": "resolved",
+        "location_id": "NC04",
+        "location_name": "Doomed Explorer's Camp",
+        "candidate_location_ids": [
+          "NC04"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC04].aliases"
+        ]
+      },
+      "nc05": {
+        "status": "resolved",
+        "location_id": "NC05",
+        "location_name": "The Corrupted Nexus",
+        "candidate_location_ids": [
+          "NC05"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC05].aliases"
+        ]
+      },
+      "north tower overlook": {
+        "status": "resolved",
+        "location_id": "RO06",
+        "location_name": "North Tower Overlook",
+        "candidate_location_ids": [
+          "RO06"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO06].aliases",
+          "areas/RO001.json#locations[RO06].name"
+        ]
+      },
+      "rangers command post": {
+        "status": "resolved",
+        "location_id": "RO01",
+        "location_name": "Rangers' Command Post",
+        "candidate_location_ids": [
+          "RO01"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO01].aliases",
+          "areas/RO001.json#locations[RO01].name"
+        ]
+      },
+      "ro01": {
+        "status": "resolved",
+        "location_id": "RO01",
+        "location_name": "Rangers' Command Post",
+        "candidate_location_ids": [
+          "RO01"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO01].aliases"
+        ]
+      },
+      "ro02": {
+        "status": "resolved",
+        "location_id": "RO02",
+        "location_name": "Supply Depot",
+        "candidate_location_ids": [
+          "RO02"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO02].aliases"
+        ]
+      },
+      "ro03": {
+        "status": "resolved",
+        "location_id": "RO03",
+        "location_name": "Trader's Rest",
+        "candidate_location_ids": [
+          "RO03"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO03].aliases"
+        ]
+      },
+      "ro04": {
+        "status": "resolved",
+        "location_id": "RO04",
+        "location_name": "Scout's Watch",
+        "candidate_location_ids": [
+          "RO04"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO04].aliases"
+        ]
+      },
+      "ro05": {
+        "status": "resolved",
+        "location_id": "RO05",
+        "location_name": "Forgotten Waystation",
+        "candidate_location_ids": [
+          "RO05"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO05].aliases"
+        ]
+      },
+      "ro06": {
+        "status": "resolved",
+        "location_id": "RO06",
+        "location_name": "North Tower Overlook",
+        "candidate_location_ids": [
+          "RO06"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO06].aliases"
+        ]
+      },
+      "scouts watch": {
+        "status": "resolved",
+        "location_id": "RO04",
+        "location_name": "Scout's Watch",
+        "candidate_location_ids": [
+          "RO04"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO04].aliases",
+          "areas/RO001.json#locations[RO04].name"
+        ]
+      },
+      "supply depot": {
+        "status": "resolved",
+        "location_id": "RO02",
+        "location_name": "Supply Depot",
+        "candidate_location_ids": [
+          "RO02"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO02].aliases",
+          "areas/RO001.json#locations[RO02].name"
+        ]
+      },
+      "the corrupted nexus": {
+        "status": "resolved",
+        "location_id": "NC05",
+        "location_name": "The Corrupted Nexus",
+        "candidate_location_ids": [
+          "NC05"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC05].aliases",
+          "areas/NCW001.json#locations[NC05].name"
+        ]
+      },
+      "traders rest": {
+        "status": "resolved",
+        "location_id": "RO03",
+        "location_name": "Trader's Rest",
+        "candidate_location_ids": [
+          "RO03"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO03].aliases",
+          "areas/RO001.json#locations[RO03].name"
+        ]
+      },
+      "tw01": {
+        "status": "resolved",
+        "location_id": "TW01",
+        "location_name": "Ambush Site",
+        "candidate_location_ids": [
+          "TW01"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW01].aliases"
+        ]
+      },
+      "tw02": {
+        "status": "resolved",
+        "location_id": "TW02",
+        "location_name": "Bandit Trail",
+        "candidate_location_ids": [
+          "TW02"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW02].aliases"
+        ]
+      },
+      "tw03": {
+        "status": "resolved",
+        "location_id": "TW03",
+        "location_name": "Abandoned Camp",
+        "candidate_location_ids": [
+          "TW03"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW03].aliases"
+        ]
+      },
+      "tw04": {
+        "status": "resolved",
+        "location_id": "TW04",
+        "location_name": "Hermit's Refuge",
+        "candidate_location_ids": [
+          "TW04"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW04].aliases"
+        ]
+      },
+      "tw05": {
+        "status": "resolved",
+        "location_id": "TW05",
+        "location_name": "Bandit Stronghold",
+        "candidate_location_ids": [
+          "TW05"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW05].aliases"
+        ]
+      },
+      "tw06": {
+        "status": "resolved",
+        "location_id": "TW06",
+        "location_name": "Wolf's Den Cave (Rescue the Lost - SQ004)",
+        "candidate_location_ids": [
+          "TW06"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW06].aliases"
+        ]
+      },
+      "wolfs den cave rescue the lost sq004": {
+        "status": "resolved",
+        "location_id": "TW06",
+        "location_name": "Wolf's Den Cave (Rescue the Lost - SQ004)",
+        "candidate_location_ids": [
+          "TW06"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW06].aliases",
+          "areas/TW001.json#locations[TW06].name"
+        ]
+      }
+    },
+    "destination_phrases": {
+      "abandoned camp": {
+        "status": "resolved",
+        "location_id": "TW03",
+        "candidate_location_ids": [
+          "TW03"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW03].aliases",
+          "areas/TW001.json#locations[TW03].dmInstructions",
+          "areas/TW001.json#locations[TW03].name",
+          "areas/TW001.json#locations[TW03].plotHooks"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 4
+      },
+      "ambush site": {
+        "status": "resolved",
+        "location_id": "TW01",
+        "candidate_location_ids": [
+          "TW01"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW01].aliases",
+          "areas/TW001.json#locations[TW01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "bandit stronghold": {
+        "status": "resolved",
+        "location_id": "TW05",
+        "candidate_location_ids": [
+          "TW05"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW05].aliases",
+          "areas/TW001.json#locations[TW05].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "bandit trail": {
+        "status": "resolved",
+        "location_id": "TW02",
+        "candidate_location_ids": [
+          "TW02"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW02].aliases",
+          "areas/TW001.json#locations[TW02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "blighted thornbriar grove": {
+        "status": "resolved",
+        "location_id": "NC02",
+        "candidate_location_ids": [
+          "NC02"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC02].aliases",
+          "areas/NCW001.json#locations[NC02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "corrupted entry cave": {
+        "status": "resolved",
+        "location_id": "NC01",
+        "candidate_location_ids": [
+          "NC01"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC01].aliases",
+          "areas/NCW001.json#locations[NC01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "corrupted nexus": {
+        "status": "resolved",
+        "location_id": "NC05",
+        "candidate_location_ids": [
+          "NC05"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC05].aliases",
+          "areas/NCW001.json#locations[NC05].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "doomed explorers camp": {
+        "status": "resolved",
+        "location_id": "NC04",
+        "candidate_location_ids": [
+          "NC04"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC04].aliases",
+          "areas/NCW001.json#locations[NC04].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 2
+      },
+      "explorers camp": {
+        "status": "resolved",
+        "location_id": "NC04",
+        "candidate_location_ids": [
+          "NC04"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC04].aliases",
+          "areas/NCW001.json#locations[NC04].name",
+          "module_context.json#semantic_authority.manual_remediation"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 2
+      },
+      "forgotten waystation": {
+        "status": "resolved",
+        "location_id": "RO05",
+        "candidate_location_ids": [
+          "RO05"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO05].aliases",
+          "areas/RO001.json#locations[RO05].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "hollow of the withered hart": {
+        "status": "resolved",
+        "location_id": "NC03",
+        "candidate_location_ids": [
+          "NC03"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC03].aliases",
+          "areas/NCW001.json#locations[NC03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "hook to the keep": {
+        "status": "resolved",
+        "location_id": "RO001",
+        "candidate_location_ids": [
+          "RO001"
+        ],
+        "sources": [
+          "module_context.json#semantic_authority.manual_remediation",
+          "module_plot.json#plotPoints[PP005].description"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 1
+      },
+      "nc01": {
+        "status": "resolved",
+        "location_id": "NC01",
+        "candidate_location_ids": [
+          "NC01"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC01].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "nc02": {
+        "status": "resolved",
+        "location_id": "NC02",
+        "candidate_location_ids": [
+          "NC02"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC02].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "nc03": {
+        "status": "resolved",
+        "location_id": "NC03",
+        "candidate_location_ids": [
+          "NC03"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC03].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "nc04": {
+        "status": "resolved",
+        "location_id": "NC04",
+        "candidate_location_ids": [
+          "NC04"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC04].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "nc05": {
+        "status": "resolved",
+        "location_id": "NC05",
+        "candidate_location_ids": [
+          "NC05"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC05].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "north tower": {
+        "status": "resolved",
+        "location_id": "RO06",
+        "candidate_location_ids": [
+          "RO06"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO06].aliases",
+          "areas/RO001.json#locations[RO06].name",
+          "module_context.json#semantic_authority.manual_remediation"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 2
+      },
+      "north tower overlook": {
+        "status": "resolved",
+        "location_id": "RO06",
+        "candidate_location_ids": [
+          "RO06"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO06].aliases",
+          "areas/RO001.json#locations[RO06].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "rangers command post": {
+        "status": "resolved",
+        "location_id": "RO01",
+        "candidate_location_ids": [
+          "RO01"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO01].aliases",
+          "areas/RO001.json#locations[RO01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "reach the camp": {
+        "status": "resolved",
+        "location_id": "TW001",
+        "candidate_location_ids": [
+          "TW001"
+        ],
+        "sources": [
+          "module_context.json#semantic_authority.manual_remediation",
+          "module_plot.json#plotPoints[PP002].description"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 1
+      },
+      "reveals the bandit camp": {
+        "status": "resolved",
+        "location_id": "RO001",
+        "candidate_location_ids": [
+          "RO001"
+        ],
+        "sources": [
+          "module_context.json#semantic_authority.manual_remediation",
+          "module_plot.json#plotPoints[PP001].description"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 1
+      },
+      "ro01": {
+        "status": "resolved",
+        "location_id": "RO01",
+        "candidate_location_ids": [
+          "RO01"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO01].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ro02": {
+        "status": "resolved",
+        "location_id": "RO02",
+        "candidate_location_ids": [
+          "RO02"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO02].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ro03": {
+        "status": "resolved",
+        "location_id": "RO03",
+        "candidate_location_ids": [
+          "RO03"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO03].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ro04": {
+        "status": "resolved",
+        "location_id": "RO04",
+        "candidate_location_ids": [
+          "RO04"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO04].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ro05": {
+        "status": "resolved",
+        "location_id": "RO05",
+        "candidate_location_ids": [
+          "RO05"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO05].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ro06": {
+        "status": "resolved",
+        "location_id": "RO06",
+        "candidate_location_ids": [
+          "RO06"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO06].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "scouts watch": {
+        "status": "resolved",
+        "location_id": "RO04",
+        "candidate_location_ids": [
+          "RO04"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO04].aliases",
+          "areas/RO001.json#locations[RO04].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "supply depot": {
+        "status": "resolved",
+        "location_id": "RO02",
+        "candidate_location_ids": [
+          "RO02"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO02].aliases",
+          "areas/RO001.json#locations[RO02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "the corrupted nexus": {
+        "status": "resolved",
+        "location_id": "NC05",
+        "candidate_location_ids": [
+          "NC05"
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC05].aliases",
+          "areas/NCW001.json#locations[NC05].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "traders rest": {
+        "status": "resolved",
+        "location_id": "RO03",
+        "candidate_location_ids": [
+          "RO03"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO03].aliases",
+          "areas/RO001.json#locations[RO03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "tw01": {
+        "status": "resolved",
+        "location_id": "TW01",
+        "candidate_location_ids": [
+          "TW01"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW01].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "tw02": {
+        "status": "resolved",
+        "location_id": "TW02",
+        "candidate_location_ids": [
+          "TW02"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW02].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "tw03": {
+        "status": "resolved",
+        "location_id": "TW03",
+        "candidate_location_ids": [
+          "TW03"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW03].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "tw04": {
+        "status": "resolved",
+        "location_id": "TW04",
+        "candidate_location_ids": [
+          "TW04"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW04].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "tw05": {
+        "status": "resolved",
+        "location_id": "TW05",
+        "candidate_location_ids": [
+          "TW05"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW05].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "tw06": {
+        "status": "resolved",
+        "location_id": "TW06",
+        "candidate_location_ids": [
+          "TW06"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW06].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "west tower": {
+        "status": "resolved",
+        "location_id": "RO05",
+        "candidate_location_ids": [
+          "RO05"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO05].features.name",
+          "module_context.json#semantic_authority.manual_remediation"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 1
+      },
+      "wolfs den cave rescue the lost sq004": {
+        "status": "resolved",
+        "location_id": "TW06",
+        "candidate_location_ids": [
+          "TW06"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW06].aliases",
+          "areas/TW001.json#locations[TW06].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      }
+    },
+    "npc_scene_authority": {
+      "Apprentice Jeb": {
+        "name_slug": "apprentice jeb",
+        "visible_location_ids": [
+          "RO02"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/RO001.json#locations[RO02].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Captain Gorvek": {
+        "name_slug": "captain gorvek",
+        "visible_location_ids": [
+          "TW05"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "TW04",
+            "source": "areas/TW001.json#locations[TW04].plotHooks",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW04].plotHooks",
+          "areas/TW001.json#locations[TW05].accessibility",
+          "areas/TW001.json#locations[TW05].dcChecks",
+          "areas/TW001.json#locations[TW05].npcs",
+          "areas/TW001.json#locations[TW05].plotHooks"
+        ],
+        "authored_mentions_count": 4,
+        "authored_mention_sources": [
+          "areas/TW001.json#locations[TW04].plotHooks",
+          "areas/TW001.json#locations[TW05].accessibility",
+          "areas/TW001.json#locations[TW05].dcChecks",
+          "areas/TW001.json#locations[TW05].plotHooks"
+        ]
+      },
+      "Captured Bandit": {
+        "name_slug": "captured bandit",
+        "visible_location_ids": [
+          "RO06"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "RO001",
+            "source": "module_plot.json#plotPoints[PP001].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO001",
+            "source": "module_plot.json#plotPoints[PP001].plotImpact",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO01",
+            "source": "areas/RO001.json#locations[RO01].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO01",
+            "source": "areas/RO001.json#locations[RO01].features.description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO01",
+            "source": "areas/RO001.json#locations[RO01].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW001",
+            "source": "module_plot.json#plotPoints[PP002].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW01",
+            "source": "areas/TW001.json#locations[TW01].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW01",
+            "source": "areas/TW001.json#locations[TW01].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW01",
+            "source": "areas/TW001.json#locations[TW01].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW01",
+            "source": "areas/TW001.json#locations[TW01].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW02",
+            "source": "areas/TW001.json#locations[TW02].aliases",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW02",
+            "source": "areas/TW001.json#locations[TW02].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW02",
+            "source": "areas/TW001.json#locations[TW02].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW02",
+            "source": "areas/TW001.json#locations[TW02].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW02",
+            "source": "areas/TW001.json#locations[TW02].features.description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW02",
+            "source": "areas/TW001.json#locations[TW02].name",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW03",
+            "source": "areas/TW001.json#locations[TW03].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW03",
+            "source": "areas/TW001.json#locations[TW03].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW03",
+            "source": "areas/TW001.json#locations[TW03].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW03",
+            "source": "areas/TW001.json#locations[TW03].features.description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW03",
+            "source": "areas/TW001.json#locations[TW03].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW04",
+            "source": "areas/TW001.json#locations[TW04].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW05",
+            "source": "areas/TW001.json#locations[TW05].aliases",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW05",
+            "source": "areas/TW001.json#locations[TW05].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW05",
+            "source": "areas/TW001.json#locations[TW05].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW05",
+            "source": "areas/TW001.json#locations[TW05].name",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW06",
+            "source": "areas/TW001.json#locations[TW06].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW06",
+            "source": "areas/TW001.json#locations[TW06].plotHooks",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO01].dcChecks",
+          "areas/RO001.json#locations[RO01].features.description",
+          "areas/RO001.json#locations[RO01].plotHooks",
+          "areas/RO001.json#locations[RO06].dcChecks",
+          "areas/RO001.json#locations[RO06].features.name",
+          "areas/RO001.json#locations[RO06].npcs",
+          "areas/RO001.json#locations[RO06].plotHooks",
+          "areas/TW001.json#locations[TW01].dcChecks",
+          "areas/TW001.json#locations[TW01].description",
+          "areas/TW001.json#locations[TW01].dmInstructions",
+          "areas/TW001.json#locations[TW01].plotHooks",
+          "areas/TW001.json#locations[TW02].aliases",
+          "areas/TW001.json#locations[TW02].dcChecks",
+          "areas/TW001.json#locations[TW02].description",
+          "areas/TW001.json#locations[TW02].dmInstructions",
+          "areas/TW001.json#locations[TW02].features.description",
+          "areas/TW001.json#locations[TW02].name",
+          "areas/TW001.json#locations[TW03].dcChecks",
+          "areas/TW001.json#locations[TW03].description",
+          "areas/TW001.json#locations[TW03].dmInstructions",
+          "areas/TW001.json#locations[TW03].features.description",
+          "areas/TW001.json#locations[TW03].plotHooks",
+          "areas/TW001.json#locations[TW04].plotHooks",
+          "areas/TW001.json#locations[TW05].aliases",
+          "areas/TW001.json#locations[TW05].dcChecks",
+          "areas/TW001.json#locations[TW05].description",
+          "areas/TW001.json#locations[TW05].name",
+          "areas/TW001.json#locations[TW06].dcChecks",
+          "areas/TW001.json#locations[TW06].plotHooks",
+          "module_plot.json#plotPoints[PP001].description",
+          "module_plot.json#plotPoints[PP001].plotImpact",
+          "module_plot.json#plotPoints[PP002].description"
+        ],
+        "authored_mentions_count": 31,
+        "authored_mention_sources": [
+          "areas/RO001.json#locations[RO01].dcChecks",
+          "areas/RO001.json#locations[RO01].features.description",
+          "areas/RO001.json#locations[RO01].plotHooks",
+          "areas/RO001.json#locations[RO06].dcChecks",
+          "areas/RO001.json#locations[RO06].features.name",
+          "areas/RO001.json#locations[RO06].plotHooks",
+          "areas/TW001.json#locations[TW01].dcChecks",
+          "areas/TW001.json#locations[TW01].description",
+          "areas/TW001.json#locations[TW01].dmInstructions",
+          "areas/TW001.json#locations[TW01].plotHooks",
+          "areas/TW001.json#locations[TW02].aliases",
+          "areas/TW001.json#locations[TW02].dcChecks",
+          "areas/TW001.json#locations[TW02].description",
+          "areas/TW001.json#locations[TW02].dmInstructions",
+          "areas/TW001.json#locations[TW02].features.description",
+          "areas/TW001.json#locations[TW02].name",
+          "areas/TW001.json#locations[TW03].dcChecks",
+          "areas/TW001.json#locations[TW03].description",
+          "areas/TW001.json#locations[TW03].dmInstructions",
+          "areas/TW001.json#locations[TW03].features.description",
+          "areas/TW001.json#locations[TW03].plotHooks",
+          "areas/TW001.json#locations[TW04].plotHooks",
+          "areas/TW001.json#locations[TW05].aliases",
+          "areas/TW001.json#locations[TW05].dcChecks",
+          "areas/TW001.json#locations[TW05].description",
+          "areas/TW001.json#locations[TW05].name",
+          "areas/TW001.json#locations[TW06].dcChecks",
+          "areas/TW001.json#locations[TW06].plotHooks",
+          "module_plot.json#plotPoints[PP001].description",
+          "module_plot.json#plotPoints[PP001].plotImpact",
+          "module_plot.json#plotPoints[PP002].description"
+        ]
+      },
+      "Captured Bandit Leader Rusk": {
+        "name_slug": "captured bandit leader rusk",
+        "visible_location_ids": [],
+        "reveal_bindings": [
+          {
+            "location_id": "RO001",
+            "source": "module_plot.json#plotPoints[PP001].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO01",
+            "source": "areas/RO001.json#locations[RO01].features.description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO01",
+            "source": "areas/RO001.json#locations[RO01].plotHooks",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO01].features.description",
+          "areas/RO001.json#locations[RO01].plotHooks",
+          "module_context.json#npcs.captured_bandit_leader_rusk",
+          "module_plot.json#plotPoints[PP001].description"
+        ],
+        "authored_mentions_count": 3,
+        "authored_mention_sources": [
+          "areas/RO001.json#locations[RO01].features.description",
+          "areas/RO001.json#locations[RO01].plotHooks",
+          "module_plot.json#plotPoints[PP001].description"
+        ]
+      },
+      "Corrupted Woodland Creatures": {
+        "name_slug": "corrupted woodland creatures",
+        "visible_location_ids": [],
+        "reveal_bindings": [
+          {
+            "location_id": "NC01",
+            "source": "areas/NCW001.json#locations[NC01].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW04",
+            "source": "areas/TW001.json#locations[TW04].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC01].dcChecks",
+          "areas/TW001.json#locations[TW04].description",
+          "module_context.json#npcs.corrupted_woodland_creatures"
+        ],
+        "authored_mentions_count": 2,
+        "authored_mention_sources": [
+          "areas/NCW001.json#locations[NC01].dcChecks",
+          "areas/TW001.json#locations[TW04].description"
+        ]
+      },
+      "Dock Worker Finn": {
+        "name_slug": "dock worker finn",
+        "visible_location_ids": [
+          "RO02"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/RO001.json#locations[RO02].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Merchant Gareth": {
+        "name_slug": "merchant gareth",
+        "visible_location_ids": [
+          "RO03"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "TW06",
+            "source": "areas/TW001.json#locations[TW06].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW06",
+            "source": "areas/TW001.json#locations[TW06].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW06",
+            "source": "areas/TW001.json#locations[TW06].features.description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO03].npcs",
+          "areas/TW001.json#locations[TW06].description",
+          "areas/TW001.json#locations[TW06].dmInstructions",
+          "areas/TW001.json#locations[TW06].features.description"
+        ],
+        "authored_mentions_count": 3,
+        "authored_mention_sources": [
+          "areas/TW001.json#locations[TW06].description",
+          "areas/TW001.json#locations[TW06].dmInstructions",
+          "areas/TW001.json#locations[TW06].features.description"
+        ]
+      },
+      "Merchant Kael": {
+        "name_slug": "merchant kael",
+        "visible_location_ids": [
+          "RO01",
+          "TW06"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "TW01",
+            "source": "areas/TW001.json#locations[TW01].plotHooks",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO01].npcs",
+          "areas/TW001.json#locations[TW01].plotHooks",
+          "areas/TW001.json#locations[TW06].description",
+          "areas/TW001.json#locations[TW06].dmInstructions",
+          "areas/TW001.json#locations[TW06].features.description",
+          "areas/TW001.json#locations[TW06].npcs"
+        ],
+        "authored_mentions_count": 4,
+        "authored_mention_sources": [
+          "areas/TW001.json#locations[TW01].plotHooks",
+          "areas/TW001.json#locations[TW06].description",
+          "areas/TW001.json#locations[TW06].dmInstructions",
+          "areas/TW001.json#locations[TW06].features.description"
+        ]
+      },
+      "Merchant Vera": {
+        "name_slug": "merchant vera",
+        "visible_location_ids": [
+          "RO01",
+          "RO02"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/RO001.json#locations[RO01].npcs",
+          "areas/RO001.json#locations[RO02].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Messenger Tom": {
+        "name_slug": "messenger tom",
+        "visible_location_ids": [
+          "RO01"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/RO001.json#locations[RO01].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Pella Vireen": {
+        "name_slug": "pella vireen",
+        "visible_location_ids": [
+          "RO01",
+          "TW01"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "RO01",
+            "source": "module_context.json#semantic_authority.manual_remediation",
+            "reason": "manual_authored_presence_reveal_binding"
+          }
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO01].npcs",
+          "areas/RO001.json#locations[RO01].plotHooks",
+          "areas/TW001.json#locations[TW01].description",
+          "areas/TW001.json#locations[TW01].dmInstructions",
+          "areas/TW001.json#locations[TW01].features.description",
+          "areas/TW001.json#locations[TW01].npcs",
+          "areas/TW001.json#locations[TW01].plotHooks"
+        ],
+        "authored_mentions_count": 5,
+        "authored_mention_sources": [
+          "areas/RO001.json#locations[RO01].plotHooks",
+          "areas/TW001.json#locations[TW01].description",
+          "areas/TW001.json#locations[TW01].dmInstructions",
+          "areas/TW001.json#locations[TW01].features.description",
+          "areas/TW001.json#locations[TW01].plotHooks"
+        ]
+      },
+      "Quartermaster Brann": {
+        "name_slug": "quartermaster brann",
+        "visible_location_ids": [
+          "RO02"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "RO02",
+            "source": "module_context.json#semantic_authority.manual_remediation",
+            "reason": "manual_authored_presence_reveal_binding"
+          }
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO02].dcChecks",
+          "areas/RO001.json#locations[RO02].description",
+          "areas/RO001.json#locations[RO02].dmInstructions",
+          "areas/RO001.json#locations[RO02].features.description",
+          "areas/RO001.json#locations[RO02].npcs",
+          "areas/RO001.json#locations[RO02].plotHooks",
+          "module_context.json#npcs.quartermaster_brann"
+        ],
+        "authored_mentions_count": 5,
+        "authored_mention_sources": [
+          "areas/RO001.json#locations[RO02].dcChecks",
+          "areas/RO001.json#locations[RO02].description",
+          "areas/RO001.json#locations[RO02].dmInstructions",
+          "areas/RO001.json#locations[RO02].features.description",
+          "areas/RO001.json#locations[RO02].plotHooks"
+        ]
+      },
+      "Ranger Elen": {
+        "name_slug": "ranger elen",
+        "visible_location_ids": [
+          "RO01"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "NCW001",
+            "source": "module_plot.json#plotPoints[PP004].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO001",
+            "source": "module_plot.json#plotPoints[PP001].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO001",
+            "source": "module_plot.json#plotPoints[PP005].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO001",
+            "source": "module_plot.json#plotPoints[PP005].title",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO01].npcs",
+          "areas/RO001.json#locations[RO01].plotHooks",
+          "module_context.json#npcs.ranger_elen",
+          "module_plot.json#plotPoints[PP001].description",
+          "module_plot.json#plotPoints[PP004].description",
+          "module_plot.json#plotPoints[PP005].description",
+          "module_plot.json#plotPoints[PP005].title"
+        ],
+        "authored_mentions_count": 5,
+        "authored_mention_sources": [
+          "areas/RO001.json#locations[RO01].plotHooks",
+          "module_plot.json#plotPoints[PP001].description",
+          "module_plot.json#plotPoints[PP004].description",
+          "module_plot.json#plotPoints[PP005].description",
+          "module_plot.json#plotPoints[PP005].title"
+        ]
+      },
+      "Ranger Marcus": {
+        "name_slug": "ranger marcus",
+        "visible_location_ids": [
+          "RO01"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "RO001",
+            "source": "module_plot.json#plotPoints[PP005].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO01].npcs",
+          "module_plot.json#plotPoints[PP005].description"
+        ],
+        "authored_mentions_count": 1,
+        "authored_mention_sources": [
+          "module_plot.json#plotPoints[PP005].description"
+        ]
+      },
+      "Rusk": {
+        "name_slug": "rusk",
+        "visible_location_ids": [
+          "RO01"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "RO001",
+            "source": "module_plot.json#plotPoints[PP001].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO001",
+            "source": "module_plot.json#plotPoints[PP001].plotImpact",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO06",
+            "source": "areas/RO001.json#locations[RO06].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "TW001",
+            "source": "module_plot.json#plotPoints[PP002].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO01].features.description",
+          "areas/RO001.json#locations[RO01].npcs",
+          "areas/RO001.json#locations[RO01].plotHooks",
+          "areas/RO001.json#locations[RO06].plotHooks",
+          "module_plot.json#plotPoints[PP001].description",
+          "module_plot.json#plotPoints[PP001].plotImpact",
+          "module_plot.json#plotPoints[PP002].description"
+        ],
+        "authored_mentions_count": 6,
+        "authored_mention_sources": [
+          "areas/RO001.json#locations[RO01].features.description",
+          "areas/RO001.json#locations[RO01].plotHooks",
+          "areas/RO001.json#locations[RO06].plotHooks",
+          "module_plot.json#plotPoints[PP001].description",
+          "module_plot.json#plotPoints[PP001].plotImpact",
+          "module_plot.json#plotPoints[PP002].description"
+        ]
+      },
+      "Scout Kira": {
+        "name_slug": "scout kira",
+        "visible_location_ids": [
+          "RO01",
+          "TW05"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "NCW001",
+            "source": "module_plot.json#plotPoints[PP004].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO06",
+            "source": "areas/RO001.json#locations[RO06].dcChecks",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO01].dmInstructions",
+          "areas/RO001.json#locations[RO01].npcs",
+          "areas/RO001.json#locations[RO01].plotHooks",
+          "areas/RO001.json#locations[RO06].dcChecks",
+          "areas/TW001.json#locations[TW05].npcs",
+          "module_plot.json#plotPoints[PP004].description"
+        ],
+        "authored_mentions_count": 4,
+        "authored_mention_sources": [
+          "areas/RO001.json#locations[RO01].dmInstructions",
+          "areas/RO001.json#locations[RO01].plotHooks",
+          "areas/RO001.json#locations[RO06].dcChecks",
+          "module_plot.json#plotPoints[PP004].description"
+        ]
+      },
+      "Spirit-Touched Hermit Maelo": {
+        "name_slug": "spirit touched hermit maelo",
+        "visible_location_ids": [
+          "TW04"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "NCW001",
+            "source": "module_plot.json#plotPoints[PP003].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "NCW001",
+            "source": "module_plot.json#plotPoints[PP004].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO01",
+            "source": "areas/RO001.json#locations[RO01].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO01",
+            "source": "areas/RO001.json#locations[RO01].plotHooks",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO01].dmInstructions",
+          "areas/RO001.json#locations[RO01].plotHooks",
+          "areas/TW001.json#locations[TW04].dcChecks",
+          "areas/TW001.json#locations[TW04].description",
+          "areas/TW001.json#locations[TW04].dmInstructions",
+          "areas/TW001.json#locations[TW04].npcs",
+          "areas/TW001.json#locations[TW04].plotHooks",
+          "module_context.json#npcs.spirit-touched_hermit_maelo",
+          "module_plot.json#plotPoints[PP003].description",
+          "module_plot.json#plotPoints[PP004].description"
+        ],
+        "authored_mentions_count": 8,
+        "authored_mention_sources": [
+          "areas/RO001.json#locations[RO01].dmInstructions",
+          "areas/RO001.json#locations[RO01].plotHooks",
+          "areas/TW001.json#locations[TW04].dcChecks",
+          "areas/TW001.json#locations[TW04].description",
+          "areas/TW001.json#locations[TW04].dmInstructions",
+          "areas/TW001.json#locations[TW04].plotHooks",
+          "module_plot.json#plotPoints[PP003].description",
+          "module_plot.json#plotPoints[PP004].description"
+        ]
+      },
+      "The Withered Hart": {
+        "name_slug": "the withered hart",
+        "visible_location_ids": [
+          "NC03"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "NC03",
+            "source": "module_context.json#semantic_authority.manual_remediation",
+            "reason": "manual_authored_presence_reveal_binding"
+          }
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC03].aliases",
+          "areas/NCW001.json#locations[NC03].dcChecks",
+          "areas/NCW001.json#locations[NC03].description",
+          "areas/NCW001.json#locations[NC03].dmInstructions",
+          "areas/NCW001.json#locations[NC03].name",
+          "areas/NCW001.json#locations[NC03].npcs",
+          "areas/NCW001.json#locations[NC03].plotHooks",
+          "module_context.json#npcs.the_withered_hart"
+        ],
+        "authored_mentions_count": 6,
+        "authored_mention_sources": [
+          "areas/NCW001.json#locations[NC03].aliases",
+          "areas/NCW001.json#locations[NC03].dcChecks",
+          "areas/NCW001.json#locations[NC03].description",
+          "areas/NCW001.json#locations[NC03].dmInstructions",
+          "areas/NCW001.json#locations[NC03].name",
+          "areas/NCW001.json#locations[NC03].plotHooks"
+        ]
+      },
+      "Thorn-Touched Dryad Sylara": {
+        "name_slug": "thorn touched dryad sylara",
+        "visible_location_ids": [
+          "NC02"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "NC02",
+            "source": "module_context.json#semantic_authority.manual_remediation",
+            "reason": "manual_authored_presence_reveal_binding"
+          }
+        ],
+        "sources": [
+          "areas/NCW001.json#locations[NC02].dmInstructions",
+          "areas/NCW001.json#locations[NC02].npcs",
+          "areas/NCW001.json#locations[NC02].plotHooks"
+        ],
+        "authored_mentions_count": 2,
+        "authored_mention_sources": [
+          "areas/NCW001.json#locations[NC02].dmInstructions",
+          "areas/NCW001.json#locations[NC02].plotHooks"
+        ]
+      },
+      "Trader Mila": {
+        "name_slug": "trader mila",
+        "visible_location_ids": [
+          "RO03"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/RO001.json#locations[RO03].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Trader Sila": {
+        "name_slug": "trader sila",
+        "visible_location_ids": [
+          "RO03"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "RO03",
+            "source": "module_context.json#semantic_authority.manual_remediation",
+            "reason": "manual_authored_presence_reveal_binding"
+          }
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO03].dcChecks",
+          "areas/RO001.json#locations[RO03].description",
+          "areas/RO001.json#locations[RO03].dmInstructions",
+          "areas/RO001.json#locations[RO03].features.description",
+          "areas/RO001.json#locations[RO03].npcs",
+          "areas/RO001.json#locations[RO03].plotHooks",
+          "module_context.json#npcs.trader_sila"
+        ],
+        "authored_mentions_count": 5,
+        "authored_mention_sources": [
+          "areas/RO001.json#locations[RO03].dcChecks",
+          "areas/RO001.json#locations[RO03].description",
+          "areas/RO001.json#locations[RO03].dmInstructions",
+          "areas/RO001.json#locations[RO03].features.description",
+          "areas/RO001.json#locations[RO03].plotHooks"
+        ]
+      },
+      "Wounded Scout Neris": {
+        "name_slug": "wounded scout neris",
+        "visible_location_ids": [],
+        "reveal_bindings": [
+          {
+            "location_id": "RO04",
+            "source": "areas/RO001.json#locations[RO04].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO04",
+            "source": "areas/RO001.json#locations[RO04].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO04",
+            "source": "areas/RO001.json#locations[RO04].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RO04",
+            "source": "areas/RO001.json#locations[RO04].plotHooks",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO04].dcChecks",
+          "areas/RO001.json#locations[RO04].description",
+          "areas/RO001.json#locations[RO04].dmInstructions",
+          "areas/RO001.json#locations[RO04].plotHooks",
+          "module_context.json#npcs.wounded_scout_neris"
+        ],
+        "authored_mentions_count": 4,
+        "authored_mention_sources": [
+          "areas/RO001.json#locations[RO04].dcChecks",
+          "areas/RO001.json#locations[RO04].description",
+          "areas/RO001.json#locations[RO04].dmInstructions",
+          "areas/RO001.json#locations[RO04].plotHooks"
+        ]
+      }
+    },
+    "diagnostics": {
+      "duplicate_location_aliases": [],
+      "ambiguous_destination_phrases": [],
+      "unresolved_destination_phrases": [],
+      "missing_npc_authority": []
+    },
+    "summary": {
+      "location_count": 17,
+      "location_alias_count": 35,
+      "destination_phrase_count": 40,
+      "npc_count": 22,
+      "ambiguous_destination_count": 0,
+      "missing_npc_authority_count": 0
+    }
+  }
 }
