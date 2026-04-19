@@ -4,7 +4,7 @@
 TBD - created by archiving change toolkit-homebrew-md-upload-ingest. Update Purpose after archive.
 ## Requirements
 ### Requirement: Toolkit can import Homebrew markdown directly
-The toolkit MUST provide a first-class upload path for Homebrewery markdown files and MUST invoke module ingest without requiring the operator to place files in `modules/ingest/`.
+The toolkit MUST provide a first-class upload path for Homebrewery markdown files and MUST invoke module ingest without requiring the operator to place files in `modules/ingest/`. When a reviewed upload resolves to a module slug that already exists, the toolkit MUST require explicit operator confirmation before destructive rebuild begins and MUST NOT silently overlay the existing module directory.
 
 #### Scenario: Valid markdown upload starts toolkit ingest
 - **WHEN** the operator submits a valid `.md` source file from the toolkit UI
@@ -16,6 +16,12 @@ The toolkit MUST provide a first-class upload path for Homebrewery markdown file
 - **WHEN** the operator uploads a non-markdown file type
 - **THEN** the toolkit MUST reject the submission before pipeline invocation
 - **AND** MUST return a user-visible validation error describing the accepted source type.
+
+#### Scenario: Repeated upload does not silently reuse existing module directory
+- **WHEN** a reviewed Homebrew upload resolves to a module slug that already exists on disk
+- **THEN** the toolkit MUST pause before build execution
+- **AND** MUST require explicit operator confirmation for the backup + clean rebuild flow
+- **AND** MUST NOT silently proceed with overlay rebuild behavior.
 
 ### Requirement: Toolkit upload flow preserves existing builder flow
 Adding markdown upload MUST NOT break or replace the existing concept-based Module Builder workflow.

@@ -33,3 +33,8 @@ The next change must connect `normalized_packet.json` plus the review snapshot t
 - Merge safety impact: SHOULD remain additive by introducing a dedicated upload-aware builder facade rather than rewriting the concept-builder flow
 - SP/MP compatibility impact: no gameplay runtime behavior change; MUST remain isolated to toolkit upload workflows
 - Publication boundary: MUST leave finisher, semantic publication probes, and registry integration for the following uploader slice
+
+## Implementation Note
+
+- This slice was implemented as specified for packet-driven build entry and artifact persistence.
+- Subsequent uploader slices (`toolkit-homebrew-structural-readiness-gate`, `toolkit-homebrew-finisher-publication-reattach`) intentionally extended orchestration beyond the original stop-boundary, so current runtime continues from build into readiness/finishing states.
