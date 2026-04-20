@@ -74,5 +74,6 @@
     }
   ],
   "legendaryActions": [],
-  "condition": "Alive"
+  "condition": "Alive",
+  "description": "A Grave Wight"
 }

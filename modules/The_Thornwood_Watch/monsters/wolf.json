@@ -28,7 +28,7 @@
     "darkvision": 0,
     "passivePerception": 13
   },
-  "languages": "\u2014",
+  "languages": "—",
   "challengeRating": 0.25,
   "specialAbilities": [
     {
@@ -56,5 +56,6 @@
     }
   ],
   "legendaryActions": [],
-  "condition": "Alive"
+  "condition": "Alive",
+  "description": "Lurking within the Blighted Thornbriar Grove, the Corrupted Wolf is a haunting specter of the wild, twisted by the dark influence of Malarok's Voidstone magic. Its once-sleek fur has turned a mottled gray-black, interspersed with streaks of sickly violet that pulse faintly with corrupt energy. Jagged scars mar its flanks, and its eyes blaze with an unnatural, luminous amber glow, reflecting both pain and feral intelligence. The beast moves with a predatory grace, muscles rippling beneath fur that seems to bristle with static corruption. Thorn-like barbs sprout irregularly along its spine, dripping with viscous black sap that hisses upon touching the ground. When it breathes, tendrils of shadowy mist escape its maw, carrying a faint scent of decay and bramble. This wolf is fiercely protective of the corrupted dryad Sylara and roams the grove with supernatural vigilance, its snarls echoing as a warning to any who would dare threaten its charge. Its howl pierces the oppressive silence of the blighted woods, a chilling lament that seems to warp the very air around it. The Corrupted Wolf embodies the tragic transformation wrought by the Voidstone's dark magic -- a creature caught between natural grace and malevolent corruption, forever guarding the twisted heart of the once-sacred grove."
 }

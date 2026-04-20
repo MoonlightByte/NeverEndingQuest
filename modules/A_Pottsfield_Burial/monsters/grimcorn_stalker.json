@@ -46,7 +46,7 @@
       "damageType": "none"
     },
     {
-      "name": "Fey Step (Recharge 4\u20136)",
+      "name": "Fey Step (Recharge 4–6)",
       "attackBonus": 0,
       "damageDice": "0",
       "damageBonus": 0,
@@ -70,5 +70,6 @@
     }
   ],
   "legendaryActions": [],
-  "condition": "Alive"
+  "condition": "Alive",
+  "description": "A Grimcorn Stalker"
 }

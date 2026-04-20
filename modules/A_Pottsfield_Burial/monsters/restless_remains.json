@@ -64,5 +64,6 @@
     }
   ],
   "legendaryActions": [],
-  "condition": "Alive"
+  "condition": "Alive",
+  "description": "A Restless Remains"
 }

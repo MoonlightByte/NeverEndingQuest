@@ -63,5 +63,6 @@
     }
   ],
   "legendaryActions": [],
-  "condition": "Alive"
+  "condition": "Alive",
+  "description": "A Tomb Rat"
 }
