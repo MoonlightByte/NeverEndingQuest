@@ -82,3 +82,69 @@ Legacy remediation tooling SHALL backfill spatial contract fields without mutati
 - **WHEN** invoked with `--apply`
 - **THEN** remediated artifacts SHALL be written atomically
 
+### Requirement: Spatial remediation SHALL synchronize paired map artifacts after area repair
+
+When deterministic spatial repair changes an area room coordinate graph and the paired `map_*.json` file is directly mappable by room id, remediation SHALL synchronize the paired map artifact before classifying residual contradictions as debt.
+
+#### Scenario: Area repair leaves stale map coordinates
+
+- **WHEN** an area file has been repaired to cardinal adjacency
+- **AND** the paired `map_*.json` file still contains the old non-cardinal coordinates for the same room ids
+- **THEN** deterministic remediation SHALL synchronize the paired map coordinates and dependent direction data when that mapping is unambiguous
+- **AND** only unchanged contradictions after parity sync attempt may escalate to residual structural debt
+
+### Requirement: Residual spatial reporting SHALL distinguish unchanged authored contradictions from repair-engine gaps
+
+Spatial residual reporting SHALL separate unchanged contradiction sets that survive deterministic remediation from contradictions that changed but still failed validation.
+
+#### Scenario: Unchanged contradiction set becomes authored structural debt
+
+- **WHEN** deterministic spatial remediation runs
+- **AND** the post-repair `spatial_contract` contradiction set is identical to the pre-repair contradiction set
+- **THEN** residual reporting SHALL classify the result as authored structural debt
+- **AND** SHALL NOT report that outcome as blocker-resolution advancement
+
+#### Scenario: Changed contradiction set remains repair-engine gap
+
+- **WHEN** deterministic spatial remediation changes the contradiction set but validation still fails
+- **THEN** residual reporting SHALL classify the outcome as an unresolved repair-engine gap
+- **AND** SHALL preserve both pre-change and post-change contradiction context
+
+### Requirement: Residual spatial contradictions SHALL either converge or escalate explicitly
+
+When shared spatial remediation is re-run during residual closure, unchanged contradiction sets SHALL be escalated as author-required structural debt instead of being retried implicitly.
+
+#### Scenario: Spatial remediation resolves contradiction set
+
+- **WHEN** residual closure re-runs shared spatial remediation for a module with adjacency contradictions
+- **AND** the contradiction set is reduced or eliminated
+- **THEN** reporting SHALL record that spatial closure advanced
+
+#### Scenario: Spatial contradiction set remains unchanged
+
+- **WHEN** residual closure re-runs shared spatial remediation
+- **AND** the contradiction set after remediation is unchanged
+- **THEN** reporting SHALL classify the result as unresolved structural spatial debt
+- **AND** the workflow SHALL stop rather than retrying equivalent remediation again
+
+### Requirement: Spatial remediation SHALL classify fixed-point adjacency contradictions
+
+Spatial remediation MUST stop and classify unresolved connected-room adjacency contradictions when repeated planning produces no further change.
+
+#### Scenario: Connected rooms remain non-cardinal after remediation
+- **GIVEN** strict spatial validation reports two directly connected rooms whose coordinates are not cardinally adjacent
+- **AND** a subsequent remediation pass produces no coordinate or direction delta
+- **WHEN** convergence evaluation runs
+- **THEN** the workflow SHALL classify the result as residual spatial contradiction debt
+- **AND** SHALL NOT continue retrying unchanged spatial blockers
+
+### Requirement: Shared planner SHALL be reused for convergence repair
+
+Spatial convergence repair SHALL reuse the shared planner rather than introducing a parallel coordinate fixer.
+
+#### Scenario: Convergence repair reruns spatial planning
+- **GIVEN** a module area/map pair with strict spatial contradictions
+- **WHEN** deterministic convergence repair executes
+- **THEN** it SHALL reuse the shared spatial planner and authored connectivity as the source of truth
+- **AND** any rewritten coordinates and directions SHALL remain mutually consistent under strict validation
+

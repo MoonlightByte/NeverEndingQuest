@@ -145,11 +145,6 @@ def _is_canonical_travel_phrase(phrase: str, sources: List[str]) -> bool:
         if source_text.endswith(_CANONICAL_TRAVEL_SOURCE_SUFFIXES):
             has_canonical_source = True
             break
-        if source_text.startswith("module_plot.json#") and source_text.endswith(
-            ".description"
-        ):
-            has_canonical_source = True
-            break
     if not has_canonical_source:
         return False
     return True
@@ -266,8 +261,17 @@ def _derive_hidden_npc_probes(
             for value in _safe_list(row_dict.get("authored_mention_sources"))
             if str(value).strip()
         ]
+        visible_location_ids = [
+            str(value).strip().upper()
+            for value in _safe_list(row_dict.get("visible_location_ids"))
+            if str(value).strip()
+        ]
 
-        if not reveal_bindings and authored_mentions_count <= 0:
+        if not reveal_bindings and not visible_location_ids and authored_mentions_count <= 0:
+            continue
+
+        # Visible NPC authority is sufficient baseline authority.
+        if visible_location_ids and not reveal_bindings:
             continue
 
         expected_location_ids = _expected_locations_from_sources(
@@ -284,11 +288,7 @@ def _derive_hidden_npc_probes(
                 "type": "hidden_npc",
                 "npc": npc_name,
                 "name_slug": str(row_dict.get("name_slug", "") or "").strip(),
-                "visible_location_ids": [
-                    str(value).strip().upper()
-                    for value in _safe_list(row_dict.get("visible_location_ids"))
-                    if str(value).strip()
-                ],
+                "visible_location_ids": visible_location_ids,
                 "reveal_location_ids": sorted(
                     {
                         str(entry.get("location_id", "") or "").strip().upper()
@@ -392,13 +392,24 @@ def _evaluate_hidden_npc_probe(probe: Dict[str, Any]) -> Dict[str, Any]:
     result = dict(probe)
     expected_location_ids = probe.get("expected_location_ids") or []
     reveal_location_ids = probe.get("reveal_location_ids") or []
+    visible_location_ids = probe.get("visible_location_ids") or []
 
-    if probe.get("authored_mentions_count", 0) > 0 and not reveal_location_ids:
+    if (
+        probe.get("authored_mentions_count", 0) > 0
+        and not reveal_location_ids
+        and not visible_location_ids
+    ):
         result["status"] = "fail"
         result["failure_class"] = "hidden_npc_missing_authority"
         result["status_detail"] = (
             "Authored hidden or revealable NPC has no reveal location"
         )
+        return result
+
+    if visible_location_ids and not reveal_location_ids:
+        result["status"] = "pass"
+        result["failure_class"] = ""
+        result["status_detail"] = "Visible NPC authority present"
         return result
 
     if expected_location_ids and reveal_location_ids:

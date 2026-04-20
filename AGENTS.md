@@ -1028,6 +1028,50 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### GUI Builder Deterministic Cleanup + Archive Batch (COMPLETED - 2026-04-20)
+
+**Status:** COMPLETED - Archived the completed GUI-builder OpenSpec slice chain, synced main specs, and consolidated deterministic builder/reporting updates before the next structural slice.
+
+**Objective:**
+- Close completed GUI-builder changes in archive-safe order while keeping unfinished structural stabilization active.
+- Preserve deterministic readiness/publishability gating semantics (including mixed media+semantic failure handling).
+- Keep semantic remediation sequencing planning-only and reviewable under Python-authority constraints.
+
+**Implementation Summary:**
+- Archived completed GUI-builder changes to `openspec/changes/archive/2026-04-20-*`:
+  - `gui-builder-media-handoff-semantics`
+  - `gui-builder-module-workflow-ui-ordering`
+  - `gui-builder-gameplay-readiness-payload-normalization`
+  - `gui-builder-mixed-failure-classification`
+  - `gui-builder-semantic-remediation-sequencing`
+  - `gui-builder-remediation-and-reingest-workflow`
+  - `gui-builder-readiness-convergence-hardening`
+  - `gui-builder-numillian-live-blocker-reconciliation`
+  - `gui-builder-numillian-postreingest-gate-reconciliation`
+  - `gui-builder-numillian-residual-blocker-resolution`
+  - `gui-builder-residual-convergence-closure`
+- Synced corresponding main specs under `openspec/specs/*` during archive flow (no `--skip-specs` path).
+- Landed deterministic builder/reporting updates across:
+  - `scripts/audit_module_publishability.py`
+  - `scripts/audit_module_readiness.py`
+  - `scripts/audit_module_gameplay.py`
+  - `web/extensions/toolkit_homebrew_readiness_gate.py`
+  - `web/extensions/toolkit_module_finisher.py`
+  - `web/templates/module_toolkit.html`
+  - `scripts/homebrew_ingest_dev.py`
+  - `utils/module_semantic_authority.py`
+- Added planning artifact for the next uploader pass:
+  - `plans/module-uploader-2.md`
+  - archived prior plan: `plans/archive/module-uploader.md`
+- Kept one GUI-builder change active (not archived):
+  - `openspec/changes/gui-builder-structural-stabilization/`
+
+**Verification:**
+- `.venv/bin/python scripts/test_audit_module_publishability.py` -> PASS
+- `.venv/bin/python scripts/test_audit_module_readiness.py` -> PASS
+- `.venv/bin/python scripts/test_toolkit_homebrew_readiness_gate.py` -> PASS
+- `.venv/bin/python scripts/test_toolkit_module_build_publication_parity.py` -> PASS
+
 ### Toolkit Homebrew Uploader + Adventure Bundle Refresh (COMPLETED - 2026-04-18)
 
 **Status:** COMPLETED - Landed the module-uploader implementation/planning queue, synced OpenSpec uploader changes, and committed upgraded module adventure bundles plus NPC media.

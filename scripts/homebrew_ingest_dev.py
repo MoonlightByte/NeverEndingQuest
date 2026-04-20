@@ -839,36 +839,14 @@ def run_ingest_pipeline(
     # Materialize module-local monster stat files from bestiary seeds
     mat_result = {"status": "skipped", "summary": {}}
     try:
-        mat_script = Path(__file__).parent / "homebrew_materialize_monsters.py"
-        if mat_script.exists() and module_slug:
-            mat_args = [
-                sys.executable,
-                str(mat_script),
-                "--module",
-                module_slug,
-                "--json",
-            ]
-            # Run materialization as subprocess to isolate errors
-            mat_proc = subprocess.run(
-                mat_args,
-                capture_output=True,
-                text=True,
-                timeout=60,
+        if module_slug:
+            from scripts.homebrew_materialize_monsters import materialize_monsters
+
+            mat_result = materialize_monsters(
+                module_slug=module_slug,
+                strict=False,
+                dry_run=False,
             )
-            if mat_proc.returncode == 0 and mat_proc.stdout:
-                try:
-                    mat_result = json.loads(mat_proc.stdout)
-                except json.JSONDecodeError:
-                    mat_result = {
-                        "status": "unknown",
-                        "raw_output": mat_proc.stdout[:500],
-                    }
-            else:
-                mat_result = {
-                    "status": "error",
-                    "returncode": mat_proc.returncode,
-                    "stderr": mat_proc.stderr[:500] if mat_proc.stderr else None,
-                }
     except Exception as e:
         mat_result = {"status": "error", "error": str(e)}
 

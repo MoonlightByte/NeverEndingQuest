@@ -214,7 +214,7 @@ class TestToolkitHomebrewReadinessGate(unittest.TestCase):
                 lambda build_result, module_dir, validation_report: None
             )
             readiness_gate._run_deterministic_repairs = (
-                lambda module_slug, module_dir, failure_categories: (
+                lambda module_slug, module_dir, failure_categories, validation_report=None: (
                     call_order.append("det") or {"status": "success", "changed": True}
                 )
             )
@@ -303,7 +303,7 @@ class TestToolkitHomebrewReadinessGate(unittest.TestCase):
                 lambda build_result, module_dir, validation_report: None
             )
             readiness_gate._run_deterministic_repairs = (
-                lambda module_slug, module_dir, failure_categories: {
+                lambda module_slug, module_dir, failure_categories, validation_report=None: {
                     "status": "success",
                     "changed": False,
                 }
@@ -323,6 +323,12 @@ class TestToolkitHomebrewReadinessGate(unittest.TestCase):
             )
 
             self.assertEqual(result.get("status"), "repair_budget_exhausted")
+            self.assertEqual(result.get("convergence_outcome"), "fixed_point_detected")
+            self.assertTrue(result.get("fixed_point_detected"))
+            self.assertIn(
+                "monster_reference_closure_gap",
+                result.get("residual_blocker_classes") or [],
+            )
             self.assertTrue(self.files["repair_report"].exists())
             self.assertTrue(self.files["readiness_validation_report"].exists())
             self.assertTrue(self.files["readiness_audit_report"].exists())
@@ -390,7 +396,7 @@ class TestToolkitHomebrewReadinessGate(unittest.TestCase):
                 lambda build_result, module_dir, validation_report: None
             )
             readiness_gate._run_deterministic_repairs = (
-                lambda module_slug, module_dir, failure_categories: {
+                lambda module_slug, module_dir, failure_categories, validation_report=None: {
                     "status": "failed",
                     "reason": "monster_hydration_blocked",
                     "repairs": {
@@ -451,6 +457,391 @@ class TestToolkitHomebrewReadinessGate(unittest.TestCase):
             readiness_gate._run_semantic_repairs = original_sem
             readiness_gate._run_structural_readiness_audit = original_audit
             readiness_gate._detect_build_system_defect = original_defect
+
+    def test_failed_deterministic_with_changes_revalidates_before_exit(self) -> None:
+        validator_sequence = [
+            _make_validation_report(
+                {
+                    "reference_integrity": {
+                        "failed": 1,
+                        "errors": ["missing monster"],
+                    }
+                },
+                1,
+            ),
+            _make_validation_report({}, 0),
+        ]
+        validator_calls = []
+
+        original_validator = readiness_gate._run_validator
+        original_det = readiness_gate._run_deterministic_repairs
+        original_audit = readiness_gate._run_structural_readiness_audit
+        original_defect = readiness_gate._detect_build_system_defect
+
+        try:
+            def _next_validation(module_slug):
+                validator_calls.append(module_slug)
+                return validator_sequence.pop(0)
+
+            readiness_gate._run_validator = _next_validation
+            readiness_gate._detect_build_system_defect = (
+                lambda build_result, module_dir, validation_report: None
+            )
+            readiness_gate._run_deterministic_repairs = (
+                lambda module_slug, module_dir, failure_categories, validation_report=None: {
+                    "status": "failed",
+                    "changed": True,
+                    "repairs": {
+                        "monster_reference_closure": {
+                            "status": "changed",
+                            "reason": "validator_reference_closure",
+                        }
+                    },
+                }
+            )
+            readiness_gate._run_structural_readiness_audit = lambda module_slug: {
+                "status": "pass",
+                "report": {"overall_status": "pass"},
+            }
+
+            result = readiness_gate.run_toolkit_homebrew_readiness_gate(
+                workspace=self.workspace,
+                job_id="job-1",
+            )
+
+            self.assertEqual(len(validator_calls), 2)
+            self.assertEqual((result.get("validation") or {}).get("status"), "pass")
+            self.assertEqual(result.get("status"), "ready_for_finishing")
+        finally:
+            readiness_gate._run_validator = original_validator
+            readiness_gate._run_deterministic_repairs = original_det
+            readiness_gate._run_structural_readiness_audit = original_audit
+            readiness_gate._detect_build_system_defect = original_defect
+
+    def test_monster_schema_completion_backfills_required_fields(self) -> None:
+        module_slug = "Toolkit_Readiness_Module"
+        module_dir = self.workspace / "modules" / module_slug
+        monsters_dir = module_dir / "monsters"
+        monsters_dir.mkdir(parents=True, exist_ok=True)
+
+        monster_path = monsters_dir / "salt_wraith.json"
+        monster_path.write_text(
+            json.dumps(
+                {
+                    "name": "Salt Wraith",
+                    "type": "undead",
+                    "hitPoints": 19,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        compendium = {
+            "salt_wraith": {
+                "name": "Salt Wraith",
+                "size": "Medium",
+                "alignment": "chaotic evil",
+                "armorClass": 13,
+            }
+        }
+
+        with patch(
+            "utils.module_monster_authority.load_monster_compendium_lookup",
+            return_value=compendium,
+        ):
+            result = readiness_gate._deterministic_repair_monster_schema(
+                module_slug,
+                module_dir,
+            )
+
+        self.assertEqual(result.get("status"), "changed")
+        repaired = json.loads(monster_path.read_text(encoding="utf-8"))
+        self.assertEqual(repaired.get("size"), "Medium")
+        self.assertEqual(repaired.get("alignment"), "chaotic evil")
+        self.assertEqual(repaired.get("armorClass"), 13)
+
+    def test_monster_schema_completion_recovers_plural_compendium_slug(self) -> None:
+        module_slug = "Toolkit_Readiness_Module"
+        module_dir = self.workspace / "modules" / module_slug
+        monsters_dir = module_dir / "monsters"
+        monsters_dir.mkdir(parents=True, exist_ok=True)
+
+        monster_path = monsters_dir / "salt_wraith.json"
+        monster_path.write_text(
+            json.dumps(
+                {
+                    "name": "Salt Wraith",
+                    "type": "undead",
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        compendium = {
+            "salt_wraiths": {
+                "name": "Salt Wraiths",
+                "size": "Medium",
+                "alignment": "chaotic evil",
+                "armorClass": 14,
+            }
+        }
+
+        with patch(
+            "utils.module_monster_authority.load_monster_compendium_lookup",
+            return_value=compendium,
+        ):
+            result = readiness_gate._deterministic_repair_monster_schema(
+                module_slug,
+                module_dir,
+            )
+
+        self.assertEqual(result.get("status"), "changed")
+        repaired = json.loads(monster_path.read_text(encoding="utf-8"))
+        self.assertEqual(repaired.get("size"), "Medium")
+        self.assertEqual(repaired.get("alignment"), "chaotic evil")
+        self.assertEqual(repaired.get("armorClass"), 14)
+
+    def test_validator_driven_reference_closure_uses_expected_paths(self) -> None:
+        validation_report = _make_validation_report(
+            {
+                "reference_integrity": {
+                    "failed": 1,
+                    "errors": [
+                        "Echoes of the Party in The Mindweft Expanse/Twilight Cachehouse -> expected monsters/echoes_of_the_party.json"
+                    ],
+                }
+            },
+            1,
+        )
+
+        with patch(
+            "utils.module_monster_authority.materialize_authorized_monster_file",
+            return_value={"ok": True, "source": "existing"},
+        ):
+            result = readiness_gate._deterministic_close_monster_references(
+                "Toolkit_Readiness_Module",
+                validation_report,
+            )
+
+        self.assertEqual(result.get("status"), "skipped")
+        self.assertEqual(result.get("reason"), "validator_reference_closure")
+        self.assertEqual(result.get("target_slugs"), ["echoes_of_the_party"])
+
+    def test_plot_prerequisite_repair_supports_list_shape(self) -> None:
+        module_dir = self.workspace / "modules" / "Toolkit_Readiness_Module"
+        module_dir.mkdir(parents=True, exist_ok=True)
+        plot_path = module_dir / "module_plot.json"
+        plot_path.write_text(
+            json.dumps(
+                {
+                    "plotPoints": [
+                        {"id": "PP017", "title": "Sanctuary"},
+                        {"id": "PP018", "title": "Finale"},
+                    ]
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        result = readiness_gate._deterministic_fix_plot_prerequisites(module_dir)
+        self.assertEqual(result.get("status"), "changed")
+
+        plot_data = json.loads(plot_path.read_text(encoding="utf-8"))
+        points = plot_data.get("plotPoints") or []
+        pp018 = next((p for p in points if p.get("id") == "PP018"), {})
+        self.assertEqual(pp018.get("prerequisites"), ["PP017"])
+
+    def test_plot_prerequisite_repair_targets_validator_edge_before_terminal(self) -> None:
+        module_dir = self.workspace / "modules" / "Toolkit_Readiness_Module"
+        module_dir.mkdir(parents=True, exist_ok=True)
+        plot_path = module_dir / "module_plot.json"
+        plot_path.write_text(
+            json.dumps(
+                {
+                    "plotPoints": [
+                        {"id": "PP017", "title": "Lead", "nextPoints": ["PP018"]},
+                        {"id": "PP018", "title": "Conclusion", "nextPoints": ["PP019"]},
+                        {
+                            "id": "PP019",
+                            "title": "Terminal",
+                            "nextPoints": [],
+                            "prerequisites": ["PP018"],
+                        },
+                    ]
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        validation_report = _make_validation_report(
+            {
+                "plot_progression": {
+                    "failed": 1,
+                    "errors": [
+                        "modules/X/module_plot.json: conclusion/finale plot PP018 missing explicit prerequisite gate (upstream: PP017)"
+                    ],
+                }
+            },
+            1,
+        )
+
+        result = readiness_gate._deterministic_fix_plot_prerequisites_from_validation(
+            module_dir,
+            validation_report,
+        )
+        self.assertEqual(result.get("status"), "changed")
+        self.assertEqual(result.get("target"), "PP018")
+        self.assertEqual(result.get("upstream"), "PP017")
+
+        plot_data = json.loads(plot_path.read_text(encoding="utf-8"))
+        points = plot_data.get("plotPoints") or []
+        pp018 = next((p for p in points if p.get("id") == "PP018"), {})
+        pp019 = next((p for p in points if p.get("id") == "PP019"), {})
+        self.assertEqual(pp018.get("prerequisites"), ["PP017"])
+        self.assertEqual(pp019.get("prerequisites"), ["PP018"])
+
+    def test_spatial_contradictions_unchanged_escalates_structural_debt(self) -> None:
+        validation_report = _make_validation_report(
+            {
+                "spatial_contract": {
+                    "failed": 1,
+                    "errors": [
+                        "GLQ001.json: connected rooms G03->G04 are not cardinally adjacent"
+                    ],
+                }
+            },
+            1,
+        )
+
+        original_spatial = readiness_gate._deterministic_fix_spatial_contract
+        original_validator = readiness_gate._run_validator
+        try:
+            readiness_gate._deterministic_fix_spatial_contract = lambda module_dir: {
+                "status": "skipped",
+                "reason": "spatial_remediation",
+                "remediation": {"changed": 0},
+            }
+            readiness_gate._run_validator = lambda module_slug: dict(validation_report)
+
+            result = readiness_gate._run_deterministic_repairs(
+                module_slug="Toolkit_Readiness_Module",
+                module_dir=self.workspace / "modules" / "Toolkit_Readiness_Module",
+                failure_categories={"spatial_contract": 1},
+                validation_report=validation_report,
+            )
+
+            spatial = (result.get("repairs") or {}).get("spatial_contract") or {}
+            self.assertEqual(spatial.get("status"), "failed")
+            self.assertEqual(spatial.get("reason"), "spatial_contradictions_unchanged")
+            self.assertEqual(spatial.get("debt_classification"), "author_structural_debt")
+        finally:
+            readiness_gate._deterministic_fix_spatial_contract = original_spatial
+            readiness_gate._run_validator = original_validator
+
+    def test_spatial_map_parity_sync_updates_external_map_coordinates(self) -> None:
+        module_dir = self.workspace / "modules" / "Toolkit_Readiness_Module"
+        areas_dir = module_dir / "areas"
+        areas_dir.mkdir(parents=True, exist_ok=True)
+
+        area_payload = {
+            "areaId": "GLQ001",
+            "locations": [
+                {
+                    "locationId": "G03",
+                    "coordinates": "X12Y10",
+                    "connectivity": ["G04"],
+                },
+                {
+                    "locationId": "G04",
+                    "coordinates": "X13Y10",
+                    "connectivity": ["G03"],
+                },
+            ],
+        }
+        map_payload = {
+            "rooms": [
+                {
+                    "id": "G03",
+                    "coordinates": "X10Y11",
+                    "connections": ["G04"],
+                    "directions": {"north": "G04"},
+                },
+                {
+                    "id": "G04",
+                    "coordinates": "X12Y10",
+                    "connections": ["G03"],
+                    "directions": {"west": "G03"},
+                },
+            ],
+            "startRoom": "G03",
+        }
+
+        (areas_dir / "GLQ001.json").write_text(
+            json.dumps(area_payload, indent=2), encoding="utf-8"
+        )
+        (module_dir / "map_GLQ001.json").write_text(
+            json.dumps(map_payload, indent=2), encoding="utf-8"
+        )
+
+        validation_report = _make_validation_report(
+            {
+                "spatial_contract": {
+                    "failed": 1,
+                    "errors": [
+                        "GLQ001.json <-> map_GLQ001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)"
+                    ],
+                }
+            },
+            1,
+        )
+
+        result = readiness_gate._deterministic_sync_external_map_parity(
+            module_dir,
+            validation_report,
+        )
+        self.assertEqual(result.get("status"), "changed")
+        self.assertIn("map_GLQ001.json", result.get("changed_maps") or [])
+
+        repaired_map = json.loads((module_dir / "map_GLQ001.json").read_text(encoding="utf-8"))
+        rooms = {room["id"]: room for room in repaired_map.get("rooms", [])}
+        self.assertEqual(rooms["G03"].get("coordinates"), "X12Y10")
+        self.assertEqual(rooms["G04"].get("coordinates"), "X13Y10")
+        self.assertEqual(rooms["G03"].get("directions"), {"east": "G04"})
+        self.assertEqual(rooms["G04"].get("directions"), {"west": "G03"})
+
+    def test_plot_prerequisite_repair_backfills_finale_dependency(self) -> None:
+        module_dir = self.workspace / "modules" / "Toolkit_Readiness_Module"
+        module_dir.mkdir(parents=True, exist_ok=True)
+        plot_path = module_dir / "module_plot.json"
+        plot_path.write_text(
+            json.dumps(
+                {
+                    "plotPoints": {
+                        "PP017": {
+                            "title": "Find the sanctuary",
+                            "prerequisites": ["PP016"],
+                        },
+                        "PP018": {
+                            "title": "Final confrontation",
+                            "description": "Resolve the mindscape.",
+                        },
+                    }
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        result = readiness_gate._deterministic_fix_plot_prerequisites(module_dir)
+        self.assertEqual(result.get("status"), "changed")
+
+        plot_data = json.loads(plot_path.read_text(encoding="utf-8"))
+        pp018 = (plot_data.get("plotPoints") or {}).get("PP018") or {}
+        self.assertEqual(pp018.get("prerequisites"), ["PP017"])
 
 
 if __name__ == "__main__":

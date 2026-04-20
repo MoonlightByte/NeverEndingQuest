@@ -31,6 +31,39 @@ def _result(exit_code, payload=None, stdout="", stderr=""):
 
 
 class TestAuditModuleReadiness(unittest.TestCase):
+    def test_nested_target_gameplay_payload_is_consumed(self):
+        gameplay_payload = {
+            "target": {
+                "blocking_errors": ["Missing base media for: ogre"],
+                "warnings": ["heuristic warning"],
+            }
+        }
+        sidecar_payload = {"valid": True, "sidecar_found": True}
+        schema_payload = {"summary": {"any_failed": False}}
+        continuity_payload = {
+            "blocking_errors": [],
+            "warnings": [],
+            "required_keys_present": [],
+            "continuity_version": "v1",
+        }
+
+        with patch.object(
+            readiness,
+            "run_gate_command",
+            side_effect=[
+                _result(1, gameplay_payload),
+                _result(0, sidecar_payload),
+                _result(0, schema_payload),
+                _result(0, continuity_payload),
+            ],
+        ):
+            report = readiness.audit_module_readiness("example_module")
+
+        self.assertEqual(report["overall_status"], "fail")
+        self.assertEqual(report["gates"]["gameplay"]["status"], "fail")
+        self.assertEqual(report["gates"]["gameplay"]["blocking_error_count"], 1)
+        self.assertEqual(report["gates"]["gameplay"]["warning_count"], 1)
+
     def test_all_gates_pass(self):
         gameplay_payload = {"blocking_errors": [], "warnings": []}
         sidecar_payload = {"valid": True, "sidecar_found": True}
@@ -182,6 +215,151 @@ class TestAuditModuleReadiness(unittest.TestCase):
         self.assertEqual(report["overall_status"], "fail")
         self.assertEqual(report["gates"]["continuity"]["status"], "fail")
         self.assertEqual(report["gates"]["continuity"]["reason"], "continuity_blocking_errors")
+
+    def test_toolkit_source_uses_toolkit_provenance_gate(self):
+        gameplay_payload = {"blocking_errors": [], "warnings": []}
+        schema_payload = {"summary": {"any_failed": False}}
+        continuity_payload = {
+            "blocking_errors": [],
+            "warnings": [],
+            "required_keys_present": [],
+            "continuity_version": "v1",
+        }
+
+        with (
+            patch.object(
+                readiness,
+                "run_gate_command",
+                side_effect=[
+                    _result(0, gameplay_payload),
+                    _result(0, schema_payload),
+                    _result(0, continuity_payload),
+                ],
+            ),
+            patch.object(
+                readiness,
+                "evaluate_toolkit_provenance_gate",
+                return_value={
+                    "status": "pass",
+                    "reason": "pass",
+                    "source": "toolkit",
+                    "exit_code": 0,
+                    "raw": {"json": {"valid": True}},
+                },
+            ) as toolkit_gate,
+        ):
+            report = readiness.audit_module_readiness(
+                "example_module",
+                source="toolkit",
+            )
+
+        toolkit_gate.assert_called_once_with(
+            module_slug="example_module",
+            source="toolkit",
+        )
+        self.assertEqual(report["overall_status"], "pass")
+        self.assertEqual(report["gates"]["sidecar"]["status"], "pass")
+        self.assertTrue(report["strict_contract"]["requires_toolkit_provenance"])
+        self.assertFalse(report["strict_contract"]["requires_sidecar"])
+
+    def test_unsupported_source_fails_closed(self):
+        gameplay_payload = {"blocking_errors": [], "warnings": []}
+        schema_payload = {"summary": {"any_failed": False}}
+        continuity_payload = {
+            "blocking_errors": [],
+            "warnings": [],
+            "required_keys_present": [],
+            "continuity_version": "v1",
+        }
+
+        with patch.object(
+            readiness,
+            "run_gate_command",
+            side_effect=[
+                _result(0, gameplay_payload),
+                _result(0, schema_payload),
+                _result(0, continuity_payload),
+            ],
+        ):
+            report = readiness.audit_module_readiness(
+                "example_module",
+                source="unknown_source",
+            )
+
+        self.assertEqual(report["overall_status"], "fail")
+        self.assertEqual(report["gates"]["sidecar"]["reason"], "unsupported_source")
+        self.assertIn("supported readiness source contract", " ".join(report["fix_list"]))
+
+    def test_toolkit_provenance_missing_reports_specific_reason(self):
+        gate = readiness.evaluate_toolkit_provenance_gate(
+            module_slug="module_that_does_not_exist",
+            source="toolkit",
+        )
+        self.assertEqual(gate["status"], "fail")
+        self.assertEqual(gate["reason"], "toolkit_provenance_missing")
+
+    def test_toolkit_media_policy_uses_nested_target_media_findings(self):
+        gameplay_payload = {
+            "target": {
+                "blocking_errors": ["Missing base media for: ogre"],
+                "warnings": [],
+                "monster_media_findings": [
+                    {
+                        "slug": "ogre",
+                        "confidence": "structural",
+                        "outcome": "provider_disabled_missing",
+                    },
+                    {
+                        "slug": "goblin",
+                        "confidence": "structural",
+                        "outcome": "attempted_but_unresolved",
+                    },
+                    {
+                        "slug": "spirit",
+                        "confidence": "heuristic",
+                        "outcome": "provider_disabled_missing",
+                    },
+                ],
+            }
+        }
+        schema_payload = {"summary": {"any_failed": False}}
+        continuity_payload = {
+            "blocking_errors": [],
+            "warnings": [],
+            "required_keys_present": [],
+            "continuity_version": "v1",
+        }
+
+        with (
+            patch.object(
+                readiness,
+                "run_gate_command",
+                side_effect=[
+                    _result(1, gameplay_payload),
+                    _result(0, schema_payload),
+                    _result(0, continuity_payload),
+                ],
+            ),
+            patch.object(
+                readiness,
+                "evaluate_toolkit_provenance_gate",
+                return_value={
+                    "status": "pass",
+                    "reason": "pass",
+                    "source": "toolkit",
+                    "exit_code": 0,
+                    "raw": {"json": {"valid": True}},
+                },
+            ),
+        ):
+            report = readiness.audit_module_readiness("example_module", source="toolkit")
+
+        policy = report.get("toolkit_media_policy", {})
+        self.assertEqual(policy.get("structural_media_debt_count"), 2)
+        self.assertEqual(
+            policy.get("structural_media_debt_slugs"),
+            ["goblin", "ogre"],
+        )
 
 
 if __name__ == "__main__":

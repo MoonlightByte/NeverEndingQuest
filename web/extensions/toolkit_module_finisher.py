@@ -10,8 +10,6 @@ Licensed under Fair Source License 1.0
 """
 
 import json
-import subprocess
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
@@ -212,45 +210,18 @@ def _run_semantic_authority_stage(module_slug: str, module_dir: Path) -> Dict[st
 
 def _run_monster_materialization_stage(module_slug: str) -> Dict[str, Any]:
     """Run module-local monster materialization stage."""
-    script_path = Path("scripts") / "homebrew_materialize_monsters.py"
-    if not script_path.exists():
-        return {
-            "status": "degraded",
-            "reason": "Monster materialization script not found",
-            "script": str(script_path),
-        }
-
-    command = [
-        sys.executable,
-        str(script_path),
-        "--module",
-        module_slug,
-        "--json",
-    ]
-
     try:
-        completed = subprocess.run(command, capture_output=True, text=True, timeout=60)
+        from scripts.homebrew_materialize_monsters import materialize_monsters
+
+        parsed_output = materialize_monsters(
+            module_slug=module_slug,
+            strict=False,
+            dry_run=False,
+        )
     except Exception as mat_error:
         return {
             "status": "failed",
             "reason": f"Monster materialization invocation failed: {mat_error}",
-        }
-
-    parsed_output: Dict[str, Any] = {}
-    if completed.stdout:
-        try:
-            parsed_output = json.loads(completed.stdout)
-        except json.JSONDecodeError:
-            parsed_output = {}
-
-    if completed.returncode != 0:
-        return {
-            "status": "failed",
-            "reason": "Monster materialization returned non-zero exit",
-            "returncode": completed.returncode,
-            "stdout": completed.stdout[-2000:],
-            "stderr": completed.stderr[-2000:],
-            "parsed_output": parsed_output,
         }
 
     blocked_count = int(parsed_output.get("blocked_count", 0) or 0)
@@ -277,16 +248,96 @@ def _run_monster_materialization_stage(module_slug: str) -> Dict[str, Any]:
     return {
         "status": stage_status,
         "reason": stage_reason,
-        "returncode": completed.returncode,
+        "returncode": 0,
         "parsed_output": parsed_output,
     }
 
 
-def _run_publishability_stage(module_slug: str) -> Dict[str, Any]:
+def _detect_media_only_debt(publishability_stage: Dict[str, Any]) -> bool:
+    """Detect if publishability gate failed only because media is missing.
+
+    The finisher receives a wrapped stage payload from `_run_publishability_stage()`
+    where the raw audit report is under `publishability_stage["report"]`.
+    """
+    if not isinstance(publishability_stage, dict):
+        return False
+
+    report = publishability_stage.get("report") or {}
+    if not isinstance(report, dict):
+        return False
+
+    ready_status = str(
+        publishability_stage.get("ready_status") or report.get("ready_status") or ""
+    ).strip().lower()
+    publishable_status = str(
+        publishability_stage.get("publishable_status")
+        or report.get("publishable_status")
+        or ""
+    ).strip().lower()
+    if ready_status != "pass" or publishable_status != "fail":
+        return False
+
+    readiness_report = report.get("readiness") or {}
+    if str(readiness_report.get("overall_status") or "").strip().lower() != "pass":
+        return False
+
+    categories = report.get("remediation_categories") or []
+    if "structured_monster_media_missing" not in categories:
+        return False
+    if "mixed_media_semantic_blocking" in categories:
+        return False
+    if "semantic_publishability_blocking" in categories:
+        return False
+
+    blocking_errors = report.get("blocking_errors") or []
+    if not blocking_errors:
+        return True
+
+    media_related_terms = ("media", "monster", "portrait", "image")
+    return all(
+        any(term in str(item or "").lower() for term in media_related_terms)
+        for item in blocking_errors
+    )
+
+
+def _extract_media_debt_details(publishability_stage: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract missing media debt details for handoff reporting."""
+    if not isinstance(publishability_stage, dict):
+        return {}
+
+    report = publishability_stage.get("report") or {}
+    if not isinstance(report, dict):
+        return {}
+
+    toolkit_media_policy = report.get("toolkit_media_policy") or {}
+    debt_slugs = toolkit_media_policy.get("structural_media_debt_slugs") or []
+    normalized_slugs = [
+        str(slug).strip()
+        for slug in debt_slugs
+        if str(slug or "").strip()
+    ]
+    media_debt_count = int(
+        toolkit_media_policy.get("structural_media_debt_count") or len(normalized_slugs)
+    )
+
+    return {
+        "media_debt_count": media_debt_count,
+        "media_debt_slugs": normalized_slugs,
+        "media_debt_workflow": (
+            "Module Builder -> Module Media Generator"
+        ),
+        "media_debt_workflow_detail": (
+            "Toolkit modules require manual monster portrait generation. "
+            "Use: Module Builder -> Module Media Generator -> Generate Monster Images"
+        ),
+    }
+
+
+def _run_publishability_stage(module_slug: str, source: str = "watcher") -> Dict[str, Any]:
     """Run standalone publishability audit stage."""
     from scripts.audit_module_publishability import audit_module_publishability
 
-    report = audit_module_publishability(module_slug)
+    report = audit_module_publishability(module_slug, source=source)
     ready_status = str(report.get("ready_status", "fail") or "fail")
     publishable_status = str(report.get("publishable_status", "fail") or "fail")
 
@@ -301,6 +352,7 @@ def _run_publishability_stage(module_slug: str) -> Dict[str, Any]:
         "status": stage_status,
         "ready_status": ready_status,
         "publishable_status": publishable_status,
+        "source": source,
         "report": report,
     }
 
@@ -371,37 +423,108 @@ def run_toolkit_module_postbuild_finishing(
     ):
         overall_status = "degraded"
 
-    publishability_stage = _run_publishability_stage(module_slug=module_slug)
-    stages["publishability"] = publishability_stage
-    if publishability_stage.get("status") == "failed":
+    report_path = module_dir / "toolkit_build_report.json"
+
+    def _build_report(
+        *, status: str, ready_status: str, publishable_status: str, phase: str
+    ) -> Dict[str, Any]:
+        return {
+            "generated_at": _utc_now_iso(),
+            "module_slug": module_slug,
+            "status": status,
+            "ready_status": ready_status,
+            "publishable_status": publishable_status,
+            "strict": bool(strict),
+            "source": "toolkit",
+            "provenance": {
+                "source": "toolkit",
+                "artifact": "toolkit_build_report.json",
+                "contract": "toolkit_build_report_required",
+                "phase": phase,
+            },
+            "stages": stages,
+            "publication_parity_note": (
+                "Post-build parity now reports both structural readiness and semantic publishability."
+            ),
+            "semantic_authority_note": (
+                "Semantic authority and semantic probes now feed a standalone publishable gate distinct from readiness."
+            ),
+        }
+
+    # TABLETOP MODE: Persist toolkit provenance before toolkit-source readiness
+    # and publishability checks so same-run toolkit audits can self-validate.
+    pre_publishability_report = _build_report(
+        status=overall_status,
+        ready_status="pending",
+        publishable_status="pending",
+        phase="pre_publishability",
+    )
+    pre_write_ok = safe_write_json(str(report_path), pre_publishability_report)
+    if not pre_write_ok:
+        error(
+            f"TOOLKIT_FINISHER: Failed to write pre-publishability report for {module_slug}",
+            category="module_ingest",
+        )
+        stages["toolkit_provenance"] = {
+            "status": "failed",
+            "reason": "toolkit_provenance_write_failed",
+            "report_path": str(report_path),
+        }
         overall_status = "failed"
-    elif (
-        publishability_stage.get("status") == "degraded" and overall_status != "failed"
-    ):
-        overall_status = "degraded"
+    else:
+        stages["toolkit_provenance"] = {
+            "status": "success",
+            "reason": "toolkit_provenance_prepared",
+            "report_path": str(report_path),
+        }
+
+    publishability_stage = _run_publishability_stage(
+        module_slug=module_slug,
+        source="toolkit",
+    )
+    stages["publishability"] = publishability_stage
 
     ready_status = str(publishability_stage.get("ready_status", "fail") or "fail")
     publishable_status = str(
         publishability_stage.get("publishable_status", "fail") or "fail"
     )
 
-    report: Dict[str, Any] = {
-        "generated_at": _utc_now_iso(),
-        "module_slug": module_slug,
-        "status": overall_status,
-        "ready_status": ready_status,
-        "publishable_status": publishable_status,
-        "strict": bool(strict),
-        "stages": stages,
-        "publication_parity_note": (
-            "Post-build parity now reports both structural readiness and semantic publishability."
-        ),
-        "semantic_authority_note": (
-            "Semantic authority and semantic probes now feed a standalone publishable gate distinct from readiness."
-        ),
-    }
+    if _detect_media_only_debt(publishability_stage):
+        media_debt = _extract_media_debt_details(publishability_stage)
+        stages["publishability"]["media_handoff"] = {
+            "status": "media_only_debt",
+            "build_outcome": "success_with_media_handoff",
+            "message": (
+                "Build completed successfully. Manual media generation required for "
+                "monster portraits. Use: Module Builder -> Module Media Generator"
+            ),
+            "next_step": "Module Builder -> Module Media Generator",
+            "next_step_detail": media_debt.get("media_debt_workflow_detail", ""),
+            "media_debt_count": media_debt.get("media_debt_count", 0),
+            "media_debt_slugs": media_debt.get("media_debt_slugs", []),
+        }
+        stages["publishability"]["status"] = "degraded"
+        publishable_status = "fail_with_media_handoff"
+        info(
+            f"TOOLKIT_FINISHER: Media-only debt detected for {module_slug} - reporting success_with_media_handoff",
+            category="module_ingest",
+        )
+    elif publishable_status == "fail":
+        overall_status = "failed"
+    elif publishability_stage.get("status") == "failed":
+        overall_status = "failed"
+    elif (
+        publishability_stage.get("status") == "degraded" and overall_status != "failed"
+    ):
+        overall_status = "degraded"
 
-    report_path = module_dir / "toolkit_build_report.json"
+    report = _build_report(
+        status=overall_status,
+        ready_status=ready_status,
+        publishable_status=publishable_status,
+        phase="final",
+    )
+
     write_ok = safe_write_json(str(report_path), report)
     if not write_ok:
         error(

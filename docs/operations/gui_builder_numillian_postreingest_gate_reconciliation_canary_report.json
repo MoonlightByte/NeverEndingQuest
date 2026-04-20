@@ -1,0 +1,74 @@
+{
+  "module": "The_Hidden_City_of_Numillian",
+  "change": "gui-builder-numillian-postreingest-gate-reconciliation",
+  "status": "pass",
+  "checked_at": "2026-04-20T00:00:00Z",
+  "summary": {
+    "post_reingest_blockers_resolved": [
+      "toolkit_monster_media_policy_reporting",
+      "phase2_ambiguity_debt_classification"
+    ],
+    "toolkit_media_policy": {
+      "provider_generation_mode": "opt_in_manual_only",
+      "manual_remediation_workflow": [
+        "Monster Management & Generator -> Generate Monster Images",
+        "Module Media Generator -> one-click monster media generation"
+      ],
+      "structural_media_debt_count": 0,
+      "note": "Media debt classified explicitly; manual generation remains operator-invoked via existing toolkit surfaces"
+    },
+    "phase2_ambiguity_debt": {
+      "phrase": "paradox sanctuary",
+      "classified_as": "phase2_ambiguity_debt",
+      "provenance": {
+        "phrase": "paradox sanctuary",
+        "sources": [
+          "areas/TNU001.json#locations[H01].aliases",
+          "areas/TNU001.json#locations[H01].name"
+        ]
+      },
+      "resolution": "Deferred to Phase 2 LLM ambiguity handling; not resolved by broader deterministic heuristics"
+    }
+  },
+  "validation": {
+    "command": ".venv/bin/python core/validation/validate_module_files.py --module The_Hidden_City_of_Numillian --json",
+    "exit_code": 0,
+    "any_failed": false,
+    "module_total_passed": 49,
+    "module_total_failed": 0
+  },
+  "regressions": [
+    {
+      "command": ".venv/bin/python scripts/test_audit_module_gameplay.py",
+      "result": "pass",
+      "tests_ran": 20
+    },
+    {
+      "command": ".venv/bin/python scripts/test_audit_module_readiness.py",
+      "result": "pass",
+      "tests_ran": 9
+    },
+    {
+      "command": ".venv/bin/python scripts/test_audit_module_publishability.py",
+      "result": "pass",
+      "tests_ran": 7
+    },
+    {
+      "command": ".venv/bin/python scripts/test_module_semantic_authority.py",
+      "result": "pass",
+      "tests_ran": 10,
+      "highlights": [
+        "test_unresolved_player_facing_destination_phrase_fails -> phase2_ambiguity_debt"
+      ]
+    }
+  ],
+  "openspec_validation": {
+    "command": "openspec validate gui-builder-numillian-postreingest-gate-reconciliation",
+    "result": "pass"
+  },
+  "notes": [
+    "This report supersedes the gui-builder-numillian-live-blocker-reconciliation canary for the post-reingest slice.",
+    "paradox sanctuary now classified as Phase 2 LLM ambiguity debt with provenance preserved.",
+    "Toolkit monster media policy reporting explicit; manual generation via existing toolkit UI surfaces."
+  ]
+}

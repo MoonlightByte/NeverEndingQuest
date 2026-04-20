@@ -1,0 +1,164 @@
+{
+  "generated_at": "2026-04-19T06:35:32.451934Z",
+  "source": "watcher_vs_toolkit",
+  "schema_version": "1.0",
+  "modules": {
+    "A_Pottsfield_Burial": {
+      "watcher": {
+        "ready": "pass",
+        "publishable": "pass",
+        "sidecar": null,
+        "blocking": 0,
+        "warnings": 0
+      },
+      "toolkit": {
+        "ready": "fail",
+        "publishable": "fail",
+        "provenance": null,
+        "blocking": 1,
+        "warnings": 0,
+        "categories": [
+          "provenance_ordering_bug"
+        ]
+      }
+    },
+    "Keep_of_Doom": {
+      "watcher": {
+        "ready": "fail",
+        "publishable": "fail",
+        "sidecar": null,
+        "blocking": 5,
+        "warnings": 3
+      },
+      "toolkit": {
+        "ready": "fail",
+        "publishable": "fail",
+        "provenance": null,
+        "blocking": 5,
+        "warnings": 3,
+        "categories": [
+          "provenance_ordering_bug"
+        ]
+      }
+    },
+    "Murder_at_the_Drowning_Lass": {
+      "watcher": {
+        "ready": "fail",
+        "publishable": "fail",
+        "sidecar": null,
+        "blocking": 2,
+        "warnings": 3
+      },
+      "toolkit": {
+        "ready": "fail",
+        "publishable": "fail",
+        "provenance": null,
+        "blocking": 2,
+        "warnings": 3,
+        "categories": [
+          "provenance_ordering_bug",
+          "semantic_tooling_debt"
+        ]
+      }
+    },
+    "Night_of_the_Restless_Dead": {
+      "watcher": {
+        "ready": "fail",
+        "publishable": "fail",
+        "sidecar": null,
+        "blocking": 7,
+        "warnings": 2
+      },
+      "toolkit": {
+        "ready": "fail",
+        "publishable": "fail",
+        "provenance": null,
+        "blocking": 7,
+        "warnings": 2,
+        "categories": [
+          "provenance_ordering_bug",
+          "semantic_tooling_debt"
+        ]
+      }
+    },
+    "The_Ancients_Lab": {
+      "watcher": {
+        "ready": "fail",
+        "publishable": "fail",
+        "sidecar": null,
+        "blocking": 2,
+        "warnings": 2
+      },
+      "toolkit": {
+        "ready": "fail",
+        "publishable": "fail",
+        "provenance": null,
+        "blocking": 2,
+        "warnings": 2,
+        "categories": [
+          "provenance_ordering_bug",
+          "semantic_tooling_debt"
+        ]
+      }
+    },
+    "The_Hidden_City_of_Numillian": {
+      "watcher": {
+        "ready": "fail",
+        "publishable": "fail",
+        "sidecar": null,
+        "blocking": 1,
+        "warnings": 2
+      },
+      "toolkit": {
+        "ready": "fail",
+        "publishable": "fail",
+        "provenance": null,
+        "blocking": 1,
+        "warnings": 2,
+        "categories": [
+          "semantic_warning_only",
+          "semantic_tooling_debt"
+        ]
+      }
+    },
+    "The_Pumpkin_Kings_Curse": {
+      "watcher": {
+        "ready": "pass",
+        "publishable": "fail",
+        "sidecar": null,
+        "blocking": 1,
+        "warnings": 2
+      },
+      "toolkit": {
+        "ready": "fail",
+        "publishable": "fail",
+        "provenance": null,
+        "blocking": 2,
+        "warnings": 2,
+        "categories": [
+          "provenance_ordering_bug",
+          "semantic_tooling_debt"
+        ]
+      }
+    },
+    "The_Thornwood_Watch": {
+      "watcher": {
+        "ready": "pass",
+        "publishable": "pass",
+        "sidecar": null,
+        "blocking": 0,
+        "warnings": 0
+      },
+      "toolkit": {
+        "ready": "fail",
+        "publishable": "fail",
+        "provenance": null,
+        "blocking": 1,
+        "warnings": 0,
+        "categories": [
+          "provenance_ordering_bug"
+        ]
+      }
+    }
+  }
+}

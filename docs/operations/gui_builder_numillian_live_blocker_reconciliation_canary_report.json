@@ -1,0 +1,64 @@
+{
+  "module": "The_Hidden_City_of_Numillian",
+  "change": "gui-builder-numillian-live-blocker-reconciliation",
+  "status": "pass",
+  "checked_at": "2026-04-20T00:00:00Z",
+  "summary": {
+    "progression": {
+      "initial_failed": 5,
+      "intermediate_failed": 3,
+      "final_failed": 0
+    },
+    "resolved_blocker_classes": [
+      "monster_reference_closure",
+      "plot_prerequisite_gap",
+      "monster_schema_completion",
+      "spatial_adjacency_non_cardinal"
+    ],
+    "remaining_blockers": []
+  },
+  "validation": {
+    "command": ".venv/bin/python core/validation/validate_module_files.py --module The_Hidden_City_of_Numillian --json",
+    "exit_code": 0,
+    "any_failed": false,
+    "module_total_passed": 49,
+    "module_total_failed": 0,
+    "categories": {
+      "monster": {
+        "passed": 13,
+        "failed": 0
+      },
+      "spatial_contract": {
+        "passed": 5,
+        "failed": 0
+      },
+      "map_area_parity": {
+        "passed": 5,
+        "failed": 0
+      },
+      "runtime_room_reachability": {
+        "passed": 5,
+        "failed": 0
+      }
+    }
+  },
+  "regressions": [
+    {
+      "command": ".venv/bin/python scripts/test_toolkit_homebrew_readiness_gate.py",
+      "result": "pass",
+      "tests_ran": 17
+    },
+    {
+      "command": ".venv/bin/python scripts/test_module_authorized_monster_hydration.py",
+      "result": "pass",
+      "tests_ran": 15,
+      "highlights": [
+        "test_structured_monster_not_filtered_by_npc_overlap"
+      ]
+    }
+  ],
+  "notes": [
+    "This report supersedes the earlier stale artifact that still showed 3 failures.",
+    "Canary now reflects post-fix validation truth for Numillian."
+  ]
+}

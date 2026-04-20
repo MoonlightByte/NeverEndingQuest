@@ -252,6 +252,46 @@ class TestModuleSemanticAuthority(unittest.TestCase):
         missing = result["semantic_authority"]["diagnostics"]["missing_npc_authority"]
         self.assertTrue(any(item.get("npc") == "Hidden Priest" for item in missing))
 
+    def test_evocative_prose_phrase_is_not_promoted_to_destination_authority(self):
+        module_dir = self._create_module(
+            module_slug="Semantic_Test_E",
+            locations=[
+                {
+                    "locationId": "LOC01",
+                    "name": "Outer Gate",
+                    "description": "The party must find sanctuary before nightfall.",
+                    "aliases": ["Gate"],
+                    "npcs": [],
+                }
+            ],
+            plot_points=[
+                {
+                    "id": "PP009",
+                    "title": "Regroup",
+                    "description": "The party must find sanctuary in the next hall.",
+                    "location": "LOC01",
+                }
+            ],
+        )
+
+        module_context = json.loads(
+            (module_dir / "module_context.json").read_text(encoding="utf-8")
+        )
+        module_plot = json.loads(
+            (module_dir / "module_plot.json").read_text(encoding="utf-8")
+        )
+
+        result = enrich_module_semantic_authority(
+            module_slug="Semantic_Test_E",
+            module_context=module_context,
+            module_plot=module_plot,
+            module_dir=module_dir,
+        )
+
+        phrases = result["semantic_authority"]["destination_phrases"]
+        self.assertNotIn("find sanctuary", phrases)
+        self.assertNotIn("next hall", phrases)
+
 
 class TestModuleSemanticAuthorityAudit(unittest.TestCase):
     def setUp(self):
@@ -406,7 +446,7 @@ class TestModuleSemanticAuthorityAudit(unittest.TestCase):
 
         result = audit_module_semantic_authority(module_dir)
         self.assertEqual(result["status"], "fail")
-        self.assertIn("unresolved_destination_phrase", result["blocker_classes"])
+        self.assertIn("phase2_ambiguity_debt", result["blocker_classes"])
 
     def test_missing_npc_authority_with_authored_presence_fails(self):
         payload = {

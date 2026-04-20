@@ -2107,17 +2107,17 @@
         </div>
         
         <div class="tabs">
-            <button class="tab active" onclick="switchTab('packs')">Graphic Pack Management</button>
+            <button class="tab active" onclick="switchTab('builder')">Module Builder</button>
+            <button class="tab" onclick="switchTab('media-gen')">Module Media Generator</button>
+            <button class="tab" onclick="switchTab('packs')">Graphic Pack Management</button>
             <button class="tab" onclick="switchTab('generator')">Monster Management & Generator</button>
             <button class="tab" onclick="switchTab('npcs')">NPC Management & Generator</button>
             <button class="tab" onclick="switchTab('videos')">Video Processor</button>
-            <button class="tab" onclick="switchTab('builder')">Module Builder</button>
-            <button class="tab" onclick="switchTab('media-gen')">Module Media Generator</button>
         </div>
         
         <div class="content">
             <!-- Graphic Pack Management Tab - SINGLE COLUMN LAYOUT -->
-            <div id="packs-tab" class="tab-content active">
+            <div id="packs-tab" class="tab-content">
                 <!-- NEW COMPACT TOP ROW LAYOUT -->
                 <div class="section">
                     <div class="pack-management-top-row">
@@ -2550,15 +2550,11 @@
             </div>
             
             <!-- Module Builder Tab -->
-            <div id="builder-tab" class="tab-content">
+            <div id="builder-tab" class="tab-content active">
                 <div id="main-container">
                     <!-- Left Panel: Builder -->
                     <div class="panel builder-panel">
                         <div class="panel-content">
-                            <p class="intro-text">
-                                This tool allows for the manual creation of a new adventure module. The AI will generate a complete, playable module based on your concept. The more detail you provide in the prompt, the richer and more tailored the adventure will be.
-                            </p>
-
                             <div class="section" style="margin-top: 15px; margin-bottom: 20px;">
                                 <h2 style="font-size: 1.2em; margin-bottom: 10px;">Homebrew Upload (.md)</h2>
                                 <p style="color: #b0b0b0; margin-bottom: 12px;">
@@ -2594,44 +2590,51 @@
                                     </div>
                                 </div>
                             </div>
-                     
-                            <!-- Input Form -->
-                            <form id="module-form">
-                                <label for="module-name">Module Name</label>
-                                <input type="text" id="module-name" name="module-name" class="game-input" 
-                                       placeholder="Enter a unique name for your module (e.g., Shadows_of_Eldoria)" required>
-                                
-                                <div style="display: flex; gap: 20px; margin-bottom: 20px;">
-                                    <div style="flex: 1;">
-                                        <label for="num-areas">Number of Areas</label>
-                                        <input type="number" id="num-areas" name="num-areas" class="game-input" 
-                                               min="1" max="10" value="3" required>
+
+                            <div class="section" style="margin-top: 15px; margin-bottom: 20px;">
+                                <h2 style="font-size: 1.2em; margin-bottom: 10px;">Describe your Adventure</h2>
+                                <p class="intro-text">
+                                    This tool allows for the manual creation of a new adventure module. The AI will generate a complete, playable module based on your concept. The more detail you provide in the prompt, the richer and more tailored the adventure will be.
+                                </p>
+
+                                <!-- Input Form -->
+                                <form id="module-form">
+                                    <label for="module-name">Module Name</label>
+                                    <input type="text" id="module-name" name="module-name" class="game-input" 
+                                           placeholder="Enter a unique name for your module (e.g., Shadows_of_Eldoria)" required>
+                                    
+                                    <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+                                        <div style="flex: 1;">
+                                            <label for="num-areas">Number of Areas</label>
+                                            <input type="number" id="num-areas" name="num-areas" class="game-input" 
+                                                   min="1" max="10" value="3" required>
+                                        </div>
+                                        <div style="flex: 1;">
+                                            <label for="locations-per-area">Default Locations per Area</label>
+                                            <input type="number" id="locations-per-area" name="locations-per-area" class="game-input" 
+                                                   min="1" max="30" value="5" required>
+                                        </div>
                                     </div>
-                                    <div style="flex: 1;">
-                                        <label for="locations-per-area">Default Locations per Area</label>
-                                        <input type="number" id="locations-per-area" name="locations-per-area" class="game-input" 
-                                               min="1" max="30" value="5" required>
+                                    
+                                    <!-- Per-area location customization -->
+                                    <div id="per-area-container" style="display: none; margin-bottom: 20px; padding: 15px; background-color: #1a1a1a; border: 1px solid #444;">
+                                        <label style="margin-bottom: 10px; display: block; color: #FFA500;">Customize Locations per Area (Optional)</label>
+                                        <div id="per-area-inputs" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px;">
+                                            <!-- Dynamically generated inputs will go here -->
+                                        </div>
+                                        <small style="color: #888; display: block; margin-top: 10px;">
+                                            Leave blank to use default value. Each area can have a different number of locations.
+                                        </small>
                                     </div>
-                                </div>
-                                
-                                <!-- Per-area location customization -->
-                                <div id="per-area-container" style="display: none; margin-bottom: 20px; padding: 15px; background-color: #1a1a1a; border: 1px solid #444;">
-                                    <label style="margin-bottom: 10px; display: block; color: #FFA500;">Customize Locations per Area (Optional)</label>
-                                    <div id="per-area-inputs" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px;">
-                                        <!-- Dynamically generated inputs will go here -->
-                                    </div>
-                                    <small style="color: #888; display: block; margin-top: 10px;">
-                                        Leave blank to use default value. Each area can have a different number of locations.
-                                    </small>
-                                </div>
-                                
-                                <label for="ai-narrative">Module Concept (AI Narrative Prompt)</label>
-                                <textarea id="ai-narrative" name="ai-narrative" class="game-input" rows="8" 
-                                          placeholder="Describe your module concept in detail. Include themes, settings, key NPCs, plot hooks, and any specific elements you want included..."
-                                          required></textarea>
-                                
-                                <button type="submit" class="game-button primary" id="generate-btn">Generate Module</button>
-                            </form>
+                                    
+                                    <label for="ai-narrative">Module Concept (AI Narrative Prompt)</label>
+                                    <textarea id="ai-narrative" name="ai-narrative" class="game-input" rows="8" 
+                                              placeholder="Describe your module concept in detail. Include themes, settings, key NPCs, plot hooks, and any specific elements you want included..."
+                                              required></textarea>
+                                    
+                                    <button type="submit" class="game-button primary" id="generate-btn">Generate Module</button>
+                                </form>
+                            </div>
                             
                             <!-- Progress Section -->
                             <div id="generation-progress" style="display: none;">

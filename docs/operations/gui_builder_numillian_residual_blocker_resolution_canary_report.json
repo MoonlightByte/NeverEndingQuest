@@ -1,0 +1,936 @@
+{
+  "module": "The_Hidden_City_of_Numillian",
+  "result": {
+    "status": "repair_budget_exhausted",
+    "stage": "readiness",
+    "job_id": "numillian-residual-blocker-resolution",
+    "module_name": "The_Hidden_City_of_Numillian",
+    "build_result": {
+      "status": "success",
+      "module": "The_Hidden_City_of_Numillian",
+      "module_name": "The_Hidden_City_of_Numillian",
+      "module_path": "modules/The_Hidden_City_of_Numillian"
+    },
+    "validation": {
+      "status": "fail",
+      "checked_at": "2026-04-20T02:10:06Z",
+      "module": "The_Hidden_City_of_Numillian",
+      "command": "/Users/zeug/Projects/NeverEndingQuest/.venv/bin/python core/validation/validate_module_files.py --module The_Hidden_City_of_Numillian --json",
+      "exit_code": 1,
+      "total_failed": 5,
+      "report": {
+        "modules": {
+          "The_Hidden_City_of_Numillian": {
+            "module": "The_Hidden_City_of_Numillian",
+            "total_passed": 43,
+            "total_failed": 5,
+            "files": {
+              "area": {
+                "files": [
+                  "MB001.json (areas/)",
+                  "TMS001.json (areas/)",
+                  "TMS001_BU.json (areas/)",
+                  "VD001.json (areas/)",
+                  "GLQ001.json (areas/)",
+                  "TUS001.json (areas/)",
+                  "MB001_BU.json (areas/)",
+                  "TUS001_BU.json (areas/)",
+                  "VD001_BU.json (areas/)",
+                  "GLQ001_BU.json (areas/)"
+                ],
+                "passed": 10,
+                "failed": 0,
+                "errors": []
+              },
+              "reference_integrity": {
+                "files": [],
+                "passed": 0,
+                "failed": 1,
+                "errors": [
+                  "Echoes of the Party in The Mindweft Expanse/Twilight Cachehouse -> expected monsters/echoes_of_the_party.json"
+                ]
+              },
+              "monster": {
+                "files": [
+                  "manor_specter.json",
+                  "gray_fogling.json",
+                  "salt_wraith.json",
+                  "illusory_shadow.json",
+                  "whispering_shadows.json",
+                  "temporal_doppelganger.json",
+                  "lattice_wraith.json",
+                  "animated_mirror_shard_swarm.json",
+                  "silksoul_shadows.json",
+                  "fractured_devotee.json",
+                  "brine_husk.json",
+                  "shadowrat_swarm.json"
+                ],
+                "passed": 11,
+                "failed": 1,
+                "errors": [
+                  "salt_wraith.json: root: 'size' is a required property; root: 'alignment' is a required property; root: 'armorClass' is a required property"
+                ]
+              },
+              "map": {
+                "files": [
+                  "map_TMS001.json",
+                  "map_VD001.json",
+                  "map_GLQ001.json",
+                  "map_TUS001.json",
+                  "map_MB001.json"
+                ],
+                "passed": 5,
+                "failed": 0,
+                "errors": []
+              },
+              "plot": {
+                "files": [
+                  "module_plot.json"
+                ],
+                "passed": 1,
+                "failed": 0,
+                "errors": []
+              },
+              "party": {
+                "files": [
+                  "party_tracker.json"
+                ],
+                "passed": 1,
+                "failed": 0,
+                "errors": []
+              },
+              "module_context": {
+                "files": [
+                  "module_context.json"
+                ],
+                "passed": 1,
+                "failed": 0,
+                "errors": []
+              },
+              "runtime_room_reachability": {
+                "files": [
+                  "areas/GLQ001.json",
+                  "areas/MB001.json",
+                  "areas/TMS001.json",
+                  "areas/TUS001.json",
+                  "areas/VD001.json"
+                ],
+                "passed": 5,
+                "failed": 0,
+                "errors": []
+              },
+              "map_area_parity": {
+                "files": [
+                  "GLQ001.json <-> map_GLQ001.json",
+                  "MB001.json <-> map_MB001.json",
+                  "TMS001.json <-> map_TMS001.json",
+                  "TUS001.json <-> map_TUS001.json",
+                  "VD001.json <-> map_VD001.json"
+                ],
+                "passed": 5,
+                "failed": 0,
+                "errors": []
+              },
+              "spatial_contract": {
+                "files": [
+                  "GLQ001.json <-> map_GLQ001.json",
+                  "MB001.json <-> map_MB001.json",
+                  "TMS001.json <-> map_TMS001.json",
+                  "TUS001.json <-> map_TUS001.json",
+                  "VD001.json <-> map_VD001.json"
+                ],
+                "passed": 3,
+                "failed": 2,
+                "errors": [
+                  "GLQ001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)",
+                  "GLQ001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)",
+                  "map_GLQ001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)",
+                  "map_GLQ001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)",
+                  "TUS001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)",
+                  "TUS001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)",
+                  "map_TUS001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)",
+                  "map_TUS001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)"
+                ]
+              },
+              "spatial_contract_warning": {
+                "files": [],
+                "passed": 0,
+                "failed": 0,
+                "errors": []
+              },
+              "plot_progression": {
+                "files": [
+                  "module_plot.json"
+                ],
+                "passed": 0,
+                "failed": 1,
+                "errors": [
+                  "/Users/zeug/Projects/NeverEndingQuest/modules/The_Hidden_City_of_Numillian/module_plot.json: conclusion/finale plot PP018 missing explicit prerequisite gate (upstream: PP017)"
+                ]
+              },
+              "connectivity": {
+                "files": [],
+                "passed": 1,
+                "failed": 0,
+                "errors": []
+              }
+            }
+          }
+        },
+        "summary": {
+          "modules_total": 1,
+          "any_failed": true
+        }
+      },
+      "stdout_tail": "passed\": 5,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"spatial_contract\": {\n          \"files\": [\n            \"GLQ001.json <-> map_GLQ001.json\",\n            \"MB001.json <-> map_MB001.json\",\n            \"TMS001.json <-> map_TMS001.json\",\n            \"TUS001.json <-> map_TUS001.json\",\n            \"VD001.json <-> map_VD001.json\"\n          ],\n          \"passed\": 3,\n          \"failed\": 2,\n          \"errors\": [\n            \"GLQ001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)\",\n            \"GLQ001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)\",\n            \"map_GLQ001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)\",\n            \"map_GLQ001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)\",\n            \"TUS001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)\",\n            \"TUS001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)\",\n            \"map_TUS001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)\",\n            \"map_TUS001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)\"\n          ]\n        },\n        \"spatial_contract_warning\": {\n          \"files\": [],\n          \"passed\": 0,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"plot_progression\": {\n          \"files\": [\n            \"module_plot.json\"\n          ],\n          \"passed\": 0,\n          \"failed\": 1,\n          \"errors\": [\n            \"/Users/zeug/Projects/NeverEndingQuest/modules/The_Hidden_City_of_Numillian/module_plot.json: conclusion/finale plot PP018 missing explicit prerequisite gate (upstream: PP017)\"\n          ]\n        },\n        \"connectivity\": {\n          \"files\": [],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        }\n      }\n    }\n  },\n  \"summary\": {\n    \"modules_total\": 1,\n    \"any_failed\": true\n  }\n}\n",
+      "stderr_tail": ""
+    },
+    "readiness_audit": {
+      "status": "fail",
+      "profile": "structural_pre_finisher_v1",
+      "checked_at": "2026-04-20T02:10:07Z",
+      "schema_gate": {
+        "status": "fail",
+        "reason": "schema_validation_failures",
+        "exit_code": 1,
+        "any_failed": true,
+        "missing_jsonschema": false,
+        "raw": {
+          "command": "/Users/zeug/Projects/NeverEndingQuest/.venv/bin/python /Users/zeug/Projects/NeverEndingQuest/core/validation/validate_module_files.py --module The_Hidden_City_of_Numillian --json",
+          "exit_code": 1,
+          "stdout": "{\n  \"modules\": {\n    \"The_Hidden_City_of_Numillian\": {\n      \"module\": \"The_Hidden_City_of_Numillian\",\n      \"total_passed\": 43,\n      \"total_failed\": 5,\n      \"files\": {\n        \"area\": {\n          \"files\": [\n            \"MB001.json (areas/)\",\n            \"TMS001.json (areas/)\",\n            \"TMS001_BU.json (areas/)\",\n            \"VD001.json (areas/)\",\n            \"GLQ001.json (areas/)\",\n            \"TUS001.json (areas/)\",\n            \"MB001_BU.json (areas/)\",\n            \"TUS001_BU.json (areas/)\",\n            \"VD001_BU.json (areas/)\",\n            \"GLQ001_BU.json (areas/)\"\n          ],\n          \"passed\": 10,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"reference_integrity\": {\n          \"files\": [],\n          \"passed\": 0,\n          \"failed\": 1,\n          \"errors\": [\n            \"Echoes of the Party in The Mindweft Expanse/Twilight Cachehouse -> expected monsters/echoes_of_the_party.json\"\n          ]\n        },\n        \"monster\": {\n          \"files\": [\n            \"manor_specter.json\",\n            \"gray_fogling.json\",\n            \"salt_wraith.json\",\n            \"illusory_shadow.json\",\n            \"whispering_shadows.json\",\n            \"temporal_doppelganger.json\",\n            \"lattice_wraith.json\",\n            \"animated_mirror_shard_swarm.json\",\n            \"silksoul_shadows.json\",\n            \"fractured_devotee.json\",\n            \"brine_husk.json\",\n            \"shadowrat_swarm.json\"\n          ],\n          \"passed\": 11,\n          \"failed\": 1,\n          \"errors\": [\n            \"salt_wraith.json: root: 'size' is a required property; root: 'alignment' is a required property; root: 'armorClass' is a required property\"\n          ]\n        },\n        \"map\": {\n          \"files\": [\n            \"map_TMS001.json\",\n            \"map_VD001.json\",\n            \"map_GLQ001.json\",\n            \"map_TUS001.json\",\n            \"map_MB001.json\"\n          ],\n          \"passed\": 5,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"plot\": {\n          \"files\": [\n            \"module_plot.json\"\n          ],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"party\": {\n          \"files\": [\n            \"party_tracker.json\"\n          ],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"module_context\": {\n          \"files\": [\n            \"module_context.json\"\n          ],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"runtime_room_reachability\": {\n          \"files\": [\n            \"areas/GLQ001.json\",\n            \"areas/MB001.json\",\n            \"areas/TMS001.json\",\n            \"areas/TUS001.json\",\n            \"areas/VD001.json\"\n          ],\n          \"passed\": 5,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"map_area_parity\": {\n          \"files\": [\n            \"GLQ001.json <-> map_GLQ001.json\",\n            \"MB001.json <-> map_MB001.json\",\n            \"TMS001.json <-> map_TMS001.json\",\n            \"TUS001.json <-> map_TUS001.json\",\n            \"VD001.json <-> map_VD001.json\"\n          ],\n          \"passed\": 5,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"spatial_contract\": {\n          \"files\": [\n            \"GLQ001.json <-> map_GLQ001.json\",\n            \"MB001.json <-> map_MB001.json\",\n            \"TMS001.json <-> map_TMS001.json\",\n            \"TUS001.json <-> map_TUS001.json\",\n            \"VD001.json <-> map_VD001.json\"\n          ],\n          \"passed\": 3,\n          \"failed\": 2,\n          \"errors\": [\n            \"GLQ001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)\",\n            \"GLQ001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)\",\n            \"map_GLQ001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)\",\n            \"map_GLQ001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)\",\n            \"TUS001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)\",\n            \"TUS001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)\",\n            \"map_TUS001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)\",\n            \"map_TUS001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)\"\n          ]\n        },\n        \"spatial_contract_warning\": {\n          \"files\": [],\n          \"passed\": 0,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"plot_progression\": {\n          \"files\": [\n            \"module_plot.json\"\n          ],\n          \"passed\": 0,\n          \"failed\": 1,\n          \"errors\": [\n            \"/Users/zeug/Projects/NeverEndingQuest/modules/The_Hidden_City_of_Numillian/module_plot.json: conclusion/finale plot PP018 missing explicit prerequisite gate (upstream: PP017)\"\n          ]\n        },\n        \"connectivity\": {\n          \"files\": [],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        }\n      }\n    }\n  },\n  \"summary\": {\n    \"modules_total\": 1,\n    \"any_failed\": true\n  }\n}",
+          "stderr": "",
+          "json": {
+            "modules": {
+              "The_Hidden_City_of_Numillian": {
+                "module": "The_Hidden_City_of_Numillian",
+                "total_passed": 43,
+                "total_failed": 5,
+                "files": {
+                  "area": {
+                    "files": [
+                      "MB001.json (areas/)",
+                      "TMS001.json (areas/)",
+                      "TMS001_BU.json (areas/)",
+                      "VD001.json (areas/)",
+                      "GLQ001.json (areas/)",
+                      "TUS001.json (areas/)",
+                      "MB001_BU.json (areas/)",
+                      "TUS001_BU.json (areas/)",
+                      "VD001_BU.json (areas/)",
+                      "GLQ001_BU.json (areas/)"
+                    ],
+                    "passed": 10,
+                    "failed": 0,
+                    "errors": []
+                  },
+                  "reference_integrity": {
+                    "files": [],
+                    "passed": 0,
+                    "failed": 1,
+                    "errors": [
+                      "Echoes of the Party in The Mindweft Expanse/Twilight Cachehouse -> expected monsters/echoes_of_the_party.json"
+                    ]
+                  },
+                  "monster": {
+                    "files": [
+                      "manor_specter.json",
+                      "gray_fogling.json",
+                      "salt_wraith.json",
+                      "illusory_shadow.json",
+                      "whispering_shadows.json",
+                      "temporal_doppelganger.json",
+                      "lattice_wraith.json",
+                      "animated_mirror_shard_swarm.json",
+                      "silksoul_shadows.json",
+                      "fractured_devotee.json",
+                      "brine_husk.json",
+                      "shadowrat_swarm.json"
+                    ],
+                    "passed": 11,
+                    "failed": 1,
+                    "errors": [
+                      "salt_wraith.json: root: 'size' is a required property; root: 'alignment' is a required property; root: 'armorClass' is a required property"
+                    ]
+                  },
+                  "map": {
+                    "files": [
+                      "map_TMS001.json",
+                      "map_VD001.json",
+                      "map_GLQ001.json",
+                      "map_TUS001.json",
+                      "map_MB001.json"
+                    ],
+                    "passed": 5,
+                    "failed": 0,
+                    "errors": []
+                  },
+                  "plot": {
+                    "files": [
+                      "module_plot.json"
+                    ],
+                    "passed": 1,
+                    "failed": 0,
+                    "errors": []
+                  },
+                  "party": {
+                    "files": [
+                      "party_tracker.json"
+                    ],
+                    "passed": 1,
+                    "failed": 0,
+                    "errors": []
+                  },
+                  "module_context": {
+                    "files": [
+                      "module_context.json"
+                    ],
+                    "passed": 1,
+                    "failed": 0,
+                    "errors": []
+                  },
+                  "runtime_room_reachability": {
+                    "files": [
+                      "areas/GLQ001.json",
+                      "areas/MB001.json",
+                      "areas/TMS001.json",
+                      "areas/TUS001.json",
+                      "areas/VD001.json"
+                    ],
+                    "passed": 5,
+                    "failed": 0,
+                    "errors": []
+                  },
+                  "map_area_parity": {
+                    "files": [
+                      "GLQ001.json <-> map_GLQ001.json",
+                      "MB001.json <-> map_MB001.json",
+                      "TMS001.json <-> map_TMS001.json",
+                      "TUS001.json <-> map_TUS001.json",
+                      "VD001.json <-> map_VD001.json"
+                    ],
+                    "passed": 5,
+                    "failed": 0,
+                    "errors": []
+                  },
+                  "spatial_contract": {
+                    "files": [
+                      "GLQ001.json <-> map_GLQ001.json",
+                      "MB001.json <-> map_MB001.json",
+                      "TMS001.json <-> map_TMS001.json",
+                      "TUS001.json <-> map_TUS001.json",
+                      "VD001.json <-> map_VD001.json"
+                    ],
+                    "passed": 3,
+                    "failed": 2,
+                    "errors": [
+                      "GLQ001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)",
+                      "GLQ001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)",
+                      "map_GLQ001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)",
+                      "map_GLQ001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)",
+                      "TUS001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)",
+                      "TUS001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)",
+                      "map_TUS001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)",
+                      "map_TUS001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)"
+                    ]
+                  },
+                  "spatial_contract_warning": {
+                    "files": [],
+                    "passed": 0,
+                    "failed": 0,
+                    "errors": []
+                  },
+                  "plot_progression": {
+                    "files": [
+                      "module_plot.json"
+                    ],
+                    "passed": 0,
+                    "failed": 1,
+                    "errors": [
+                      "/Users/zeug/Projects/NeverEndingQuest/modules/The_Hidden_City_of_Numillian/module_plot.json: conclusion/finale plot PP018 missing explicit prerequisite gate (upstream: PP017)"
+                    ]
+                  },
+                  "connectivity": {
+                    "files": [],
+                    "passed": 1,
+                    "failed": 0,
+                    "errors": []
+                  }
+                }
+              }
+            },
+            "summary": {
+              "modules_total": 1,
+              "any_failed": true
+            }
+          }
+        }
+      },
+      "gameplay_gate": {
+        "status": "skipped",
+        "reason": "gate_disabled",
+        "exit_code": null
+      },
+      "report": {
+        "module": "The_Hidden_City_of_Numillian",
+        "overall_status": "fail",
+        "gates": {
+          "gameplay": {
+            "status": "skipped",
+            "reason": "gate_disabled",
+            "exit_code": null
+          },
+          "sidecar": {
+            "status": "skipped",
+            "reason": "gate_disabled",
+            "exit_code": null
+          },
+          "schema": {
+            "status": "fail",
+            "reason": "schema_validation_failures",
+            "exit_code": 1,
+            "any_failed": true,
+            "missing_jsonschema": false,
+            "raw": {
+              "command": "/Users/zeug/Projects/NeverEndingQuest/.venv/bin/python /Users/zeug/Projects/NeverEndingQuest/core/validation/validate_module_files.py --module The_Hidden_City_of_Numillian --json",
+              "exit_code": 1,
+              "stdout": "{\n  \"modules\": {\n    \"The_Hidden_City_of_Numillian\": {\n      \"module\": \"The_Hidden_City_of_Numillian\",\n      \"total_passed\": 43,\n      \"total_failed\": 5,\n      \"files\": {\n        \"area\": {\n          \"files\": [\n            \"MB001.json (areas/)\",\n            \"TMS001.json (areas/)\",\n            \"TMS001_BU.json (areas/)\",\n            \"VD001.json (areas/)\",\n            \"GLQ001.json (areas/)\",\n            \"TUS001.json (areas/)\",\n            \"MB001_BU.json (areas/)\",\n            \"TUS001_BU.json (areas/)\",\n            \"VD001_BU.json (areas/)\",\n            \"GLQ001_BU.json (areas/)\"\n          ],\n          \"passed\": 10,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"reference_integrity\": {\n          \"files\": [],\n          \"passed\": 0,\n          \"failed\": 1,\n          \"errors\": [\n            \"Echoes of the Party in The Mindweft Expanse/Twilight Cachehouse -> expected monsters/echoes_of_the_party.json\"\n          ]\n        },\n        \"monster\": {\n          \"files\": [\n            \"manor_specter.json\",\n            \"gray_fogling.json\",\n            \"salt_wraith.json\",\n            \"illusory_shadow.json\",\n            \"whispering_shadows.json\",\n            \"temporal_doppelganger.json\",\n            \"lattice_wraith.json\",\n            \"animated_mirror_shard_swarm.json\",\n            \"silksoul_shadows.json\",\n            \"fractured_devotee.json\",\n            \"brine_husk.json\",\n            \"shadowrat_swarm.json\"\n          ],\n          \"passed\": 11,\n          \"failed\": 1,\n          \"errors\": [\n            \"salt_wraith.json: root: 'size' is a required property; root: 'alignment' is a required property; root: 'armorClass' is a required property\"\n          ]\n        },\n        \"map\": {\n          \"files\": [\n            \"map_TMS001.json\",\n            \"map_VD001.json\",\n            \"map_GLQ001.json\",\n            \"map_TUS001.json\",\n            \"map_MB001.json\"\n          ],\n          \"passed\": 5,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"plot\": {\n          \"files\": [\n            \"module_plot.json\"\n          ],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"party\": {\n          \"files\": [\n            \"party_tracker.json\"\n          ],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"module_context\": {\n          \"files\": [\n            \"module_context.json\"\n          ],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"runtime_room_reachability\": {\n          \"files\": [\n            \"areas/GLQ001.json\",\n            \"areas/MB001.json\",\n            \"areas/TMS001.json\",\n            \"areas/TUS001.json\",\n            \"areas/VD001.json\"\n          ],\n          \"passed\": 5,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"map_area_parity\": {\n          \"files\": [\n            \"GLQ001.json <-> map_GLQ001.json\",\n            \"MB001.json <-> map_MB001.json\",\n            \"TMS001.json <-> map_TMS001.json\",\n            \"TUS001.json <-> map_TUS001.json\",\n            \"VD001.json <-> map_VD001.json\"\n          ],\n          \"passed\": 5,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"spatial_contract\": {\n          \"files\": [\n            \"GLQ001.json <-> map_GLQ001.json\",\n            \"MB001.json <-> map_MB001.json\",\n            \"TMS001.json <-> map_TMS001.json\",\n            \"TUS001.json <-> map_TUS001.json\",\n            \"VD001.json <-> map_VD001.json\"\n          ],\n          \"passed\": 3,\n          \"failed\": 2,\n          \"errors\": [\n            \"GLQ001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)\",\n            \"GLQ001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)\",\n            \"map_GLQ001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)\",\n            \"map_GLQ001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)\",\n            \"TUS001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)\",\n            \"TUS001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)\",\n            \"map_TUS001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)\",\n            \"map_TUS001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)\"\n          ]\n        },\n        \"spatial_contract_warning\": {\n          \"files\": [],\n          \"passed\": 0,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"plot_progression\": {\n          \"files\": [\n            \"module_plot.json\"\n          ],\n          \"passed\": 0,\n          \"failed\": 1,\n          \"errors\": [\n            \"/Users/zeug/Projects/NeverEndingQuest/modules/The_Hidden_City_of_Numillian/module_plot.json: conclusion/finale plot PP018 missing explicit prerequisite gate (upstream: PP017)\"\n          ]\n        },\n        \"connectivity\": {\n          \"files\": [],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        }\n      }\n    }\n  },\n  \"summary\": {\n    \"modules_total\": 1,\n    \"any_failed\": true\n  }\n}",
+              "stderr": "",
+              "json": {
+                "modules": {
+                  "The_Hidden_City_of_Numillian": {
+                    "module": "The_Hidden_City_of_Numillian",
+                    "total_passed": 43,
+                    "total_failed": 5,
+                    "files": {
+                      "area": {
+                        "files": [
+                          "MB001.json (areas/)",
+                          "TMS001.json (areas/)",
+                          "TMS001_BU.json (areas/)",
+                          "VD001.json (areas/)",
+                          "GLQ001.json (areas/)",
+                          "TUS001.json (areas/)",
+                          "MB001_BU.json (areas/)",
+                          "TUS001_BU.json (areas/)",
+                          "VD001_BU.json (areas/)",
+                          "GLQ001_BU.json (areas/)"
+                        ],
+                        "passed": 10,
+                        "failed": 0,
+                        "errors": []
+                      },
+                      "reference_integrity": {
+                        "files": [],
+                        "passed": 0,
+                        "failed": 1,
+                        "errors": [
+                          "Echoes of the Party in The Mindweft Expanse/Twilight Cachehouse -> expected monsters/echoes_of_the_party.json"
+                        ]
+                      },
+                      "monster": {
+                        "files": [
+                          "manor_specter.json",
+                          "gray_fogling.json",
+                          "salt_wraith.json",
+                          "illusory_shadow.json",
+                          "whispering_shadows.json",
+                          "temporal_doppelganger.json",
+                          "lattice_wraith.json",
+                          "animated_mirror_shard_swarm.json",
+                          "silksoul_shadows.json",
+                          "fractured_devotee.json",
+                          "brine_husk.json",
+                          "shadowrat_swarm.json"
+                        ],
+                        "passed": 11,
+                        "failed": 1,
+                        "errors": [
+                          "salt_wraith.json: root: 'size' is a required property; root: 'alignment' is a required property; root: 'armorClass' is a required property"
+                        ]
+                      },
+                      "map": {
+                        "files": [
+                          "map_TMS001.json",
+                          "map_VD001.json",
+                          "map_GLQ001.json",
+                          "map_TUS001.json",
+                          "map_MB001.json"
+                        ],
+                        "passed": 5,
+                        "failed": 0,
+                        "errors": []
+                      },
+                      "plot": {
+                        "files": [
+                          "module_plot.json"
+                        ],
+                        "passed": 1,
+                        "failed": 0,
+                        "errors": []
+                      },
+                      "party": {
+                        "files": [
+                          "party_tracker.json"
+                        ],
+                        "passed": 1,
+                        "failed": 0,
+                        "errors": []
+                      },
+                      "module_context": {
+                        "files": [
+                          "module_context.json"
+                        ],
+                        "passed": 1,
+                        "failed": 0,
+                        "errors": []
+                      },
+                      "runtime_room_reachability": {
+                        "files": [
+                          "areas/GLQ001.json",
+                          "areas/MB001.json",
+                          "areas/TMS001.json",
+                          "areas/TUS001.json",
+                          "areas/VD001.json"
+                        ],
+                        "passed": 5,
+                        "failed": 0,
+                        "errors": []
+                      },
+                      "map_area_parity": {
+                        "files": [
+                          "GLQ001.json <-> map_GLQ001.json",
+                          "MB001.json <-> map_MB001.json",
+                          "TMS001.json <-> map_TMS001.json",
+                          "TUS001.json <-> map_TUS001.json",
+                          "VD001.json <-> map_VD001.json"
+                        ],
+                        "passed": 5,
+                        "failed": 0,
+                        "errors": []
+                      },
+                      "spatial_contract": {
+                        "files": [
+                          "GLQ001.json <-> map_GLQ001.json",
+                          "MB001.json <-> map_MB001.json",
+                          "TMS001.json <-> map_TMS001.json",
+                          "TUS001.json <-> map_TUS001.json",
+                          "VD001.json <-> map_VD001.json"
+                        ],
+                        "passed": 3,
+                        "failed": 2,
+                        "errors": [
+                          "GLQ001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)",
+                          "GLQ001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)",
+                          "map_GLQ001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)",
+                          "map_GLQ001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)",
+                          "TUS001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)",
+                          "TUS001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)",
+                          "map_TUS001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)",
+                          "map_TUS001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)"
+                        ]
+                      },
+                      "spatial_contract_warning": {
+                        "files": [],
+                        "passed": 0,
+                        "failed": 0,
+                        "errors": []
+                      },
+                      "plot_progression": {
+                        "files": [
+                          "module_plot.json"
+                        ],
+                        "passed": 0,
+                        "failed": 1,
+                        "errors": [
+                          "/Users/zeug/Projects/NeverEndingQuest/modules/The_Hidden_City_of_Numillian/module_plot.json: conclusion/finale plot PP018 missing explicit prerequisite gate (upstream: PP017)"
+                        ]
+                      },
+                      "connectivity": {
+                        "files": [],
+                        "passed": 1,
+                        "failed": 0,
+                        "errors": []
+                      }
+                    }
+                  }
+                },
+                "summary": {
+                  "modules_total": 1,
+                  "any_failed": true
+                }
+              }
+            }
+          },
+          "continuity": {
+            "status": "skipped",
+            "reason": "gate_disabled",
+            "exit_code": null
+          }
+        },
+        "blocking_errors": [
+          "schema_gate_failed: schema_validation_failures"
+        ],
+        "fix_list": [
+          "Fix schema validation failures from core/validation/validate_module_files.py"
+        ],
+        "strict_contract": {
+          "source": "watcher",
+          "requires_gameplay": false,
+          "requires_sidecar": false,
+          "requires_toolkit_provenance": false,
+          "requires_continuity": false,
+          "requires_schema": true,
+          "strict_gameplay": false,
+          "strict_continuity": false
+        },
+        "exit_code": 1
+      }
+    },
+    "repair_attempts": [
+      {
+        "status": "failed",
+        "mode": "deterministic",
+        "started_at": "2026-04-20T02:10:06Z",
+        "categories": {
+          "reference_integrity": 1,
+          "monster": 1,
+          "spatial_contract": 2,
+          "plot_progression": 1
+        },
+        "repairs": {
+          "party_month": {
+            "status": "skipped",
+            "reason": "month_already_valid",
+            "month": "Firstmonth"
+          },
+          "monster_materialization": {
+            "status": "skipped",
+            "reason": "shared_monster_hydration",
+            "hydration_result": {
+              "status": "success",
+              "created_count": 0,
+              "skipped_existing_count": 12,
+              "missing_in_bestiary_count": 0,
+              "missing_names": [],
+              "path_conflicts_detected": 0,
+              "path_conflicts_repaired": 0,
+              "conflict_paths": [],
+              "hydration_modes": {
+                "existing": 12,
+                "reuse": 0,
+                "bestiary": 0,
+                "generated": 0
+              },
+              "blocker_classes": {},
+              "blocked_count": 0,
+              "monster_results": [
+                {
+                  "requested_name": "Animated Mirror Shard Swarm",
+                  "requested_slug": "animated_mirror_shard_swarm",
+                  "canonical_slug": "animated_mirror_shard_swarm",
+                  "canonical_name": "Animated Mirror Shard Swarm",
+                  "ok": true,
+                  "mode": "existing",
+                  "blocker_class": "",
+                  "error_message": "",
+                  "resolution_mode": "exact",
+                  "bestiary_missing": false
+                },
+                {
+                  "requested_name": "Brine Husk",
+                  "requested_slug": "brine_husk",
+                  "canonical_slug": "brine_husk",
+                  "canonical_name": "Brine Husk",
+                  "ok": true,
+                  "mode": "existing",
+                  "blocker_class": "",
+                  "error_message": "",
+                  "resolution_mode": "exact",
+                  "bestiary_missing": false
+                },
+                {
+                  "requested_name": "Fractured Devotee",
+                  "requested_slug": "fractured_devotee",
+                  "canonical_slug": "fractured_devotee",
+                  "canonical_name": "Fractured Devotee",
+                  "ok": true,
+                  "mode": "existing",
+                  "blocker_class": "",
+                  "error_message": "",
+                  "resolution_mode": "exact",
+                  "bestiary_missing": false
+                },
+                {
+                  "requested_name": "Gray Fogling",
+                  "requested_slug": "gray_fogling",
+                  "canonical_slug": "gray_fogling",
+                  "canonical_name": "Gray Fogling",
+                  "ok": true,
+                  "mode": "existing",
+                  "blocker_class": "",
+                  "error_message": "",
+                  "resolution_mode": "exact",
+                  "bestiary_missing": false
+                },
+                {
+                  "requested_name": "Illusory Shadow",
+                  "requested_slug": "illusory_shadow",
+                  "canonical_slug": "illusory_shadow",
+                  "canonical_name": "Illusory Shadow",
+                  "ok": true,
+                  "mode": "existing",
+                  "blocker_class": "",
+                  "error_message": "",
+                  "resolution_mode": "exact",
+                  "bestiary_missing": false
+                },
+                {
+                  "requested_name": "Lattice Wraith",
+                  "requested_slug": "lattice_wraith",
+                  "canonical_slug": "lattice_wraith",
+                  "canonical_name": "Lattice Wraith",
+                  "ok": true,
+                  "mode": "existing",
+                  "blocker_class": "",
+                  "error_message": "",
+                  "resolution_mode": "exact",
+                  "bestiary_missing": false
+                },
+                {
+                  "requested_name": "Manor Specter",
+                  "requested_slug": "manor_specter",
+                  "canonical_slug": "manor_specter",
+                  "canonical_name": "Manor Specter",
+                  "ok": true,
+                  "mode": "existing",
+                  "blocker_class": "",
+                  "error_message": "",
+                  "resolution_mode": "exact",
+                  "bestiary_missing": false
+                },
+                {
+                  "requested_name": "Salt Wraith",
+                  "requested_slug": "salt_wraith",
+                  "canonical_slug": "salt_wraith",
+                  "canonical_name": "Salt Wraith",
+                  "ok": true,
+                  "mode": "existing",
+                  "blocker_class": "",
+                  "error_message": "",
+                  "resolution_mode": "exact",
+                  "bestiary_missing": false
+                },
+                {
+                  "requested_name": "Shadowrat Swarm",
+                  "requested_slug": "shadowrat_swarm",
+                  "canonical_slug": "shadowrat_swarm",
+                  "canonical_name": "Shadowrat Swarm",
+                  "ok": true,
+                  "mode": "existing",
+                  "blocker_class": "",
+                  "error_message": "",
+                  "resolution_mode": "exact",
+                  "bestiary_missing": false
+                },
+                {
+                  "requested_name": "Silksoul Shadows",
+                  "requested_slug": "silksoul_shadows",
+                  "canonical_slug": "silksoul_shadows",
+                  "canonical_name": "Silksoul Shadows",
+                  "ok": true,
+                  "mode": "existing",
+                  "blocker_class": "",
+                  "error_message": "",
+                  "resolution_mode": "exact",
+                  "bestiary_missing": false
+                },
+                {
+                  "requested_name": "Temporal Doppelganger",
+                  "requested_slug": "temporal_doppelganger",
+                  "canonical_slug": "temporal_doppelganger",
+                  "canonical_name": "Temporal Doppelganger",
+                  "ok": true,
+                  "mode": "existing",
+                  "blocker_class": "",
+                  "error_message": "",
+                  "resolution_mode": "exact",
+                  "bestiary_missing": false
+                },
+                {
+                  "requested_name": "Whispering Shadows",
+                  "requested_slug": "whispering_shadows",
+                  "canonical_slug": "whispering_shadows",
+                  "canonical_name": "Whispering Shadows",
+                  "ok": true,
+                  "mode": "existing",
+                  "blocker_class": "",
+                  "error_message": "",
+                  "resolution_mode": "exact",
+                  "bestiary_missing": false
+                }
+              ],
+              "candidate_sources": {
+                "seed_count": 0,
+                "authored_count": 12,
+                "seed_missing_fallback_used": true
+              },
+              "module_path": "modules/The_Hidden_City_of_Numillian",
+              "error": null
+            }
+          },
+          "monster_reference_closure": {
+            "status": "failed",
+            "reason": "validator_reference_closure_incomplete",
+            "target_slugs": [
+              "echoes_of_the_party"
+            ],
+            "unresolved_slugs": [
+              "echoes_of_the_party"
+            ],
+            "results": [
+              {
+                "ok": false,
+                "error_class": "unauthorized_monster_reference",
+                "error_message": "Monster 'Echoes Of The Party' is not authorized by authored module content for 'The_Hidden_City_of_Numillian'. No canonical match found.",
+                "target_path": "modules/The_Hidden_City_of_Numillian/monsters/echoes_of_the_party.json",
+                "slug": "echoes_of_the_party",
+                "requested_name": "Echoes Of The Party",
+                "requested_slug": "echoes_of_the_party",
+                "canonical_name": "Echoes Of The Party",
+                "canonical_slug": "echoes_of_the_party",
+                "resolution_mode": "unauthorized",
+                "reason": "no_canonical_match",
+                "candidates": [],
+                "sources": [],
+                "bestiary_missing": true
+              }
+            ],
+            "created": 0,
+            "reused": 0,
+            "existing": 0
+          },
+          "monster_schema_completion": {
+            "status": "failed",
+            "reason": "monster_schema_completion_incomplete",
+            "module": "The_Hidden_City_of_Numillian",
+            "changed_files": [],
+            "unresolved_files": [
+              "salt_wraith.json"
+            ]
+          },
+          "plot_prerequisites": {
+            "status": "skipped",
+            "reason": "finale_prerequisites_already_present",
+            "finale": "PP019"
+          },
+          "spatial_contract": {
+            "status": "failed",
+            "reason": "spatial_contradictions_unchanged",
+            "remediation": {
+              "module": "The_Hidden_City_of_Numillian",
+              "processed": 5,
+              "changed": 0,
+              "errors": []
+            },
+            "pre_contradictions": 8,
+            "post_contradictions": 8,
+            "advanced": false,
+            "debt_classification": "author_structural_debt"
+          },
+          "derived_artifacts": {
+            "status": "skipped",
+            "reason": "derived_artifacts_already_stable"
+          }
+        },
+        "changed": false,
+        "completed_at": "2026-04-20T02:10:07Z",
+        "pass": 1
+      }
+    ],
+    "deterministic_passes": 1,
+    "semantic_passes": 0,
+    "convergence_outcome": "repair_budget_exhausted",
+    "fixed_point_detected": false,
+    "residual_blocker_classes": [
+      "monster_reference_closure_gap",
+      "monster_schema_completion_gap",
+      "plot_prerequisite_gap",
+      "spatial_adjacency_convergence_gap",
+      "spatial_structural_debt"
+    ],
+    "residual_failure_categories": {
+      "reference_integrity": 1,
+      "monster": 1,
+      "spatial_contract": 2,
+      "plot_progression": 1
+    },
+    "residual_failure_errors": {
+      "reference_integrity": [
+        "Echoes of the Party in The Mindweft Expanse/Twilight Cachehouse -> expected monsters/echoes_of_the_party.json"
+      ],
+      "monster": [
+        "salt_wraith.json: root: 'size' is a required property; root: 'alignment' is a required property; root: 'armorClass' is a required property"
+      ],
+      "spatial_contract": [
+        "GLQ001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)",
+        "GLQ001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)",
+        "map_GLQ001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)",
+        "map_GLQ001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)",
+        "TUS001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)",
+        "TUS001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)",
+        "map_TUS001.json: connected rooms G03->G04 are not cardinally adjacent (X10Y11 -> X12Y10)",
+        "map_TUS001.json: connected rooms G04->G03 are not cardinally adjacent (X12Y10 -> X10Y11)"
+      ],
+      "plot_progression": [
+        "/Users/zeug/Projects/NeverEndingQuest/modules/The_Hidden_City_of_Numillian/module_plot.json: conclusion/finale plot PP018 missing explicit prerequisite gate (upstream: PP017)"
+      ]
+    },
+    "residual_closure_advanced": false,
+    "ready_for_finishing": false,
+    "workspace_artifacts": {
+      "readiness_validation_report": "/var/folders/p_/42dxywxs37b9812bnhsy3jdr0000gn/T/numillian-residual-1t9z8e76/readiness_validation_report.json",
+      "readiness_audit_report": "/var/folders/p_/42dxywxs37b9812bnhsy3jdr0000gn/T/numillian-residual-1t9z8e76/readiness_audit_report.json",
+      "repair_report": "/var/folders/p_/42dxywxs37b9812bnhsy3jdr0000gn/T/numillian-residual-1t9z8e76/repair_report.json"
+    },
+    "completed_at": "2026-04-20T02:10:07Z"
+  },
+  "summary": {
+    "status": "repair_budget_exhausted",
+    "ready_for_finishing": false,
+    "convergence_outcome": "repair_budget_exhausted",
+    "fixed_point_detected": false,
+    "residual_closure_advanced": false,
+    "residual_blocker_classes": [
+      "monster_reference_closure_gap",
+      "monster_schema_completion_gap",
+      "plot_prerequisite_gap",
+      "spatial_adjacency_convergence_gap",
+      "spatial_structural_debt"
+    ],
+    "residual_failure_categories": {
+      "reference_integrity": 1,
+      "monster": 1,
+      "spatial_contract": 2,
+      "plot_progression": 1
+    },
+    "comparison_to_previous": {
+      "removed_residual_classes": [],
+      "added_residual_classes": [],
+      "previous_total_failure_count": 5,
+      "current_total_failure_count": 5,
+      "advanced_beyond_previous": false
+    },
+    "remaining_failure_classification": {
+      "repair_engine_gap": [
+        "monster_reference_closure_gap",
+        "monster_schema_completion_gap",
+        "plot_prerequisite_gap",
+        "spatial_adjacency_convergence_gap"
+      ],
+      "author_or_content_debt": [
+        "spatial_structural_debt"
+      ]
+    }
+  }
+}

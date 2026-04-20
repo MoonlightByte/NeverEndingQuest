@@ -74,7 +74,7 @@ def run_gate_command(command: List[str]) -> Dict[str, Any]:
 
 def evaluate_gameplay_gate(result: Dict[str, Any]) -> Dict[str, Any]:
     """Evaluate gameplay parity gate result."""
-    payload = result.get("json") or {}
+    payload = _extract_gameplay_payload(result)
     blocking_errors = payload.get("blocking_errors", []) if isinstance(payload, dict) else []
     warnings = payload.get("warnings", []) if isinstance(payload, dict) else []
 
@@ -96,6 +96,18 @@ def evaluate_gameplay_gate(result: Dict[str, Any]) -> Dict[str, Any]:
         "warning_count": len(warnings),
         "raw": result,
     }
+
+
+def _extract_gameplay_payload(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize gameplay gate payload across nested and legacy output shapes."""
+    payload = result.get("json") or {}
+    if not isinstance(payload, dict):
+        return {}
+
+    target_payload = payload.get("target")
+    if isinstance(target_payload, dict):
+        return target_payload
+    return payload
 
 
 def evaluate_sidecar_gate(result: Dict[str, Any]) -> Dict[str, Any]:
@@ -123,6 +135,106 @@ def evaluate_sidecar_gate(result: Dict[str, Any]) -> Dict[str, Any]:
         "sidecar_found": sidecar_found,
         "valid": valid,
         "raw": result,
+    }
+
+
+def evaluate_toolkit_provenance_gate(
+    module_slug: str,
+    source: str,
+) -> Dict[str, Any]:
+    """Evaluate toolkit-native provenance artifact gate."""
+    source_value = str(source or "").strip().lower()
+    if source_value != "toolkit":
+        return {
+            "status": "fail",
+            "reason": "unsupported_source",
+            "source": source_value,
+            "exit_code": 1,
+            "raw": {
+                "json": {
+                    "valid": False,
+                    "error": f"Unsupported source for toolkit provenance gate: {source_value}",
+                }
+            },
+        }
+
+    report_path = REPO_ROOT / "modules" / module_slug / "toolkit_build_report.json"
+    if not report_path.exists():
+        return {
+            "status": "fail",
+            "reason": "toolkit_provenance_missing",
+            "source": source_value,
+            "exit_code": 1,
+            "raw": {
+                "json": {
+                    "valid": False,
+                    "path": str(report_path),
+                    "error": "Toolkit provenance artifact missing",
+                }
+            },
+        }
+
+    try:
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {
+            "status": "fail",
+            "reason": "toolkit_provenance_invalid_json",
+            "source": source_value,
+            "exit_code": 1,
+            "raw": {
+                "json": {
+                    "valid": False,
+                    "path": str(report_path),
+                    "error": str(exc),
+                }
+            },
+        }
+
+    if not isinstance(payload, dict):
+        return {
+            "status": "fail",
+            "reason": "toolkit_provenance_invalid_shape",
+            "source": source_value,
+            "exit_code": 1,
+            "raw": {
+                "json": {
+                    "valid": False,
+                    "path": str(report_path),
+                    "error": "toolkit_build_report.json root is not an object",
+                }
+            },
+        }
+
+    module_value = str(payload.get("module_slug") or "").strip()
+    if module_value != module_slug:
+        return {
+            "status": "fail",
+            "reason": "toolkit_provenance_module_mismatch",
+            "source": source_value,
+            "exit_code": 1,
+            "raw": {
+                "json": {
+                    "valid": False,
+                    "path": str(report_path),
+                    "module_slug": module_value,
+                    "expected_module_slug": module_slug,
+                }
+            },
+        }
+
+    return {
+        "status": "pass",
+        "reason": "pass",
+        "source": source_value,
+        "exit_code": 0,
+        "raw": {
+            "json": {
+                "valid": True,
+                "path": str(report_path),
+                "module_slug": module_value,
+            }
+        },
     }
 
 
@@ -196,18 +308,48 @@ def evaluate_continuity_gate(result: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _build_fix_list(gates: Dict[str, Dict[str, Any]]) -> List[str]:
+def _build_fix_list(gates: Dict[str, Dict[str, Any]], source: str) -> List[str]:
     """Generate deterministic fix recommendations for failed gates."""
     fixes: List[str] = []
 
     gameplay = gates.get("gameplay", {})
     if gameplay.get("status") == "fail":
         fixes.append("Resolve gameplay blocking errors from scripts/audit_module_gameplay.py output")
+        gameplay_json = _extract_gameplay_payload(gameplay.get("raw") or {})
+        media_findings = (
+            gameplay_json.get("monster_media_findings", [])
+            if isinstance(gameplay_json, dict)
+            else []
+        )
+        structural_missing = [
+            entry
+            for entry in media_findings
+            if isinstance(entry, dict)
+            and str(entry.get("confidence") or "") == "structural"
+            and str(entry.get("outcome") or "")
+            in {"provider_disabled_missing", "attempted_but_unresolved"}
+        ]
+        if source == "toolkit" and structural_missing:
+            fixes.append(
+                "Run toolkit manual monster media remediation: Monster Management & Generator -> Generate Monster Images"
+            )
+            fixes.append(
+                "Optional batch path: Module Media Generator -> one-click monster media generation"
+            )
 
     sidecar = gates.get("sidecar", {})
     if sidecar.get("status") == "fail":
-        if sidecar.get("reason") == "sidecar_missing":
+        sidecar_reason = str(sidecar.get("reason") or "")
+        if sidecar_reason == "sidecar_missing":
             fixes.append("Generate ingest sidecar artifact for slug via homebrew ingest pipeline")
+        elif sidecar_reason.startswith("toolkit_provenance"):
+            fixes.append(
+                "Generate toolkit provenance artifact by running toolkit finisher to write modules/<slug>/toolkit_build_report.json"
+            )
+        elif sidecar_reason == "unsupported_source":
+            fixes.append(
+                "Use supported readiness source contract: source must be 'watcher' or 'toolkit'"
+            )
         else:
             fixes.append("Fix sidecar contract issues reported by scripts/homebrew_sidecar_audit.py")
 
@@ -241,6 +383,7 @@ def audit_module_readiness(
     include_schema_gate: bool = True,
     strict_gameplay: bool = True,
     strict_continuity: bool = True,
+    source: str = "watcher",
 ) -> Dict[str, Any]:
     """Run strict module readiness audit across configured gates."""
     python_exec = sys.executable
@@ -267,17 +410,37 @@ def audit_module_readiness(
             "exit_code": None,
         }
 
+    source_value = str(source or "").strip().lower()
     if include_sidecar_gate:
-        sidecar_cmd = [
-            python_exec,
-            str(SIDECAR_AUDIT_SCRIPT),
-            "--slug",
-            module_slug,
-            "--require-success",
-            "--json",
-        ]
-        sidecar_raw = run_gate_command(sidecar_cmd)
-        gates["sidecar"] = evaluate_sidecar_gate(sidecar_raw)
+        if source_value == "watcher":
+            sidecar_cmd = [
+                python_exec,
+                str(SIDECAR_AUDIT_SCRIPT),
+                "--slug",
+                module_slug,
+                "--require-success",
+                "--json",
+            ]
+            sidecar_raw = run_gate_command(sidecar_cmd)
+            gates["sidecar"] = evaluate_sidecar_gate(sidecar_raw)
+        elif source_value == "toolkit":
+            gates["sidecar"] = evaluate_toolkit_provenance_gate(
+                module_slug=module_slug,
+                source=source_value,
+            )
+        else:
+            gates["sidecar"] = {
+                "status": "fail",
+                "reason": "unsupported_source",
+                "source": source_value,
+                "exit_code": 1,
+                "raw": {
+                    "json": {
+                        "valid": False,
+                        "error": f"Unsupported readiness source: {source_value}",
+                    }
+                },
+            }
     else:
         gates["sidecar"] = {
             "status": "skipped",
@@ -326,7 +489,41 @@ def audit_module_readiness(
         if gate.get("status") == "fail":
             blocking_errors.append(f"{gate_name}_gate_failed: {gate.get('reason')}")
 
-    fix_list = _build_fix_list(gates)
+    fix_list = _build_fix_list(gates, source=source_value)
+
+    toolkit_media_policy: Dict[str, Any] = {}
+    if source_value == "toolkit":
+        gameplay_json = _extract_gameplay_payload(
+            ((gates.get("gameplay") or {}).get("raw") or {})
+        )
+        media_findings = (
+            gameplay_json.get("monster_media_findings", [])
+            if isinstance(gameplay_json, dict)
+            else []
+        )
+        structural_media_debt = [
+            entry
+            for entry in media_findings
+            if isinstance(entry, dict)
+            and str(entry.get("confidence") or "") == "structural"
+            and str(entry.get("outcome") or "")
+            in {"provider_disabled_missing", "attempted_but_unresolved"}
+        ]
+        toolkit_media_policy = {
+            "provider_generation_mode": "opt_in_manual_only",
+            "manual_remediation_workflow": [
+                "Monster Management & Generator -> Generate Monster Images",
+                "Module Media Generator -> one-click monster media generation",
+            ],
+            "structural_media_debt_count": len(structural_media_debt),
+            "structural_media_debt_slugs": sorted(
+                {
+                    str(entry.get("slug") or "").strip()
+                    for entry in structural_media_debt
+                    if str(entry.get("slug") or "").strip()
+                }
+            ),
+        }
 
     overall_pass = True
     for gate_name in ["gameplay", "sidecar", "schema", "continuity"]:
@@ -341,13 +538,17 @@ def audit_module_readiness(
         "blocking_errors": blocking_errors,
         "fix_list": fix_list,
         "strict_contract": {
+            "source": source_value,
             "requires_gameplay": include_gameplay_gate,
-            "requires_sidecar": include_sidecar_gate,
+            "requires_sidecar": include_sidecar_gate and source_value == "watcher",
+            "requires_toolkit_provenance": include_sidecar_gate
+            and source_value == "toolkit",
             "requires_continuity": include_continuity_gate,
             "requires_schema": include_schema_gate,
             "strict_gameplay": strict_gameplay,
             "strict_continuity": strict_continuity,
         },
+        "toolkit_media_policy": toolkit_media_policy,
         "exit_code": 0 if overall_pass else 1,
     }
 
@@ -389,6 +590,12 @@ def _create_parser() -> argparse.ArgumentParser:
         default=False,
         help="Disable strict gameplay heuristic blocking (development only)",
     )
+    parser.add_argument(
+        "--source",
+        type=str,
+        default="watcher",
+        help="Readiness provenance source: watcher or toolkit",
+    )
     return parser
 
 
@@ -427,6 +634,7 @@ def main() -> int:
         include_schema_gate=not args.no_schema_gate,
         strict_gameplay=not args.gameplay_dev_mode,
         strict_continuity=not args.continuity_warn_mode,
+        source=args.source,
     )
 
     if args.json:

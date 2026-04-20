@@ -17,13 +17,14 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from scripts.remediate_module_coordinates import remediate_module
 from scripts.audit_module_readiness import audit_module_readiness
 from utils.calendar_migration import MONTH_CONVERSION
 from utils.enhanced_logger import error, info, warning
 from utils.file_operations import safe_read_json, safe_write_json
+from utils.spatial_contract import build_direction_map_from_rooms
 from utils.toolkit_homebrew_upload_contract import (
     get_workspace_files,
     load_json_artifact,
@@ -183,6 +184,180 @@ def _extract_failure_categories(validation_report: Dict[str, Any]) -> Dict[str, 
     return result
 
 
+def _extract_failure_errors(validation_report: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Return failing validator categories with normalized error strings."""
+    result: Dict[str, List[str]] = {}
+    report = _extract_module_validation_report(
+        validation_report.get("report") or {},
+        str(validation_report.get("module") or "").strip(),
+    )
+    grouped = (report or {}).get("files") if isinstance(report, dict) else {}
+    for category, section in grouped.items():
+        failed_count = int((section or {}).get("failed", 0) or 0)
+        if failed_count <= 0:
+            continue
+        errors = section.get("errors") or []
+        result[str(category)] = [
+            str(item).strip() for item in errors if str(item).strip()
+        ]
+    return result
+
+
+def _extract_missing_monster_reference_slugs(
+    validation_report: Dict[str, Any],
+) -> List[str]:
+    """Extract missing monster slugs from reference-integrity validator errors."""
+    errors = _extract_failure_errors(validation_report).get("reference_integrity", [])
+    slugs: Set[str] = set()
+    for error_text in errors:
+        match = re.search(r"expected\s+monsters/([a-z0-9_]+)\.json", error_text)
+        if match:
+            slugs.add(match.group(1).strip().lower())
+    return sorted(slugs)
+
+
+def _extract_plot_prerequisite_edges(
+    validation_report: Dict[str, Any],
+) -> List[Tuple[str, str]]:
+    """Extract validator-targeted prerequisite edges (target <- upstream)."""
+    errors = _extract_failure_errors(validation_report).get("plot_progression", [])
+    edges: List[Tuple[str, str]] = []
+    pattern = re.compile(
+        r"plot\s+(PP\d+)\s+missing\s+explicit\s+prerequisite\s+gate\s+\(upstream:\s*(PP\d+)\)",
+        re.IGNORECASE,
+    )
+    for error_text in errors:
+        match = pattern.search(str(error_text))
+        if not match:
+            continue
+        target_id = str(match.group(1) or "").upper().strip()
+        upstream_id = str(match.group(2) or "").upper().strip()
+        if target_id and upstream_id:
+            edges.append((target_id, upstream_id))
+    return edges
+
+
+def _extract_spatial_failure_area_ids(validation_report: Dict[str, Any]) -> List[str]:
+    """Extract failing area ids from spatial contract error messages."""
+    errors = _extract_failure_errors(validation_report).get("spatial_contract", [])
+    area_ids: Set[str] = set()
+    for error_text in errors:
+        for match in re.findall(r"\b([A-Z]{3}\d{3})\.json\b", str(error_text)):
+            area_ids.add(str(match).strip().upper())
+    return sorted(area_ids)
+
+
+def _deterministic_sync_external_map_parity(
+    module_dir: Path,
+    validation_report: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Synchronize external map room coordinates/connections from area truth."""
+    area_ids = _extract_spatial_failure_area_ids(validation_report)
+    if not area_ids:
+        return {"status": "skipped", "reason": "spatial_area_targets_missing"}
+
+    changed_maps: List[str] = []
+    failed_maps: List[str] = []
+
+    for area_id in area_ids:
+        area_path = module_dir / "areas" / f"{area_id}.json"
+        map_path = module_dir / f"map_{area_id}.json"
+        if not area_path.exists() or not map_path.exists():
+            continue
+
+        area_data = safe_read_json(str(area_path))
+        map_data = safe_read_json(str(map_path))
+        if not isinstance(area_data, dict) or not isinstance(map_data, dict):
+            failed_maps.append(map_path.name)
+            continue
+
+        locations = area_data.get("locations") or []
+        rooms = map_data.get("rooms") or []
+        if not isinstance(locations, list) or not isinstance(rooms, list):
+            failed_maps.append(map_path.name)
+            continue
+
+        location_lookup: Dict[str, Dict[str, Any]] = {}
+        for location in locations:
+            if not isinstance(location, dict):
+                continue
+            location_id = str(location.get("locationId") or "").strip()
+            if not location_id:
+                continue
+            location_lookup[location_id] = location
+
+        map_changed = False
+        rebuilt_rooms: List[Dict[str, Any]] = []
+        for room in rooms:
+            if not isinstance(room, dict):
+                continue
+            room_copy = dict(room)
+            room_id = str(room_copy.get("id") or "").strip()
+            area_location = location_lookup.get(room_id)
+            if isinstance(area_location, dict):
+                area_coordinate = str(area_location.get("coordinates") or "").strip()
+                if area_coordinate and room_copy.get("coordinates") != area_coordinate:
+                    room_copy["coordinates"] = area_coordinate
+                    map_changed = True
+
+                area_connectivity = area_location.get("connectivity")
+                if isinstance(area_connectivity, list):
+                    normalized_connections = [
+                        str(item).strip() for item in area_connectivity if str(item).strip()
+                    ]
+                    if room_copy.get("connections") != normalized_connections:
+                        room_copy["connections"] = normalized_connections
+                        map_changed = True
+
+            rebuilt_rooms.append(room_copy)
+
+        if rebuilt_rooms:
+            direction_map = build_direction_map_from_rooms(rebuilt_rooms)
+            for room in rebuilt_rooms:
+                room_id = str(room.get("id") or "").strip()
+                expected_directions = direction_map.get(room_id, {})
+                if room.get("directions") != expected_directions:
+                    room["directions"] = expected_directions
+                    map_changed = True
+
+        if not map_changed:
+            continue
+
+        map_data["rooms"] = rebuilt_rooms
+        map_data["totalRooms"] = len(rebuilt_rooms)
+        if rebuilt_rooms and not str(map_data.get("startRoom") or "").strip():
+            map_data["startRoom"] = str(rebuilt_rooms[0].get("id") or "").strip()
+
+        write_ok = safe_write_json(str(map_path), map_data)
+        if write_ok:
+            changed_maps.append(map_path.name)
+        else:
+            failed_maps.append(map_path.name)
+
+    if failed_maps:
+        return {
+            "status": "failed",
+            "reason": "spatial_map_parity_write_failed",
+            "changed_maps": sorted(set(changed_maps)),
+            "failed_maps": sorted(set(failed_maps)),
+            "target_area_ids": area_ids,
+        }
+
+    if changed_maps:
+        return {
+            "status": "changed",
+            "reason": "spatial_map_parity_synchronized",
+            "changed_maps": sorted(set(changed_maps)),
+            "target_area_ids": area_ids,
+        }
+
+    return {
+        "status": "skipped",
+        "reason": "spatial_map_parity_already_aligned",
+        "target_area_ids": area_ids,
+    }
+
+
 def _detect_build_system_defect(
     build_result: Dict[str, Any],
     module_dir: Path,
@@ -305,6 +480,397 @@ def _deterministic_materialize_monsters(module_slug: str) -> Dict[str, Any]:
         "reason": "shared_monster_hydration",
         "hydration_result": hydration_result,
     }
+
+
+def _deterministic_close_monster_references(
+    module_slug: str,
+    validation_report: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Close missing monster references from validator-derived target slugs."""
+    from utils.module_monster_authority import (
+        load_monster_compendium_lookup,
+        materialize_authorized_monster_file,
+    )
+
+    target_slugs = _extract_missing_monster_reference_slugs(validation_report)
+    if not target_slugs:
+        return {
+            "status": "skipped",
+            "reason": "validator_reference_targets_missing",
+        }
+
+    lookup = load_monster_compendium_lookup()
+    created = 0
+    reused = 0
+    existing = 0
+    unresolved: List[str] = []
+    results: List[Dict[str, Any]] = []
+    monster_builder_path = str(Path("scripts") / "monster_builder.py")
+
+    for slug in target_slugs:
+        display_name = slug.replace("_", " ").title()
+        outcome = materialize_authorized_monster_file(
+            module_name=module_slug,
+            monster_name=display_name,
+            monster_builder_path=monster_builder_path,
+            compendium_lookup=lookup,
+            allow_generation=False,
+            dry_run=False,
+        )
+        results.append(outcome)
+        if outcome.get("ok"):
+            source = str(outcome.get("source") or "").strip().lower()
+            if source == "existing":
+                existing += 1
+            elif source == "reuse":
+                reused += 1
+            else:
+                created += 1
+        else:
+            unresolved.append(slug)
+
+    if unresolved:
+        return {
+            "status": "failed",
+            "reason": "validator_reference_closure_incomplete",
+            "target_slugs": target_slugs,
+            "unresolved_slugs": sorted(set(unresolved)),
+            "results": results,
+            "created": created,
+            "reused": reused,
+            "existing": existing,
+        }
+
+    changed = created > 0 or reused > 0
+    return {
+        "status": "changed" if changed else "skipped",
+        "reason": "validator_reference_closure",
+        "target_slugs": target_slugs,
+        "results": results,
+        "created": created,
+        "reused": reused,
+        "existing": existing,
+    }
+
+
+def _deterministic_repair_monster_schema(
+    module_slug: str,
+    module_dir: Path,
+) -> Dict[str, Any]:
+    """Backfill missing monster schema fields from compendium when safe."""
+    from utils.module_monster_authority import load_monster_compendium_lookup
+
+    monsters_dir = module_dir / "monsters"
+    if not monsters_dir.exists():
+        return {"status": "skipped", "reason": "monsters_directory_missing"}
+
+    compendium_lookup = load_monster_compendium_lookup()
+    if not isinstance(compendium_lookup, dict) or not compendium_lookup:
+        return {"status": "skipped", "reason": "monster_compendium_unavailable"}
+
+    required_fields = ("size", "alignment", "armorClass")
+
+    def _candidate_slugs(slug: str) -> List[str]:
+        candidates: List[str] = [slug]
+        if slug.endswith("s"):
+            singular = slug[:-1]
+            if singular:
+                candidates.append(singular)
+        else:
+            candidates.append(f"{slug}s")
+        if slug.endswith("ies") and len(slug) > 3:
+            candidates.append(f"{slug[:-3]}y")
+        if slug.endswith("y") and len(slug) > 1:
+            candidates.append(f"{slug[:-1]}ies")
+
+        seen: Set[str] = set()
+        deduped: List[str] = []
+        for candidate in candidates:
+            normalized = str(candidate or "").strip().lower()
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                deduped.append(normalized)
+        return deduped
+
+    changed_files: List[str] = []
+    unresolved_files: List[str] = []
+    ambiguous_files: List[str] = []
+
+    for monster_path in sorted(monsters_dir.glob("*.json")):
+        monster_data = safe_read_json(str(monster_path))
+        if not isinstance(monster_data, dict):
+            unresolved_files.append(monster_path.name)
+            continue
+
+        missing_fields = [
+            field for field in required_fields if monster_data.get(field) in (None, "")
+        ]
+        if not missing_fields:
+            continue
+
+        slug = monster_path.stem.strip().lower()
+        matching_candidates = [
+            candidate
+            for candidate in _candidate_slugs(slug)
+            if isinstance(compendium_lookup.get(candidate), dict)
+        ]
+        if len(matching_candidates) == 1:
+            compendium_entry = compendium_lookup.get(matching_candidates[0])
+        else:
+            compendium_entry = None
+
+        if len(matching_candidates) > 1:
+            ambiguous_files.append(monster_path.name)
+            unresolved_files.append(monster_path.name)
+            continue
+
+        if not isinstance(compendium_entry, dict):
+            unresolved_files.append(monster_path.name)
+            continue
+
+        patched = False
+        for field in missing_fields:
+            value = compendium_entry.get(field)
+            if value in (None, ""):
+                continue
+            monster_data[field] = value
+            patched = True
+
+        remaining_missing = [
+            field for field in required_fields if monster_data.get(field) in (None, "")
+        ]
+        if remaining_missing:
+            unresolved_files.append(monster_path.name)
+            continue
+
+        if patched:
+            write_ok = safe_write_json(str(monster_path), monster_data)
+            if write_ok:
+                changed_files.append(monster_path.name)
+            else:
+                unresolved_files.append(monster_path.name)
+
+    if unresolved_files:
+        return {
+            "status": "failed",
+            "reason": "monster_schema_completion_incomplete",
+            "module": module_slug,
+            "changed_files": changed_files,
+            "unresolved_files": sorted(set(unresolved_files)),
+            "ambiguous_files": sorted(set(ambiguous_files)),
+        }
+
+    if changed_files:
+        return {
+            "status": "changed",
+            "reason": "monster_schema_completed_from_compendium",
+            "module": module_slug,
+            "changed_files": changed_files,
+        }
+
+    return {
+        "status": "skipped",
+        "reason": "monster_schema_already_complete",
+        "module": module_slug,
+    }
+
+
+def _deterministic_fix_plot_prerequisites(module_dir: Path) -> Dict[str, Any]:
+    """Backfill finale prerequisite when immediate predecessor is uniquely provable."""
+    plot_path = module_dir / "module_plot.json"
+    if not plot_path.exists():
+        return {"status": "skipped", "reason": "module_plot_missing"}
+
+    plot_data = safe_read_json(str(plot_path))
+    if not isinstance(plot_data, dict):
+        return {"status": "failed", "reason": "module_plot_unreadable"}
+
+    raw_plot_points = plot_data.get("plotPoints")
+    if not isinstance(raw_plot_points, (dict, list)) or not raw_plot_points:
+        return {"status": "skipped", "reason": "plot_points_missing"}
+
+    by_id: Dict[str, Dict[str, Any]] = {}
+    if isinstance(raw_plot_points, dict):
+        for point_id, point_payload in raw_plot_points.items():
+            if isinstance(point_payload, dict):
+                by_id[str(point_id).strip()] = point_payload
+    else:
+        for point_payload in raw_plot_points:
+            if not isinstance(point_payload, dict):
+                continue
+            point_id = str(point_payload.get("id") or "").strip()
+            if point_id:
+                by_id[point_id] = point_payload
+
+    if not by_id:
+        return {"status": "skipped", "reason": "plot_points_missing"}
+
+    ordered_ids: List[Tuple[int, str]] = []
+    for point_id in by_id.keys():
+        match = re.fullmatch(r"PP(\d+)", point_id)
+        if match:
+            ordered_ids.append((int(match.group(1)), point_id))
+
+    if len(ordered_ids) < 2:
+        return {"status": "skipped", "reason": "plot_sequence_too_short"}
+
+    ordered_ids.sort()
+    final_num, final_id = ordered_ids[-1]
+    predecessor_num, predecessor_id = ordered_ids[-2]
+
+    if predecessor_num != final_num - 1:
+        return {
+            "status": "skipped",
+            "reason": "plot_prerequisite_ambiguous",
+            "finale": final_id,
+        }
+
+    final_point = by_id.get(final_id)
+    if not isinstance(final_point, dict):
+        return {
+            "status": "failed",
+            "reason": "finale_plot_unreadable",
+            "finale": final_id,
+        }
+
+    existing_prereq = final_point.get("prerequisites")
+    if isinstance(existing_prereq, list) and existing_prereq:
+        return {
+            "status": "skipped",
+            "reason": "finale_prerequisites_already_present",
+            "finale": final_id,
+        }
+
+    final_point["prerequisites"] = [predecessor_id]
+    write_ok = safe_write_json(str(plot_path), plot_data)
+    if not write_ok:
+        return {
+            "status": "failed",
+            "reason": "module_plot_write_failed",
+            "finale": final_id,
+            "predecessor": predecessor_id,
+        }
+
+    return {
+        "status": "changed",
+        "reason": "finale_prerequisite_backfilled",
+        "finale": final_id,
+        "predecessor": predecessor_id,
+    }
+
+
+def _deterministic_fix_plot_prerequisites_from_validation(
+    module_dir: Path,
+    validation_report: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Backfill prerequisites for validator-identified conclusion edges first."""
+    plot_path = module_dir / "module_plot.json"
+    if not plot_path.exists():
+        return {"status": "skipped", "reason": "module_plot_missing"}
+
+    plot_data = safe_read_json(str(plot_path))
+    if not isinstance(plot_data, dict):
+        return {"status": "failed", "reason": "module_plot_unreadable"}
+
+    raw_plot_points = plot_data.get("plotPoints")
+    if not isinstance(raw_plot_points, (dict, list)) or not raw_plot_points:
+        return {"status": "skipped", "reason": "plot_points_missing"}
+
+    by_id: Dict[str, Dict[str, Any]] = {}
+    if isinstance(raw_plot_points, dict):
+        for point_id, point_payload in raw_plot_points.items():
+            if isinstance(point_payload, dict):
+                by_id[str(point_id).strip()] = point_payload
+    else:
+        for point_payload in raw_plot_points:
+            if not isinstance(point_payload, dict):
+                continue
+            point_id = str(point_payload.get("id") or "").strip()
+            if point_id:
+                by_id[point_id] = point_payload
+
+    if not by_id:
+        return {"status": "skipped", "reason": "plot_points_missing"}
+
+    edges = _extract_plot_prerequisite_edges(validation_report)
+    for target_id, upstream_id in edges:
+        target_point = by_id.get(target_id)
+        if not isinstance(target_point, dict):
+            continue
+        if upstream_id not in by_id:
+            continue
+
+        existing_prereq = target_point.get("prerequisites")
+        if isinstance(existing_prereq, list):
+            prereq_list = [str(item).strip() for item in existing_prereq if str(item).strip()]
+        else:
+            prereq_list = []
+
+        if upstream_id in prereq_list:
+            return {
+                "status": "skipped",
+                "reason": "validator_edge_already_present",
+                "target": target_id,
+                "upstream": upstream_id,
+            }
+
+        prereq_list.append(upstream_id)
+        target_point["prerequisites"] = prereq_list
+        write_ok = safe_write_json(str(plot_path), plot_data)
+        if not write_ok:
+            return {
+                "status": "failed",
+                "reason": "module_plot_write_failed",
+                "target": target_id,
+                "upstream": upstream_id,
+            }
+
+        return {
+            "status": "changed",
+            "reason": "validator_edge_prerequisite_backfilled",
+            "target": target_id,
+            "upstream": upstream_id,
+        }
+
+    return _deterministic_fix_plot_prerequisites(module_dir)
+
+
+def _classify_residual_blockers(
+    validation_report: Dict[str, Any],
+    repair_attempts: List[Dict[str, Any]],
+    fixed_point_detected: bool,
+) -> List[str]:
+    """Classify unresolved readiness blockers into deterministic remediation buckets."""
+    categories = _extract_failure_categories(validation_report)
+    classes: Set[str] = set()
+
+    if "monster" in categories:
+        classes.add("monster_schema_completion_gap")
+    if "reference_integrity" in categories:
+        classes.add("monster_reference_closure_gap")
+    if "plot_progression" in categories:
+        classes.add("plot_prerequisite_gap")
+    if "spatial_contract" in categories:
+        classes.add("spatial_adjacency_convergence_gap")
+
+    for attempt in reversed(repair_attempts):
+        repairs = attempt.get("repairs") or {}
+        plot_result = repairs.get("plot_prerequisites") or {}
+        if str(plot_result.get("reason") or "") == "plot_prerequisite_ambiguous":
+            classes.add("plot_prerequisite_ambiguous")
+            break
+
+    for attempt in reversed(repair_attempts):
+        repairs = attempt.get("repairs") or {}
+        spatial_result = repairs.get("spatial_contract") or {}
+        if str(spatial_result.get("reason") or "") == "spatial_contradictions_unchanged":
+            classes.add("spatial_structural_debt")
+            break
+
+    if fixed_point_detected:
+        classes.add("readiness_fixed_point_detected")
+
+    return sorted(classes)
 
 
 def _deterministic_fix_spatial_contract(module_dir: Path) -> Dict[str, Any]:
@@ -619,6 +1185,7 @@ def _run_deterministic_repairs(
     module_slug: str,
     module_dir: Path,
     failure_categories: Dict[str, int],
+    validation_report: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Run deterministic repair domains for structural failures."""
     report: Dict[str, Any] = {
@@ -642,8 +1209,66 @@ def _run_deterministic_repairs(
         }
     report["repairs"]["monster_materialization"] = monster_result
 
+    if "reference_integrity" in failure_categories:
+        validator_reference_result = _deterministic_close_monster_references(
+            module_slug,
+            validation_report or {},
+        )
+    else:
+        validator_reference_result = {
+            "status": "skipped",
+            "reason": "reference_integrity_not_failing",
+        }
+    report["repairs"]["monster_reference_closure"] = validator_reference_result
+
+    if "monster" in failure_categories:
+        monster_schema_result = _deterministic_repair_monster_schema(
+            module_slug,
+            module_dir,
+        )
+    else:
+        monster_schema_result = {
+            "status": "skipped",
+            "reason": "monster_schema_not_failing",
+        }
+    report["repairs"]["monster_schema_completion"] = monster_schema_result
+
+    if "plot_progression" in failure_categories:
+        plot_prereq_result = _deterministic_fix_plot_prerequisites_from_validation(
+            module_dir,
+            validation_report or {},
+        )
+    else:
+        plot_prereq_result = {
+            "status": "skipped",
+            "reason": "plot_progression_not_failing",
+        }
+    report["repairs"]["plot_prerequisites"] = plot_prereq_result
+
     if "spatial_contract" in failure_categories:
+        parity_result = _deterministic_sync_external_map_parity(
+            module_dir,
+            validation_report or {},
+        )
+        report["repairs"]["spatial_map_parity"] = parity_result
+
+        pre_spatial_errors = set(
+            (validation_report and _extract_failure_errors(validation_report).get("spatial_contract", []))
+            or []
+        )
         spatial_result = _deterministic_fix_spatial_contract(module_dir)
+        if str(spatial_result.get("status") or "") != "failed":
+            post_validation = _run_validator(module_slug)
+            post_spatial_errors = set(
+                _extract_failure_errors(post_validation).get("spatial_contract", [])
+            )
+            spatial_result["pre_contradictions"] = len(pre_spatial_errors)
+            spatial_result["post_contradictions"] = len(post_spatial_errors)
+            spatial_result["advanced"] = len(post_spatial_errors) < len(pre_spatial_errors)
+            if pre_spatial_errors and pre_spatial_errors == post_spatial_errors:
+                spatial_result["status"] = "failed"
+                spatial_result["reason"] = "spatial_contradictions_unchanged"
+                spatial_result["debt_classification"] = "author_structural_debt"
     else:
         spatial_result = {
             "status": "skipped",
@@ -786,6 +1411,10 @@ def run_toolkit_homebrew_readiness_gate(
     previous_signature = _build_validation_signature(validation_report)
     deterministic_passes = 0
     semantic_passes = 0
+    fixed_point_detected = False
+    convergence_outcome = (
+        "ready" if validation_report.get("status") == "pass" else "in_progress"
+    )
 
     while validation_report.get("status") != "pass":
         failure_categories = _extract_failure_categories(validation_report)
@@ -801,11 +1430,26 @@ def run_toolkit_homebrew_readiness_gate(
                 },
             )
             det_report = _run_deterministic_repairs(
-                module_slug, module_dir, failure_categories
+                module_slug,
+                module_dir,
+                failure_categories,
+                validation_report,
             )
             det_report["pass"] = deterministic_passes
             repair_attempts.append(det_report)
             if det_report.get("status") == "failed":
+                if bool(det_report.get("changed")):
+                    _emit_state(
+                        "validating",
+                        {
+                            "module_name": module_slug,
+                            "revalidation": True,
+                            "after_failed_deterministic": True,
+                        },
+                    )
+                    validation_report = _run_validator(module_slug)
+                    persist_readiness_validation_artifact(workspace, validation_report)
+                    previous_signature = _build_validation_signature(validation_report)
                 break
         elif semantic_passes < MAX_SEMANTIC_PASSES:
             semantic_passes += 1
@@ -821,6 +1465,18 @@ def run_toolkit_homebrew_readiness_gate(
             semantic_report["pass"] = semantic_passes
             repair_attempts.append(semantic_report)
             if semantic_report.get("status") == "failed":
+                if bool(semantic_report.get("changed")):
+                    _emit_state(
+                        "validating",
+                        {
+                            "module_name": module_slug,
+                            "revalidation": True,
+                            "after_failed_semantic": True,
+                        },
+                    )
+                    validation_report = _run_validator(module_slug)
+                    persist_readiness_validation_artifact(workspace, validation_report)
+                    previous_signature = _build_validation_signature(validation_report)
                 break
         else:
             break
@@ -842,6 +1498,8 @@ def run_toolkit_homebrew_readiness_gate(
                 ),
                 category="web_interface",
             )
+            fixed_point_detected = True
+            convergence_outcome = "fixed_point_detected"
             previous_signature = current_signature
             break
 
@@ -850,6 +1508,24 @@ def run_toolkit_homebrew_readiness_gate(
     _emit_state("validating", {"module_name": module_slug, "audit": True})
     audit_report = _run_structural_readiness_audit(module_slug)
     persist_readiness_audit_artifact(workspace, audit_report)
+
+    readiness_ok = (
+        validation_report.get("status") == "pass"
+        and audit_report.get("status") == "pass"
+    )
+
+    if readiness_ok:
+        convergence_outcome = "ready"
+    elif convergence_outcome != "fixed_point_detected":
+        convergence_outcome = "repair_budget_exhausted"
+
+    residual_blocker_classes = _classify_residual_blockers(
+        validation_report,
+        repair_attempts,
+        fixed_point_detected,
+    )
+    residual_failure_categories = _extract_failure_categories(validation_report)
+    residual_failure_errors = _extract_failure_errors(validation_report)
 
     persist_repair_report_artifact(
         workspace,
@@ -861,15 +1537,20 @@ def run_toolkit_homebrew_readiness_gate(
             "deterministic_passes": deterministic_passes,
             "semantic_passes": semantic_passes,
             "validation_signature": previous_signature,
+            "convergence_outcome": convergence_outcome,
+            "fixed_point_detected": fixed_point_detected,
+            "residual_blocker_classes": residual_blocker_classes,
+            "residual_failure_categories": residual_failure_categories,
+            "residual_failure_errors": residual_failure_errors,
+            "residual_closure_advanced": readiness_ok
+            or any(bool((attempt or {}).get("changed")) for attempt in repair_attempts),
         },
     )
 
-    readiness_ok = (
-        validation_report.get("status") == "pass"
-        and audit_report.get("status") == "pass"
-    )
-
     final_status = "ready_for_finishing" if readiness_ok else "repair_budget_exhausted"
+    residual_closure_advanced = readiness_ok or any(
+        bool((attempt or {}).get("changed")) for attempt in repair_attempts
+    )
     return {
         "status": final_status,
         "stage": "readiness",
@@ -881,6 +1562,12 @@ def run_toolkit_homebrew_readiness_gate(
         "repair_attempts": repair_attempts,
         "deterministic_passes": deterministic_passes,
         "semantic_passes": semantic_passes,
+        "convergence_outcome": convergence_outcome,
+        "fixed_point_detected": fixed_point_detected,
+        "residual_blocker_classes": residual_blocker_classes,
+        "residual_failure_categories": residual_failure_categories,
+        "residual_failure_errors": residual_failure_errors,
+        "residual_closure_advanced": residual_closure_advanced,
         "ready_for_finishing": readiness_ok,
         "workspace_artifacts": {
             "readiness_validation_report": str(files["readiness_validation_report"]),

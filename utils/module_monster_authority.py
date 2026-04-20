@@ -100,6 +100,41 @@ def _iter_authored_creature_names(payload: Any) -> List[str]:
     return creature_names
 
 
+def _iter_structured_monster_names(payload: Any) -> List[str]:
+    """Extract names from explicit `monsters` fields only.
+
+    Structured `monsters` payloads are authoritative combat references for
+    validator integrity checks and should remain materializable even when the
+    same slug appears in NPC catalogs.
+    """
+    monster_names: List[str] = []
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            if key == "monsters":
+                if isinstance(value, list):
+                    for item in value:
+                        if isinstance(item, str):
+                            token = item.strip().strip(". ")
+                            if token:
+                                monster_names.append(token)
+                        elif isinstance(item, dict):
+                            name_value = (
+                                str(item.get("name") or item.get("monster") or "")
+                                .strip()
+                                .strip(". ")
+                            )
+                            if name_value:
+                                monster_names.append(name_value)
+                elif isinstance(value, str):
+                    monster_names.extend(_split_creature_tokens(value))
+            else:
+                monster_names.extend(_iter_structured_monster_names(value))
+    elif isinstance(payload, list):
+        for item in payload:
+            monster_names.extend(_iter_structured_monster_names(item))
+    return monster_names
+
+
 def _load_known_npc_names(module_name: str) -> Set[str]:
     npc_names: Set[str] = set()
     path_manager = ModulePathManager(module_name)
@@ -196,9 +231,23 @@ def build_module_monster_authority(module_name: str) -> Dict[str, Dict[str, Any]
         if not isinstance(area_payload, dict):
             continue
 
+        for monster_name in _iter_structured_monster_names(area_payload):
+            slug = normalize_monster_identity(monster_name)
+            if not slug:
+                continue
+            authority.setdefault(slug, {"sources": []})["sources"].append(
+                {
+                    "type": "authored_structured_monster",
+                    "path": area_path,
+                    "name": monster_name,
+                }
+            )
+
         for creature_name in _iter_authored_creature_names(area_payload):
             slug = normalize_monster_identity(creature_name)
-            if not slug or slug in known_npc_names:
+            if not slug:
+                continue
+            if slug in known_npc_names and slug not in authority:
                 continue
             authority.setdefault(slug, {"sources": []})["sources"].append(
                 {

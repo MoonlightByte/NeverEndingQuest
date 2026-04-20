@@ -24,3 +24,24 @@ The final publication gate SHALL expose `ready` and `publishable` as distinct st
 - **WHEN** the standalone publishability audit runs
 - **THEN** the command SHALL return a failing exit code even if readiness passed
 
+### Requirement: Publishability output SHALL preserve explicit debt classes for structurally valid toolkit modules
+Publishability reporting SHALL preserve explicit residual debt classes when a toolkit-built module is structurally valid but still blocked by release-facing media debt or explicitly deferred semantic ambiguity debt.
+
+#### Scenario: Structurally valid toolkit module remains not publishable for explicit residual debt
+- **GIVEN** a toolkit-built module passes structural validation and readiness checks required for its declared source
+- **AND** publishability still fails because combat-valid monster base media is missing or a semantic issue is explicitly classified as deferred Phase 2 ambiguity debt
+- **WHEN** publishability output is emitted
+- **THEN** the report SHALL preserve those residual debt classes explicitly
+- **AND** SHALL keep the result distinguishable from structural readiness failure
+
+### Requirement: Publishability SHALL fail on semantic blocking findings, not warning-only semantic degradation
+The publishable gate SHALL fail when semantic publication layers produce blocking findings, but warning-only or tooling-debt degradation alone SHALL NOT be treated as an equivalent hard semantic blocker.
+
+#### Scenario: Ready module with warning-only semantic degradation remains distinguishable from blocking semantic failure
+- **GIVEN** readiness passes
+- **AND** semantic publication layers report warnings or tooling debt only
+- **AND** no semantic blocking findings are present
+- **WHEN** the publishable gate computes final status
+- **THEN** it SHALL preserve a status distinct from blocking semantic failure
+- **AND** SHALL NOT report the module as blocked by semantic contradiction.
+

@@ -19,6 +19,7 @@ if PROJECT_ROOT not in sys.path:
 
 from utils.module_monster_authority import (
     authorize_module_monster,
+    build_module_monster_authority,
     materialize_authorized_monster_file,
     resolve_authorized_monster_reference,
 )
@@ -190,6 +191,68 @@ class TestModuleMonsterAuthority(unittest.TestCase):
         self.assertIn("requested_name", captured_context)
         self.assertIn("monster_name", captured_context)
         self.assertIn("monster_slug", captured_context)
+
+    def test_structured_monster_not_filtered_by_npc_overlap(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module_dir = Path(temp_dir) / "Overlap_Module"
+            areas_dir = module_dir / "areas"
+            areas_dir.mkdir(parents=True, exist_ok=True)
+
+            (module_dir / "module_context.json").write_text(
+                json.dumps(
+                    {
+                        "npcs": {
+                            "echoes_of_the_party": {
+                                "name": "Echoes of the Party"
+                            }
+                        }
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            (areas_dir / "TMS001.json").write_text(
+                json.dumps(
+                    {
+                        "areaId": "TMS001",
+                        "locations": [
+                            {
+                                "locationId": "G04",
+                                "monsters": [
+                                    {
+                                        "name": "Echoes of the Party",
+                                        "type": "Aberration",
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+
+            with patch(
+                "utils.module_monster_authority.ModulePathManager"
+            ) as mock_manager:
+                manager_instance = mock_manager.return_value
+                manager_instance.module_dir = str(module_dir)
+                manager_instance.get_area_ids.return_value = ["TMS001"]
+                manager_instance.get_area_path.side_effect = lambda area_id: str(
+                    areas_dir / f"{area_id}.json"
+                )
+
+                authority = build_module_monster_authority("Overlap_Module")
+
+            self.assertIn("echoes_of_the_party", authority)
+            sources = authority["echoes_of_the_party"].get("sources") or []
+            self.assertTrue(
+                any(source.get("type") == "authored_structured_monster" for source in sources)
+            )
 
 
 class TestCanonicalMonsterReferenceResolution(unittest.TestCase):

@@ -2,7 +2,7 @@
 
 ## Status
 
-- Lifecycle state: Active implementation in progress
+- Lifecycle state: Completed (ready to archive)
 - Product objective: Complete the public-facing Homebrew adventure upload path in Toolkit Module Builder
 - Strategic path: `1 -> 2 -> 3`
 - Meaning of path:
@@ -27,7 +27,8 @@
 - Phase 7 complete: artifact manifest visibility, retry-from-packet, retry-from-finishing, and cleanup controls are now implemented and validated.
 - Rebuild support complete: repeated uploads now require explicit confirmation and use backup + clean rebuild before re-entering build/readiness.
 - Verified corpus checkpoint: `A_Pottsfield_Burial` demonstrates clean ingest/build/readiness success; `The_Ancients_Lab` demonstrates artifact generation and monster closure are working, with remaining issues isolated to post-build semantic/content quality rather than upload ingestion failure.
-- Next recommended implementation slice: Phase 8 (corpus-based quality gate and parity acceptance suite).
+- Phase 8 complete: corpus-based quality gate and parity acceptance suite implemented and archived in OpenSpec.
+- Logical successor plan: `plans/module-uploader-2.md` (GUI Builder stabilization + narrative classification).
 
 ## Goal
 

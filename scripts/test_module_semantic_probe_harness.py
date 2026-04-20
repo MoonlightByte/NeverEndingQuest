@@ -42,9 +42,7 @@ class TestModuleSemanticProbeHarness(unittest.TestCase):
                     "destination_phrases": {
                         "lintars place": {
                             "status": "unresolved",
-                            "sources": [
-                                "module_plot.json#plotPoints[PP001].description"
-                            ],
+                            "sources": ["areas/TST001.json#locations[LOC08].aliases"],
                             "player_facing": True,
                             "observed": True,
                             "observation_count": 1,
@@ -86,9 +84,7 @@ class TestModuleSemanticProbeHarness(unittest.TestCase):
                         "main hall": {
                             "status": "resolved",
                             "location_id": "LOC02",
-                            "sources": [
-                                "module_plot.json#plotPoints[PP002].description"
-                            ],
+                            "sources": ["areas/TST001.json#locations[LOC01].aliases"],
                             "player_facing": True,
                             "observed": True,
                             "observation_count": 1,
@@ -189,6 +185,41 @@ class TestModuleSemanticProbeHarness(unittest.TestCase):
         result = run_module_semantic_probes(module_dir)
         self.assertEqual(result["status"], "fail")
         self.assertTrue(
+            any(
+                probe.get("failure_class") == "hidden_npc_missing_authority"
+                for probe in result["probes"]
+            )
+        )
+
+    def test_visible_npc_without_reveal_binding_is_not_hidden_probe_failure(self):
+        module_dir = self._write_module(
+            "Probe_F",
+            {
+                "module_name": "Probe_F",
+                "semantic_authority": {
+                    "version": "v1",
+                    "destination_phrases": {},
+                    "npc_scene_authority": {
+                        "Archivist Quill": {
+                            "name_slug": "archivist quill",
+                            "visible_location_ids": ["LOC09"],
+                            "reveal_bindings": [],
+                            "sources": ["areas/TST001.json#locations[LOC09].npcs"],
+                            "authored_mentions_count": 2,
+                            "authored_mention_sources": [
+                                "areas/TST001.json#locations[LOC09].description"
+                            ],
+                        }
+                    },
+                },
+                "continuity": {"cross_module_refs": []},
+            },
+            {"plotPoints": []},
+        )
+
+        result = run_module_semantic_probes(module_dir)
+        self.assertNotEqual(result["status"], "fail")
+        self.assertFalse(
             any(
                 probe.get("failure_class") == "hidden_npc_missing_authority"
                 for probe in result["probes"]

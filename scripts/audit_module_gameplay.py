@@ -26,6 +26,11 @@ from typing import Dict, List, Set, Tuple, Optional
 from dataclasses import dataclass, field
 
 
+MEDIA_OUTCOME_REUSED_OR_GENERATED = "reused_or_generated"
+MEDIA_OUTCOME_PROVIDER_DISABLED_MISSING = "provider_disabled_missing"
+MEDIA_OUTCOME_ATTEMPTED_BUT_UNRESOLVED = "attempted_but_unresolved"
+
+
 @dataclass
 class MonsterRef:
     """A monster reference with source attribution."""
@@ -416,6 +421,19 @@ def check_monster_media(module_path: str, slug: str) -> Dict[str, bool]:
     }
 
 
+def classify_monster_media_outcome(media_status: Dict[str, bool]) -> str:
+    """Classify deterministic media outcome for reporting surfaces."""
+    base_present = bool(media_status.get('base'))
+    thumb_present = bool(media_status.get('thumb'))
+    video_present = bool(media_status.get('video'))
+
+    if base_present:
+        return MEDIA_OUTCOME_REUSED_OR_GENERATED
+    if thumb_present or video_present:
+        return MEDIA_OUTCOME_ATTEMPTED_BUT_UNRESOLVED
+    return MEDIA_OUTCOME_PROVIDER_DISABLED_MISSING
+
+
 def audit_module(module_name: str, strict_instructions: bool = False) -> Dict:
     """
     Perform full gameplay audit on a module.
@@ -452,6 +470,7 @@ def audit_module(module_name: str, strict_instructions: bool = False) -> Dict:
     media_base_count = 0
     media_thumb_count = 0
     media_video_count = 0
+    monster_media_findings = []
     
     structural_refs = [r for r in unique_refs if r.confidence == "structural"]
     heuristic_refs = [r for r in unique_refs if r.confidence == "heuristic"]
@@ -480,6 +499,19 @@ def audit_module(module_name: str, strict_instructions: bool = False) -> Dict:
         
         # Check media
         media_status = check_monster_media(module_path, slug)
+        media_outcome = classify_monster_media_outcome(media_status)
+        monster_media_findings.append(
+            {
+                'slug': slug,
+                'confidence': ref.confidence,
+                'source_file': ref.source_file,
+                'source_path': ref.source_path,
+                'outcome': media_outcome,
+                'base': bool(media_status.get('base')),
+                'thumb': bool(media_status.get('thumb')),
+                'video': bool(media_status.get('video')),
+            }
+        )
         
         if not media_status['base']:
             # Base media missing is a blocker for tabletop mode
@@ -516,6 +548,19 @@ def audit_module(module_name: str, strict_instructions: bool = False) -> Dict:
         
         # Media check for heuristics is warning only
         media_status = check_monster_media(module_path, slug)
+        media_outcome = classify_monster_media_outcome(media_status)
+        monster_media_findings.append(
+            {
+                'slug': slug,
+                'confidence': ref.confidence,
+                'source_file': ref.source_file,
+                'source_path': ref.source_path,
+                'outcome': media_outcome,
+                'base': bool(media_status.get('base')),
+                'thumb': bool(media_status.get('thumb')),
+                'video': bool(media_status.get('video')),
+            }
+        )
         if not media_status['base']:
             if strict_instructions:
                 blocking_errors.append(f"Missing base media (heuristic): {slug} (from {ref.source_file}:{ref.source_path})")
@@ -538,7 +583,19 @@ def audit_module(module_name: str, strict_instructions: bool = False) -> Dict:
         'media_base_coverage': media_base_count,
         'media_thumb_coverage': media_thumb_count,
         'media_video_coverage': media_video_count,
-        'media_base_coverage_pct': round((media_base_count / total_structural * 100), 1) if total_structural > 0 else 0
+        'media_base_coverage_pct': round((media_base_count / total_structural * 100), 1) if total_structural > 0 else 0,
+        'media_policy': {
+            'provider_generation_mode': 'opt_in_manual_only',
+            'manual_toolkit_workflow': [
+                'Monster Management & Generator -> Generate Monster Images',
+                'Module Media Generator -> one-click monster media generation',
+            ],
+            'outcome_vocabulary': [
+                MEDIA_OUTCOME_REUSED_OR_GENERATED,
+                MEDIA_OUTCOME_PROVIDER_DISABLED_MISSING,
+                MEDIA_OUTCOME_ATTEMPTED_BUT_UNRESOLVED,
+            ],
+        },
     }
     
     return {
@@ -546,6 +603,7 @@ def audit_module(module_name: str, strict_instructions: bool = False) -> Dict:
         'warnings': warnings,
         'coverage_stats': coverage_stats,
         'fix_list': fix_list,
+        'monster_media_findings': monster_media_findings,
         'references': [
             {
                 'slug': r.slug,

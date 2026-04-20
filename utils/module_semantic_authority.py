@@ -253,6 +253,7 @@ def _append_evidence(
     text: Any,
     source: str,
     location_id: str,
+    destination_eligible: bool = False,
 ) -> None:
     """Append deterministic evidence text row if value is non-empty text."""
     if not isinstance(text, str):
@@ -266,6 +267,7 @@ def _append_evidence(
             "normalized": _normalize_phrase(content),
             "source": source,
             "location_id": location_id,
+            "destination_eligible": bool(destination_eligible),
         }
     )
 
@@ -283,28 +285,25 @@ def _collect_location_evidence(
         source_path = str(record.get("source_path", "") or "")
         source_prefix = f"{source_path}#locations[{location_id}]"
 
-        for field_name in [
-            "name",
-            "description",
-            "dmInstructions",
-            "source_room_title",
-            "accessibility",
-            "creatures",
-        ]:
+        for field_name in ["name", "source_room_title", "description", "dmInstructions", "accessibility", "creatures"]:
+            destination_eligible = field_name in {"name", "source_room_title"}
             _append_evidence(
                 evidence,
                 location.get(field_name),
                 f"{source_prefix}.{field_name}",
                 location_id,
+                destination_eligible=destination_eligible,
             )
 
         for list_field in ["aliases", "plotHooks", "dcChecks"]:
             for item in _safe_list(location.get(list_field)):
+                destination_eligible = list_field == "aliases"
                 _append_evidence(
                     evidence,
                     item,
                     f"{source_prefix}.{list_field}",
                     location_id,
+                    destination_eligible=destination_eligible,
                 )
 
         for feature in _safe_list(location.get("features")):
@@ -315,12 +314,14 @@ def _collect_location_evidence(
                 feature.get("name"),
                 f"{source_prefix}.features.name",
                 location_id,
+                destination_eligible=False,
             )
             _append_evidence(
                 evidence,
                 feature.get("description"),
                 f"{source_prefix}.features.description",
                 location_id,
+                destination_eligible=False,
             )
 
         for hook in _safe_list(location.get("investigation_hooks")):
@@ -338,6 +339,7 @@ def _collect_location_evidence(
                     hook.get(field_name),
                     f"{source_prefix}.investigation_hooks.{field_name}",
                     location_id,
+                    destination_eligible=False,
                 )
     return evidence
 
@@ -352,13 +354,49 @@ def _collect_plot_evidence(module_plot: Dict[str, Any]) -> List[Dict[str, Any]]:
         location_id = str(plot_point.get("location", "") or "").strip().upper()
         source_prefix = f"module_plot.json#plotPoints[{plot_id}]"
         for field_name in ["title", "description", "plotImpact"]:
+            destination_eligible = field_name == "title"
             _append_evidence(
                 evidence,
                 plot_point.get(field_name),
                 f"{source_prefix}.{field_name}",
                 location_id,
+                destination_eligible=destination_eligible,
             )
     return evidence
+
+
+def _contains_travel_verb(normalized_text: str) -> bool:
+    """Return True when text contains explicit travel intent verbs."""
+    travel_markers = [
+        "go to",
+        "travel to",
+        "head to",
+        "return to",
+        "enter ",
+        "seek ",
+        "find ",
+    ]
+    padded = f" {normalized_text} "
+    return any(marker in padded for marker in travel_markers)
+
+
+def _extract_canonical_anchor_phrases(
+    normalized_text: str,
+    location_aliases: Dict[str, Dict[str, Any]],
+) -> List[str]:
+    """Extract canonical destination aliases explicitly anchored in prose."""
+    if not _contains_travel_verb(normalized_text):
+        return []
+
+    anchored: List[str] = []
+    padded = f" {normalized_text} "
+    for phrase in sorted(location_aliases.keys(), key=lambda value: len(value), reverse=True):
+        if len(phrase) < 4:
+            continue
+        if f" {phrase} " not in padded:
+            continue
+        anchored.append(phrase)
+    return anchored
 
 
 def _extract_destination_phrase_candidates(normalized_text: str) -> List[str]:
@@ -410,7 +448,16 @@ def _build_destination_phrase_map(
         source = str(evidence.get("source", "") or "")
         if not normalized_text:
             continue
-        for phrase in _extract_destination_phrase_candidates(normalized_text):
+        destination_eligible = bool(evidence.get("destination_eligible", False))
+        if destination_eligible:
+            candidate_phrases = _extract_destination_phrase_candidates(normalized_text)
+        else:
+            candidate_phrases = _extract_canonical_anchor_phrases(
+                normalized_text,
+                location_aliases,
+            )
+
+        for phrase in candidate_phrases:
             row = phrase_rows.setdefault(
                 phrase,
                 {

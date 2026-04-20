@@ -351,8 +351,8 @@ def audit_module_semantic_authority(module_dir: Path) -> Dict[str, Any]:
                 )
             elif player_facing:
                 _add_blocker(
-                    "unresolved_destination_phrase",
-                    f"Unresolved destination phrase '{phrase}' appears in authored semantics",
+                    "phase2_ambiguity_debt",
+                    f"Unresolved destination phrase '{phrase}' classified as Phase 2 LLM ambiguity debt",
                     {"phrase": phrase, "sources": sources},
                     blocker_classes,
                     blocking_errors,
