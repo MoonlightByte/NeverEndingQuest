@@ -312,6 +312,42 @@ class TestAuditModulePublishability(unittest.TestCase):
         self.assertIn("semantic_publishability_blocking", report["remediation_categories"])
         self.assertIn("mixed_media_semantic_blocking", report["remediation_categories"])
 
+    def test_shared_static_fallback_does_not_override_module_local_media_debt(self):
+        with (
+            patch.object(
+                publishability,
+                "audit_module_readiness",
+                return_value={
+                    "overall_status": "fail",
+                    "fix_list": ["Add media: modules/example_module/media/monsters/ogre.jpg"],
+                    "gates": {"gameplay": {"reason": "missing_base_media_files"}},
+                    "toolkit_media_policy": {
+                        "structural_media_debt_count": 1,
+                        "structural_media_debt_slugs": ["ogre"],
+                        "fallback_hits": ["web/static/media/monsters/ogre.jpg"],
+                    },
+                },
+            ),
+            patch.object(
+                publishability,
+                "audit_module_semantic_authority",
+                return_value={"status": "pass", "blocking_errors": [], "warnings": []},
+            ),
+            patch.object(
+                publishability,
+                "run_module_semantic_probes",
+                return_value={"status": "pass", "blocking_errors": [], "warnings": []},
+            ),
+        ):
+            report = publishability.audit_module_publishability(
+                "example_module", source="toolkit"
+            )
+
+        self.assertEqual(report["ready_status"], "fail")
+        self.assertEqual(report["publishable_status"], "fail")
+        self.assertIn("readiness_gate_failed", " ".join(report["blocking_errors"]))
+        self.assertIn("structured_monster_media_missing", report["remediation_categories"])
+
 
 if __name__ == "__main__":
     unittest.main()

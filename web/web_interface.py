@@ -1627,17 +1627,54 @@ def activate_pack(pack_name):
         manager = PackManager()
         result = manager.activate_pack(pack_name, create_backup=False)  # Don't need pack backup since we did live backup
         
-        # If activation successful, copy all assets to the live game folders
-        if result.get('success'):
-            # First, copy the monster assets (NO individual backup needed)
-            copy_pack_monsters_to_game(pack_name)
-            # Then, copy the NPC assets (NO individual backup needed)
-            copy_pack_npcs_to_game(pack_name)
-        
         return jsonify(result)
     except Exception as e:
         error(f"TOOLKIT: Failed to activate pack: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/toolkit/static-cache/audit')
+def toolkit_static_cache_audit():
+    """Return strict-cache dry-run audit for static NPC/monster media."""
+    if not TOOLKIT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Toolkit not available'}), 503
+
+    try:
+        manager = PackManager()
+        report = manager.audit_static_runtime_cache()
+        return jsonify(report)
+    except Exception as e:
+        error(f"TOOLKIT: Failed static-cache audit: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/toolkit/static-cache/rebuild', methods=['POST'])
+def toolkit_static_cache_rebuild():
+    """Rebuild static NPC/monster runtime cache from active packs only."""
+    if not TOOLKIT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Toolkit not available'}), 503
+
+    try:
+        payload = request.json or {}
+        manager = PackManager()
+
+        active_packs = payload.get('active_packs')
+        if not isinstance(active_packs, list):
+            active_packs = None
+
+        dry_run = bool(payload.get('dry_run', True))
+        create_backup = bool(payload.get('create_backup', True))
+
+        result = manager.rebuild_static_runtime_cache(
+            active_packs=active_packs,
+            create_backup=create_backup,
+            dry_run=dry_run,
+        )
+        status = 200 if result.get('success') else 400
+        return jsonify(result), status
+    except Exception as e:
+        error(f"TOOLKIT: Failed static-cache rebuild: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/toolkit/packs/<pack_name>/export')
 def export_pack(pack_name):

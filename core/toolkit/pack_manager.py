@@ -10,7 +10,7 @@ import shutil
 import zipfile
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Set
 import hashlib
 
 class PackManager:
@@ -18,6 +18,11 @@ class PackManager:
     
     ACTIVE_PACK_FILE = "data/active_pack.json"
     PACKS_DIRECTORY = "graphic_packs"
+    STATIC_MEDIA_ROOT = Path("web/static/media")
+    STATIC_MEDIA_TARGETS = {
+        "monsters": "monsters",
+        "npcs": "npcs",
+    }
     
     def __init__(self):
         """Initialize the pack manager"""
@@ -48,6 +53,279 @@ class PackManager:
             }, f, indent=2)
         
         self.active_pack = pack_name
+
+    def get_active_pack_names(self) -> List[str]:
+        """Return active packs in deterministic order.
+
+        Supports either legacy `active_pack` (single string) or newer
+        `active_packs` (ordered list) payloads in ACTIVE_PACK_FILE.
+        """
+        active_file = Path(self.ACTIVE_PACK_FILE)
+        if not active_file.exists():
+            return [self.active_pack] if self.active_pack else []
+
+        try:
+            with open(active_file, "r") as handle:
+                data = json.load(handle)
+        except Exception:
+            return [self.active_pack] if self.active_pack else []
+
+        ordered: List[str] = []
+        seen: Set[str] = set()
+
+        listed = data.get("active_packs", [])
+        if isinstance(listed, list):
+            for raw in listed:
+                value = str(raw or "").strip()
+                if not value or value in seen:
+                    continue
+                seen.add(value)
+                ordered.append(value)
+
+        single = str(data.get("active_pack", self.active_pack) or "").strip()
+        if single and single not in seen:
+            ordered.append(single)
+
+        return ordered
+
+    def _iter_pack_media_files(self, pack_name: str, media_type: str) -> Dict[str, Path]:
+        """List source files for one pack/media type keyed by filename."""
+        media_key = str(media_type or "").strip().lower()
+        if media_key not in self.STATIC_MEDIA_TARGETS:
+            raise ValueError(f"Unsupported media type: {media_type}")
+
+        pack_dir = self.packs_dir / pack_name
+        if not pack_dir.exists():
+            return {}
+
+        files: Dict[str, Path] = {}
+
+        if media_key == "npcs":
+            candidates = [pack_dir / "npcs"]
+        else:
+            monsters_dir = pack_dir / "monsters"
+            candidates = [
+                monsters_dir,
+                monsters_dir / "images",
+                monsters_dir / "thumbnails",
+                monsters_dir / "videos",
+            ]
+
+        for folder in candidates:
+            if not folder.exists() or not folder.is_dir():
+                continue
+            for entry in folder.iterdir():
+                if not entry.is_file():
+                    continue
+                files[entry.name] = entry
+
+        return files
+
+    def _list_live_static_files(self, media_type: str) -> List[str]:
+        """List current runtime static files for media type."""
+        media_key = str(media_type or "").strip().lower()
+        target_name = self.STATIC_MEDIA_TARGETS.get(media_key)
+        if not target_name:
+            raise ValueError(f"Unsupported media type: {media_type}")
+
+        target_dir = self.STATIC_MEDIA_ROOT / target_name
+        if not target_dir.exists():
+            return []
+
+        return sorted([item.name for item in target_dir.iterdir() if item.is_file()])
+
+    def audit_static_runtime_cache(
+        self,
+        active_packs: Optional[List[str]] = None,
+    ) -> Dict:
+        """Dry-run audit for strict-cache rebuild diagnostics."""
+        resolved_packs = [p for p in (active_packs or self.get_active_pack_names()) if p]
+
+        targets: Dict[str, Dict] = {}
+        for media_type in self.STATIC_MEDIA_TARGETS:
+            live_files = self._list_live_static_files(media_type)
+            active_source_files: Dict[str, List[str]] = {}
+            active_source_by_pack: Dict[str, List[str]] = {}
+
+            for pack_name in resolved_packs:
+                pack_files = sorted(self._iter_pack_media_files(pack_name, media_type).keys())
+                active_source_by_pack[pack_name] = pack_files
+                for filename in pack_files:
+                    active_source_files.setdefault(filename, []).append(pack_name)
+
+            active_union = sorted(active_source_files.keys())
+            live_set = set(live_files)
+            active_set = set(active_union)
+
+            orphans = sorted(list(live_set - active_set))
+            missing_in_live = sorted(list(active_set - live_set))
+            collisions = {
+                name: packs
+                for name, packs in sorted(active_source_files.items())
+                if len(packs) > 1
+            }
+
+            targets[media_type] = {
+                "live_files": live_files,
+                "active_pack_files": active_source_by_pack,
+                "active_union": active_union,
+                "orphaned_files": orphans,
+                "missing_in_live": missing_in_live,
+                "collisions": collisions,
+                "counts": {
+                    "live": len(live_files),
+                    "active_union": len(active_union),
+                    "orphaned": len(orphans),
+                    "collisions": len(collisions),
+                },
+            }
+
+        sibling_dirs = []
+        if self.STATIC_MEDIA_ROOT.exists():
+            for entry in self.STATIC_MEDIA_ROOT.iterdir():
+                if not entry.is_dir():
+                    continue
+                if entry.name in self.STATIC_MEDIA_TARGETS.values():
+                    continue
+                sibling_dirs.append(entry.name)
+
+        return {
+            "success": True,
+            "mode": "dry_run",
+            "active_packs": resolved_packs,
+            "targets": targets,
+            "out_of_scope_sibling_dirs": sorted(sibling_dirs),
+            "contract": {
+                "module_media_authoritative": True,
+                "static_media_is_runtime_cache": True,
+                "scope": sorted(list(self.STATIC_MEDIA_TARGETS.values())),
+            },
+        }
+
+    def snapshot_live_static_media(self, backup_name: Optional[str] = None) -> Dict:
+        """Create reversible backup pack from current live static targets."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        resolved_name = str(backup_name or f"live_backup_{timestamp}").strip()
+        backup_dir = self.packs_dir / resolved_name
+
+        if backup_dir.exists():
+            return {
+                "success": False,
+                "error": f"Backup pack already exists: {resolved_name}",
+            }
+
+        backup_dir.mkdir(parents=True, exist_ok=False)
+
+        counts = {"monsters": 0, "npcs": 0}
+        try:
+            for media_type, folder_name in self.STATIC_MEDIA_TARGETS.items():
+                source_dir = self.STATIC_MEDIA_ROOT / folder_name
+                dest_dir = backup_dir / folder_name
+                if not source_dir.exists() or not source_dir.is_dir():
+                    continue
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                for entry in source_dir.iterdir():
+                    if not entry.is_file():
+                        continue
+                    shutil.copy2(entry, dest_dir / entry.name)
+                    counts[media_type] += 1
+
+            manifest = {
+                "name": resolved_name,
+                "display_name": f"Live Assets Backup ({datetime.now().strftime('%Y-%m-%d %H:%M')})",
+                "description": (
+                    "Automatic backup of live runtime static cache for strict-cache rebuild "
+                    f"({counts['monsters']} monster files, {counts['npcs']} npc files)."
+                ),
+                "is_backup": True,
+                "backup_type": "live_assets",
+                "backup_date": datetime.now().isoformat(),
+                "monster_count": counts["monsters"],
+                "npc_count": counts["npcs"],
+                "created_by": "PackManager.snapshot_live_static_media",
+            }
+            with open(backup_dir / "manifest.json", "w") as handle:
+                json.dump(manifest, handle, indent=2)
+        except Exception as exc:
+            shutil.rmtree(backup_dir, ignore_errors=True)
+            return {"success": False, "error": str(exc)}
+
+        return {
+            "success": True,
+            "backup_name": resolved_name,
+            "backup_path": str(backup_dir),
+            "counts": counts,
+        }
+
+    def rebuild_static_runtime_cache(
+        self,
+        active_packs: Optional[List[str]] = None,
+        create_backup: bool = False,
+        dry_run: bool = True,
+    ) -> Dict:
+        """Clear/repopulate runtime static cache from active packs only."""
+        audit = self.audit_static_runtime_cache(active_packs=active_packs)
+        if dry_run:
+            return {
+                "success": True,
+                "action": "dry_run",
+                "audit": audit,
+                "backup": None,
+            }
+
+        resolved_packs = list(audit.get("active_packs", []))
+        backup_result = None
+        if create_backup:
+            backup_result = self.snapshot_live_static_media()
+            if not backup_result.get("success"):
+                return {
+                    "success": False,
+                    "error": "Failed to create pre-rebuild backup",
+                    "backup": backup_result,
+                    "audit": audit,
+                }
+
+        targets_result: Dict[str, Dict] = {}
+        for media_type, folder_name in self.STATIC_MEDIA_TARGETS.items():
+            target_dir = self.STATIC_MEDIA_ROOT / folder_name
+            if target_dir.exists():
+                shutil.rmtree(target_dir)
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            copied = 0
+            overwritten = []
+            seen_names: Set[str] = set()
+
+            for pack_name in resolved_packs:
+                pack_files = self._iter_pack_media_files(pack_name, media_type)
+                for filename in sorted(pack_files.keys()):
+                    source_path = pack_files[filename]
+                    dest_path = target_dir / filename
+                    if filename in seen_names:
+                        overwritten.append(filename)
+                    shutil.copy2(source_path, dest_path)
+                    seen_names.add(filename)
+                    copied += 1
+
+            targets_result[media_type] = {
+                "copied": copied,
+                "overwritten": sorted(list(set(overwritten))),
+                "final_file_count": len(list(target_dir.glob("*"))),
+                "orphaned_removed": len(
+                    audit.get("targets", {})
+                    .get(media_type, {})
+                    .get("orphaned_files", [])
+                ),
+            }
+
+        return {
+            "success": True,
+            "action": "rebuild",
+            "active_packs": resolved_packs,
+            "backup": backup_result,
+            "audit": audit,
+            "targets": targets_result,
+        }
     
     def create_pack(
         self,
@@ -371,6 +649,8 @@ Created: {datetime.now().strftime("%Y-%m-%d")}
             }
         
         try:
+            previous_pack = self.active_pack
+
             # Load pack manifest
             manifest_path = pack_dir / "manifest.json"
             if manifest_path.exists():
@@ -417,71 +697,34 @@ Created: {datetime.now().strftime("%Y-%m-%d")}
                     except Exception as e:
                         print(f"Warning: Could not create backup: {e}")
             
-            # Handle game assets directories
-            game_monsters_dir = Path("web/static/media/monsters")
-            game_npcs_dir = Path("web/static/media/npcs")
-            
-            # Copy monster assets to game directory
-            pack_monsters_dir = pack_dir / "monsters"
-            if pack_monsters_dir.exists():
-                # Ensure game assets directory exists
-                game_monsters_dir.mkdir(parents=True, exist_ok=True)
-                
-                # Handle new structure: all files directly in monsters/ folder
-                for file in pack_monsters_dir.glob("*"):
-                    if file.is_file():
-                        if file.suffix in ['.png', '.jpg', '.jpeg', '.mp4']:
-                            shutil.copy2(file, game_monsters_dir / file.name)
-                
-                # Handle old structure: separate subdirectories
-                # Copy thumbnails
-                thumb_source = pack_monsters_dir / "thumbnails"
-                if thumb_source.exists():
-                    for thumb in thumb_source.glob("*.jpg"):
-                        shutil.copy2(thumb, game_monsters_dir / thumb.name)
-                
-                # Copy videos
-                video_source = pack_monsters_dir / "videos"
-                if video_source.exists():
-                    for video in video_source.glob("*.mp4"):
-                        shutil.copy2(video, game_monsters_dir / video.name)
-                
-                # Copy images
-                image_source = pack_monsters_dir / "images"
-                if image_source.exists():
-                    for image in image_source.glob("*"):
-                        if image.suffix in ['.png', '.jpg', '.jpeg']:
-                            shutil.copy2(image, game_monsters_dir / image.name)
-            
-            # Copy NPC assets to game directory
-            pack_npcs_dir = pack_dir / "npcs"
-            if pack_npcs_dir.exists():
-                # Ensure game NPCs directory exists
-                game_npcs_dir.mkdir(parents=True, exist_ok=True)
-                
-                # Copy all NPC files
-                for file in pack_npcs_dir.glob("*"):
-                    if file.is_file():
-                        if file.suffix in ['.png', '.jpg', '.jpeg', '.mp4']:
-                            shutil.copy2(file, game_npcs_dir / file.name)
-            
             # Save as active pack
             self._save_active_pack(pack_name)
+
+            # TABLETOP MODE: Strict-cache rebuild replaces additive drift.
+            rebuild_result = self.rebuild_static_runtime_cache(
+                active_packs=[pack_name],
+                create_backup=False,
+                dry_run=False,
+            )
+            if not rebuild_result.get("success"):
+                return {
+                    "success": False,
+                    "error": "Activation failed during static cache rebuild",
+                    "rebuild": rebuild_result,
+                }
             
             print(f"Activated pack: {pack_name}")
-            if pack_monsters_dir.exists():
-                print(f"  - Copied monster assets to {game_monsters_dir}")
-            if pack_npcs_dir.exists():
-                print(f"  - Copied NPC assets to {game_npcs_dir}")
+            print("  - Rebuilt runtime static cache from selected active pack")
             
             return {
                 "success": True,
                 "pack_name": pack_name,
                 "manifest": manifest,
-                "previous_pack": self.active_pack,
+                "previous_pack": previous_pack,
                 "assets_copied": True,
                 "backup_created": backup_created,
-                "backup_name": backup_name
+                "backup_name": backup_name,
+                "rebuild": rebuild_result,
             }
             
         except Exception as e:
