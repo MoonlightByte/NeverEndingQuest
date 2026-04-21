@@ -299,5 +299,3695 @@
       ],
       "notes": "Keep_of_Doom remains fully playable as a standalone module when cross-module continuity is unavailable."
     }
+  },
+  "semantic_authority": {
+    "version": "v1",
+    "module_slug": "Keep_of_Doom",
+    "location_aliases": {
+      "aa01": {
+        "status": "resolved",
+        "location_id": "AA01",
+        "location_name": "Witchlight Trailhead",
+        "candidate_location_ids": [
+          "AA01"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA01].aliases"
+        ]
+      },
+      "aa02": {
+        "status": "resolved",
+        "location_id": "AA02",
+        "location_name": "Abandoned Ranger Outpost",
+        "candidate_location_ids": [
+          "AA02"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA02].aliases"
+        ]
+      },
+      "aa03": {
+        "status": "resolved",
+        "location_id": "AA03",
+        "location_name": "The Withered Shrine",
+        "candidate_location_ids": [
+          "AA03"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA03].aliases"
+        ]
+      },
+      "aa04": {
+        "status": "resolved",
+        "location_id": "AA04",
+        "location_name": "Lost Ward Circle",
+        "candidate_location_ids": [
+          "AA04"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA04].aliases"
+        ]
+      },
+      "aa05": {
+        "status": "resolved",
+        "location_id": "AA05",
+        "location_name": "Boggard Marsh",
+        "candidate_location_ids": [
+          "AA05"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA05].aliases"
+        ]
+      },
+      "aa06": {
+        "status": "resolved",
+        "location_id": "AA06",
+        "location_name": "Spectral Clearing",
+        "candidate_location_ids": [
+          "AA06"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA06].aliases"
+        ]
+      },
+      "aa07": {
+        "status": "resolved",
+        "location_id": "AA07",
+        "location_name": "Keeper's Cottage",
+        "candidate_location_ids": [
+          "AA07"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA07].aliases"
+        ]
+      },
+      "aa08": {
+        "status": "resolved",
+        "location_id": "AA08",
+        "location_name": "Secret Forest Path",
+        "candidate_location_ids": [
+          "AA08"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA08].aliases"
+        ]
+      },
+      "aa09": {
+        "status": "resolved",
+        "location_id": "AA09",
+        "location_name": "Hidden Keep Entrance",
+        "candidate_location_ids": [
+          "AA09"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA09].aliases"
+        ]
+      },
+      "abandoned ranger outpost": {
+        "status": "resolved",
+        "location_id": "AA02",
+        "location_name": "Abandoned Ranger Outpost",
+        "candidate_location_ids": [
+          "AA02"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA02].aliases",
+          "areas/G001.json#locations[AA02].name"
+        ]
+      },
+      "abandoned watchtower": {
+        "status": "resolved",
+        "location_id": "AL03",
+        "location_name": "Abandoned Watchtower",
+        "candidate_location_ids": [
+          "AL03"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL03].aliases",
+          "areas/TBM001.json#locations[AL03].name"
+        ]
+      },
+      "ae01": {
+        "status": "resolved",
+        "location_id": "AE01",
+        "location_name": "Harrow's Hollow General Store",
+        "candidate_location_ids": [
+          "AE01"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE01].aliases"
+        ]
+      },
+      "ae02": {
+        "status": "resolved",
+        "location_id": "AE02",
+        "location_name": "Harrow's Hollow Town Square",
+        "candidate_location_ids": [
+          "AE02"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE02].aliases"
+        ]
+      },
+      "ae03": {
+        "status": "resolved",
+        "location_id": "AE03",
+        "location_name": "East Gate and Guardhouse",
+        "candidate_location_ids": [
+          "AE03"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE03].aliases"
+        ]
+      },
+      "ae04": {
+        "status": "resolved",
+        "location_id": "AE04",
+        "location_name": "Militia Barracks",
+        "candidate_location_ids": [
+          "AE04"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE04].aliases"
+        ]
+      },
+      "ae05": {
+        "status": "resolved",
+        "location_id": "AE05",
+        "location_name": "The Wyrd Lantern Inn",
+        "candidate_location_ids": [
+          "AE05"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE05].aliases"
+        ]
+      },
+      "ae06": {
+        "status": "resolved",
+        "location_id": "AE06",
+        "location_name": "Smuggler's Tunnel",
+        "candidate_location_ids": [
+          "AE06"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE06].aliases"
+        ]
+      },
+      "ag01": {
+        "status": "resolved",
+        "location_id": "AG01",
+        "location_name": "Outer Courtyard",
+        "candidate_location_ids": [
+          "AG01"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG01].aliases"
+        ]
+      },
+      "ag02": {
+        "status": "resolved",
+        "location_id": "AG02",
+        "location_name": "Gatehouse Ruins",
+        "candidate_location_ids": [
+          "AG02"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG02].aliases"
+        ]
+      },
+      "ag03": {
+        "status": "resolved",
+        "location_id": "AG03",
+        "location_name": "The Ruined Chapel",
+        "candidate_location_ids": [
+          "AG03"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG03].aliases"
+        ]
+      },
+      "ag04": {
+        "status": "resolved",
+        "location_id": "AG04",
+        "location_name": "Fallen Barracks",
+        "candidate_location_ids": [
+          "AG04"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG04].aliases"
+        ]
+      },
+      "ag05": {
+        "status": "resolved",
+        "location_id": "AG05",
+        "location_name": "Great Hall",
+        "candidate_location_ids": [
+          "AG05"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG05].aliases"
+        ]
+      },
+      "ag06": {
+        "status": "resolved",
+        "location_id": "AG06",
+        "location_name": "Broken Tower",
+        "candidate_location_ids": [
+          "AG06"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG06].aliases"
+        ]
+      },
+      "ag07": {
+        "status": "resolved",
+        "location_id": "AG07",
+        "location_name": "Lord's Study",
+        "candidate_location_ids": [
+          "AG07"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG07].aliases"
+        ]
+      },
+      "ag08": {
+        "status": "resolved",
+        "location_id": "AG08",
+        "location_name": "Secret Passage",
+        "candidate_location_ids": [
+          "AG08"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG08].aliases"
+        ]
+      },
+      "al01": {
+        "status": "resolved",
+        "location_id": "AL01",
+        "location_name": "The Sundered Causeway",
+        "candidate_location_ids": [
+          "AL01"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL01].aliases"
+        ]
+      },
+      "al02": {
+        "status": "resolved",
+        "location_id": "AL02",
+        "location_name": "The Mire of Echoes",
+        "candidate_location_ids": [
+          "AL02"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL02].aliases"
+        ]
+      },
+      "al03": {
+        "status": "resolved",
+        "location_id": "AL03",
+        "location_name": "Abandoned Watchtower",
+        "candidate_location_ids": [
+          "AL03"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL03].aliases"
+        ]
+      },
+      "al04": {
+        "status": "resolved",
+        "location_id": "AL04",
+        "location_name": "Black Banner Encampment",
+        "candidate_location_ids": [
+          "AL04"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL04].aliases"
+        ]
+      },
+      "al05": {
+        "status": "resolved",
+        "location_id": "AL05",
+        "location_name": "Ancient Standing Stones",
+        "candidate_location_ids": [
+          "AL05"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL05].aliases"
+        ]
+      },
+      "al06": {
+        "status": "resolved",
+        "location_id": "AL06",
+        "location_name": "The Cursed Barrow",
+        "candidate_location_ids": [
+          "AL06"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL06].aliases"
+        ]
+      },
+      "an01": {
+        "status": "resolved",
+        "location_id": "AN01",
+        "location_name": "Dungeon Entrance",
+        "candidate_location_ids": [
+          "AN01"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN01].aliases"
+        ]
+      },
+      "an02": {
+        "status": "resolved",
+        "location_id": "AN02",
+        "location_name": "The Gaol",
+        "candidate_location_ids": [
+          "AN02"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN02].aliases"
+        ]
+      },
+      "an03": {
+        "status": "resolved",
+        "location_id": "AN03",
+        "location_name": "Torture Chamber",
+        "candidate_location_ids": [
+          "AN03"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN03].aliases"
+        ]
+      },
+      "an04": {
+        "status": "resolved",
+        "location_id": "AN04",
+        "location_name": "Guard Post",
+        "candidate_location_ids": [
+          "AN04"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN04].aliases"
+        ]
+      },
+      "an05": {
+        "status": "resolved",
+        "location_id": "AN05",
+        "location_name": "Storage Vaults",
+        "candidate_location_ids": [
+          "AN05"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN05].aliases"
+        ]
+      },
+      "an06": {
+        "status": "resolved",
+        "location_id": "AN06",
+        "location_name": "Forgotten Ossuary",
+        "candidate_location_ids": [
+          "AN06"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN06].aliases"
+        ]
+      },
+      "an07": {
+        "status": "resolved",
+        "location_id": "AN07",
+        "location_name": "Relic Chamber",
+        "candidate_location_ids": [
+          "AN07"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN07].aliases"
+        ]
+      },
+      "ancient standing stones": {
+        "status": "resolved",
+        "location_id": "AL05",
+        "location_name": "Ancient Standing Stones",
+        "candidate_location_ids": [
+          "AL05"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL05].aliases",
+          "areas/TBM001.json#locations[AL05].name"
+        ]
+      },
+      "black banner encampment": {
+        "status": "resolved",
+        "location_id": "AL04",
+        "location_name": "Black Banner Encampment",
+        "candidate_location_ids": [
+          "AL04"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL04].aliases",
+          "areas/TBM001.json#locations[AL04].name"
+        ]
+      },
+      "boggard marsh": {
+        "status": "resolved",
+        "location_id": "AA05",
+        "location_name": "Boggard Marsh",
+        "candidate_location_ids": [
+          "AA05"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA05].aliases",
+          "areas/G001.json#locations[AA05].name"
+        ]
+      },
+      "breach the keep": {
+        "status": "resolved",
+        "location_id": "AA09",
+        "location_name": "Hidden Keep Entrance",
+        "candidate_location_ids": [
+          "AA09"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA09].aliases"
+        ]
+      },
+      "broken tower": {
+        "status": "resolved",
+        "location_id": "AG06",
+        "location_name": "Broken Tower",
+        "candidate_location_ids": [
+          "AG06"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG06].aliases",
+          "areas/SK001.json#locations[AG06].name"
+        ]
+      },
+      "cursed barrow": {
+        "status": "resolved",
+        "location_id": "AL06",
+        "location_name": "The Cursed Barrow",
+        "candidate_location_ids": [
+          "AL06"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL06].aliases",
+          "areas/TBM001.json#locations[AL06].name"
+        ]
+      },
+      "dungeon entrance": {
+        "status": "resolved",
+        "location_id": "AN01",
+        "location_name": "Dungeon Entrance",
+        "candidate_location_ids": [
+          "AN01"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN01].aliases",
+          "areas/TCD001.json#locations[AN01].name"
+        ]
+      },
+      "east gate and guardhouse": {
+        "status": "resolved",
+        "location_id": "AE03",
+        "location_name": "East Gate and Guardhouse",
+        "candidate_location_ids": [
+          "AE03"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE03].aliases",
+          "areas/HH001.json#locations[AE03].name"
+        ]
+      },
+      "fallen barracks": {
+        "status": "resolved",
+        "location_id": "AG04",
+        "location_name": "Fallen Barracks",
+        "candidate_location_ids": [
+          "AG04"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG04].aliases",
+          "areas/SK001.json#locations[AG04].name"
+        ]
+      },
+      "forgotten ossuary": {
+        "status": "resolved",
+        "location_id": "AN06",
+        "location_name": "Forgotten Ossuary",
+        "candidate_location_ids": [
+          "AN06"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN06].aliases",
+          "areas/TCD001.json#locations[AN06].name"
+        ]
+      },
+      "gaol": {
+        "status": "resolved",
+        "location_id": "AN02",
+        "location_name": "The Gaol",
+        "candidate_location_ids": [
+          "AN02"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN02].aliases",
+          "areas/TCD001.json#locations[AN02].name"
+        ]
+      },
+      "gatehouse ruins": {
+        "status": "resolved",
+        "location_id": "AG02",
+        "location_name": "Gatehouse Ruins",
+        "candidate_location_ids": [
+          "AG02"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG02].aliases",
+          "areas/SK001.json#locations[AG02].name"
+        ]
+      },
+      "great hall": {
+        "status": "resolved",
+        "location_id": "AG05",
+        "location_name": "Great Hall",
+        "candidate_location_ids": [
+          "AG05"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG05].aliases",
+          "areas/SK001.json#locations[AG05].name"
+        ]
+      },
+      "guard post": {
+        "status": "resolved",
+        "location_id": "AN04",
+        "location_name": "Guard Post",
+        "candidate_location_ids": [
+          "AN04"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN04].aliases",
+          "areas/TCD001.json#locations[AN04].name"
+        ]
+      },
+      "harrows hollow general store": {
+        "status": "resolved",
+        "location_id": "AE01",
+        "location_name": "Harrow's Hollow General Store",
+        "candidate_location_ids": [
+          "AE01"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE01].aliases",
+          "areas/HH001.json#locations[AE01].name"
+        ]
+      },
+      "harrows hollow town square": {
+        "status": "resolved",
+        "location_id": "AE02",
+        "location_name": "Harrow's Hollow Town Square",
+        "candidate_location_ids": [
+          "AE02"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE02].aliases",
+          "areas/HH001.json#locations[AE02].name"
+        ]
+      },
+      "hidden keep": {
+        "status": "resolved",
+        "location_id": "AA09",
+        "location_name": "Hidden Keep Entrance",
+        "candidate_location_ids": [
+          "AA09"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA09].aliases"
+        ]
+      },
+      "hidden keep entrance": {
+        "status": "resolved",
+        "location_id": "AA09",
+        "location_name": "Hidden Keep Entrance",
+        "candidate_location_ids": [
+          "AA09"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA09].aliases",
+          "areas/G001.json#locations[AA09].name"
+        ]
+      },
+      "keepers cottage": {
+        "status": "resolved",
+        "location_id": "AA07",
+        "location_name": "Keeper's Cottage",
+        "candidate_location_ids": [
+          "AA07"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA07].aliases",
+          "areas/G001.json#locations[AA07].name"
+        ]
+      },
+      "lantern inn": {
+        "status": "resolved",
+        "location_id": "AE05",
+        "location_name": "The Wyrd Lantern Inn",
+        "candidate_location_ids": [
+          "AE05"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE05].aliases"
+        ]
+      },
+      "lords study": {
+        "status": "resolved",
+        "location_id": "AG07",
+        "location_name": "Lord's Study",
+        "candidate_location_ids": [
+          "AG07"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG07].aliases",
+          "areas/SK001.json#locations[AG07].name"
+        ]
+      },
+      "lost ward circle": {
+        "status": "resolved",
+        "location_id": "AA04",
+        "location_name": "Lost Ward Circle",
+        "candidate_location_ids": [
+          "AA04"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA04].aliases",
+          "areas/G001.json#locations[AA04].name"
+        ]
+      },
+      "militia barracks": {
+        "status": "resolved",
+        "location_id": "AE04",
+        "location_name": "Militia Barracks",
+        "candidate_location_ids": [
+          "AE04"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE04].aliases",
+          "areas/HH001.json#locations[AE04].name"
+        ]
+      },
+      "mire of echoes": {
+        "status": "resolved",
+        "location_id": "AL02",
+        "location_name": "The Mire of Echoes",
+        "candidate_location_ids": [
+          "AL02"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL02].aliases",
+          "areas/TBM001.json#locations[AL02].name"
+        ]
+      },
+      "outer courtyard": {
+        "status": "resolved",
+        "location_id": "AG01",
+        "location_name": "Outer Courtyard",
+        "candidate_location_ids": [
+          "AG01"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG01].aliases",
+          "areas/SK001.json#locations[AG01].name"
+        ]
+      },
+      "relic chamber": {
+        "status": "resolved",
+        "location_id": "AN07",
+        "location_name": "Relic Chamber",
+        "candidate_location_ids": [
+          "AN07"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN07].aliases",
+          "areas/TCD001.json#locations[AN07].name"
+        ]
+      },
+      "ruined chapel": {
+        "status": "resolved",
+        "location_id": "AG03",
+        "location_name": "The Ruined Chapel",
+        "candidate_location_ids": [
+          "AG03"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG03].aliases",
+          "areas/SK001.json#locations[AG03].name"
+        ]
+      },
+      "secret forest path": {
+        "status": "resolved",
+        "location_id": "AA08",
+        "location_name": "Secret Forest Path",
+        "candidate_location_ids": [
+          "AA08"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA08].aliases",
+          "areas/G001.json#locations[AA08].name"
+        ]
+      },
+      "secret passage": {
+        "status": "resolved",
+        "location_id": "AG08",
+        "location_name": "Secret Passage",
+        "candidate_location_ids": [
+          "AG08"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG08].aliases",
+          "areas/SK001.json#locations[AG08].name"
+        ]
+      },
+      "smugglers tunnel": {
+        "status": "resolved",
+        "location_id": "AE06",
+        "location_name": "Smuggler's Tunnel",
+        "candidate_location_ids": [
+          "AE06"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE06].aliases",
+          "areas/HH001.json#locations[AE06].name"
+        ]
+      },
+      "spectral clearing": {
+        "status": "resolved",
+        "location_id": "AA06",
+        "location_name": "Spectral Clearing",
+        "candidate_location_ids": [
+          "AA06"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA06].aliases",
+          "areas/G001.json#locations[AA06].name"
+        ]
+      },
+      "storage vaults": {
+        "status": "resolved",
+        "location_id": "AN05",
+        "location_name": "Storage Vaults",
+        "candidate_location_ids": [
+          "AN05"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN05].aliases",
+          "areas/TCD001.json#locations[AN05].name"
+        ]
+      },
+      "sundered causeway": {
+        "status": "resolved",
+        "location_id": "AL01",
+        "location_name": "The Sundered Causeway",
+        "candidate_location_ids": [
+          "AL01"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL01].aliases",
+          "areas/TBM001.json#locations[AL01].name"
+        ]
+      },
+      "the cursed barrow": {
+        "status": "resolved",
+        "location_id": "AL06",
+        "location_name": "The Cursed Barrow",
+        "candidate_location_ids": [
+          "AL06"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL06].aliases",
+          "areas/TBM001.json#locations[AL06].name"
+        ]
+      },
+      "the gaol": {
+        "status": "resolved",
+        "location_id": "AN02",
+        "location_name": "The Gaol",
+        "candidate_location_ids": [
+          "AN02"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN02].aliases",
+          "areas/TCD001.json#locations[AN02].name"
+        ]
+      },
+      "the mire of echoes": {
+        "status": "resolved",
+        "location_id": "AL02",
+        "location_name": "The Mire of Echoes",
+        "candidate_location_ids": [
+          "AL02"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL02].aliases",
+          "areas/TBM001.json#locations[AL02].name"
+        ]
+      },
+      "the ruined chapel": {
+        "status": "resolved",
+        "location_id": "AG03",
+        "location_name": "The Ruined Chapel",
+        "candidate_location_ids": [
+          "AG03"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG03].aliases",
+          "areas/SK001.json#locations[AG03].name"
+        ]
+      },
+      "the sundered causeway": {
+        "status": "resolved",
+        "location_id": "AL01",
+        "location_name": "The Sundered Causeway",
+        "candidate_location_ids": [
+          "AL01"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL01].aliases",
+          "areas/TBM001.json#locations[AL01].name"
+        ]
+      },
+      "the withered shrine": {
+        "status": "resolved",
+        "location_id": "AA03",
+        "location_name": "The Withered Shrine",
+        "candidate_location_ids": [
+          "AA03"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA03].aliases",
+          "areas/G001.json#locations[AA03].name"
+        ]
+      },
+      "the wyrd lantern inn": {
+        "status": "resolved",
+        "location_id": "AE05",
+        "location_name": "The Wyrd Lantern Inn",
+        "candidate_location_ids": [
+          "AE05"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE05].aliases",
+          "areas/HH001.json#locations[AE05].name"
+        ]
+      },
+      "torture chamber": {
+        "status": "resolved",
+        "location_id": "AN03",
+        "location_name": "Torture Chamber",
+        "candidate_location_ids": [
+          "AN03"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN03].aliases",
+          "areas/TCD001.json#locations[AN03].name"
+        ]
+      },
+      "witchlight trailhead": {
+        "status": "resolved",
+        "location_id": "AA01",
+        "location_name": "Witchlight Trailhead",
+        "candidate_location_ids": [
+          "AA01"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA01].aliases",
+          "areas/G001.json#locations[AA01].name"
+        ]
+      },
+      "withered shrine": {
+        "status": "resolved",
+        "location_id": "AA03",
+        "location_name": "The Withered Shrine",
+        "candidate_location_ids": [
+          "AA03"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA03].aliases",
+          "areas/G001.json#locations[AA03].name"
+        ]
+      },
+      "wyrd lantern inn": {
+        "status": "resolved",
+        "location_id": "AE05",
+        "location_name": "The Wyrd Lantern Inn",
+        "candidate_location_ids": [
+          "AE05"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE05].aliases",
+          "areas/HH001.json#locations[AE05].name"
+        ]
+      }
+    },
+    "destination_phrases": {
+      "aa01": {
+        "status": "resolved",
+        "location_id": "AA01",
+        "candidate_location_ids": [
+          "AA01"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA01].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "aa02": {
+        "status": "resolved",
+        "location_id": "AA02",
+        "candidate_location_ids": [
+          "AA02"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA02].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "aa03": {
+        "status": "resolved",
+        "location_id": "AA03",
+        "candidate_location_ids": [
+          "AA03"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA03].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "aa04": {
+        "status": "resolved",
+        "location_id": "AA04",
+        "candidate_location_ids": [
+          "AA04"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA04].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "aa05": {
+        "status": "resolved",
+        "location_id": "AA05",
+        "candidate_location_ids": [
+          "AA05"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA05].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "aa06": {
+        "status": "resolved",
+        "location_id": "AA06",
+        "candidate_location_ids": [
+          "AA06"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA06].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "aa07": {
+        "status": "resolved",
+        "location_id": "AA07",
+        "candidate_location_ids": [
+          "AA07"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA07].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "aa08": {
+        "status": "resolved",
+        "location_id": "AA08",
+        "candidate_location_ids": [
+          "AA08"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA08].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "aa09": {
+        "status": "resolved",
+        "location_id": "AA09",
+        "candidate_location_ids": [
+          "AA09"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA09].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "abandoned ranger outpost": {
+        "status": "resolved",
+        "location_id": "AA02",
+        "candidate_location_ids": [
+          "AA02"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA02].aliases",
+          "areas/G001.json#locations[AA02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "abandoned watchtower": {
+        "status": "resolved",
+        "location_id": "AL03",
+        "candidate_location_ids": [
+          "AL03"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL03].aliases",
+          "areas/TBM001.json#locations[AL03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ae01": {
+        "status": "resolved",
+        "location_id": "AE01",
+        "candidate_location_ids": [
+          "AE01"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE01].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ae02": {
+        "status": "resolved",
+        "location_id": "AE02",
+        "candidate_location_ids": [
+          "AE02"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE02].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ae03": {
+        "status": "resolved",
+        "location_id": "AE03",
+        "candidate_location_ids": [
+          "AE03"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE03].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ae04": {
+        "status": "resolved",
+        "location_id": "AE04",
+        "candidate_location_ids": [
+          "AE04"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE04].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ae05": {
+        "status": "resolved",
+        "location_id": "AE05",
+        "candidate_location_ids": [
+          "AE05"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE05].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ae06": {
+        "status": "resolved",
+        "location_id": "AE06",
+        "candidate_location_ids": [
+          "AE06"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE06].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ag01": {
+        "status": "resolved",
+        "location_id": "AG01",
+        "candidate_location_ids": [
+          "AG01"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG01].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ag02": {
+        "status": "resolved",
+        "location_id": "AG02",
+        "candidate_location_ids": [
+          "AG02"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG02].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ag03": {
+        "status": "resolved",
+        "location_id": "AG03",
+        "candidate_location_ids": [
+          "AG03"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG03].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ag04": {
+        "status": "resolved",
+        "location_id": "AG04",
+        "candidate_location_ids": [
+          "AG04"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG04].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ag05": {
+        "status": "resolved",
+        "location_id": "AG05",
+        "candidate_location_ids": [
+          "AG05"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG05].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ag06": {
+        "status": "resolved",
+        "location_id": "AG06",
+        "candidate_location_ids": [
+          "AG06"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG06].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ag07": {
+        "status": "resolved",
+        "location_id": "AG07",
+        "candidate_location_ids": [
+          "AG07"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG07].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ag08": {
+        "status": "resolved",
+        "location_id": "AG08",
+        "candidate_location_ids": [
+          "AG08"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG08].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "al01": {
+        "status": "resolved",
+        "location_id": "AL01",
+        "candidate_location_ids": [
+          "AL01"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL01].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "al02": {
+        "status": "resolved",
+        "location_id": "AL02",
+        "candidate_location_ids": [
+          "AL02"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL02].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "al03": {
+        "status": "resolved",
+        "location_id": "AL03",
+        "candidate_location_ids": [
+          "AL03"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL03].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "al04": {
+        "status": "resolved",
+        "location_id": "AL04",
+        "candidate_location_ids": [
+          "AL04"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL04].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "al05": {
+        "status": "resolved",
+        "location_id": "AL05",
+        "candidate_location_ids": [
+          "AL05"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL05].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "al06": {
+        "status": "resolved",
+        "location_id": "AL06",
+        "candidate_location_ids": [
+          "AL06"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL06].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "an01": {
+        "status": "resolved",
+        "location_id": "AN01",
+        "candidate_location_ids": [
+          "AN01"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN01].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "an02": {
+        "status": "resolved",
+        "location_id": "AN02",
+        "candidate_location_ids": [
+          "AN02"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN02].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "an03": {
+        "status": "resolved",
+        "location_id": "AN03",
+        "candidate_location_ids": [
+          "AN03"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN03].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "an04": {
+        "status": "resolved",
+        "location_id": "AN04",
+        "candidate_location_ids": [
+          "AN04"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN04].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "an05": {
+        "status": "resolved",
+        "location_id": "AN05",
+        "candidate_location_ids": [
+          "AN05"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN05].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "an06": {
+        "status": "resolved",
+        "location_id": "AN06",
+        "candidate_location_ids": [
+          "AN06"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN06].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "an07": {
+        "status": "resolved",
+        "location_id": "AN07",
+        "candidate_location_ids": [
+          "AN07"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN07].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ancient standing stones": {
+        "status": "resolved",
+        "location_id": "AL05",
+        "candidate_location_ids": [
+          "AL05"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL05].aliases",
+          "areas/TBM001.json#locations[AL05].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "black banner encampment": {
+        "status": "resolved",
+        "location_id": "AL04",
+        "candidate_location_ids": [
+          "AL04"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL04].aliases",
+          "areas/TBM001.json#locations[AL04].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "boggard marsh": {
+        "status": "resolved",
+        "location_id": "AA05",
+        "candidate_location_ids": [
+          "AA05"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA05].aliases",
+          "areas/G001.json#locations[AA05].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "breach the keep": {
+        "status": "resolved",
+        "location_id": "AA09",
+        "candidate_location_ids": [
+          "AA09"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA09].aliases",
+          "module_plot.json#plotPoints[PP003].title"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 2
+      },
+      "broken tower": {
+        "status": "resolved",
+        "location_id": "AG06",
+        "candidate_location_ids": [
+          "AG06"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG06].aliases",
+          "areas/SK001.json#locations[AG06].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 2
+      },
+      "cursed barrow": {
+        "status": "resolved",
+        "location_id": "AL06",
+        "candidate_location_ids": [
+          "AL06"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL06].aliases",
+          "areas/TBM001.json#locations[AL06].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "dungeon entrance": {
+        "status": "resolved",
+        "location_id": "AN01",
+        "candidate_location_ids": [
+          "AN01"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN01].aliases",
+          "areas/TCD001.json#locations[AN01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "east gate and guardhouse": {
+        "status": "resolved",
+        "location_id": "AE03",
+        "candidate_location_ids": [
+          "AE03"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE03].aliases",
+          "areas/HH001.json#locations[AE03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "fallen barracks": {
+        "status": "resolved",
+        "location_id": "AG04",
+        "candidate_location_ids": [
+          "AG04"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG04].aliases",
+          "areas/SK001.json#locations[AG04].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "forgotten ossuary": {
+        "status": "resolved",
+        "location_id": "AN06",
+        "candidate_location_ids": [
+          "AN06"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN06].aliases",
+          "areas/TCD001.json#locations[AN06].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "gaol": {
+        "status": "resolved",
+        "location_id": "AN02",
+        "candidate_location_ids": [
+          "AN02"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN02].aliases",
+          "areas/TCD001.json#locations[AN02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "gatehouse ruins": {
+        "status": "resolved",
+        "location_id": "AG02",
+        "candidate_location_ids": [
+          "AG02"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG02].aliases",
+          "areas/SK001.json#locations[AG02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "great hall": {
+        "status": "resolved",
+        "location_id": "AG05",
+        "candidate_location_ids": [
+          "AG05"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG05].aliases",
+          "areas/SK001.json#locations[AG05].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 2
+      },
+      "guard post": {
+        "status": "resolved",
+        "location_id": "AN04",
+        "candidate_location_ids": [
+          "AN04"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN04].aliases",
+          "areas/TCD001.json#locations[AN04].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "harrows hollow general store": {
+        "status": "resolved",
+        "location_id": "AE01",
+        "candidate_location_ids": [
+          "AE01"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE01].aliases",
+          "areas/HH001.json#locations[AE01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "harrows hollow town square": {
+        "status": "resolved",
+        "location_id": "AE02",
+        "candidate_location_ids": [
+          "AE02"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE02].aliases",
+          "areas/HH001.json#locations[AE02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "hidden keep": {
+        "status": "resolved",
+        "location_id": "AA09",
+        "candidate_location_ids": [
+          "AA09"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA09].aliases",
+          "areas/G001.json#locations[AA09].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 3
+      },
+      "hidden keep entrance": {
+        "status": "resolved",
+        "location_id": "AA09",
+        "candidate_location_ids": [
+          "AA09"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA09].aliases",
+          "areas/G001.json#locations[AA09].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "keepers cottage": {
+        "status": "resolved",
+        "location_id": "AA07",
+        "candidate_location_ids": [
+          "AA07"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA07].aliases",
+          "areas/G001.json#locations[AA07].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "lantern inn": {
+        "status": "resolved",
+        "location_id": "AE05",
+        "candidate_location_ids": [
+          "AE05"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE05].aliases",
+          "areas/HH001.json#locations[AE05].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 3
+      },
+      "lords study": {
+        "status": "resolved",
+        "location_id": "AG07",
+        "candidate_location_ids": [
+          "AG07"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG07].aliases",
+          "areas/SK001.json#locations[AG07].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "lost ward circle": {
+        "status": "resolved",
+        "location_id": "AA04",
+        "candidate_location_ids": [
+          "AA04"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA04].aliases",
+          "areas/G001.json#locations[AA04].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "militia barracks": {
+        "status": "resolved",
+        "location_id": "AE04",
+        "candidate_location_ids": [
+          "AE04"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE04].aliases",
+          "areas/HH001.json#locations[AE04].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "mire of echoes": {
+        "status": "resolved",
+        "location_id": "AL02",
+        "candidate_location_ids": [
+          "AL02"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL02].aliases",
+          "areas/TBM001.json#locations[AL02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "outer courtyard": {
+        "status": "resolved",
+        "location_id": "AG01",
+        "candidate_location_ids": [
+          "AG01"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG01].aliases",
+          "areas/SK001.json#locations[AG01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "relic chamber": {
+        "status": "resolved",
+        "location_id": "AN07",
+        "candidate_location_ids": [
+          "AN07"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN06].dmInstructions",
+          "areas/TCD001.json#locations[AN07].aliases",
+          "areas/TCD001.json#locations[AN07].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 3
+      },
+      "ruined chapel": {
+        "status": "resolved",
+        "location_id": "AG03",
+        "candidate_location_ids": [
+          "AG03"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG03].aliases",
+          "areas/SK001.json#locations[AG03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "secret forest path": {
+        "status": "resolved",
+        "location_id": "AA08",
+        "candidate_location_ids": [
+          "AA08"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA08].aliases",
+          "areas/G001.json#locations[AA08].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "secret passage": {
+        "status": "resolved",
+        "location_id": "AG08",
+        "candidate_location_ids": [
+          "AG08"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG08].aliases",
+          "areas/SK001.json#locations[AG08].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "smugglers tunnel": {
+        "status": "resolved",
+        "location_id": "AE06",
+        "candidate_location_ids": [
+          "AE06"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE03].features.description",
+          "areas/HH001.json#locations[AE06].aliases",
+          "areas/HH001.json#locations[AE06].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 1
+      },
+      "spectral clearing": {
+        "status": "resolved",
+        "location_id": "AA06",
+        "candidate_location_ids": [
+          "AA06"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA06].aliases",
+          "areas/G001.json#locations[AA06].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "storage vaults": {
+        "status": "resolved",
+        "location_id": "AN05",
+        "candidate_location_ids": [
+          "AN05"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN05].aliases",
+          "areas/TCD001.json#locations[AN05].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "sundered causeway": {
+        "status": "resolved",
+        "location_id": "AL01",
+        "candidate_location_ids": [
+          "AL01"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL01].aliases",
+          "areas/TBM001.json#locations[AL01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "the cursed barrow": {
+        "status": "resolved",
+        "location_id": "AL06",
+        "candidate_location_ids": [
+          "AL06"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL06].aliases",
+          "areas/TBM001.json#locations[AL06].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "the gaol": {
+        "status": "resolved",
+        "location_id": "AN02",
+        "candidate_location_ids": [
+          "AN02"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN02].aliases",
+          "areas/TCD001.json#locations[AN02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "the mire of echoes": {
+        "status": "resolved",
+        "location_id": "AL02",
+        "candidate_location_ids": [
+          "AL02"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL02].aliases",
+          "areas/TBM001.json#locations[AL02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "the ruined chapel": {
+        "status": "resolved",
+        "location_id": "AG03",
+        "candidate_location_ids": [
+          "AG03"
+        ],
+        "sources": [
+          "areas/SK001.json#locations[AG03].aliases",
+          "areas/SK001.json#locations[AG03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "the sundered causeway": {
+        "status": "resolved",
+        "location_id": "AL01",
+        "candidate_location_ids": [
+          "AL01"
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL01].aliases",
+          "areas/TBM001.json#locations[AL01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "the withered shrine": {
+        "status": "resolved",
+        "location_id": "AA03",
+        "candidate_location_ids": [
+          "AA03"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA03].aliases",
+          "areas/G001.json#locations[AA03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "the wyrd lantern inn": {
+        "status": "resolved",
+        "location_id": "AE05",
+        "candidate_location_ids": [
+          "AE05"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE05].aliases",
+          "areas/HH001.json#locations[AE05].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "torture chamber": {
+        "status": "resolved",
+        "location_id": "AN03",
+        "candidate_location_ids": [
+          "AN03"
+        ],
+        "sources": [
+          "areas/TCD001.json#locations[AN03].aliases",
+          "areas/TCD001.json#locations[AN03].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 2
+      },
+      "witchlight trailhead": {
+        "status": "resolved",
+        "location_id": "AA01",
+        "candidate_location_ids": [
+          "AA01"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA01].aliases",
+          "areas/G001.json#locations[AA01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "withered shrine": {
+        "status": "resolved",
+        "location_id": "AA03",
+        "candidate_location_ids": [
+          "AA03"
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA03].aliases",
+          "areas/G001.json#locations[AA03].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 2
+      },
+      "wyrd lantern inn": {
+        "status": "resolved",
+        "location_id": "AE05",
+        "candidate_location_ids": [
+          "AE05"
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE05].aliases",
+          "areas/HH001.json#locations[AE05].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 2
+      }
+    },
+    "npc_scene_authority": {
+      "Acolyte Therin": {
+        "name_slug": "acolyte therin",
+        "visible_location_ids": [
+          "AL04"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/TBM001.json#locations[AL04].dcChecks",
+          "areas/TBM001.json#locations[AL04].dmInstructions",
+          "areas/TBM001.json#locations[AL04].npcs",
+          "areas/TBM001.json#locations[AL04].plotHooks"
+        ],
+        "authored_mentions_count": 3,
+        "authored_mention_sources": [
+          "areas/TBM001.json#locations[AL04].dcChecks",
+          "areas/TBM001.json#locations[AL04].dmInstructions",
+          "areas/TBM001.json#locations[AL04].plotHooks"
+        ]
+      },
+      "Agents of the Black Banner (optional future threat)": {
+        "name_slug": "agents of the black banner optional future threat",
+        "visible_location_ids": [],
+        "reveal_bindings": [
+          {
+            "location_id": "AE06",
+            "source": "areas/HH001.json#locations[AE06].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AL06",
+            "source": "areas/TBM001.json#locations[AL06].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN07",
+            "source": "areas/TCD001.json#locations[AN07].dmInstructions",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE06].dmInstructions",
+          "areas/TBM001.json#locations[AL06].plotHooks",
+          "areas/TCD001.json#locations[AN07].dmInstructions",
+          "module_context.json#npcs.agents_of_the_black_banner_(optional_future_threat)"
+        ],
+        "authored_mentions_count": 3,
+        "authored_mention_sources": [
+          "areas/HH001.json#locations[AE06].dmInstructions",
+          "areas/TBM001.json#locations[AL06].plotHooks",
+          "areas/TCD001.json#locations[AN07].dmInstructions"
+        ]
+      },
+      "Baker Marta": {
+        "name_slug": "baker marta",
+        "visible_location_ids": [
+          "AE02"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/HH001.json#locations[AE02].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Blacksmith Goric": {
+        "name_slug": "blacksmith goric",
+        "visible_location_ids": [
+          "AE02"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/HH001.json#locations[AE02].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Brother Jorlan": {
+        "name_slug": "brother jorlan",
+        "visible_location_ids": [],
+        "reveal_bindings": [],
+        "sources": [
+          "module_context.json#npcs.brother_jorlan"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Cira the Innkeeper": {
+        "name_slug": "cira the innkeeper",
+        "visible_location_ids": [
+          "AE05"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/HH001.json#locations[AE05].npcs",
+          "module_context.json#npcs.cira_the_innkeeper"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Dame Elira Dawnsworn": {
+        "name_slug": "dame elira dawnsworn",
+        "visible_location_ids": [],
+        "reveal_bindings": [],
+        "sources": [
+          "module_context.json#npcs.dame_elira_dawnsworn"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Druidess Halwen": {
+        "name_slug": "druidess halwen",
+        "visible_location_ids": [],
+        "reveal_bindings": [],
+        "sources": [
+          "module_context.json#npcs.druidess_halwen"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Echo of Scout Elen": {
+        "name_slug": "echo of scout elen",
+        "visible_location_ids": [
+          "AA06"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "AN02",
+            "source": "areas/TCD001.json#locations[AN02].features.description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN02",
+            "source": "areas/TCD001.json#locations[AN02].plotHooks",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA06].dmInstructions",
+          "areas/G001.json#locations[AA06].features.description",
+          "areas/G001.json#locations[AA06].npcs",
+          "areas/G001.json#locations[AA06].plotHooks",
+          "areas/TCD001.json#locations[AN02].features.description",
+          "areas/TCD001.json#locations[AN02].plotHooks"
+        ],
+        "authored_mentions_count": 5,
+        "authored_mention_sources": [
+          "areas/G001.json#locations[AA06].dmInstructions",
+          "areas/G001.json#locations[AA06].features.description",
+          "areas/G001.json#locations[AA06].plotHooks",
+          "areas/TCD001.json#locations[AN02].features.description",
+          "areas/TCD001.json#locations[AN02].plotHooks"
+        ]
+      },
+      "Elder Mirna Harrow": {
+        "name_slug": "elder mirna harrow",
+        "visible_location_ids": [
+          "AE01"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "HH001",
+            "source": "module_plot.json#plotPoints[PP001].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE01].description",
+          "areas/HH001.json#locations[AE01].npcs",
+          "module_context.json#npcs.elder_mirna_harrow",
+          "module_plot.json#plotPoints[PP001].description"
+        ],
+        "authored_mentions_count": 2,
+        "authored_mention_sources": [
+          "areas/HH001.json#locations[AE01].description",
+          "module_plot.json#plotPoints[PP001].description"
+        ]
+      },
+      "Elder Mirna Harrow (village elder)": {
+        "name_slug": "elder mirna harrow village elder",
+        "visible_location_ids": [],
+        "reveal_bindings": [
+          {
+            "location_id": "AE01",
+            "source": "areas/HH001.json#locations[AE01].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AE01",
+            "source": "areas/HH001.json#locations[AE01].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AE01",
+            "source": "areas/HH001.json#locations[AE01].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AE01",
+            "source": "areas/HH001.json#locations[AE01].features.description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AE01",
+            "source": "areas/HH001.json#locations[AE01].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AE05",
+            "source": "areas/HH001.json#locations[AE05].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "HH001",
+            "source": "module_plot.json#plotPoints[PP001].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE01].dcChecks",
+          "areas/HH001.json#locations[AE01].description",
+          "areas/HH001.json#locations[AE01].dmInstructions",
+          "areas/HH001.json#locations[AE01].features.description",
+          "areas/HH001.json#locations[AE01].plotHooks",
+          "areas/HH001.json#locations[AE05].dmInstructions",
+          "module_context.json#npcs.elder_mirna_harrow_(village_elder)",
+          "module_plot.json#plotPoints[PP001].description"
+        ],
+        "authored_mentions_count": 7,
+        "authored_mention_sources": [
+          "areas/HH001.json#locations[AE01].dcChecks",
+          "areas/HH001.json#locations[AE01].description",
+          "areas/HH001.json#locations[AE01].dmInstructions",
+          "areas/HH001.json#locations[AE01].features.description",
+          "areas/HH001.json#locations[AE01].plotHooks",
+          "areas/HH001.json#locations[AE05].dmInstructions",
+          "module_plot.json#plotPoints[PP001].description"
+        ]
+      },
+      "Elderly Scholar Fenwick": {
+        "name_slug": "elderly scholar fenwick",
+        "visible_location_ids": [
+          "AE05"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/HH001.json#locations[AE05].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Envoy Torric": {
+        "name_slug": "envoy torric",
+        "visible_location_ids": [],
+        "reveal_bindings": [],
+        "sources": [
+          "module_context.json#npcs.envoy_torric"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Farmer Willem": {
+        "name_slug": "farmer willem",
+        "visible_location_ids": [
+          "AE01"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/HH001.json#locations[AE01].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Father Aldren": {
+        "name_slug": "father aldren",
+        "visible_location_ids": [
+          "AG03"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/SK001.json#locations[AG03].dmInstructions",
+          "areas/SK001.json#locations[AG03].npcs",
+          "areas/SK001.json#locations[AG03].plotHooks"
+        ],
+        "authored_mentions_count": 2,
+        "authored_mention_sources": [
+          "areas/SK001.json#locations[AG03].dmInstructions",
+          "areas/SK001.json#locations[AG03].plotHooks"
+        ]
+      },
+      "Feyfriend Lirael": {
+        "name_slug": "feyfriend lirael",
+        "visible_location_ids": [],
+        "reveal_bindings": [],
+        "sources": [
+          "module_context.json#npcs.feyfriend_lirael"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Garrik Two-Fingers": {
+        "name_slug": "garrik two fingers",
+        "visible_location_ids": [],
+        "reveal_bindings": [
+          {
+            "location_id": "AA08",
+            "source": "areas/G001.json#locations[AA08].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA08].description",
+          "module_context.json#npcs.garrik_two-fingers"
+        ],
+        "authored_mentions_count": 1,
+        "authored_mention_sources": [
+          "areas/G001.json#locations[AA08].description"
+        ]
+      },
+      "Harrow's Hollow East Gate Guards": {
+        "name_slug": "harrows hollow east gate guards",
+        "visible_location_ids": [
+          "AA01"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "AE04",
+            "source": "areas/HH001.json#locations[AE04].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG02",
+            "source": "areas/SK001.json#locations[AG02].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG02",
+            "source": "areas/SK001.json#locations[AG02].features.description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG02",
+            "source": "areas/SK001.json#locations[AG02].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN02",
+            "source": "areas/TCD001.json#locations[AN02].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN02",
+            "source": "areas/TCD001.json#locations[AN02].features.description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN04",
+            "source": "areas/TCD001.json#locations[AN04].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN04",
+            "source": "areas/TCD001.json#locations[AN04].plotHooks",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA01].dcChecks",
+          "areas/G001.json#locations[AA01].npcs",
+          "areas/HH001.json#locations[AE04].description",
+          "areas/SK001.json#locations[AG02].description",
+          "areas/SK001.json#locations[AG02].features.description",
+          "areas/SK001.json#locations[AG02].plotHooks",
+          "areas/TCD001.json#locations[AN02].description",
+          "areas/TCD001.json#locations[AN02].features.description",
+          "areas/TCD001.json#locations[AN04].description",
+          "areas/TCD001.json#locations[AN04].plotHooks"
+        ],
+        "authored_mentions_count": 9,
+        "authored_mention_sources": [
+          "areas/G001.json#locations[AA01].dcChecks",
+          "areas/HH001.json#locations[AE04].description",
+          "areas/SK001.json#locations[AG02].description",
+          "areas/SK001.json#locations[AG02].features.description",
+          "areas/SK001.json#locations[AG02].plotHooks",
+          "areas/TCD001.json#locations[AN02].description",
+          "areas/TCD001.json#locations[AN02].features.description",
+          "areas/TCD001.json#locations[AN04].description",
+          "areas/TCD001.json#locations[AN04].plotHooks"
+        ]
+      },
+      "Keeper Morvath": {
+        "name_slug": "keeper morvath",
+        "visible_location_ids": [
+          "AA07"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/G001.json#locations[AA07].description",
+          "areas/G001.json#locations[AA07].dmInstructions",
+          "areas/G001.json#locations[AA07].npcs",
+          "areas/G001.json#locations[AA07].plotHooks"
+        ],
+        "authored_mentions_count": 3,
+        "authored_mention_sources": [
+          "areas/G001.json#locations[AA07].description",
+          "areas/G001.json#locations[AA07].dmInstructions",
+          "areas/G001.json#locations[AA07].plotHooks"
+        ]
+      },
+      "Lady Mirielle d'Ashe": {
+        "name_slug": "lady mirielle dashe",
+        "visible_location_ids": [],
+        "reveal_bindings": [],
+        "sources": [
+          "module_context.json#npcs.lady_mirielle_d'ashe"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Local Hunter Jorik": {
+        "name_slug": "local hunter jorik",
+        "visible_location_ids": [
+          "AE05"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/HH001.json#locations[AE05].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Magister Corvin Leth": {
+        "name_slug": "magister corvin leth",
+        "visible_location_ids": [],
+        "reveal_bindings": [],
+        "sources": [
+          "module_context.json#npcs.magister_corvin_leth"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Magister Valen": {
+        "name_slug": "magister valen",
+        "visible_location_ids": [
+          "AL04"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/TBM001.json#locations[AL04].dmInstructions",
+          "areas/TBM001.json#locations[AL04].features.description",
+          "areas/TBM001.json#locations[AL04].npcs",
+          "areas/TBM001.json#locations[AL04].plotHooks"
+        ],
+        "authored_mentions_count": 3,
+        "authored_mention_sources": [
+          "areas/TBM001.json#locations[AL04].dmInstructions",
+          "areas/TBM001.json#locations[AL04].features.description",
+          "areas/TBM001.json#locations[AL04].plotHooks"
+        ]
+      },
+      "Merchant Aldric": {
+        "name_slug": "merchant aldric",
+        "visible_location_ids": [
+          "AE02"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/HH001.json#locations[AE02].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Mistress Ilyra": {
+        "name_slug": "mistress ilyra",
+        "visible_location_ids": [],
+        "reveal_bindings": [],
+        "sources": [
+          "module_context.json#npcs.mistress_ilyra"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Mournful Ghost": {
+        "name_slug": "mournful ghost",
+        "visible_location_ids": [
+          "AA06"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "AA05",
+            "source": "areas/G001.json#locations[AA05].features.name",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AE05",
+            "source": "areas/HH001.json#locations[AE05].dcChecks",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA05].features.name",
+          "areas/G001.json#locations[AA06].dcChecks",
+          "areas/G001.json#locations[AA06].dmInstructions",
+          "areas/G001.json#locations[AA06].features.description",
+          "areas/G001.json#locations[AA06].npcs",
+          "areas/G001.json#locations[AA06].plotHooks",
+          "areas/HH001.json#locations[AE05].dcChecks"
+        ],
+        "authored_mentions_count": 6,
+        "authored_mention_sources": [
+          "areas/G001.json#locations[AA05].features.name",
+          "areas/G001.json#locations[AA06].dcChecks",
+          "areas/G001.json#locations[AA06].dmInstructions",
+          "areas/G001.json#locations[AA06].features.description",
+          "areas/G001.json#locations[AA06].plotHooks",
+          "areas/HH001.json#locations[AE05].dcChecks"
+        ]
+      },
+      "Off-Duty Militiaman Gareth": {
+        "name_slug": "off duty militiaman gareth",
+        "visible_location_ids": [
+          "AE05"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/HH001.json#locations[AE05].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Old Tommen": {
+        "name_slug": "old tommen",
+        "visible_location_ids": [
+          "AE02"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/HH001.json#locations[AE02].dcChecks",
+          "areas/HH001.json#locations[AE02].npcs",
+          "areas/HH001.json#locations[AE02].plotHooks"
+        ],
+        "authored_mentions_count": 2,
+        "authored_mention_sources": [
+          "areas/HH001.json#locations[AE02].dcChecks",
+          "areas/HH001.json#locations[AE02].plotHooks"
+        ]
+      },
+      "Old Tommen (superstitious herdsman)": {
+        "name_slug": "old tommen superstitious herdsman",
+        "visible_location_ids": [],
+        "reveal_bindings": [],
+        "sources": [
+          "module_context.json#npcs.old_tommen_(superstitious_herdsman)"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Prisoner Echo": {
+        "name_slug": "prisoner echo",
+        "visible_location_ids": [
+          "AN02"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "AA06",
+            "source": "areas/G001.json#locations[AA06].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA06",
+            "source": "areas/G001.json#locations[AA06].features.description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA06",
+            "source": "areas/G001.json#locations[AA06].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AE02",
+            "source": "areas/HH001.json#locations[AE02].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG03",
+            "source": "areas/SK001.json#locations[AG03].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AL02",
+            "source": "areas/TBM001.json#locations[AL02].features.name",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA06].dmInstructions",
+          "areas/G001.json#locations[AA06].features.description",
+          "areas/G001.json#locations[AA06].plotHooks",
+          "areas/HH001.json#locations[AE02].description",
+          "areas/SK001.json#locations[AG03].description",
+          "areas/TBM001.json#locations[AL02].features.name",
+          "areas/TCD001.json#locations[AN02].dcChecks",
+          "areas/TCD001.json#locations[AN02].dmInstructions",
+          "areas/TCD001.json#locations[AN02].features.description",
+          "areas/TCD001.json#locations[AN02].npcs",
+          "areas/TCD001.json#locations[AN02].plotHooks"
+        ],
+        "authored_mentions_count": 10,
+        "authored_mention_sources": [
+          "areas/G001.json#locations[AA06].dmInstructions",
+          "areas/G001.json#locations[AA06].features.description",
+          "areas/G001.json#locations[AA06].plotHooks",
+          "areas/HH001.json#locations[AE02].description",
+          "areas/SK001.json#locations[AG03].description",
+          "areas/TBM001.json#locations[AL02].features.name",
+          "areas/TCD001.json#locations[AN02].dcChecks",
+          "areas/TCD001.json#locations[AN02].dmInstructions",
+          "areas/TCD001.json#locations[AN02].features.description",
+          "areas/TCD001.json#locations[AN02].plotHooks"
+        ]
+      },
+      "Ranger Branik": {
+        "name_slug": "ranger branik",
+        "visible_location_ids": [
+          "AE04"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/HH001.json#locations[AE04].dmInstructions",
+          "areas/HH001.json#locations[AE04].npcs",
+          "areas/HH001.json#locations[AE04].plotHooks",
+          "module_context.json#npcs.ranger_branik"
+        ],
+        "authored_mentions_count": 2,
+        "authored_mention_sources": [
+          "areas/HH001.json#locations[AE04].dmInstructions",
+          "areas/HH001.json#locations[AE04].plotHooks"
+        ]
+      },
+      "Scout Elen": {
+        "name_slug": "scout elen",
+        "visible_location_ids": [
+          "AN07"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "AA01",
+            "source": "areas/G001.json#locations[AA01].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA01",
+            "source": "areas/G001.json#locations[AA01].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA02",
+            "source": "areas/G001.json#locations[AA02].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA03",
+            "source": "areas/G001.json#locations[AA03].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA04",
+            "source": "areas/G001.json#locations[AA04].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA04",
+            "source": "areas/G001.json#locations[AA04].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA04",
+            "source": "areas/G001.json#locations[AA04].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA05",
+            "source": "areas/G001.json#locations[AA05].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA06",
+            "source": "areas/G001.json#locations[AA06].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA06",
+            "source": "areas/G001.json#locations[AA06].features.description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA06",
+            "source": "areas/G001.json#locations[AA06].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA07",
+            "source": "areas/G001.json#locations[AA07].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA07",
+            "source": "areas/G001.json#locations[AA07].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA08",
+            "source": "areas/G001.json#locations[AA08].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA08",
+            "source": "areas/G001.json#locations[AA08].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA09",
+            "source": "areas/G001.json#locations[AA09].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AE01",
+            "source": "areas/HH001.json#locations[AE01].features.description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AE01",
+            "source": "areas/HH001.json#locations[AE01].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AE03",
+            "source": "areas/HH001.json#locations[AE03].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AE05",
+            "source": "areas/HH001.json#locations[AE05].features.description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AE06",
+            "source": "areas/HH001.json#locations[AE06].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG01",
+            "source": "areas/SK001.json#locations[AG01].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG04",
+            "source": "areas/SK001.json#locations[AG04].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG08",
+            "source": "areas/SK001.json#locations[AG08].features.description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN02",
+            "source": "areas/TCD001.json#locations[AN02].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN02",
+            "source": "areas/TCD001.json#locations[AN02].features.description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN02",
+            "source": "areas/TCD001.json#locations[AN02].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN06",
+            "source": "areas/TCD001.json#locations[AN06].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN06",
+            "source": "areas/TCD001.json#locations[AN06].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "HH001",
+            "source": "module_plot.json#plotPoints[PP001].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA01].description",
+          "areas/G001.json#locations[AA01].plotHooks",
+          "areas/G001.json#locations[AA02].dcChecks",
+          "areas/G001.json#locations[AA03].plotHooks",
+          "areas/G001.json#locations[AA04].dcChecks",
+          "areas/G001.json#locations[AA04].dmInstructions",
+          "areas/G001.json#locations[AA04].plotHooks",
+          "areas/G001.json#locations[AA05].plotHooks",
+          "areas/G001.json#locations[AA06].dmInstructions",
+          "areas/G001.json#locations[AA06].features.description",
+          "areas/G001.json#locations[AA06].plotHooks",
+          "areas/G001.json#locations[AA07].dmInstructions",
+          "areas/G001.json#locations[AA07].plotHooks",
+          "areas/G001.json#locations[AA08].description",
+          "areas/G001.json#locations[AA08].plotHooks",
+          "areas/G001.json#locations[AA09].plotHooks",
+          "areas/HH001.json#locations[AE01].features.description",
+          "areas/HH001.json#locations[AE01].plotHooks",
+          "areas/HH001.json#locations[AE03].plotHooks",
+          "areas/HH001.json#locations[AE05].features.description",
+          "areas/HH001.json#locations[AE06].description",
+          "areas/SK001.json#locations[AG01].plotHooks",
+          "areas/SK001.json#locations[AG04].plotHooks",
+          "areas/SK001.json#locations[AG08].features.description",
+          "areas/TCD001.json#locations[AN02].dmInstructions",
+          "areas/TCD001.json#locations[AN02].features.description",
+          "areas/TCD001.json#locations[AN02].plotHooks",
+          "areas/TCD001.json#locations[AN06].dmInstructions",
+          "areas/TCD001.json#locations[AN06].plotHooks",
+          "areas/TCD001.json#locations[AN07].dmInstructions",
+          "areas/TCD001.json#locations[AN07].npcs",
+          "areas/TCD001.json#locations[AN07].plotHooks",
+          "module_plot.json#plotPoints[PP001].description"
+        ],
+        "authored_mentions_count": 32,
+        "authored_mention_sources": [
+          "areas/G001.json#locations[AA01].description",
+          "areas/G001.json#locations[AA01].plotHooks",
+          "areas/G001.json#locations[AA02].dcChecks",
+          "areas/G001.json#locations[AA03].plotHooks",
+          "areas/G001.json#locations[AA04].dcChecks",
+          "areas/G001.json#locations[AA04].dmInstructions",
+          "areas/G001.json#locations[AA04].plotHooks",
+          "areas/G001.json#locations[AA05].plotHooks",
+          "areas/G001.json#locations[AA06].dmInstructions",
+          "areas/G001.json#locations[AA06].features.description",
+          "areas/G001.json#locations[AA06].plotHooks",
+          "areas/G001.json#locations[AA07].dmInstructions",
+          "areas/G001.json#locations[AA07].plotHooks",
+          "areas/G001.json#locations[AA08].description",
+          "areas/G001.json#locations[AA08].plotHooks",
+          "areas/G001.json#locations[AA09].plotHooks",
+          "areas/HH001.json#locations[AE01].features.description",
+          "areas/HH001.json#locations[AE01].plotHooks",
+          "areas/HH001.json#locations[AE03].plotHooks",
+          "areas/HH001.json#locations[AE05].features.description",
+          "areas/HH001.json#locations[AE06].description",
+          "areas/SK001.json#locations[AG01].plotHooks",
+          "areas/SK001.json#locations[AG04].plotHooks",
+          "areas/SK001.json#locations[AG08].features.description",
+          "areas/TCD001.json#locations[AN02].dmInstructions",
+          "areas/TCD001.json#locations[AN02].features.description",
+          "areas/TCD001.json#locations[AN02].plotHooks",
+          "areas/TCD001.json#locations[AN06].dmInstructions",
+          "areas/TCD001.json#locations[AN06].plotHooks",
+          "areas/TCD001.json#locations[AN07].dmInstructions",
+          "areas/TCD001.json#locations[AN07].plotHooks",
+          "module_plot.json#plotPoints[PP001].description"
+        ]
+      },
+      "Scout Elen (missing villager, possibly rescued)": {
+        "name_slug": "scout elen missing villager possibly rescued",
+        "visible_location_ids": [],
+        "reveal_bindings": [],
+        "sources": [
+          "module_context.json#npcs.scout_elen_(missing_villager,_possibly_rescued)"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Sergeant Mara Feld": {
+        "name_slug": "sergeant mara feld",
+        "visible_location_ids": [
+          "AE03"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "AE05",
+            "source": "areas/HH001.json#locations[AE05].dmInstructions",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE03].dcChecks",
+          "areas/HH001.json#locations[AE03].dmInstructions",
+          "areas/HH001.json#locations[AE03].npcs",
+          "areas/HH001.json#locations[AE03].plotHooks",
+          "areas/HH001.json#locations[AE05].dmInstructions",
+          "module_context.json#npcs.sergeant_mara_feld"
+        ],
+        "authored_mentions_count": 4,
+        "authored_mention_sources": [
+          "areas/HH001.json#locations[AE03].dcChecks",
+          "areas/HH001.json#locations[AE03].dmInstructions",
+          "areas/HH001.json#locations[AE03].plotHooks",
+          "areas/HH001.json#locations[AE05].dmInstructions"
+        ]
+      },
+      "Sir Garran Vael": {
+        "name_slug": "sir garran vael",
+        "visible_location_ids": [
+          "AN07"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "AA02",
+            "source": "areas/G001.json#locations[AA02].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG01",
+            "source": "areas/SK001.json#locations[AG01].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG05",
+            "source": "areas/SK001.json#locations[AG05].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG05",
+            "source": "areas/SK001.json#locations[AG05].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG07",
+            "source": "areas/SK001.json#locations[AG07].features.description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA02].plotHooks",
+          "areas/SK001.json#locations[AG01].plotHooks",
+          "areas/SK001.json#locations[AG05].dcChecks",
+          "areas/SK001.json#locations[AG05].description",
+          "areas/SK001.json#locations[AG07].features.description",
+          "areas/TCD001.json#locations[AN07].description",
+          "areas/TCD001.json#locations[AN07].npcs",
+          "module_context.json#npcs.sir_garran_vael"
+        ],
+        "authored_mentions_count": 6,
+        "authored_mention_sources": [
+          "areas/G001.json#locations[AA02].plotHooks",
+          "areas/SK001.json#locations[AG01].plotHooks",
+          "areas/SK001.json#locations[AG05].dcChecks",
+          "areas/SK001.json#locations[AG05].description",
+          "areas/SK001.json#locations[AG07].features.description",
+          "areas/TCD001.json#locations[AN07].description"
+        ]
+      },
+      "Sir Garran Vael (cursed knight)": {
+        "name_slug": "sir garran vael cursed knight",
+        "visible_location_ids": [],
+        "reveal_bindings": [
+          {
+            "location_id": "AA02",
+            "source": "areas/G001.json#locations[AA02].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AE02",
+            "source": "areas/HH001.json#locations[AE02].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AE02",
+            "source": "areas/HH001.json#locations[AE02].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG05",
+            "source": "areas/SK001.json#locations[AG05].features.name",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN02",
+            "source": "areas/TCD001.json#locations[AN02].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN06",
+            "source": "areas/TCD001.json#locations[AN06].plotHooks",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA02].plotHooks",
+          "areas/HH001.json#locations[AE02].description",
+          "areas/HH001.json#locations[AE02].dmInstructions",
+          "areas/SK001.json#locations[AG05].features.name",
+          "areas/TCD001.json#locations[AN02].plotHooks",
+          "areas/TCD001.json#locations[AN06].plotHooks",
+          "module_context.json#npcs.sir_garran_vael_(cursed_knight)"
+        ],
+        "authored_mentions_count": 6,
+        "authored_mention_sources": [
+          "areas/G001.json#locations[AA02].plotHooks",
+          "areas/HH001.json#locations[AE02].description",
+          "areas/HH001.json#locations[AE02].dmInstructions",
+          "areas/SK001.json#locations[AG05].features.name",
+          "areas/TCD001.json#locations[AN02].plotHooks",
+          "areas/TCD001.json#locations[AN06].plotHooks"
+        ]
+      },
+      "Spectral Scribe (ghostly historian)": {
+        "name_slug": "spectral scribe ghostly historian",
+        "visible_location_ids": [],
+        "reveal_bindings": [],
+        "sources": [
+          "module_context.json#npcs.spectral_scribe_(ghostly_historian)"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "The Bone Speaker": {
+        "name_slug": "the bone speaker",
+        "visible_location_ids": [
+          "AN06"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/TCD001.json#locations[AN06].dmInstructions",
+          "areas/TCD001.json#locations[AN06].npcs",
+          "areas/TCD001.json#locations[AN06].plotHooks"
+        ],
+        "authored_mentions_count": 2,
+        "authored_mention_sources": [
+          "areas/TCD001.json#locations[AN06].dmInstructions",
+          "areas/TCD001.json#locations[AN06].plotHooks"
+        ]
+      },
+      "The Keeper": {
+        "name_slug": "the keeper",
+        "visible_location_ids": [
+          "AA01"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "AA02",
+            "source": "areas/G001.json#locations[AA02].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA07",
+            "source": "areas/G001.json#locations[AA07].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA07",
+            "source": "areas/G001.json#locations[AA07].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA07",
+            "source": "areas/G001.json#locations[AA07].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AL02",
+            "source": "areas/TBM001.json#locations[AL02].plotHooks",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA01].npcs",
+          "areas/G001.json#locations[AA01].plotHooks",
+          "areas/G001.json#locations[AA02].plotHooks",
+          "areas/G001.json#locations[AA07].description",
+          "areas/G001.json#locations[AA07].dmInstructions",
+          "areas/G001.json#locations[AA07].plotHooks",
+          "areas/TBM001.json#locations[AL02].plotHooks"
+        ],
+        "authored_mentions_count": 6,
+        "authored_mention_sources": [
+          "areas/G001.json#locations[AA01].plotHooks",
+          "areas/G001.json#locations[AA02].plotHooks",
+          "areas/G001.json#locations[AA07].description",
+          "areas/G001.json#locations[AA07].dmInstructions",
+          "areas/G001.json#locations[AA07].plotHooks",
+          "areas/TBM001.json#locations[AL02].plotHooks"
+        ]
+      },
+      "The Lingering Spirit": {
+        "name_slug": "the lingering spirit",
+        "visible_location_ids": [
+          "AA03"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/G001.json#locations[AA03].dmInstructions",
+          "areas/G001.json#locations[AA03].npcs",
+          "areas/G001.json#locations[AA03].plotHooks"
+        ],
+        "authored_mentions_count": 2,
+        "authored_mention_sources": [
+          "areas/G001.json#locations[AA03].dmInstructions",
+          "areas/G001.json#locations[AA03].plotHooks"
+        ]
+      },
+      "The Shadow Relic": {
+        "name_slug": "the shadow relic",
+        "visible_location_ids": [],
+        "reveal_bindings": [
+          {
+            "location_id": "AA06",
+            "source": "areas/G001.json#locations[AA06].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA06",
+            "source": "areas/G001.json#locations[AA06].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AA07",
+            "source": "areas/G001.json#locations[AA07].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AE01",
+            "source": "areas/HH001.json#locations[AE01].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG02",
+            "source": "areas/SK001.json#locations[AG02].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG03",
+            "source": "areas/SK001.json#locations[AG03].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG05",
+            "source": "areas/SK001.json#locations[AG05].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG05",
+            "source": "areas/SK001.json#locations[AG05].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG06",
+            "source": "areas/SK001.json#locations[AG06].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG06",
+            "source": "areas/SK001.json#locations[AG06].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG06",
+            "source": "areas/SK001.json#locations[AG06].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG07",
+            "source": "areas/SK001.json#locations[AG07].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AG07",
+            "source": "areas/SK001.json#locations[AG07].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AL01",
+            "source": "areas/TBM001.json#locations[AL01].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AL02",
+            "source": "areas/TBM001.json#locations[AL02].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AL03",
+            "source": "areas/TBM001.json#locations[AL03].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AL03",
+            "source": "areas/TBM001.json#locations[AL03].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AL04",
+            "source": "areas/TBM001.json#locations[AL04].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AL04",
+            "source": "areas/TBM001.json#locations[AL04].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AL05",
+            "source": "areas/TBM001.json#locations[AL05].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AL05",
+            "source": "areas/TBM001.json#locations[AL05].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AL06",
+            "source": "areas/TBM001.json#locations[AL06].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AL06",
+            "source": "areas/TBM001.json#locations[AL06].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN01",
+            "source": "areas/TCD001.json#locations[AN01].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN02",
+            "source": "areas/TCD001.json#locations[AN02].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN05",
+            "source": "areas/TCD001.json#locations[AN05].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN06",
+            "source": "areas/TCD001.json#locations[AN06].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN06",
+            "source": "areas/TCD001.json#locations[AN06].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN06",
+            "source": "areas/TCD001.json#locations[AN06].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN07",
+            "source": "areas/TCD001.json#locations[AN07].aliases",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN07",
+            "source": "areas/TCD001.json#locations[AN07].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN07",
+            "source": "areas/TCD001.json#locations[AN07].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN07",
+            "source": "areas/TCD001.json#locations[AN07].features.name",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN07",
+            "source": "areas/TCD001.json#locations[AN07].name",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "AN07",
+            "source": "areas/TCD001.json#locations[AN07].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "HH001",
+            "source": "module_plot.json#plotPoints[PP005].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/G001.json#locations[AA06].description",
+          "areas/G001.json#locations[AA06].plotHooks",
+          "areas/G001.json#locations[AA07].dcChecks",
+          "areas/HH001.json#locations[AE01].plotHooks",
+          "areas/SK001.json#locations[AG02].plotHooks",
+          "areas/SK001.json#locations[AG03].dmInstructions",
+          "areas/SK001.json#locations[AG05].dmInstructions",
+          "areas/SK001.json#locations[AG05].plotHooks",
+          "areas/SK001.json#locations[AG06].dcChecks",
+          "areas/SK001.json#locations[AG06].dmInstructions",
+          "areas/SK001.json#locations[AG06].plotHooks",
+          "areas/SK001.json#locations[AG07].dcChecks",
+          "areas/SK001.json#locations[AG07].plotHooks",
+          "areas/TBM001.json#locations[AL01].plotHooks",
+          "areas/TBM001.json#locations[AL02].plotHooks",
+          "areas/TBM001.json#locations[AL03].dmInstructions",
+          "areas/TBM001.json#locations[AL03].plotHooks",
+          "areas/TBM001.json#locations[AL04].dmInstructions",
+          "areas/TBM001.json#locations[AL04].plotHooks",
+          "areas/TBM001.json#locations[AL05].dmInstructions",
+          "areas/TBM001.json#locations[AL05].plotHooks",
+          "areas/TBM001.json#locations[AL06].dmInstructions",
+          "areas/TBM001.json#locations[AL06].plotHooks",
+          "areas/TCD001.json#locations[AN01].plotHooks",
+          "areas/TCD001.json#locations[AN02].plotHooks",
+          "areas/TCD001.json#locations[AN05].plotHooks",
+          "areas/TCD001.json#locations[AN06].dcChecks",
+          "areas/TCD001.json#locations[AN06].dmInstructions",
+          "areas/TCD001.json#locations[AN06].plotHooks",
+          "areas/TCD001.json#locations[AN07].aliases",
+          "areas/TCD001.json#locations[AN07].description",
+          "areas/TCD001.json#locations[AN07].dmInstructions",
+          "areas/TCD001.json#locations[AN07].features.name",
+          "areas/TCD001.json#locations[AN07].name",
+          "areas/TCD001.json#locations[AN07].plotHooks",
+          "module_context.json#npcs.the_shadow_relic",
+          "module_plot.json#plotPoints[PP005].description"
+        ],
+        "authored_mentions_count": 36,
+        "authored_mention_sources": [
+          "areas/G001.json#locations[AA06].description",
+          "areas/G001.json#locations[AA06].plotHooks",
+          "areas/G001.json#locations[AA07].dcChecks",
+          "areas/HH001.json#locations[AE01].plotHooks",
+          "areas/SK001.json#locations[AG02].plotHooks",
+          "areas/SK001.json#locations[AG03].dmInstructions",
+          "areas/SK001.json#locations[AG05].dmInstructions",
+          "areas/SK001.json#locations[AG05].plotHooks",
+          "areas/SK001.json#locations[AG06].dcChecks",
+          "areas/SK001.json#locations[AG06].dmInstructions",
+          "areas/SK001.json#locations[AG06].plotHooks",
+          "areas/SK001.json#locations[AG07].dcChecks",
+          "areas/SK001.json#locations[AG07].plotHooks",
+          "areas/TBM001.json#locations[AL01].plotHooks",
+          "areas/TBM001.json#locations[AL02].plotHooks",
+          "areas/TBM001.json#locations[AL03].dmInstructions",
+          "areas/TBM001.json#locations[AL03].plotHooks",
+          "areas/TBM001.json#locations[AL04].dmInstructions",
+          "areas/TBM001.json#locations[AL04].plotHooks",
+          "areas/TBM001.json#locations[AL05].dmInstructions",
+          "areas/TBM001.json#locations[AL05].plotHooks",
+          "areas/TBM001.json#locations[AL06].dmInstructions",
+          "areas/TBM001.json#locations[AL06].plotHooks",
+          "areas/TCD001.json#locations[AN01].plotHooks",
+          "areas/TCD001.json#locations[AN02].plotHooks",
+          "areas/TCD001.json#locations[AN05].plotHooks",
+          "areas/TCD001.json#locations[AN06].dcChecks",
+          "areas/TCD001.json#locations[AN06].dmInstructions",
+          "areas/TCD001.json#locations[AN06].plotHooks",
+          "areas/TCD001.json#locations[AN07].aliases",
+          "areas/TCD001.json#locations[AN07].description",
+          "areas/TCD001.json#locations[AN07].dmInstructions",
+          "areas/TCD001.json#locations[AN07].features.name",
+          "areas/TCD001.json#locations[AN07].name",
+          "areas/TCD001.json#locations[AN07].plotHooks",
+          "module_plot.json#plotPoints[PP005].description"
+        ]
+      },
+      "The Shadow Relic (sentient artifact, communicates telepathically)": {
+        "name_slug": "the shadow relic sentient artifact communicates telepathically",
+        "visible_location_ids": [],
+        "reveal_bindings": [],
+        "sources": [
+          "module_context.json#npcs.the_shadow_relic_(sentient_artifact,_communicates_telepathically)"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "The Spectral Scribe": {
+        "name_slug": "the spectral scribe",
+        "visible_location_ids": [
+          "AG05"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/SK001.json#locations[AG05].dmInstructions",
+          "areas/SK001.json#locations[AG05].npcs",
+          "areas/SK001.json#locations[AG05].plotHooks"
+        ],
+        "authored_mentions_count": 2,
+        "authored_mention_sources": [
+          "areas/SK001.json#locations[AG05].dmInstructions",
+          "areas/SK001.json#locations[AG05].plotHooks"
+        ]
+      },
+      "Traveling Merchant Rosa": {
+        "name_slug": "traveling merchant rosa",
+        "visible_location_ids": [
+          "AE05"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/HH001.json#locations[AE05].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Varek the Shade": {
+        "name_slug": "varek the shade",
+        "visible_location_ids": [],
+        "reveal_bindings": [
+          {
+            "location_id": "AE02",
+            "source": "areas/HH001.json#locations[AE02].plotHooks",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/HH001.json#locations[AE02].plotHooks",
+          "module_context.json#npcs.varek_the_shade"
+        ],
+        "authored_mentions_count": 1,
+        "authored_mention_sources": [
+          "areas/HH001.json#locations[AE02].plotHooks"
+        ]
+      },
+      "Wandering Shade (restless spirit)": {
+        "name_slug": "wandering shade restless spirit",
+        "visible_location_ids": [],
+        "reveal_bindings": [],
+        "sources": [
+          "module_context.json#npcs.wandering_shade_(restless_spirit)"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Watcher Morven": {
+        "name_slug": "watcher morven",
+        "visible_location_ids": [
+          "AL03"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "AL05",
+            "source": "areas/TBM001.json#locations[AL05].dmInstructions",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/TBM001.json#locations[AL03].dcChecks",
+          "areas/TBM001.json#locations[AL03].dmInstructions",
+          "areas/TBM001.json#locations[AL03].npcs",
+          "areas/TBM001.json#locations[AL03].plotHooks",
+          "areas/TBM001.json#locations[AL05].dmInstructions"
+        ],
+        "authored_mentions_count": 4,
+        "authored_mention_sources": [
+          "areas/TBM001.json#locations[AL03].dcChecks",
+          "areas/TBM001.json#locations[AL03].dmInstructions",
+          "areas/TBM001.json#locations[AL03].plotHooks",
+          "areas/TBM001.json#locations[AL05].dmInstructions"
+        ]
+      },
+      "Worried Mother Eliza": {
+        "name_slug": "worried mother eliza",
+        "visible_location_ids": [
+          "AE05"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/HH001.json#locations[AE05].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Young Apprentice Tam": {
+        "name_slug": "young apprentice tam",
+        "visible_location_ids": [
+          "AE01"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/HH001.json#locations[AE01].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      }
+    },
+    "diagnostics": {
+      "duplicate_location_aliases": [],
+      "ambiguous_destination_phrases": [],
+      "unresolved_destination_phrases": [],
+      "missing_npc_authority": [
+        {
+          "npc": "Brother Jorlan",
+          "name_slug": "brother jorlan",
+          "sources": [
+            "module_context.json#npcs.brother_jorlan"
+          ],
+          "authored_mentions_count": 0,
+          "authored_mention_sources": []
+        },
+        {
+          "npc": "Dame Elira Dawnsworn",
+          "name_slug": "dame elira dawnsworn",
+          "sources": [
+            "module_context.json#npcs.dame_elira_dawnsworn"
+          ],
+          "authored_mentions_count": 0,
+          "authored_mention_sources": []
+        },
+        {
+          "npc": "Druidess Halwen",
+          "name_slug": "druidess halwen",
+          "sources": [
+            "module_context.json#npcs.druidess_halwen"
+          ],
+          "authored_mentions_count": 0,
+          "authored_mention_sources": []
+        },
+        {
+          "npc": "Envoy Torric",
+          "name_slug": "envoy torric",
+          "sources": [
+            "module_context.json#npcs.envoy_torric"
+          ],
+          "authored_mentions_count": 0,
+          "authored_mention_sources": []
+        },
+        {
+          "npc": "Feyfriend Lirael",
+          "name_slug": "feyfriend lirael",
+          "sources": [
+            "module_context.json#npcs.feyfriend_lirael"
+          ],
+          "authored_mentions_count": 0,
+          "authored_mention_sources": []
+        },
+        {
+          "npc": "Lady Mirielle d'Ashe",
+          "name_slug": "lady mirielle dashe",
+          "sources": [
+            "module_context.json#npcs.lady_mirielle_d'ashe"
+          ],
+          "authored_mentions_count": 0,
+          "authored_mention_sources": []
+        },
+        {
+          "npc": "Magister Corvin Leth",
+          "name_slug": "magister corvin leth",
+          "sources": [
+            "module_context.json#npcs.magister_corvin_leth"
+          ],
+          "authored_mentions_count": 0,
+          "authored_mention_sources": []
+        },
+        {
+          "npc": "Mistress Ilyra",
+          "name_slug": "mistress ilyra",
+          "sources": [
+            "module_context.json#npcs.mistress_ilyra"
+          ],
+          "authored_mentions_count": 0,
+          "authored_mention_sources": []
+        },
+        {
+          "npc": "Old Tommen (superstitious herdsman)",
+          "name_slug": "old tommen superstitious herdsman",
+          "sources": [
+            "module_context.json#npcs.old_tommen_(superstitious_herdsman)"
+          ],
+          "authored_mentions_count": 0,
+          "authored_mention_sources": []
+        },
+        {
+          "npc": "Scout Elen (missing villager, possibly rescued)",
+          "name_slug": "scout elen missing villager possibly rescued",
+          "sources": [
+            "module_context.json#npcs.scout_elen_(missing_villager,_possibly_rescued)"
+          ],
+          "authored_mentions_count": 0,
+          "authored_mention_sources": []
+        },
+        {
+          "npc": "Spectral Scribe (ghostly historian)",
+          "name_slug": "spectral scribe ghostly historian",
+          "sources": [
+            "module_context.json#npcs.spectral_scribe_(ghostly_historian)"
+          ],
+          "authored_mentions_count": 0,
+          "authored_mention_sources": []
+        },
+        {
+          "npc": "The Shadow Relic (sentient artifact, communicates telepathically)",
+          "name_slug": "the shadow relic sentient artifact communicates telepathically",
+          "sources": [
+            "module_context.json#npcs.the_shadow_relic_(sentient_artifact,_communicates_telepathically)"
+          ],
+          "authored_mentions_count": 0,
+          "authored_mention_sources": []
+        },
+        {
+          "npc": "Wandering Shade (restless spirit)",
+          "name_slug": "wandering shade restless spirit",
+          "sources": [
+            "module_context.json#npcs.wandering_shade_(restless_spirit)"
+          ],
+          "authored_mentions_count": 0,
+          "authored_mention_sources": []
+        }
+      ]
+    },
+    "summary": {
+      "location_count": 36,
+      "location_alias_count": 82,
+      "destination_phrase_count": 82,
+      "npc_count": 49,
+      "ambiguous_destination_count": 0,
+      "missing_npc_authority_count": 13
+    }
   }
 }

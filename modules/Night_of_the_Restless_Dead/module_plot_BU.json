@@ -110,6 +110,8 @@
         "trigger": "Insight check in NIG01",
         "path": [
           "NIG01",
+          "NIG02",
+          "NIG03",
           "NIG04",
           "NIG05",
           "NIG06"
@@ -126,6 +128,7 @@
         "trigger": "Investigation check in NIG02",
         "path": [
           "NIG01",
+          "NIG02",
           "NIG08",
           "NIG02",
           "NIG03",
@@ -142,6 +145,7 @@
         "name": "Direct Assault",
         "path": [
           "NIG01",
+          "NIG02",
           "NIG08",
           "NIG02",
           "NIG03",
@@ -157,6 +161,7 @@
         "trigger": "Discover Blarg's letters in NIG01",
         "path": [
           "NIG01",
+          "NIG02",
           "NIG08",
           "NIG02",
           "NIG03",

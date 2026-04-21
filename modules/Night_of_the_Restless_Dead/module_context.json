@@ -234,5 +234,821 @@
       ],
       "notes": "Night of the Restless Dead remains fully playable as a standalone module when cross-module continuity is unavailable."
     }
+  },
+  "semantic_authority": {
+    "version": "v1",
+    "module_slug": "Night_of_the_Restless_Dead",
+    "location_aliases": {
+      "brother lintars place": {
+        "status": "resolved",
+        "location_id": "NIG08",
+        "location_name": "Brother Lintar's Place",
+        "candidate_location_ids": [
+          "NIG08"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG08].aliases",
+          "areas/NIG001.json#locations[NIG08].name"
+        ]
+      },
+      "cathedral main hall": {
+        "status": "resolved",
+        "location_id": "NIG02",
+        "location_name": "Ruined Cathedral Main Hall",
+        "candidate_location_ids": [
+          "NIG02"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG02].aliases"
+        ]
+      },
+      "cathedral storage": {
+        "status": "resolved",
+        "location_id": "NIG03",
+        "location_name": "Cathedral Storage",
+        "candidate_location_ids": [
+          "NIG03"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG03].aliases",
+          "areas/NIG001.json#locations[NIG03].name",
+          "areas/NIG001.json#locations[NIG03].source_room_title"
+        ]
+      },
+      "cellar hallway": {
+        "status": "resolved",
+        "location_id": "NIG05",
+        "location_name": "Cellar Hallway",
+        "candidate_location_ids": [
+          "NIG05"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG05].aliases",
+          "areas/NIG001.json#locations[NIG05].name"
+        ]
+      },
+      "conclusion": {
+        "status": "resolved",
+        "location_id": "NIG07",
+        "location_name": "Conclusion",
+        "candidate_location_ids": [
+          "NIG07"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG07].aliases",
+          "areas/NIG001.json#locations[NIG07].name",
+          "areas/NIG001.json#locations[NIG07].source_room_title"
+        ]
+      },
+      "dead end ritual chamber": {
+        "status": "resolved",
+        "location_id": "NIG06",
+        "location_name": "Dead End Ritual Chamber",
+        "candidate_location_ids": [
+          "NIG06"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG06].aliases",
+          "areas/NIG001.json#locations[NIG06].name",
+          "areas/NIG001.json#locations[NIG06].source_room_title"
+        ]
+      },
+      "end ritual chamber": {
+        "status": "resolved",
+        "location_id": "NIG06",
+        "location_name": "Dead End Ritual Chamber",
+        "candidate_location_ids": [
+          "NIG06"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG06].aliases"
+        ]
+      },
+      "lintars place": {
+        "status": "resolved",
+        "location_id": "NIG08",
+        "location_name": "Brother Lintar's Place",
+        "candidate_location_ids": [
+          "NIG08"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG08].aliases",
+          "areas/NIG001.json#locations[NIG08].name"
+        ]
+      },
+      "main hall": {
+        "status": "resolved",
+        "location_id": "NIG02",
+        "location_name": "Ruined Cathedral Main Hall",
+        "candidate_location_ids": [
+          "NIG02"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG02].aliases"
+        ]
+      },
+      "mas watering hole": {
+        "status": "resolved",
+        "location_id": "NIG01",
+        "location_name": "Ma's Watering Hole",
+        "candidate_location_ids": [
+          "NIG01"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG01].aliases",
+          "areas/NIG001.json#locations[NIG01].name",
+          "areas/NIG001.json#locations[NIG01].source_room_title"
+        ]
+      },
+      "nig01": {
+        "status": "resolved",
+        "location_id": "NIG01",
+        "location_name": "Ma's Watering Hole",
+        "candidate_location_ids": [
+          "NIG01"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG01].aliases"
+        ]
+      },
+      "nig02": {
+        "status": "resolved",
+        "location_id": "NIG02",
+        "location_name": "Ruined Cathedral Main Hall",
+        "candidate_location_ids": [
+          "NIG02"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG02].aliases"
+        ]
+      },
+      "nig03": {
+        "status": "resolved",
+        "location_id": "NIG03",
+        "location_name": "Cathedral Storage",
+        "candidate_location_ids": [
+          "NIG03"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG03].aliases"
+        ]
+      },
+      "nig04": {
+        "status": "resolved",
+        "location_id": "NIG04",
+        "location_name": "Priest's Lodging",
+        "candidate_location_ids": [
+          "NIG04"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG04].aliases"
+        ]
+      },
+      "nig05": {
+        "status": "resolved",
+        "location_id": "NIG05",
+        "location_name": "Cellar Hallway",
+        "candidate_location_ids": [
+          "NIG05"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG05].aliases"
+        ]
+      },
+      "nig06": {
+        "status": "resolved",
+        "location_id": "NIG06",
+        "location_name": "Dead End Ritual Chamber",
+        "candidate_location_ids": [
+          "NIG06"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG06].aliases"
+        ]
+      },
+      "nig07": {
+        "status": "resolved",
+        "location_id": "NIG07",
+        "location_name": "Conclusion",
+        "candidate_location_ids": [
+          "NIG07"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG07].aliases"
+        ]
+      },
+      "nig08": {
+        "status": "resolved",
+        "location_id": "NIG08",
+        "location_name": "Brother Lintar's Place",
+        "candidate_location_ids": [
+          "NIG08"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG08].aliases"
+        ]
+      },
+      "priests lodging": {
+        "status": "resolved",
+        "location_id": "NIG04",
+        "location_name": "Priest's Lodging",
+        "candidate_location_ids": [
+          "NIG04"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG04].aliases",
+          "areas/NIG001.json#locations[NIG04].name",
+          "areas/NIG001.json#locations[NIG04].source_room_title"
+        ]
+      },
+      "ritual chamber": {
+        "status": "resolved",
+        "location_id": "NIG06",
+        "location_name": "Dead End Ritual Chamber",
+        "candidate_location_ids": [
+          "NIG06"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG06].aliases"
+        ]
+      },
+      "ruined cathedral": {
+        "status": "resolved",
+        "location_id": "NIG02",
+        "location_name": "Ruined Cathedral Main Hall",
+        "candidate_location_ids": [
+          "NIG02"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG02].aliases"
+        ]
+      },
+      "ruined cathedral main hall": {
+        "status": "resolved",
+        "location_id": "NIG02",
+        "location_name": "Ruined Cathedral Main Hall",
+        "candidate_location_ids": [
+          "NIG02"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG02].aliases",
+          "areas/NIG001.json#locations[NIG02].name"
+        ]
+      }
+    },
+    "destination_phrases": {
+      "brother lintars place": {
+        "status": "resolved",
+        "location_id": "NIG08",
+        "candidate_location_ids": [
+          "NIG08"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG08].aliases",
+          "areas/NIG001.json#locations[NIG08].name",
+          "module_plot.json#plotPoints[PP008].title"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 3
+      },
+      "cathedral main hall": {
+        "status": "resolved",
+        "location_id": "NIG02",
+        "candidate_location_ids": [
+          "NIG02"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG02].aliases",
+          "areas/NIG001.json#locations[NIG02].name",
+          "module_plot.json#plotPoints[PP002].title"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 4
+      },
+      "cathedral storage": {
+        "status": "resolved",
+        "location_id": "NIG03",
+        "candidate_location_ids": [
+          "NIG03"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG03].aliases",
+          "areas/NIG001.json#locations[NIG03].name",
+          "areas/NIG001.json#locations[NIG03].source_room_title"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "cellar hallway": {
+        "status": "resolved",
+        "location_id": "NIG05",
+        "candidate_location_ids": [
+          "NIG05"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG05].aliases",
+          "areas/NIG001.json#locations[NIG05].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "conclusion": {
+        "status": "resolved",
+        "location_id": "NIG07",
+        "candidate_location_ids": [
+          "NIG07"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG07].aliases",
+          "areas/NIG001.json#locations[NIG07].name",
+          "areas/NIG001.json#locations[NIG07].source_room_title"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "dead end ritual chamber": {
+        "status": "resolved",
+        "location_id": "NIG06",
+        "candidate_location_ids": [
+          "NIG06"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG06].aliases",
+          "areas/NIG001.json#locations[NIG06].name",
+          "areas/NIG001.json#locations[NIG06].source_room_title",
+          "module_plot.json#plotPoints[PP006].title"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 4
+      },
+      "end ritual chamber": {
+        "status": "resolved",
+        "location_id": "NIG06",
+        "candidate_location_ids": [
+          "NIG06"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG06].aliases",
+          "areas/NIG001.json#locations[NIG06].name",
+          "areas/NIG001.json#locations[NIG06].source_room_title",
+          "module_plot.json#plotPoints[PP006].title"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 5
+      },
+      "lintars place": {
+        "status": "resolved",
+        "location_id": "NIG08",
+        "candidate_location_ids": [
+          "NIG08"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG08].aliases",
+          "areas/NIG001.json#locations[NIG08].name",
+          "module_plot.json#plotPoints[PP008].title"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 3
+      },
+      "main hall": {
+        "status": "resolved",
+        "location_id": "NIG02",
+        "candidate_location_ids": [
+          "NIG02"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG02].aliases",
+          "areas/NIG001.json#locations[NIG02].name",
+          "module_plot.json#plotPoints[PP002].title"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 5
+      },
+      "mas watering hole": {
+        "status": "resolved",
+        "location_id": "NIG01",
+        "candidate_location_ids": [
+          "NIG01"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG01].aliases",
+          "areas/NIG001.json#locations[NIG01].name",
+          "areas/NIG001.json#locations[NIG01].source_room_title"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "nig01": {
+        "status": "resolved",
+        "location_id": "NIG01",
+        "candidate_location_ids": [
+          "NIG01"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG01].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "nig02": {
+        "status": "resolved",
+        "location_id": "NIG02",
+        "candidate_location_ids": [
+          "NIG02"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG02].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "nig03": {
+        "status": "resolved",
+        "location_id": "NIG03",
+        "candidate_location_ids": [
+          "NIG03"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG03].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "nig04": {
+        "status": "resolved",
+        "location_id": "NIG04",
+        "candidate_location_ids": [
+          "NIG04"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG04].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "nig05": {
+        "status": "resolved",
+        "location_id": "NIG05",
+        "candidate_location_ids": [
+          "NIG05"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG05].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "nig06": {
+        "status": "resolved",
+        "location_id": "NIG06",
+        "candidate_location_ids": [
+          "NIG06"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG06].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "nig07": {
+        "status": "resolved",
+        "location_id": "NIG07",
+        "candidate_location_ids": [
+          "NIG07"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG07].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "nig08": {
+        "status": "resolved",
+        "location_id": "NIG08",
+        "candidate_location_ids": [
+          "NIG08"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG08].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "priests lodging": {
+        "status": "resolved",
+        "location_id": "NIG04",
+        "candidate_location_ids": [
+          "NIG04"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG04].aliases",
+          "areas/NIG001.json#locations[NIG04].name",
+          "areas/NIG001.json#locations[NIG04].source_room_title",
+          "module_plot.json#plotPoints[PP004].title"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 4
+      },
+      "ritual chamber": {
+        "status": "resolved",
+        "location_id": "NIG06",
+        "candidate_location_ids": [
+          "NIG06"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG06].aliases",
+          "areas/NIG001.json#locations[NIG06].name",
+          "areas/NIG001.json#locations[NIG06].source_room_title",
+          "module_plot.json#plotPoints[PP006].title"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 6
+      },
+      "ruined cathedral": {
+        "status": "resolved",
+        "location_id": "NIG02",
+        "candidate_location_ids": [
+          "NIG02"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG02].aliases",
+          "areas/NIG001.json#locations[NIG02].name",
+          "module_plot.json#plotPoints[PP002].title"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 4
+      },
+      "ruined cathedral main hall": {
+        "status": "resolved",
+        "location_id": "NIG02",
+        "candidate_location_ids": [
+          "NIG02"
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG02].aliases",
+          "areas/NIG001.json#locations[NIG02].name",
+          "module_plot.json#plotPoints[PP002].title"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 3
+      }
+    },
+    "npc_scene_authority": {
+      "Athelon": {
+        "name_slug": "athelon",
+        "visible_location_ids": [
+          "NIG02"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/NIG001.json#locations[NIG02].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Blarg": {
+        "name_slug": "blarg",
+        "visible_location_ids": [
+          "NIG01",
+          "NIG02"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/NIG001.json#locations[NIG01].creatures",
+          "areas/NIG001.json#locations[NIG01].description",
+          "areas/NIG001.json#locations[NIG01].investigation_hooks.consequence",
+          "areas/NIG001.json#locations[NIG01].investigation_hooks.reward",
+          "areas/NIG001.json#locations[NIG01].npcs",
+          "areas/NIG001.json#locations[NIG02].npcs",
+          "module_context.json#npcs.blarg_half_orc",
+          "module_plot.json#plotPoints[PP001].description",
+          "module_plot.json#plotPoints[PP001].plotImpact"
+        ],
+        "authored_mentions_count": 6,
+        "authored_mention_sources": [
+          "areas/NIG001.json#locations[NIG01].creatures",
+          "areas/NIG001.json#locations[NIG01].description",
+          "areas/NIG001.json#locations[NIG01].investigation_hooks.consequence",
+          "areas/NIG001.json#locations[NIG01].investigation_hooks.reward",
+          "module_plot.json#plotPoints[PP001].description",
+          "module_plot.json#plotPoints[PP001].plotImpact"
+        ]
+      },
+      "Brother Lintar": {
+        "name_slug": "brother lintar",
+        "visible_location_ids": [
+          "NIG08"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/NIG001.json#locations[NIG08].description",
+          "areas/NIG001.json#locations[NIG08].dmInstructions",
+          "areas/NIG001.json#locations[NIG08].features.description",
+          "areas/NIG001.json#locations[NIG08].npcs",
+          "module_context.json#npcs.brother_lintar",
+          "module_plot.json#plotPoints[PP008].description"
+        ],
+        "authored_mentions_count": 4,
+        "authored_mention_sources": [
+          "areas/NIG001.json#locations[NIG08].description",
+          "areas/NIG001.json#locations[NIG08].dmInstructions",
+          "areas/NIG001.json#locations[NIG08].features.description",
+          "module_plot.json#plotPoints[PP008].description"
+        ]
+      },
+      "Father Aldric": {
+        "name_slug": "father aldric",
+        "visible_location_ids": [
+          "NIG04",
+          "NIG08"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/NIG001.json#locations[NIG04].dmInstructions",
+          "areas/NIG001.json#locations[NIG04].investigation_hooks.description",
+          "areas/NIG001.json#locations[NIG04].investigation_hooks.trigger",
+          "areas/NIG001.json#locations[NIG04].npcs",
+          "areas/NIG001.json#locations[NIG04].plotHooks",
+          "areas/NIG001.json#locations[NIG08].dmInstructions",
+          "areas/NIG001.json#locations[NIG08].npcs",
+          "module_context.json#npcs.father_aldric",
+          "module_plot.json#plotPoints[PP004].plotImpact"
+        ],
+        "authored_mentions_count": 6,
+        "authored_mention_sources": [
+          "areas/NIG001.json#locations[NIG04].dmInstructions",
+          "areas/NIG001.json#locations[NIG04].investigation_hooks.description",
+          "areas/NIG001.json#locations[NIG04].investigation_hooks.trigger",
+          "areas/NIG001.json#locations[NIG04].plotHooks",
+          "areas/NIG001.json#locations[NIG08].dmInstructions",
+          "module_plot.json#plotPoints[PP004].plotImpact"
+        ]
+      },
+      "Lidda Underbough": {
+        "name_slug": "lidda underbough",
+        "visible_location_ids": [
+          "NIG02"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/NIG001.json#locations[NIG02].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Ma (Margaret Thornfield)": {
+        "name_slug": "ma margaret thornfield",
+        "visible_location_ids": [
+          "NIG01"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/NIG001.json#locations[NIG01].npcs",
+          "module_context.json#npcs.ma_thornfield"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Red (The Crimson Binder)": {
+        "name_slug": "red the crimson binder",
+        "visible_location_ids": [
+          "NIG06"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/NIG001.json#locations[NIG06].npcs",
+          "module_context.json#npcs.red_crimson_binder"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Redax": {
+        "name_slug": "redax",
+        "visible_location_ids": [
+          "NIG02",
+          "NIG08"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "NIG05",
+            "source": "module_plot.json#plotPoints[PP005].plotImpact",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "NIG06",
+            "source": "module_plot.json#plotPoints[PP006].plotImpact",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG02].npcs",
+          "areas/NIG001.json#locations[NIG08].npcs",
+          "module_plot.json#plotPoints[PP005].plotImpact",
+          "module_plot.json#plotPoints[PP006].plotImpact"
+        ],
+        "authored_mentions_count": 2,
+        "authored_mention_sources": [
+          "module_plot.json#plotPoints[PP005].plotImpact",
+          "module_plot.json#plotPoints[PP006].plotImpact"
+        ]
+      },
+      "Sister Miriam Bramble": {
+        "name_slug": "sister miriam bramble",
+        "visible_location_ids": [],
+        "reveal_bindings": [
+          {
+            "location_id": "NIG01",
+            "source": "areas/NIG001.json#locations[NIG01].investigation_hooks.cross_module_ref",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "NIG06",
+            "source": "areas/NIG001.json#locations[NIG06].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG01].investigation_hooks.cross_module_ref",
+          "areas/NIG001.json#locations[NIG06].description",
+          "module_context.json#npcs.sister_miriam_bramble"
+        ],
+        "authored_mentions_count": 2,
+        "authored_mention_sources": [
+          "areas/NIG001.json#locations[NIG01].investigation_hooks.cross_module_ref",
+          "areas/NIG001.json#locations[NIG06].description"
+        ]
+      },
+      "Unnamed Companion Priest": {
+        "name_slug": "unnamed companion priest",
+        "visible_location_ids": [
+          "NIG04"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/NIG001.json#locations[NIG04].npcs"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Xorn": {
+        "name_slug": "xorn",
+        "visible_location_ids": [
+          "NIG02",
+          "NIG08"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "NIG06",
+            "source": "module_plot.json#plotPoints[PP006].plotImpact",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/NIG001.json#locations[NIG02].npcs",
+          "areas/NIG001.json#locations[NIG08].npcs",
+          "module_plot.json#plotPoints[PP006].plotImpact"
+        ],
+        "authored_mentions_count": 1,
+        "authored_mention_sources": [
+          "module_plot.json#plotPoints[PP006].plotImpact"
+        ]
+      }
+    },
+    "diagnostics": {
+      "duplicate_location_aliases": [],
+      "ambiguous_destination_phrases": [],
+      "unresolved_destination_phrases": [],
+      "missing_npc_authority": []
+    },
+    "summary": {
+      "location_count": 8,
+      "location_alias_count": 22,
+      "destination_phrase_count": 22,
+      "npc_count": 11,
+      "ambiguous_destination_count": 0,
+      "missing_npc_authority_count": 0
+    }
   }
 }

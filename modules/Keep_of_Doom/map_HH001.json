@@ -39,7 +39,6 @@
       "type": "gate",
       "connections": [
         "AE01",
-        "AE05",
         "AE06"
       ],
       "coordinates": "X2Y3",
@@ -66,7 +65,6 @@
       "type": "tavern",
       "connections": [
         "AE01",
-        "AE03",
         "AE06"
       ],
       "coordinates": "X1Y2",

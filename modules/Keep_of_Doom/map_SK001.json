@@ -9,8 +9,7 @@
       "type": "courtyard",
       "connections": [
         "AG02",
-        "AG03",
-        "AG08"
+        "AG03"
       ],
       "coordinates": "X2Y1",
       "directions": {
@@ -24,12 +23,14 @@
       "type": "gatehouse",
       "connections": [
         "AG01",
-        "AG04"
+        "AG04",
+        "AG08"
       ],
       "coordinates": "X1Y1",
       "directions": {
         "east": "AG01",
-        "south": "AG04"
+        "south": "AG04",
+        "north": "AG08"
       }
     },
     {
@@ -107,10 +108,12 @@
       "name": "Secret Passage",
       "type": "passage",
       "connections": [
-        "AG01"
+        "AG02"
       ],
       "coordinates": "X1Y0",
-      "directions": {}
+      "directions": {
+        "south": "AG02"
+      }
     }
   ],
   "layout": [

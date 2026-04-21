@@ -7,9 +7,7 @@
       "id": "NIG01",
       "name": "Ma's Watering Hole",
       "connections": [
-        "NIG02",
-        "NIG08",
-        "NIG04"
+        "NIG02"
       ],
       "coordinates": "X0Y0",
       "directions": {
@@ -20,7 +18,6 @@
       "id": "NIG08",
       "name": "Brother Lintar's Place",
       "connections": [
-        "NIG01",
         "NIG02"
       ],
       "coordinates": "X1Y1",
@@ -60,7 +57,6 @@
       "id": "NIG04",
       "name": "Priest's Lodging",
       "connections": [
-        "NIG01",
         "NIG03",
         "NIG05"
       ],

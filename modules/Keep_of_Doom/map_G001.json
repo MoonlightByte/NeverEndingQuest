@@ -8,8 +8,7 @@
       "name": "Witchlight Trailhead",
       "type": "trail",
       "connections": [
-        "AA02",
-        "AA03"
+        "AA02"
       ],
       "coordinates": "X2Y1",
       "directions": {
@@ -63,9 +62,7 @@
       "name": "The Withered Shrine",
       "type": "shrine",
       "connections": [
-        "AA01",
-        "AA05",
-        "AA06"
+        "AA05"
       ],
       "coordinates": "X1Y2",
       "directions": {
@@ -105,7 +102,6 @@
       "name": "Spectral Clearing",
       "type": "clearing",
       "connections": [
-        "AA03",
         "AA05",
         "AA07"
       ],

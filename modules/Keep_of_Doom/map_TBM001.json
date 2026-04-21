@@ -38,8 +38,7 @@
       "name": "Abandoned Watchtower",
       "type": "tower",
       "connections": [
-        "AL01",
-        "AL06"
+        "AL01"
       ],
       "coordinates": "X1Y2",
       "directions": {
@@ -51,8 +50,7 @@
       "name": "Black Banner Encampment",
       "type": "camp",
       "connections": [
-        "AL02",
-        "AL05"
+        "AL02"
       ],
       "coordinates": "X3Y1",
       "directions": {
@@ -65,7 +63,6 @@
       "type": "ritual",
       "connections": [
         "AL02",
-        "AL04",
         "AL06"
       ],
       "coordinates": "X2Y2",
@@ -79,7 +76,6 @@
       "name": "The Cursed Barrow",
       "type": "tomb",
       "connections": [
-        "AL03",
         "AL05"
       ],
       "coordinates": "X3Y2",
