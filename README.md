@@ -265,6 +265,12 @@ Access the toolkit from the web interface or launch directly with `.venv/bin/pyt
 - **Thumbnail Generation** - Automatic thumbnail creation for galleries
 - **Pack Merging** - Combine multiple packs into custom collections
 
+Toolkit distinction:
+- `data/bestiary/*.json` stores reusable text descriptions used to drive image generation.
+- `graphic_packs/` stores reusable/shareable asset packs; activated packs populate runtime static fallback media.
+- `modules/<module>/media/` is the module's self-contained shipped media and the publishable target.
+- A module can still be playable via activated pack/static fallback, but publishability checks may still require module-local media.
+
 ### Style Management
 
 - **Visual Themes** - Switch between different art styles

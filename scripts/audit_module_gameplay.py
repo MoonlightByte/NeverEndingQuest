@@ -113,6 +113,11 @@ def extract_from_structure(data, path: str = "root") -> List[Tuple[str, str, str
             lower_key = key.lower()
             current_path = f"{path}.{key}"
             
+            # TABLETOP MODE: Scene-only illusion metadata must not be promoted into
+            # combat-valid structural monster requirements.
+            if lower_key == 'sceneentity':
+                continue
+
             # Direct monster arrays
             if lower_key in ['monsters', 'creatures', 'enemies'] and isinstance(value, list):
                 for i, entry in enumerate(value):

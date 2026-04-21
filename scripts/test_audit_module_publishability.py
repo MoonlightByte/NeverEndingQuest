@@ -348,6 +348,49 @@ class TestAuditModulePublishability(unittest.TestCase):
         self.assertIn("readiness_gate_failed", " ".join(report["blocking_errors"]))
         self.assertIn("structured_monster_media_missing", report["remediation_categories"])
 
+    def test_scene_entity_modeling_candidate_for_media_plus_semantic_warnings(self):
+        with (
+            patch.object(
+                publishability,
+                "audit_module_readiness",
+                return_value={
+                    "overall_status": "fail",
+                    "fix_list": [],
+                    "gates": {"sidecar": {"reason": "pass"}},
+                    "toolkit_media_policy": {
+                        "structural_media_debt_count": 1,
+                        "structural_media_debt_slugs": ["illusory_beast"],
+                    },
+                },
+            ),
+            patch.object(
+                publishability,
+                "audit_module_semantic_authority",
+                return_value={
+                    "status": "degraded",
+                    "blocking_errors": [],
+                    "warnings": ["npc_scene_authority has no visible locations"],
+                },
+            ),
+            patch.object(
+                publishability,
+                "run_module_semantic_probes",
+                return_value={
+                    "status": "degraded",
+                    "blocking_errors": [],
+                    "warnings": ["handoff_probe_fixture_missing"],
+                },
+            ),
+        ):
+            report = publishability.audit_module_publishability(
+                "example_module", source="toolkit"
+            )
+
+        self.assertIn("structured_monster_media_missing", report["remediation_categories"])
+        self.assertIn("semantic_warning_only", report["remediation_categories"])
+        self.assertIn("scene_entity_modeling_candidate", report["remediation_categories"])
+        self.assertNotIn("mixed_media_semantic_blocking", report["remediation_categories"])
+
 
 if __name__ == "__main__":
     unittest.main()

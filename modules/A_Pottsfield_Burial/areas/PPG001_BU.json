@@ -194,7 +194,7 @@
       ],
       "monsters": [
         {
-          "name": "Crawling Claws (2)",
+          "name": "Crawling Claws",
           "description": "Necromantically animated hands emerge from jars and scuttle across the floor if the spirit\u2019s bindings are tampered with."
         }
       ],
@@ -257,7 +257,7 @@
         },
         {
           "type": "combat",
-          "description": "Disturbing the runes or attempting to remove objects triggers Crawling Claws (2) attack."
+          "description": "Disturbing the runes or attempting to remove objects triggers Crawling Claws attack."
         },
         {
           "type": "exploration",

@@ -773,6 +773,18 @@
     "hay-bound_spirit": {
       "name": "Hay-Bound Spirit",
       "description": "The essence of a storage keeper who was buried alive in a hay collapse years ago. The spirit is trapped within the straw and speaks in whispered warnings about hidden dangers."
+    },
+    "harrows_hollow_east_gate_guards": {
+      "name": "Harrow's Hollow East Gate Guards",
+      "description": "The guards stationed at the east gate of Harrow's Hollow, assessed by the party for condition and information. Currently alert and holding position."
+    },
+    "off-duty_militiaman_gareth": {
+      "name": "Off-Duty Militiaman Gareth",
+      "description": "A young soldier from the local militia who comes to the tavern to unwind after long patrol shifts. He's eager to prove himself but still green, often seeking advice from more experienced patrons about handling dangerous situations."
+    },
+    "scout_elen": {
+      "name": "Scout Elen",
+      "description": "Suspended in a cage of shadows near the ceiling, barely conscious but still alive. Her rescue is possible if Sir Garran is defeated or his humanity is restored."
     }
   },
   "last_updated": "2026-04-20T17:30:11.993535"

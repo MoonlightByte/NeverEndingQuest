@@ -186,6 +186,37 @@ class TestStructuralExtraction(unittest.TestCase):
         self.assertTrue("level1.level2.level3.monsters[0]" in refs[0][1])
         self.assertEqual(refs[0][2], "structural")
 
+    def test_scene_entity_branches_are_ignored_in_structural_scan(self):
+        """Verify sceneEntity metadata does not produce structural monster refs."""
+        nested_data = {
+            "locations": [
+                {
+                    "locationId": "illusion_hall",
+                    "sceneEntity": {
+                        "scene_only": True,
+                        "monsters": [
+                            {"name": "Illusory Beast"},
+                        ],
+                        "nested": {
+                            "creatures": [
+                                {"name": "Ghostly Projection"},
+                            ]
+                        },
+                    },
+                    "monsters": [
+                        {"name": "Real Guardian"},
+                    ],
+                }
+            ]
+        }
+
+        refs = extract_from_structure(nested_data, "root")
+        slugs = [ref[0] for ref in refs]
+
+        self.assertIn("real_guardian", slugs)
+        self.assertNotIn("illusory_beast", slugs)
+        self.assertNotIn("ghostly_projection", slugs)
+
 
 class TestHeuristicExtraction(unittest.TestCase):
     """Tests for heuristic monster reference extraction."""

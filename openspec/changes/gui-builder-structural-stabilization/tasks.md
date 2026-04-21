@@ -18,8 +18,8 @@
 
 ## 4. Scene-Only Illusion Boundary
 
-- [ ] 4.1 Audit builder/finisher/publication touchpoints to ensure scene-only illusion content remains modeled through scene-entity semantics instead of structured combatant fields.
-- [ ] 4.2 Preserve strict gameplay/media blocking for entities authored in combat-valid structural fields and verify no new logic weakens those gates.
+- [X] 4.1 Audit builder/finisher/publication touchpoints to ensure scene-only illusion content remains modeled through scene-entity semantics instead of structured combatant fields.
+- [X] 4.2 Preserve strict gameplay/media blocking for entities authored in combat-valid structural fields and verify no new logic weakens those gates.
 
 ## 5. Regression Coverage
 

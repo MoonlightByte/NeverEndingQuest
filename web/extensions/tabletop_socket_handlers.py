@@ -690,8 +690,12 @@ def handle_initiative_data_request_impl(emit_fn: Callable[..., None], error_fn: 
                             })
 
                             # TABLETOP MODE: Add image metadata for portrait cache coherence
-                            combatant_slug = _normalize_character_slug(combatant.get("name", ""))
-                            combatant_image_meta = _build_image_metadata(combatant_slug, current_module)
+                            # TABLETOP MODE: Prefer stable monsterType slug for enemies to avoid
+                            # display-name variants breaking portrait/media linkage.
+                            slug_source = combatant.get("monsterType") or combatant.get("name", "")
+                            combatant_slug = _normalize_character_slug(slug_source)
+                            media_type = "monster" if str(combatant.get("type", "")).lower() in {"enemy", "monster"} else "npc"
+                            combatant_image_meta = _build_image_metadata(combatant_slug, current_module, media_type=media_type)
                             combatant_data['image_slug'] = combatant_image_meta.get('image_slug')
                             combatant_data['image_version'] = combatant_image_meta.get('image_version')
                 except Exception as load_error:
@@ -702,8 +706,10 @@ def handle_initiative_data_request_impl(emit_fn: Callable[..., None], error_fn: 
 
             # TABLETOP MODE: Ensure image metadata for combatants even when char data load failed
             if 'image_slug' not in combatant_data:
-                combatant_slug = _normalize_character_slug(combatant.get("name", ""))
-                combatant_image_meta = _build_image_metadata(combatant_slug, current_module)
+                slug_source = combatant.get("monsterType") or combatant.get("name", "")
+                combatant_slug = _normalize_character_slug(slug_source)
+                media_type = "monster" if str(combatant.get("type", "")).lower() in {"enemy", "monster"} else "npc"
+                combatant_image_meta = _build_image_metadata(combatant_slug, current_module, media_type=media_type)
                 combatant_data['image_slug'] = combatant_image_meta.get('image_slug')
                 combatant_data['image_version'] = combatant_image_meta.get('image_version')
 

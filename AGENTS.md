@@ -1028,6 +1028,42 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Module Publishability Bucket A/B Closure + Scene-Entity Gate Guard (COMPLETED - 2026-04-22)
+
+**Status:** COMPLETED - Closed active non-excluded module publishability blockers, completed Bucket B Numillian semantic/provenance closure, and finished `gui-builder-structural-stabilization` section 4 guardrails.
+
+**Objective:**
+- Bring active tester-target modules to `ready=pass` + `publishable=pass` without weakening structural gameplay/media gates.
+- Complete OpenSpec `module-publishability-bucket-a-quick-wins` and `module-publishability-bucket-b-semantic-lane` implementation intent.
+- Implement and verify scene-only `sceneEntity` boundary behavior while preserving strict structured combatant blocking.
+
+**Implementation Summary:**
+- Bucket A/B module remediation and verification landed across:
+  - `modules/The_Pumpkin_Kings_Curse/module_context.json`
+  - `modules/A_Pottsfield_Burial/*` (`crawling_claws` naming/media/closure alignment)
+  - `modules/Keep_of_Doom/*` (topology/semantic closure updates)
+  - `modules/Night_of_the_Restless_Dead/*` (topology/semantic closure + schema-valid `cultist.json`)
+  - `modules/The_Hidden_City_of_Numillian/*` (`paradox sanctuary` alias closure + semantic regeneration)
+  - `modules/ingest/archive/20260422_000000_The_Hidden_City_of_Numillian.result.json` (required sidecar/provenance closure)
+- Completed `gui-builder-structural-stabilization` section 4 implementation evidence:
+  - `scripts/audit_module_gameplay.py` now excludes `sceneEntity` branches from structural monster extraction.
+  - Added regression coverage:
+    - `scripts/test_audit_module_gameplay.py`
+    - `scripts/test_audit_module_publishability.py`
+  - Marked tasks complete in:
+    - `openspec/changes/gui-builder-structural-stabilization/tasks.md`
+
+**Verification:**
+- `.venv/bin/python scripts/audit_module_publishability.py --module Keep_of_Doom --json` -> PASS/PASS
+- `.venv/bin/python scripts/audit_module_publishability.py --module Night_of_the_Restless_Dead --json` -> PASS/PASS
+- `.venv/bin/python scripts/audit_module_publishability.py --module The_Hidden_City_of_Numillian --json` -> PASS/PASS
+- `.venv/bin/python scripts/module_semantic_authority_audit.py --module The_Hidden_City_of_Numillian --json` -> PASS
+- `.venv/bin/python scripts/module_semantic_probe_harness.py --module The_Hidden_City_of_Numillian --json` -> all probes pass (warning-only fixture debt)
+- `.venv/bin/python scripts/homebrew_sidecar_audit.py --slug The_Hidden_City_of_Numillian --require-success --json` -> PASS
+- `.venv/bin/python scripts/test_audit_module_gameplay.py` -> PASS
+- `.venv/bin/python scripts/test_audit_module_publishability.py` -> PASS
+- `openspec validate gui-builder-structural-stabilization` -> VALID
+
 ### GUI Builder Deterministic Cleanup + Archive Batch (COMPLETED - 2026-04-20)
 
 **Status:** COMPLETED - Archived the completed GUI-builder OpenSpec slice chain, synced main specs, and consolidated deterministic builder/reporting updates before the next structural slice.
