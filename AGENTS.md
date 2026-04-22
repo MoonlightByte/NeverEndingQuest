@@ -192,8 +192,11 @@ Windows console (cp1252) crashes with Unicode. Use ASCII only:
 - Use `[ERROR]` or `[FAIL]` instead of X marks
 - Use `->` or `=>` instead of arrows
 - No emojis, use text descriptions
+- This is a release-blocking source rule for Win11/tester safety
 - Run `python3 scripts/check_ascii_compliance.py --summary-only` before commit
 - For deterministic cleanup, run `python3 scripts/check_ascii_compliance.py --fix --summary-only`
+- CI enforcement: `.github/workflows/ascii-compliance.yml`
+- Local hook enforcement: `.pre-commit-config.yaml`
 - Canonical mapping/policy source: `ascii_policy.json`
 
 ### Atomic File Operations

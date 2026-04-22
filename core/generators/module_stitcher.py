@@ -1265,17 +1265,38 @@ Respond with JSON:
             )
             return None
 
+    def _as_string_list(self, value: Any) -> List[str]:
+        """Normalize a value into a list of string entries."""
+        if isinstance(value, list):
+            return [str(item) for item in value if isinstance(item, (str, int, float))]
+        return []
+
+    def _get_sidebar_source_report(self, report_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Select canonical publishability report node for sidebar derivation."""
+        stages = report_data.get("stages")
+        if not isinstance(stages, dict):
+            return report_data
+
+        publishability = stages.get("publishability")
+        if not isinstance(publishability, dict):
+            return report_data
+
+        source_report = publishability.get("report")
+        if isinstance(source_report, dict):
+            return source_report
+        return report_data
+
     def _derive_sidebar_audit_signals(self, report_data: Dict[str, Any]) -> Dict[str, Any]:
         """Derive compact sidebar failure and media handoff signals from persisted reports."""
         try:
             if not isinstance(report_data, dict):
                 return {}
 
-            ready_status = str(report_data.get("ready_status", "")).lower()
-            publishable_status = str(report_data.get("publishable_status", "")).lower()
-            report_status = str(report_data.get("status", "")).lower()
-            remediation_categories = report_data.get("remediation_categories") or []
-            toolkit_media_policy = report_data.get("toolkit_media_policy") or {}
+            source_report = self._get_sidebar_source_report(report_data)
+
+            ready_status = str(report_data.get("ready_status", source_report.get("ready_status", ""))).lower()
+            publishable_status = str(report_data.get("publishable_status", source_report.get("publishable_status", ""))).lower()
+            report_status = str(report_data.get("status", source_report.get("status", ""))).lower()
 
             failure_state = (
                 ready_status == "fail"
@@ -1285,24 +1306,36 @@ Respond with JSON:
             if not failure_state:
                 return {}
 
-            serialized_report = json.dumps(report_data, ensure_ascii=True).lower()
-            media_debt_count = int(toolkit_media_policy.get("structural_media_debt_count") or 0)
+            remediation_categories = [
+                str(category).lower()
+                for category in self._as_string_list(source_report.get("remediation_categories"))
+            ]
+            toolkit_media_policy = source_report.get("toolkit_media_policy")
+            if not isinstance(toolkit_media_policy, dict):
+                toolkit_media_policy = {}
 
+            blocking_errors = [
+                entry.lower() for entry in self._as_string_list(source_report.get("blocking_errors"))
+            ]
+            fix_list = [entry.lower() for entry in self._as_string_list(source_report.get("fix_list"))]
+            canonical_text = "\n".join(blocking_errors + fix_list)
+
+            media_debt_count = int(toolkit_media_policy.get("structural_media_debt_count") or 0)
             media_generator_needed = (
                 "structured_monster_media_missing" in remediation_categories
                 or "toolkit_manual_media_generation_required" in remediation_categories
                 or media_debt_count > 0
-                or "missing base media" in serialized_report
+                or "missing base media" in canonical_text
             )
 
-            has_missing_monster_json = "missing monster json" in serialized_report
+            has_missing_monster_json = "missing monster json" in canonical_text
             has_unresolved_destinations = (
-                "travel_unresolved_destination_phrase" in serialized_report
-                or "unresolved destination phrase" in serialized_report
+                "travel_unresolved_destination_phrase" in canonical_text
+                or "unresolved destination phrase" in canonical_text
             )
             has_semantic_blocking = (
                 "semantic_publishability_blocking" in remediation_categories
-                or "semantic_authority" in serialized_report
+                or "missing semantic_authority payload" in canonical_text
             )
 
             if has_missing_monster_json and media_generator_needed:

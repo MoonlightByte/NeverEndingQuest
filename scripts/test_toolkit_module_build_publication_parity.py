@@ -421,6 +421,15 @@ class TestToolkitPublicationParitySourceContracts(unittest.TestCase):
         self.assertIn("structural_media_debt_count", source)
         self.assertIn("buildToolkitFinishingFailureDetails", source)
 
+    def test_toolkit_template_preserves_summary_plus_raw_payload_output(self) -> None:
+        source = Path("web/templates/module_toolkit.html").read_text(encoding="utf-8")
+
+        self.assertIn("const semanticRemediationText = formatSemanticRemediationSection", source)
+        self.assertIn("const mediaRemediationText = formatMediaRemediationSection", source)
+        self.assertIn("sections.push(semanticRemediationText)", source)
+        self.assertIn("sections.push(mediaRemediationText)", source)
+        self.assertIn("sections.push(`Raw Payload:", source)
+
 
 if __name__ == "__main__":
     unittest.main()
