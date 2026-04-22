@@ -5,25 +5,37 @@ TBD - created by archiving change homebrew-ingest-working-adventure-hardening. U
 ## Requirements
 ### Requirement: Successful ingest SHALL materialize module monster stat files
 
-After strict ingest success, the pipeline SHALL materialize monster stat files into `modules/<slug>/monsters/` from bestiary-backed seed data so tabletop fail-closed combat can start encounters.
+Shared monster materialization SHALL execute through a stable Python helper contract for ingest and toolkit-finishing flows so tabletop fail-closed combat can start encounters without depending on fragile subprocess import context.
 
 #### Scenario: Seeded monster maps to bestiary entry
 
 - **WHEN** `monsters_seed.json` contains a monster that resolves in `data/bestiary/monster_compendium.json`
-- **THEN** pipeline SHALL create `modules/<slug>/monsters/<normalized_name>.json`
+- **THEN** materialization SHALL create `modules/<slug>/monsters/<normalized_name>.json`
 - **AND** created file SHALL include schema-compatible fields required by combat loader paths
 
-#### Scenario: Materialized monster remains schema-complete after repair
-- **WHEN** a materialized or generated module monster file already exists but is missing required monster-schema fields
-- **AND** deterministic source data exists to backfill those fields safely
-- **THEN** remediation SHALL repair the file to a schema-complete state
-- **AND** readiness SHALL revalidate against the repaired file rather than treating file existence alone as success
+#### Scenario: Seeded monster does not map to bestiary entry
 
-#### Scenario: Schema-complete repair cannot be proven safely
-- **WHEN** a materialized or generated module monster file is missing required fields
-- **AND** deterministic source data is insufficient to backfill them safely
-- **THEN** remediation SHALL classify the result as residual monster-schema debt
-- **AND** readiness SHALL fail closed rather than writing guessed values
+- **WHEN** `monsters_seed.json` contains a monster with no bestiary match
+- **THEN** materialization SHALL report unresolved mapping in structured output
+- **AND** pipeline SHALL mark run as degraded unless strict materialization mode is enabled
+
+#### Scenario: Existing monster file is preserved
+
+- **WHEN** `modules/<slug>/monsters/<normalized_name>.json` already exists
+- **THEN** materialization SHALL skip overwrite by default
+- **AND** stage summary SHALL increment skipped-existing count
+
+#### Scenario: Toolkit finisher uses shared in-process materialization
+
+- **WHEN** the toolkit post-build finisher runs monster materialization for a built module
+- **THEN** it MUST call the shared Python materialization helper directly
+- **AND** MUST NOT rely on subprocess cwd or `PYTHONPATH` state to import repo modules
+
+#### Scenario: Script wrapper remains a thin CLI adapter
+
+- **WHEN** `scripts/homebrew_materialize_monsters.py` is executed from the command line
+- **THEN** it MUST delegate to the same shared materialization helper used by ingest and toolkit flows
+- **AND** MUST preserve structured output parity with in-process callers
 
 ### Requirement: Monster closure SHALL reconcile validator-visible structured monsters with authority filtering
 

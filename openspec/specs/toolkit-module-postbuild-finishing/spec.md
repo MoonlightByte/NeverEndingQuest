@@ -4,13 +4,21 @@
 TBD - created by archiving change toolkit-module-build-publication-parity. Update Purpose after archive.
 ## Requirements
 ### Requirement: Toolkit builds run a shared post-build finishing pass
-Toolkit-generated module directories MUST run a post-build finishing pass after raw generation succeeds so they do not bypass the quality stages already used by the ingest workflow.
+Toolkit-generated module directories MUST run a shared post-build finishing pass after raw generation succeeds so they do not bypass the quality stages already used by the ingest workflow.
 
-#### Scenario: Same-run toolkit publishability can validate toolkit provenance
-- **GIVEN** a toolkit finisher run is evaluating readiness or publishability with `source="toolkit"`
-- **WHEN** toolkit provenance is required for that evaluation
-- **THEN** the finisher MUST satisfy the provenance contract during the same run
-- **AND** MUST NOT fail solely because the final toolkit report has not yet been written at the end of the run.
+#### Scenario: Successful raw build enters finishing pass
+- **WHEN** `ModuleBuilder.build_module(...)` completes successfully for a toolkit build
+- **THEN** the toolkit MUST run a post-build finishing pass before declaring the build fully complete
+
+#### Scenario: Finishing pass reuses existing quality stages
+- **WHEN** the toolkit runs its post-build finishing pass
+- **THEN** the pass MUST include continuity normalization, semantic authority enrichment, registry verification, monster materialization, and publication evaluation or their shared wrappers
+- **AND** MUST NOT require a duplicate reimplementation of those stages inside the toolkit transport layer
+
+#### Scenario: Monster materialization stage reports direct helper outcome
+- **WHEN** the finishing pass executes monster materialization
+- **THEN** the stage result MUST come from direct helper execution outcome
+- **AND** MUST NOT depend on parsing subprocess stderr/stdout to infer success or failure
 
 ### Requirement: Finishing parity stops short of full semantic publication compliance
 The first builder parity slice MUST improve publication readiness without claiming full semantic publication compliance.
@@ -75,4 +83,29 @@ Toolkit finishing SHALL expose the monster-media outcome for combat-valid struct
 - **THEN** the report SHALL identify the monster-media outcome as provider-disabled unresolved media debt or equivalent explicit policy-aware state
 - **AND** SHALL NOT imply that provider generation already ran successfully in that same toolkit path
 - **AND** SHALL point to the existing toolkit monster-image generation workflow as the manual remediation path
+
+### Requirement: Toolkit finishing SHALL surface semantic remediation as a distinct post-build lane
+When toolkit finishing ends with semantic publishability blockers, the builder workflow SHALL surface those blockers as a distinct semantic remediation lane rather than relying on raw JSON output or generic failure text alone.
+
+#### Scenario: Semantic-only blockers render semantic remediation guidance
+- **GIVEN** toolkit finishing reports semantic publishability blockers without media-only handoff eligibility
+- **WHEN** the builder workflow renders the post-build result
+- **THEN** it SHALL present a semantic remediation section
+- **AND** SHALL include structured blocker detail when available
+- **AND** SHALL keep the overall outcome failed.
+
+#### Scenario: Mixed media and semantic blockers render distinct remediation lanes
+- **GIVEN** toolkit finishing reports both structured media debt and semantic publishability blockers
+- **WHEN** the builder workflow renders the post-build result
+- **THEN** it SHALL preserve failed semantics
+- **AND** SHALL distinguish media debt from semantic remediation detail
+- **AND** SHALL NOT reinterpret the result as media-only handoff.
+
+### Requirement: Toolkit finishing SHALL declare source-aware readiness and publishability outcomes
+Toolkit finishing MUST pass toolkit source identity into readiness and publishability evaluation so final reports reflect the correct provenance contract.
+
+#### Scenario: Toolkit finisher evaluates publishability as toolkit source
+- **WHEN** the toolkit finisher invokes readiness or publishability evaluation
+- **THEN** it MUST declare the module source as toolkit
+- **AND** the final report MUST preserve stage outcomes using toolkit-source semantics
 
