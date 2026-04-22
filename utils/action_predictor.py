@@ -79,29 +79,29 @@ RETURN FALSE for pure roleplay:
 KEY PATTERNS:
 
 TRUE INDICATORS:
-- "I pick up/take/grab" → inventory change
-- "I go to/travel to/enter" → location change
-- "I cast/use/drink" → character update
-- "I attack/fight" → combat encounter
-- "I store/retrieve" → storage action
-- "I give/trade/exchange" → inventory transfer
-- Activities with time duration → time update
-- Dice roll reports ("I rolled a X") → often trigger character/plot updates based on success
-- Investigation actions ("search for", "look for", "examine") → may update plot with discoveries
-- Error corrections that reference specific mechanics → often require re-doing actions
-- Story-advancing dialogue that triggers responses → often updates plot
-- Calling out or initiating contact at new locations → often triggers NPC encounters and plot updates
-- Agreement to story directions ("let's do it", "aye") → often commits to plot advancement
-- NPC recruitment requests ("who can you spare?", "can anyone help?", "we need backup", "join us") → party composition changes
-- Responses accepting NPC offers ("yes", "sure", "that would be helpful") when context suggests NPC joining → updatePartyNPCs
+- "I pick up/take/grab" -> inventory change
+- "I go to/travel to/enter" -> location change
+- "I cast/use/drink" -> character update
+- "I attack/fight" -> combat encounter
+- "I store/retrieve" -> storage action
+- "I give/trade/exchange" -> inventory transfer
+- Activities with time duration -> time update
+- Dice roll reports ("I rolled a X") -> often trigger character/plot updates based on success
+- Investigation actions ("search for", "look for", "examine") -> may update plot with discoveries
+- Error corrections that reference specific mechanics -> often require re-doing actions
+- Story-advancing dialogue that triggers responses -> often updates plot
+- Calling out or initiating contact at new locations -> often triggers NPC encounters and plot updates
+- Agreement to story directions ("let's do it", "aye") -> often commits to plot advancement
+- NPC recruitment requests ("who can you spare?", "can anyone help?", "we need backup", "join us") -> party composition changes
+- Responses accepting NPC offers ("yes", "sure", "that would be helpful") when context suggests NPC joining -> updatePartyNPCs
 
 CRITICAL PATTERNS TO CATCH:
-- Dice roll outcomes ("natural 20", "I rolled") → Usually leads to updateCharacterInfo/updatePlot
-- Active investigations ("search for signs", "look for tracks") → Often updates plot with findings
-- Error correction notes about game mechanics → Typically require action updates when corrected
-- Dialogue with spirits/NPCs that seeks information → Often triggers plot updates with responses
-- Location-based calls ("anyone home?", "hello?") → Often initiates NPC encounters and plot progression
-- Commitment statements in story contexts → Often advances plot when player commits to direction
+- Dice roll outcomes ("natural 20", "I rolled") -> Usually leads to updateCharacterInfo/updatePlot
+- Active investigations ("search for signs", "look for tracks") -> Often updates plot with findings
+- Error correction notes about game mechanics -> Typically require action updates when corrected
+- Dialogue with spirits/NPCs that seeks information -> Often triggers plot updates with responses
+- Location-based calls ("anyone home?", "hello?") -> Often initiates NPC encounters and plot progression
+- Commitment statements in story contexts -> Often advances plot when player commits to direction
 
 FALSE INDICATORS:
 - "What do you think?"
@@ -115,23 +115,23 @@ FALSE INDICATORS:
 RESPOND: {"requires_actions": true/false, "reason": "brief explanation"}
 
 Examples:
-- "I pick up the sword" → TRUE (inventory change)
-- "I go to the tavern" → TRUE (location change)
-- "What's in this room?" → FALSE (asking for description)
-- "I tell the guard about the bandits" → FALSE (pure dialogue)
-- "I take a long rest" → FALSE (simple rest - mini model can handle)
-- "I rolled a natural 20!" → TRUE (dice outcomes typically trigger character/plot updates)
-- "I search for signs of danger" → TRUE (investigation actions often update plot with discoveries)
-- "Error Note: Your previous response failed validation" → TRUE (error corrections often require re-doing actions)
-- "I ask the spirits about the darkness" → TRUE (dialogue seeking information often triggers plot updates)
-- "I call out, anyone home?" → TRUE (location-based contact often initiates NPC encounters)
-- "Aye, let's do it" → TRUE (commitment statements often advance plot when in story context)
-- "Not all the main plot points are resolved" → TRUE (plot status query needs full model)
-- "Are all quests complete?" → TRUE (quest/plot status always needs full model)
-- "What plots remain?" → TRUE (plot queries require full model for proper updatePlot handling)
-- "Who can you spare?" → TRUE (NPC recruitment request requires updatePartyNPCs action)
-- "Can anyone help us?" → TRUE (asking for NPC assistance likely results in party composition change)
-- "Join us, Kira" → TRUE (direct recruitment requires updatePartyNPCs action)"""
+- "I pick up the sword" -> TRUE (inventory change)
+- "I go to the tavern" -> TRUE (location change)
+- "What's in this room?" -> FALSE (asking for description)
+- "I tell the guard about the bandits" -> FALSE (pure dialogue)
+- "I take a long rest" -> FALSE (simple rest - mini model can handle)
+- "I rolled a natural 20!" -> TRUE (dice outcomes typically trigger character/plot updates)
+- "I search for signs of danger" -> TRUE (investigation actions often update plot with discoveries)
+- "Error Note: Your previous response failed validation" -> TRUE (error corrections often require re-doing actions)
+- "I ask the spirits about the darkness" -> TRUE (dialogue seeking information often triggers plot updates)
+- "I call out, anyone home?" -> TRUE (location-based contact often initiates NPC encounters)
+- "Aye, let's do it" -> TRUE (commitment statements often advance plot when in story context)
+- "Not all the main plot points are resolved" -> TRUE (plot status query needs full model)
+- "Are all quests complete?" -> TRUE (quest/plot status always needs full model)
+- "What plots remain?" -> TRUE (plot queries require full model for proper updatePlot handling)
+- "Who can you spare?" -> TRUE (NPC recruitment request requires updatePartyNPCs action)
+- "Can anyone help us?" -> TRUE (asking for NPC assistance likely results in party composition change)
+- "Join us, Kira" -> TRUE (direct recruitment requires updatePartyNPCs action)"""
 
 def predict_actions_required(user_input):
     """
@@ -230,7 +230,7 @@ def log_prediction_accuracy(user_input, prediction, actual_actions):
     
     # Determine if prediction was correct
     is_correct = predicted_actions == actual_has_actions
-    match_status = "✓" if is_correct else "✗"
+    match_status = "[PASS]" if is_correct else "[FAIL]"
     
     # Print debug information
     print(f"\nDEBUG: ACTION PREDICTION - Input: '{user_input[:60]}{'...' if len(user_input) > 60 else ''}'")

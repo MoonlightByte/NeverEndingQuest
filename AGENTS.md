@@ -192,6 +192,9 @@ Windows console (cp1252) crashes with Unicode. Use ASCII only:
 - Use `[ERROR]` or `[FAIL]` instead of X marks
 - Use `->` or `=>` instead of arrows
 - No emojis, use text descriptions
+- Run `python3 scripts/check_ascii_compliance.py --summary-only` before commit
+- For deterministic cleanup, run `python3 scripts/check_ascii_compliance.py --fix --summary-only`
+- Canonical mapping/policy source: `ascii_policy.json`
 
 ### Atomic File Operations
 Always use atomic operations for JSON files:

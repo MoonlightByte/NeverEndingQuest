@@ -20,7 +20,7 @@ TARGET FORMAT:
 
 EVT[                        # Events in symbolic notation
 1) Action@Location. Details.
-2) Character→Location. Action.
+2) Character->Location. Action.
 ...]
 """
 
@@ -72,22 +72,22 @@ class UltraCompressor:
     
     # Common action verbs mapped to symbols
     ACTION_SYMBOLS = {
-        "move": "→", "go": "→", "travel": "→", "walk": "→", "run": "→",
-        "return": "←", "back": "←", "retreat": "←",
-        "attack": "⚔", "fight": "⚔", "battle": "⚔", "strike": "⚔",
-        "defend": "🛡", "protect": "🛡", "guard": "🛡",
-        "cast": "✨", "spell": "✨", "magic": "✨",
-        "talk": "💬", "speak": "💬", "say": "💬", "tell": "💬",
-        "give": "→", "take": "←", "receive": "←",
-        "increase": "↑", "grow": "↑", "rise": "↑", "improve": "↑",
-        "decrease": "↓", "fall": "↓", "reduce": "↓", "diminish": "↓",
-        "die": "💀", "death": "💀", "kill": "💀", "slay": "💀",
-        "heal": "❤", "cure": "❤", "restore": "❤",
+        "move": "->", "go": "->", "travel": "->", "walk": "->", "run": "->",
+        "return": "<-", "back": "<-", "retreat": "<-",
+        "attack": "[COMBAT]", "fight": "[COMBAT]", "battle": "[COMBAT]", "strike": "[COMBAT]",
+        "defend": "[SHIELD]", "protect": "[SHIELD]", "guard": "[SHIELD]",
+        "cast": "[MAGIC]", "spell": "[MAGIC]", "magic": "[MAGIC]",
+        "talk": "TALK", "speak": "TALK", "say": "TALK", "tell": "TALK",
+        "give": "->", "take": "<-", "receive": "<-",
+        "increase": "^", "grow": "^", "rise": "^", "improve": "^",
+        "decrease": "v", "fall": "v", "reduce": "v", "diminish": "v",
+        "die": "[DEAD]", "death": "[DEAD]", "kill": "[DEAD]", "slay": "[DEAD]",
+        "heal": "[HEART]", "cure": "[HEART]", "restore": "[HEART]",
         "and": "&", "with": "&",
         "at": "@", "in": "@", "inside": "@",
         "equals": "=", "is": "=", "becomes": "=",
-        "multiply": "×", "times": "×",
-        "relationship": "↔", "between": "↔", "together": "↔"
+        "multiply": "x", "times": "x",
+        "relationship": "<->", "between": "<->", "together": "<->"
     }
     
     # ASCII fallback symbols (for Windows compatibility)

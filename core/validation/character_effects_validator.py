@@ -391,10 +391,10 @@ class AICharacterEffectsValidator:
 ## DURATION STANDARDIZATION
 
 Convert text durations to ISO timestamps:
-- "24 hours" → Calculate from current game time
-- "8 hours" → Calculate from current game time  
-- "until healed" → Keep as-is (no expiration)
-- "until removed" → Keep as-is (no expiration)
+- "24 hours" -> Calculate from current game time
+- "8 hours" -> Calculate from current game time  
+- "until healed" -> Keep as-is (no expiration)
+- "until removed" -> Keep as-is (no expiration)
 
 ## RESPONSE FORMAT
 

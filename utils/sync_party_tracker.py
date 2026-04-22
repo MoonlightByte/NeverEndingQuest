@@ -66,11 +66,11 @@ def main():
     try:
         updated = manager.sync_party_tracker_with_plot(module_name)
         if updated:
-            print("✓ Party tracker updated successfully")
+            print("[PASS] Party tracker updated successfully")
         else:
-            print("✓ Party tracker already in sync")
+            print("[PASS] Party tracker already in sync")
     except Exception as e:
-        print(f"✗ Sync failed: {e}")
+        print(f"[FAIL] Sync failed: {e}")
         sys.exit(1)
     
     # Show final status
@@ -90,10 +90,10 @@ def main():
     try:
         is_complete = manager.check_module_completion(module_name)
         if is_complete:
-            print(f"✓ Module '{module_name}' is COMPLETE")
+            print(f"[PASS] Module '{module_name}' is COMPLETE")
             print("  Ready for module transition and summary generation")
         else:
-            print(f"○ Module '{module_name}' is in progress")
+            print(f"o Module '{module_name}' is in progress")
             print("  Continue playing to complete the adventure")
     except Exception as e:
         print(f"Error checking completion: {e}")

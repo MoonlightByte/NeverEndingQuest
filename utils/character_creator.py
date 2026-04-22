@@ -102,11 +102,11 @@ XP_BY_LEVEL = {
 
 # Transition narrative templates for ambiguous entrances
 TRANSITION_TEMPLATES = [
-    "A form shifts at the edge of your vision—a silhouette that seems to move with {mannerism} through the {atmosphere}. The {environment_feature} casts uncertain shadows, but something in the figure's bearing tugs at your memory.",
-    "From the {location_edge}, a shape emerges—half-seen, half-imagined. The {lighting} plays tricks on your eyes, yet you cannot shake the feeling that this presence is somehow... familiar.",
+    "A form shifts at the edge of your vision-a silhouette that seems to move with {mannerism} through the {atmosphere}. The {environment_feature} casts uncertain shadows, but something in the figure's bearing tugs at your memory.",
+    "From the {location_edge}, a shape emerges-half-seen, half-imagined. The {lighting} plays tricks on your eyes, yet you cannot shake the feeling that this presence is somehow... familiar.",
     "The {atmosphere} stirs, and with it comes a figure. They move with {mannerism}, {distinctive_feature} catching the {lighting} just so. A fragment of memory surfaces, unbidden.",
     "At the periphery of your awareness, something shifts. A silhouette against the {environment_feature}, moving with purpose. The {atmosphere} seems to hold its breath as they approach.",
-    "Shadows deepen near the {location_edge}, coalescing into a form that moves with {mannerism}. {distinctive_feature} marks them as no mere wanderer—but do you know this soul?",
+    "Shadows deepen near the {location_edge}, coalescing into a form that moves with {mannerism}. {distinctive_feature} marks them as no mere wanderer-but do you know this soul?",
 ]
 
 MANNERISMS = [
@@ -841,7 +841,7 @@ def generate_ambiguous_transition(
 
 [CHARACTER ENTRANCE: {character_name}]
 
-The figure steps into clearer view. {character_class.capitalize()} by the look of them—the way they carry themselves speaks of {mannerism}.
+The figure steps into clearer view. {character_class.capitalize()} by the look of them-the way they carry themselves speaks of {mannerism}.
 
 {active_pc_name}, as the one most attuned to your surroundings, you sense this moment first. How do you react? Do you recognize something in this stranger's bearing, or do you prepare for the unknown?
 
@@ -855,7 +855,7 @@ The figure steps into clearer view. {character_class.capitalize()} by the look o
         if recognized_party_member:
             full_transition += f"""
 
-[RECOGNITION: {character_name} knows {recognized_party_member} from their past—as a {connection_type}. This connection may become clear as the scene unfolds...]"""
+[RECOGNITION: {character_name} knows {recognized_party_member} from their past-as a {connection_type}. This connection may become clear as the scene unfolds...]"""
     
     return full_transition
 

@@ -240,7 +240,7 @@
         }
         
         #progress-stages li.stage-complete::before {
-            content: "✓";
+            content: "[PASS]";
             position: absolute;
             right: 5px;
             top: 5px;
@@ -365,6 +365,19 @@
         .module-detail-item span:last-child {
             color: #e0e0e0;
             font-weight: bold;
+        }
+
+        .module-sidebar-failure {
+            margin-top: 8px;
+            color: #ff6666;
+            font-size: 0.86em;
+            font-weight: bold;
+        }
+
+        .module-sidebar-handoff {
+            margin-top: 4px;
+            color: #ffb08a;
+            font-size: 0.82em;
         }
 
         .no-modules {
@@ -622,6 +635,8 @@
                             <span>Plot Points:</span>
                             <span>${module.plotPointCount || 'N/A'}</span>
                         </div>
+                        ${module.brief_failure ? `<div class="module-sidebar-failure">${module.brief_failure}</div>` : ''}
+                        ${module.media_generator_needed ? `<div class="module-sidebar-handoff">Needs Module Media Generator</div>` : ''}
                     </div>
                 `;
                 modulesListContainer.appendChild(moduleItem);

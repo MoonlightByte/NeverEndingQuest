@@ -255,13 +255,13 @@ class DebugErrorReporter:
         total_issues = len(self.critical) + len(self.errors)
         
         if total_issues == 0:
-            lines.append("✅ No critical errors or errors found in recent logs.")
+            lines.append("[PASS] No critical errors or errors found in recent logs.")
             lines.append("")
             return "\n".join(lines)
         
         # Critical errors section
         if self.critical:
-            lines.append(f"🔴 CRITICAL ERRORS ({len(self.critical)}):")
+            lines.append(f"[CRITICAL] CRITICAL ERRORS ({len(self.critical)}):")
             lines.append("-" * 70)
             
             for i, entry in enumerate(self.critical[:10], 1):  # Show top 10
@@ -274,7 +274,7 @@ class DebugErrorReporter:
         
         # Regular errors section
         if self.errors:
-            lines.append(f"❌ ERRORS ({len(self.errors)}):")
+            lines.append(f"[FAIL] ERRORS ({len(self.errors)}):")
             lines.append("-" * 70)
             
             # Group by type for better overview
@@ -294,18 +294,18 @@ class DebugErrorReporter:
         lines.append("")
         
         if any(e.exception_type == "AttributeError" for e in self.critical + self.errors):
-            lines.append("• AttributeError detected - Likely a missing attribute or property")
-            lines.append("  → Check recent code changes for renamed/moved attributes")
+            lines.append("- AttributeError detected - Likely a missing attribute or property")
+            lines.append("  -> Check recent code changes for renamed/moved attributes")
             lines.append("")
         
         if any(e.exception_type == "KeyError" for e in self.critical + self.errors):
-            lines.append("• KeyError detected - Missing dictionary key")
-            lines.append("  → Check data loading and JSON parsing")
+            lines.append("- KeyError detected - Missing dictionary key")
+            lines.append("  -> Check data loading and JSON parsing")
             lines.append("")
         
         if any("combat" in e.source.lower() for e in self.critical + self.errors):
-            lines.append("• Combat-related errors detected")
-            lines.append("  → Check party_tracker.json and encounter files")
+            lines.append("- Combat-related errors detected")
+            lines.append("  -> Check party_tracker.json and encounter files")
             lines.append("")
         
         lines.append(f"Log files analyzed:")
@@ -325,13 +325,13 @@ class DebugErrorReporter:
         total_issues = len(self.critical) + len(self.errors)
         
         if total_issues == 0:
-            lines.append("✅ System Status: HEALTHY")
+            lines.append("[PASS] System Status: HEALTHY")
             lines.append("   No critical errors or errors detected.")
         elif len(self.critical) > 0:
-            lines.append(f"🔴 System Status: CRITICAL ISSUES DETECTED")
+            lines.append(f"[CRITICAL] System Status: CRITICAL ISSUES DETECTED")
             lines.append(f"   Critical: {len(self.critical)} | Errors: {len(self.errors)} | Warnings: {len(self.warnings)}")
         else:
-            lines.append(f"⚠️  System Status: ERRORS DETECTED")
+            lines.append(f"[WARNING]  System Status: ERRORS DETECTED")
             lines.append(f"   Errors: {len(self.errors)} | Warnings: {len(self.warnings)}")
         
         lines.append("")
@@ -339,13 +339,13 @@ class DebugErrorReporter:
         if self.critical:
             lines.append("Latest Critical:")
             for entry in self.critical[:3]:
-                lines.append(f"  • {entry.get_summary()}")
+                lines.append(f"  - {entry.get_summary()}")
             lines.append("")
         
         if self.errors and not self.critical:
             lines.append("Latest Errors:")
             for entry in self.errors[:3]:
-                lines.append(f"  • {entry.get_summary()}")
+                lines.append(f"  - {entry.get_summary()}")
             lines.append("")
         
         lines.append("Run with --detailed for full error report")

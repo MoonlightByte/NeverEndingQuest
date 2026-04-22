@@ -110,45 +110,45 @@ def test_dmgroup_start_scenario():
             
             # 1. Check apply_opening_batch_marker called with winner
             if 'apply_opening_batch_marker(encounter_data, winner)' in cm_source:
-                checks.append("✓ apply_opening_batch_marker called with winner parameter")
+                checks.append("[PASS] apply_opening_batch_marker called with winner parameter")
             else:
-                checks.append("✗ Missing: apply_opening_batch_marker(encounter_data, winner)")
+                checks.append("[FAIL] Missing: apply_opening_batch_marker(encounter_data, winner)")
             
             # 2. Check dmGroup set log
             if 'PHASE_MARKER: Set openingEnemyBatchPending=True via /init dmGroup path' in cm_source:
-                checks.append("✓ Log: PHASE_MARKER Set via /init dmGroup path")
+                checks.append("[PASS] Log: PHASE_MARKER Set via /init dmGroup path")
             else:
-                checks.append("✗ Missing: dmGroup set log")
+                checks.append("[FAIL] Missing: dmGroup set log")
             
             # 3. Check round-start dmGroup marker
             if 'apply_opening_batch_marker(encounter_data, "dmGroup")' in cm_source:
-                checks.append("✓ apply_opening_batch_marker called for round-start dmGroup")
+                checks.append("[PASS] apply_opening_batch_marker called for round-start dmGroup")
             else:
-                checks.append("✗ Missing: round-start dmGroup marker")
+                checks.append("[FAIL] Missing: round-start dmGroup marker")
             
             # 4. Check marker clear on completion
             if 'encounter_data["openingEnemyBatchPending"] = False' in cm_source:
-                checks.append("✓ Marker clear logic present")
+                checks.append("[PASS] Marker clear logic present")
             else:
-                checks.append("✗ Missing: marker clear logic")
+                checks.append("[FAIL] Missing: marker clear logic")
             
             # 5. Check completion logs
             if 'PHASE_MARKER: Cleared openingEnemyBatchPending after opening enemy batch resolution' in cm_source:
-                checks.append("✓ Log: PHASE_MARKER Cleared after resolution")
+                checks.append("[PASS] Log: PHASE_MARKER Cleared after resolution")
             else:
-                checks.append("✗ Missing: completion clear log")
+                checks.append("[FAIL] Missing: completion clear log")
             
             # 6. Check transition to PC_PHASE
             if 'STATE_CHANGE: Opening batch complete -> PC_PHASE' in cm_source:
-                checks.append("✓ Log: Opening batch complete -> PC_PHASE transition")
+                checks.append("[PASS] Log: Opening batch complete -> PC_PHASE transition")
             else:
-                checks.append("✗ Missing: PC_PHASE transition log")
+                checks.append("[FAIL] Missing: PC_PHASE transition log")
             
             # 7. Check save after marker operations
             if 'save_json_file(f"modules/encounters/encounter_{encounter_id}.json", encounter_data)' in cm_source:
-                checks.append("✓ Encounter persistence after marker operations")
+                checks.append("[PASS] Encounter persistence after marker operations")
             else:
-                checks.append("✗ Missing: encounter save")
+                checks.append("[FAIL] Missing: encounter save")
             
             print("\nContract Checks:")
             for check in checks:
@@ -163,11 +163,11 @@ def test_dmgroup_start_scenario():
             no_duplicates = player_count == 2
             
             print(f"\nRoster Integrity:")
-            print(f"  ✓ All expected creatures present: {roster_intact}")
-            print(f"  ✓ No player duplication: {no_duplicates} (count={player_count})")
+            print(f"  [PASS] All expected creatures present: {roster_intact}")
+            print(f"  [PASS] No player duplication: {no_duplicates} (count={player_count})")
             
             # Scenario summary
-            all_pass = all('✓' in c for c in checks) and roster_intact and no_duplicates
+            all_pass = all('[PASS]' in c for c in checks) and roster_intact and no_duplicates
             
             print(f"\nScenario A Result: {'PASS' if all_pass else 'FAIL'}")
             print(f"  Expected: dmGroup start -> marker set -> enemy batch -> clear -> PC_PHASE")
@@ -266,27 +266,27 @@ def test_pcgroup_start_scenario():
             
             # 1. Check pcGroup clear log via /init
             if 'PHASE_MARKER: Cleared openingEnemyBatchPending via /init pcGroup path' in cm_source:
-                checks.append("✓ Log: PHASE_MARKER Cleared via /init pcGroup path")
+                checks.append("[PASS] Log: PHASE_MARKER Cleared via /init pcGroup path")
             else:
-                checks.append("✗ Missing: pcGroup /init clear log")
+                checks.append("[FAIL] Missing: pcGroup /init clear log")
             
             # 2. Check round-start pcGroup marker clear
             if 'apply_opening_batch_marker(encounter_data, "pcGroup")' in cm_source:
-                checks.append("✓ apply_opening_batch_marker called for round-start pcGroup")
+                checks.append("[PASS] apply_opening_batch_marker called for round-start pcGroup")
             else:
-                checks.append("✗ Missing: round-start pcGroup marker")
+                checks.append("[FAIL] Missing: round-start pcGroup marker")
             
             # 3. Check round-start pcGroup clear log
             if 'PHASE_MARKER: Cleared openingEnemyBatchPending via round-start pcGroup path' in cm_source:
-                checks.append("✓ Log: PHASE_MARKER Cleared via round-start pcGroup path")
+                checks.append("[PASS] Log: PHASE_MARKER Cleared via round-start pcGroup path")
             else:
-                checks.append("✗ Missing: round-start pcGroup clear log")
+                checks.append("[FAIL] Missing: round-start pcGroup clear log")
             
             # 4. Check STATE_CHANGE for pcGroup start
             if 'STATE_CHANGE: Applied roundStartsWith=pcGroup -> PC_PHASE start' in cm_source:
-                checks.append("✓ Log: STATE_CHANGE pcGroup -> PC_PHASE start")
+                checks.append("[PASS] Log: STATE_CHANGE pcGroup -> PC_PHASE start")
             else:
-                checks.append("✗ Missing: pcGroup PC_PHASE start log")
+                checks.append("[FAIL] Missing: pcGroup PC_PHASE start log")
             
             # 5. Verify NO forced enemy phase for pcGroup
             # The marker should be False, so no opening batch block should execute
@@ -295,9 +295,9 @@ def test_pcgroup_start_scenario():
             pcgroup_block = cm_source[pcgroup_block_end:pcgroup_block_end + 2000]
             
             if 'multi_pc_manager.pc_phase_complete = False' in pcgroup_block:
-                checks.append("✓ pcGroup path sets pc_phase_complete = False (PC_PHASE)")
+                checks.append("[PASS] pcGroup path sets pc_phase_complete = False (PC_PHASE)")
             else:
-                checks.append("✗ Missing: pcGroup PC_PHASE setup")
+                checks.append("[FAIL] Missing: pcGroup PC_PHASE setup")
             
             print("\nContract Checks:")
             for check in checks:
@@ -312,11 +312,11 @@ def test_pcgroup_start_scenario():
             no_duplicates = player_count == 2
             
             print(f"\nRoster Integrity:")
-            print(f"  ✓ All expected creatures present: {roster_intact}")
-            print(f"  ✓ No player duplication: {no_duplicates} (count={player_count})")
+            print(f"  [PASS] All expected creatures present: {roster_intact}")
+            print(f"  [PASS] No player duplication: {no_duplicates} (count={player_count})")
             
             # Scenario summary
-            all_pass = all('✓' in c for c in checks) and roster_intact and no_duplicates
+            all_pass = all('[PASS]' in c for c in checks) and roster_intact and no_duplicates
             
             print(f"\nScenario B Result: {'PASS' if all_pass else 'FAIL'}")
             print(f"  Expected: pcGroup start -> marker clear -> direct PC_PHASE (no opening batch)")
@@ -351,45 +351,45 @@ def test_roster_integrity_both_scenarios():
     
     # 1. Check for party member iteration (in combat_state_sync.py)
     if 'party_members = party_tracker_data.get("partyMembers", [])' in css_source:
-        checks.append("✓ Party members read from party_tracker_data")
+        checks.append("[PASS] Party members read from party_tracker_data")
     else:
-        checks.append("✗ Missing: party member read")
+        checks.append("[FAIL] Missing: party member read")
     
     # 2. Check for existing player tracking (deduplication in combat_state_sync.py)
     if 'existing_players = {' in css_source:
-        checks.append("✓ Deduplication set present")
+        checks.append("[PASS] Deduplication set present")
     else:
-        checks.append("✗ Missing: deduplication set")
+        checks.append("[FAIL] Missing: deduplication set")
     
     # 3. Check normalize function usage (in combat_state_sync.py)
     if 'def normalize_multi_pc_roster(' in css_source:
-        checks.append("✓ normalize_multi_pc_roster function present")
+        checks.append("[PASS] normalize_multi_pc_roster function present")
     else:
-        checks.append("✗ Missing: normalize_multi_pc_roster function")
+        checks.append("[FAIL] Missing: normalize_multi_pc_roster function")
     
     # 4. Check normalize name helper
     if 'def _normalize_name(' in css_source:
-        checks.append("✓ Name normalization helper present")
+        checks.append("[PASS] Name normalization helper present")
     else:
-        checks.append("✗ Missing: name normalization")
+        checks.append("[FAIL] Missing: name normalization")
     
     # 5. Check fail-open handling in combat_manager
     if 'COMBAT_STATE_SYNC_AVAILABLE' in cm_source:
-        checks.append("✓ Fail-open availability check in combat_manager")
+        checks.append("[PASS] Fail-open availability check in combat_manager")
     else:
-        checks.append("✗ Missing: availability check")
+        checks.append("[FAIL] Missing: availability check")
     
     # 6. Check imports in combat_manager
     if 'from core.managers.combat_state_sync import' in cm_source:
-        checks.append("✓ combat_state_sync helpers imported in combat_manager")
+        checks.append("[PASS] combat_state_sync helpers imported in combat_manager")
     else:
-        checks.append("✗ Missing: combat_state_sync import")
+        checks.append("[FAIL] Missing: combat_state_sync import")
     
     print("\nRoster Integrity Checks:")
     for check in checks:
         print(f"  {check}")
     
-    all_pass = all('✓' in c for c in checks)
+    all_pass = all('[PASS]' in c for c in checks)
     
     print(f"\nRoster Integrity Result: {'PASS' if all_pass else 'FAIL'}")
     print(f"  Ensures: Party members correctly mapped, no duplicates, graceful degradation")

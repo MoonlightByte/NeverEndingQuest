@@ -181,7 +181,7 @@ def show_restart_message():
     """Display the restart notification message."""
     print()
     print("=" * 60)
-    print("🔄  ACTION REQUIRED: Restart your server")
+    print("[REFRESH]  ACTION REQUIRED: Restart your server")
     print("=" * 60)
     print()
     print("Please stop and restart your server in your terminal.")
@@ -210,14 +210,14 @@ def check_debug_logs(lines=100, show_warnings=False, show_verbose=False, auto_en
         print()
         
         if auto_enable:
-            print("✅ Enabling TABLETOP MODE debug automatically...")
+            print("[PASS] Enabling TABLETOP MODE debug automatically...")
             changes = enable_debug_mode()
             
             if changes:
                 print()
                 print("Changes made:")
                 for change in changes:
-                    print(f"  ✓ {change}")
+                    print(f"  [PASS] {change}")
                 show_restart_message()
             else:
                 print("No changes needed or failed to update files.")
@@ -285,34 +285,34 @@ def check_debug_logs(lines=100, show_warnings=False, show_verbose=False, auto_en
     
     # Always show critical
     if critical:
-        print(f"⚠️  CRITICAL ({len(critical)}):")
+        print(f"[WARNING]  CRITICAL ({len(critical)}):")
         for entry in critical[-5:]:  # Show last 5
             print(f"  {entry[:200]}")
         print()
     
     # Always show errors
     if errors:
-        print(f"❌ ERRORS ({len(errors)}):")
+        print(f"[FAIL] ERRORS ({len(errors)}):")
         for entry in errors[-10:]:  # Show last 10
             print(f"  {entry[:200]}")
         print()
     
     # Show warnings if requested
     if show_warnings and warnings:
-        print(f"⚠️  WARNINGS ({len(warnings)}):")
+        print(f"[WARNING]  WARNINGS ({len(warnings)}):")
         for entry in warnings[-5:]:
             print(f"  {entry[:200]}")
         print()
     
     # Show tabletop activity
-    print(f"🎲 TABLETOP MODE Activity: {len(tabletop)} entries")
+    print(f"[TABLETOP] TABLETOP MODE Activity: {len(tabletop)} entries")
     if tabletop:
         print(f"Latest: {tabletop[-1][:100]}")
     print()
     
     # Show verbose if requested
     if show_verbose and verbose_entries:
-        print(f"🔍 VERBOSE Entries: {len(verbose_entries)}")
+        print(f"[SEARCH] VERBOSE Entries: {len(verbose_entries)}")
         for entry in verbose_entries[-5:]:
             print(f"  {entry[:150]}")
         print()
@@ -332,7 +332,7 @@ def check_debug_logs(lines=100, show_warnings=False, show_verbose=False, auto_en
     if total_issues > 0:
         print(f"[FOUND {total_issues} ISSUE(S) - See above]")
     else:
-        print("[✅ NO CRITICAL ERRORS OR ERRORS FOUND]")
+        print("[[PASS] NO CRITICAL ERRORS OR ERRORS FOUND]")
 
 def show_status():
     """Show detailed debug configuration status."""
@@ -353,11 +353,11 @@ def show_status():
     print()
     
     if is_debug_enabled():
-        print("✅ Status: DEBUG MODE ENABLED")
+        print("[PASS] Status: DEBUG MODE ENABLED")
         print()
         print("Debug logging is active. Run combat to see output.")
     else:
-        print("⚠️  Status: DEBUG MODE DISABLED")
+        print("[WARNING]  Status: DEBUG MODE DISABLED")
         print()
         print("To enable debug mode, run:")
         print("  python scripts/check_debug_logs.py --enable")
@@ -367,7 +367,7 @@ def show_stop_restart_message():
     """Display the stop/restart notification message."""
     print()
     print("=" * 60)
-    print("🔄  ACTION REQUIRED: Restart your server")
+    print("[REFRESH]  ACTION REQUIRED: Restart your server")
     print("=" * 60)
     print()
     print("Please stop and restart your server in your terminal.")
@@ -400,26 +400,26 @@ if __name__ == "__main__":
         changes, files_deleted = disable_debug_mode()
         
         if changes or files_deleted:
-            print("✅ TABLETOP MODE debug disabled!")
+            print("[PASS] TABLETOP MODE debug disabled!")
             print()
             
             if changes:
                 print("Configuration changes:")
                 for change in changes:
-                    print(f"  ✓ {change}")
+                    print(f"  [PASS] {change}")
                 print()
             
             if files_deleted:
                 print("Log files cleaned:")
                 for filename in files_deleted[:10]:  # Show first 10
-                    print(f"  ✓ Deleted {filename}")
+                    print(f"  [PASS] Deleted {filename}")
                 if len(files_deleted) > 10:
                     print(f"  ... and {len(files_deleted) - 10} more files")
                 print()
             
             show_stop_restart_message()
         else:
-            print("⚠️  No changes made (already disabled or failed to update)")
+            print("[WARNING]  No changes made (already disabled or failed to update)")
     elif args.enable:
         print("=" * 60)
         print("Enabling TABLETOP MODE Debug")
@@ -428,14 +428,14 @@ if __name__ == "__main__":
         changes = enable_debug_mode()
         
         if changes:
-            print("✅ TABLETOP MODE debug enabled!")
+            print("[PASS] TABLETOP MODE debug enabled!")
             print()
             print("Changes made:")
             for change in changes:
-                print(f"  ✓ {change}")
+                print(f"  [PASS] {change}")
             show_restart_message()
         else:
-            print("⚠️  No changes made (already enabled or failed to update)")
+            print("[WARNING]  No changes made (already enabled or failed to update)")
     else:
         check_debug_logs(
             lines=args.lines,

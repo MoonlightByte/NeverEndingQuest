@@ -4160,7 +4160,7 @@
         }
 
         .quest-title::before {
-            content: '○'; /* Open circle for active quests */
+            content: 'o'; /* Open circle for active quests */
             margin-right: 10px;
             font-size: 1.1em;
             color: #b98900;
@@ -4172,7 +4172,7 @@
         }
 
         .quest-item.completed .quest-title::before {
-            content: '✓'; /* Checkmark for completed quests */
+            content: '[PASS]'; /* Checkmark for completed quests */
             color: #5cb85c;
         }
 
@@ -4925,7 +4925,7 @@
                                     <select class="settings-select" id="tts-voice-select">
                                         <!-- Voices populated dynamically based on engine -->
                                     </select>
-                                    <button class="preview-voice-btn" id="preview-voice-btn" onclick="previewVoice()" title="Preview voice">▶</button>
+                                    <button class="preview-voice-btn" id="preview-voice-btn" onclick="previewVoice()" title="Preview voice">></button>
                                 </div>
                             </div>
                             <div class="settings-item" id="autoplay-toggle-item">
@@ -4965,7 +4965,7 @@
                 <span>Toolkit</span>
             </button>
             
-            <button class="exit-button" id="exit-button" onclick="exitGame()" title="Exit Game">× Exit</button>
+            <button class="exit-button" id="exit-button" onclick="exitGame()" title="Exit Game">x Exit</button>
         </div>
     </div>
     
@@ -5135,7 +5135,7 @@
                 </div>
             </div>
         </div>
-        <span class="close-btn">×</span>
+        <span class="close-btn">x</span>
     </div>
     
     <script>
@@ -6160,7 +6160,7 @@
                 if (slotInfo.length > 0) {
                     html += '<div class="stats-tooltip-row" style="font-size: 11px; margin-top: 4px; border-top: 1px solid #444; padding-top: 3px;">';
                     html += '<span style="color: #87CEEB;">Spell Slots: </span>';
-                    html += '<span style="color: #ddd;">' + slotInfo.join(' • ') + '</span>';
+                    html += '<span style="color: #ddd;">' + slotInfo.join(' - ') + '</span>';
                     html += '</div>';
                 }
             }
@@ -6197,7 +6197,7 @@
                 html += '<div style="font-size: 11px; color: #FFD700; margin-bottom: 2px;">Class Features:</div>';
                 for (let feature of stats.classFeatures) {
                     html += '<div style="font-size: 10px; color: #f0f0f0; margin-top: 2px;">';
-                    html += `• ${feature.name}`;
+                    html += `- ${feature.name}`;
                     if (feature.usage) {
                         html += ` <span style="color: #87CEEB;">(${feature.usage})</span>`;
                     }
@@ -6386,7 +6386,7 @@
                     // Create TTS button
                     ttsButton = document.createElement('button');
                     ttsButton.className = 'tts-button';
-                    ttsButton.textContent = '▶';
+                    ttsButton.textContent = '>';
                     ttsButton.title = 'Play DM Voice';
 
                     // Check if autoplay is enabled and add indicator
@@ -6401,7 +6401,7 @@
                         playTTS(message.content, ttsButton, messageDiv, 'none');
                     };
 
-                    // Order: Dungeon Master [DM] [▶] [Generate Image]
+                    // Order: Dungeon Master [DM] [>] [Generate Image]
                     header.appendChild(ttsButton);
 
                     // Add image generation button (only if enabled)
@@ -6442,7 +6442,7 @@
             } else if (message.type === 'user-input') {
                 const avatar = document.createElement('div');
                 avatar.className = 'message-avatar';
-                avatar.textContent = '⚔️';
+                avatar.textContent = '[COMBAT]';
                 const contentDiv = document.createElement('div');
                 contentDiv.className = 'message-content';
                 const header = document.createElement('div');
@@ -7032,13 +7032,13 @@
                 data.equipment.forEach(item => {
                     const description = (item.description || 'No description available.').replace(/"/g, '&quot;');
                     html += `<div class="inventory-item" data-tooltip-title="${item.item_name}" data-tooltip-content="${description}">
-                                <span class="feature-bullet">●</span>
-                                <span class="item-name">${item.item_name}${(item.quantity||1) > 1 ? ` ×${item.quantity}` : ''}</span>
+                                <span class="feature-bullet">*</span>
+                                <span class="item-name">${item.item_name}${(item.quantity||1) > 1 ? ` x${item.quantity}` : ''}</span>
                                 <span class="item-type"> (${(item.item_type || 'misc').toLowerCase()})</span>
                              </div>`;
                 });
             } else {
-                html += '<div class="inventory-item"><span class="feature-bullet">●</span><span class="item-name">No equipment</span></div>';
+                html += '<div class="inventory-item"><span class="feature-bullet">*</span><span class="item-name">No equipment</span></div>';
             }
             html += '</div>'; // Close equipment-section
 
@@ -7087,7 +7087,7 @@
                     abilityMod + (characterData.proficiencyBonus || 2) : abilityMod;
 
                 content += `<div class="skill-tooltip-item">
-                    <span class="skill-tooltip-name">${isProficient ? '●' : '○'} ${skill}</span>
+                    <span class="skill-tooltip-name">${isProficient ? '*' : 'o'} ${skill}</span>
                     <span class="skill-tooltip-value">${bonus >= 0 ? '+' : ''}${bonus}</span>
                 </div>`;
             });
@@ -7518,7 +7518,7 @@
             if (data.ammunition && Array.isArray(data.ammunition) && data.ammunition.length > 0) {
                 html += '<div class="stat-group"><h4>Ammunition</h4><div class="stat-group-content">';
                 data.ammunition.forEach(ammo => {
-                    html += `<div class="inventory-item" style="border-bottom: none; padding: 2px 4px;"><div class="item-main" style="margin-bottom: 0;"><span class="item-name" style="font-size: 16px;">${ammo.name}</span><span class="item-qty" style="font-size: 16px;">×${ammo.quantity}</span></div></div>`;
+                    html += `<div class="inventory-item" style="border-bottom: none; padding: 2px 4px;"><div class="item-main" style="margin-bottom: 0;"><span class="item-name" style="font-size: 16px;">${ammo.name}</span><span class="item-qty" style="font-size: 16px;">x${ammo.quantity}</span></div></div>`;
                 });
                 html += '</div></div>';
             } else {
@@ -7535,7 +7535,7 @@
                 const abilityScore = data.abilities ? (data.abilities[saveKey] || 10) : 10;
                 const abilityMod = Math.floor((abilityScore - 10) / 2);
                 const bonus = isProficient ? abilityMod + (data.proficiencyBonus || 2) : abilityMod;
-                html += `<div class="save-item"><span class="save-name">${SAVING_THROW_LABELS[saveKey]} ${isProficient ? '●' : '○'}</span><span class="save-value">${bonus >= 0 ? '+' : ''}${bonus}</span></div>`;
+                html += `<div class="save-item"><span class="save-name">${SAVING_THROW_LABELS[saveKey]} ${isProficient ? '*' : 'o'}</span><span class="save-value">${bonus >= 0 ? '+' : ''}${bonus}</span></div>`;
             });
             html += '</div></div>';
             // Skills section removed - now shown via ability score tooltips
@@ -7702,7 +7702,7 @@
                 html += '<div class="magic-items-category"><h4>SCROLLS</h4>';
                 scrolls.forEach(s => { 
                     const description = (s.description || 'No description available.').replace(/"/g, '&quot;');
-                    html += `<div class="magic-item" data-tooltip-title="${s.item_name}" data-tooltip-content="${description}"><span class="magic-item-name">${s.item_name}</span>${s.spellLevel !== undefined ? `<span class="spell-badge">${s.spellLevel === 0 ? 'Cantrip' : `Level ${s.spellLevel}`}</span>` : ''}${s.quantity > 1 ? `<span class="magic-item-charges">×${s.quantity}</span>` : s.consumable ? '<span class="magic-item-charges consumable">[1x]</span>' : ''}</div>`; 
+                    html += `<div class="magic-item" data-tooltip-title="${s.item_name}" data-tooltip-content="${description}"><span class="magic-item-name">${s.item_name}</span>${s.spellLevel !== undefined ? `<span class="spell-badge">${s.spellLevel === 0 ? 'Cantrip' : `Level ${s.spellLevel}`}</span>` : ''}${s.quantity > 1 ? `<span class="magic-item-charges">x${s.quantity}</span>` : s.consumable ? '<span class="magic-item-charges consumable">[1x]</span>' : ''}</div>`; 
                 });
                 html += '</div>';
             }
@@ -7710,7 +7710,7 @@
                 html += '<div class="magic-items-category"><h4>POTIONS</h4>';
                 potions.forEach(p => { 
                     const description = (p.description || 'No description available.').replace(/"/g, '&quot;');
-                    html += `<div class="magic-item" data-tooltip-title="${p.item_name}" data-tooltip-content="${description}"><span class="magic-item-name">${p.item_name}</span>${p.quantity > 1 ? `<span class="magic-item-charges">×${p.quantity}</span>` : p.consumable ? '<span class="magic-item-charges consumable">[1x]</span>' : ''}</div>`; 
+                    html += `<div class="magic-item" data-tooltip-title="${p.item_name}" data-tooltip-content="${description}"><span class="magic-item-name">${p.item_name}</span>${p.quantity > 1 ? `<span class="magic-item-charges">x${p.quantity}</span>` : p.consumable ? '<span class="magic-item-charges consumable">[1x]</span>' : ''}</div>`; 
                 });
                 html += '</div>';
             }
@@ -7760,7 +7760,7 @@
                 html += `<div class="npc-character-sheet">`;
                 
                 html += `<div class="npc-header">`;
-                html += `<div class="npc-header-main"><div class="npc-name">${npc.name}</div><div class="npc-details">${npc.race} ${npc.class} • Level ${npc.level} • ${capitalizeWords(npc.alignment)}</div></div>`;
+                html += `<div class="npc-header-main"><div class="npc-name">${npc.name}</div><div class="npc-details">${npc.race} ${npc.class} - Level ${npc.level} - ${capitalizeWords(npc.alignment)}</div></div>`;
                 
                 if (npc.experience_points !== undefined && npc.exp_required_for_next_level !== undefined) {
                     html += `<div class="npc-header-xp">
@@ -8679,10 +8679,10 @@
                 <div class="model-tooltip-header">GPT-5 Model Information</div>
                 <div class="model-tooltip-content">
                     <strong>Testing as GPT-4.1 replacement</strong><br>
-                    • Significant cost savings in token usage<br>
-                    • Slower response times (especially full model)<br>
-                    • More accurate and detailed responses<br>
-                    • Very structured, may break immersion
+                    - Significant cost savings in token usage<br>
+                    - Slower response times (especially full model)<br>
+                    - More accurate and detailed responses<br>
+                    - Very structured, may break immersion
                 </div>
                 <div class="model-tooltip-warning">
                     Warning: Untested - may have unpredictable results
@@ -8839,7 +8839,7 @@
             title.textContent = `${npcName}'s Saving Throws`;
             let html = '';
             if (savesData && savesData.length > 0) {
-                savesData.forEach(save => { html += `<div class="npc-details-item"><span class="npc-details-name">${save.name} ${save.proficient ? '●' : '○'}</span><span class="npc-details-bonus">${save.bonus}</span></div>`; });
+                savesData.forEach(save => { html += `<div class="npc-details-item"><span class="npc-details-name">${save.name} ${save.proficient ? '*' : 'o'}</span><span class="npc-details-bonus">${save.bonus}</span></div>`; });
             } else { html = '<div class="npc-details-item">No saving throws available.</div>'; }
             body.innerHTML = html;
             modal.style.display = 'block';
@@ -9159,18 +9159,18 @@
                     <div id="save-mode-info" class="save-mode-info">
                         <div class="save-mode-details" id="essential-details">
                             <div class="save-mode-title">
-                                <span class="save-icon">💾</span>
+                                <span class="save-icon">[SAVE]</span>
                                 <strong>Game State Save</strong>
                                 <span class="recommended-badge">RECOMMENDED</span>
                             </div>
                             <div class="save-mode-description">
                                 Complete game restoration with all essential data:
                                 <ul>
-                                    <li>✅ Character progress and inventory</li>
-                                    <li>✅ Story progress and quest states</li>
-                                    <li>✅ Party location and module data</li>
-                                    <li>✅ All conversation history</li>
-                                    <li>✅ Active encounters and game state</li>
+                                    <li>[PASS] Character progress and inventory</li>
+                                    <li>[PASS] Story progress and quest states</li>
+                                    <li>[PASS] Party location and module data</li>
+                                    <li>[PASS] All conversation history</li>
+                                    <li>[PASS] Active encounters and game state</li>
                                 </ul>
                                 <div class="save-note">Perfect for regular gameplay saves. Faster and smaller file size.</div>
                             </div>
@@ -9178,18 +9178,18 @@
                         
                         <div class="save-mode-details" id="full-details" style="display: none;">
                             <div class="save-mode-title">
-                                <span class="save-icon">📚</span>
+                                <span class="save-icon">[BOOKS]</span>
                                 <strong>Archive Edition Save</strong>
                                 <span class="archive-badge">COMPLETE ARCHIVE</span>
                             </div>
                             <div class="save-mode-description">
                                 Everything from Game State Save plus:
                                 <ul>
-                                    <li>📜 Extended conversation archives</li>
-                                    <li>⚔️ Detailed combat logs and analysis</li>
-                                    <li>🗃️ Campaign transition summaries</li>
-                                    <li>🤖 Multi-AI conversation tracking</li>
-                                    <li>📊 Historical data for review</li>
+                                    <li>[SCROLL] Extended conversation archives</li>
+                                    <li>[COMBAT] Detailed combat logs and analysis</li>
+                                    <li>[ARCHIVE] Campaign transition summaries</li>
+                                    <li>[AI] Multi-AI conversation tracking</li>
+                                    <li>[STATS] Historical data for review</li>
                                 </ul>
                                 <div class="save-note">Ideal for DMs, campaign analysis, or long-term archival. Larger file size.</div>
                             </div>
@@ -9200,7 +9200,7 @@
             <div class="dialog-buttons">
                 <button class="dialog-button secondary" onclick="closeSaveDialog()">Cancel</button>
                 <button class="dialog-button primary" onclick="performSave()">
-                    <span class="button-icon">💾</span>
+                    <span class="button-icon">[SAVE]</span>
                     Save Game
                 </button>
             </div>
@@ -9240,26 +9240,26 @@
     <!-- NEW RESET MODAL -->
     <div id="reset-dialog-overlay" class="save-dialog-overlay">
         <div class="save-dialog reset-dialog">
-            <h3><span style="color: #f44336;">⚠️</span> CAMPAIGN RESET <span style="color: #f44336;">⚠️</span></h3>
+            <h3><span style="color: #f44336;">[WARNING]</span> CAMPAIGN RESET <span style="color: #f44336;">[WARNING]</span></h3>
             <div class="reset-warning-container">
                 <div class="reset-warning-box">
-                    <strong>🔥 WARNING: Complete Campaign Wipe</strong>
+                    <strong>[WARNING] WARNING: Complete Campaign Wipe</strong>
                     <p>This will permanently delete your current game progress and return to a fresh campaign start.</p>
                 </div>
                 
                 <div class="reset-info-box">
-                    <h4>📋 What This Reset Does:</h4>
+                    <h4>[LIST] What This Reset Does:</h4>
                     <ul class="reset-action-list">
-                        <li>✅ Creates timestamped backup of your current progress</li>
-                        <li>🗑️ Deletes all characters, conversations, and game state</li>
-                        <li>🔄 Restores modules from clean system templates</li>
-                        <li>🏁 Returns game to first-time startup state</li>
-                        <li>🔒 Preserves system files and module templates</li>
+                        <li>[PASS] Creates timestamped backup of your current progress</li>
+                        <li>[DELETE] Deletes all characters, conversations, and game state</li>
+                        <li>[REFRESH] Restores modules from clean system templates</li>
+                        <li>[START] Returns game to first-time startup state</li>
+                        <li>[LOCK] Preserves system files and module templates</li>
                     </ul>
                 </div>
                 
                 <div class="reset-note-box">
-                    <strong>💡 Note:</strong> Your current progress will be backed up to <code>modules/backups/campaign_backup_[timestamp]</code> before reset. Module restore points (BU files) are protected and remain intact.
+                    <strong>[NOTE] Note:</strong> Your current progress will be backed up to <code>modules/backups/campaign_backup_[timestamp]</code> before reset. Module restore points (BU files) are protected and remain intact.
                 </div>
             </div>
             <div style="text-align: center; margin-bottom: 20px;">
@@ -9916,7 +9916,7 @@
             if (spellInfo.components?.material) components.push('M');
             
             const levelText = spellInfo.level === 0 ? 'Cantrip' : `Level ${spellInfo.level}`;
-            html += `<div class="spell-tooltip-meta">${levelText} ${spellInfo.school} • ${spellInfo.casting_time} • ${components.join(', ')}</div>`;
+            html += `<div class="spell-tooltip-meta">${levelText} ${spellInfo.school} - ${spellInfo.casting_time} - ${components.join(', ')}</div>`;
             html += `<div class="spell-tooltip-description">${spellInfo.description}</div>`;
             
             if (spellInfo.classes && spellInfo.classes.length > 0) {
@@ -10762,7 +10762,7 @@
             }
             if (currentTTSButton) {
                 currentTTSButton.classList.remove('playing-tts');
-                currentTTSButton.textContent = '▶';
+                currentTTSButton.textContent = '>';
                 currentTTSButton.title = 'Play DM Voice';
                 currentTTSButton = null;
             }
@@ -10937,7 +10937,7 @@
             
             utterance.onend = () => {
                 button.classList.remove('playing-tts');
-                button.textContent = '▶';
+                button.textContent = '>';
                 button.title = 'Play DM Voice';
                 clearCurrentBrowserSyncTimers();
                 currentBrowserUtterance = null;
@@ -10959,7 +10959,7 @@
             utterance.onerror = (event) => {
                 console.error('Browser TTS Error:', event);
                 button.classList.remove('playing-tts');
-                button.textContent = '▶';
+                button.textContent = '>';
                 button.title = 'Play DM Voice';
                 clearCurrentBrowserSyncTimers();
                 currentBrowserUtterance = null;
@@ -10978,7 +10978,7 @@
             };
             
             button.classList.add('playing-tts');
-            button.textContent = '■';
+            button.textContent = '[#]';
             button.title = 'Stop playback';
             
             speechSynthesis.speak(utterance);
@@ -11033,7 +11033,7 @@
                 console.error('OpenAI TTS Error:', error);
                 button.disabled = false;
                 button.classList.remove('loading-tts');
-                button.textContent = '▶';
+                button.textContent = '>';
                 button.title = 'Play DM Voice';
                 addMessage('game-output', { type: 'error', content: `Voice generation failed: ${error.message}` });
             }
@@ -11046,7 +11046,7 @@
             
             currentTTSAudio.onended = () => {
                 button.classList.remove('playing-tts');
-                button.textContent = '▶';
+                button.textContent = '>';
                 button.title = 'Play DM Voice';
                 currentTTSAudio = null;
                 currentTTSButton = null;
@@ -11055,7 +11055,7 @@
             
             currentTTSAudio.onerror = () => {
                 button.classList.remove('playing-tts');
-                button.textContent = '▶';
+                button.textContent = '>';
                 button.title = 'Play DM Voice';
                 currentTTSAudio = null;
                 currentTTSButton = null;
@@ -11063,7 +11063,7 @@
             };
             
             button.classList.add('playing-tts');
-            button.textContent = '■';
+            button.textContent = '[#]';
             button.title = 'Stop DM Voice';
             
             currentTTSAudio.play();
@@ -11366,14 +11366,14 @@
             const voiceLabel = selectedOption ? selectedOption.textContent : '';
             
             // Check if Spanish voice
-            const isSpanish = voiceLabel.includes('es-') || voiceLabel.includes('español') || voiceLabel.includes('Spanish');
+            const isSpanish = voiceLabel.includes('es-') || voiceLabel.includes('espanol') || voiceLabel.includes('Spanish');
             
             const sampleText = isSpanish 
-                ? "Bienvenidos, aventureros. Vuestra travesía comienza en una taberna misteriosa."
+                ? "Bienvenidos, aventureros. Vuestra travesia comienza en una taberna misteriosa."
                 : "Welcome, adventurers. Your journey begins in a mysterious tavern.";
             
             btn.classList.add('playing');
-            btn.textContent = '■';
+            btn.textContent = '[#]';
             btn.title = 'Stop preview';
             
             if (engine === 'browser') {
@@ -11438,7 +11438,7 @@
 
         function resetPreviewBtn(btn) {
             btn.classList.remove('playing');
-            btn.textContent = '▶';
+            btn.textContent = '>';
             btn.title = 'Preview voice';
         }
 

@@ -416,11 +416,11 @@ def extract_location_from_conversation(conversation_history):
                     location_name = location_name.replace("\u2014", "-")
                     location_name = location_name.replace("\u2013", "-")
                     location_name = location_name.replace("\u00e2\u20ac\u2122", "'")
-                    location_name = location_name.replace("â€™", "'")
-                    location_name = location_name.replace('â€"', "-")
-                    location_name = location_name.replace("â€˜", "'")
-                    location_name = location_name.replace("â€œ", '"')
-                    location_name = location_name.replace("â€", '"')
+                    location_name = location_name.replace("\u00e2\u20ac\u2122", "'")
+                    location_name = location_name.replace("\u00e2\u20ac\u201d", "-")
+                    location_name = location_name.replace("\u00e2\u20ac\u02dc", "'")
+                    location_name = location_name.replace("\u00e2\u20ac\u0153", '"')
+                    location_name = location_name.replace("\u00e2\u20ac", '"')
                     return location_name
     return "Unknown Location"
 
@@ -577,10 +577,10 @@ Your summary should capture the following, as specifically as possible:
 4. Significant conversations, confessions, or discoveries
 5. Items found, resources used, or abilities expended
 6. How the visit ended or transitioned
-7. Interpersonal moments—conflict, bonding, romantic tension, loyalty shifts, leadership, etc.
+7. Interpersonal moments-conflict, bonding, romantic tension, loyalty shifts, leadership, etc.
 8. Any event that would leave a lasting memory for a character or NPC (such as a heroic act, death, reconciliation, or symbolic gesture)
 
-Use past tense and third person. Be vivid, specific, and emotional where appropriate. Focus on what actually happened—not what might happen. Avoid generic phrases. Prioritize character-driven consequences and story-critical developments. Include emotional tone, narrative closure, and forward momentum for what might come next.""",
+Use past tense and third person. Be vivid, specific, and emotional where appropriate. Focus on what actually happened-not what might happen. Avoid generic phrases. Prioritize character-driven consequences and story-critical developments. Include emotional tone, narrative closure, and forward momentum for what might come next.""",
         },
         {"role": "user", "content": dialogue},
     ]

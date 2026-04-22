@@ -40,7 +40,7 @@ See LICENSE file for full terms.
 # 
 # ID CONFLICT RESOLUTION:
 # - Detects duplicate area IDs (e.g., HH001 already exists)
-# - Generates unique alternatives (HH001 → HH002)
+# - Generates unique alternatives (HH001 -> HH002)
 # - Updates all references: area files, location IDs, map connections
 # - Renames corresponding files automatically
 # - Preserves data integrity throughout process
@@ -78,8 +78,8 @@ See LICENSE file for full terms.
 # 8. Store travel narration for seamless switching
 # 
 # EXAMPLE ISOLATED MODULES:
-# Keep_of_Doom: Harrow's Hollow → Gloamwood → Shadowfall Keep (self-contained)
-# + Crystal_Peaks: Frostspire Village → Ice Caverns (independent module)
+# Keep_of_Doom: Harrow's Hollow -> Gloamwood -> Shadowfall Keep (self-contained)
+# + Crystal_Peaks: Frostspire Village -> Ice Caverns (independent module)
 # = AI Travel Narration: "The party travels through mountain passes to reach the frozen peaks where new dangers await..."
 # 
 # SAFETY CONFIGURATION:
@@ -111,6 +111,8 @@ from utils.module_path_manager import ModulePathManager
 
 class ModuleStitcher:
     """Manages automatic module integration and organic world building"""
+
+    _SIDEBAR_BRIEF_FAILURE_MAX_LEN = 80
     
     def __init__(self):
         """Initialize module stitcher"""
@@ -1242,6 +1244,95 @@ Respond with JSON:
         except Exception as e:
             print(f"Error getting travel narration for {module_name}: {e}")
             return {}
+
+    def _load_toolkit_build_report(self, module_name: str) -> Optional[Dict[str, Any]]:
+        """Load persisted toolkit build report for sidebar enrichment.
+
+        Fail-open behavior: returns None on missing or malformed report data.
+        """
+        try:
+            report_path = os.path.join(self.modules_dir, module_name, "toolkit_build_report.json")
+            if not os.path.exists(report_path):
+                return None
+            report_data = safe_json_load(report_path)
+            if not isinstance(report_data, dict):
+                return None
+            return report_data
+        except Exception as e:
+            warning(
+                f"Failed to load toolkit_build_report for module '{module_name}': {e}",
+                category="module_loading"
+            )
+            return None
+
+    def _derive_sidebar_audit_signals(self, report_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Derive compact sidebar failure and media handoff signals from persisted reports."""
+        try:
+            if not isinstance(report_data, dict):
+                return {}
+
+            ready_status = str(report_data.get("ready_status", "")).lower()
+            publishable_status = str(report_data.get("publishable_status", "")).lower()
+            report_status = str(report_data.get("status", "")).lower()
+            remediation_categories = report_data.get("remediation_categories") or []
+            toolkit_media_policy = report_data.get("toolkit_media_policy") or {}
+
+            failure_state = (
+                ready_status == "fail"
+                or publishable_status.startswith("fail")
+                or report_status in {"failed", "fail"}
+            )
+            if not failure_state:
+                return {}
+
+            serialized_report = json.dumps(report_data, ensure_ascii=True).lower()
+            media_debt_count = int(toolkit_media_policy.get("structural_media_debt_count") or 0)
+
+            media_generator_needed = (
+                "structured_monster_media_missing" in remediation_categories
+                or "toolkit_manual_media_generation_required" in remediation_categories
+                or media_debt_count > 0
+                or "missing base media" in serialized_report
+            )
+
+            has_missing_monster_json = "missing monster json" in serialized_report
+            has_unresolved_destinations = (
+                "travel_unresolved_destination_phrase" in serialized_report
+                or "unresolved destination phrase" in serialized_report
+            )
+            has_semantic_blocking = (
+                "semantic_publishability_blocking" in remediation_categories
+                or "semantic_authority" in serialized_report
+            )
+
+            if has_missing_monster_json and media_generator_needed:
+                brief_failure = "Build failed: missing monsters/media"
+            elif media_generator_needed and has_unresolved_destinations:
+                brief_failure = "Build failed: media + destination issues"
+            elif media_generator_needed:
+                brief_failure = "Build failed: missing monster media"
+            elif has_missing_monster_json:
+                brief_failure = "Build failed: missing monster files"
+            elif has_unresolved_destinations:
+                brief_failure = "Build failed: unresolved destinations"
+            elif has_semantic_blocking:
+                brief_failure = "Build failed: semantic publishability checks"
+            else:
+                brief_failure = "Build failed: module not publishable"
+
+            if len(brief_failure) > self._SIDEBAR_BRIEF_FAILURE_MAX_LEN:
+                brief_failure = brief_failure[: self._SIDEBAR_BRIEF_FAILURE_MAX_LEN - 3] + "..."
+
+            return {
+                "brief_failure": brief_failure,
+                "media_generator_needed": media_generator_needed,
+            }
+        except Exception as e:
+            warning(
+                f"Failed to derive sidebar audit signals: {e}",
+                category="module_loading"
+            )
+            return {}
     
     def get_available_modules(self) -> List[Dict[str, Any]]:
         """Get list of all available modules with basic info"""
@@ -1272,6 +1363,9 @@ Respond with JSON:
                     plot_point_count = len(plot_points)
                 
                 module_list.append({
+                    **self._derive_sidebar_audit_signals(
+                        self._load_toolkit_build_report(module_name) or {}
+                    ),
                     "moduleName": module_name,
                     "plotObjective": module_data.get('plotObjective', ''),
                     "levelRange": module_data.get('levelRange', {}),

@@ -34,7 +34,7 @@
 # - Implements our "AI-First Design with Human Safety Nets" principle
 # 
 # VALIDATION PIPELINE:
-# Prompt Construction → API Call → Response Parsing → Validation → Integration
+# Prompt Construction -> API Call -> Response Parsing -> Validation -> Integration
 # 
 # This module embodies our philosophy of embracing AI capabilities while
 # maintaining rigorous data integrity and error recovery mechanisms.
@@ -145,7 +145,7 @@ def main():
     commands = [
         "I examine the dwarven runes on the door carefully, looking for clues about how to solve the puzzle.",
         "I'd like to solve the puzzle. I rotate the rings to align the runes based on the clues we've found during our journey.",
-        "I say the dwarven phrase 'Khazad-dûm' aloud to deactivate the stone guardian and open the door.",
+        "I say the dwarven phrase 'Khazad-dum' aloud to deactivate the stone guardian and open the door.",
         "Let's proceed through the doorway into the Dwarven Complex."
     ]
 

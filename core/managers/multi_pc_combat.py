@@ -1320,7 +1320,7 @@ class MultiPCCombatManager:
         marked = self._turns.complete_pc_turn(name)
         
         if not marked:
-            # PC wasn't ready or doesn't exist — still check phase status
+            # PC wasn't ready or doesn't exist - still check phase status
             # (another path may have already marked them)
             pass
         
@@ -1653,24 +1653,20 @@ class MultiPCCombatManager:
             pc_forbidden_str = ", ".join(pc_names) if pc_names else "None"
             
             return f"""
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  CURRENT PHASE: ENEMY_PHASE  │  PC PHASE COMPLETE: TRUE                      ║
-╠══════════════════════════════════════════════════════════════════════════════╣
-║  MODE: ENEMY & NPC BATCH RESOLUTION                                          ║
-║  RESOLVE IN ORDER: {actors_str[:60]}
-╠══════════════════════════════════════════════════════════════════════════════╣
-║  [BLOCKED] FORBIDDEN ACTORS (DO NOT NARRATE):                                ║
-║  {pc_forbidden_str[:70]:<70} ║
-╠══════════════════════════════════════════════════════════════════════════════╣
-║  REQUIRED RESPONSE:                                                          ║
-║  1. Resolve turns for ALL listed ENEMIES and NPC ALLIES in order.            ║
-║  2. STRICT: Only narrate for DM-controlled entities (Enemies/NPC Allies).    ║
-║  3. NEVER narrate actions for Forbidden Player Characters listed above.       ║
-║  4. PCs may appear in updateCharacterInfo ONLY as targets of enemy/NPC effects. ║
-║  5. STOP immediately after the last enemy/NPC ally acts.                     ║
-║  6. Announce round completion and ask for PC actions.                        ║
-║  7. Return structured JSON with plan, narration, combat_round, actions.      ║
-╚══════════════════════════════════════════════════════════════════════════════╝
+==============================================================================
+CURRENT PHASE: ENEMY_PHASE | PC PHASE COMPLETE: TRUE
+MODE: ENEMY AND NPC BATCH RESOLUTION
+RESOLVE IN ORDER: {actors_str[:60]}
+[BLOCKED] FORBIDDEN ACTORS (DO NOT NARRATE): {pc_forbidden_str[:70]}
+REQUIRED RESPONSE:
+1. Resolve turns for ALL listed ENEMIES and NPC ALLIES in order.
+2. STRICT: Only narrate for DM-controlled entities (Enemies/NPC Allies).
+3. NEVER narrate actions for Forbidden Player Characters listed above.
+4. PCs may appear in updateCharacterInfo ONLY as targets of enemy/NPC effects.
+5. STOP immediately after the last enemy/NPC ally acts.
+6. Announce round completion and ask for PC actions.
+7. Return structured JSON with plan, narration, combat_round, actions.
+==============================================================================
 """
 
         # PC_PHASE: STRICT TURN ISOLATION MODE
@@ -1682,26 +1678,21 @@ class MultiPCCombatManager:
         pcs_remaining = len(available_pcs)
         
         return f"""
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  CURRENT PHASE: PC_PHASE  │  ACTIVE ACTOR: {actor_name:<30} ║
-╠══════════════════════════════════════════════════════════════════════════════╣
-║  PCs REMAINING THIS ROUND: {pcs_remaining}                                              ║
-║  AWAITING /end COMMAND: YES (enemies cannot act yet)                         ║
-╠══════════════════════════════════════════════════════════════════════════════╣
-║  [BLOCKED] FORBIDDEN ACTORS (DO NOT NARRATE):                                ║
-║  {forbidden_str[:70]:<70} ║
-╠══════════════════════════════════════════════════════════════════════════════╣
-║  REQUIRED RESPONSE:                                                          ║
-║  1. Narrate ONLY the result of {actor_name}'s declared action.               ║
-║  2. FLAVOR TEXT: Treat shouts/battle cries as roleplay from {actor_name}.    ║
-║  3. STOP IMMEDIATELY after this single resolution.                           ║
-║  4. DO NOT narrate actions for other PCs. Await /end for enemy phase.        ║
-║  5. DO NOT name or prompt the next PC. The facilitator controls turn order.  ║
-║  6. Return structured JSON with plan, narration, combat_round, actions.      ║
-╠══════════════════════════════════════════════════════════════════════════════╣
-║  [WARNING] VIOLATION = CRITICAL FAILURE: Narrating for forbidden actors will ║
-║      cause combat desync. Only [{actor_name}] has authority to act now.
-╚══════════════════════════════════════════════════════════════════════════════╝
+==============================================================================
+CURRENT PHASE: PC_PHASE | ACTIVE ACTOR: {actor_name}
+PCS REMAINING THIS ROUND: {pcs_remaining}
+AWAITING /end COMMAND: YES (enemies cannot act yet)
+[BLOCKED] FORBIDDEN ACTORS (DO NOT NARRATE): {forbidden_str[:70]}
+REQUIRED RESPONSE:
+1. Narrate ONLY the result of {actor_name}'s declared action.
+2. FLAVOR TEXT: Treat shouts/battle cries as roleplay from {actor_name}.
+3. STOP IMMEDIATELY after this single resolution.
+4. DO NOT narrate actions for other PCs. Await /end for enemy phase.
+5. DO NOT name or prompt the next PC. The facilitator controls turn order.
+6. Return structured JSON with plan, narration, combat_round, actions.
+[WARNING] VIOLATION = CRITICAL FAILURE: Narrating for forbidden actors will
+cause combat desync. Only [{actor_name}] has authority to act now.
+==============================================================================
 """
 
     def _get_combatant_marker(self, combatant: Combatant) -> Tuple[str, str]:

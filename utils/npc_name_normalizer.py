@@ -112,7 +112,7 @@ def normalize_npc_name_for_action(input_name, party_tracker_data, debug_print=Fa
             if word_set.issubset(valid_words):
                 matches.append(valid_name)
                 if debug_print:
-                    print(f"[NPC_NORM]     → MATCH: All words found")
+                    print(f"[NPC_NORM]     -> MATCH: All words found")
 
         # If we found matches with this combination, evaluate them
         if matches:
@@ -164,5 +164,5 @@ if __name__ == "__main__":
     print("Quick Sanity Test:")
     for input_name, expected, expected_type in tests:
         result, match_type = normalize_npc_name_for_action(input_name, test_tracker, debug_print=False)
-        status = "✓" if result == expected and match_type == expected_type else "✗"
-        print(f"{status} '{input_name}' → '{result}' ({match_type})")
+        status = "[PASS]" if result == expected and match_type == expected_type else "[FAIL]"
+        print(f"{status} '{input_name}' -> '{result}' ({match_type})")

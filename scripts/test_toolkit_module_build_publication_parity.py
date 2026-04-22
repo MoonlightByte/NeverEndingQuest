@@ -405,6 +405,22 @@ class TestToolkitPublicationParitySourceContracts(unittest.TestCase):
         self.assertIn("Hydration Summary:", source)
         self.assertIn("buildHomebrewHydrationAwareDetails", source)
 
+    def test_toolkit_template_exposes_semantic_remediation_lane(self) -> None:
+        source = Path("web/templates/module_toolkit.html").read_text(encoding="utf-8")
+
+        self.assertIn("formatSemanticRemediationSection", source)
+        self.assertIn("Semantic Remediation:", source)
+        self.assertIn("blocking_findings", source)
+        self.assertIn("Blocking Errors (fallback):", source)
+
+    def test_toolkit_template_exposes_mixed_media_semantic_sections(self) -> None:
+        source = Path("web/templates/module_toolkit.html").read_text(encoding="utf-8")
+
+        self.assertIn("formatMediaRemediationSection", source)
+        self.assertIn("Media Remediation:", source)
+        self.assertIn("structural_media_debt_count", source)
+        self.assertIn("buildToolkitFinishingFailureDetails", source)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -58,7 +58,7 @@ def main():
         try:
             # Copy config_template.py to config.py
             shutil.copy('config_template.py', 'config.py')
-            print("\n✓ Created config.py from template")
+            print("\n[PASS] Created config.py from template")
             print("\n" + "="*60)
             print("IMPORTANT: OpenAI API Key Required")
             print("="*60)

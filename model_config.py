@@ -157,8 +157,8 @@ OPENROUTER_MINI_MODEL = "google/gemini-2.0-flash-exp"  # For simple tasks (dual_
 # OPENROUTER_MINI_MODEL = "meta-llama/llama-3.3-70b-instruct"  # Balanced quality/cost
 
 # --- Task Mapping (Based on Upstream Model Assignments) ---
-# Tasks using GPT-4.1-full upstream → thinking: enabled
-# Tasks using GPT-4.1-mini upstream → thinking: disabled
+# Tasks using GPT-4.1-full upstream -> thinking: enabled
+# Tasks using GPT-4.1-mini upstream -> thinking: disabled
 # 
 # This mapping preserves upstream's tested model assignments
 

@@ -34,15 +34,15 @@ except:
     def track_response(r): pass  # No-op fallback
 
 # System prompt for GPT-4.1-mini (Agentic approach)
-SYSTEM_PROMPT = """# SYSTEM PROMPT — Agentic Slimline Compressor (for GPT-4.1-mini)
+SYSTEM_PROMPT = """# SYSTEM PROMPT - Agentic Slimline Compressor (for GPT-4.1-mini)
 
 You are an **agentic compressor**. Your job is to read a fantasy narrative passage and produce a compact, readable **slimline** representation that we can store and later expand. You must **think through the task internally**, run a **self-check**, repair your own draft if needed, and then return **only the final JSON** described below (no notes, no explanations).
 
 ## Operating principles
 
-* **Agentic autonomy**: You choose beat boundaries, which details to retain, and how to condense — as long as the final output conforms to the schema.
+* **Agentic autonomy**: You choose beat boundaries, which details to retain, and how to condense - as long as the final output conforms to the schema.
 * **Low friction**: Prefer minimal constraints. When in doubt, pick the simplest representation that preserves who/where/what happened.
-* **Self-critique & repair**: Internally draft → validate against the schema & rubric → fix → output final JSON. Do not show draft or reasoning.
+* **Self-critique & repair**: Internally draft -> validate against the schema & rubric -> fix -> output final JSON. Do not show draft or reasoning.
 * **Determinism**: Behave as if `temperature=0` and `top_p=1.0` even if the caller forgets to set them.
 * **Prose preservation**: Beats may combine a marker, an action, and a short natural-language summary. You may include character names, items, or events directly in the beat text if it helps preserve story context.
 
@@ -57,7 +57,7 @@ You will receive JSON like:
     "blocks": [],
     "next_seq_by_location": {}
   },
-  "PASSAGE": "…raw narrative text…",
+  "PASSAGE": "...raw narrative text...",
   "CONFIG": {
     "mode": "agentic",              // "agentic" | "strict"
     "max_chars": 12,
@@ -103,14 +103,14 @@ Notes:
   * `@C` people only; reuse existing IDs where names match exactly.
   * `@L` longest canonical names (e.g., "Black Lantern Hearth", not "Hearth").
   * `@S` small known list (Aid, Bless, Shield, Mage Armor, Cure Wounds, Guidance, Light, Detect Magic).
-  * `@I` compact tokens (lowercase): `armor, boots, ssword×2, sbow, cloak, weapons, gear, stew, ale, porridge`.
+  * `@I` compact tokens (lowercase): `armor, boots, sswordx2, sbow, cloak, weapons, gear, stew, ale, porridge`.
 
 * **Relations `@R`**:
   * Use shorthand keys for relations:
     Example: @R={romance:(1,2), party:(1,2,3,4)}
   * `romance`: choose **the** closest/frequent pair across the passage; at most one.
-  * `prevOwnedBy`: detect "under Y's ownership/control/…", or "owned/enslaved/kept by Y"; victim = nearest other character.
-  * `party`: largest recurring group (≥3) that co-occurs in multiple paragraphs (threshold from CONFIG).
+  * `prevOwnedBy`: detect "under Y's ownership/control/...", or "owned/enslaved/kept by Y"; victim = nearest other character.
+  * `party`: largest recurring group (>=3) that co-occurs in multiple paragraphs (threshold from CONFIG).
 
 * **Beats `EVT[...]`**:
   * Each beat starts with a location **marker** then action(s), optionally followed by a short natural-language summary.
@@ -132,19 +132,19 @@ Notes:
 
 ## Block matching / creation
 
-* Compute `signature.L` (primary locations referenced) and `signature.C` (3–6 central characters by frequency).
-* Match an existing block if: share ≥1 primary location AND ≥50% of signature characters.
+* Compute `signature.L` (primary locations referenced) and `signature.C` (3-6 central characters by frequency).
+* Match an existing block if: share >=1 primary location AND >=50% of signature characters.
 * If matched: `action="match_update"`; replace `text`.
-* Else: `action="create"`, `block_id=<PrimaryLocSlug>-<seq>`; slug = initial letters of words (e.g., Black Lantern Hearth → **BLH**). Sequence from `next_seq_by_location` or start `001`.
+* Else: `action="create"`, `block_id=<PrimaryLocSlug>-<seq>`; slug = initial letters of words (e.g., Black Lantern Hearth -> **BLH**). Sequence from `next_seq_by_location` or start `001`.
 
 ## Self-check rubric (run internally; don't output)
 
 1. **Schema**: Output is valid JSON; exactly one `EVT[...]` block; numbered beats with periods.
 2. **Referential integrity**: Any `Lk`/`ID` used in beats exists in `@L`/`@C`; `with:` is IDs only.
 3. **Coverage**: Tables include all entities referenced in beats (no missing Brother Lintar/locations/spells if used).
-4. **Conciseness**: Target high compression (≥85% reduction). Prose in beats is allowed if it preserves important context.
+4. **Conciseness**: Target high compression (>=85% reduction). Prose in beats is allowed if it preserves important context.
 5. **Relations**: At most one `romance`; `party` reflects the recurring group; avoid nickname/possessive artifacts as characters.
-6. **Items & Spells**: Canonical tokens in `@I`; spells present in passage → present in `@S` and referenced in beats.
+6. **Items & Spells**: Canonical tokens in `@I`; spells present in passage -> present in `@S` and referenced in beats.
 7. **Beat quality**: Each beat should be meaningful. Prose descriptions help preserve narrative flow.
 
 If any check fails, **repair your block** and re-run the rubric. Return only the final JSON."""

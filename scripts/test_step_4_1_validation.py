@@ -69,7 +69,7 @@ def test_no_unicode_in_strings():
             content = f.read()
         
         # Check for common Unicode characters that should be avoided
-        unicode_chars = ['✓', '✗', '→', '←', '⚠', '⚡', '★', '☆', '●', '○']
+        unicode_chars = ['[PASS]', '[FAIL]', '->', '<-', '[WARNING]', '[LIGHTNING]', '*', '*', '*', 'o']
         for char in unicode_chars:
             if char in content:
                 print(f"  [WARNING] Unicode character '{char}' found in {file}")

@@ -655,35 +655,35 @@ def format_report(result: Dict, baseline_result: Optional[Dict] = None) -> str:
     
     # Blocking errors
     if result['blocking_errors']:
-        lines.append(f"\n❌ BLOCKING ERRORS ({len(result['blocking_errors'])}) [strict mode: {result.get('strict_mode', False)}]:")
+        lines.append(f"\n[FAIL] BLOCKING ERRORS ({len(result['blocking_errors'])}) [strict mode: {result.get('strict_mode', False)}]:")
         lines.append("-" * 70)
         for error in result['blocking_errors'][:20]:  # Limit display
-            lines.append(f"  • {error}")
+            lines.append(f"  - {error}")
         if len(result['blocking_errors']) > 20:
             lines.append(f"  ... and {len(result['blocking_errors']) - 20} more")
         
         # TABLETOP MODE WARNING
-        lines.append("\n⚠️  TABLETOP MODE RISK:")
+        lines.append("\n[WARNING]  TABLETOP MODE RISK:")
         lines.append("   Missing monster JSON files will cause combat_builder to fail-closed,")
         lines.append("   resulting in narration/combat desync for affected monsters.")
     else:
-        lines.append("\n✅ No blocking errors found!")
+        lines.append("\n[PASS] No blocking errors found!")
     
     # Warnings
     if result['warnings']:
-        lines.append(f"\n⚠️  WARNINGS ({len(result['warnings'])}):")
+        lines.append(f"\n[WARNING]  WARNINGS ({len(result['warnings'])}):")
         lines.append("-" * 70)
         for warning in result['warnings'][:15]:
-            lines.append(f"  • {warning}")
+            lines.append(f"  - {warning}")
         if len(result['warnings']) > 15:
             lines.append(f"  ... and {len(result['warnings']) - 15} more")
     
     # Fix list
     if result['fix_list']:
-        lines.append(f"\n🔧 FIX LIST ({len(result['fix_list'])} items):")
+        lines.append(f"\n[FIX] FIX LIST ({len(result['fix_list'])} items):")
         lines.append("-" * 70)
         for fix in result['fix_list'][:15]:
-            lines.append(f"  • {fix}")
+            lines.append(f"  - {fix}")
         if len(result['fix_list']) > 15:
             lines.append(f"  ... and {len(result['fix_list']) - 15} more")
     

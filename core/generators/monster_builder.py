@@ -29,8 +29,8 @@ See LICENSE-APACHE file for full terms.
 # - Save generated monsters to module-specific directories
 #
 # AI GENERATION PIPELINE:
-# Schema Template → AI Prompt → Response Generation → JSON Parsing →
-# Schema Validation → File Persistence → Path Resolution
+# Schema Template -> AI Prompt -> Response Generation -> JSON Parsing ->
+# Schema Validation -> File Persistence -> Path Resolution
 #
 # VALIDATION STRATEGY:
 # - JSON schema compliance checking

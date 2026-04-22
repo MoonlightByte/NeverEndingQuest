@@ -158,11 +158,11 @@ NAMING REQUIREMENTS:
 6. Use evocative adjectives (Ancient, Forgotten, Shattered, etc.)
 
 EXAMPLES OF GOOD NAMES:
-- entrance → "Weathered Gate Chamber"
-- throne room → "Sunken Crown Hall" 
-- corridor → "Whispering Passage"
-- shrine → "Altar of Lost Hopes"
-- marketplace → "Merchant's Circle"
+- entrance -> "Weathered Gate Chamber"
+- throne room -> "Sunken Crown Hall" 
+- corridor -> "Whispering Passage"
+- shrine -> "Altar of Lost Hopes"
+- marketplace -> "Merchant's Circle"
 
 Please respond with ONLY a JSON array of names in the exact order listed above:
 ["Name 1", "Name 2", "Name 3", ...]

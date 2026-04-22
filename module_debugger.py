@@ -42,21 +42,21 @@ class ModuleDebugger:
     def log_error(self, message: str):
         """Log an error"""
         self.errors.append(f"ERROR: {message}")
-        print(f"❌ ERROR: {message}")
+        print(f"[FAIL] ERROR: {message}")
         
     def log_warning(self, message: str):
         """Log a warning"""
         self.warnings.append(f"WARNING: {message}")
-        print(f"⚠️  WARNING: {message}")
+        print(f"[WARNING]  WARNING: {message}")
         
     def log_info(self, message: str):
         """Log info"""
         self.info.append(f"INFO: {message}")
-        print(f"ℹ️  INFO: {message}")
+        print(f"[INFO]  INFO: {message}")
         
     def log_success(self, message: str):
         """Log success"""
-        print(f"✅ SUCCESS: {message}")
+        print(f"[PASS] SUCCESS: {message}")
     
     def find_latest_module(self) -> str:
         """Find the most recent module folder"""
@@ -555,9 +555,9 @@ Module: {self.module_path}
                 
         report += f"\n## Status\n"
         if not self.errors:
-            report += "✅ Module is compatible with main.py\n"
+            report += "[PASS] Module is compatible with main.py\n"
         else:
-            report += "❌ Module has errors that need to be fixed\n"
+            report += "[FAIL] Module has errors that need to be fixed\n"
             
         return report
     
@@ -635,7 +635,7 @@ Module: {self.module_path}
         with open(report_path, 'w') as f:
             f.write(report)
             
-        print(f"\n📄 Report saved to: {report_path}")
+        print(f"\n[FILE] Report saved to: {report_path}")
         print("\n" + "=" * 50)
         print(report)
 

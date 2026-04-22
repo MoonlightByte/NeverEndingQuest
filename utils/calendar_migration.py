@@ -5,7 +5,7 @@
 # This software is subject to the terms of the Fair Source License.
 #
 # Portions of this file contain Forgotten Realms calendar month names which are:
-# Copyright © Wizards of the Coast LLC. All Rights Reserved.
+# Copyright (c) Wizards of the Coast LLC. All Rights Reserved.
 # Used under the Open Gaming License or similar terms.
 
 """

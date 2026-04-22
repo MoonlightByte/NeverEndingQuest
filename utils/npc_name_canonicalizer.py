@@ -4,12 +4,12 @@ NPC Name Canonicalization Utility
 Extracts canonical first names from complex D&D character names using AI normalization with persistent caching.
 
 Examples:
-- "James the Magnificent" → "James"
-- "Sir Aldric Stoneheart" → "Aldric"
-- "Scout Kira" → "Kira"
-- "Brother Marcus of the Light" → "Marcus"
-- "Lady Elara Moonwhisper" → "Elara"
-- "Elder Dorun Ironforge" → "Dorun"
+- "James the Magnificent" -> "James"
+- "Sir Aldric Stoneheart" -> "Aldric"
+- "Scout Kira" -> "Kira"
+- "Brother Marcus of the Light" -> "Marcus"
+- "Lady Elara Moonwhisper" -> "Elara"
+- "Elder Dorun Ironforge" -> "Dorun"
 """
 
 import json
@@ -113,12 +113,12 @@ def call_mini_model_for_name(full_name: str) -> str:
     prompt = f"""Extract the person's actual first name from this D&D character name: '{full_name}'
 
 Examples:
-- "Sir Aldric Stoneheart" → "Aldric"
-- "James the Magnificent" → "James"
-- "Scout Kira" → "Kira"
-- "Brother Marcus of the Light" → "Marcus"
-- "Lady Elara Moonwhisper" → "Elara"
-- "Elder Dorun Ironforge" → "Dorun"
+- "Sir Aldric Stoneheart" -> "Aldric"
+- "James the Magnificent" -> "James"
+- "Scout Kira" -> "Kira"
+- "Brother Marcus of the Light" -> "Marcus"
+- "Lady Elara Moonwhisper" -> "Elara"
+- "Elder Dorun Ironforge" -> "Dorun"
 
 Return ONLY the first name, nothing else. No quotes, no explanation."""
 
@@ -138,7 +138,7 @@ Return ONLY the first name, nothing else. No quotes, no explanation."""
         # Remove any quotes that might have been added
         canonical = canonical.strip('"\'')
 
-        debug(f"AI normalized '{full_name}' → '{canonical}'", category="name_normalization")
+        debug(f"AI normalized '{full_name}' -> '{canonical}'", category="name_normalization")
 
         return canonical
 
@@ -178,7 +178,7 @@ def get_canonical_name(full_name: str, skip_cache: bool = False) -> str:
 
     # Check cache first (unless explicitly skipping)
     if not skip_cache and full_name in cache:
-        debug(f"Name cache hit: '{full_name}' → '{cache[full_name]}'", category="name_normalization")
+        debug(f"Name cache hit: '{full_name}' -> '{cache[full_name]}'", category="name_normalization")
         return cache[full_name]
 
     # Not in cache - need to normalize
@@ -198,7 +198,7 @@ def get_canonical_name(full_name: str, skip_cache: bool = False) -> str:
         cache[full_name] = canonical
         save_name_cache(cache)
 
-        info(f"Cached name normalization: '{full_name}' → '{canonical}'", category="name_normalization")
+        info(f"Cached name normalization: '{full_name}' -> '{canonical}'", category="name_normalization")
 
         return canonical
 
@@ -267,12 +267,12 @@ if __name__ == "__main__":
     print("\nNormalizing test names:\n")
     for name in test_names:
         canonical = get_canonical_name(name)
-        print(f"  '{name}' → '{canonical}'")
+        print(f"  '{name}' -> '{canonical}'")
 
     print("\n" + "=" * 80)
     print("\nCache contents:")
     cache = load_name_cache()
     for full, canonical in cache.items():
-        print(f"  '{full}' → '{canonical}'")
+        print(f"  '{full}' -> '{canonical}'")
 
     print(f"\nTotal cached entries: {len(cache)}")

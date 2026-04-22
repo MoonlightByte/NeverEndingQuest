@@ -177,7 +177,7 @@ Based on the conversation, what is the final list of active, hostile monsters re
                 error(f"RECONCILER: Failed to write area file for location '{location_id}'.", category="reconciliation")
             
             info(f"RECONCILER: Reconciliation complete for location '{location_id}'.", category="reconciliation")
-            debug(f"[RECONCILER] Successfully reconciled {location_id} - {len(original_monsters)} → {len(updated_monsters)} monsters", category="reconciliation")
+            debug(f"[RECONCILER] Successfully reconciled {location_id} - {len(original_monsters)} -> {len(updated_monsters)} monsters", category="reconciliation")
             return # Success
 
         except (json.JSONDecodeError, ValueError, TypeError) as e:

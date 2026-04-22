@@ -1047,7 +1047,7 @@ CRITICAL: If validation fails due to wrong NPC for location, provide specific co
 def normalize_character_names_in_response(response_text, party_tracker_data):
     """
     Normalize NPC names in updateCharacterInfo and updatePartyNPCs actions before validation.
-    Handles name variations like "Kira" → "Scout Kira", "Ranger Kira" → "Scout Kira"
+    Handles name variations like "Kira" -> "Scout Kira", "Ranger Kira" -> "Scout Kira"
 
     Returns:
         (normalized_response, message) or (None, error_message) if unresolvable
@@ -1171,10 +1171,10 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
                     # Name was normalized
                     params["characterName"] = normalized_name
                     corrections.append(
-                        f"Action {i + 1}: '{original_name}' → '{normalized_name}'"
+                        f"Action {i + 1}: '{original_name}' -> '{normalized_name}'"
                     )
                     print(
-                        f"[NPC_NORM] CORRECTED: '{original_name}' → '{normalized_name}'"
+                        f"[NPC_NORM] CORRECTED: '{original_name}' -> '{normalized_name}'"
                     )
 
                 else:
@@ -1218,10 +1218,10 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
                         elif normalized_name != original_name:
                             npc_param["name"] = normalized_name
                             corrections.append(
-                                f"Action {i + 1} (updatePartyNPCs): '{original_name}' → '{normalized_name}'"
+                                f"Action {i + 1} (updatePartyNPCs): '{original_name}' -> '{normalized_name}'"
                             )
                             print(
-                                f"[NPC_NORM] CORRECTED: '{original_name}' → '{normalized_name}'"
+                                f"[NPC_NORM] CORRECTED: '{original_name}' -> '{normalized_name}'"
                             )
 
                         else:
@@ -1260,10 +1260,10 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
                         # Convert string to dict with canonical name
                         params["npc"] = {"name": normalized_name}
                         corrections.append(
-                            f"Action {i + 1} (updatePartyNPCs): '{original_name}' → '{normalized_name}' (converted to dict)"
+                            f"Action {i + 1} (updatePartyNPCs): '{original_name}' -> '{normalized_name}' (converted to dict)"
                         )
                         print(
-                            f"[NPC_NORM] CORRECTED: '{original_name}' → '{normalized_name}' (converted string to dict)"
+                            f"[NPC_NORM] CORRECTED: '{original_name}' -> '{normalized_name}' (converted string to dict)"
                         )
 
                     else:
@@ -1349,10 +1349,10 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
                     # Name was normalized
                     params["npcName"] = normalized_name
                     corrections.append(
-                        f"Action {i + 1} (moveBackgroundNPC): '{original_name}' → '{normalized_name}'"
+                        f"Action {i + 1} (moveBackgroundNPC): '{original_name}' -> '{normalized_name}'"
                     )
                     print(
-                        f"[NPC_NORM] CORRECTED: '{original_name}' → '{normalized_name}'"
+                        f"[NPC_NORM] CORRECTED: '{original_name}' -> '{normalized_name}'"
                     )
 
                 else:
@@ -1397,10 +1397,10 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
                     elif normalized_name != original_name:
                         params["add"] = normalized_name
                         corrections.append(
-                            f"Action {i + 1} (updatePartyNPCs): '{original_name}' → '{normalized_name}'"
+                            f"Action {i + 1} (updatePartyNPCs): '{original_name}' -> '{normalized_name}'"
                         )
                         print(
-                            f"[NPC_NORM] CORRECTED: '{original_name}' → '{normalized_name}'"
+                            f"[NPC_NORM] CORRECTED: '{original_name}' -> '{normalized_name}'"
                         )
 
                     else:
@@ -1442,10 +1442,10 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
                             elif normalized_name != original_name:
                                 normalized_list.append(normalized_name)
                                 corrections.append(
-                                    f"Action {i + 1} (updatePartyNPCs): list item[{idx}] '{original_name}' → '{normalized_name}'"
+                                    f"Action {i + 1} (updatePartyNPCs): list item[{idx}] '{original_name}' -> '{normalized_name}'"
                                 )
                                 print(
-                                    f"[NPC_NORM] CORRECTED: list item[{idx}] '{original_name}' → '{normalized_name}'"
+                                    f"[NPC_NORM] CORRECTED: list item[{idx}] '{original_name}' -> '{normalized_name}'"
                                 )
 
                             else:
@@ -1483,10 +1483,10 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
                                     item["name"] = normalized_name
                                     normalized_list.append(item)
                                     corrections.append(
-                                        f"Action {i + 1} (updatePartyNPCs): dict item[{idx}] '{original_name}' → '{normalized_name}'"
+                                        f"Action {i + 1} (updatePartyNPCs): dict item[{idx}] '{original_name}' -> '{normalized_name}'"
                                     )
                                     print(
-                                        f"[NPC_NORM] CORRECTED: dict item[{idx}] '{original_name}' → '{normalized_name}'"
+                                        f"[NPC_NORM] CORRECTED: dict item[{idx}] '{original_name}' -> '{normalized_name}'"
                                     )
 
                                 else:
@@ -8615,7 +8615,7 @@ def main():
         try:
             # Copy config_template.py to config.py
             shutil.copy("config_template.py", "config.py")
-            print("\n✓ Created config.py from template")
+            print("\n[PASS] Created config.py from template")
             print("\n" + "=" * 60)
             print("IMPORTANT: OpenAI API Key Required")
             print("=" * 60)

@@ -26,7 +26,7 @@ def test_readonly_connection():
         conn = _connect_readonly(missing_db)
         assert conn is None, "Should return None for missing DB"
         assert not os.path.exists(missing_db), "Should not create DB file"
-        print("  ✓ Missing DB returns None without creating file")
+        print("  [PASS] Missing DB returns None without creating file")
     
     # Test 2: Existing DB opens in read-only mode
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -37,9 +37,9 @@ def test_readonly_connection():
         # Try to write (should fail in read-only mode)
         try:
             conn.execute("INSERT INTO entities (entity_id, display_name, entity_kind) VALUES ('test', 'Test', 'character')")
-            print("  ✗ Write succeeded (should fail in read-only mode)")
+            print("  [FAIL] Write succeeded (should fail in read-only mode)")
         except sqlite3.OperationalError:
-            print("  ✓ Read-only mode enforced (write failed as expected)")
+            print("  [PASS] Read-only mode enforced (write failed as expected)")
         conn.close()
     
     print("Test 1.4 PASSED\n")
@@ -80,22 +80,22 @@ def test_bounded_candidates_and_dedup():
         # Test bounded candidate selection (request 10, should get 10)
         result = get_entity_timeline("char1", limit=10, db_path=db_path)
         assert len(result) == 10, f"Expected 10 results, got {len(result)}"
-        print(f"  ✓ Bounded candidate selection: requested 10, got {len(result)}")
+        print(f"  [PASS] Bounded candidate selection: requested 10, got {len(result)}")
         
         # Test de-duplication (no duplicate event_ids)
         event_ids = [row["event_id"] for row in result]
         assert len(event_ids) == len(set(event_ids)), "Duplicate events found!"
-        print("  ✓ De-duplication: no duplicate event IDs")
+        print("  [PASS] De-duplication: no duplicate event IDs")
         
         # Test with audit logging enabled
         result = get_entity_timeline("char1", limit=5, db_path=db_path, enable_audit=True)
         assert len(result) <= 5, f"Expected <= 5 results with limit, got {len(result)}"
-        print(f"  ✓ Audit logging: retrieved {len(result)} events with limit=5")
+        print(f"  [PASS] Audit logging: retrieved {len(result)} events with limit=5")
         
         # Test with missing DB (should return empty list, not fail)
         result = get_entity_timeline("char1", limit=5, db_path="/nonexistent/path.db")
         assert result == [], "Should return empty list for missing DB"
-        print("  ✓ Missing DB handling: returns empty list gracefully")
+        print("  [PASS] Missing DB handling: returns empty list gracefully")
     
     print("Test 1.1-1.3 PASSED\n")
 

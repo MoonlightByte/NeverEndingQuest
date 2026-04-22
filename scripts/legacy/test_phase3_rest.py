@@ -15,22 +15,22 @@ def test_rest_action_structure():
     
     # Check for ACTION_REST constant
     assert 'ACTION_REST = "rest"' in content, "ACTION_REST constant not found"
-    print("✓ ACTION_REST constant defined")
+    print("[PASS] ACTION_REST constant defined")
     
     # Check for rest action handler
     assert 'elif action_type == ACTION_REST:' in content, "Rest action handler not found"
-    print("✓ Rest action handler block present")
+    print("[PASS] Rest action handler block present")
     
     # Check for helper functions
     assert 'def _process_character_rest(' in content, "_process_character_rest function not found"
-    print("✓ _process_character_rest function defined")
+    print("[PASS] _process_character_rest function defined")
     
     assert 'def _format_rest_summary(' in content, "_format_rest_summary function not found"
-    print("✓ _format_rest_summary function defined")
+    print("[PASS] _format_rest_summary function defined")
     
     # Check for TABLETOP MODE comment
     assert '# TABLETOP MODE: Phase 3 - Rest Automation Enhancement (Option B)' in content
-    print("✓ TABLETOP MODE comment present")
+    print("[PASS] TABLETOP MODE comment present")
     
     return True
 
@@ -42,18 +42,18 @@ def test_compressed_prompt_updates():
     
     # Check for @PARTY_HANDLING section
     assert '@PARTY_HANDLING={' in content, "@PARTY_HANDLING section not found"
-    print("✓ @PARTY_HANDLING section present")
+    print("[PASS] @PARTY_HANDLING section present")
     
     # Check for key fields in PARTY_HANDLING
     assert 'composition:' in content, "composition field not found"
     assert 'scaling:' in content, "scaling field not found"
     assert 'rest_action:' in content, "rest_action field not found"
-    print("✓ PARTY_HANDLING fields present")
+    print("[PASS] PARTY_HANDLING fields present")
     
     # Check for updated @REST section
     assert '@REST={' in content, "@REST section not found"
     assert 'action:' in content, "rest action field not found"
-    print("✓ @REST section updated with action field")
+    print("[PASS] @REST section updated with action field")
     
     return True
 
@@ -63,12 +63,12 @@ def test_character_structure():
     # Check if character files exist
     chars_dir = 'characters'
     if not os.path.exists(chars_dir):
-        print("⚠ characters directory not found, skipping character structure test")
+        print("[WARNING] characters directory not found, skipping character structure test")
         return True
     
     char_files = [f for f in os.listdir(chars_dir) if f.endswith('.json') and not f.startswith('.')]
     if not char_files:
-        print("⚠ No character files found, skipping character structure test")
+        print("[WARNING] No character files found, skipping character structure test")
         return True
     
     # Check structure of first character file
@@ -78,13 +78,13 @@ def test_character_structure():
     # Verify expected fields exist
     assert 'hitPoints' in char_data or 'hit_points' in str(char_data).lower(), "HP field not found"
     assert 'maxHitPoints' in char_data or 'max_hp' in str(char_data).lower(), "Max HP field not found"
-    print(f"✓ Character file structure valid ({char_files[0]})")
+    print(f"[PASS] Character file structure valid ({char_files[0]})")
     
     # Check for spellcasting section (if present)
     if 'spellcasting' in char_data:
         spellcasting = char_data['spellcasting']
         if 'spellSlots' in spellcasting:
-            print(f"✓ Spell slots structure present")
+            print(f"[PASS] Spell slots structure present")
     
     return True
 
@@ -94,9 +94,9 @@ def test_syntax():
     result = subprocess.run(['python3', '-m', 'py_compile', 'core/ai/action_handler.py'], 
                           capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"✗ Syntax error: {result.stderr}")
+        print(f"[FAIL] Syntax error: {result.stderr}")
         return False
-    print("✓ Python syntax valid")
+    print("[PASS] Python syntax valid")
     return True
 
 def main():
@@ -120,13 +120,13 @@ def main():
         try:
             if test_func():
                 passed += 1
-                print(f"✓ {test_name} PASSED")
+                print(f"[PASS] {test_name} PASSED")
             else:
                 failed += 1
-                print(f"✗ {test_name} FAILED")
+                print(f"[FAIL] {test_name} FAILED")
         except Exception as e:
             failed += 1
-            print(f"✗ {test_name} FAILED: {e}")
+            print(f"[FAIL] {test_name} FAILED: {e}")
     
     print()
     print("=" * 60)
@@ -134,7 +134,7 @@ def main():
     print("=" * 60)
     
     if failed == 0:
-        print("\n✓ All validation tests passed!")
+        print("\n[PASS] All validation tests passed!")
         print("\nPhase 3 Implementation Summary:")
         print("- Rest action handler added to action_handler.py")
         print("- _process_character_rest() helper function implemented")
@@ -149,7 +149,7 @@ def main():
         print("5. Generate a summary message for the conversation")
         return 0
     else:
-        print(f"\n✗ {failed} test(s) failed. Please review the errors above.")
+        print(f"\n[FAIL] {failed} test(s) failed. Please review the errors above.")
         return 1
 
 if __name__ == "__main__":

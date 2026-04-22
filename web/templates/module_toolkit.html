@@ -1684,6 +1684,19 @@
             font-weight: bold;
         }
 
+        .module-sidebar-failure {
+            margin-top: 8px;
+            color: #ff6666;
+            font-size: 0.86em;
+            font-weight: bold;
+        }
+
+        .module-sidebar-handoff {
+            margin-top: 4px;
+            color: #ffb08a;
+            font-size: 0.82em;
+        }
+
         .no-modules {
             text-align: center;
             color: #888;
@@ -3158,7 +3171,7 @@
                 setTimeout(() => {
                     notification.innerHTML = `
                         <div class="notification-content success">
-                            <h4>✓ Export Complete</h4>
+                            <h4>[PASS] Export Complete</h4>
                             <p>${packName}.zip has been downloaded to your default Downloads folder</p>
                             <button onclick="this.parentElement.parentElement.remove()">OK</button>
                         </div>
@@ -4202,7 +4215,7 @@
                 const progressDiv = document.getElementById('bestiary-progress');
                 if (progressDiv) {
                     progressDiv.innerHTML = `
-                        <h4 style="color: #4CAF50; margin: 0 0 10px 0;">✓ Bestiary Updated!</h4>
+                        <h4 style="color: #4CAF50; margin: 0 0 10px 0;">[PASS] Bestiary Updated!</h4>
                         <div>${data.message}</div>
                         <button onclick="this.parentElement.remove()" style="margin-top: 10px; padding: 5px 10px; background: #444; border: none; color: white; cursor: pointer; border-radius: 3px;">Close</button>
                     `;
@@ -4241,7 +4254,7 @@
                     if (data.current === data.total) {
                         statusBox.classList.remove('error');
                         statusBox.classList.add('success');
-                        statusTitle.textContent = '✓ Process Complete';
+                        statusTitle.textContent = '[PASS] Process Complete';
                         statusMessage.textContent = `Successfully processed all ${data.total} selected NPCs.`;
                         
                         // Auto-hide the box after 5 seconds
@@ -4251,7 +4264,7 @@
                     }
                 } else { // Handle errors
                     statusBox.classList.add('error');
-                    statusTitle.textContent = '✗ An Error Occurred';
+                    statusTitle.textContent = '[FAIL] An Error Occurred';
                     statusMessage.textContent = `Failed on ${data.npc_name}: ${data.error || 'Unknown error'}`;
                     // Don't auto-hide on error, let the user close it
                 }
@@ -4335,7 +4348,7 @@
                 const progressDiv = document.getElementById('bestiary-progress');
                 if (progressDiv) {
                     progressDiv.innerHTML = `
-                        <h4 style="color: #f44336; margin: 0 0 10px 0;">✗ Update Failed</h4>
+                        <h4 style="color: #f44336; margin: 0 0 10px 0;">[FAIL] Update Failed</h4>
                         <div style="color: #ff9999;">${data.error}</div>
                         <button onclick="this.parentElement.remove()" style="margin-top: 10px; padding: 5px 10px; background: #444; border: none; color: white; cursor: pointer; border-radius: 3px;">Close</button>
                     `;
@@ -5647,7 +5660,7 @@
                 <div style="margin-bottom: 20px;">
                     <strong>NPCs to Generate:</strong> <span style="color: #4CAF50;">${npcsToGenerate.length} portrait${npcsToGenerate.length > 1 ? 's' : ''}</span>
                     <div style="max-height: 150px; overflow-y: auto; margin-top: 10px; padding: 10px; background: #1a1a1a; border-radius: 4px;">
-                        ${npcsToGenerate.map(npc => `<div style="margin: 2px 0;">• ${npc.name}</div>`).join('')}
+                        ${npcsToGenerate.map(npc => `<div style="margin: 2px 0;">- ${npc.name}</div>`).join('')}
                     </div>
                 </div>
                 <div style="text-align: center;">
@@ -6011,6 +6024,8 @@
                         <div class="module-detail-item"><span>Areas:</span><span>${module.areaCount || 'N/A'}</span></div>
                         <div class="module-detail-item"><span>Locations:</span><span>${module.locationCount || 'N/A'}</span></div>
                         <div class="module-detail-item"><span>Plot Points:</span><span>${module.plotPointCount || 'N/A'}</span></div>
+                        ${module.brief_failure ? `<div class="module-sidebar-failure">${module.brief_failure}</div>` : ''}
+                        ${module.media_generator_needed ? `<div class="module-sidebar-handoff">Needs Module Media Generator</div>` : ''}
                     </div>
                 `;
                 modulesListContainer.appendChild(moduleItem);
@@ -6059,7 +6074,7 @@
         socket.on('module_error', (data) => {
             let message = data.error || 'Unknown module build error';
             if (data.generation_succeeded && data.finishing_report) {
-                message += `\n\nGeneration completed, but finishing failed:\n${JSON.stringify(data.finishing_report, null, 2)}`;
+                message += `\n\nGeneration completed, but finishing failed:\n${buildToolkitFinishingFailureDetails(data.finishing_report)}`;
                 socket.emit('request_module_list');
             }
             showError(message);
@@ -6152,6 +6167,169 @@
             return summary;
         }
 
+        function _isObject(value) {
+            return value && typeof value === 'object' && !Array.isArray(value);
+        }
+
+        function _asStringArray(value) {
+            if (!Array.isArray(value)) {
+                return [];
+            }
+            return value
+                .map((item) => String(item || '').trim())
+                .filter((item) => item.length > 0);
+        }
+
+        function _extractPublishabilityReport(rawPayload) {
+            const payload = _isObject(rawPayload) ? rawPayload : {};
+            const payloadResult = _isObject(payload.result) ? payload.result : {};
+            const payloadStages = _isObject(payload.stages) ? payload.stages : {};
+            const resultStages = _isObject(payloadResult.stages) ? payloadResult.stages : {};
+
+            const candidateReports = [
+                payload,
+                _isObject(payload.report) ? payload.report : null,
+                _isObject(payload.publishability_report) ? payload.publishability_report : null,
+                _isObject(payload.publishability) ? payload.publishability : null,
+                _isObject(payloadStages.publishability) ? payloadStages.publishability : null,
+                _isObject(payloadStages.publishability && payloadStages.publishability.report)
+                    ? payloadStages.publishability.report
+                    : null,
+                payloadResult,
+                _isObject(payloadResult.report) ? payloadResult.report : null,
+                _isObject(payloadResult.publishability_report) ? payloadResult.publishability_report : null,
+                _isObject(payloadResult.publishability) ? payloadResult.publishability : null,
+                _isObject(resultStages.publishability) ? resultStages.publishability : null,
+                _isObject(resultStages.publishability && resultStages.publishability.report)
+                    ? resultStages.publishability.report
+                    : null,
+            ];
+
+            const isPublishabilityReport = (candidate) => {
+                if (!_isObject(candidate)) {
+                    return false;
+                }
+                return (
+                    typeof candidate.publishable_status === 'string' ||
+                    Array.isArray(candidate.remediation_categories) ||
+                    Array.isArray(candidate.blocking_findings) ||
+                    Array.isArray(candidate.blocking_errors) ||
+                    _isObject(candidate.toolkit_media_policy)
+                );
+            };
+
+            for (let index = 0; index < candidateReports.length; index += 1) {
+                const candidate = candidateReports[index];
+                if (isPublishabilityReport(candidate)) {
+                    return candidate;
+                }
+            }
+
+            return {};
+        }
+
+        function _formatFindingContext(contextValue) {
+            if (!_isObject(contextValue)) {
+                return '';
+            }
+            const keys = Object.keys(contextValue);
+            if (keys.length === 0) {
+                return '';
+            }
+            const pairs = keys.sort().map((key) => `${key}=${contextValue[key]}`);
+            return pairs.join(', ');
+        }
+
+        function formatSemanticRemediationSection(rawPayload) {
+            const report = _extractPublishabilityReport(rawPayload);
+            const categories = _asStringArray(report.remediation_categories);
+            const blockingFindings = Array.isArray(report.blocking_findings) ? report.blocking_findings : [];
+            const semanticCategories = categories.filter((category) => category.includes('semantic'));
+            const semanticFindings = blockingFindings.filter((finding) => {
+                if (!_isObject(finding)) {
+                    return false;
+                }
+                const blockerClass = String(
+                    finding.blocker_class || finding.blockerClass || finding.class || ''
+                ).toLowerCase();
+                if (blockerClass.includes('semantic') || blockerClass.includes('destination') || blockerClass.includes('npc_scene')) {
+                    return true;
+                }
+                return false;
+            });
+            const hasStructuredFindings = semanticFindings.length > 0;
+            const fallbackBlockingErrors = hasStructuredFindings
+                ? []
+                : _asStringArray(report.blocking_errors).filter((item) => item.toLowerCase().includes('semantic') || item.toLowerCase().includes('destination'));
+
+            if (semanticCategories.length === 0 && !hasStructuredFindings && fallbackBlockingErrors.length === 0) {
+                return '';
+            }
+
+            const lines = [];
+            lines.push('Semantic Remediation:');
+            if (semanticCategories.length > 0) {
+                lines.push(`- Categories: ${semanticCategories.join(', ')}`);
+            }
+
+            if (hasStructuredFindings) {
+                lines.push('- Blocking Findings:');
+                semanticFindings.forEach((finding) => {
+                    const blockerClass = String(
+                        finding.blocker_class || finding.blockerClass || finding.class || 'semantic_blocker'
+                    );
+                    const message = String(finding.message || finding.detail || 'Semantic blocker reported');
+                    lines.push(`  * [${blockerClass}] ${message}`);
+                    const contextText = _formatFindingContext(finding.context);
+                    if (contextText) {
+                        lines.push(`    context: ${contextText}`);
+                    }
+                });
+            } else if (fallbackBlockingErrors.length > 0) {
+                lines.push('- Blocking Errors (fallback):');
+                fallbackBlockingErrors.forEach((item) => {
+                    lines.push(`  * ${item}`);
+                });
+            }
+
+            return lines.join('\n');
+        }
+
+        function formatMediaRemediationSection(rawPayload, hydrationSummary) {
+            const report = _extractPublishabilityReport(rawPayload);
+            const categories = _asStringArray(report.remediation_categories);
+            const mediaCategories = categories.filter((category) => category.includes('media'));
+            const mediaPolicy = _isObject(report.toolkit_media_policy) ? report.toolkit_media_policy : {};
+            const debtCount = Number(mediaPolicy.structural_media_debt_count || 0);
+            const debtSlugs = Array.isArray(mediaPolicy.structural_media_debt_slugs)
+                ? mediaPolicy.structural_media_debt_slugs
+                : [];
+            const hydrationBlockedCount = Number((hydrationSummary || {}).blocked_count || 0);
+
+            if (
+                mediaCategories.length === 0 &&
+                debtCount <= 0 &&
+                debtSlugs.length === 0 &&
+                hydrationBlockedCount <= 0
+            ) {
+                return '';
+            }
+
+            const lines = [];
+            lines.push('Media Remediation:');
+            if (mediaCategories.length > 0) {
+                lines.push(`- Categories: ${mediaCategories.join(', ')}`);
+            }
+            if (debtCount > 0) {
+                lines.push(`- Structural Media Debt Count: ${debtCount}`);
+            }
+            if (debtSlugs.length > 0) {
+                lines.push(`- Structural Media Debt Slugs: ${debtSlugs.join(', ')}`);
+            }
+
+            return lines.join('\n');
+        }
+
         function formatHomebrewHydrationSummary(payload, job) {
             const summary = resolveHomebrewHydrationSummary(payload, job);
             const hasSummary =
@@ -6220,12 +6398,27 @@
         }
 
         function buildHomebrewHydrationAwareDetails(payload, job, rawPayload) {
+            const summary = resolveHomebrewHydrationSummary(payload, job);
             const hydrationSummaryText = formatHomebrewHydrationSummary(payload, job);
+            const semanticRemediationText = formatSemanticRemediationSection(rawPayload);
+            const mediaRemediationText = formatMediaRemediationSection(rawPayload, summary);
             const rawJson = JSON.stringify(rawPayload, null, 2);
-            if (!hydrationSummaryText) {
-                return rawJson;
+            const sections = [];
+            if (semanticRemediationText) {
+                sections.push(semanticRemediationText);
             }
-            return `${hydrationSummaryText}\n\nRaw Payload:\n${rawJson}`;
+            if (mediaRemediationText) {
+                sections.push(mediaRemediationText);
+            }
+            if (hydrationSummaryText) {
+                sections.push(hydrationSummaryText);
+            }
+            sections.push(`Raw Payload:\n${rawJson}`);
+            return sections.join('\n\n');
+        }
+
+        function buildToolkitFinishingFailureDetails(finishingReport) {
+            return buildHomebrewHydrationAwareDetails({}, {}, finishingReport || {});
         }
 
         function setHomebrewReviewPanelVisible(isVisible) {
@@ -7277,7 +7470,7 @@
                 row.dataset.assetType = asset.type;
                 
                 const getStatusIcon = (hasItem, clickable = false, mediaType = '') => {
-                    const icon = hasItem ? '✓' : '✗';
+                    const icon = hasItem ? '[PASS]' : '[FAIL]';
                     const statusClass = hasItem ? 'success' : 'missing';
                     const clickHandler = clickable && hasItem ? 
                         `onclick="viewAssetMedia('${asset.id}', '${asset.type}', '${asset.name}', '${mediaType}')" style="cursor: pointer;"` : '';
@@ -7464,9 +7657,9 @@
                         <strong>Assets to Generate:</strong>
                     </div>
                     <div style="margin-left: 20px;">
-                        <div>• NPCs: <span style="color: #4CAF50;">${npcCount}</span></div>
-                        <div>• Monsters: <span style="color: #4CAF50;">${monsterCount}</span></div>
-                        <div>• Total: <span style="color: #ff9800;">${assetsToGenerate.length}</span></div>
+                        <div>- NPCs: <span style="color: #4CAF50;">${npcCount}</span></div>
+                        <div>- Monsters: <span style="color: #4CAF50;">${monsterCount}</span></div>
+                        <div>- Total: <span style="color: #ff9800;">${assetsToGenerate.length}</span></div>
                     </div>
                 </div>
                 
@@ -7483,9 +7676,9 @@
                         <strong>Generation Options:</strong>
                     </div>
                     <div style="margin-left: 20px;">
-                        <div>• Generate Descriptions: <span style="color: ${generateDescriptions ? '#4CAF50' : '#ff5252'}">${generateDescriptions ? 'Yes' : 'No'}</span></div>
-                        <div>• Generate Images: <span style="color: ${generateImages ? '#4CAF50' : '#ff5252'}">${generateImages ? 'Yes' : 'No'}</span></div>
-                        <div>• Overwrite Existing: <span style="color: ${overwrite ? '#ff9800' : '#4CAF50'}">${overwrite ? 'Yes (⚠️ Will Replace)' : 'No (Skip Existing)'}</span></div>
+                        <div>- Generate Descriptions: <span style="color: ${generateDescriptions ? '#4CAF50' : '#ff5252'}">${generateDescriptions ? 'Yes' : 'No'}</span></div>
+                        <div>- Generate Images: <span style="color: ${generateImages ? '#4CAF50' : '#ff5252'}">${generateImages ? 'Yes' : 'No'}</span></div>
+                        <div>- Overwrite Existing: <span style="color: ${overwrite ? '#ff9800' : '#4CAF50'}">${overwrite ? 'Yes ([WARNING] Will Replace)' : 'No (Skip Existing)'}</span></div>
                     </div>
                 </div>
                 

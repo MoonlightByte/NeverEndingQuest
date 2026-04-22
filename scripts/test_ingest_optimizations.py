@@ -36,7 +36,7 @@ def test_timestamp_precedence():
     assert len(result) > 0, "Should return a valid ISO timestamp"
     assert "T" in result, "Should be ISO format"
     
-    print("  ✓ Timestamp precedence working correctly")
+    print("  [PASS] Timestamp precedence working correctly")
     print("Test 2.3 PASSED\n")
 
 def test_shared_connection():
@@ -68,7 +68,7 @@ def test_shared_connection():
         assert count == 5, f"Expected 5 entries, got {count}"
         
         conn.close()
-        print("  ✓ Shared connection reused successfully")
+        print("  [PASS] Shared connection reused successfully")
     
     print("Test 2.1 PASSED\n")
 
@@ -101,7 +101,7 @@ def test_batched_transactions():
         conn.close()
         
         assert count == 20, f"Expected 20 entries in DB, got {count}"
-        print("  ✓ Batched transactions working (20 entries in batches of 5)")
+        print("  [PASS] Batched transactions working (20 entries in batches of 5)")
     
     print("Test 2.2 PASSED\n")
 
@@ -126,7 +126,7 @@ def test_malformed_entry_tolerance():
         assert result["errors"] >= 1, "Should have at least 1 error"
         assert result["ingested"] >= 2, "Should have at least 2 successful"
         
-        print("  ✓ Malformed entries tolerated, batch continued")
+        print("  [PASS] Malformed entries tolerated, batch continued")
     
     print("Test PASSED\n")
 
@@ -169,7 +169,7 @@ def test_backfill_batch_integration():
         assert result["sources_ingested"]["journal"] == 10, "Should ingest 10 journal entries"
         assert result["events_created"] == 10, "Should create 10 events"
         
-        print(f"  ✓ Backfill with batch_size=3: {result['events_created']} events created")
+        print(f"  [PASS] Backfill with batch_size=3: {result['events_created']} events created")
     
     print("Test 2.4 PASSED\n")
 

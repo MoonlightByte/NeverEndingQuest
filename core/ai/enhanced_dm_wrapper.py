@@ -89,7 +89,7 @@ def get_scenario_commands(scenario_type):
         'puzzle': [
             "I examine the dwarven runes on the door carefully, looking for clues about how to solve the puzzle.",
             "I'd like to solve the puzzle. I rotate the rings to align the runes based on the clues we've found during our journey.",
-            "I say the dwarven phrase 'Khazad-dûm' aloud to deactivate the stone guardian.",
+            "I say the dwarven phrase 'Khazad-dum' aloud to deactivate the stone guardian.",
             "Let's proceed through the doorway into the Dwarven Complex."
         ],
         'combat': [

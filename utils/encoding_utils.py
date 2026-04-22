@@ -63,12 +63,12 @@ CHARACTER_REPLACEMENTS = {
     '\u21D0': '<=',  # Left double arrow
     
     # Common corrupted sequences (these appear when UTF-8 is misinterpreted)
-    'â€™': "'",      # Corrupted apostrophe
-    'â€œ': '"',      # Corrupted left quote
-    'â€': '"',       # Corrupted right quote
-    'â€"': '--',     # Corrupted em dash
-    'â€"': '-',      # Corrupted en dash
-    'â€¦': '...',    # Corrupted ellipsis
+    '\u00e2\u20ac\u2122': "'",      # Corrupted apostrophe
+    '\u00e2\u20ac\u0153': '"',      # Corrupted left quote
+    '\u00e2\u20ac': '"',       # Corrupted right quote
+    '\u00e2\u20ac\u201d': '--',     # Corrupted em dash
+    '\u00e2\u20ac\u201c': '-',      # Corrupted en dash
+    '\u00e2\u20ac\u00a6': '...',    # Corrupted ellipsis
     
     # Additional Windows-1252 characters
     '\u0080': '',    # Euro symbol (remove)
@@ -178,9 +178,9 @@ def fix_corrupted_location_name(name: str) -> str:
     # Common corruption patterns in location names
     corruption_fixes = {
         "Harrow\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u201e\u00a2s Hollow": "Harrow's Hollow",
-        "Harrowâ€™s Hollow": "Harrow's Hollow",
+        "Harrow\u00e2\u20ac\u2122s Hollow": "Harrow's Hollow",
         "Grimm\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u201e\u00a2s": "Grimm's",
-        "Grimmâ€™s": "Grimm's",
+        "Grimm\u00e2\u20ac\u2122s": "Grimm's",
     }
     
     # Check for known corruptions first

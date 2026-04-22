@@ -39,11 +39,11 @@ set_script_name(__name__)
 # 
 # FILE ORGANIZATION STRATEGY:
 # modules/[module_name]/
-# ├── areas/              # Location files (HH001.json, G001.json)
-# ├── characters/         # Unified player/NPC storage
-# ├── monsters/           # Module-specific creatures
-# ├── encounters/         # Combat encounters
-# └── meta files...       # Module plot, party tracker, etc.
+# |--- areas/              # Location files (HH001.json, G001.json)
+# |--- characters/         # Unified player/NPC storage
+# |--- monsters/           # Module-specific creatures
+# |--- encounters/         # Combat encounters
+# `--- meta files...       # Module plot, party tracker, etc.
 # 
 # ARCHITECTURAL INTEGRATION:
 # - Used by all file operations throughout the system

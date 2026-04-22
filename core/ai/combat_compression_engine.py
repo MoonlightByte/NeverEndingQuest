@@ -29,10 +29,10 @@ except:
 
 # Fully agentic combat compression prompt with self-contained @ROSTER for reversibility
 COMBAT_COMPRESSION_PROMPT = """You are a 5th edition of the world's most popular roleplaying game combat data compressor. Transform a verbose combat block into compact @TAGS for LLM context.
-Do ALL parsing yourself. Do NOT output code fences or commentary—ONLY the tags.
+Do ALL parsing yourself. Do NOT output code fences or commentary-ONLY the tags.
 
 INPUT
-A single combat message containing: round info, initiative tracker, "PROCESS … THEN STOP AT …" lines,
+A single combat message containing: round info, initiative tracker, "PROCESS ... THEN STOP AT ..." lines,
 name hints, creature states (HP/slots), dice pools (generic, attacks, saves), rules, and a player action.
 
 OUTPUT
@@ -43,12 +43,12 @@ REQUIRED TAGS (each exactly once; if a datum is absent in source, omit its tag e
 - @T=CS/v2
 - @ROUND=<integer>
 - @PLAYER=<exact player name from source>                     # keep spaces and punctuation as-is, but drop "(player)" suffix
-- @PROCESS=[<id:initiative>, ...]                             # creatures to process NOW (from >>> PROCESS …), in that order
-                                                             # Format entries as id:initiative (e.g., G3:18) — do NOT use parentheses
+- @PROCESS=[<id:initiative>, ...]                             # creatures to process NOW (from >>> PROCESS ...), in that order
+                                                             # Format entries as id:initiative (e.g., G3:18) - do NOT use parentheses
 - @STOP=<same exact value as @PLAYER>                         # MUST equal @PLAYER; if source gives a stop name, use that exact name
 - @STATUS=acted[...],dead[...],after_player[...],waiting[...] # from tracker; any group may be empty; 'waiting' preserves initiative order
 - @ROSTER=[id:role:type:canonical, ...]                       # MUST include every actor referenced anywhere
-                                                             # role ∈ {player, ally, enemy, neutral}
+                                                             # role in {player, ally, enemy, neutral}
                                                              # type = monster species or class/archetype (e.g., Skeleton, Ranger, Scout, PC, unknown)
                                                              # canonical = exact name as it appears in source (spaces allowed)
 - @HP=[<id:cur/max>, ...]                                     # include ALL living creatures from the tracker (not just @PROCESS) + the player
@@ -60,15 +60,15 @@ REQUIRED TAGS (each exactly once; if a datum is absent in source, omit its tag e
 - @ACTION=<player action text verbatim>                       # do not paraphrase; keep punctuation
 
 OPTIONAL TAGS
-- @BRIEF=<≤25 words of flavor>                                # omit first if tokens are tight
+- @BRIEF=<<=25 words of flavor>                                # omit first if tokens are tight
 - @SAVES=[id:STR:#,DEX:#,CON:#,INT:#,WIS:#,CHA:#; ...]        # include only if likely needed THIS segment
 
 NAME & ID RULES
 - Player name: drop "(player)" suffix everywhere except optionally in @ROSTER canonical field
 - Create short, unique IDs for compactness; reuse the same ID everywhere:
-  - Numbered enemies: Zombie_3 → Z3, Bandit_2 → B2, Goblin_5 → G5
-  - The base dead creature (no number) → id=Zom (for Zombie), Ban (for Bandit), Gob (for Goblin)
-  - Normalize ally IDs to their given names: "Wizard Aldric" → id=Aldric, "Fighter Lyra" → id=Lyra
+  - Numbered enemies: Zombie_3 -> Z3, Bandit_2 -> B2, Goblin_5 -> G5
+  - The base dead creature (no number) -> id=Zom (for Zombie), Ban (for Bandit), Gob (for Goblin)
+  - Normalize ally IDs to their given names: "Wizard Aldric" -> id=Aldric, "Fighter Lyra" -> id=Lyra
   - CRITICAL: Extract the actual name after the title. Do not modify or abbreviate the name portion
   - Never create variations - if the source says "Scout [Name]", use exactly "[Name]" as the ID
   - Player character: use their full name as ID (without "(player)" suffix)
@@ -76,10 +76,10 @@ NAME & ID RULES
 - Every ID that appears in @PROCESS, @STATUS, @HP, @ATK, or @SAVES MUST appear exactly once in @ROSTER
 
 DICE RULES
-- Include only dice types actually relevant to THIS segment (e.g., skeleton shortbow/shortsword → d6; longbow → d8).
+- Include only dice types actually relevant to THIS segment (e.g., skeleton shortbow/shortsword -> d6; longbow -> d8).
 - Do NOT include d4/d10/d12/d20 unless this segment clearly requires them now (e.g., a spell/effect that will be used).
-- Provide enough values per die (≈5–6) for multi-hit turns.
-- All values must be within the proper face range (e.g., d6 ∈ 1..6).
+- Provide enough values per die (~=5-6) for multi-hit turns.
+- All values must be within the proper face range (e.g., d6 in 1..6).
 
 STOP LOGIC
 - If the source includes ">>> THEN STOP AT: <name>", set @STOP to that exact name.

@@ -2110,15 +2110,15 @@ You must:
 
 ### AMMUNITION CONTAINER STANDARDIZATION:
 **ALWAYS standardize container names:**
-- "full quiver", "empty quiver", "quiver full of arrows" → "Quiver"
-- "full bolt case", "empty bolt case", "case of bolts" → "Bolt case"
+- "full quiver", "empty quiver", "quiver full of arrows" -> "Quiver"
+- "full bolt case", "empty bolt case", "case of bolts" -> "Bolt case"
 
 **If container is described as "full" or contains ammo:**
 - Rename to standard name ("Quiver" or "Bolt case")
 - Add appropriate ammunition to ammunition section:
-  - "full quiver" → Add 20 arrows to ammunition
-  - "quiver with 30 arrows" → Add 30 arrows to ammunition
-  - "full bolt case" → Add 20 crossbow bolts to ammunition
+  - "full quiver" -> Add 20 arrows to ammunition
+  - "quiver with 30 arrows" -> Add 30 arrows to ammunition
+  - "full bolt case" -> Add 20 crossbow bolts to ammunition
   
 **If container is "empty" or just a container:**
 - Rename to standard name but don't add ammunition
@@ -2233,7 +2233,7 @@ Item #{i+1}:
 Identify loose currency items AND ammunition that should be consolidated. Remember:
 - Consolidate loose coins and emptied bags into currency
 - Move ammunition items (arrows, bolts) to the ammunition section
-- Standardize container names (e.g., "full quiver" → "Quiver")
+- Standardize container names (e.g., "full quiver" -> "Quiver")
 - If a container is "full", add ammo and rename container
 - Preserve gems, containers, and valuables
 - Calculate new totals after consolidation

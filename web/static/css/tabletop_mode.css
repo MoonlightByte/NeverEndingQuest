@@ -204,7 +204,7 @@
 }
 
 .pc-queue-btn.status-ready::before {
-    content: '⚔';
+    content: '[COMBAT]';
     position: absolute;
     top: 2px;
     right: 4px;
@@ -218,7 +218,7 @@
 }
 
 .pc-queue-btn.status-acted::before {
-    content: '✓';
+    content: '[PASS]';
     position: absolute;
     top: 2px;
     right: 4px;
@@ -233,7 +233,7 @@
 }
 
 .pc-queue-btn.status-incapacitated::before {
-    content: '💀';
+    content: '[DEAD]';
     position: absolute;
     top: 2px;
     right: 4px;
@@ -248,7 +248,7 @@
 }
 
 .pc-queue-btn.status-dead::before {
-    content: '☠';
+    content: '[DEAD]';
     position: absolute;
     top: 2px;
     right: 4px;
@@ -263,7 +263,7 @@
 }
 
 .pc-queue-btn.status-stable::before {
-    content: '💤';
+    content: '[SLEEP]';
     position: absolute;
     top: 2px;
     right: 4px;

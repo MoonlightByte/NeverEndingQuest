@@ -408,12 +408,12 @@ def present_module_options(conversation, modules):
 Start with: "Welcome to NeverEndingQuest! This adventure game uses the SRD 5.2.1 rules (based on the world's most popular 5th edition roleplaying game) to bring you an immersive text-based fantasy experience."
 
 Then mention these key features:
-• AI-powered storytelling that adapts to your choices
-• Turn-based tactical combat with dice rolling
-• Character progression from level 1 to 20
-• Inventory management and magical items
-• Multiple adventure modules with interconnected stories
-• Save/load system to continue your adventures
+- AI-powered storytelling that adapts to your choices
+- Turn-based tactical combat with dice rolling
+- Character progression from level 1 to 20
+- Inventory management and magical items
+- Multiple adventure modules with interconnected stories
+- Save/load system to continue your adventures
 
 Available Modules:
 {modules_text}

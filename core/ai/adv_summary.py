@@ -414,7 +414,7 @@ def generate_adventure_summary(conversation_history_data, party_tracker_data, le
     messages = [
         {
             "role": "system",
-            "content": f"""You are a chronicler documenting the key events of a 5th Edition roleplaying game as a historical account. Generate a single, richly detailed narrative paragraph that describes all factual events that occurred during this visit to '{leaving_location_name}'. This is a retrospective summary, like a journal or chronicle—focused entirely on what actually happened during this specific visit, in clear chronological order.
+            "content": f"""You are a chronicler documenting the key events of a 5th Edition roleplaying game as a historical account. Generate a single, richly detailed narrative paragraph that describes all factual events that occurred during this visit to '{leaving_location_name}'. This is a retrospective summary, like a journal or chronicle-focused entirely on what actually happened during this specific visit, in clear chronological order.
 
 Even if the visit was brief or just a pass-through, describe it from a narrative perspective. Note the atmosphere, any changes the party might have noticed since their last visit (if applicable), or their apparent purpose for moving through the area. The goal is to create a complete historical record for every time the party was present in this location.
 
@@ -428,17 +428,17 @@ The summary must be written in third person and past tense, and should read like
 - Any interpersonal developments (e.g., flirtation, bonding, solemn moments).
 - The party's apparent purpose or destination if they're passing through.
 
-You may include brief direct quotes only when they are notable turning points, emotionally charged, or central to the scene's meaning—such as symbolic phrases like 'playing house' or promises made. Keep these minimal and impactful.
+You may include brief direct quotes only when they are notable turning points, emotionally charged, or central to the scene's meaning-such as symbolic phrases like 'playing house' or promises made. Keep these minimal and impactful.
 
 Do NOT:
 - Include events from previous or future locations.
-- Speculate about the future or characters’ intentions.
+- Speculate about the future or characters' intentions.
 - Use first-person narration or dialogue-heavy exchanges.
 - Use bullet points, headings, or formatting.
 - Include any JSON, schemas, or DM notes.
 - Editorialize or guess what characters were thinking beyond observable behavior.
 
-Your writing should feel immersive, literary, and grounded—like a historical entry capturing a poignant moment in time."""
+Your writing should feel immersive, literary, and grounded-like a historical entry capturing a poignant moment in time."""
         },
         {"role": "user", "content": "Summarize this conversation per instructions:"},
         *conversation_history_data

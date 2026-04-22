@@ -349,7 +349,7 @@ def conglomerate_active_history(messages: List[Dict[str, Any]], cfg: Dict[str, A
                                             "parameters": compress_params(params, CC)
                                         })
                     else:
-                        # Plain-text assistant content — keep as outcome
+                        # Plain-text assistant content - keep as outcome
                         txt = nxt.get("content", "").strip()
                         if txt:
                             outcomes.append({"turn": len(user_turns), "text": txt})
@@ -409,7 +409,7 @@ def conglomerate_active_history(messages: List[Dict[str, Any]], cfg: Dict[str, A
         i += 1
 
     if not inserted:
-        # Edge: nothing to replace — do nothing.
+        # Edge: nothing to replace - do nothing.
         return messages
 
     # 6) Return with the active slice replaced

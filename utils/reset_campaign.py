@@ -193,7 +193,7 @@ def reset_module(module_name):
         original_file = bu_file.replace("_BU.json", ".json")
         if os.path.exists(bu_file):
             shutil.copy2(bu_file, original_file)
-            print(f"  ✓ Restored {os.path.relpath(original_file, module_path)}")
+            print(f"  [PASS] Restored {os.path.relpath(original_file, module_path)}")
     
     # Clear characters directory completely
     chars_dir = os.path.join(module_path, "characters")
@@ -203,7 +203,7 @@ def reset_module(module_name):
             file_path = os.path.join(chars_dir, file)
             if os.path.isfile(file_path):
                 os.remove(file_path)
-        print(f"  ✓ Characters directory cleared")
+        print(f"  [PASS] Characters directory cleared")
     
     # Remove legacy area files from main folder (Keep_of_Doom migration cleanup)
     if module_name == "Keep_of_Doom":
@@ -213,7 +213,7 @@ def reset_module(module_name):
             legacy_file = os.path.join(module_path, f"{area_id}.json")
             if os.path.exists(legacy_file):
                 os.remove(legacy_file)
-                print(f"  ✓ Removed legacy {area_id}.json from main folder")
+                print(f"  [PASS] Removed legacy {area_id}.json from main folder")
     
     # Clear any validation reports
     validation_report = os.path.join(module_path, "validation_report.json")
@@ -249,7 +249,7 @@ def reset_global_state():
     world_registry_file = os.path.join("modules", "world_registry.json")
     if os.path.exists(world_registry_file):
         os.remove(world_registry_file)
-        print("  ✓ Removed world_registry.json (will be created fresh)")
+        print("  [PASS] Removed world_registry.json (will be created fresh)")
     
     # Delete effects_tracker.json files
     effects_tracker_files = ["modules/effects_tracker.json", "modules/default/effects_tracker.json"]
@@ -274,7 +274,7 @@ def reset_global_state():
     
     with open("current_location.json", 'w', encoding='utf-8') as f:
         json.dump(starting_location, f, indent=2, ensure_ascii=False)
-    print("  ✓ Reset current_location.json to starting point (HH001 A01)")
+    print("  [PASS] Reset current_location.json to starting point (HH001 A01)")
     
     # Create empty journal
     journal_data = {
@@ -283,12 +283,12 @@ def reset_global_state():
     }
     with open("journal.json", 'w', encoding='utf-8') as f:
         json.dump(journal_data, f, indent=2, ensure_ascii=False)
-    print("  ✓ Created empty journal.json")
+    print("  [PASS] Created empty journal.json")
     
     # Delete world_registry.json - will be recreated
     if os.path.exists("world_registry.json"):
         os.remove("world_registry.json")
-        print("  ✓ Removed world_registry.json (will be created fresh)")
+        print("  [PASS] Removed world_registry.json (will be created fresh)")
 
 def clear_all_files():
     """Phase 4: Delete all generated files"""
@@ -306,11 +306,11 @@ def clear_all_files():
         if os.path.exists(file):
             try:
                 os.remove(file)
-                print(f"  ✓ Deleted {file}")
+                print(f"  [PASS] Deleted {file}")
             except PermissionError:
-                print(f"  ⊘ Skipped {file} (file in use)")
+                print(f"  [SKIP] Skipped {file} (file in use)")
             except Exception as e:
-                print(f"  ⊘ Could not delete {file}: {e}")
+                print(f"  [SKIP] Could not delete {file}: {e}")
     
     # Debug and log files
     debug_files = [
@@ -328,38 +328,38 @@ def clear_all_files():
         if os.path.exists(file):
             try:
                 os.remove(file)
-                print(f"  ✓ Deleted {file}")
+                print(f"  [PASS] Deleted {file}")
             except PermissionError:
-                print(f"  ⊘ Skipped {file} (file in use)")
+                print(f"  [SKIP] Skipped {file} (file in use)")
             except Exception as e:
-                print(f"  ⊘ Could not delete {file}: {e}")
+                print(f"  [SKIP] Could not delete {file}: {e}")
     
     # Clear combat logs directory
     if os.path.exists("combat_logs"):
         shutil.rmtree("combat_logs")
-        print("  ✓ Cleared combat_logs directory")
+        print("  [PASS] Cleared combat_logs directory")
 
     # Clear companion memories
     if os.path.exists("data/companion_memories"):
         shutil.rmtree("data/companion_memories")
         os.makedirs("data/companion_memories")
-        print("  ✓ Cleared companion memories")
+        print("  [PASS] Cleared companion memories")
 
     if os.path.exists("data/companion_memories_compressed"):
         shutil.rmtree("data/companion_memories_compressed")
         os.makedirs("data/companion_memories_compressed")
-        print("  ✓ Cleared compressed companion memories")
+        print("  [PASS] Cleared compressed companion memories")
 
     # Clear campaign archives and summaries
     if os.path.exists("modules/campaign_archives"):
         shutil.rmtree("modules/campaign_archives")
         os.makedirs("modules/campaign_archives")
-        print("  ✓ Cleared campaign_archives")
+        print("  [PASS] Cleared campaign_archives")
     
     if os.path.exists("modules/campaign_summaries"):
         shutil.rmtree("modules/campaign_summaries")
         os.makedirs("modules/campaign_summaries")
-        print("  ✓ Cleared campaign_summaries")
+        print("  [PASS] Cleared campaign_summaries")
 
 def perform_reset_logic():
     """The core logic of the reset, without prompts or top-level error handling."""
@@ -400,10 +400,10 @@ def main():
         print(f"\n{GREEN}{'='*60}")
         print("CAMPAIGN RESET COMPLETE!")
         print(f"{'='*60}{RESET}")
-        print(f"\n{GREEN}✓ Current state backed up to: {backup_dir}")
-        print(f"✓ All modules restored from clean backups")
-        print(f"✓ All characters and game state cleared")
-        print(f"✓ Ready for virgin campaign testing!{RESET}")
+        print(f"\n{GREEN}[PASS] Current state backed up to: {backup_dir}")
+        print(f"[PASS] All modules restored from clean backups")
+        print(f"[PASS] All characters and game state cleared")
+        print(f"[PASS] Ready for virgin campaign testing!{RESET}")
         print(f"\n{YELLOW}Next steps:")
         print("1. Run the game to test party tracker creation")
         print("2. Create a new character to test character generation")

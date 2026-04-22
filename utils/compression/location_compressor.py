@@ -73,9 +73,9 @@ Table Schema and Tokenization Rules:
 @NPCROLES={id:role,...}       # REQUIRED: Map NPC IDs to roles (3:elder, 4:captain, 5:proprietor, etc.)
 
 Tokenization:
-• Slugify: lowercase → replace non-alphanumerics with "_" → trim "_" → collapse repeats
-• Examples: "Bone Wind-Chimes" → "bone_wind_chimes", "Silver Tankard (10gp)" → "silver_tankard_10gp"
-• Keep entries terse: 1–3 tokens where possible
+- Slugify: lowercase -> replace non-alphanumerics with "_" -> trim "_" -> collapse repeats
+- Examples: "Bone Wind-Chimes" -> "bone_wind_chimes", "Silver Tankard (10gp)" -> "silver_tankard_10gp"
+- Keep entries terse: 1-3 tokens where possible
 
 Self-check before final output:
 - Are ALL NPCs from npcs[] present in @C with CANONICAL names (no role prefixes)?
@@ -98,12 +98,12 @@ Self-check before final output:
 If ANY of these are missing, REPAIR and re-emit before returning.
 
 Beats (EVT) format:
-• Number each beat: 1) 2) 3) etc.
-• Format: "n) <marker> <action> with:<ids>. [Optional short description.]"
-• Markers: @L1 (at location), ->L2 (move to), <-L1 (return from)
-• Actions: meet, rest, prep, tension, bond, trade, cast
-• Include at least one social beat and one readiness/tension beat
-• End every beat with a period
+- Number each beat: 1) 2) 3) etc.
+- Format: "n) <marker> <action> with:<ids>. [Optional short description.]"
+- Markers: @L1 (at location), ->L2 (move to), <-L1 (return from)
+- Actions: meet, rest, prep, tension, bond, trade, cast
+- Include at least one social beat and one readiness/tension beat
+- End every beat with a period
 """
 
 def compress_location(location_json_str: str, max_retries: int = 2) -> Optional[str]:
