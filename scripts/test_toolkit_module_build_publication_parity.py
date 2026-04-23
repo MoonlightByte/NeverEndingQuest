@@ -79,6 +79,22 @@ class TestToolkitModuleFinisher(unittest.TestCase):
         self.assertIn("publication_parity_note", report_payload)
         self.assertEqual(report_payload.get("ready_status"), "pass")
         self.assertEqual(report_payload.get("publishable_status"), "pass")
+        self.assertEqual(report_payload.get("freshness_state"), "current")
+        freshness = report_payload.get("report_freshness") or {}
+        self.assertEqual(freshness.get("state"), "current")
+        self.assertEqual(
+            freshness.get("contract"),
+            "toolkit_build_report_refresh_contract.v1",
+        )
+        provenance = report_payload.get("provenance") or {}
+        self.assertEqual(
+            provenance.get("refresh_contract"),
+            "toolkit_build_report_refresh_contract.v1",
+        )
+        self.assertEqual(
+            provenance.get("refresh_workflow"), "toolkit_postbuild_finisher"
+        )
+        self.assertEqual(provenance.get("refresh_reason"), "postbuild_finishing")
 
     def test_finisher_degraded_maps_status(self) -> None:
         finisher._run_continuity_stage = lambda *args, **kwargs: {"status": "success"}
@@ -97,6 +113,11 @@ class TestToolkitModuleFinisher(unittest.TestCase):
             self.module_slug, strict=True
         )
         self.assertEqual(result.get("status"), "degraded")
+        self.assertEqual(result.get("freshness_state"), "degraded")
+        self.assertEqual(
+            (result.get("report_freshness") or {}).get("state"),
+            "degraded",
+        )
 
     def test_finisher_failed_registry_maps_failed(self) -> None:
         finisher._run_continuity_stage = lambda *args, **kwargs: {"status": "success"}
@@ -222,6 +243,69 @@ class TestToolkitModuleFinisher(unittest.TestCase):
         self.assertTrue(
             pub_called_after_pre_write,
             "toolkit_build_report.json must be written before publishability stage",
+        )
+
+    def test_pre_publishability_write_is_stale_then_final_write_is_current(self) -> None:
+        """Report writes must progress stale -> current in one finisher run."""
+        captured_reports = []
+        original_safe_write = finisher.safe_write_json
+
+        def _tracking_safe_write(path: str, data, **kwargs):
+            if Path(path).name == "toolkit_build_report.json":
+                captured_reports.append(json.loads(json.dumps(data)))
+            return original_safe_write(path, data, **kwargs)
+
+        finisher._run_continuity_stage = lambda *args, **kwargs: {"status": "success"}
+        finisher._run_registry_stage = lambda *args, **kwargs: {"status": "success"}
+        finisher._run_monster_materialization_stage = lambda *args, **kwargs: {
+            "status": "success"
+        }
+        finisher._run_publishability_stage = lambda *args, **kwargs: {
+            "status": "success",
+            "ready_status": "pass",
+            "publishable_status": "pass",
+        }
+
+        with patch.object(finisher, "safe_write_json", _tracking_safe_write):
+            result = finisher.run_toolkit_module_postbuild_finishing(
+                self.module_slug, strict=True
+            )
+
+        self.assertEqual(result.get("status"), "success")
+        self.assertGreaterEqual(len(captured_reports), 2)
+
+        pre_publishability = captured_reports[0]
+        final_report = captured_reports[-1]
+
+        self.assertEqual(pre_publishability.get("freshness_state"), "stale")
+        self.assertEqual(
+            (pre_publishability.get("report_freshness") or {}).get("state"), "stale"
+        )
+        self.assertEqual(
+            (pre_publishability.get("report_freshness") or {}).get("stale_reason"),
+            "publishability_pending",
+        )
+        self.assertEqual(final_report.get("freshness_state"), "current")
+        self.assertEqual((final_report.get("report_freshness") or {}).get("state"), "current")
+
+    def test_refresh_helper_routes_shared_refresh_workflow(self) -> None:
+        """Explicit refresh helper must use toolkit_report_refresh workflow."""
+        with patch.object(
+            finisher,
+            "run_toolkit_module_postbuild_finishing",
+            return_value={"status": "success"},
+        ) as mocked_runner:
+            finisher.refresh_toolkit_build_report(
+                self.module_slug,
+                strict=True,
+                refresh_reason="toolkit_homebrew_route_finisher",
+            )
+
+        mocked_runner.assert_called_once_with(
+            module_slug=self.module_slug,
+            strict=True,
+            refresh_reason="toolkit_homebrew_route_finisher",
+            refresh_workflow="toolkit_report_refresh",
         )
 
     def test_finisher_media_only_debt_yields_success_with_handoff(self) -> None:
@@ -390,11 +474,21 @@ class TestToolkitPublicationParitySourceContracts(unittest.TestCase):
         )
 
         self.assertIn("run_toolkit_module_postbuild_finishing", source)
+        self.assertIn("refresh_toolkit_build_report", routes_source)
         self.assertIn("stage_name': 'Post Build Finishing'", source)
         self.assertIn("generation_succeeded", source)
         self.assertIn("publication_parity_note", source)
         self.assertIn("_build_hydration_summary", routes_source)
         self.assertIn('"hydration_summary"', routes_source)
+
+    def test_mmg_success_path_refreshes_persisted_build_report_fail_open(self) -> None:
+        source = Path("web/web_interface.py").read_text(encoding="utf-8")
+
+        self.assertIn("@socketio.on('generate_unified_assets')", source)
+        self.assertIn('refresh_reason="module_media_generator"', source)
+        self.assertIn("if refresh_toolkit_build_report", source)
+        self.assertIn("MMG report refresh degraded", source)
+        self.assertIn("socketio.emit('unified_generation_complete'", source)
 
     def test_toolkit_template_exposes_finishing_stage_and_parity_note(self) -> None:
         source = Path("web/templates/module_toolkit.html").read_text(encoding="utf-8")
@@ -429,6 +523,12 @@ class TestToolkitPublicationParitySourceContracts(unittest.TestCase):
         self.assertIn("sections.push(semanticRemediationText)", source)
         self.assertIn("sections.push(mediaRemediationText)", source)
         self.assertIn("sections.push(`Raw Payload:", source)
+
+    def test_toolkit_template_requests_module_list_after_mmg_completion(self) -> None:
+        source = Path("web/templates/module_toolkit.html").read_text(encoding="utf-8")
+
+        self.assertIn("socket.on('unified_generation_complete'", source)
+        self.assertIn("socket.emit('request_module_list');", source)
 
 
 if __name__ == "__main__":

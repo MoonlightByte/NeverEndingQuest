@@ -116,9 +116,13 @@ from web.extensions.tabletop_socket_handlers import (
 
 # TABLETOP MODE: Toolkit module post-build finishing helper for publication parity.
 try:
-    from web.extensions.toolkit_module_finisher import run_toolkit_module_postbuild_finishing
+    from web.extensions.toolkit_module_finisher import (
+        refresh_toolkit_build_report,
+        run_toolkit_module_postbuild_finishing,
+    )
     TOOLKIT_MODULE_FINISHER_AVAILABLE = True
 except ImportError:
+    refresh_toolkit_build_report = None
     run_toolkit_module_postbuild_finishing = None
     TOOLKIT_MODULE_FINISHER_AVAILABLE = False
 
@@ -5869,6 +5873,28 @@ def handle_generate_unified_assets(data):
                             })
             
             info(f"TOOLKIT: Generation completed. Description targets: {len(description_targets) if 'description_targets' in locals() else 0}, Image targets: {len(image_targets) if 'image_targets' in locals() else 0}")
+
+            # TABLETOP MODE: Refresh persisted toolkit build report after successful
+            # Module Media Generator completion so sidebar report consumers do not
+            # remain stale on old media-debt signals.
+            if refresh_toolkit_build_report:
+                try:
+                    refresh_result = refresh_toolkit_build_report(
+                        module_name,
+                        strict=True,
+                        refresh_reason="module_media_generator",
+                    )
+                    info(
+                        f"TOOLKIT: Refreshed toolkit build report after MMG for {module_name} "
+                        f"status={refresh_result.get('status', 'unknown')}",
+                        category="module_ingest",
+                    )
+                except Exception as refresh_error:
+                    warning(
+                        f"TOOLKIT: MMG report refresh degraded for {module_name}: {refresh_error}",
+                        category="module_ingest",
+                    )
+
             socketio.emit('unified_generation_complete', {
                 'success': True,
                 'message': f"Successfully generated assets for {module_name}",

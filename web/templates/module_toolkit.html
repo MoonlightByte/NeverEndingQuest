@@ -1448,6 +1448,15 @@
             flex: 1;
             max-width: 400px;
             background-color: #2c2c2c;
+            position: relative;
+            z-index: 5;
+            overflow: visible;
+        }
+
+        .modules-panel .panel-header {
+            position: relative;
+            z-index: 20;
+            overflow: visible;
         }
         
         .panel-header {
@@ -1637,49 +1646,54 @@
             margin-top: 20px;
         }
         
-        .module-item {
+        .modules-panel .panel-content {
+            padding: 12px;
+        }
+
+        .modules-panel .module-item {
             background-color: #1e1e1e;
             border: 1px solid #444;
             border-radius: 5px;
-            padding: 15px;
-            margin-bottom: 10px;
+            padding: 10px 12px;
+            margin-bottom: 7px;
             cursor: pointer;
             transition: all 0.3s ease;
         }
         
-        .module-item:hover {
+        .modules-panel .module-item:hover {
             border-color: #FFA500;
         }
         
-        .module-name {
+        .modules-panel .module-name {
             color: #4CAF50;
             font-family: 'Cinzel', serif;
             font-weight: bold;
-            font-size: 1.2em;
-            margin-bottom: 5px;
+            font-size: 1.06em;
+            margin-bottom: 3px;
+            line-height: 1.2;
         }
 
-        .module-level {
+        .modules-panel .module-level {
             color: #FFA500;
             font-weight: bold;
-            font-size: 1em;
-            margin-bottom: 10px;
+            font-size: 0.92em;
+            margin-bottom: 6px;
         }
 
-        .module-details {
+        .modules-panel .module-details {
             border-top: 1px solid #444;
-            padding-top: 10px;
-            font-size: 0.9em;
+            padding-top: 7px;
+            font-size: 0.84em;
         }
 
-        .module-detail-item {
+        .modules-panel .module-detail-item {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
             color: #aaa;
         }
 
-        .module-detail-item span:last-child {
+        .modules-panel .module-detail-item span:last-child {
             color: #e0e0e0;
             font-weight: bold;
         }
@@ -6015,7 +6029,26 @@
                 return;
             }
 
-            validModules.forEach(module => {
+            const parseLevelValue = (value) => {
+                const parsed = Number(value);
+                return Number.isFinite(parsed) ? parsed : 999;
+            };
+
+            const sortedModules = [...validModules].sort((a, b) => {
+                const aRange = a.levelRange || {};
+                const bRange = b.levelRange || {};
+                const aMin = parseLevelValue(aRange.min);
+                const bMin = parseLevelValue(bRange.min);
+                if (aMin !== bMin) return aMin - bMin;
+
+                const aMax = parseLevelValue(aRange.max);
+                const bMax = parseLevelValue(bRange.max);
+                if (aMax !== bMax) return aMax - bMax;
+
+                return (a.moduleName || '').localeCompare(b.moduleName || '');
+            });
+
+            sortedModules.forEach(module => {
                 const moduleItem = document.createElement('div');
                 moduleItem.className = 'module-item';
                 const levelRange = module.levelRange || { min: '?', max: '?' };
@@ -7820,6 +7853,11 @@
             
             // Reload the assets to show updated status
             scanModuleAssets();
+
+            // Refresh sidebar module cards from persisted report source.
+            // TABLETOP MODE: Keep Module Toolkit and Module Builder sidebar
+            // signals aligned with refreshed toolkit_build_report.json.
+            socket.emit('request_module_list');
             
             // Re-enable generate button
             document.getElementById('generate-assets-btn').style.display = 'block';
