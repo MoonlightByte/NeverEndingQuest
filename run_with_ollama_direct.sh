@@ -34,7 +34,7 @@ if ! command -v ollama >/dev/null 2>&1; then
     echo "[ERROR] ollama CLI not found on PATH. Install from https://ollama.com/download"
     exit 1
 fi
-if ! curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; then
+if ! curl -sf --connect-timeout 3 --max-time 5 http://localhost:11434/api/tags >/dev/null 2>&1; then
     echo "[ERROR] Ollama daemon is not reachable on localhost:11434."
     echo "Start it with 'ollama serve' (Linux) or open the Ollama app (macOS)."
     exit 1
