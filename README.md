@@ -552,6 +552,51 @@ Context Length: 32768 or higher
 
 **Support**: LM Studio mode is provided as-is for experimentation. For production gameplay, we recommend using OpenAI's API with the compression system for optimal experience.
 
+#### 🧪 EXPERIMENTAL: Ollama Integration
+
+**Status:** EXPERIMENTAL — same prompt-compatibility caveats as the LM Studio integration above.
+
+NeverEndingQuest supports [Ollama](https://ollama.com) via its OpenAI-compatible endpoint (`http://localhost:11434/v1`). Ollama tends to be simpler to install on headless machines than LM Studio and has a larger model catalog via `ollama pull`.
+
+**UX is identical to LM Studio:**
+
+1. Install Ollama from [ollama.com/download](https://ollama.com/download).
+2. Pull **one** model (used for every game request):
+   ```
+   ollama pull llama3.1:8b-instruct-q4_K_M
+   ```
+3. Double-click `run_with_ollama_direct.bat` (Windows) or run `./run_with_ollama_direct.sh` (macOS/Linux).
+
+The launcher automatically creates the Ollama aliases the game requires on first run. You only ever pick one model — the launcher points both of the game's internal tier names at that single model, just like LM Studio does implicitly. No VRAM thrashing from loading multiple models between requests.
+
+**To switch models later:**
+
+```bash
+ollama pull <new-model>
+ollama rm gpt-4.1-2025-04-14 gpt-4.1-mini-2025-04-14
+# then re-launch: the launcher will recreate aliases against whatever is pulled
+```
+
+Or set `OLLAMA_MODEL=<new-model>` before running the launcher to force re-aliasing.
+
+**Recommended Models:**
+- `llama3.1:8b-instruct-q4_K_M` — 128K context, strong general performance
+- `mistral:7b-instruct-q4_K_M` — 32K context, fast and lightweight
+- `mistral-nemo:12b-instruct-q4_K_M` — 128K context, strong storytelling
+
+**Feature gaps:** Ollama has no image-generation or text-to-speech endpoints — NPC/monster portrait generation and spoken narration will 404 in Ollama mode. Disable TTS in the UI and avoid the toolkit image features. Also requires **Ollama 0.4+** for reliable function/tool calling.
+
+**Known Issues** (shared with LM Studio):
+- JSON parsing errors during complex combat
+- Inconsistent action detection compared to GPT-4
+- Slower response times on CPU-only systems
+
+**Documentation:**
+- Complete setup guide: `OLLAMA_SETUP.md`
+- Quick reference: `OLLAMA_QUICKSTART.txt`
+
+**Support:** Ollama mode is provided as-is. For production gameplay, we recommend OpenAI's API with the compression system.
+
 ### Performance Metrics Summary
 
 | Component | Original Size | Compressed Size | Reduction |
