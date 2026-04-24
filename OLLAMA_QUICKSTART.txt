@@ -1,0 +1,28 @@
+================================================================
+NEVERENDINGQUEST - OLLAMA QUICK START
+================================================================
+
+1. INSTALL OLLAMA        https://ollama.com/download
+2. PULL ONE MODEL        ollama pull llama3.1:8b-instruct-q4_K_M
+3. LAUNCH                Windows:  run_with_ollama_direct.bat
+                         Mac/Lin:  ./run_with_ollama_direct.sh
+
+That's it. The launcher auto-creates the aliases the game needs on
+first run, pointing both of the game's internal model tiers at your
+one pulled model (same behavior as LM Studio -- no VRAM thrashing).
+
+Prerequisite:
+  config.py must exist.
+  cp config_template.py config.py
+  (Ollama ignores the API key value, but the file must be importable.)
+
+To pick between multiple pulled models:
+  OLLAMA_MODEL=<tag> ./run_with_ollama_direct.sh
+
+Known gaps:
+  - Image generation (NPC/monster portraits) and TTS will 404.
+    Disable TTS in the UI; avoid toolkit image features.
+  - Requires Ollama >= 0.4.0 for function/tool calling.
+
+Full guide:  OLLAMA_SETUP.md
+================================================================
