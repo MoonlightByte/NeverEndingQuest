@@ -73,7 +73,11 @@ else
     else
         # Candidates = column 1 of `ollama list`, excluding header and the
         # two alias names themselves (so re-runs don't count them).
-        mapfile -t candidates < <(ollama list | awk -v a="$ALIAS_FULL" -v b="$ALIAS_MINI" '
+        # Portable to bash 3.2 (macOS default) -- no `mapfile`.
+        candidates=()
+        while IFS= read -r _name; do
+            [ -n "$_name" ] && candidates+=("$_name")
+        done < <(ollama list | awk -v a="$ALIAS_FULL" -v b="$ALIAS_MINI" '
             NR > 1 {
                 name = $1
                 # Strip :latest suffix for dedupe comparisons only
