@@ -86,7 +86,7 @@ Or force a specific model without deleting aliases first:
 OLLAMA_MODEL=<new-tag> ./run_with_ollama_direct.sh
 ```
 
-(Currently aliases are only re-created when they don't exist; force-delete first if you want to re-point them. A future enhancement could add an `--reset` flag.)
+When `OLLAMA_MODEL` is set, the launcher re-points both aliases at the specified model even if they already exist — no `ollama rm` needed.
 
 ## Verifying It Works
 

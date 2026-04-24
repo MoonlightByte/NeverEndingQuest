@@ -55,50 +55,57 @@ _ollama_has_model() {
     '
 }
 
-# --- Alias setup (first run only) --------------------------------------------
-if _ollama_has_model "$ALIAS_FULL" && _ollama_has_model "$ALIAS_MINI"; then
+# --- Alias setup -------------------------------------------------------------
+# Normally: create aliases only if missing. If OLLAMA_MODEL is set, treat it
+# as an explicit override and (re)point the aliases to that model even if
+# they already exist.
+_aliases_present() {
+    _ollama_has_model "$ALIAS_FULL" && _ollama_has_model "$ALIAS_MINI"
+}
+
+if [ -n "${OLLAMA_MODEL:-}" ]; then
+    source_model="$OLLAMA_MODEL"
+    if ! _ollama_has_model "$source_model"; then
+        echo "[ERROR] OLLAMA_MODEL='$source_model' is not pulled."
+        echo "Run: ollama pull $source_model"
+        exit 1
+    fi
+    echo "[INFO] OLLAMA_MODEL set; re-pointing aliases at '$source_model'."
+    ollama cp "$source_model" "$ALIAS_FULL"
+    ollama cp "$source_model" "$ALIAS_MINI"
+    echo "[INFO] Aliases updated."
+elif _aliases_present; then
     echo "[INFO] Aliases already present; skipping setup."
 else
     echo "[INFO] Ollama aliases missing. Creating them now..."
 
-    # Pick a source model: OLLAMA_MODEL env var, else the single non-alias
-    # pulled model, else abort asking the user to pick.
-    if [ -n "${OLLAMA_MODEL:-}" ]; then
-        source_model="$OLLAMA_MODEL"
-        if ! _ollama_has_model "$source_model"; then
-            echo "[ERROR] OLLAMA_MODEL='$source_model' is not pulled."
-            echo "Run: ollama pull $source_model"
-            exit 1
-        fi
-    else
-        # Candidates = column 1 of `ollama list`, excluding header and the
-        # two alias names themselves (so re-runs don't count them).
-        # Portable to bash 3.2 (macOS default) -- no `mapfile`.
-        candidates=()
-        while IFS= read -r _name; do
-            [ -n "$_name" ] && candidates+=("$_name")
-        done < <(ollama list | awk -v a="$ALIAS_FULL" -v b="$ALIAS_MINI" '
-            NR > 1 {
-                name = $1
-                # Strip :latest suffix for dedupe comparisons only
-                base = name
-                sub(/:latest$/, "", base)
-                if (base == a || name == a) next
-                if (base == b || name == b) next
-                print name
-            }')
-        if [ "${#candidates[@]}" -eq 0 ]; then
-            echo "[ERROR] No Ollama models are pulled."
-            echo "Pull one first, e.g.: ollama pull llama3.1:8b-instruct-q4_K_M"
-            exit 1
-        elif [ "${#candidates[@]}" -gt 1 ]; then
-            echo "[ERROR] Multiple models pulled; can't auto-pick."
-            echo "Set OLLAMA_MODEL to one of the following and re-run:"
-            printf "  %s\n" "${candidates[@]}"
-            exit 1
-        fi
-        source_model="${candidates[0]}"
+    # Candidates = column 1 of `ollama list`, excluding header and the
+    # two alias names themselves (so re-runs don't count them).
+    # Portable to bash 3.2 (macOS default) -- no `mapfile`.
+    candidates=()
+    while IFS= read -r _name; do
+        [ -n "$_name" ] && candidates+=("$_name")
+    done < <(ollama list | awk -v a="$ALIAS_FULL" -v b="$ALIAS_MINI" '
+        NR > 1 {
+            name = $1
+            # Strip :latest suffix for dedupe comparisons only
+            base = name
+            sub(/:latest$/, "", base)
+            if (base == a || name == a) next
+            if (base == b || name == b) next
+            print name
+        }')
+    if [ "${#candidates[@]}" -eq 0 ]; then
+        echo "[ERROR] No Ollama models are pulled."
+        echo "Pull one first, e.g.: ollama pull llama3.1:8b-instruct-q4_K_M"
+        exit 1
+    elif [ "${#candidates[@]}" -gt 1 ]; then
+        echo "[ERROR] Multiple models pulled; can't auto-pick."
+        echo "Set OLLAMA_MODEL to one of the following and re-run:"
+        printf "  %s\n" "${candidates[@]}"
+        exit 1
     fi
+    source_model="${candidates[0]}"
 
     echo "[INFO] Using '$source_model' for both full and mini tiers."
     ollama cp "$source_model" "$ALIAS_FULL"
