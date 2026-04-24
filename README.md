@@ -454,11 +454,18 @@ The compression system enables deployment with popular open-source models:
 - **Batch Processing**: Support for multiple concurrent games
 
 #### Setup for Local Models
-1. Install local model runtime (Ollama, llama.cpp, etc.)
-2. Enable compression in `config.py`
-3. Configure model endpoint in `config.py`
-4. Adjust context window settings for your model
-5. Run game normally - compression handles adaptation
+NeverEndingQuest ships with two supported local-model runtimes: **LM Studio** and **Ollama**. Both present an OpenAI-compatible HTTP endpoint that the game reaches via the `OPENAI_BASE_URL` environment variable, which the launcher scripts set for you. You do **not** need to edit `config.py` to switch endpoints — `config.py` only holds your OpenAI API key (used for cloud mode; ignored by local runtimes but the file must exist) and the modules directory.
+
+1. Install one of the supported runtimes:
+   - **LM Studio:** [lmstudio.ai](https://lmstudio.ai) — see `LMSTUDIO_SETUP.md`
+   - **Ollama:** [ollama.com](https://ollama.com) — see `OLLAMA_SETUP.md`
+2. Load or pull a model.
+3. Start the local server (LM Studio's "Start Server" button, or `ollama serve` — auto on macOS/Windows).
+4. Launch the game using the runtime's dedicated script:
+   - LM Studio: `run_with_lmstudio_direct.bat`
+   - Ollama: `run_with_ollama_direct.bat` (or `.sh` on macOS/Linux)
+
+Compression is enabled by default in `model_config.py` (`COMPRESSION_ENABLED = True`) and needs no tuning.
 
 #### 🧪 EXPERIMENTAL: LM Studio Integration
 
