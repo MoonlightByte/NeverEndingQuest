@@ -1,0 +1,425 @@
+{
+  "areaId": "TMQ001",
+  "areaName": "The Veiled Districts",
+  "areaType": "mixed",
+  "areaDescription": "Lantern-lit alleys twist through a labyrinth of ornate masks, whispered deals, and concealed identities, where every face is a secret and every shadow might be watching. The air carries a perfume of incense and intrigue, hinting at both opportunity and peril for those who walk these enigmatic streets.",
+  "dangerLevel": "medium",
+  "recommendedLevel": 5,
+  "climate": "varied",
+  "terrain": "varied terrain",
+  "map": {
+    "mapId": "MAP_G_3",
+    "mapName": "Mixed Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "G01",
+        "type": "room",
+        "connections": [
+          "G02"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "G02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "medium",
+        "name": "Shifting Veil Foyer"
+      },
+      {
+        "id": "G02",
+        "type": "room",
+        "connections": [
+          "G01",
+          "G03"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "G01",
+          "east": "G03"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "medium",
+        "name": "Hall of Fractured Truths"
+      },
+      {
+        "id": "G03",
+        "type": "room",
+        "connections": [
+          "G02"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {
+          "west": "G02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "medium",
+        "name": "Illusion's End Alcove"
+      }
+    ],
+    "layout": [
+      [
+        "G01",
+        "G02",
+        "G03"
+      ]
+    ],
+    "startRoom": "G02",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "G01",
+      "name": "Shifting Veil Foyer",
+      "type": "room",
+      "description": "A grand, lantern-lit chamber of gilded archways and shifting mosaic floors. The air is heavy with incense, and countless masks\u2014carved from wood, bone, and crystal\u2014hang from the walls, each seeming to watch visitors with silent scrutiny. Every step echoes with whispers of secrets, and those entering feel as though their own faces are momentarily not their own. This is the arrival point for those hoping to conduct business or seek intrigue within the Masked Quarters.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "G02"
+      ],
+      "areaConnectivity": [
+        "The Shrouded Psiumbra"
+      ],
+      "areaConnectivityId": [
+        "H03"
+      ],
+      "npcs": [
+        {
+          "name": "Seraphine of the Silver Veil",
+          "description": "A poised, enigmatic woman wearing a shimmering mask of silver thread that conceals all but her luminous eyes and measured smile. She acts as both hostess and gatekeeper for all who enter the Veiled Districts, determining who may pass deeper. Her knowledge of secrets is legendary, and she trades in favors and whispered truths.",
+          "attitude": "Cautiously helpful, but always watching for leverage."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Silver Mask of Illusory Glamour (allows the wearer to cast Disguise Self once per long rest)",
+        "Incense Pouch of Scented Shadows (can be used to create a 10-foot cube of magical darkness for 1 minute, once per day)"
+      ],
+      "plotHooks": [
+        "Seraphine offers to share a secret about the district\u2019s ruler if the party delivers a veiled message to a contact deeper in the Masked Quarters.",
+        "A masked noble seeks protection during a clandestine rendezvous nearby, promising information about Numillian\u2019s illusions."
+      ],
+      "dmInstructions": "Seraphine is the party\u2019s initial point of contact for information and access; adjust her responses based on how much the party reveals about themselves. She will not allow obvious threats or overt violence.",
+      "doors": [
+        {
+          "name": "East Archway",
+          "description": "An ornate arch of dark wood inlaid with silver, flanked by heavy velvet curtains.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Insight DC 12: Notice Seraphine\u2019s subtle signals to hidden allies.",
+        "Investigation DC 13: Find a concealed message etched behind a mask."
+      ],
+      "accessibility": "Normal access; guarded by Seraphine\u2019s subtle scrutiny.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "The room\u2019s mosaic floor shifts subtly underfoot, making it appear as if patterns are rearranging to form different faces."
+        },
+        {
+          "name": "Mask Gallery",
+          "description": "A collection of hundreds of masks, each with a unique expression. Some are enchanted to shift their features when unobserved."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "The party enters the Masked Quarters through the Shifting Veil Foyer, where they meet Seraphine of the Silver Veil and are offered their first choices in navigating the district\u2019s intrigues.",
+      "aliases": [
+        "Shifting Veil Foyer",
+        "G01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Shifting Veil Foyer",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "G02",
+      "name": "Hall of Fractured Truths",
+      "type": "room",
+      "description": "A long, shadowed corridor lined with fractured mirrors and mosaic tiles. Each reflective surface distorts reality, showing glimpses of possible futures or hidden truths. Whispered voices echo along the hall, and anyone passing through may find their own secrets laid bare. Dust carpets the corners, hinting at seldom-trodden paths. The Hall is a crossroads for clandestine dealings, where information and rumor are as valuable as gold.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "G01",
+        "G03"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Malk the Whisper",
+          "description": "A stooped, thin figure garbed in patchwork robes, their face obscured by a cracked porcelain mask. Malk trades in secrets, listening to the hall\u2019s whispers and sharing only what serves their mysterious agenda.",
+          "attitude": "Evasive and cryptic, but intrigued by clever questions."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Mirror Phantoms",
+          "description": "Insubstantial specters that emerge from the fractured mirrors when secrets are spoken aloud, attempting to drain memories and sow confusion.",
+          "quantity": 2
+        }
+      ],
+      "lootTable": [
+        "Shard of Mirror Truth (once, shows a single hidden fact or enemy\u2019s secret)",
+        "Small pouch of gold-veined dust (acts as a spell component for divination magic)"
+      ],
+      "plotHooks": [
+        "Malk offers to reveal a masked dignitary\u2019s secret in exchange for a rumor from the party\u2019s homeland.",
+        "A mirror phantom drops a cryptic clue about the mind flayer\u2019s whereabouts when defeated."
+      ],
+      "dmInstructions": "Malk is an excellent source of exposition and clues, but never gives a straight answer. If the party fights the mirror phantoms, increase their confusion effects if secrets are loudly discussed.",
+      "doors": [
+        {
+          "name": "West Door to Foyer",
+          "description": "A narrow, silvery door with a cracked glass inset.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "East Door to Alcove",
+          "description": "A tall, mirrored door with mosaic inlays that shimmer with illusory light.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 14,
+          "disableDC": 15,
+          "triggerDC": 12,
+          "damage": "2d8 psychic (memory drain from a cursed mirror if touched without care)"
+        }
+      ],
+      "dcChecks": [
+        "Perception DC 13: Notice a mirror phantom lurking just out of sight.",
+        "Arcana DC 14: Identify the magical nature of the mirrors and how to avoid triggering them."
+      ],
+      "accessibility": "Accessible by foot; the mirrors may confuse navigation or reveal unwanted secrets.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "The corridor\u2019s mirrors and tiles are pitted and cracked, hinting at old magic and long-kept secrets."
+        },
+        {
+          "name": "Dust",
+          "description": "Dust carpets the floor and veils the corners, muffling footsteps and hinting at neglect."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "The hall\u2019s walls curve subtly, creating an illusion of infinite reflection and depth."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Mirror Phantoms Emerge",
+          "description": "If the party discusses secrets aloud, two mirror phantoms appear and attack, attempting to cloud minds and consume memories."
+        }
+      ],
+      "adventureSummary": "The party must navigate the hall without falling prey to its illusions or inciting the wrath of its mirror phantoms, and may bargain with Malk the Whisper for crucial intelligence.",
+      "aliases": [
+        "Hall of Fractured Truths",
+        "G02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Hall of Fractured Truths",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "G03",
+      "name": "Illusion's End Alcove",
+      "type": "room",
+      "description": "A secluded, circular chamber at the end of the Masked Quarters\u2019 main path. The floor is a single, unbroken disc of black glass that reflects only what is real\u2014illusions and magical disguises vanish upon entering. The walls are draped in heavy velvet, and a single pedestal at the center holds a mask carved from obsidian. This alcove is where bargains are finalized and identities revealed, for better or worse.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "G02"
+      ],
+      "areaConnectivity": [
+        "The Shifting Confluence"
+      ],
+      "areaConnectivityId": [
+        "H01"
+      ],
+      "npcs": [
+        {
+          "name": "Various masked dignitaries",
+          "description": "A small gathering of influential figures in elaborate, distinctive masks, each hiding their true identity and allegiances. They are here to witness or enforce the outcomes of major bargains, and may offer the party new alliances\u2014or threats\u2014depending on what is revealed.",
+          "attitude": "Wary, calculating, easily offended by impertinence, but eager for new information."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Obsidian Mask of Truth (forces wearer to speak only the truth while worn; usable in negotiations)",
+        "Signed Accord of Numillian (proof that the party has been recognized by a major faction; grants social leverage)"
+      ],
+      "plotHooks": [
+        "A dignitary requests the party\u2019s help in unmasking a traitor, offering valuable intelligence in return.",
+        "One dignitary offers a perilous alliance to oppose the undead mind flayer, with a price yet to be negotiated."
+      ],
+      "dmInstructions": "Illusions and magical disguises are suppressed here; any such spells end upon entry. Use the dignitaries for heavy roleplay\u2014social checks may have high stakes but yield significant rewards or consequences.",
+      "doors": [
+        {
+          "name": "West Door to Hall",
+          "description": "A heavy, black glass door etched with runes that glow when illusions are present.",
+          "type": "heavy",
+          "locked": true,
+          "lockDC": 16,
+          "breakDC": 18,
+          "keyname": "Obsidian Key (held by a dignitary)",
+          "trapped": true,
+          "trap": "If forced, the door unleashes a blinding flare (DC 15 Dex save or blinded for 1 minute)."
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 15,
+          "disableDC": 15,
+          "triggerDC": 16,
+          "damage": "Blinding flash (no HP damage, but DC 15 Dex save or blinded for 1 minute)"
+        }
+      ],
+      "dcChecks": [
+        "History DC 14: Recall the traditions of the Masked Quarters and the role of this alcove.",
+        "Insight DC 15: Discern which dignitary is most receptive to the party\u2019s aims."
+      ],
+      "accessibility": "Restricted; the door is usually locked and guarded by both magical and social barriers.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "The chamber\u2019s black glass floor and obsidian pedestal create an atmosphere of stark honesty and finality."
+        },
+        {
+          "name": "Illusion Suppression",
+          "description": "All illusions and magical disguises are stripped away within the alcove."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Council of Masks",
+          "description": "The party must negotiate with the masked dignitaries, who may test their honesty and allegiances."
+        }
+      ],
+      "adventureSummary": "The party\u2019s decisions here may set the course for their alliances and opposition within Numillian, and secrets revealed in this alcove will echo throughout the city\u2019s intrigues.",
+      "aliases": [
+        "Illusion's End Alcove",
+        "G03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Illusion's End Alcove",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "territorial beast",
+      "description": "A territorial beast appropriate for level 5 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 5 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "territorial beast",
+      "description": "A territorial beast appropriate for level 5 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 5 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 5 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 5 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "territorial beast",
+      "description": "A territorial beast appropriate for level 5 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "territorial beast",
+      "description": "A territorial beast appropriate for level 5 parties"
+    },
+    {
+      "roll": "81-90",
+      "encounter": "territorial beast",
+      "description": "A territorial beast appropriate for level 5 parties"
+    },
+    {
+      "roll": "91-100",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 5 parties"
+    }
+  ],
+  "areaFeatures": [
+    "ruins",
+    "landmarks",
+    "bridges"
+  ],
+  "notes": "Balance combat, exploration, and social encounters. Transitions between areas should feel natural.",
+  "spatialContractVersion": 1
+}

@@ -1,0 +1,94 @@
+{
+  "name": "Spectral Memory Wraith",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 16,
+  "maxHitPoints": 16,
+  "speed": 0,
+  "abilities": {
+    "strength": 6,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 11,
+    "wisdom": 14,
+    "charisma": 16
+  },
+  "savingThrows": [
+    "Wisdom",
+    "Charisma"
+  ],
+  "skills": {
+    "Perception": 4,
+    "Stealth": 5
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "acid",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing (from nonmagical attacks)"
+  ],
+  "damageImmunities": [
+    "cold",
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "Understands all languages it knew in life but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Incorporeal Movement",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Sunlight Sensitivity",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Memory Drain (Recharge 5-6)",
+      "attackBonus": 0,
+      "damageDice": "2d6",
+      "damageBonus": 0,
+      "damageType": "psychic"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Life Drain",
+      "attackBonus": 5,
+      "damageDice": "2d6",
+      "damageBonus": 3,
+      "damageType": "necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Within the obsidian-clad depths of the Mindsunder Vault, the Spectral Memory Wraith manifests as a haunting silhouette of lost consciousness and fractured recollection. Its form is a shifting veil of translucent, smoky tendrils that coil and ripple like disturbed water, punctuated by fleeting glimpses of ghostly faces--fragments of stolen memories trapped within its ephemeral essence. These faces contort in silent agony or whisper forgotten secrets, their eyes flickering with eerie phosphorescent light that seems to pierce the soul. The wraith's outline is humanoid yet fluid, with elongated, clawed fingers that reach out as if to snatch the very thoughts from intruders' minds. Around it, the air trembles with a palpable psychic resonance, a dissonant symphony of echoes and half-remembered dreams that warp reality in subtle, unsettling ways. The wraith drifts through the chamber like a living shadow, its presence chilling and oppressive, feeding on the psychic energies of those who dare approach. It moves with unnatural grace, gliding soundlessly over the obsidian floor, leaving faint trails of iridescent motes that flicker and fade into darkness. To confront a Spectral Memory Wraith is to stand against the embodiment of forgotten pain and stolen identity, a guardian of memories best left undisturbed."
+}

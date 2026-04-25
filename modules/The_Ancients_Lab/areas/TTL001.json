@@ -1,0 +1,441 @@
+{
+  "areaId": "TTL001",
+  "areaName": "The Shuddering Wilds",
+  "areaType": "mixed",
+  "areaDescription": "Gnarled trees twist above a landscape riddled with unnatural mists and unwholesome silence, broken only by the distant, bone-deep reverberations of something colossal stirring beneath the earth. Every breath hangs heavy with the scent of decaying flesh and the promise of predatory eyes watching from shifting shadows.",
+  "dangerLevel": "extreme",
+  "recommendedLevel": 4,
+  "climate": "varied",
+  "terrain": "varied terrain",
+  "map": {
+    "mapId": "MAP_I_3",
+    "mapName": "Mixed Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "I01",
+        "type": "room",
+        "connections": [
+          "I02",
+          "I03"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "I02"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "extreme",
+        "name": "Twisted Forge Atrium"
+      },
+      {
+        "id": "I02",
+        "type": "room",
+        "connections": [
+          "I01"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "I01"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "extreme",
+        "name": "Bygone Mutation Vault"
+      },
+      {
+        "id": "I03",
+        "type": "room",
+        "connections": [
+          "I01"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {},
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "extreme",
+        "name": "Runebound Isolation Cell"
+      }
+    ],
+    "layout": [
+      [
+        "I01",
+        "I02",
+        "I03"
+      ]
+    ],
+    "startRoom": "I01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "I01",
+      "name": "Twisted Forge Atrium",
+      "type": "room",
+      "description": "Once the nerve center for experimentation, the Twisted Forge Atrium is a vast, circular chamber suffused with acrid mist. Soot-stained dwarven runes swirl above blackened anvils and deformed forge constructs, now fused to the stonework. The walls bulge as if something massive once pushed against them from beneath, casting shifting shadows across the dust-laden floor. A deep, rhythmic vibration emanates through the stone—evidence of some slumbering force deeper below.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "I02",
+        "I03"
+      ],
+      "areaConnectivity": [
+        "The Abandoned Vaultways"
+      ],
+      "areaConnectivityId": [
+        "I03"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Mutated Scavenger Leader",
+          "description": "A grotesquely transformed humanoid, once a scavenger, now sporting unnatural limbs and bone growths. It is both cunning and desperate, leading a pack of lesser mutants in search of anything to sustain them.",
+          "attitude": "Hostile; willing to parley if cornered or outmatched."
+        }
+      ],
+      "lootTable": [
+        "Warped Blacksteel Dagger (counts as shortsword, +1 vs constructs and mutants)",
+        "Bag of scavenged gemstones (25 gp total value)",
+        "Forge Key Fragment (needed for deeper access in The Thing’s Lair)"
+      ],
+      "plotHooks": [
+        "The leader’s ramblings reference a 'Hive-Heart' that controls the mutations, hinting at a way to stop the spread.",
+        "Ancient dwarven logs etched into the wall reveal a code for unlocking certain runic doors deeper in the complex."
+      ],
+      "dmInstructions": "This is the primary entry point into The Thing’s Lair and a key battleground. Adjust the number of mutant scavenger minions based on party size. The Mutated Scavenger Leader tries to leverage the environment (anvils, loose stone, broken constructs) for cover. If reduced below half HP, it attempts to bargain, offering information in exchange for its life.",
+      "doors": [
+        {
+          "name": "Eastern Runic Door",
+          "description": "A thick, metal door carved with glowing runes, partially warped by heat.",
+          "type": "heavy",
+          "locked": true,
+          "lockDC": 16,
+          "breakDC": 22,
+          "keyname": "Forge Key Fragment",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Northern Shuttered Gate",
+          "description": "A rusted iron grate jammed open by debris; past it, the mist thickens.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 12,
+          "keyname": "",
+          "trapped": true,
+          "trap": "Crude tripwire releases a cascade of burning slag (DC 13 Dexterity save or take 2d6 fire damage)."
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 13,
+          "disableDC": 12,
+          "triggerDC": 13,
+          "damage": "2d6 fire (burning slag trap at the northern gate)"
+        }
+      ],
+      "dcChecks": [
+        "Investigation DC 14: Spot the tripwire trap at the Northern Shuttered Gate.",
+        "Arcana DC 12: Identify the runes as a power lock linked to the Forge Key Fragment.",
+        "Perception DC 15: Hear faint, rhythmic vibrations from beneath the floor—hinting at the lair’s deeper dangers."
+      ],
+      "accessibility": "Accessible by descending a broken lift shaft from the surface or winding through collapsed tunnels. Entry is hazardous due to unstable stone.",
+      "dangerLevel": "Very High",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "Ribbed columns designed to dampen sound and conceal runic control panels."
+        },
+        {
+          "name": "Dust",
+          "description": "Thick, oily dust coats every surface, hiding tracks and dropped objects."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "Eroded dwarven reliefs and melted stonework speak of ancient, catastrophic battles."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "combat",
+          "description": "Mutated Scavenger Leader and 2d4 mutant minions ambush the party, using forges and debris for cover."
+        },
+        {
+          "type": "exploration",
+          "description": "Discover remnants of forbidden forge-magic and the code for deeper passages."
+        }
+      ],
+      "adventureSummary": "The party enters the lair through the Twisted Forge Atrium, facing immediate danger and uncovering hints about the origin of the mutations and the structure’s defense systems.",
+      "aliases": [
+        "Twisted Forge Atrium",
+        "I01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Twisted Forge Atrium",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "I02",
+      "name": "Bygone Mutation Vault",
+      "type": "room",
+      "description": "This sealed, domed vault was once a containment chamber for the results of the Ancients’ experiments. Rows of reinforced glass tubes—most shattered—line the walls, their contents long escaped or desiccated. The air is thick with the scent of chemical preservatives and the metallic tang of old blood. Tattered hazard sigils in dwarven script warn of 'Aberrant Subjects', and mutated skeletons are fused into the walls. Faint green light pulses from within the runes along the floor.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "I01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Security Construct",
+          "description": "A battered but still functional dwarven automaton, its armor plating warped and sparking with unstable energy fields. It patrols the vault, recognizing all living beings as potential threats after system corruption.",
+          "attitude": "Hostile; attacks intruders on sight, but may be tricked or disabled."
+        }
+      ],
+      "lootTable": [
+        "Vial of mutation suppressant (1 use, grants advantage on saves vs. mutation effects for 1 hour)",
+        "Ancient Security Badge (used to bypass some minor locks)",
+        "Scrap of research notes (details on mutation origins, hints at a deeper fail-safe)"
+      ],
+      "plotHooks": [
+        "The research notes reference a 'Runebound Isolation Cell' that holds a prototype cure—if the subject is still alive.",
+        "Encrypted data on the construct’s core can be accessed with a successful skill check, revealing a secret passage elsewhere."
+      ],
+      "dmInstructions": "The Security Construct starts in the far corner, scanning the room. If the vault is entered quietly, players may attempt to ambush or sneak past. If the construct is deactivated, its memory core can be looted for clues. The preserved vials and research notes are overlooked unless a thorough search is performed.",
+      "doors": [
+        {
+          "name": "Western Security Door",
+          "description": "A reinforced metal door with a cracked retinal scanner. The dwarven script above reads 'Authorized Personnel Only'.",
+          "type": "heavy",
+          "locked": true,
+          "lockDC": 15,
+          "breakDC": 20,
+          "keyname": "Ancient Security Badge",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Perception DC 13: Notice the telltale hum of the Security Construct before entering.",
+        "Investigation DC 14: Find the hidden vial of suppressant in an intact tube.",
+        "Arcana DC 15: Understand the function of the runes and their link to the security system."
+      ],
+      "accessibility": "Entry is possible only after unlocking or forcing the security door from the Twisted Forge Atrium.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "Reinforced glass tubes and overlapping dwarven hazard runes designed to withstand explosions or breakouts."
+        },
+        {
+          "name": "Dust",
+          "description": "Dust laced with crystalline preservation salts clings to every surface."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "combat",
+          "description": "Security Construct engages intruders, using lightning blasts and area denial tactics."
+        },
+        {
+          "type": "exploration",
+          "description": "Players can scavenge for useful vials and research notes among the destroyed tubes."
+        }
+      ],
+      "adventureSummary": "The party faces an environmental hazard and a corrupted construct guardian, with clues pointing to possible cures or deeper dangers within the lab.",
+      "aliases": [
+        "Bygone Mutation Vault",
+        "I02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Bygone Mutation Vault",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "I03",
+      "name": "Runebound Isolation Cell",
+      "type": "room",
+      "description": "Enclosed by thick, rune-inscribed walls, this cell was designed to contain the most unstable subjects of the Ancients’ experiments. The only source of light is a pulsating blue sigil on the ceiling, and the air is thick with the scent of ozone and old fear. Chains hang slack from the walls, and a mutated humanoid lies in the center, still and silent, but its chest faintly rises and falls. The runes occasionally flicker, as if struggling to hold back a surge of latent power.",
+      "coordinates": "X10Y11",
+      "connectivity": [
+        "I01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Archivist Automaton",
+          "description": "A semi-sapient dwarven automaton assigned to monitor and record the cell’s experiments. Scarred and flickering, it is conflicted—its primary programming to help, but secondary instructions to prevent any subject's escape.",
+          "attitude": "Cautious; will parley, but becomes aggressive if threatened or if containment fails."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Mutant Scavenger Lieutenant",
+          "description": "A heavily mutated dwarf, subject of failed cure trials, clinging to fragments of sanity. Possesses wild, unpredictable powers.",
+          "attitude": "Desperate; will plead for release but attacks if it senses betrayal or panic."
+        }
+      ],
+      "lootTable": [
+        "Prototype Cure Vial (unstable, can reverse mutation with a successful DC 15 Medicine check—failure causes wild magic surge)",
+        "Rune-etched Collar (can be used to suppress mutations for 10 minutes)",
+        "Archivist Memory Crystal (contains detailed records of the Ancients’ experiments and a hidden map fragment)"
+      ],
+      "plotHooks": [
+        "The Archivist Automaton offers information about the Thing’s origins—if convinced the party means no harm.",
+        "The Mutant Scavenger Lieutenant knows a safe path through the lair, but only shares it if cured or befriended."
+      ],
+      "dmInstructions": "This cell is a roleplay and moral challenge. The automaton may negotiate or attack depending on player actions. Curing the lieutenant is risky but can yield valuable aid. If containment fails (e.g., runes are damaged), the room becomes hazardous as wild magic surges.",
+      "doors": [
+        {
+          "name": "Western Rune-Sealed Door",
+          "description": "A thick stone slab covered in glowing runes, humming with containment magic.",
+          "type": "heavy",
+          "locked": true,
+          "lockDC": 18,
+          "breakDC": 25,
+          "keyname": "Rune Command Phrase (found in the Atrium)",
+          "trapped": true,
+          "trap": "Triggering the lock without the proper phrase causes a burst of wild magic (random effect; DM chooses from wild magic surge table)."
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 16,
+          "disableDC": 18,
+          "triggerDC": 15,
+          "damage": "Wild magic surge (DM’s choice; could be beneficial or harmful)"
+        }
+      ],
+      "dcChecks": [
+        "Arcana DC 15: Identify the runes as a containment array with a verbal override.",
+        "Medicine DC 15: Safely administer the cure to the mutant lieutenant.",
+        "Persuasion DC 13: Convince the Archivist Automaton to share its records or open the cell cooperatively."
+      ],
+      "accessibility": "Heavily secured; requires knowledge of the command phrase or brute force to enter.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "Cracked runes and old scorch marks from repeated magical surges."
+        },
+        {
+          "name": "Dust",
+          "description": "A fine, silvery dust covers the floor, evidence of failed magical suppressants."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "roleplay",
+          "description": "Negotiation with the Archivist Automaton and possible redemption or destruction of the Mutant Scavenger Lieutenant."
+        },
+        {
+          "type": "exploration",
+          "description": "Uncovering records and discovering a hidden map leading deeper into the lair."
+        }
+      ],
+      "adventureSummary": "The party is presented with a tense decision: risk wild magic to cure a mutant or negotiate with a conflicted automaton for vital secrets. Success here may alter the outcome of the lair’s final confrontation.",
+      "aliases": [
+        "Runebound Isolation Cell",
+        "I03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Runebound Isolation Cell",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "boss monster",
+      "description": "A boss monster appropriate for level 4 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "deadly trap",
+      "description": "A deadly trap appropriate for level 4 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 4 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "boss monster",
+      "description": "A boss monster appropriate for level 4 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "boss monster",
+      "description": "A boss monster appropriate for level 4 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "deadly trap",
+      "description": "A deadly trap appropriate for level 4 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "boss monster",
+      "description": "A boss monster appropriate for level 4 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 4 parties"
+    },
+    {
+      "roll": "81-90",
+      "encounter": "deadly trap",
+      "description": "A deadly trap appropriate for level 4 parties"
+    },
+    {
+      "roll": "91-100",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 4 parties"
+    }
+  ],
+  "areaFeatures": [
+    "landmarks",
+    "crossroads",
+    "ruins"
+  ],
+  "notes": "Balance combat, exploration, and social encounters. Transitions between areas should feel natural.",
+  "spatialContractVersion": 1
+}

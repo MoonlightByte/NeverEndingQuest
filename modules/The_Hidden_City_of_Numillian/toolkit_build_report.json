@@ -1,0 +1,3172 @@
+{
+  "generated_at": "2026-04-20T04:11:20Z",
+  "module_slug": "The_Hidden_City_of_Numillian",
+  "status": "failed",
+  "ready_status": "fail",
+  "publishable_status": "fail",
+  "strict": true,
+  "source": "toolkit",
+  "provenance": {
+    "source": "toolkit",
+    "artifact": "toolkit_build_report.json",
+    "contract": "toolkit_build_report_required",
+    "phase": "final"
+  },
+  "stages": {
+    "continuity": {
+      "status": "success",
+      "continuity_patch": {
+        "module_context": {
+          "module_name": "The Hidden City of Numillian",
+          "module_id": "The_Hidden_City_of_Numillian",
+          "areas": {
+            "TPG001": {
+              "name": "The Paradoxical Gates",
+              "type": "town",
+              "locations": [],
+              "npcs": [
+                "Keeper Veyron",
+                "The Paradoxical Twins",
+                "Glim",
+                "Old Grem the Cartographer"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "TMQ001": {
+              "name": "The Masked Quarters",
+              "type": "mixed",
+              "locations": [],
+              "npcs": [
+                "Seraphine of the Silver Veil",
+                "Malk the Whisper",
+                "Various masked dignitaries"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "TUD001": {
+              "name": "The Unraveling Districts",
+              "type": "mixed",
+              "locations": [
+                "G01",
+                "G02",
+                "G03"
+              ],
+              "npcs": [
+                "Azarel Moros",
+                "Mira the Shardseer",
+                "Raxil the Doubter"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "TSU001": {
+              "name": "The Subreality Undercity",
+              "type": "dungeon",
+              "locations": [
+                "H01",
+                "H02",
+                "H03"
+              ],
+              "npcs": [
+                "Fragmented Preceptor"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "TMFMH001": {
+              "name": "The Mind Flayer’s Masquerade Hall",
+              "type": "mixed",
+              "locations": [],
+              "npcs": [
+                "Masquerade Steward",
+                "Masked Duelist",
+                "Mind Flayer Archivist"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "TNU001": {
+              "name": "The Nexus of Unreality",
+              "type": "town",
+              "locations": [],
+              "npcs": [
+                "Xhalruun the Unraveled",
+                "Captain Lyra Voss",
+                "Any surviving faction leaders"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            }
+          },
+          "npcs": {
+            "keeper_veyron": {
+              "name": "Keeper Veyron",
+              "role": "",
+              "faction": "",
+              "description": "A serene, enigmatic figure clad in patchwork robes, their face partially obscured by a silver mask. Keeper Veyron is known for their cryptic wisdom and ability to guide seekers through the paradoxes of the crossroads. They offer riddles and insight—sometimes both at once.",
+              "appears_in": [
+                {
+                  "area": "TPG001",
+                  "location": "G01"
+                }
+              ],
+              "aliases": [
+                "Keeper Veyron (enigmatic illusionist gatekeeper)",
+                "Keeper Veyron"
+              ]
+            },
+            "the_paradoxical_twins": {
+              "name": "The Paradoxical Twins",
+              "role": "",
+              "faction": "",
+              "description": "A pair of identical merchants who always finish each other’s sentences, known for selling items that seem impossible or contradictory. They delight in bargains that challenge logic.",
+              "appears_in": [
+                {
+                  "area": "TPG001",
+                  "location": "G02"
+                }
+              ],
+              "aliases": [
+                "The Paradoxical Twins (sentient puzzle constructs)",
+                "The Paradoxical Twins"
+              ]
+            },
+            "seraphine_of_the_silver_veil": {
+              "name": "Seraphine of the Silver Veil",
+              "role": "",
+              "faction": "",
+              "description": "A poised, enigmatic woman wearing a shimmering mask of silver thread that conceals all but her luminous eyes and measured smile. She acts as both hostess and gatekeeper for all who enter the Veiled Districts, determining who may pass deeper. Her knowledge of secrets is legendary, and she trades in favors and whispered truths.",
+              "appears_in": [
+                {
+                  "area": "TMQ001",
+                  "location": "G01"
+                }
+              ],
+              "aliases": [
+                "Seraphine of the Silver Veil (faction leader)",
+                "Seraphine of the Silver Veil"
+              ]
+            },
+            "old_grem_the_cartographer": {
+              "name": "Old Grem the Cartographer",
+              "role": "",
+              "faction": "",
+              "description": "A wizened human hunched over a battered map case, Grem claims to have mapped every shifting street of the Crossroads—though no two maps are ever quite the same. He trades information and cryptic directions, sometimes for a drink, sometimes for a secret.",
+              "appears_in": [
+                {
+                  "area": "TPG001",
+                  "location": "G03"
+                }
+              ],
+              "aliases": [
+                "Old Grem the Cartographer (city guide)",
+                "Old Grem the Cartographer"
+              ]
+            },
+            "azarel_moros": {
+              "name": "Azarel Moros",
+              "role": "",
+              "faction": "",
+              "description": "A gaunt, silver-haired mage in tattered blue robes, Azarel's eyes shimmer with fragments of shattered illusions. He seems both present and slightly out of phase with reality, as if the magic of the wards has begun to unravel his very form. Azarel is obsessed with repairing the city's magical fabric, but his mind teeters on the brink from constant exposure to the wards' chaos.",
+              "appears_in": [
+                {
+                  "area": "TUD001",
+                  "location": "G01"
+                }
+              ],
+              "aliases": [
+                "Azarel Moros (Dreamer’s Uprising contact)",
+                "Azarel Moros"
+              ]
+            },
+            "xhalruun_the_unraveled": {
+              "name": "Xhalruun the Unraveled",
+              "role": "",
+              "faction": "",
+              "description": "An undead mind flayer whose psychic essence has fractured across dimensions. Xhalruun presides over the Sanctuary, preaching to invisible congregations and warping the boundaries of faith and reason. His true motives are enigmatic, but he is fixated on the party and the secret of Numillian's reality.",
+              "appears_in": [
+                {
+                  "area": "TNU001",
+                  "location": "H01"
+                }
+              ],
+              "aliases": [
+                "Xhalruun the Unraveled (antagonist, appearing in visions)",
+                "Xhalruun the Unraveled (in person)",
+                "Xhalruun the Unraveled"
+              ]
+            },
+            "mira_the_shardseer": {
+              "name": "Mira the Shardseer",
+              "role": "",
+              "faction": "",
+              "description": "A spectral oracle bound by fractured fate, Mira appears as a translucent woman with dozens of glass-like shards suspended around her. She can see glimpses of possible futures but is fractured by the district's energies. Mira offers cryptic advice, often speaking in riddles, but she is fiercely protective of those who treat her kindly.",
+              "appears_in": [
+                {
+                  "area": "TUD001",
+                  "location": "G02"
+                }
+              ],
+              "aliases": [
+                "Mira the Shardseer (trial overseer)",
+                "Mira the Shardseer"
+              ]
+            },
+            "raxil_the_doubter": {
+              "name": "Raxil the Doubter",
+              "role": "",
+              "faction": "",
+              "description": "A gaunt, haunted figure draped in faded scholar’s robes, Raxil clutches a bundle of broken memory crystals. Raxil obsessively questions the veracity of everything, including the party’s very existence. He serves as the memory-keeper of the Unraveling Wards, tormented by the knowledge that most recollections here are unreliable.",
+              "appears_in": [
+                {
+                  "area": "TUD001",
+                  "location": "G03"
+                }
+              ],
+              "aliases": [
+                "Raxil the Doubter (reluctant trial participant)",
+                "Raxil the Doubter"
+              ]
+            },
+            "malk_the_whisper": {
+              "name": "Malk the Whisper",
+              "role": "",
+              "faction": "",
+              "description": "A stooped, thin figure garbed in patchwork robes, their face obscured by a cracked porcelain mask. Malk trades in secrets, listening to the hall’s whispers and sharing only what serves their mysterious agenda.",
+              "appears_in": [
+                {
+                  "area": "TMQ001",
+                  "location": "G02"
+                }
+              ],
+              "aliases": [
+                "Malk the Whisper (undercity informant)",
+                "Malk the Whisper"
+              ]
+            },
+            "captain_lyra_voss": {
+              "name": "Captain Lyra Voss",
+              "role": "",
+              "faction": "",
+              "description": "A pragmatic, sharp-minded leader of an outcast faction, Lyra Voss seeks to restore stability to the Confluence. She offers the party alliance and information in exchange for tangible aid against Xhalruun or the growing madness.",
+              "appears_in": [
+                {
+                  "area": "TNU001",
+                  "location": "H02"
+                }
+              ],
+              "aliases": [
+                "Captain Lyra Voss (rebellion leader)",
+                "Captain Lyra Voss"
+              ]
+            },
+            "glim": {
+              "name": "Glim",
+              "role": "",
+              "faction": "",
+              "description": "A diminutive, bright-eyed goblin with a knack for acquiring curiosities that vanish as soon as they’re bought. Glim is well-connected and hears all the gossip of the crossroads.",
+              "appears_in": [
+                {
+                  "area": "TPG001",
+                  "location": "G02"
+                }
+              ],
+              "aliases": [
+                "Glim (half-illusory child guide)",
+                "Glim"
+              ]
+            },
+            "various_masked_dignitaries": {
+              "name": "Various masked dignitaries",
+              "role": "",
+              "faction": "",
+              "description": "A small gathering of influential figures in elaborate, distinctive masks, each hiding their true identity and allegiances. They are here to witness or enforce the outcomes of major bargains, and may offer the party new alliances—or threats—depending on what is revealed.",
+              "appears_in": [
+                {
+                  "area": "TMQ001",
+                  "location": "G03"
+                }
+              ],
+              "aliases": [
+                "Various masked dignitaries"
+              ]
+            },
+            "any_surviving_faction_leaders": {
+              "name": "Any surviving faction leaders",
+              "role": "",
+              "faction": "",
+              "description": "Representatives of various groups who have barricaded themselves in the reliquary, desperately clinging to relics and half-truths in the hope of restoring stability to the Confluence.",
+              "appears_in": [
+                {
+                  "area": "TNU001",
+                  "location": "H03"
+                }
+              ],
+              "aliases": [
+                "Any surviving faction leaders"
+              ]
+            },
+            "fragmented_preceptor": {
+              "name": "Fragmented Preceptor",
+              "role": "",
+              "faction": "",
+              "description": "A once-whole priest now split into three illusory selves—each reflecting different truths or lies. The Preceptor can offer guidance, riddles, or dangerous half-truths about the Warrens and Numillian’s secrets. Sometimes helpful, sometimes a hindrance.",
+              "appears_in": [
+                {
+                  "area": "TSU001",
+                  "location": "H03"
+                }
+              ],
+              "aliases": [
+                "Fragmented Preceptor"
+              ]
+            },
+            "masquerade_steward": {
+              "name": "Masquerade Steward",
+              "role": "",
+              "faction": "",
+              "description": "A tall figure in an intricate mirrored mask, greeting arrivals with a smile that never quite reaches their eyes. The steward offers cryptic advice, subtly probing the party's intentions and mental fortitude.",
+              "appears_in": [
+                {
+                  "area": "TMFMH001",
+                  "location": "H01"
+                }
+              ],
+              "aliases": [
+                "Masquerade Steward"
+              ]
+            },
+            "masked_duelist": {
+              "name": "Masked Duelist",
+              "role": "",
+              "faction": "",
+              "description": "A flamboyant swordsman in a shifting, glass-like mask, eager to test the wit and will of outsiders through psychic contests or riddles.",
+              "appears_in": [
+                {
+                  "area": "TMFMH001",
+                  "location": "H02"
+                }
+              ],
+              "aliases": [
+                "Masked Duelist"
+              ]
+            },
+            "mind_flayer_archivist": {
+              "name": "Mind Flayer Archivist",
+              "role": "",
+              "faction": "",
+              "description": "A gaunt, tentacled figure in tattered ceremonial finery, cataloging and curating psychic treasures. The archivist is aware of the party’s approach, both physically and mentally.",
+              "appears_in": [
+                {
+                  "area": "TMFMH001",
+                  "location": "H03"
+                }
+              ],
+              "aliases": [
+                "Mind Flayer Archivist"
+              ]
+            }
+          },
+          "locations": {
+            "H01": {
+              "name": "Grasp of the Mindlocked",
+              "area": "TSU001"
+            },
+            "H02": {
+              "name": "Veilsplit Threshold",
+              "area": "TSU001"
+            },
+            "H03": {
+              "name": "Sanctum of Mirrored Truths",
+              "area": "TSU001"
+            },
+            "G01": {
+              "name": "Veilwoven Crossroads",
+              "area": "TUD001"
+            },
+            "G02": {
+              "name": "Specter's Choice Alcove",
+              "area": "TUD001"
+            },
+            "G03": {
+              "name": "Fractured Memory Niche",
+              "area": "TUD001"
+            }
+          },
+          "plot_scopes": {
+            "PP001": "TNU001",
+            "PP002": "TNU001",
+            "PP003": "TNU001",
+            "PP004": "TNU001"
+          },
+          "references": {
+            "npc:Keeper Veyron (enigmatic illusionist gatekeeper)": [
+              "module:plotStages"
+            ],
+            "npc:The Paradoxical Twins (sentient puzzle constructs)": [
+              "module:plotStages"
+            ],
+            "npc:Seraphine of the Silver Veil (faction leader)": [
+              "module:plotStages"
+            ],
+            "npc:Old Grem the Cartographer (city guide)": [
+              "module:plotStages"
+            ],
+            "npc:Azarel Moros (Dreamer’s Uprising contact)": [
+              "module:plotStages"
+            ],
+            "npc:Xhalruun the Unraveled (antagonist, appearing in visions)": [
+              "module:plotStages"
+            ],
+            "npc:Mira the Shardseer (trial overseer)": [
+              "module:plotStages"
+            ],
+            "npc:Raxil the Doubter (reluctant trial participant)": [
+              "module:plotStages"
+            ],
+            "npc:Malk the Whisper (undercity informant)": [
+              "module:plotStages"
+            ],
+            "npc:Captain Lyra Voss (rebellion leader)": [
+              "module:plotStages"
+            ],
+            "npc:Glim (half-illusory child guide)": [
+              "module:plotStages"
+            ],
+            "npc:Xhalruun the Unraveled (in person)": [
+              "module:plotStages"
+            ],
+            "npc:Seraphine of the Silver Veil": [
+              "module:plotStages"
+            ],
+            "npc:Captain Lyra Voss": [
+              "module:plotStages"
+            ],
+            "npc:Various masked dignitaries": [
+              "module:plotStages"
+            ],
+            "npc:Xhalruun the Unraveled": [
+              "module:plotStages"
+            ],
+            "npc:Azarel Moros": [
+              "module:plotStages"
+            ],
+            "npc:Any surviving faction leaders": [
+              "module:plotStages"
+            ]
+          },
+          "validation_issues": [],
+          "generated_at": "2026-04-20T16:10:00.159848",
+          "continuity": {
+            "continuity_version": "v1",
+            "entry_state_variants": {
+              "cold_start": {
+                "summary": "Party enters The Hidden City of Numillian with no prior continuity context. Present the opening conflict and immediate objective clearly."
+              },
+              "partial_context": {
+                "summary": "Party enters The Hidden City of Numillian with partial prior context. Reinforce known clues before branch-critical decisions."
+              },
+              "late_arc": {
+                "summary": "Party enters The Hidden City of Numillian in late-arc state. Provide compact recap and preserve ending accessibility."
+              }
+            },
+            "cross_module_refs": [],
+            "standalone_fallback": {
+              "enabled": true,
+              "clue_sources": [
+                "module_context",
+                "module_plot"
+              ],
+              "notes": "The_Hidden_City_of_Numillian remains playable as a standalone module when cross-module continuity is unavailable."
+            }
+          }
+        },
+        "changed": true,
+        "injected_keys": [
+          "continuity",
+          "continuity.continuity_version",
+          "continuity.entry_state_variants",
+          "continuity.cross_module_refs",
+          "continuity.standalone_fallback"
+        ]
+      },
+      "continuity_enrichment": {
+        "status": "success",
+        "module_context": {
+          "module_name": "The Hidden City of Numillian",
+          "module_id": "The_Hidden_City_of_Numillian",
+          "areas": {
+            "TPG001": {
+              "name": "The Paradoxical Gates",
+              "type": "town",
+              "locations": [],
+              "npcs": [
+                "Keeper Veyron",
+                "The Paradoxical Twins",
+                "Glim",
+                "Old Grem the Cartographer"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "TMQ001": {
+              "name": "The Masked Quarters",
+              "type": "mixed",
+              "locations": [],
+              "npcs": [
+                "Seraphine of the Silver Veil",
+                "Malk the Whisper",
+                "Various masked dignitaries"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "TUD001": {
+              "name": "The Unraveling Districts",
+              "type": "mixed",
+              "locations": [
+                "G01",
+                "G02",
+                "G03"
+              ],
+              "npcs": [
+                "Azarel Moros",
+                "Mira the Shardseer",
+                "Raxil the Doubter"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "TSU001": {
+              "name": "The Subreality Undercity",
+              "type": "dungeon",
+              "locations": [
+                "H01",
+                "H02",
+                "H03"
+              ],
+              "npcs": [
+                "Fragmented Preceptor"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "TMFMH001": {
+              "name": "The Mind Flayer’s Masquerade Hall",
+              "type": "mixed",
+              "locations": [],
+              "npcs": [
+                "Masquerade Steward",
+                "Masked Duelist",
+                "Mind Flayer Archivist"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "TNU001": {
+              "name": "The Nexus of Unreality",
+              "type": "town",
+              "locations": [],
+              "npcs": [
+                "Xhalruun the Unraveled",
+                "Captain Lyra Voss",
+                "Any surviving faction leaders"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            }
+          },
+          "npcs": {
+            "keeper_veyron": {
+              "name": "Keeper Veyron",
+              "role": "",
+              "faction": "",
+              "description": "A serene, enigmatic figure clad in patchwork robes, their face partially obscured by a silver mask. Keeper Veyron is known for their cryptic wisdom and ability to guide seekers through the paradoxes of the crossroads. They offer riddles and insight—sometimes both at once.",
+              "appears_in": [
+                {
+                  "area": "TPG001",
+                  "location": "G01"
+                }
+              ],
+              "aliases": [
+                "Keeper Veyron (enigmatic illusionist gatekeeper)",
+                "Keeper Veyron"
+              ]
+            },
+            "the_paradoxical_twins": {
+              "name": "The Paradoxical Twins",
+              "role": "",
+              "faction": "",
+              "description": "A pair of identical merchants who always finish each other’s sentences, known for selling items that seem impossible or contradictory. They delight in bargains that challenge logic.",
+              "appears_in": [
+                {
+                  "area": "TPG001",
+                  "location": "G02"
+                }
+              ],
+              "aliases": [
+                "The Paradoxical Twins (sentient puzzle constructs)",
+                "The Paradoxical Twins"
+              ]
+            },
+            "seraphine_of_the_silver_veil": {
+              "name": "Seraphine of the Silver Veil",
+              "role": "",
+              "faction": "",
+              "description": "A poised, enigmatic woman wearing a shimmering mask of silver thread that conceals all but her luminous eyes and measured smile. She acts as both hostess and gatekeeper for all who enter the Veiled Districts, determining who may pass deeper. Her knowledge of secrets is legendary, and she trades in favors and whispered truths.",
+              "appears_in": [
+                {
+                  "area": "TMQ001",
+                  "location": "G01"
+                }
+              ],
+              "aliases": [
+                "Seraphine of the Silver Veil (faction leader)",
+                "Seraphine of the Silver Veil"
+              ]
+            },
+            "old_grem_the_cartographer": {
+              "name": "Old Grem the Cartographer",
+              "role": "",
+              "faction": "",
+              "description": "A wizened human hunched over a battered map case, Grem claims to have mapped every shifting street of the Crossroads—though no two maps are ever quite the same. He trades information and cryptic directions, sometimes for a drink, sometimes for a secret.",
+              "appears_in": [
+                {
+                  "area": "TPG001",
+                  "location": "G03"
+                }
+              ],
+              "aliases": [
+                "Old Grem the Cartographer (city guide)",
+                "Old Grem the Cartographer"
+              ]
+            },
+            "azarel_moros": {
+              "name": "Azarel Moros",
+              "role": "",
+              "faction": "",
+              "description": "A gaunt, silver-haired mage in tattered blue robes, Azarel's eyes shimmer with fragments of shattered illusions. He seems both present and slightly out of phase with reality, as if the magic of the wards has begun to unravel his very form. Azarel is obsessed with repairing the city's magical fabric, but his mind teeters on the brink from constant exposure to the wards' chaos.",
+              "appears_in": [
+                {
+                  "area": "TUD001",
+                  "location": "G01"
+                }
+              ],
+              "aliases": [
+                "Azarel Moros (Dreamer’s Uprising contact)",
+                "Azarel Moros"
+              ]
+            },
+            "xhalruun_the_unraveled": {
+              "name": "Xhalruun the Unraveled",
+              "role": "",
+              "faction": "",
+              "description": "An undead mind flayer whose psychic essence has fractured across dimensions. Xhalruun presides over the Sanctuary, preaching to invisible congregations and warping the boundaries of faith and reason. His true motives are enigmatic, but he is fixated on the party and the secret of Numillian's reality.",
+              "appears_in": [
+                {
+                  "area": "TNU001",
+                  "location": "H01"
+                }
+              ],
+              "aliases": [
+                "Xhalruun the Unraveled (antagonist, appearing in visions)",
+                "Xhalruun the Unraveled (in person)",
+                "Xhalruun the Unraveled"
+              ]
+            },
+            "mira_the_shardseer": {
+              "name": "Mira the Shardseer",
+              "role": "",
+              "faction": "",
+              "description": "A spectral oracle bound by fractured fate, Mira appears as a translucent woman with dozens of glass-like shards suspended around her. She can see glimpses of possible futures but is fractured by the district's energies. Mira offers cryptic advice, often speaking in riddles, but she is fiercely protective of those who treat her kindly.",
+              "appears_in": [
+                {
+                  "area": "TUD001",
+                  "location": "G02"
+                }
+              ],
+              "aliases": [
+                "Mira the Shardseer (trial overseer)",
+                "Mira the Shardseer"
+              ]
+            },
+            "raxil_the_doubter": {
+              "name": "Raxil the Doubter",
+              "role": "",
+              "faction": "",
+              "description": "A gaunt, haunted figure draped in faded scholar’s robes, Raxil clutches a bundle of broken memory crystals. Raxil obsessively questions the veracity of everything, including the party’s very existence. He serves as the memory-keeper of the Unraveling Wards, tormented by the knowledge that most recollections here are unreliable.",
+              "appears_in": [
+                {
+                  "area": "TUD001",
+                  "location": "G03"
+                }
+              ],
+              "aliases": [
+                "Raxil the Doubter (reluctant trial participant)",
+                "Raxil the Doubter"
+              ]
+            },
+            "malk_the_whisper": {
+              "name": "Malk the Whisper",
+              "role": "",
+              "faction": "",
+              "description": "A stooped, thin figure garbed in patchwork robes, their face obscured by a cracked porcelain mask. Malk trades in secrets, listening to the hall’s whispers and sharing only what serves their mysterious agenda.",
+              "appears_in": [
+                {
+                  "area": "TMQ001",
+                  "location": "G02"
+                }
+              ],
+              "aliases": [
+                "Malk the Whisper (undercity informant)",
+                "Malk the Whisper"
+              ]
+            },
+            "captain_lyra_voss": {
+              "name": "Captain Lyra Voss",
+              "role": "",
+              "faction": "",
+              "description": "A pragmatic, sharp-minded leader of an outcast faction, Lyra Voss seeks to restore stability to the Confluence. She offers the party alliance and information in exchange for tangible aid against Xhalruun or the growing madness.",
+              "appears_in": [
+                {
+                  "area": "TNU001",
+                  "location": "H02"
+                }
+              ],
+              "aliases": [
+                "Captain Lyra Voss (rebellion leader)",
+                "Captain Lyra Voss"
+              ]
+            },
+            "glim": {
+              "name": "Glim",
+              "role": "",
+              "faction": "",
+              "description": "A diminutive, bright-eyed goblin with a knack for acquiring curiosities that vanish as soon as they’re bought. Glim is well-connected and hears all the gossip of the crossroads.",
+              "appears_in": [
+                {
+                  "area": "TPG001",
+                  "location": "G02"
+                }
+              ],
+              "aliases": [
+                "Glim (half-illusory child guide)",
+                "Glim"
+              ]
+            },
+            "various_masked_dignitaries": {
+              "name": "Various masked dignitaries",
+              "role": "",
+              "faction": "",
+              "description": "A small gathering of influential figures in elaborate, distinctive masks, each hiding their true identity and allegiances. They are here to witness or enforce the outcomes of major bargains, and may offer the party new alliances—or threats—depending on what is revealed.",
+              "appears_in": [
+                {
+                  "area": "TMQ001",
+                  "location": "G03"
+                }
+              ],
+              "aliases": [
+                "Various masked dignitaries"
+              ]
+            },
+            "any_surviving_faction_leaders": {
+              "name": "Any surviving faction leaders",
+              "role": "",
+              "faction": "",
+              "description": "Representatives of various groups who have barricaded themselves in the reliquary, desperately clinging to relics and half-truths in the hope of restoring stability to the Confluence.",
+              "appears_in": [
+                {
+                  "area": "TNU001",
+                  "location": "H03"
+                }
+              ],
+              "aliases": [
+                "Any surviving faction leaders"
+              ]
+            },
+            "fragmented_preceptor": {
+              "name": "Fragmented Preceptor",
+              "role": "",
+              "faction": "",
+              "description": "A once-whole priest now split into three illusory selves—each reflecting different truths or lies. The Preceptor can offer guidance, riddles, or dangerous half-truths about the Warrens and Numillian’s secrets. Sometimes helpful, sometimes a hindrance.",
+              "appears_in": [
+                {
+                  "area": "TSU001",
+                  "location": "H03"
+                }
+              ],
+              "aliases": [
+                "Fragmented Preceptor"
+              ]
+            },
+            "masquerade_steward": {
+              "name": "Masquerade Steward",
+              "role": "",
+              "faction": "",
+              "description": "A tall figure in an intricate mirrored mask, greeting arrivals with a smile that never quite reaches their eyes. The steward offers cryptic advice, subtly probing the party's intentions and mental fortitude.",
+              "appears_in": [
+                {
+                  "area": "TMFMH001",
+                  "location": "H01"
+                }
+              ],
+              "aliases": [
+                "Masquerade Steward"
+              ]
+            },
+            "masked_duelist": {
+              "name": "Masked Duelist",
+              "role": "",
+              "faction": "",
+              "description": "A flamboyant swordsman in a shifting, glass-like mask, eager to test the wit and will of outsiders through psychic contests or riddles.",
+              "appears_in": [
+                {
+                  "area": "TMFMH001",
+                  "location": "H02"
+                }
+              ],
+              "aliases": [
+                "Masked Duelist"
+              ]
+            },
+            "mind_flayer_archivist": {
+              "name": "Mind Flayer Archivist",
+              "role": "",
+              "faction": "",
+              "description": "A gaunt, tentacled figure in tattered ceremonial finery, cataloging and curating psychic treasures. The archivist is aware of the party’s approach, both physically and mentally.",
+              "appears_in": [
+                {
+                  "area": "TMFMH001",
+                  "location": "H03"
+                }
+              ],
+              "aliases": [
+                "Mind Flayer Archivist"
+              ]
+            }
+          },
+          "locations": {
+            "H01": {
+              "name": "Grasp of the Mindlocked",
+              "area": "TSU001"
+            },
+            "H02": {
+              "name": "Veilsplit Threshold",
+              "area": "TSU001"
+            },
+            "H03": {
+              "name": "Sanctum of Mirrored Truths",
+              "area": "TSU001"
+            },
+            "G01": {
+              "name": "Veilwoven Crossroads",
+              "area": "TUD001"
+            },
+            "G02": {
+              "name": "Specter's Choice Alcove",
+              "area": "TUD001"
+            },
+            "G03": {
+              "name": "Fractured Memory Niche",
+              "area": "TUD001"
+            }
+          },
+          "plot_scopes": {
+            "PP001": "TNU001",
+            "PP002": "TNU001",
+            "PP003": "TNU001",
+            "PP004": "TNU001"
+          },
+          "references": {
+            "npc:Keeper Veyron (enigmatic illusionist gatekeeper)": [
+              "module:plotStages"
+            ],
+            "npc:The Paradoxical Twins (sentient puzzle constructs)": [
+              "module:plotStages"
+            ],
+            "npc:Seraphine of the Silver Veil (faction leader)": [
+              "module:plotStages"
+            ],
+            "npc:Old Grem the Cartographer (city guide)": [
+              "module:plotStages"
+            ],
+            "npc:Azarel Moros (Dreamer’s Uprising contact)": [
+              "module:plotStages"
+            ],
+            "npc:Xhalruun the Unraveled (antagonist, appearing in visions)": [
+              "module:plotStages"
+            ],
+            "npc:Mira the Shardseer (trial overseer)": [
+              "module:plotStages"
+            ],
+            "npc:Raxil the Doubter (reluctant trial participant)": [
+              "module:plotStages"
+            ],
+            "npc:Malk the Whisper (undercity informant)": [
+              "module:plotStages"
+            ],
+            "npc:Captain Lyra Voss (rebellion leader)": [
+              "module:plotStages"
+            ],
+            "npc:Glim (half-illusory child guide)": [
+              "module:plotStages"
+            ],
+            "npc:Xhalruun the Unraveled (in person)": [
+              "module:plotStages"
+            ],
+            "npc:Seraphine of the Silver Veil": [
+              "module:plotStages"
+            ],
+            "npc:Captain Lyra Voss": [
+              "module:plotStages"
+            ],
+            "npc:Various masked dignitaries": [
+              "module:plotStages"
+            ],
+            "npc:Xhalruun the Unraveled": [
+              "module:plotStages"
+            ],
+            "npc:Azarel Moros": [
+              "module:plotStages"
+            ],
+            "npc:Any surviving faction leaders": [
+              "module:plotStages"
+            ]
+          },
+          "validation_issues": [],
+          "generated_at": "2026-04-20T16:10:00.159848",
+          "continuity": {
+            "continuity_version": "v1",
+            "entry_state_variants": {
+              "cold_start": {
+                "summary": "Party enters The Hidden City of Numillian with no prior continuity context. Present the opening conflict and immediate objective clearly."
+              },
+              "partial_context": {
+                "summary": "Party enters The Hidden City of Numillian with partial prior context. Reinforce known clues before branch-critical decisions."
+              },
+              "late_arc": {
+                "summary": "Party enters The Hidden City of Numillian in late-arc state. Provide compact recap and preserve ending accessibility."
+              }
+            },
+            "cross_module_refs": [],
+            "standalone_fallback": {
+              "enabled": true,
+              "clue_sources": [
+                "module_context",
+                "module_plot"
+              ],
+              "notes": "The_Hidden_City_of_Numillian remains playable as a standalone module when cross-module continuity is unavailable."
+            }
+          }
+        },
+        "changed": false,
+        "added_refs": [],
+        "existing_count": 0,
+        "final_count": 0
+      },
+      "continuity_contract": {
+        "status": "success",
+        "version": "v1",
+        "required_keys_present": [
+          "continuity_version",
+          "entry_state_variants",
+          "cross_module_refs",
+          "standalone_fallback"
+        ],
+        "missing_required_keys": [],
+        "warnings": [],
+        "errors": [],
+        "normalized_refs_count": 0,
+        "alias_resolution": {
+          "resolved": 0,
+          "ambiguous": 0,
+          "unresolved": 0
+        }
+      },
+      "context_path": "modules/The_Hidden_City_of_Numillian/module_context.json"
+    },
+    "semantic_authority": {
+      "status": "degraded",
+      "semantic_authority": {
+        "version": "v1",
+        "module_slug": "The_Hidden_City_of_Numillian",
+        "location_aliases": {
+          "doppelglass den": {
+            "status": "resolved",
+            "location_id": "G03",
+            "location_name": "Fractured Memory Niche",
+            "candidate_location_ids": [
+              "G03"
+            ],
+            "sources": [
+              "areas/TPG001.json#locations[G03].aliases",
+              "areas/TPG001.json#locations[G03].name"
+            ]
+          },
+          "fractured memory niche": {
+            "status": "resolved",
+            "location_id": "G03",
+            "location_name": "Fractured Memory Niche",
+            "candidate_location_ids": [
+              "G03"
+            ],
+            "sources": [
+              "areas/TUD001.json#locations[G03].aliases",
+              "areas/TUD001.json#locations[G03].name"
+            ]
+          },
+          "g01": {
+            "status": "resolved",
+            "location_id": "G01",
+            "location_name": "Veilwoven Crossroads",
+            "candidate_location_ids": [
+              "G01"
+            ],
+            "sources": [
+              "areas/TMQ001.json#locations[G01].aliases",
+              "areas/TPG001.json#locations[G01].aliases",
+              "areas/TUD001.json#locations[G01].aliases"
+            ]
+          },
+          "g02": {
+            "status": "resolved",
+            "location_id": "G02",
+            "location_name": "Specter's Choice Alcove",
+            "candidate_location_ids": [
+              "G02"
+            ],
+            "sources": [
+              "areas/TMQ001.json#locations[G02].aliases",
+              "areas/TPG001.json#locations[G02].aliases",
+              "areas/TUD001.json#locations[G02].aliases"
+            ]
+          },
+          "g03": {
+            "status": "resolved",
+            "location_id": "G03",
+            "location_name": "Fractured Memory Niche",
+            "candidate_location_ids": [
+              "G03"
+            ],
+            "sources": [
+              "areas/TMQ001.json#locations[G03].aliases",
+              "areas/TPG001.json#locations[G03].aliases",
+              "areas/TUD001.json#locations[G03].aliases"
+            ]
+          },
+          "grasp of the mindlocked": {
+            "status": "resolved",
+            "location_id": "H01",
+            "location_name": "Grasp of the Mindlocked",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/TSU001.json#locations[H01].aliases",
+              "areas/TSU001.json#locations[H01].name"
+            ]
+          },
+          "h01": {
+            "status": "resolved",
+            "location_id": "H01",
+            "location_name": "Grasp of the Mindlocked",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/TMFMH001.json#locations[H01].aliases",
+              "areas/TNU001.json#locations[H01].aliases",
+              "areas/TSU001.json#locations[H01].aliases"
+            ]
+          },
+          "h02": {
+            "status": "resolved",
+            "location_id": "H02",
+            "location_name": "Veilsplit Threshold",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/TMFMH001.json#locations[H02].aliases",
+              "areas/TNU001.json#locations[H02].aliases",
+              "areas/TSU001.json#locations[H02].aliases"
+            ]
+          },
+          "h03": {
+            "status": "resolved",
+            "location_id": "H03",
+            "location_name": "Sanctum of Mirrored Truths",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/TMFMH001.json#locations[H03].aliases",
+              "areas/TNU001.json#locations[H03].aliases",
+              "areas/TSU001.json#locations[H03].aliases"
+            ]
+          },
+          "hall of fractured truths": {
+            "status": "resolved",
+            "location_id": "G02",
+            "location_name": "Specter's Choice Alcove",
+            "candidate_location_ids": [
+              "G02"
+            ],
+            "sources": [
+              "areas/TMQ001.json#locations[G02].aliases",
+              "areas/TMQ001.json#locations[G02].name"
+            ]
+          },
+          "hall of shifting truths": {
+            "status": "resolved",
+            "location_id": "H02",
+            "location_name": "Veilsplit Threshold",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/TMFMH001.json#locations[H02].aliases",
+              "areas/TMFMH001.json#locations[H02].name"
+            ]
+          },
+          "illusions end alcove": {
+            "status": "resolved",
+            "location_id": "G03",
+            "location_name": "Fractured Memory Niche",
+            "candidate_location_ids": [
+              "G03"
+            ],
+            "sources": [
+              "areas/TMQ001.json#locations[G03].aliases",
+              "areas/TMQ001.json#locations[G03].name"
+            ]
+          },
+          "mindsunder vault": {
+            "status": "resolved",
+            "location_id": "H03",
+            "location_name": "Sanctum of Mirrored Truths",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/TMFMH001.json#locations[H03].aliases",
+              "areas/TMFMH001.json#locations[H03].name"
+            ]
+          },
+          "miragebound exchange": {
+            "status": "resolved",
+            "location_id": "G02",
+            "location_name": "Specter's Choice Alcove",
+            "candidate_location_ids": [
+              "G02"
+            ],
+            "sources": [
+              "areas/TPG001.json#locations[G02].aliases",
+              "areas/TPG001.json#locations[G02].name"
+            ]
+          },
+          "miragebound reliquary": {
+            "status": "resolved",
+            "location_id": "H03",
+            "location_name": "Sanctum of Mirrored Truths",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/TNU001.json#locations[H03].aliases",
+              "areas/TNU001.json#locations[H03].name"
+            ]
+          },
+          "sanctum of fractured truths": {
+            "status": "resolved",
+            "location_id": "G01",
+            "location_name": "Veilwoven Crossroads",
+            "candidate_location_ids": [
+              "G01"
+            ],
+            "sources": [
+              "areas/TPG001.json#locations[G01].aliases",
+              "areas/TPG001.json#locations[G01].name"
+            ]
+          },
+          "sanctum of mirrored truths": {
+            "status": "resolved",
+            "location_id": "H03",
+            "location_name": "Sanctum of Mirrored Truths",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/TSU001.json#locations[H03].aliases",
+              "areas/TSU001.json#locations[H03].name"
+            ]
+          },
+          "shifting veil foyer": {
+            "status": "resolved",
+            "location_id": "G01",
+            "location_name": "Veilwoven Crossroads",
+            "candidate_location_ids": [
+              "G01"
+            ],
+            "sources": [
+              "areas/TMQ001.json#locations[G01].aliases",
+              "areas/TMQ001.json#locations[G01].name"
+            ]
+          },
+          "specters choice alcove": {
+            "status": "resolved",
+            "location_id": "G02",
+            "location_name": "Specter's Choice Alcove",
+            "candidate_location_ids": [
+              "G02"
+            ],
+            "sources": [
+              "areas/TUD001.json#locations[G02].aliases",
+              "areas/TUD001.json#locations[G02].name"
+            ]
+          },
+          "the doppelglass den": {
+            "status": "resolved",
+            "location_id": "G03",
+            "location_name": "Fractured Memory Niche",
+            "candidate_location_ids": [
+              "G03"
+            ],
+            "sources": [
+              "areas/TPG001.json#locations[G03].aliases",
+              "areas/TPG001.json#locations[G03].name"
+            ]
+          },
+          "twilight vein concordium": {
+            "status": "resolved",
+            "location_id": "H02",
+            "location_name": "Veilsplit Threshold",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/TNU001.json#locations[H02].aliases",
+              "areas/TNU001.json#locations[H02].name"
+            ]
+          },
+          "veiled paradox sanctuary": {
+            "status": "resolved",
+            "location_id": "H01",
+            "location_name": "Grasp of the Mindlocked",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/TNU001.json#locations[H01].aliases",
+              "areas/TNU001.json#locations[H01].name"
+            ]
+          },
+          "veilpiercer antechamber": {
+            "status": "resolved",
+            "location_id": "H01",
+            "location_name": "Grasp of the Mindlocked",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/TMFMH001.json#locations[H01].aliases",
+              "areas/TMFMH001.json#locations[H01].name"
+            ]
+          },
+          "veilsplit threshold": {
+            "status": "resolved",
+            "location_id": "H02",
+            "location_name": "Veilsplit Threshold",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/TSU001.json#locations[H02].aliases",
+              "areas/TSU001.json#locations[H02].name"
+            ]
+          },
+          "veilwoven crossroads": {
+            "status": "resolved",
+            "location_id": "G01",
+            "location_name": "Veilwoven Crossroads",
+            "candidate_location_ids": [
+              "G01"
+            ],
+            "sources": [
+              "areas/TUD001.json#locations[G01].aliases",
+              "areas/TUD001.json#locations[G01].name"
+            ]
+          }
+        },
+        "destination_phrases": {
+          "doppelglass den": {
+            "status": "resolved",
+            "location_id": "G03",
+            "candidate_location_ids": [
+              "G03"
+            ],
+            "sources": [
+              "areas/TPG001.json#locations[G03].aliases",
+              "areas/TPG001.json#locations[G03].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "fractured memory niche": {
+            "status": "resolved",
+            "location_id": "G03",
+            "candidate_location_ids": [
+              "G03"
+            ],
+            "sources": [
+              "areas/TUD001.json#locations[G03].aliases",
+              "areas/TUD001.json#locations[G03].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "g01": {
+            "status": "resolved",
+            "location_id": "G01",
+            "candidate_location_ids": [
+              "G01"
+            ],
+            "sources": [
+              "areas/TMQ001.json#locations[G01].aliases",
+              "areas/TPG001.json#locations[G01].aliases",
+              "areas/TUD001.json#locations[G01].aliases"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "g02": {
+            "status": "resolved",
+            "location_id": "G02",
+            "candidate_location_ids": [
+              "G02"
+            ],
+            "sources": [
+              "areas/TMQ001.json#locations[G02].aliases",
+              "areas/TPG001.json#locations[G02].aliases",
+              "areas/TUD001.json#locations[G02].aliases"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "g03": {
+            "status": "resolved",
+            "location_id": "G03",
+            "candidate_location_ids": [
+              "G03"
+            ],
+            "sources": [
+              "areas/TMQ001.json#locations[G03].aliases",
+              "areas/TPG001.json#locations[G03].aliases",
+              "areas/TUD001.json#locations[G03].aliases"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "grasp of the mindlocked": {
+            "status": "resolved",
+            "location_id": "H01",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/TSU001.json#locations[H01].aliases",
+              "areas/TSU001.json#locations[H01].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "h01": {
+            "status": "resolved",
+            "location_id": "H01",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/TMFMH001.json#locations[H01].aliases",
+              "areas/TNU001.json#locations[H01].aliases",
+              "areas/TSU001.json#locations[H01].aliases"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "h02": {
+            "status": "resolved",
+            "location_id": "H02",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/TMFMH001.json#locations[H02].aliases",
+              "areas/TNU001.json#locations[H02].aliases",
+              "areas/TSU001.json#locations[H02].aliases"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "h03": {
+            "status": "resolved",
+            "location_id": "H03",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/TMFMH001.json#locations[H03].aliases",
+              "areas/TNU001.json#locations[H03].aliases",
+              "areas/TSU001.json#locations[H03].aliases"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "hall of fractured truths": {
+            "status": "resolved",
+            "location_id": "G02",
+            "candidate_location_ids": [
+              "G02"
+            ],
+            "sources": [
+              "areas/TMQ001.json#locations[G02].aliases",
+              "areas/TMQ001.json#locations[G02].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "hall of shifting truths": {
+            "status": "resolved",
+            "location_id": "H02",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/TMFMH001.json#locations[H02].aliases",
+              "areas/TMFMH001.json#locations[H02].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "illusions end alcove": {
+            "status": "resolved",
+            "location_id": "G03",
+            "candidate_location_ids": [
+              "G03"
+            ],
+            "sources": [
+              "areas/TMQ001.json#locations[G03].aliases",
+              "areas/TMQ001.json#locations[G03].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "mindsunder vault": {
+            "status": "resolved",
+            "location_id": "H03",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/TMFMH001.json#locations[H03].aliases",
+              "areas/TMFMH001.json#locations[H03].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "miragebound exchange": {
+            "status": "resolved",
+            "location_id": "G02",
+            "candidate_location_ids": [
+              "G02"
+            ],
+            "sources": [
+              "areas/TPG001.json#locations[G02].aliases",
+              "areas/TPG001.json#locations[G02].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "miragebound reliquary": {
+            "status": "resolved",
+            "location_id": "H03",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/TNU001.json#locations[H03].aliases",
+              "areas/TNU001.json#locations[H03].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "paradox sanctuary": {
+            "status": "unresolved",
+            "candidate_location_ids": [],
+            "sources": [
+              "areas/TNU001.json#locations[H01].aliases",
+              "areas/TNU001.json#locations[H01].name"
+            ],
+            "observed": true,
+            "player_facing": true,
+            "observation_count": 2
+          },
+          "sanctum of fractured truths": {
+            "status": "resolved",
+            "location_id": "G01",
+            "candidate_location_ids": [
+              "G01"
+            ],
+            "sources": [
+              "areas/TPG001.json#locations[G01].aliases",
+              "areas/TPG001.json#locations[G01].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "sanctum of mirrored truths": {
+            "status": "resolved",
+            "location_id": "H03",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/TSU001.json#locations[H03].aliases",
+              "areas/TSU001.json#locations[H03].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "shifting veil foyer": {
+            "status": "resolved",
+            "location_id": "G01",
+            "candidate_location_ids": [
+              "G01"
+            ],
+            "sources": [
+              "areas/TMQ001.json#locations[G01].aliases",
+              "areas/TMQ001.json#locations[G01].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "specters choice alcove": {
+            "status": "resolved",
+            "location_id": "G02",
+            "candidate_location_ids": [
+              "G02"
+            ],
+            "sources": [
+              "areas/TUD001.json#locations[G02].aliases",
+              "areas/TUD001.json#locations[G02].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "the doppelglass den": {
+            "status": "resolved",
+            "location_id": "G03",
+            "candidate_location_ids": [
+              "G03"
+            ],
+            "sources": [
+              "areas/TPG001.json#locations[G03].aliases",
+              "areas/TPG001.json#locations[G03].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "twilight vein concordium": {
+            "status": "resolved",
+            "location_id": "H02",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/TNU001.json#locations[H02].aliases",
+              "areas/TNU001.json#locations[H02].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "veiled paradox sanctuary": {
+            "status": "resolved",
+            "location_id": "H01",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/TNU001.json#locations[H01].aliases",
+              "areas/TNU001.json#locations[H01].name"
+            ],
+            "observed": true,
+            "player_facing": true,
+            "observation_count": 2
+          },
+          "veilpiercer antechamber": {
+            "status": "resolved",
+            "location_id": "H01",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/TMFMH001.json#locations[H01].aliases",
+              "areas/TMFMH001.json#locations[H01].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "veilsplit threshold": {
+            "status": "resolved",
+            "location_id": "H02",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/TSU001.json#locations[H02].aliases",
+              "areas/TSU001.json#locations[H02].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "veilwoven crossroads": {
+            "status": "resolved",
+            "location_id": "G01",
+            "candidate_location_ids": [
+              "G01"
+            ],
+            "sources": [
+              "areas/TUD001.json#locations[G01].aliases",
+              "areas/TUD001.json#locations[G01].description",
+              "areas/TUD001.json#locations[G01].name"
+            ],
+            "observed": true,
+            "player_facing": true,
+            "observation_count": 1
+          }
+        },
+        "npc_scene_authority": {
+          "Any surviving faction leaders": {
+            "name_slug": "any surviving faction leaders",
+            "visible_location_ids": [
+              "H03"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "TMQ001",
+                "source": "module_plot.json#plotPoints[PP007].description",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/TNU001.json#locations[H03].npcs",
+              "areas/TNU001.json#locations[H03].plotHooks",
+              "module_context.json#npcs.any_surviving_faction_leaders",
+              "module_plot.json#plotPoints[PP007].description"
+            ],
+            "authored_mentions_count": 2,
+            "authored_mention_sources": [
+              "areas/TNU001.json#locations[H03].plotHooks",
+              "module_plot.json#plotPoints[PP007].description"
+            ]
+          },
+          "Azarel Moros": {
+            "name_slug": "azarel moros",
+            "visible_location_ids": [
+              "G01"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "TUD001",
+                "source": "module_plot.json#plotPoints[PP010].description",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/TUD001.json#locations[G01].dmInstructions",
+              "areas/TUD001.json#locations[G01].npcs",
+              "areas/TUD001.json#locations[G01].plotHooks",
+              "module_context.json#npcs.azarel_moros",
+              "module_plot.json#plotPoints[PP010].description"
+            ],
+            "authored_mentions_count": 3,
+            "authored_mention_sources": [
+              "areas/TUD001.json#locations[G01].dmInstructions",
+              "areas/TUD001.json#locations[G01].plotHooks",
+              "module_plot.json#plotPoints[PP010].description"
+            ]
+          },
+          "Captain Lyra Voss": {
+            "name_slug": "captain lyra voss",
+            "visible_location_ids": [
+              "H02"
+            ],
+            "reveal_bindings": [],
+            "sources": [
+              "areas/TNU001.json#locations[H02].dmInstructions",
+              "areas/TNU001.json#locations[H02].npcs",
+              "areas/TNU001.json#locations[H02].plotHooks",
+              "module_context.json#npcs.captain_lyra_voss"
+            ],
+            "authored_mentions_count": 2,
+            "authored_mention_sources": [
+              "areas/TNU001.json#locations[H02].dmInstructions",
+              "areas/TNU001.json#locations[H02].plotHooks"
+            ]
+          },
+          "Fragmented Preceptor": {
+            "name_slug": "fragmented preceptor",
+            "visible_location_ids": [
+              "H03"
+            ],
+            "reveal_bindings": [],
+            "sources": [
+              "areas/TSU001.json#locations[H03].dcChecks",
+              "areas/TSU001.json#locations[H03].dmInstructions",
+              "areas/TSU001.json#locations[H03].npcs",
+              "areas/TSU001.json#locations[H03].plotHooks",
+              "module_context.json#npcs.fragmented_preceptor"
+            ],
+            "authored_mentions_count": 3,
+            "authored_mention_sources": [
+              "areas/TSU001.json#locations[H03].dcChecks",
+              "areas/TSU001.json#locations[H03].dmInstructions",
+              "areas/TSU001.json#locations[H03].plotHooks"
+            ]
+          },
+          "Glim": {
+            "name_slug": "glim",
+            "visible_location_ids": [
+              "G02"
+            ],
+            "reveal_bindings": [],
+            "sources": [
+              "areas/TPG001.json#locations[G02].npcs",
+              "areas/TPG001.json#locations[G02].plotHooks",
+              "module_context.json#npcs.glim"
+            ],
+            "authored_mentions_count": 1,
+            "authored_mention_sources": [
+              "areas/TPG001.json#locations[G02].plotHooks"
+            ]
+          },
+          "Keeper Veyron": {
+            "name_slug": "keeper veyron",
+            "visible_location_ids": [
+              "G01"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "TPG001",
+                "source": "module_plot.json#plotPoints[PP001].description",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/TPG001.json#locations[G01].dcChecks",
+              "areas/TPG001.json#locations[G01].dmInstructions",
+              "areas/TPG001.json#locations[G01].npcs",
+              "areas/TPG001.json#locations[G01].plotHooks",
+              "module_context.json#npcs.keeper_veyron",
+              "module_plot.json#plotPoints[PP001].description"
+            ],
+            "authored_mentions_count": 4,
+            "authored_mention_sources": [
+              "areas/TPG001.json#locations[G01].dcChecks",
+              "areas/TPG001.json#locations[G01].dmInstructions",
+              "areas/TPG001.json#locations[G01].plotHooks",
+              "module_plot.json#plotPoints[PP001].description"
+            ]
+          },
+          "Malk the Whisper": {
+            "name_slug": "malk the whisper",
+            "visible_location_ids": [
+              "G02"
+            ],
+            "reveal_bindings": [],
+            "sources": [
+              "areas/TMQ001.json#locations[G02].npcs",
+              "module_context.json#npcs.malk_the_whisper"
+            ],
+            "authored_mentions_count": 0,
+            "authored_mention_sources": []
+          },
+          "Masked Duelist": {
+            "name_slug": "masked duelist",
+            "visible_location_ids": [
+              "H02"
+            ],
+            "reveal_bindings": [],
+            "sources": [
+              "areas/TMFMH001.json#locations[H02].accessibility",
+              "areas/TMFMH001.json#locations[H02].dcChecks",
+              "areas/TMFMH001.json#locations[H02].npcs",
+              "areas/TMFMH001.json#locations[H02].plotHooks",
+              "module_context.json#npcs.masked_duelist"
+            ],
+            "authored_mentions_count": 3,
+            "authored_mention_sources": [
+              "areas/TMFMH001.json#locations[H02].accessibility",
+              "areas/TMFMH001.json#locations[H02].dcChecks",
+              "areas/TMFMH001.json#locations[H02].plotHooks"
+            ]
+          },
+          "Masquerade Steward": {
+            "name_slug": "masquerade steward",
+            "visible_location_ids": [
+              "H01"
+            ],
+            "reveal_bindings": [],
+            "sources": [
+              "areas/TMFMH001.json#locations[H01].npcs",
+              "areas/TMFMH001.json#locations[H01].plotHooks",
+              "module_context.json#npcs.masquerade_steward"
+            ],
+            "authored_mentions_count": 1,
+            "authored_mention_sources": [
+              "areas/TMFMH001.json#locations[H01].plotHooks"
+            ]
+          },
+          "Mind Flayer Archivist": {
+            "name_slug": "mind flayer archivist",
+            "visible_location_ids": [
+              "H03"
+            ],
+            "reveal_bindings": [],
+            "sources": [
+              "areas/TMFMH001.json#locations[H03].dmInstructions",
+              "areas/TMFMH001.json#locations[H03].npcs",
+              "areas/TMFMH001.json#locations[H03].plotHooks",
+              "module_context.json#npcs.mind_flayer_archivist"
+            ],
+            "authored_mentions_count": 2,
+            "authored_mention_sources": [
+              "areas/TMFMH001.json#locations[H03].dmInstructions",
+              "areas/TMFMH001.json#locations[H03].plotHooks"
+            ]
+          },
+          "Mira the Shardseer": {
+            "name_slug": "mira the shardseer",
+            "visible_location_ids": [
+              "G02"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "TUD001",
+                "source": "module_plot.json#plotPoints[PP009].description",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/TUD001.json#locations[G02].dmInstructions",
+              "areas/TUD001.json#locations[G02].npcs",
+              "areas/TUD001.json#locations[G02].plotHooks",
+              "module_context.json#npcs.mira_the_shardseer",
+              "module_plot.json#plotPoints[PP009].description"
+            ],
+            "authored_mentions_count": 3,
+            "authored_mention_sources": [
+              "areas/TUD001.json#locations[G02].dmInstructions",
+              "areas/TUD001.json#locations[G02].plotHooks",
+              "module_plot.json#plotPoints[PP009].description"
+            ]
+          },
+          "Old Grem the Cartographer": {
+            "name_slug": "old grem the cartographer",
+            "visible_location_ids": [
+              "G03"
+            ],
+            "reveal_bindings": [],
+            "sources": [
+              "areas/TPG001.json#locations[G03].npcs",
+              "module_context.json#npcs.old_grem_the_cartographer"
+            ],
+            "authored_mentions_count": 0,
+            "authored_mention_sources": []
+          },
+          "Raxil the Doubter": {
+            "name_slug": "raxil the doubter",
+            "visible_location_ids": [
+              "G03"
+            ],
+            "reveal_bindings": [],
+            "sources": [
+              "areas/TUD001.json#locations[G03].dmInstructions",
+              "areas/TUD001.json#locations[G03].npcs",
+              "areas/TUD001.json#locations[G03].plotHooks",
+              "module_context.json#npcs.raxil_the_doubter"
+            ],
+            "authored_mentions_count": 2,
+            "authored_mention_sources": [
+              "areas/TUD001.json#locations[G03].dmInstructions",
+              "areas/TUD001.json#locations[G03].plotHooks"
+            ]
+          },
+          "Seraphine of the Silver Veil": {
+            "name_slug": "seraphine of the silver veil",
+            "visible_location_ids": [
+              "G01"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "H01",
+                "source": "areas/TNU001.json#locations[H01].description",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "H02",
+                "source": "areas/TSU001.json#locations[H02].dmInstructions",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/TMQ001.json#locations[G01].aliases",
+              "areas/TMQ001.json#locations[G01].name",
+              "areas/TMQ001.json#locations[G01].npcs",
+              "areas/TNU001.json#locations[H01].description",
+              "areas/TSU001.json#locations[H02].dmInstructions",
+              "module_context.json#npcs.seraphine_of_the_silver_veil"
+            ],
+            "authored_mentions_count": 4,
+            "authored_mention_sources": [
+              "areas/TMQ001.json#locations[G01].aliases",
+              "areas/TMQ001.json#locations[G01].name",
+              "areas/TNU001.json#locations[H01].description",
+              "areas/TSU001.json#locations[H02].dmInstructions"
+            ]
+          },
+          "The Paradoxical Twins": {
+            "name_slug": "the paradoxical twins",
+            "visible_location_ids": [
+              "G02"
+            ],
+            "reveal_bindings": [],
+            "sources": [
+              "areas/TPG001.json#locations[G02].dcChecks",
+              "areas/TPG001.json#locations[G02].npcs",
+              "areas/TPG001.json#locations[G02].plotHooks",
+              "module_context.json#npcs.the_paradoxical_twins"
+            ],
+            "authored_mentions_count": 2,
+            "authored_mention_sources": [
+              "areas/TPG001.json#locations[G02].dcChecks",
+              "areas/TPG001.json#locations[G02].plotHooks"
+            ]
+          },
+          "Various masked dignitaries": {
+            "name_slug": "various masked dignitaries",
+            "visible_location_ids": [
+              "G03"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "TMFMH001",
+                "source": "module_plot.json#plotPoints[PP019].description",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "TPG001",
+                "source": "module_plot.json#plotPoints[PP003].description",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/TMQ001.json#locations[G03].dmInstructions",
+              "areas/TMQ001.json#locations[G03].npcs",
+              "module_context.json#npcs.various_masked_dignitaries",
+              "module_plot.json#plotPoints[PP003].description",
+              "module_plot.json#plotPoints[PP019].description"
+            ],
+            "authored_mentions_count": 3,
+            "authored_mention_sources": [
+              "areas/TMQ001.json#locations[G03].dmInstructions",
+              "module_plot.json#plotPoints[PP003].description",
+              "module_plot.json#plotPoints[PP019].description"
+            ]
+          },
+          "Xhalruun the Unraveled": {
+            "name_slug": "xhalruun the unraveled",
+            "visible_location_ids": [
+              "H01"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "G03",
+                "source": "areas/TUD001.json#locations[G03].plotHooks",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "H03",
+                "source": "areas/TSU001.json#locations[H03].plotHooks",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/TNU001.json#locations[H01].npcs",
+              "areas/TSU001.json#locations[H01].plotHooks",
+              "areas/TSU001.json#locations[H03].plotHooks",
+              "areas/TUD001.json#locations[G03].plotHooks",
+              "module_context.json#npcs.xhalruun_the_unraveled"
+            ],
+            "authored_mentions_count": 3,
+            "authored_mention_sources": [
+              "areas/TSU001.json#locations[H01].plotHooks",
+              "areas/TSU001.json#locations[H03].plotHooks",
+              "areas/TUD001.json#locations[G03].plotHooks"
+            ]
+          }
+        },
+        "diagnostics": {
+          "duplicate_location_aliases": [],
+          "ambiguous_destination_phrases": [],
+          "unresolved_destination_phrases": [
+            {
+              "phrase": "paradox sanctuary",
+              "sources": [
+                "areas/TNU001.json#locations[H01].aliases",
+                "areas/TNU001.json#locations[H01].name"
+              ],
+              "player_facing": true
+            }
+          ],
+          "missing_npc_authority": []
+        },
+        "summary": {
+          "location_count": 18,
+          "location_alias_count": 25,
+          "destination_phrase_count": 26,
+          "npc_count": 17,
+          "ambiguous_destination_count": 0,
+          "missing_npc_authority_count": 0
+        }
+      },
+      "warnings": [
+        "semantic_authority_unresolved_destination_phrases=1"
+      ],
+      "errors": []
+    },
+    "registry": {
+      "status": "success",
+      "verify_before": {
+        "present": true,
+        "module_key": "The_Hidden_City_of_Numillian",
+        "folder_exists": true,
+        "areas_count": 5,
+        "area_ids": [
+          "TMG001",
+          "TUD001",
+          "TVA001",
+          "TLH001",
+          "CMM001"
+        ],
+        "has_encounters": false,
+        "added_date": "2026-04-19T16:47:15.417436"
+      },
+      "integration_attempted": false
+    },
+    "monster_materialization": {
+      "status": "success",
+      "reason": null,
+      "returncode": 0,
+      "parsed_output": {
+        "status": "success",
+        "created_count": 0,
+        "skipped_existing_count": 16,
+        "missing_in_bestiary_count": 0,
+        "missing_names": [],
+        "path_conflicts_detected": 0,
+        "path_conflicts_repaired": 0,
+        "conflict_paths": [],
+        "hydration_modes": {
+          "existing": 16,
+          "reuse": 0,
+          "bestiary": 0,
+          "generated": 0
+        },
+        "blocker_classes": {},
+        "blocked_count": 0,
+        "monster_results": [
+          {
+            "requested_name": "Faithless Echoes",
+            "requested_slug": "faithless_echoes",
+            "canonical_slug": "faithless_echoes",
+            "canonical_name": "Faithless Echoes",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Illusionary Shadow Dancers",
+            "requested_slug": "illusionary_shadow_dancers",
+            "canonical_slug": "illusionary_shadow_dancers",
+            "canonical_name": "Illusionary Shadow Dancers",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Illusory Specters",
+            "requested_slug": "illusory_specters",
+            "canonical_slug": "illusory_specters",
+            "canonical_name": "Illusory Specters",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Mindlocked Gaoler",
+            "requested_slug": "mindlocked_gaoler",
+            "canonical_slug": "mindlocked_gaoler",
+            "canonical_name": "Mindlocked Gaoler",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Minor Mind Flayer Thralls",
+            "requested_slug": "minor_mind_flayer_thralls",
+            "canonical_slug": "minor_mind_flayer_thralls",
+            "canonical_name": "Minor Mind Flayer Thralls",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Mirror Phantoms",
+            "requested_slug": "mirror_phantoms",
+            "canonical_slug": "mirror_phantoms",
+            "canonical_name": "Mirror Phantoms",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Mirror Servitor",
+            "requested_slug": "mirror_servitor",
+            "canonical_slug": "mirror_servitor",
+            "canonical_name": "Mirror Servitor",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Mirrorborn Echo",
+            "requested_slug": "mirrorborn_echo",
+            "canonical_slug": "mirrorborn_echo",
+            "canonical_name": "Mirrorborn Echo",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Paradox Remnants",
+            "requested_slug": "paradox_remnants",
+            "canonical_slug": "paradox_remnants",
+            "canonical_name": "Paradox Remnants",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Phantom Apparitions",
+            "requested_slug": "phantom_apparitions",
+            "canonical_slug": "phantom_apparitions",
+            "canonical_name": "Phantom Apparitions",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Raveling Wraith",
+            "requested_slug": "raveling_wraith",
+            "canonical_slug": "raveling_wraith",
+            "canonical_name": "Raveling Wraith",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Spectral Caretakers",
+            "requested_slug": "spectral_caretakers",
+            "canonical_slug": "spectral_caretakers",
+            "canonical_name": "Spectral Caretakers",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Spectral Memory Wraiths",
+            "requested_slug": "spectral_memory_wraiths",
+            "canonical_slug": "spectral_memory_wraiths",
+            "canonical_name": "Spectral Memory Wraiths",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Temporal Mites",
+            "requested_slug": "temporal_mites",
+            "canonical_slug": "temporal_mites",
+            "canonical_name": "Temporal Mites",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Veil Wraith",
+            "requested_slug": "veil_wraith",
+            "canonical_slug": "veil_wraith",
+            "canonical_name": "Veil Wraith",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Warped Prisoners",
+            "requested_slug": "warped_prisoners",
+            "canonical_slug": "warped_prisoners",
+            "canonical_name": "Warped Prisoners",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          }
+        ],
+        "candidate_sources": {
+          "seed_count": 0,
+          "authored_count": 16,
+          "seed_missing_fallback_used": true
+        },
+        "module_path": "modules/The_Hidden_City_of_Numillian",
+        "error": null
+      }
+    },
+    "toolkit_provenance": {
+      "status": "success",
+      "reason": "toolkit_provenance_prepared",
+      "report_path": "modules/The_Hidden_City_of_Numillian/toolkit_build_report.json"
+    },
+    "publishability": {
+      "status": "failed",
+      "ready_status": "fail",
+      "publishable_status": "fail",
+      "source": "toolkit",
+      "report": {
+        "module": "The_Hidden_City_of_Numillian",
+        "module_path": "modules/The_Hidden_City_of_Numillian",
+        "source": "toolkit",
+        "ready_status": "fail",
+        "publishable_status": "fail",
+        "readiness": {
+          "module": "The_Hidden_City_of_Numillian",
+          "overall_status": "fail",
+          "gates": {
+            "gameplay": {
+              "status": "fail",
+              "reason": "gameplay_audit_exit_nonzero",
+              "exit_code": 1,
+              "blocking_error_count": 0,
+              "warning_count": 0,
+              "raw": {
+                "command": "/Users/zeug/Projects/NeverEndingQuest/.venv/bin/python3 /Users/zeug/Projects/NeverEndingQuest/scripts/audit_module_gameplay.py --module The_Hidden_City_of_Numillian --json --strict-instructions",
+                "exit_code": 1,
+                "stdout": "{\n  \"target\": {\n    \"blocking_errors\": [\n      \"Missing base media for: faithless_echoes (from TNU001.json:locations[0].monsters[1])\",\n      \"Missing base media for: illusionary_shadow_dancers (from TMFMH001.json:locations[0].monsters[0])\",\n      \"Missing base media for: illusory_specters (from TUD001.json:locations[1].monsters[0])\",\n      \"Missing base media for: mindlocked_gaoler (from TSU001.json:locations[0].monsters[0])\",\n      \"Missing base media for: minor_mind_flayer_thralls (from TMFMH001.json:locations[1].monsters[0])\",\n      \"Missing base media for: mirror_phantoms (from TMQ001.json:locations[1].monsters[0])\",\n      \"Missing base media for: mirror_servitor (from TSU001.json:locations[2].monsters[0])\",\n      \"Missing base media for: mirrorborn_echo (from TUD001.json:locations[2].monsters[0])\",\n      \"Missing base media for: paradox_remnants (from TNU001.json:locations[0].monsters[0])\",\n      \"Missing base media for: phantom_apparitions (from TNU001.json:locations[2].monsters[1])\",\n      \"Missing base media for: raveling_wraith (from TUD001.json:locations[0].monsters[0])\",\n      \"Missing base media for: spectral_caretakers (from TNU001.json:locations[2].monsters[0])\",\n      \"Missing base media for: spectral_memory_wraiths (from TMFMH001.json:locations[2].monsters[0])\",\n      \"Missing base media for: temporal_mites (from TNU001.json:locations[1].monsters[0])\",\n      \"Missing base media for: veil_wraith (from TSU001.json:locations[1].monsters[0])\",\n      \"Missing base media for: warped_prisoners (from TSU001.json:locations[0].monsters[1])\"\n    ],\n    \"warnings\": [\n      \"Missing thumb for: faithless_echoes\",\n      \"Missing video for: faithless_echoes\",\n      \"Missing thumb for: illusionary_shadow_dancers\",\n      \"Missing video for: illusionary_shadow_dancers\",\n      \"Missing thumb for: illusory_specters\",\n      \"Missing video for: illusory_specters\",\n      \"Missing thumb for: mindlocked_gaoler\",\n      \"Missing video for: mindlocked_gaoler\",\n      \"Missing thumb for: minor_mind_flayer_thralls\",\n      \"Missing video for: minor_mind_flayer_thralls\",\n      \"Missing thumb for: mirror_phantoms\",\n      \"Missing video for: mirror_phantoms\",\n      \"Missing thumb for: mirror_servitor\",\n      \"Missing video for: mirror_servitor\",\n      \"Missing thumb for: mirrorborn_echo\",\n      \"Missing video for: mirrorborn_echo\",\n      \"Missing thumb for: paradox_remnants\",\n      \"Missing video for: paradox_remnants\",\n      \"Missing thumb for: phantom_apparitions\",\n      \"Missing video for: phantom_apparitions\",\n      \"Missing thumb for: raveling_wraith\",\n      \"Missing video for: raveling_wraith\",\n      \"Missing thumb for: spectral_caretakers\",\n      \"Missing video for: spectral_caretakers\",\n      \"Missing thumb for: spectral_memory_wraiths\",\n      \"Missing video for: spectral_memory_wraiths\",\n      \"Missing thumb for: temporal_mites\",\n      \"Missing video for: temporal_mites\",\n      \"Missing thumb for: veil_wraith\",\n      \"Missing video for: veil_wraith\",\n      \"Missing thumb for: warped_prisoners\",\n      \"Missing video for: warped_prisoners\"\n    ],\n    \"coverage_stats\": {\n      \"module\": \"The_Hidden_City_of_Numillian\",\n      \"referenced_monsters\": 16,\n      \"structural_refs\": 16,\n      \"heuristic_refs\": 0,\n      \"json_valid\": 16,\n      \"json_invalid\": 0,\n      \"json_missing\": 0,\n      \"json_coverage_pct\": 100.0,\n      \"media_base_coverage\": 0,\n      \"media_thumb_coverage\": 0,\n      \"media_video_coverage\": 0,\n      \"media_base_coverage_pct\": 0.0\n    },\n    \"fix_list\": [\n      \"Add media: modules/The_Hidden_City_of_Numillian/media/monsters/faithless_echoes.jpg\",\n      \"Add media: modules/The_Hidden_City_of_Numillian/media/monsters/illusionary_shadow_dancers.jpg\",\n      \"Add media: modules/The_Hidden_City_of_Numillian/media/monsters/illusory_specters.jpg\",\n      \"Add media: modules/The_Hidden_City_of_Numillian/media/monsters/mindlocked_gaoler.jpg\",\n      \"Add media: modules/The_Hidden_City_of_Numillian/media/monsters/minor_mind_flayer_thralls.jpg\",\n      \"Add media: modules/The_Hidden_City_of_Numillian/media/monsters/mirror_phantoms.jpg\",\n      \"Add media: modules/The_Hidden_City_of_Numillian/media/monsters/mirror_servitor.jpg\",\n      \"Add media: modules/The_Hidden_City_of_Numillian/media/monsters/mirrorborn_echo.jpg\",\n      \"Add media: modules/The_Hidden_City_of_Numillian/media/monsters/paradox_remnants.jpg\",\n      \"Add media: modules/The_Hidden_City_of_Numillian/media/monsters/phantom_apparitions.jpg\",\n      \"Add media: modules/The_Hidden_City_of_Numillian/media/monsters/raveling_wraith.jpg\",\n      \"Add media: modules/The_Hidden_City_of_Numillian/media/monsters/spectral_caretakers.jpg\",\n      \"Add media: modules/The_Hidden_City_of_Numillian/media/monsters/spectral_memory_wraiths.jpg\",\n      \"Add media: modules/The_Hidden_City_of_Numillian/media/monsters/temporal_mites.jpg\",\n      \"Add media: modules/The_Hidden_City_of_Numillian/media/monsters/veil_wraith.jpg\",\n      \"Add media: modules/The_Hidden_City_of_Numillian/media/monsters/warped_prisoners.jpg\"\n    ],\n    \"references\": [\n      {\n        \"slug\": \"raveling_wraith\",\n        \"file\": \"TUD001.json\",\n        \"path\": \"locations[0].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Raveling Wraith\"\n      },\n      {\n        \"slug\": \"illusory_specters\",\n        \"file\": \"TUD001.json\",\n        \"path\": \"locations[1].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Illusory Specters\"\n      },\n      {\n        \"slug\": \"mirrorborn_echo\",\n        \"file\": \"TUD001.json\",\n        \"path\": \"locations[2].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Mirrorborn Echo\"\n      },\n      {\n        \"slug\": \"illusionary_shadow_dancers\",\n        \"file\": \"TMFMH001.json\",\n        \"path\": \"locations[0].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Illusionary Shadow Dancers\"\n      },\n      {\n        \"slug\": \"minor_mind_flayer_thralls\",\n        \"file\": \"TMFMH001.json\",\n        \"path\": \"locations[1].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Minor Mind Flayer Thralls\"\n      },\n      {\n        \"slug\": \"spectral_memory_wraiths\",\n        \"file\": \"TMFMH001.json\",\n        \"path\": \"locations[2].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Spectral Memory Wraiths\"\n      },\n      {\n        \"slug\": \"paradox_remnants\",\n        \"file\": \"TNU001.json\",\n        \"path\": \"locations[0].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Paradox Remnants\"\n      },\n      {\n        \"slug\": \"faithless_echoes\",\n        \"file\": \"TNU001.json\",\n        \"path\": \"locations[0].monsters[1]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Faithless Echoes\"\n      },\n      {\n        \"slug\": \"temporal_mites\",\n        \"file\": \"TNU001.json\",\n        \"path\": \"locations[1].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Temporal Mites\"\n      },\n      {\n        \"slug\": \"spectral_caretakers\",\n        \"file\": \"TNU001.json\",\n        \"path\": \"locations[2].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Spectral Caretakers\"\n      },\n      {\n        \"slug\": \"phantom_apparitions\",\n        \"file\": \"TNU001.json\",\n        \"path\": \"locations[2].monsters[1]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Phantom Apparitions\"\n      },\n      {\n        \"slug\": \"mirror_phantoms\",\n        \"file\": \"TMQ001.json\",\n        \"path\": \"locations[1].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Mirror Phantoms\"\n      },\n      {\n        \"slug\": \"mindlocked_gaoler\",\n        \"file\": \"TSU001.json\",\n        \"path\": \"locations[0].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Mindlocked Gaoler\"\n      },\n      {\n        \"slug\": \"warped_prisoners\",\n        \"file\": \"TSU001.json\",\n        \"path\": \"locations[0].monsters[1]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Warped Prisoners\"\n      },\n      {\n        \"slug\": \"veil_wraith\",\n        \"file\": \"TSU001.json\",\n        \"path\": \"locations[1].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Veil Wraith\"\n      },\n      {\n        \"slug\": \"mirror_servitor\",\n        \"file\": \"TSU001.json\",\n        \"path\": \"locations[2].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Mirror Servitor\"\n      }\n    ],\n    \"strict_mode\": true\n  },\n  \"baseline\": null\n}",
+                "stderr": "",
+                "json": {
+                  "target": {
+                    "blocking_errors": [
+                      "Missing base media for: faithless_echoes (from TNU001.json:locations[0].monsters[1])",
+                      "Missing base media for: illusionary_shadow_dancers (from TMFMH001.json:locations[0].monsters[0])",
+                      "Missing base media for: illusory_specters (from TUD001.json:locations[1].monsters[0])",
+                      "Missing base media for: mindlocked_gaoler (from TSU001.json:locations[0].monsters[0])",
+                      "Missing base media for: minor_mind_flayer_thralls (from TMFMH001.json:locations[1].monsters[0])",
+                      "Missing base media for: mirror_phantoms (from TMQ001.json:locations[1].monsters[0])",
+                      "Missing base media for: mirror_servitor (from TSU001.json:locations[2].monsters[0])",
+                      "Missing base media for: mirrorborn_echo (from TUD001.json:locations[2].monsters[0])",
+                      "Missing base media for: paradox_remnants (from TNU001.json:locations[0].monsters[0])",
+                      "Missing base media for: phantom_apparitions (from TNU001.json:locations[2].monsters[1])",
+                      "Missing base media for: raveling_wraith (from TUD001.json:locations[0].monsters[0])",
+                      "Missing base media for: spectral_caretakers (from TNU001.json:locations[2].monsters[0])",
+                      "Missing base media for: spectral_memory_wraiths (from TMFMH001.json:locations[2].monsters[0])",
+                      "Missing base media for: temporal_mites (from TNU001.json:locations[1].monsters[0])",
+                      "Missing base media for: veil_wraith (from TSU001.json:locations[1].monsters[0])",
+                      "Missing base media for: warped_prisoners (from TSU001.json:locations[0].monsters[1])"
+                    ],
+                    "warnings": [
+                      "Missing thumb for: faithless_echoes",
+                      "Missing video for: faithless_echoes",
+                      "Missing thumb for: illusionary_shadow_dancers",
+                      "Missing video for: illusionary_shadow_dancers",
+                      "Missing thumb for: illusory_specters",
+                      "Missing video for: illusory_specters",
+                      "Missing thumb for: mindlocked_gaoler",
+                      "Missing video for: mindlocked_gaoler",
+                      "Missing thumb for: minor_mind_flayer_thralls",
+                      "Missing video for: minor_mind_flayer_thralls",
+                      "Missing thumb for: mirror_phantoms",
+                      "Missing video for: mirror_phantoms",
+                      "Missing thumb for: mirror_servitor",
+                      "Missing video for: mirror_servitor",
+                      "Missing thumb for: mirrorborn_echo",
+                      "Missing video for: mirrorborn_echo",
+                      "Missing thumb for: paradox_remnants",
+                      "Missing video for: paradox_remnants",
+                      "Missing thumb for: phantom_apparitions",
+                      "Missing video for: phantom_apparitions",
+                      "Missing thumb for: raveling_wraith",
+                      "Missing video for: raveling_wraith",
+                      "Missing thumb for: spectral_caretakers",
+                      "Missing video for: spectral_caretakers",
+                      "Missing thumb for: spectral_memory_wraiths",
+                      "Missing video for: spectral_memory_wraiths",
+                      "Missing thumb for: temporal_mites",
+                      "Missing video for: temporal_mites",
+                      "Missing thumb for: veil_wraith",
+                      "Missing video for: veil_wraith",
+                      "Missing thumb for: warped_prisoners",
+                      "Missing video for: warped_prisoners"
+                    ],
+                    "coverage_stats": {
+                      "module": "The_Hidden_City_of_Numillian",
+                      "referenced_monsters": 16,
+                      "structural_refs": 16,
+                      "heuristic_refs": 0,
+                      "json_valid": 16,
+                      "json_invalid": 0,
+                      "json_missing": 0,
+                      "json_coverage_pct": 100.0,
+                      "media_base_coverage": 0,
+                      "media_thumb_coverage": 0,
+                      "media_video_coverage": 0,
+                      "media_base_coverage_pct": 0.0
+                    },
+                    "fix_list": [
+                      "Add media: modules/The_Hidden_City_of_Numillian/media/monsters/faithless_echoes.jpg",
+                      "Add media: modules/The_Hidden_City_of_Numillian/media/monsters/illusionary_shadow_dancers.jpg",
+                      "Add media: modules/The_Hidden_City_of_Numillian/media/monsters/illusory_specters.jpg",
+                      "Add media: modules/The_Hidden_City_of_Numillian/media/monsters/mindlocked_gaoler.jpg",
+                      "Add media: modules/The_Hidden_City_of_Numillian/media/monsters/minor_mind_flayer_thralls.jpg",
+                      "Add media: modules/The_Hidden_City_of_Numillian/media/monsters/mirror_phantoms.jpg",
+                      "Add media: modules/The_Hidden_City_of_Numillian/media/monsters/mirror_servitor.jpg",
+                      "Add media: modules/The_Hidden_City_of_Numillian/media/monsters/mirrorborn_echo.jpg",
+                      "Add media: modules/The_Hidden_City_of_Numillian/media/monsters/paradox_remnants.jpg",
+                      "Add media: modules/The_Hidden_City_of_Numillian/media/monsters/phantom_apparitions.jpg",
+                      "Add media: modules/The_Hidden_City_of_Numillian/media/monsters/raveling_wraith.jpg",
+                      "Add media: modules/The_Hidden_City_of_Numillian/media/monsters/spectral_caretakers.jpg",
+                      "Add media: modules/The_Hidden_City_of_Numillian/media/monsters/spectral_memory_wraiths.jpg",
+                      "Add media: modules/The_Hidden_City_of_Numillian/media/monsters/temporal_mites.jpg",
+                      "Add media: modules/The_Hidden_City_of_Numillian/media/monsters/veil_wraith.jpg",
+                      "Add media: modules/The_Hidden_City_of_Numillian/media/monsters/warped_prisoners.jpg"
+                    ],
+                    "references": [
+                      {
+                        "slug": "raveling_wraith",
+                        "file": "TUD001.json",
+                        "path": "locations[0].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Raveling Wraith"
+                      },
+                      {
+                        "slug": "illusory_specters",
+                        "file": "TUD001.json",
+                        "path": "locations[1].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Illusory Specters"
+                      },
+                      {
+                        "slug": "mirrorborn_echo",
+                        "file": "TUD001.json",
+                        "path": "locations[2].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Mirrorborn Echo"
+                      },
+                      {
+                        "slug": "illusionary_shadow_dancers",
+                        "file": "TMFMH001.json",
+                        "path": "locations[0].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Illusionary Shadow Dancers"
+                      },
+                      {
+                        "slug": "minor_mind_flayer_thralls",
+                        "file": "TMFMH001.json",
+                        "path": "locations[1].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Minor Mind Flayer Thralls"
+                      },
+                      {
+                        "slug": "spectral_memory_wraiths",
+                        "file": "TMFMH001.json",
+                        "path": "locations[2].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Spectral Memory Wraiths"
+                      },
+                      {
+                        "slug": "paradox_remnants",
+                        "file": "TNU001.json",
+                        "path": "locations[0].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Paradox Remnants"
+                      },
+                      {
+                        "slug": "faithless_echoes",
+                        "file": "TNU001.json",
+                        "path": "locations[0].monsters[1]",
+                        "confidence": "structural",
+                        "original": "Faithless Echoes"
+                      },
+                      {
+                        "slug": "temporal_mites",
+                        "file": "TNU001.json",
+                        "path": "locations[1].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Temporal Mites"
+                      },
+                      {
+                        "slug": "spectral_caretakers",
+                        "file": "TNU001.json",
+                        "path": "locations[2].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Spectral Caretakers"
+                      },
+                      {
+                        "slug": "phantom_apparitions",
+                        "file": "TNU001.json",
+                        "path": "locations[2].monsters[1]",
+                        "confidence": "structural",
+                        "original": "Phantom Apparitions"
+                      },
+                      {
+                        "slug": "mirror_phantoms",
+                        "file": "TMQ001.json",
+                        "path": "locations[1].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Mirror Phantoms"
+                      },
+                      {
+                        "slug": "mindlocked_gaoler",
+                        "file": "TSU001.json",
+                        "path": "locations[0].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Mindlocked Gaoler"
+                      },
+                      {
+                        "slug": "warped_prisoners",
+                        "file": "TSU001.json",
+                        "path": "locations[0].monsters[1]",
+                        "confidence": "structural",
+                        "original": "Warped Prisoners"
+                      },
+                      {
+                        "slug": "veil_wraith",
+                        "file": "TSU001.json",
+                        "path": "locations[1].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Veil Wraith"
+                      },
+                      {
+                        "slug": "mirror_servitor",
+                        "file": "TSU001.json",
+                        "path": "locations[2].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Mirror Servitor"
+                      }
+                    ],
+                    "strict_mode": true
+                  },
+                  "baseline": null
+                }
+              }
+            },
+            "sidecar": {
+              "status": "pass",
+              "reason": "pass",
+              "source": "toolkit",
+              "exit_code": 0,
+              "raw": {
+                "json": {
+                  "valid": true,
+                  "path": "/Users/zeug/Projects/NeverEndingQuest/modules/The_Hidden_City_of_Numillian/toolkit_build_report.json",
+                  "module_slug": "The_Hidden_City_of_Numillian"
+                }
+              }
+            },
+            "schema": {
+              "status": "pass",
+              "reason": "pass",
+              "exit_code": 0,
+              "any_failed": false,
+              "missing_jsonschema": false,
+              "raw": {
+                "command": "/Users/zeug/Projects/NeverEndingQuest/.venv/bin/python3 /Users/zeug/Projects/NeverEndingQuest/core/validation/validate_module_files.py --module The_Hidden_City_of_Numillian --json",
+                "exit_code": 0,
+                "stdout": "{\n  \"modules\": {\n    \"The_Hidden_City_of_Numillian\": {\n      \"module\": \"The_Hidden_City_of_Numillian\",\n      \"total_passed\": 58,\n      \"total_failed\": 0,\n      \"files\": {\n        \"area\": {\n          \"files\": [\n            \"TUD001.json (areas/)\",\n            \"TMQ001_BU.json (areas/)\",\n            \"TUD001_BU.json (areas/)\",\n            \"TMFMH001.json (areas/)\",\n            \"TSU001_BU.json (areas/)\",\n            \"TNU001.json (areas/)\",\n            \"TMQ001.json (areas/)\",\n            \"TMFMH001_BU.json (areas/)\",\n            \"TPG001.json (areas/)\",\n            \"TSU001.json (areas/)\",\n            \"TNU001_BU.json (areas/)\",\n            \"TPG001_BU.json (areas/)\"\n          ],\n          \"passed\": 12,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"reference_integrity\": {\n          \"files\": [],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"monster\": {\n          \"files\": [\n            \"raveling_wraith.json\",\n            \"phantom_apparitions.json\",\n            \"mirrorborn_echo.json\",\n            \"illusionary_shadow_dancers.json\",\n            \"minor_mind_flayer_thralls.json\",\n            \"mirror_servitor.json\",\n            \"illusory_specters.json\",\n            \"veil_wraith.json\",\n            \"temporal_mites.json\",\n            \"mindlocked_gaoler.json\",\n            \"warped_prisoners.json\",\n            \"spectral_caretakers.json\",\n            \"faithless_echoes.json\",\n            \"spectral_memory_wraiths.json\",\n            \"paradox_remnants.json\",\n            \"mirror_phantoms.json\"\n          ],\n          \"passed\": 16,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"map\": {\n          \"files\": [\n            \"map_TSU001.json\",\n            \"map_TPG001.json\",\n            \"map_TNU001.json\",\n            \"map_TUD001.json\",\n            \"map_TMQ001.json\",\n            \"map_TMFMH001.json\"\n          ],\n          \"passed\": 6,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"plot\": {\n          \"files\": [\n            \"module_plot.json\"\n          ],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"party\": {\n          \"files\": [\n            \"party_tracker.json\"\n          ],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"module_context\": {\n          \"files\": [\n            \"module_context.json\"\n          ],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"runtime_room_reachability\": {\n          \"files\": [\n            \"areas/TMFMH001.json\",\n            \"areas/TMQ001.json\",\n            \"areas/TNU001.json\",\n            \"areas/TPG001.json\",\n            \"areas/TSU001.json\",\n            \"areas/TUD001.json\"\n          ],\n          \"passed\": 6,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"map_area_parity\": {\n          \"files\": [\n            \"TMFMH001.json <-> map_TMFMH001.json\",\n            \"TMQ001.json <-> map_TMQ001.json\",\n            \"TNU001.json <-> map_TNU001.json\",\n            \"TPG001.json <-> map_TPG001.json\",\n            \"TSU001.json <-> map_TSU001.json\",\n            \"TUD001.json <-> map_TUD001.json\"\n          ],\n          \"passed\": 6,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"spatial_contract\": {\n          \"files\": [\n            \"TMFMH001.json <-> map_TMFMH001.json\",\n            \"TMQ001.json <-> map_TMQ001.json\",\n            \"TNU001.json <-> map_TNU001.json\",\n            \"TPG001.json <-> map_TPG001.json\",\n            \"TSU001.json <-> map_TSU001.json\",\n            \"TUD001.json <-> map_TUD001.json\"\n          ],\n          \"passed\": 6,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"spatial_contract_warning\": {\n          \"files\": [],\n          \"passed\": 0,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"plot_progression\": {\n          \"files\": [\n            \"module_plot.json\"\n          ],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"connectivity\": {\n          \"files\": [],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        }\n      }\n    }\n  },\n  \"summary\": {\n    \"modules_total\": 1,\n    \"any_failed\": false\n  }\n}",
+                "stderr": "",
+                "json": {
+                  "modules": {
+                    "The_Hidden_City_of_Numillian": {
+                      "module": "The_Hidden_City_of_Numillian",
+                      "total_passed": 58,
+                      "total_failed": 0,
+                      "files": {
+                        "area": {
+                          "files": [
+                            "TUD001.json (areas/)",
+                            "TMQ001_BU.json (areas/)",
+                            "TUD001_BU.json (areas/)",
+                            "TMFMH001.json (areas/)",
+                            "TSU001_BU.json (areas/)",
+                            "TNU001.json (areas/)",
+                            "TMQ001.json (areas/)",
+                            "TMFMH001_BU.json (areas/)",
+                            "TPG001.json (areas/)",
+                            "TSU001.json (areas/)",
+                            "TNU001_BU.json (areas/)",
+                            "TPG001_BU.json (areas/)"
+                          ],
+                          "passed": 12,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "reference_integrity": {
+                          "files": [],
+                          "passed": 1,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "monster": {
+                          "files": [
+                            "raveling_wraith.json",
+                            "phantom_apparitions.json",
+                            "mirrorborn_echo.json",
+                            "illusionary_shadow_dancers.json",
+                            "minor_mind_flayer_thralls.json",
+                            "mirror_servitor.json",
+                            "illusory_specters.json",
+                            "veil_wraith.json",
+                            "temporal_mites.json",
+                            "mindlocked_gaoler.json",
+                            "warped_prisoners.json",
+                            "spectral_caretakers.json",
+                            "faithless_echoes.json",
+                            "spectral_memory_wraiths.json",
+                            "paradox_remnants.json",
+                            "mirror_phantoms.json"
+                          ],
+                          "passed": 16,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "map": {
+                          "files": [
+                            "map_TSU001.json",
+                            "map_TPG001.json",
+                            "map_TNU001.json",
+                            "map_TUD001.json",
+                            "map_TMQ001.json",
+                            "map_TMFMH001.json"
+                          ],
+                          "passed": 6,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "plot": {
+                          "files": [
+                            "module_plot.json"
+                          ],
+                          "passed": 1,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "party": {
+                          "files": [
+                            "party_tracker.json"
+                          ],
+                          "passed": 1,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "module_context": {
+                          "files": [
+                            "module_context.json"
+                          ],
+                          "passed": 1,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "runtime_room_reachability": {
+                          "files": [
+                            "areas/TMFMH001.json",
+                            "areas/TMQ001.json",
+                            "areas/TNU001.json",
+                            "areas/TPG001.json",
+                            "areas/TSU001.json",
+                            "areas/TUD001.json"
+                          ],
+                          "passed": 6,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "map_area_parity": {
+                          "files": [
+                            "TMFMH001.json <-> map_TMFMH001.json",
+                            "TMQ001.json <-> map_TMQ001.json",
+                            "TNU001.json <-> map_TNU001.json",
+                            "TPG001.json <-> map_TPG001.json",
+                            "TSU001.json <-> map_TSU001.json",
+                            "TUD001.json <-> map_TUD001.json"
+                          ],
+                          "passed": 6,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "spatial_contract": {
+                          "files": [
+                            "TMFMH001.json <-> map_TMFMH001.json",
+                            "TMQ001.json <-> map_TMQ001.json",
+                            "TNU001.json <-> map_TNU001.json",
+                            "TPG001.json <-> map_TPG001.json",
+                            "TSU001.json <-> map_TSU001.json",
+                            "TUD001.json <-> map_TUD001.json"
+                          ],
+                          "passed": 6,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "spatial_contract_warning": {
+                          "files": [],
+                          "passed": 0,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "plot_progression": {
+                          "files": [
+                            "module_plot.json"
+                          ],
+                          "passed": 1,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "connectivity": {
+                          "files": [],
+                          "passed": 1,
+                          "failed": 0,
+                          "errors": []
+                        }
+                      }
+                    }
+                  },
+                  "summary": {
+                    "modules_total": 1,
+                    "any_failed": false
+                  }
+                }
+              }
+            },
+            "continuity": {
+              "status": "pass",
+              "reason": "pass",
+              "exit_code": 0,
+              "blocking_error_count": 0,
+              "warning_count": 1,
+              "required_keys_present": [
+                "continuity_version",
+                "entry_state_variants",
+                "cross_module_refs",
+                "standalone_fallback"
+              ],
+              "continuity_version": "v1",
+              "raw": {
+                "command": "/Users/zeug/Projects/NeverEndingQuest/.venv/bin/python3 /Users/zeug/Projects/NeverEndingQuest/scripts/module_continuity_audit.py --module The_Hidden_City_of_Numillian --json --strict",
+                "exit_code": 0,
+                "stdout": "{\n  \"status\": \"degraded\",\n  \"module\": \"The_Hidden_City_of_Numillian\",\n  \"module_path\": \"modules/The_Hidden_City_of_Numillian\",\n  \"continuity_version\": \"v1\",\n  \"required_keys_present\": [\n    \"continuity_version\",\n    \"entry_state_variants\",\n    \"cross_module_refs\",\n    \"standalone_fallback\"\n  ],\n  \"missing_required_keys\": [],\n  \"normalized_refs_count\": 0,\n  \"blocking_errors\": [],\n  \"warnings\": [\n    \"cross_module_refs is empty; run scripts/enrich_module_cross_refs.py --module The_Hidden_City_of_Numillian --apply to seed narrative continuity links\"\n  ],\n  \"strict\": true,\n  \"exit_code\": 0\n}",
+                "stderr": "",
+                "json": {
+                  "status": "degraded",
+                  "module": "The_Hidden_City_of_Numillian",
+                  "module_path": "modules/The_Hidden_City_of_Numillian",
+                  "continuity_version": "v1",
+                  "required_keys_present": [
+                    "continuity_version",
+                    "entry_state_variants",
+                    "cross_module_refs",
+                    "standalone_fallback"
+                  ],
+                  "missing_required_keys": [],
+                  "normalized_refs_count": 0,
+                  "blocking_errors": [],
+                  "warnings": [
+                    "cross_module_refs is empty; run scripts/enrich_module_cross_refs.py --module The_Hidden_City_of_Numillian --apply to seed narrative continuity links"
+                  ],
+                  "strict": true,
+                  "exit_code": 0
+                }
+              }
+            }
+          },
+          "blocking_errors": [
+            "gameplay_gate_failed: gameplay_audit_exit_nonzero"
+          ],
+          "fix_list": [
+            "Resolve gameplay blocking errors from scripts/audit_module_gameplay.py output",
+            "Seed narrative cross-module refs: python3 scripts/enrich_module_cross_refs.py --module <slug> --apply"
+          ],
+          "strict_contract": {
+            "source": "toolkit",
+            "requires_gameplay": true,
+            "requires_sidecar": false,
+            "requires_toolkit_provenance": true,
+            "requires_continuity": true,
+            "requires_schema": true,
+            "strict_gameplay": true,
+            "strict_continuity": true
+          },
+          "exit_code": 1
+        },
+        "publication_gates": {
+          "semantic_audit": {
+            "status": "fail",
+            "module": "The_Hidden_City_of_Numillian",
+            "module_path": "modules/The_Hidden_City_of_Numillian",
+            "version": "v1",
+            "summary": {
+              "location_alias_count": 25,
+              "destination_phrase_count": 26,
+              "npc_scene_authority_count": 17,
+              "ambiguous_destination_count": 0,
+              "unresolved_destination_count": 1,
+              "missing_npc_authority_count": 0,
+              "blocking_finding_count": 1,
+              "warning_count": 0
+            },
+            "blocker_classes": [
+              "unresolved_destination_phrase"
+            ],
+            "blocking_findings": [
+              {
+                "class": "unresolved_destination_phrase",
+                "message": "Unresolved destination phrase 'paradox sanctuary' appears in authored semantics",
+                "context": {
+                  "phrase": "paradox sanctuary",
+                  "sources": [
+                    "areas/TNU001.json#locations[H01].aliases",
+                    "areas/TNU001.json#locations[H01].name"
+                  ]
+                }
+              }
+            ],
+            "blocking_errors": [
+              "Unresolved destination phrase 'paradox sanctuary' appears in authored semantics"
+            ],
+            "warnings": [],
+            "exit_code": 1
+          },
+          "semantic_probes": {
+            "module": "The_Hidden_City_of_Numillian",
+            "module_path": "modules/The_Hidden_City_of_Numillian",
+            "status": "fail",
+            "summary": {
+              "probe_count": 10,
+              "pass_count": 9,
+              "fail_count": 1,
+              "degraded_count": 0,
+              "travel_probe_count": 3,
+              "handoff_probe_count": 0,
+              "hidden_npc_probe_count": 7
+            },
+            "probes": [
+              {
+                "id": "travel.paradox-sanctuary",
+                "type": "travel",
+                "phrase": "paradox sanctuary",
+                "status": "fail",
+                "resolved_location_id": "",
+                "candidate_location_ids": [],
+                "expected_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/TNU001.json#locations[H01].aliases",
+                  "areas/TNU001.json#locations[H01].name"
+                ],
+                "expected_location_id": "H01",
+                "status_detail": "Player-facing destination phrase is unresolved",
+                "failure_class": "travel_unresolved_destination_phrase"
+              },
+              {
+                "id": "travel.veiled-paradox-sanctuary",
+                "type": "travel",
+                "phrase": "veiled paradox sanctuary",
+                "status": "pass",
+                "resolved_location_id": "H01",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "expected_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/TNU001.json#locations[H01].aliases",
+                  "areas/TNU001.json#locations[H01].name"
+                ],
+                "expected_location_id": "H01",
+                "status_detail": "Resolved location matches expected destination",
+                "failure_class": ""
+              },
+              {
+                "id": "travel.veilwoven-crossroads",
+                "type": "travel",
+                "phrase": "veilwoven crossroads",
+                "status": "pass",
+                "resolved_location_id": "G01",
+                "candidate_location_ids": [
+                  "G01"
+                ],
+                "expected_location_ids": [
+                  "G01"
+                ],
+                "sources": [
+                  "areas/TUD001.json#locations[G01].aliases",
+                  "areas/TUD001.json#locations[G01].description",
+                  "areas/TUD001.json#locations[G01].name"
+                ],
+                "expected_location_id": "G01",
+                "status_detail": "Resolved location matches expected destination",
+                "failure_class": ""
+              },
+              {
+                "id": "hidden_npc.any-surviving-faction-leaders",
+                "type": "hidden_npc",
+                "npc": "Any surviving faction leaders",
+                "name_slug": "any surviving faction leaders",
+                "visible_location_ids": [
+                  "H03"
+                ],
+                "reveal_location_ids": [
+                  "TMQ001"
+                ],
+                "expected_location_ids": [
+                  "H03",
+                  "TMQ001"
+                ],
+                "authored_mentions_count": 2,
+                "authored_mention_sources": [
+                  "areas/TNU001.json#locations[H03].plotHooks",
+                  "module_plot.json#plotPoints[PP007].description"
+                ],
+                "status": "pass",
+                "failure_class": "",
+                "status_detail": "Revealable NPC authority aligns with authored discovery context"
+              },
+              {
+                "id": "hidden_npc.azarel-moros",
+                "type": "hidden_npc",
+                "npc": "Azarel Moros",
+                "name_slug": "azarel moros",
+                "visible_location_ids": [
+                  "G01"
+                ],
+                "reveal_location_ids": [
+                  "TUD001"
+                ],
+                "expected_location_ids": [
+                  "G01",
+                  "TUD001"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/TUD001.json#locations[G01].dmInstructions",
+                  "areas/TUD001.json#locations[G01].plotHooks",
+                  "module_plot.json#plotPoints[PP010].description"
+                ],
+                "status": "pass",
+                "failure_class": "",
+                "status_detail": "Revealable NPC authority aligns with authored discovery context"
+              },
+              {
+                "id": "hidden_npc.keeper-veyron",
+                "type": "hidden_npc",
+                "npc": "Keeper Veyron",
+                "name_slug": "keeper veyron",
+                "visible_location_ids": [
+                  "G01"
+                ],
+                "reveal_location_ids": [
+                  "TPG001"
+                ],
+                "expected_location_ids": [
+                  "G01",
+                  "TPG001"
+                ],
+                "authored_mentions_count": 4,
+                "authored_mention_sources": [
+                  "areas/TPG001.json#locations[G01].dcChecks",
+                  "areas/TPG001.json#locations[G01].dmInstructions",
+                  "areas/TPG001.json#locations[G01].plotHooks",
+                  "module_plot.json#plotPoints[PP001].description"
+                ],
+                "status": "pass",
+                "failure_class": "",
+                "status_detail": "Revealable NPC authority aligns with authored discovery context"
+              },
+              {
+                "id": "hidden_npc.mira-the-shardseer",
+                "type": "hidden_npc",
+                "npc": "Mira the Shardseer",
+                "name_slug": "mira the shardseer",
+                "visible_location_ids": [
+                  "G02"
+                ],
+                "reveal_location_ids": [
+                  "TUD001"
+                ],
+                "expected_location_ids": [
+                  "G02",
+                  "TUD001"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/TUD001.json#locations[G02].dmInstructions",
+                  "areas/TUD001.json#locations[G02].plotHooks",
+                  "module_plot.json#plotPoints[PP009].description"
+                ],
+                "status": "pass",
+                "failure_class": "",
+                "status_detail": "Revealable NPC authority aligns with authored discovery context"
+              },
+              {
+                "id": "hidden_npc.seraphine-of-the-silver-veil",
+                "type": "hidden_npc",
+                "npc": "Seraphine of the Silver Veil",
+                "name_slug": "seraphine of the silver veil",
+                "visible_location_ids": [
+                  "G01"
+                ],
+                "reveal_location_ids": [
+                  "H01",
+                  "H02"
+                ],
+                "expected_location_ids": [
+                  "G01",
+                  "H01",
+                  "H02"
+                ],
+                "authored_mentions_count": 4,
+                "authored_mention_sources": [
+                  "areas/TMQ001.json#locations[G01].aliases",
+                  "areas/TMQ001.json#locations[G01].name",
+                  "areas/TNU001.json#locations[H01].description",
+                  "areas/TSU001.json#locations[H02].dmInstructions"
+                ],
+                "status": "pass",
+                "failure_class": "",
+                "status_detail": "Revealable NPC authority aligns with authored discovery context"
+              },
+              {
+                "id": "hidden_npc.various-masked-dignitaries",
+                "type": "hidden_npc",
+                "npc": "Various masked dignitaries",
+                "name_slug": "various masked dignitaries",
+                "visible_location_ids": [
+                  "G03"
+                ],
+                "reveal_location_ids": [
+                  "TMFMH001",
+                  "TPG001"
+                ],
+                "expected_location_ids": [
+                  "G03",
+                  "TMFMH001",
+                  "TPG001"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/TMQ001.json#locations[G03].dmInstructions",
+                  "module_plot.json#plotPoints[PP003].description",
+                  "module_plot.json#plotPoints[PP019].description"
+                ],
+                "status": "pass",
+                "failure_class": "",
+                "status_detail": "Revealable NPC authority aligns with authored discovery context"
+              },
+              {
+                "id": "hidden_npc.xhalruun-the-unraveled",
+                "type": "hidden_npc",
+                "npc": "Xhalruun the Unraveled",
+                "name_slug": "xhalruun the unraveled",
+                "visible_location_ids": [
+                  "H01"
+                ],
+                "reveal_location_ids": [
+                  "G03",
+                  "H03"
+                ],
+                "expected_location_ids": [
+                  "G03",
+                  "H01",
+                  "H03"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/TSU001.json#locations[H01].plotHooks",
+                  "areas/TSU001.json#locations[H03].plotHooks",
+                  "areas/TUD001.json#locations[G03].plotHooks"
+                ],
+                "status": "pass",
+                "failure_class": "",
+                "status_detail": "Revealable NPC authority aligns with authored discovery context"
+              }
+            ],
+            "blocking_errors": [
+              "travel_unresolved_destination_phrase: travel.paradox-sanctuary - Player-facing destination phrase is unresolved"
+            ],
+            "warnings": [
+              "handoff_probe_fixture_missing"
+            ],
+            "exit_code": 1
+          }
+        },
+        "blocking_errors": [
+          "readiness_gate_failed: module is not structurally ready",
+          "Unresolved destination phrase 'paradox sanctuary' appears in authored semantics",
+          "travel_unresolved_destination_phrase: travel.paradox-sanctuary - Player-facing destination phrase is unresolved"
+        ],
+        "warnings": [
+          "handoff_probe_fixture_missing"
+        ],
+        "remediation_categories": [
+          "semantic_tooling_debt"
+        ],
+        "fix_list": [
+          "Resolve gameplay blocking errors from scripts/audit_module_gameplay.py output",
+          "Seed narrative cross-module refs: python3 scripts/enrich_module_cross_refs.py --module <slug> --apply",
+          "Fix semantic publication audit findings from scripts/module_semantic_authority_audit.py",
+          "Fix semantic probe harness findings from scripts/module_semantic_probe_harness.py"
+        ],
+        "exit_code": 1
+      }
+    }
+  },
+  "publication_parity_note": "Post-build parity now reports both structural readiness and semantic publishability.",
+  "semantic_authority_note": "Semantic authority and semantic probes now feed a standalone publishable gate distinct from readiness."
+}

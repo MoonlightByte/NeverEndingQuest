@@ -1,0 +1,84 @@
+{
+  "name": "Raveling Wraith",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Chaotic Evil",
+  "armorClass": 13,
+  "hitPoints": 27,
+  "maxHitPoints": 27,
+  "speed": 0,
+  "abilities": {
+    "strength": 6,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 12,
+    "charisma": 14
+  },
+  "savingThrows": [],
+  "skills": {
+    "Stealth": 5,
+    "Perception": 3
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "acid",
+    "cold",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing from nonmagical attacks"
+  ],
+  "damageImmunities": [
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "Understands all it knew in life but can't speak",
+  "challengeRating": 2,
+  "specialAbilities": [
+    {
+      "name": "Incorporeal Movement",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Life Drain",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "necrotic"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Raveling Touch",
+      "attackBonus": 5,
+      "damageDice": "2d6",
+      "damageBonus": 2,
+      "damageType": "necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Within the shadow-drenched corridors of the Mind Flayer's Masquerade Hall, the Raveling Wraith drifts like a living nightmare woven from frayed strands of forgotten memories. Its form is a shifting tapestry of translucent, ragged veils that ripple and unravel endlessly, each thread shimmering with ghostly iridescence as if spun from the psychic residue of countless stolen thoughts. Where its face should be, an ever-changing mosaic of fragmented visages flickers--echoes of the revelers whose minds it has consumed, their expressions frozen in eternal torment or maddened ecstasy. The wraith's movements are hypnotic, a slow, undulating dance that distorts the space around it, blurring the boundaries between reality and illusion. Its presence fills the air with a chilling whisper, a susurrus of half-remembered secrets and psychic tremors that unsettle even the most resolute minds. In the vault where prized memories are kept, the Raveling Wraith acts both as a guardian and a prisoner, bound by psychic chains forged from the very essence it seeks to unravel. To face it is to confront the fraying edges of one's own mind, as it weaves confusion and dread into the fabric of perception, threatening to unravel sanity like the tattered strands of its own spectral cloak."
+}

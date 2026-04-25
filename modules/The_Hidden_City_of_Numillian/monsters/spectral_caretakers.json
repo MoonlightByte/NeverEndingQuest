@@ -1,0 +1,91 @@
+{
+  "name": "Spectral Caretaker",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Neutral",
+  "armorClass": 12,
+  "hitPoints": 18,
+  "maxHitPoints": 18,
+  "speed": 0,
+  "abilities": {
+    "strength": 6,
+    "dexterity": 14,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 14,
+    "charisma": 15
+  },
+  "savingThrows": [],
+  "skills": {
+    "Perception": 4,
+    "Insight": 4
+  },
+  "damageVulnerabilities": [
+    "force"
+  ],
+  "damageResistances": [
+    "acid",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "cold",
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "Understands all languages it knew in life but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Incorporeal Movement",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Ethereal Sight",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Caretaker's Aura",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Spectral Touch",
+      "attackBonus": 4,
+      "damageDice": "2d6",
+      "damageBonus": 2,
+      "damageType": "necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Within the shadowed depths of the Mindsunder Vault, the Spectral Caretakers drift silently among the crystalline reliquaries, their forms flickering like wavering candle flames caught in a ghostly breeze. These ethereal guardians appear as towering humanoid shapes, translucent and shimmering with a pale, bluish-white light that pulses in rhythm with the psychic energies saturating the chamber. Their features are obscured behind haunting, mask-like visages carved from mist and memory, with hollow eye sockets that gleam faintly with a sorrowful, otherworldly intelligence. Draped in tattered robes woven from strands of psychic residue and shadow, they move with a slow, deliberate grace, their movements accompanied by the faint echo of whispered laments and the rustle of forgotten secrets. The air around them grows colder, charged with a spectral chill that seeps into the bones of intruders. These caretakers are bound to the vault, eternally tasked with preserving and defending the stolen memories and psychic remnants held within. They neither speak nor show malice openly but manifest a solemn vigilance, their presence a reminder of the cost of forbidden knowledge. When provoked, their forms waver and sharpen into jagged shards of shimmering energy, unleashing bursts of psychic force that ripple like unseen waves through the mind, sowing confusion and dread in those who dare threaten their charge."
+}

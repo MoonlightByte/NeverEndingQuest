@@ -1,0 +1,26 @@
+{
+  "module": "The Ancients Lab",
+  "partyMembers": [],
+  "partyNPCs": [],
+  "worldConditions": {
+    "year": 1492,
+    "month": "Hammer",
+    "day": 1,
+    "time": "08:00:00",
+    "weather": "Clear",
+    "season": "Winter",
+    "dayNightCycle": "Day",
+    "moonPhase": "New Moon",
+    "currentLocation": "Shattered Forge Approach",
+    "currentLocationId": "I01",
+    "currentArea": "The Blackcrag Marches",
+    "currentAreaId": "BA001",
+    "majorEventsUnderway": [],
+    "politicalClimate": "",
+    "activeEncounter": "",
+    "activeCombatEncounter": "",
+    "weatherConditions": "",
+    "lastCompletedEncounter": ""
+  },
+  "activeQuests": []
+}

@@ -1,0 +1,64 @@
+{
+  "name": "Warped Prisoner",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Chaotic Neutral",
+  "armorClass": 11,
+  "hitPoints": 13,
+  "maxHitPoints": 13,
+  "speed": 30,
+  "abilities": {
+    "strength": 13,
+    "dexterity": 13,
+    "constitution": 12,
+    "intelligence": 8,
+    "wisdom": 10,
+    "charisma": 7
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "psychic"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "Common (broken), Undercommon",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Warped Mind",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Claw",
+      "attackBonus": 3,
+      "damageDice": "1d6",
+      "damageBonus": 1,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Bite",
+      "attackBonus": 3,
+      "damageDice": "1d4",
+      "damageBonus": 1,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the ever-shifting shadows of the Shrouded Psiumbra, the Warped Prisoners are tragic remnants of those ensnared by the mind flayers' psychic manipulations and cruel experiments. Their forms are grotesquely twisted, flesh stretched and contorted in unnatural angles, as if reality itself has been forcibly unraveled within their bodies. Pallid, translucent skin reveals faintly glowing veins pulsating with stolen psychic energy. Their eyes, clouded and vacant, flicker with erratic bursts of haunting memories and fractured identities, trapped between sanity and madness. Jagged chains of shimmering psionic force coil around their limbs, binding them to invisible prisons of the mind. Their movements are jerky and disjointed, reflecting the torment of a soul battered by psychic assault, yet they lurch forward with a desperate hunger to reclaim fragments of lost selfhood. Lingering around the Veilpiercer Antechamber and the Hall of Shifting Truths, they wail softly--a mournful chorus of fractured minds echoing through the illusory halls. The air thickens with a chilling psychic resonance, distorting perception and warping the very fabric of reality near them. These prisoners serve as grim reminders of the mind flayers' dominion, their presence casting a pall of despair and warning to any who would delve too deeply into the Masquerade's twisted depths."
+}

@@ -1,0 +1,61 @@
+{
+  "name": "Hungry Wolf",
+  "size": "Medium",
+  "type": "Beast",
+  "alignment": "Unaligned",
+  "armorClass": 13,
+  "hitPoints": 11,
+  "maxHitPoints": 11,
+  "speed": 40,
+  "abilities": {
+    "strength": 12,
+    "dexterity": 15,
+    "constitution": 12,
+    "intelligence": 3,
+    "wisdom": 12,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 3,
+    "stealth": 4
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 0,
+    "passivePerception": 13
+  },
+  "languages": "",
+  "challengeRating": 0.25,
+  "specialAbilities": [
+    {
+      "name": "Keen Hearing and Smell",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Pack Tactics",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "attackBonus": 4,
+      "damageDice": "2d4",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Lurking at the shadowed edges of Brindlehearth Vale's rolling meadows and ancient hedgerows, the Hungry Wolves are spectral predators born from the Vale's whispered fears and unsaid dangers. These wolves are larger and leaner than ordinary beasts, their matted fur a patchwork of dusk-gray and bloodied brown, clinging to ribs sharpened by hunger. Their eyes gleam with an unnatural, ember-like glow, burning faintly in the twilight as if fueled by the desperation of the starving and the curse of the lost. Each breath they exhale is a ghostly mist that chills the air, mingling with the scent of damp earth and old decay. Their snarls carry an eerie resonance that seems to echo faintly, as if the very woods answer their call. Moving with a predatory grace, they hunt in tight packs, weaving silently between the twisted trunks and ancient stones, drawn to the scent of fear and the faintest hint of blood. Travelers and villagers alike speak of their haunting howls rising near the old gallows tree at night--an omen of unseen threats and the Vale's dark secrets. These wolves embody the hunger not just of the body but of the restless shadows that haunt the Resonant Abyss, a living manifestation of the Vale's unspoken dread and the thin veil between the known and the abyssal unknown."
+}

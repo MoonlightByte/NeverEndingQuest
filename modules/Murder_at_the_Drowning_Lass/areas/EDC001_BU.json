@@ -1,0 +1,469 @@
+{
+  "areaId": "EDC001",
+  "areaName": "The Resonant Abyss",
+  "areaType": "dungeon",
+  "areaDescription": "Endless chasms plunge into darkness beneath the earth, where every footstep echoes with haunting, unnatural reverberations. The air quivers with unseen movement, and horrors both ancient and abyssal answer any sound with swift, lethal intent.",
+  "dangerLevel": "extreme",
+  "recommendedLevel": 5,
+  "climate": "controlled - cool and damp",
+  "terrain": "stone corridors and chambers",
+  "map": {
+    "mapId": "MAP_H_3",
+    "mapName": "Dungeon Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "H01",
+        "type": "shrine",
+        "connections": [
+          "H02",
+          "H03"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "H02"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "extreme",
+        "name": "Sanctum of Echoed Warnings"
+      },
+      {
+        "id": "H02",
+        "type": "vault",
+        "connections": [
+          "H01"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "H01"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "quest_goal",
+        "landmark": true,
+        "dangerLevel": "extreme",
+        "name": "Vault of the Drowned Oath"
+      },
+      {
+        "id": "H03",
+        "type": "shrine",
+        "connections": [
+          "H01"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {},
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "extreme",
+        "name": "Reliquary of Sorrowful Depths"
+      }
+    ],
+    "layout": [
+      [
+        "H01",
+        "H02",
+        "H03"
+      ]
+    ],
+    "startRoom": "H01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "H01",
+      "name": "Sanctum of Echoed Warnings",
+      "type": "shrine",
+      "description": "This somber shrine is hollowed from black-speckled stone, its walls carved with countless sigils of warning and appeasement. The air is thick and cold; every whisper echoes far louder than it should, and the shapes of the shrines' carvings seem to shimmer in the torchlight as if vibrating. Faded prayer mats and battered offering bowls dot the floor, alongside heaps of abandoned trinkets. Inscribed warnings warn trespassers to remain silent, lest the abyss answer back. Faint, unnatural reverberations linger with every sound, as if the shrines themselves are listening.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "H02",
+        "H03"
+      ],
+      "areaConnectivity": [
+        "The Brindlehearth Vale"
+      ],
+      "areaConnectivityId": [
+        "H03"
+      ],
+      "aliases": [
+        "Sanctum of Echoed Warnings",
+        "H01"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Echo Wraith",
+          "description": "A spectral being manifested from the accumulated warnings and regrets of countless intruders. It attacks anyone who speaks above a whisper, growing stronger with each loud sound made in the shrine.",
+          "attitude": "Hostile"
+        }
+      ],
+      "lootTable": [
+        "Vial of Resonant Silver Dust (can be used to silence a 10-foot radius for 1 hour)",
+        "Scroll: 'Litany of Containment' (ritual that grants advantage on saving throws against sound-based effects for 24 hours)",
+        "Obsidian Prayer Beads (worth 25 gp)"
+      ],
+      "plotHooks": [
+        "A fresh bloodstain and a single scrap of a thieves' map hint that a fugitive may have come through here recently.",
+        "One of the prayer mats conceals a coded message referencing another chamber: 'The drowned oath lies beyond the vault, sealed to all but silence.'"
+      ],
+      "dmInstructions": "The Echo Wraith attacks if any character speaks above a whisper or creates loud noise. Adjust the number of wraiths based on party strength. The coded message is a clue for bypassing a puzzle in H02.",
+      "doors": [
+        {
+          "name": "Eastern Archway",
+          "description": "A narrow arch decorated with engraved warnings. The threshold is dusted with centuries-old ash.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Southern Passage",
+          "description": "A low, rectangular opening filled with hanging bone charms and leather thongs.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 8,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "name": "Simple Pressure Plate",
+          "description": "A hidden pressure plate beneath a prayer mat triggers a volley of concealed spikes if triggered.",
+          "detectDC": 13,
+          "disableDC": 15,
+          "triggerDC": 12,
+          "damage": "1d6 piercing damage from hidden spikes"
+        }
+      ],
+      "dcChecks": [
+        "Investigation DC 14: Locate coded message beneath prayer mat.",
+        "Religion DC 12: Identify symbols as warnings to keep silent.",
+        "Stealth DC 13: Move through without creating dangerous noise, avoiding Echo Wraith attention."
+      ],
+      "accessibility": "Accessible via a gently sloping tunnel from the west; the air becomes preternaturally still as one approaches.",
+      "dangerLevel": "Very High",
+      "features": [
+        {
+          "name": "Offering Bowls",
+          "description": "Ancient clay bowls, some containing faded copper coins and melted wax, used for offerings to unknown spirits."
+        },
+        {
+          "name": "Prayer Mats",
+          "description": "Frayed and faded mats, each marked with a unique sigil of warning and protection."
+        },
+        {
+          "name": "Religious Symbols",
+          "description": "Walls covered in sigils, pictograms, and warnings meant to placate or deter the denizens of the abyss."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "combat",
+          "description": "Echo Wraith attacks the party if they create loud noises."
+        },
+        {
+          "type": "exploration",
+          "description": "Finding hidden coded messages and clues beneath the prayer mats."
+        },
+        {
+          "type": "roleplay",
+          "description": "Interpreting the shrine's warnings and possibly appeasing the spirits by making offerings."
+        }
+      ],
+      "adventureSummary": "A haunted shrine where silence is the only protection from the vengeful spirits awakened by sound.",
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_shrine:Sanctum of Echoed Warnings",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H02",
+      "name": "Vault of the Drowned Oath",
+      "type": "vault",
+      "description": "This chamber is a sunken, circular crypt half-flooded with icy, ankle-deep water. Its domed ceiling is encrusted with blue-green luminescent fungi and flickering runes. Iron shelves, supported by barnacle-crusted pillars, hold waterlogged scrolls and jars sealed with wax. The air hums with a low, resonant frequency, and a central dais bears a weathered stone coffer\u2014its lid sealed by an intricate, sound-based magical lock. The magic here preserves certain items, but also reacts violently to misused passwords or loud intrusions.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "H01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "aliases": [
+        "Vault of the Drowned Oath",
+        "H02"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Abyssal Choker",
+          "description": "A sinewy, eel-like aberration that lurks beneath the water, attacking intruders with prehensile tendrils and attempting to strangle any who disturb the vault's silence.",
+          "attitude": "Aggressive"
+        }
+      ],
+      "lootTable": [
+        "Coffer containing: Gilded Drowned Oath Medallion (valuable, magical, requires attunement)",
+        "Three waterproof scroll tubes (1d4 random aquatic spells each)",
+        "Sealed flask of Abyssal Brine (grants advantage on saves against drowning for 24 hours)"
+      ],
+      "plotHooks": [
+        "The stone coffer bears a sigil matching the coded message from H01; deciphering it grants safe access to the vault\u2019s central treasure.",
+        "A fragment of a map, matching the stolen treasure map, is pressed between two preserved scrolls."
+      ],
+      "dmInstructions": "The magical seal on the coffer can only be opened by whispering the correct phrase ('The drowned oath lies silent'). Speaking loudly triggers the Choker's attack and a magical backlash (see traps).",
+      "doors": [
+        {
+          "name": "Western Stone Door",
+          "description": "A thick stone door inlaid with lead runes and fitted with a watertight seal. The door is heavy, bulging slightly from water pressure.",
+          "type": "heavy",
+          "locked": true,
+          "lockDC": 16,
+          "breakDC": 20,
+          "keyname": "Silent Word (password)",
+          "trapped": true,
+          "trap": "If the wrong word is spoken, the door emits a thunderous boom (2d6 thunder damage within 10 feet)."
+        }
+      ],
+      "traps": [
+        {
+          "name": "Magic Sound Trap",
+          "description": "A glyph on the vault's coffer explodes in a wave of thunder if the wrong phrase is spoken or if the characters are too loud.",
+          "detectDC": 15,
+          "disableDC": 17,
+          "triggerDC": 12,
+          "damage": "2d8 thunder damage (half on DC 15 Constitution save)"
+        }
+      ],
+      "dcChecks": [
+        "History DC 15: Recognize the drowned oath as an ancient order sworn to eternal silence.",
+        "Arcana DC 14: Identify the magic preserving the items and the nature of the sound-based trap.",
+        "Stealth DC 13: Traverse the chamber to avoid disturbing the Choker or triggering the glyph."
+      ],
+      "accessibility": "Can only be accessed via the Sanctum of Echoed Warnings; the watertight door is heavy and magically trapped.",
+      "dangerLevel": "Very High",
+      "features": [
+        {
+          "name": "Shelves",
+          "description": "Iron shelves line the walls, cluttered with waterlogged relics sealed in wax and glass."
+        },
+        {
+          "name": "Preservation Magic",
+          "description": "Pale blue runes glow faintly, keeping certain items free from decay and rot."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "combat",
+          "description": "Abyssal Choker attacks if the party disturbs the water or makes noise."
+        },
+        {
+          "type": "exploration",
+          "description": "Searching the shelves reveals hidden scrolls and a map fragment."
+        },
+        {
+          "type": "roleplay",
+          "description": "Deciphering the oath and whispering the correct password to safely open the coffer."
+        }
+      ],
+      "adventureSummary": "A sound-sensitive, ancient vault where silence is key, and a dangerous aberration lurks beneath the waters.",
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_vault:Vault of the Drowned Oath",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H03",
+      "name": "Reliquary of Sorrowful Depths",
+      "type": "shrine",
+      "description": "This secluded reliquary lies at the end of a narrow stone causeway, perched above a bottomless chasm. A single stone altar stands in the center, surrounded by broken urns and skeletal remains. The walls are carved with sorrowful faces and scenes of drowning, and the constant, soft sound of weeping seems to emanate from the rock itself. The air is colder here, pierced by occasional, unnatural whispers that seem to come from the abyss below.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "H01"
+      ],
+      "areaConnectivity": [
+        "The Hearthwood Vale"
+      ],
+      "areaConnectivityId": [
+        "H01"
+      ],
+      "aliases": [
+        "Reliquary of Sorrowful Depths",
+        "H03"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Sorrowful Deep Lurker",
+          "description": "A translucent, eel-like aberration that feeds on sorrow and grief, lashing out at anything living that approaches the altar. It phases between the shadowy depths and the physical world.",
+          "attitude": "Vengeful"
+        }
+      ],
+      "lootTable": [
+        "Reliquary Key (opens hidden compartment beneath altar)",
+        "Tears of the Abyss (potion of water breathing, one use)",
+        "Silver reliquary containing ashes (may be significant to the plot; investigation reveals a hidden message etched inside)"
+      ],
+      "plotHooks": [
+        "A hidden compartment beneath the altar contains a hand-etched clue: 'Only the Oathbroken shall descend; all others are lost.'",
+        "The sorrowful faces on the wall depict a map to a deeper level, which could be followed with a successful Investigation check."
+      ],
+      "dmInstructions": "The Sorrowful Deep Lurker emerges if the altar is disturbed. The reliquary key is required to progress deeper, and the hidden clue foreshadows even more dangerous depths.",
+      "doors": [
+        {
+          "name": "Causeway Entrance",
+          "description": "A narrow bridge of stone, slick with condensation and carved with images of weeping.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 12,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Hidden Trapdoor",
+          "description": "A stone slab concealed beneath the altar, flush with the floor and marked by a faint sigil.",
+          "type": "secret",
+          "locked": true,
+          "lockDC": 18,
+          "breakDC": 20,
+          "keyname": "Reliquary Key",
+          "trapped": true,
+          "trap": "If forced open without the key, releases a cloud of abyssal despair (DC 15 Wisdom save or suffer 1 level of exhaustion)."
+        }
+      ],
+      "traps": [
+        {
+          "name": "Trapdoor Despair Gas",
+          "description": "If forced, the hidden trapdoor beneath the altar releases a choking, sorrow-inducing gas.",
+          "detectDC": 16,
+          "disableDC": 16,
+          "triggerDC": 12,
+          "damage": "DC 15 Wisdom save or gain 1 level of exhaustion (no damage on success)"
+        }
+      ],
+      "dcChecks": [
+        "Investigation DC 15: Locate the hidden compartment beneath the altar.",
+        "Perception DC 13: Notice the pattern of weeping faces forms a crude map.",
+        "Religion DC 14: Realize the altar is dedicated to an ancient order that sacrificed themselves to the abyss."
+      ],
+      "accessibility": "Reached via a treacherous, narrow causeway extending over the abyss. The area is cold and the footing is slick.",
+      "dangerLevel": "Very High",
+      "features": [
+        {
+          "name": "Altar",
+          "description": "A lone stone altar adorned with faded carvings and offerings of bone and silver."
+        },
+        {
+          "name": "Broken Urns",
+          "description": "Fragments of ancient urns, some containing ashes or glinting trinkets."
+        },
+        {
+          "name": "Weeping Wall Carvings",
+          "description": "Faces in the stone wall weep perpetually, their tears forming rivulets that vanish into cracks."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "combat",
+          "description": "Sorrowful Deep Lurker attacks if the altar is disturbed or if anyone lingers near the edge."
+        },
+        {
+          "type": "exploration",
+          "description": "Discovering the hidden compartment and deciphering the map in the carvings."
+        },
+        {
+          "type": "roleplay",
+          "description": "Interpreting the meaning of the weeping faces and the order's sacrifice."
+        }
+      ],
+      "adventureSummary": "A funereal reliquary, haunted by grief and danger, holds the key to even deeper secrets in the Resonant Abyss.",
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_shrine:Reliquary of Sorrowful Depths",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "deadly trap",
+      "description": "A deadly trap appropriate for level 5 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "boss monster",
+      "description": "A boss monster appropriate for level 5 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "deadly trap",
+      "description": "A deadly trap appropriate for level 5 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 5 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 5 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 5 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 5 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "boss monster",
+      "description": "A boss monster appropriate for level 5 parties"
+    }
+  ],
+  "areaFeatures": [
+    "ancient murals",
+    "mysterious mechanisms",
+    "forgotten shrines"
+  ],
+  "notes": "Consider lighting sources and trap placement. Underground areas may have limited resources.",
+  "spatialContractVersion": 1
+}

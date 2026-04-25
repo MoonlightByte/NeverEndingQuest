@@ -1,0 +1,62 @@
+{
+  "name": "Minor Mind Flayer Thrall",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Lawful Evil",
+  "armorClass": 12,
+  "hitPoints": 9,
+  "maxHitPoints": 9,
+  "speed": 30,
+  "abilities": {
+    "strength": 10,
+    "dexterity": 14,
+    "constitution": 10,
+    "intelligence": 7,
+    "wisdom": 10,
+    "charisma": 8
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "Understands Deep Speech and one other language but can't speak",
+  "challengeRating": 0.25,
+  "specialAbilities": [
+    {
+      "name": "Psionic Bond",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "psychic"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Mind Lash",
+      "attackBonus": 4,
+      "damageDice": "1d4",
+      "damageBonus": 2,
+      "damageType": "psychic"
+    },
+    {
+      "name": "Dagger",
+      "attackBonus": 4,
+      "damageDice": "1d4",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Within the shifting, illusory corridors of the Hall of Shifting Truths, Minor Mind Flayer Thralls haunt the psychic haze like shadowed puppets bound to alien wills. These slender, gaunt figures stand just over five feet tall, their skin a pallid, sickly hue reminiscent of moonlight filtered through brackish water. Their elongated, bulbous heads taper backward, crowned with slick, translucent membranes that pulse faintly with psychic energy. Four spindly tentacles writhe from where their mouths should be, twitching with a hypnotic rhythm that hints at the ceaseless psychic torment they endure. Their eyes, large and glossy, shimmer with vacant luminescence--windows to a fractured mind, flickering with stolen memories and fleeting sparks of resistance. Draped in tattered remnants of once-fine garments, they move with a jerking, puppet-like cadence, their steps hesitant and uncertain, as if caught between reality and the illusions that swirl around them. These thralls are instruments of mental subjugation, their own will suppressed beneath layers of hypnotic control, forced to enforce the mind flayers' cruel games and psychic duels within the masquerade's deceptive halls. A subtle aura of despair and warped cognition clings to them, and the very air around them hums faintly with psionic resonance, warping space and sense. Encountering one is like glimpsing a tragic shadow of something once human, now irrevocably lost to alien dominion."
+}

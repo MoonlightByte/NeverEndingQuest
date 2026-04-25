@@ -1,0 +1,72 @@
+{
+  "mapId": "MAP_G_3",
+  "mapName": "Mixed Map",
+  "totalRooms": 3,
+  "rooms": [
+    {
+      "id": "G01",
+      "type": "room",
+      "connections": [
+        "G02",
+        "G03"
+      ],
+      "coordinates": "X10Y10",
+      "directions": {
+        "east": "G02",
+        "south": "G03"
+      },
+      "tags": [],
+      "purpose": "unknown",
+      "landmark": false,
+      "dangerLevel": "high",
+      "name": "Veilwoven Crossroads"
+    },
+    {
+      "id": "G02",
+      "type": "room",
+      "connections": [
+        "G01"
+      ],
+      "coordinates": "X11Y10",
+      "directions": {
+        "west": "G01"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "high",
+      "name": "Specter's Choice Alcove"
+    },
+    {
+      "id": "G03",
+      "type": "room",
+      "connections": [
+        "G01"
+      ],
+      "coordinates": "X10Y11",
+      "directions": {
+        "north": "G01"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "high",
+      "name": "Fractured Memory Niche"
+    }
+  ],
+  "layout": [
+    [
+      "G01",
+      "G02",
+      "G03"
+    ]
+  ],
+  "startRoom": "G01",
+  "version": "1.1",
+  "notes": "Extended schema with AI-friendly navigation fields",
+  "spatialContractVersion": 1
+}

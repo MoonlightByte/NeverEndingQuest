@@ -1,0 +1,68 @@
+{
+  "name": "Temporal Mite",
+  "size": "Tiny",
+  "type": "Monstrosity",
+  "alignment": "Unaligned",
+  "armorClass": 14,
+  "hitPoints": 9,
+  "maxHitPoints": 9,
+  "speed": 30,
+  "abilities": {
+    "strength": 3,
+    "dexterity": 18,
+    "constitution": 12,
+    "intelligence": 2,
+    "wisdom": 13,
+    "charisma": 3
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 6,
+    "perception": 3
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "cold",
+    "fire"
+  ],
+  "damageImmunities": [
+    "poison"
+  ],
+  "conditionImmunities": [
+    "poisoned",
+    "charmed"
+  ],
+  "senses": {
+    "darkvision": 30,
+    "passivePerception": 13
+  },
+  "languages": "\u2014",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Temporal Skitter",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Time Disruption Aura",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Temporal Bite",
+      "attackBonus": 6,
+      "damageDice": "1d4",
+      "damageBonus": 4,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

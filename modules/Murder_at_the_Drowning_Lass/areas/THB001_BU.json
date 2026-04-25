@@ -1,0 +1,440 @@
+{
+  "areaId": "THB001",
+  "areaName": "The Barrowmire Settlements",
+  "areaType": "town",
+  "areaDescription": "Shrouded in perpetual mist, the Barrowmire Settlements sprawl across sodden earth riddled with ancient burial mounds and sunken paths. Faint ghostlights drift between leaning cottages, and the air is thick with the chill of restless spirits\u2014a dire warning to any who linger after nightfall.",
+  "dangerLevel": "high",
+  "recommendedLevel": 4,
+  "climate": "temperate",
+  "terrain": "urban streets and buildings",
+  "map": {
+    "mapId": "MAP_H_3",
+    "mapName": "Town Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "H01",
+        "type": "tavern",
+        "connections": [
+          "H02",
+          "H03"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "H02"
+        },
+        "tags": [
+          "rest"
+        ],
+        "purpose": "safe_haven",
+        "landmark": false,
+        "dangerLevel": "high",
+        "name": "The Drowning Lass Taproom"
+      },
+      {
+        "id": "H02",
+        "type": "warehouse",
+        "connections": [
+          "H01"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "H01"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Mireshadow Storage"
+      },
+      {
+        "id": "H03",
+        "type": "shop",
+        "connections": [
+          "H01"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {},
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Boglight Curiosities"
+      }
+    ],
+    "layout": [
+      [
+        "H01",
+        "H02",
+        "H03"
+      ]
+    ],
+    "startRoom": "H01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "H01",
+      "name": "The Drowning Lass Taproom",
+      "type": "tavern",
+      "description": "A rambling riverside tavern shrouded in fog, with warped oaken beams and flickering lanterns that struggle against the gloom. The muddy floorboards creak underfoot, and faded murals depicting lost sailors watch over battered tables. Hushed voices speak of old mounds and ghostlights glimpsed from the porch. The air is thick with stale ale, pipe smoke, and a hint of something colder from below.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "H02",
+        "H03"
+      ],
+      "areaConnectivity": [
+        "The Stoneheart Chasmlands"
+      ],
+      "areaConnectivityId": [
+        "H03"
+      ],
+      "aliases": [
+        "The Drowning Lass Taproom",
+        "H01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_tavern:The Drowning Lass Taproom",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ],
+      "npcs": [
+        {
+          "name": "Maela Kett, the wary tavernkeeper",
+          "description": "A sharp-eyed woman with close-cropped hair and a sleeve of faded tattoos. She keeps a constant watch over patrons and the bar\u2019s battered safe, wary since recent troubles. She knows much of the town\u2019s secrets but trusts few.",
+          "attitude": "Guarded but fair; responds well to honest intent but will clam up at suspicion."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Pouch with 13 silver pieces under the bar",
+        "Tarnished flask engraved with a forgotten crest",
+        "Folded napkin hiding a coded message (clue to the map's last known bearer)",
+        "Stained, ghostlight-etched amulet (minor magical aura)"
+      ],
+      "plotHooks": [
+        "Locals whisper that a spectral visitor was seen during the night of the murder.",
+        "A regular claims to have glimpsed someone fleeing to Mireshadow Storage.",
+        "Maela Kett offers a reward for help recovering a stolen heirloom from the bog."
+      ],
+      "dmInstructions": "The taproom is a hub for information and roleplay. Use Maela Kett as a resource for rumors, but she will not endanger herself. Use the coded napkin and amulet as subtle clues to both the murder and Barrowmire\u2019s supernatural undercurrents. The taproom is crowded most evenings, complicating stealth.",
+      "doors": [
+        {
+          "name": "Main Entrance",
+          "description": "A warped double door with iron bands and ghostly handprints in the condensation.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 12,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Cellar Hatch",
+          "description": "A heavy, iron-runged trapdoor behind the bar, leading down into the chilly earth.",
+          "type": "heavy",
+          "locked": true,
+          "lockDC": 16,
+          "breakDC": 18,
+          "keyname": "Cellar Key (carried by Maela Kett)",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Perception DC 13: Notice the coded napkin tucked partly under a cracked mug.",
+        "Investigation DC 15: Spot faint muddy bootprints leading behind the bar.",
+        "Insight DC 12: Sense Maela Kett is hiding something deeper than just the theft."
+      ],
+      "accessibility": "Normal access via main road or muddy footpath from the mounds. Accessibility hindered at night by thick mist and increased ghostlight activity.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Bar Counter",
+          "description": "A scarred, ancient counter, pockmarked by knife scars and ringed by stains. Conceals a hidden shelf for valuables."
+        },
+        {
+          "name": "Fireplace",
+          "description": "A deep stone hearth, currently guttering with bogwood. A charred stone inside is etched with a ward against spirits."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "Primary hub for rumors, clues, and the initial murder scene. Tense atmosphere due to the recent crime."
+    },
+    {
+      "locationId": "H02",
+      "name": "Mireshadow Storage",
+      "type": "warehouse",
+      "description": "A looming, half-rotted warehouse slouching by the old path, its roof sagging with moss and the weight of years. Crates and barrels are stacked haphazardly, shadowed by broken rafters and thick with spider webs and damp. The dank air carries the scent of old spirits\u2014both bottled and spectral.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "H01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "aliases": [
+        "Mireshadow Storage",
+        "H02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_warehouse:Mireshadow Storage",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Crawling Shadows",
+          "description": "Slinking, half-formed shades drawn to the lingering grief and greed in the warehouse.",
+          "count": 2,
+          "stats": "Use Shadow (MM p.269) with AC 12, HP 16 each."
+        }
+      ],
+      "lootTable": [
+        "Crate with salted eels (spoiled, but conceals a small coin pouch)",
+        "Stolen jewelry box with a broken lock (contains a silver ring and scrap of bloodied cloth)",
+        "Cask of Bogfire Mead (worth 20 gp if undamaged)",
+        "Ledger revealing warehouse dealings and a coded note tied to the murder plot"
+      ],
+      "plotHooks": [
+        "A blood splatter matching the murder scene is hidden beneath a toppled crate.",
+        "A coded ledger page mentions a meeting at 'the third mound by ghostlight.'",
+        "Someone has been hiding here\u2014recent bedroll and half-eaten rations remain behind barrels."
+      ],
+      "dmInstructions": "The warehouse is best for tense investigation, possible ambush by monsters or thieves. If the party lingers, consider adding a hostile lookout or a returning thief. The coded note should guide players toward the burial mounds.",
+      "doors": [
+        {
+          "name": "Front Double Doors",
+          "description": "Creaky planks fitted with a rusty padlock and faintly glowing runes to ward off vermin.",
+          "type": "regular",
+          "locked": true,
+          "lockDC": 14,
+          "breakDC": 16,
+          "keyname": "Mireshadow Padlock Key (found nearby or at the tavern)",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Rear Service Door",
+          "description": "Warped single door partly off its hinges, hidden from the main road by a collapsed fence.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": true,
+          "trap": "Rusty fishhook trap: On opening, unless detected, triggers a Dex save DC 13 or target takes 1d6 piercing damage and disadvantage on Dexterity checks for 10 minutes."
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 13,
+          "disableDC": 12,
+          "triggerDC": 13,
+          "damage": "1d6 piercing and disadvantage on Dexterity checks for 10 minutes (fishhook trap on rear door)."
+        }
+      ],
+      "dcChecks": [
+        "Perception DC 12: Spot the fresh muddy bootprints near the crates.",
+        "Investigation DC 14: Locate the hidden jewelry box amid rotted boards.",
+        "Arcana DC 12: Identify faint anti-rat runes carved into the main door."
+      ],
+      "accessibility": "Normal access, but locals avoid the warehouse at night due to rumors of hauntings. The rear door is less conspicuous but trapped.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "Sagging beams, warped rafters, and walls patched with mismatched planks hint at decades of repairs."
+        },
+        {
+          "name": "Dust",
+          "description": "A thick layer of dust and cobwebs, except for one area recently disturbed by someone hiding."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "Rotten boards, splintered crates, and sagging stone foundation speak to the warehouse's decrepitude."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "Key location for physical evidence of both the murder and the thieves\u2019 activities. Includes ambush potential."
+    },
+    {
+      "locationId": "H03",
+      "name": "Boglight Curiosities",
+      "type": "shop",
+      "description": "A crooked, lantern-lit shop wedged between leaning cottages, known for its oddities and relics dredged from the mire. Shelves sag with strange artifacts: bottles of ghostlight, dried marsh lilies, and amulets said to ward off spirits. The counter is cluttered with half-finished charms and curious maps of the mounds.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "H01"
+      ],
+      "areaConnectivity": [
+        "The Widdershins Moors"
+      ],
+      "areaConnectivityId": [
+        "H01"
+      ],
+      "aliases": [
+        "Boglight Curiosities",
+        "H03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_shop:Boglight Curiosities",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ],
+      "npcs": [
+        {
+          "name": "Edrin Voss, eccentric proprietor",
+          "description": "A thin, wild-haired man with a patchwork vest and eyes always darting toward the mists outside. Spends as much time spinning tales as haggling over relics. He claims some items whisper secrets if you listen closely.",
+          "attitude": "Friendly but scatterbrained. Intrigued by new tales and willing to trade information for strange finds."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Vial of bottled ghostlight (glows faintly, acts as a dim lantern)",
+        "A battered map showing burial mound locations, with one marked in red",
+        "Bundle of iron nails (folk ward against spirits)",
+        "Marsh lily charm (grants advantage on one saving throw vs. frightened in the mounds)"
+      ],
+      "plotHooks": [
+        "Edrin hints he recently traded with a 'nervous stranger' who carried bloodstained cloth.",
+        "An old map for sale matches a description from the coded note in Mireshadow Storage.",
+        "A customer left behind a spirit-warding charm, fearing return to the mounds."
+      ],
+      "dmInstructions": "Edrin is a key roleplay asset for connecting folklore and true dangers in Barrowmire. He may trade minor magical charms or information for stories or rare finds. The marked map can direct the party toward their next destination or clue.",
+      "doors": [
+        {
+          "name": "Front Door",
+          "description": "A squat, green-painted wooden door with a bell that jingles eerily, even when no one enters.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Backroom Door",
+          "description": "A warped interior door, painted with chalk sigils for protection. Leads to the cluttered backroom.",
+          "type": "regular",
+          "locked": true,
+          "lockDC": 12,
+          "breakDC": 15,
+          "keyname": "Curio Key (hidden on a chain around Edrin's neck)",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Investigation DC 13: Identify the truly valuable magical charm among the trinkets.",
+        "Arcana DC 11: Recognize a faint enchantment on the bottled ghostlight.",
+        "Insight DC 14: Discern that Edrin is genuinely concerned for the settlement\u2019s safety."
+      ],
+      "accessibility": "Normal access from the street. Shop is open during daylight and closes after sunset for fear of 'the drifting dead.'",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Backroom Storage",
+          "description": "Cramped with crates and shelves groaning under oddities, including a locked chest and several folk talismans."
+        },
+        {
+          "name": "Specialty Items",
+          "description": "Charms, relics, and odd maps\u2014many genuine, some not\u2014are displayed behind glass and on shelves."
+        },
+        {
+          "name": "Counter",
+          "description": "A battered counter layered with wax, old ledgers, and the faint scent of marsh herbs."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "Source of crucial folklore, hints, and minor magic. Opportunity for bartering and learning about the supernatural dangers of Barrowmire."
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 4 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 4 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 4 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 4 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 4 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 4 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 4 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 4 parties"
+    },
+    {
+      "roll": "81-90",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 4 parties"
+    },
+    {
+      "roll": "91-100",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 4 parties"
+    }
+  ],
+  "areaFeatures": [
+    "guard posts",
+    "merchant quarter",
+    "local tavern"
+  ],
+  "notes": "NPCs should have daily routines. Political factions create roleplay opportunities.",
+  "spatialContractVersion": 1
+}

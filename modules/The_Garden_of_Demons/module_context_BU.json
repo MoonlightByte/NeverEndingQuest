@@ -1,0 +1,285 @@
+{
+  "module_name": "The Garden of Demons",
+  "module_id": "The_Garden_of_Demons",
+  "areas": {
+    "GV001": {
+      "name": "Gloamreach Village",
+      "type": "town",
+      "locations": [],
+      "npcs": [
+        "Elder Maelis",
+        "Thornkin Rella",
+        "Spectral Child"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "BO002": {
+      "name": "Blightfen Outlands",
+      "type": "wilderness",
+      "locations": [],
+      "npcs": [
+        "Nimblethorn",
+        "Whisperroot",
+        "Lost Ranger Serik"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "TTW003": {
+      "name": "The Twisted Wilds",
+      "type": "wilderness",
+      "locations": [],
+      "npcs": [
+        "Thornwraith Myrlaen",
+        "Gravenbark Guardians",
+        "Shade of Alenwen"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "SOT004": {
+      "name": "Sanctum of Thorns",
+      "type": "wilderness",
+      "locations": [],
+      "npcs": [
+        "Surviving Druids",
+        "Manifestation of the Forest\u2019s Spirit"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    }
+  },
+  "npcs": {
+    "elder_maelis": {
+      "name": "Elder Maelis",
+      "role": "",
+      "faction": "",
+      "description": "The kindly matriarch of Gloamreach Village, Elder Maelis is a silver-haired elven woman with gentle eyes and centuries of wisdom. She welcomes travelers with tea, tales, and measured advice, but a deep sadness shadows her when the conversation turns to the curse on the land.",
+      "appears_in": [
+        {
+          "area": "GV001",
+          "location": "H01"
+        }
+      ],
+      "aliases": [
+        "Elder Maelis (village leader)",
+        "Elder Maelis"
+      ]
+    },
+    "thornkin_rella": {
+      "name": "Thornkin Rella",
+      "role": "",
+      "faction": "",
+      "description": "A quick-witted, thorn-fingered half-fey merchant, Rella always has a mischievous smile and a knack for finding what others cannot. She\u2019s famed for her rare reagents and her odd riddles.",
+      "appears_in": [
+        {
+          "area": "GV001",
+          "location": "H02"
+        }
+      ],
+      "aliases": [
+        "Thornkin Rella (renegade druid)",
+        "Thornkin Rella"
+      ]
+    },
+    "spectral_child": {
+      "name": "Spectral Child",
+      "role": "",
+      "faction": "",
+      "description": "A ghostly apparition of a small child who wanders the stalls at dusk. The villagers are used to her silence, but sometimes she points at items as if remembering something important.",
+      "appears_in": [
+        {
+          "area": "GV001",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Spectral Child"
+      ]
+    },
+    "nimblethorn": {
+      "name": "Nimblethorn",
+      "role": "",
+      "faction": "",
+      "description": "A sly, fey-influenced goblin with mottled green skin and a cap of fungus for a hat. Nimblethorn skips from shadow to shadow, offering cryptic warnings and bargains to those who show respect for the old ways. Deeply connected to the glade\u2019s curse, Nimblethorn knows secret paths and hidden dangers.",
+      "appears_in": [
+        {
+          "area": "BO002",
+          "location": "H01"
+        }
+      ],
+      "aliases": [
+        "Nimblethorn (malevolent fae emissary)",
+        "Nimblethorn"
+      ]
+    },
+    "whisperroot": {
+      "name": "Whisperroot",
+      "role": "",
+      "faction": "",
+      "description": "A spectral dryad, now half-fused with the stone\u2019s roots. Whisperroot weeps for the land\u2019s pain and offers cryptic warnings. Her influence can briefly purify an area if properly entreated.",
+      "appears_in": [
+        {
+          "area": "BO002",
+          "location": "H02"
+        }
+      ],
+      "aliases": [
+        "Whisperroot (sentient, cursed tree)",
+        "Whisperroot"
+      ]
+    },
+    "lost_ranger_serik": {
+      "name": "Lost Ranger Serik",
+      "role": "",
+      "faction": "",
+      "description": "A grizzled, mud-streaked human ranger, Serik has lost his bearings after days evading dangerous creatures. He is wary but desperate for help and can offer detailed knowledge of the Blightfen Wilds for those who earn his trust.",
+      "appears_in": [
+        {
+          "area": "BO002",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Lost Ranger Serik"
+      ]
+    },
+    "thornwraith_myrlaen": {
+      "name": "Thornwraith Myrlaen",
+      "role": "",
+      "faction": "",
+      "description": "The corrupted druid responsible for the curse upon Wraithwood. Myrlaen appears as a spectral, root-entwined figure, their eyes glowing with malice and pain. They are torn between rage at intruders and an unconscious plea for release from their torment.",
+      "appears_in": [
+        {
+          "area": "TTW003",
+          "location": "H01"
+        }
+      ],
+      "aliases": [
+        "Thornwraith Myrlaen"
+      ]
+    },
+    "gravenbark_guardians": {
+      "name": "Gravenbark Guardians",
+      "role": "",
+      "faction": "",
+      "description": "Sentient, animated wooden statues bound to the crossroads by ancient druidic magic. They question travelers and pass judgment based on spoken intent.",
+      "appears_in": [
+        {
+          "area": "TTW003",
+          "location": "H02"
+        }
+      ],
+      "aliases": [
+        "Gravenbark Guardians"
+      ]
+    },
+    "shade_of_alenwen": {
+      "name": "Shade of Alenwen",
+      "role": "",
+      "faction": "",
+      "description": "A mournful spirit of a long-dead druidic guardian, bound to the hilltop. Alenwen seeks the restoration of the Wilds and offers cryptic guidance, but flies into a spectral rage if memories of betrayal are invoked.",
+      "appears_in": [
+        {
+          "area": "TTW003",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Shade of Alenwen (Myrlaen\u2019s lost love)",
+        "Shade of Alenwen"
+      ]
+    },
+    "surviving_druids": {
+      "name": "Surviving Druids",
+      "role": "",
+      "faction": "",
+      "description": "A haggard trio of druids, their once-green robes now stained with bramble blood and their eyes haunted. They cling to the hope of reversing the Wilds\u2019 corruption but are wary of strangers, suspecting betrayal or madness from any who survive here.",
+      "appears_in": [
+        {
+          "area": "SOT004",
+          "location": "H01"
+        }
+      ],
+      "aliases": [
+        "Surviving Druids"
+      ]
+    },
+    "manifestation_of_the_forest_s_spirit": {
+      "name": "Manifestation of the Forest\u2019s Spirit",
+      "role": "",
+      "faction": "",
+      "description": "A shimmering, wounded avatar of the ancient woods, appearing as a white stag entwined with blood-red roses and spectral vines. Its eyes plead for aid, but its form flickers with dangerous, uncontrolled power.",
+      "appears_in": [
+        {
+          "area": "SOT004",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Manifestation of the Forest\u2019s Spirit"
+      ]
+    }
+  },
+  "locations": {},
+  "plot_scopes": {
+    "PP001": "SOT004",
+    "PP002": "SOT004",
+    "PP003": "SOT004",
+    "PP004": "SOT004"
+  },
+  "references": {
+    "npc:Elder Maelis (village leader)": [
+      "module:plotStages"
+    ],
+    "npc:Thornkin Rella (renegade druid)": [
+      "module:plotStages"
+    ],
+    "npc:Spectral Child": [
+      "module:plotStages"
+    ],
+    "npc:Nimblethorn (malevolent fae emissary)": [
+      "module:plotStages"
+    ],
+    "npc:Whisperroot (sentient, cursed tree)": [
+      "module:plotStages"
+    ],
+    "npc:Lost Ranger Serik": [
+      "module:plotStages"
+    ],
+    "npc:Thornwraith Myrlaen": [
+      "module:plotStages"
+    ],
+    "npc:Gravenbark Guardians": [
+      "module:plotStages"
+    ],
+    "npc:Shade of Alenwen (Myrlaen\u2019s lost love)": [
+      "module:plotStages"
+    ],
+    "npc:Surviving Druids": [
+      "module:plotStages"
+    ],
+    "npc:Manifestation of the Forest\u2019s Spirit": [
+      "module:plotStages"
+    ]
+  },
+  "validation_issues": [],
+  "generated_at": "2026-04-25T12:35:32.323994"
+}

@@ -1,0 +1,109 @@
+{
+  "name": "Illusionary Shadow Dancer",
+  "size": "Medium",
+  "type": "Fey",
+  "alignment": "Chaotic Neutral",
+  "armorClass": 14,
+  "hitPoints": 16,
+  "maxHitPoints": 16,
+  "speed": 40,
+  "abilities": {
+    "strength": 8,
+    "dexterity": 18,
+    "constitution": 12,
+    "intelligence": 13,
+    "wisdom": 14,
+    "charisma": 16
+  },
+  "savingThrows": [
+    "Dex",
+    "Cha"
+  ],
+  "skills": {
+    "Acrobatics": 6,
+    "Stealth": 8,
+    "Performance": 5,
+    "Deception": 5,
+    "Perception": 4
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "necrotic",
+    "psychic",
+    "bludgeoning",
+    "piercing",
+    "slashing from nonmagical attacks"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed",
+    "frightened"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "Common, Sylvan",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Shadow Blend",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Evasion",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Illusory Double (1/Day)",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Shadow Blade",
+      "attackBonus": 6,
+      "damageDice": "1d6",
+      "damageBonus": 4,
+      "damageType": "psychic"
+    },
+    {
+      "name": "Dancing Step",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "spellcasting": {
+    "ability": "Charisma",
+    "spellSaveDC": 13,
+    "spellAttackBonus": 5,
+    "spells": {
+      "cantrips": [
+        "minor illusion",
+        "dancing lights",
+        "thaumaturgy"
+      ],
+      "level1": [
+        "disguise self",
+        "silent image",
+        "color spray"
+      ],
+      "level2": []
+    }
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "name": "Shadowed Chasm Spider",
+  "size": "Medium",
+  "type": "Beast",
+  "alignment": "Unaligned",
+  "armorClass": 14,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 40,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 2,
+    "wisdom": 12,
+    "charisma": 4
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 8,
+    "perception": 3
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "necrotic"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "blinded"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Shadow Camouflage",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": "",
+      "description": "While in dim light or darkness, the Shadowed Chasm Spider has advantage on Dexterity (Stealth) checks."
+    },
+    {
+      "name": "Spider Climb",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": "",
+      "description": "The Shadowed Chasm Spider can climb difficult surfaces, including upside down on ceilings, without needing to make an ability check."
+    },
+    {
+      "name": "Web Sense",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": "",
+      "description": "While in contact with a web, the Shadowed Chasm Spider knows the exact location of any other creature in contact with the same web."
+    },
+    {
+      "name": "Web Walker",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": "",
+      "description": "The Shadowed Chasm Spider ignores movement restrictions caused by webbing."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 3,
+      "damageType": "piercing"
+    },
+    {
+      "name": "Poisonous Bite",
+      "attackBonus": 0,
+      "damageDice": "2d8",
+      "damageBonus": 0,
+      "damageType": "poison"
+    },
+    {
+      "name": "Web (Recharge 5-6)",
+      "attackBonus": 5,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": "restrain"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the abyssal depths of the Resonant Abyss, the Shadowed Chasm Spider is a nightmarish arachnid twisted by the darkness of the sunless chasms. Its colossal form is draped in a velvety black exoskeleton that seems to drink in the scant light, absorbing even the faintest glimmers from the luminescent fungi clinging to the cavern walls. Long, spindly legs, jointed like the branches of dead trees, extend from a bulbous, segmented abdomen mottled with iridescent blue-green patches that pulse faintly with an eerie inner glow. The spider's cephalothorax bristles with wiry hairs that detect the faintest vibrations in the air, and multiple gleaming red eyes reflect the shimmer of the abyss like burning coals. From its mandibles drips a viscous, shadowy venom that hisses softly as it evaporates, filling the dank air with a faintly acrid scent. The creature moves with a disturbing, fluid grace, weaving webs of shadowy silk that shimmer and ripple like liquid darkness across the chasm walls, ensnaring unwary prey with chilling silence. It lurks in the deepest fissures, its presence heralded only by the unsettling echo of skittering legs and the subtle distortion of shadows, a living nightmare that embodies the abyss's silent hunger."
+}

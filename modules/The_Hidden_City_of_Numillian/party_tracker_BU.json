@@ -1,0 +1,26 @@
+{
+  "module": "The Hidden City of Numillian",
+  "partyMembers": [],
+  "partyNPCs": [],
+  "worldConditions": {
+    "year": 1492,
+    "month": "Hammer",
+    "day": 1,
+    "time": "08:00:00",
+    "weather": "Clear",
+    "season": "Winter",
+    "dayNightCycle": "Day",
+    "moonPhase": "New Moon",
+    "currentLocation": "Sanctum of Fractured Truths",
+    "currentLocationId": "G01",
+    "currentArea": "The Paradoxical Crossroads",
+    "currentAreaId": "TPG001",
+    "majorEventsUnderway": [],
+    "politicalClimate": "",
+    "activeEncounter": "",
+    "activeCombatEncounter": "",
+    "weatherConditions": "",
+    "lastCompletedEncounter": ""
+  },
+  "activeQuests": []
+}

@@ -1,0 +1,214 @@
+{
+  "module_name": "The Ancients Lab",
+  "module_id": "The_Ancients_Lab",
+  "areas": {
+    "BA001": {
+      "name": "Blackcrag Approach",
+      "type": "wilderness",
+      "locations": [],
+      "npcs": [
+        "Rambling Dwarven Survivor"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "FG001": {
+      "name": "Forsaken Galleries",
+      "type": "dungeon",
+      "locations": [],
+      "npcs": [],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "AC001": {
+      "name": "Aberrant Core",
+      "type": "mixed",
+      "locations": [],
+      "npcs": [
+        "Damaged Security Overseer"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "TTL001": {
+      "name": "The Thing\u2019s Lair",
+      "type": "mixed",
+      "locations": [],
+      "npcs": [
+        "Archivist Automaton"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    }
+  },
+  "npcs": {
+    "mutated_scavenger_leader": {
+      "name": "Mutated Scavenger Leader",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Mutated Scavenger Leader (Varn)"
+      ]
+    },
+    "rambling_dwarven_survivor": {
+      "name": "Rambling Dwarven Survivor",
+      "role": "",
+      "faction": "",
+      "description": "A disheveled, wild-eyed dwarf in patched armor, muttering about monsters beneath the ground. He is wary but desperate for help\u2014and may offer warnings, rumors, or even a crude map of the Marches if befriended.",
+      "appears_in": [
+        {
+          "area": "BA001",
+          "location": "I03"
+        }
+      ],
+      "aliases": [
+        "Rambling Dwarven Survivor (Edda Coppervein)",
+        "Rambling Dwarven Survivor"
+      ]
+    },
+    "security_construct": {
+      "name": "Security Construct",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Security Construct (Warden-3)"
+      ]
+    },
+    "archivist_automaton": {
+      "name": "Archivist Automaton",
+      "role": "",
+      "faction": "",
+      "description": "A semi-sapient dwarven automaton assigned to monitor and record the cell\u2019s experiments. Scarred and flickering, it is conflicted\u2014its primary programming to help, but secondary instructions to prevent any subject's escape.",
+      "appears_in": [
+        {
+          "area": "TTL001",
+          "location": "I03"
+        }
+      ],
+      "aliases": [
+        "Archivist Automaton (Hesk)",
+        "Archivist Automaton"
+      ]
+    },
+    "the_thing": {
+      "name": "The Thing",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "The Thing",
+        "The Thing (final form)"
+      ]
+    },
+    "mutant_scavenger_lieutenant": {
+      "name": "Mutant Scavenger Lieutenant",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Mutant Scavenger Lieutenant (Grahl)"
+      ]
+    },
+    "damaged_security_overseer": {
+      "name": "Damaged Security Overseer",
+      "role": "",
+      "faction": "",
+      "description": "A dwarven construct, scorched and stuttering, still attempts to fulfill its original security protocols. It is confused and dangerous, lashing out at perceived threats but open to persuasion or reprogramming.",
+      "appears_in": [
+        {
+          "area": "AC001",
+          "location": "I03"
+        }
+      ],
+      "aliases": [
+        "Damaged Security Overseer (Unit K-7)",
+        "Damaged Security Overseer"
+      ]
+    },
+    "edda_coppervein": {
+      "name": "Edda Coppervein",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Edda Coppervein (if survived)"
+      ]
+    },
+    "facility_security_system": {
+      "name": "Facility Security System",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Facility Security System (AI presence: 'Aegis')"
+      ]
+    }
+  },
+  "locations": {},
+  "plot_scopes": {
+    "PP001": "TTL001",
+    "PP002": "TTL001",
+    "PP003": "TTL001",
+    "PP004": "TTL001"
+  },
+  "references": {
+    "npc:Mutated Scavenger Leader (Varn)": [
+      "module:plotStages"
+    ],
+    "npc:Rambling Dwarven Survivor (Edda Coppervein)": [
+      "module:plotStages"
+    ],
+    "npc:Security Construct (Warden-3)": [
+      "module:plotStages"
+    ],
+    "npc:Archivist Automaton (Hesk)": [
+      "module:plotStages"
+    ],
+    "npc:The Thing": [
+      "module:plotStages"
+    ],
+    "npc:Mutant Scavenger Lieutenant (Grahl)": [
+      "module:plotStages"
+    ],
+    "npc:Damaged Security Overseer (Unit K-7)": [
+      "module:plotStages"
+    ],
+    "npc:The Thing (final form)": [
+      "module:plotStages"
+    ],
+    "npc:Edda Coppervein (if survived)": [
+      "module:plotStages"
+    ],
+    "npc:Facility Security System (AI presence: 'Aegis')": [
+      "module:plotStages"
+    ]
+  },
+  "validation_issues": [
+    "NPC 'The Thing' is referenced in ['module:plotStages'] but not placed in any location"
+  ],
+  "generated_at": "2026-04-22T10:13:35.488444"
+}

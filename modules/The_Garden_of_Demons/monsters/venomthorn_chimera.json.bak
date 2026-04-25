@@ -1,0 +1,79 @@
+{
+  "name": "Venomthorn Chimera",
+  "size": "Large",
+  "type": "Monstrosity",
+  "alignment": "Chaotic Evil",
+  "armorClass": 13,
+  "hitPoints": 39,
+  "maxHitPoints": 39,
+  "speed": 40,
+  "abilities": {
+    "strength": 17,
+    "dexterity": 14,
+    "constitution": 15,
+    "intelligence": 3,
+    "wisdom": 12,
+    "charisma": 7
+  },
+  "savingThrows": [
+    "Dexterity",
+    "Constitution"
+  ],
+  "skills": {
+    "Perception": 3,
+    "Stealth": 4
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "poison"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "understands Abyssal but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Venomous Hide",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "poison"
+    },
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "bludgeoning"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "attackBonus": 5,
+      "damageDice": "1d10",
+      "damageBonus": 3,
+      "damageType": "piercing"
+    },
+    {
+      "name": "Claw",
+      "attackBonus": 5,
+      "damageDice": "2d6",
+      "damageBonus": 3,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Venomthorn Tail",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 3,
+      "damageType": "poison"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

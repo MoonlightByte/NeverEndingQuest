@@ -1,0 +1,443 @@
+{
+  "areaId": "TMFMH001",
+  "areaName": "The Shrouded Psiumbra",
+  "areaType": "mixed",
+  "areaDescription": "A labyrinthine district of ever-shifting shadows and illusion-draped corridors, the Shrouded Psiumbra pulses with psychic energies that warp perception and lure the unwary into revels of madness. Sinister music and muffled laughter echo beneath the gilded arches, masking the predatory presence of mind flayers and their enthralled masqueraders.",
+  "dangerLevel": "extreme",
+  "recommendedLevel": 7,
+  "climate": "varied",
+  "terrain": "varied terrain",
+  "map": {
+    "mapId": "MAP_H_3",
+    "mapName": "Mixed Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "H01",
+        "type": "room",
+        "connections": [
+          "H02"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "H02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "extreme",
+        "name": "Veilpiercer Antechamber"
+      },
+      {
+        "id": "H02",
+        "type": "room",
+        "connections": [
+          "H01",
+          "H03"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "H01",
+          "east": "H03"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "extreme",
+        "name": "Hall of Shifting Truths"
+      },
+      {
+        "id": "H03",
+        "type": "room",
+        "connections": [
+          "H02"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {
+          "west": "H02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "extreme",
+        "name": "Mindsunder Vault"
+      }
+    ],
+    "layout": [
+      [
+        "H01",
+        "H02",
+        "H03"
+      ]
+    ],
+    "startRoom": "H02",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "H01",
+      "name": "Veilpiercer Antechamber",
+      "type": "room",
+      "description": "This sumptuous antechamber welcomes newcomers to the Mind Flayer\u2019s Masquerade Hall. Gilded arches soar overhead, veiled in gauzy illusions that shift with every glance. The very air thrums with psychic resonance, and shadowy figures in elaborate masks mingle beneath opalescent chandeliers whose crystal drops flicker with images of forgotten faces. Subtle illusions distort depth and distance, making navigation both mesmerizing and perilous.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "H02"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Masquerade Steward",
+          "description": "A tall figure in an intricate mirrored mask, greeting arrivals with a smile that never quite reaches their eyes. The steward offers cryptic advice, subtly probing the party's intentions and mental fortitude.",
+          "attitude": "Polite and enigmatic, loyal to the Hall\u2019s true masters."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Illusionary Shadow Dancers",
+          "description": "Semi-corporeal entities spawned from lingering psychic energies, disrupting intruders\u2019 senses and movements.",
+          "quantity": 3
+        }
+      ],
+      "lootTable": [
+        "Phantasmal Token (can reveal one illusion in the Psiumbra, single use)",
+        "Fine masquerade mask (25 gp, social advantage in this district)",
+        "Psychic Residue Gemstone (worth 50 gp to collectors of the arcane)"
+      ],
+      "plotHooks": [
+        "The steward hints at a 'guest of honor' whose presence is disrupting the masquerade.",
+        "Whispers among the guests mention a vault where the mind flayers store their most coveted memories."
+      ],
+      "dmInstructions": "Set the tone of shifting reality\u2014emphasize confusing perspectives and atmospheric tension. If the party lingers or acts suspiciously, the shadow dancers coalesce to observe or challenge them. Illusions may briefly show NPCs the party recognizes, or enemies from their past.",
+      "doors": [
+        {
+          "name": "Opalescent Archway",
+          "description": "A tall archway overlaid with shimmering illusions, leading east deeper into the Hall.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 20,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Perception DC 16: Notice that some of the guests are not real, but psychic projections.",
+        "Arcana DC 15: Identify the presence of a subtle mind-affecting field that clouds memory."
+      ],
+      "accessibility": "Normal access from the district\u2019s main corridor; the ever-shifting walls might disorient newcomers.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "Tall gilded arches and mirrored pillars refract light into impossible patterns, distorting space."
+        },
+        {
+          "name": "Illusionary Chandeliers",
+          "description": "Crystals flicker with shifting faces and scenes from distant memories."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Shadow Dancer Ambush",
+          "description": "If the party fails to blend in or draws attention, the illusionary dancers attempt to entrap them within psychic mazes."
+        }
+      ],
+      "adventureSummary": "The party is subtly assessed upon entry, with the steward offering information or warnings based on their actions. The antechamber sets the hall\u2019s eerie tone and offers clues to deeper dangers.",
+      "aliases": [
+        "Veilpiercer Antechamber",
+        "H01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Veilpiercer Antechamber",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H02",
+      "name": "Hall of Shifting Truths",
+      "type": "room",
+      "description": "A broad corridor lined with ever-morphing murals and floating banners, each depicting contradictory versions of Numillian\u2019s history. The floor undulates slightly, as if alive, and reality itself feels thin. Conversations echo with double-meanings and psychic aftershocks. Here, mind games and psychic duels are as common as masked balls.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "H01",
+        "H03"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Masked Duelist",
+          "description": "A flamboyant swordsman in a shifting, glass-like mask, eager to test the wit and will of outsiders through psychic contests or riddles.",
+          "attitude": "Challenging but not overtly hostile; respects cleverness and mental strength."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Minor Mind Flayer Thralls",
+          "description": "Enthralled party guests, appearing as revelers until provoked.",
+          "quantity": 4
+        }
+      ],
+      "lootTable": [
+        "Memory Fragment (consumable, gain fleeting insight into the Hall\u2019s secrets)",
+        "Silvered rapier with an inscription in Deep Speech (75 gp)",
+        "Scroll of Detect Thoughts"
+      ],
+      "plotHooks": [
+        "Murals hint at a secret route to the Mindsunder Vault, only visible to those who solve the duelist\u2019s riddle.",
+        "A psychic tremor reveals that an important guest is being \u2018rewritten\u2019 in the next chamber."
+      ],
+      "dmInstructions": "Encourage players to engage in social or psychic tests (contests of Intelligence, Wisdom, or Charisma). The Hall can subtly alter facts or memories, keeping players on edge. If players lose a contest, introduce minor temporary conditions such as confusion or fleeting paranoia.",
+      "doors": [
+        {
+          "name": "Mural Gate",
+          "description": "A door disguised as part of a shifting mural, leading further east.",
+          "type": "secret",
+          "locked": true,
+          "lockDC": 18,
+          "breakDC": 22,
+          "keyname": "Riddle Solution",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Antechamber Entry",
+          "description": "Open arch leading back to the Veilpiercer Antechamber.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 15,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 16,
+          "disableDC": 18,
+          "triggerDC": 15,
+          "damage": "2d6 psychic (shifting hallucinations overwhelm the mind if the Mural Gate is forced without solving the riddle)"
+        }
+      ],
+      "dcChecks": [
+        "Investigation DC 15: Find inconsistencies in the murals that hint at the secret door.",
+        "Insight DC 17: Discern that the duelist is testing more than physical skill\u2014he\u2019s probing for psychic strength."
+      ],
+      "accessibility": "Open from the Antechamber, but progress east requires solving the duelist\u2019s riddle or bypassing the trap.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "The corridor\u2019s width and decor shift subtly, never appearing exactly the same twice."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "Some murals flicker to reveal much older and darker histories beneath."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Psychic Duel",
+          "description": "The duelist challenges a party member to a contest of riddles or mental fortitude; success gains safe passage and a clue, failure risks psychic backlash."
+        }
+      ],
+      "adventureSummary": "This hall tests the party\u2019s wits and resolve. Success here opens hidden paths and reveals truths about the hall\u2019s ever-shifting nature.",
+      "aliases": [
+        "Hall of Shifting Truths",
+        "H02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Hall of Shifting Truths",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H03",
+      "name": "Mindsunder Vault",
+      "type": "room",
+      "description": "Deep within the Masquerade Hall, this chamber feels colder and heavier. Walls of obsidian glass reflect not only visitors\u2019 faces but their innermost fears and aspirations. Psychic motes drift in the still air, distorting reality. This vault stores the \u2018prized\u2019 memories, secrets, and psychic remnants harvested from revelers\u2014some contained in crystalline reliquaries, others haunting the space as faint, tormented echoes.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "H02"
+      ],
+      "areaConnectivity": [
+        "The Veiled Districts"
+      ],
+      "areaConnectivityId": [
+        "G01"
+      ],
+      "npcs": [
+        {
+          "name": "Mind Flayer Archivist",
+          "description": "A gaunt, tentacled figure in tattered ceremonial finery, cataloging and curating psychic treasures. The archivist is aware of the party\u2019s approach, both physically and mentally.",
+          "attitude": "Coldly curious; prefers to negotiate or manipulate unless threatened."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Spectral Memory Wraiths",
+          "description": "Remnants of lost minds, twisted into aggressive psychic entities.",
+          "quantity": 2
+        }
+      ],
+      "lootTable": [
+        "Memory Prism (contains a vital clue to the mind flayer\u2019s true motives)",
+        "Reliquary Key (opens a hidden cache elsewhere in the Hall)",
+        "Psionic Focus Crystal (acts as a spellcasting focus for psychic magic)"
+      ],
+      "plotHooks": [
+        "The archivist offers a deal\u2014trade a memory for information about Numillian\u2019s illusions.",
+        "A spectral voice pleads for release, offering to reveal secrets of the vault if freed from psychic bondage."
+      ],
+      "dmInstructions": "The archivist is a formidable social and magical adversary, preferring to manipulate or strike bargains. If attacked, the wraiths are summoned for defense. Use the memory trade as a roleplay opportunity, with meaningful consequences for what the party offers.",
+      "doors": [
+        {
+          "name": "Obsidian Vault Door",
+          "description": "A heavy, seamless panel of black glass, etched with writhing psychic runes. Opens only to the reliquary key or by solving a psychic puzzle.",
+          "type": "heavy",
+          "locked": true,
+          "lockDC": 20,
+          "breakDC": 25,
+          "keyname": "Reliquary Key",
+          "trapped": true,
+          "trap": "Psychic backlash: If forced or opened improperly, the intruder must make a DC 17 Intelligence save or take 3d6 psychic damage and suffer disadvantage on all Intelligence saves for 1 hour."
+        },
+        {
+          "name": "Mural Gate",
+          "description": "A secret door leading west back to the Hall of Shifting Truths.",
+          "type": "secret",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 18,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 17,
+          "disableDC": 20,
+          "triggerDC": 17,
+          "damage": "3d6 psychic (from the Vault Door\u2019s defensive enchantment)"
+        }
+      ],
+      "dcChecks": [
+        "Arcana DC 16: Identify the wraiths as psychic remnants, not true undead.",
+        "History DC 18: Recognize the reliquaries as containing memories from powerful Numillian figures."
+      ],
+      "accessibility": "Accessible from the Hall of Shifting Truths, but the vault door poses a significant barrier.",
+      "dangerLevel": "Very High",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "A thin layer of silvery dust covers the floor, glittering with psychic motes."
+        },
+        {
+          "name": "Obsidian Mirrors",
+          "description": "Reflect not only physical form, but fragments of memory and emotion."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Archivist Bargain",
+          "description": "The mind flayer archivist offers to trade secrets for precious memories or tries to trap intruders within the vault."
+        }
+      ],
+      "adventureSummary": "The vault is a crucible of memory and temptation. The archivist may become an ally or formidable foe, and the psychic treasures here can change the party\u2019s future choices.",
+      "aliases": [
+        "Mindsunder Vault",
+        "H03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Mindsunder Vault",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "boss monster",
+      "description": "A boss monster appropriate for level 7 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 7 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 7 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 7 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "boss monster",
+      "description": "A boss monster appropriate for level 7 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 7 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 7 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 7 parties"
+    },
+    {
+      "roll": "81-90",
+      "encounter": "boss monster",
+      "description": "A boss monster appropriate for level 7 parties"
+    }
+  ],
+  "areaFeatures": [
+    "crossroads",
+    "landmarks",
+    "bridges"
+  ],
+  "notes": "Balance combat, exploration, and social encounters. Transitions between areas should feel natural.",
+  "spatialContractVersion": 1
+}

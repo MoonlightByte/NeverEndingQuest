@@ -1,0 +1,3305 @@
+{
+  "generated_at": "2026-04-25T00:54:22Z",
+  "module_slug": "The_Garden_of_Demons",
+  "status": "success",
+  "ready_status": "pending",
+  "publishable_status": "pending",
+  "freshness_state": "stale",
+  "report_freshness": {
+    "state": "stale",
+    "authoritative": false,
+    "written_at": "2026-04-25T00:54:22Z",
+    "phase": "pre_publishability",
+    "workflow": "toolkit_report_refresh",
+    "refresh_reason": "module_media_generator",
+    "contract": "toolkit_build_report_refresh_contract.v1",
+    "stale_reason": "publishability_pending"
+  },
+  "strict": true,
+  "source": "toolkit",
+  "provenance": {
+    "source": "toolkit",
+    "artifact": "toolkit_build_report.json",
+    "contract": "toolkit_build_report_required",
+    "phase": "pre_publishability",
+    "refresh_contract": "toolkit_build_report_refresh_contract.v1",
+    "refresh_workflow": "toolkit_report_refresh",
+    "refresh_reason": "module_media_generator"
+  },
+  "stages": {
+    "continuity": {
+      "status": "success",
+      "continuity_patch": {
+        "module_context": {
+          "module_name": "The Garden of Demons",
+          "module_id": "The_Garden_of_Demons",
+          "areas": {
+            "GV001": {
+              "name": "Gloamreach Village",
+              "type": "town",
+              "locations": [],
+              "npcs": [
+                "Elder Maelis",
+                "Thornkin Rella",
+                "Spectral Child"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "BO002": {
+              "name": "Blightfen Outlands",
+              "type": "wilderness",
+              "locations": [],
+              "npcs": [
+                "Nimblethorn",
+                "Whisperroot",
+                "Lost Ranger Serik"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "TTW003": {
+              "name": "The Twisted Wilds",
+              "type": "wilderness",
+              "locations": [
+                "H01",
+                "H02",
+                "H03"
+              ],
+              "npcs": [
+                "Thornwraith Myrlaen",
+                "Gravenbark Guardians",
+                "Shade of Alenwen"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "SOT004": {
+              "name": "Sanctum of Thorns",
+              "type": "wilderness",
+              "locations": [],
+              "npcs": [
+                "Surviving Druids",
+                "Manifestation of the Forest’s Spirit"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            }
+          },
+          "npcs": {
+            "elder_maelis": {
+              "name": "Elder Maelis",
+              "role": "",
+              "faction": "",
+              "description": "The kindly matriarch of Gloamreach Village, Elder Maelis is a silver-haired elven woman with gentle eyes and centuries of wisdom. She welcomes travelers with tea, tales, and measured advice, but a deep sadness shadows her when the conversation turns to the curse on the land.",
+              "appears_in": [
+                {
+                  "area": "GV001",
+                  "location": "H01"
+                }
+              ],
+              "aliases": [
+                "Elder Maelis (village leader)",
+                "Elder Maelis"
+              ]
+            },
+            "thornkin_rella": {
+              "name": "Thornkin Rella",
+              "role": "",
+              "faction": "",
+              "description": "A quick-witted, thorn-fingered half-fey merchant, Rella always has a mischievous smile and a knack for finding what others cannot. She’s famed for her rare reagents and her odd riddles.",
+              "appears_in": [
+                {
+                  "area": "GV001",
+                  "location": "H02"
+                }
+              ],
+              "aliases": [
+                "Thornkin Rella (renegade druid)",
+                "Thornkin Rella"
+              ]
+            },
+            "spectral_child": {
+              "name": "Spectral Child",
+              "role": "",
+              "faction": "",
+              "description": "A ghostly apparition of a small child who wanders the stalls at dusk. The villagers are used to her silence, but sometimes she points at items as if remembering something important.",
+              "appears_in": [
+                {
+                  "area": "GV001",
+                  "location": "H03"
+                }
+              ],
+              "aliases": [
+                "Spectral Child"
+              ]
+            },
+            "nimblethorn": {
+              "name": "Nimblethorn",
+              "role": "",
+              "faction": "",
+              "description": "A sly, fey-influenced goblin with mottled green skin and a cap of fungus for a hat. Nimblethorn skips from shadow to shadow, offering cryptic warnings and bargains to those who show respect for the old ways. Deeply connected to the glade’s curse, Nimblethorn knows secret paths and hidden dangers.",
+              "appears_in": [
+                {
+                  "area": "BO002",
+                  "location": "H01"
+                }
+              ],
+              "aliases": [
+                "Nimblethorn (malevolent fae emissary)",
+                "Nimblethorn"
+              ]
+            },
+            "whisperroot": {
+              "name": "Whisperroot",
+              "role": "",
+              "faction": "",
+              "description": "A spectral dryad, now half-fused with the stone’s roots. Whisperroot weeps for the land’s pain and offers cryptic warnings. Her influence can briefly purify an area if properly entreated.",
+              "appears_in": [
+                {
+                  "area": "BO002",
+                  "location": "H02"
+                }
+              ],
+              "aliases": [
+                "Whisperroot (sentient, cursed tree)",
+                "Whisperroot"
+              ]
+            },
+            "lost_ranger_serik": {
+              "name": "Lost Ranger Serik",
+              "role": "",
+              "faction": "",
+              "description": "A grizzled, mud-streaked human ranger, Serik has lost his bearings after days evading dangerous creatures. He is wary but desperate for help and can offer detailed knowledge of the Blightfen Wilds for those who earn his trust.",
+              "appears_in": [
+                {
+                  "area": "BO002",
+                  "location": "H03"
+                }
+              ],
+              "aliases": [
+                "Lost Ranger Serik"
+              ]
+            },
+            "thornwraith_myrlaen": {
+              "name": "Thornwraith Myrlaen",
+              "role": "",
+              "faction": "",
+              "description": "The corrupted druid responsible for the curse upon Wraithwood. Myrlaen appears as a spectral, root-entwined figure, their eyes glowing with malice and pain. They are torn between rage at intruders and an unconscious plea for release from their torment.",
+              "appears_in": [
+                {
+                  "area": "TTW003",
+                  "location": "H01"
+                }
+              ],
+              "aliases": [
+                "Thornwraith Myrlaen"
+              ]
+            },
+            "gravenbark_guardians": {
+              "name": "Gravenbark Guardians",
+              "role": "",
+              "faction": "",
+              "description": "Sentient, animated wooden statues bound to the crossroads by ancient druidic magic. They question travelers and pass judgment based on spoken intent.",
+              "appears_in": [
+                {
+                  "area": "TTW003",
+                  "location": "H02"
+                }
+              ],
+              "aliases": [
+                "Gravenbark Guardians"
+              ]
+            },
+            "shade_of_alenwen": {
+              "name": "Shade of Alenwen",
+              "role": "",
+              "faction": "",
+              "description": "A mournful spirit of a long-dead druidic guardian, bound to the hilltop. Alenwen seeks the restoration of the Wilds and offers cryptic guidance, but flies into a spectral rage if memories of betrayal are invoked.",
+              "appears_in": [
+                {
+                  "area": "TTW003",
+                  "location": "H03"
+                }
+              ],
+              "aliases": [
+                "Shade of Alenwen (Myrlaen’s lost love)",
+                "Shade of Alenwen"
+              ]
+            },
+            "surviving_druids": {
+              "name": "Surviving Druids",
+              "role": "",
+              "faction": "",
+              "description": "A haggard trio of druids, their once-green robes now stained with bramble blood and their eyes haunted. They cling to the hope of reversing the Wilds’ corruption but are wary of strangers, suspecting betrayal or madness from any who survive here.",
+              "appears_in": [
+                {
+                  "area": "SOT004",
+                  "location": "H01"
+                }
+              ],
+              "aliases": [
+                "Surviving Druids"
+              ]
+            },
+            "manifestation_of_the_forest_s_spirit": {
+              "name": "Manifestation of the Forest’s Spirit",
+              "role": "",
+              "faction": "",
+              "description": "A shimmering, wounded avatar of the ancient woods, appearing as a white stag entwined with blood-red roses and spectral vines. Its eyes plead for aid, but its form flickers with dangerous, uncontrolled power.",
+              "appears_in": [
+                {
+                  "area": "SOT004",
+                  "location": "H03"
+                }
+              ],
+              "aliases": [
+                "Manifestation of the Forest’s Spirit"
+              ]
+            }
+          },
+          "locations": {
+            "H01": {
+              "name": "Blighted Heart Grove",
+              "area": "TTW003"
+            },
+            "H02": {
+              "name": "Forked Phantom Crossing",
+              "area": "TTW003"
+            },
+            "H03": {
+              "name": "Wraithwatch Hill",
+              "area": "TTW003"
+            }
+          },
+          "plot_scopes": {
+            "PP001": "SOT004",
+            "PP002": "SOT004",
+            "PP003": "SOT004",
+            "PP004": "SOT004"
+          },
+          "references": {
+            "npc:Elder Maelis (village leader)": [
+              "module:plotStages"
+            ],
+            "npc:Thornkin Rella (renegade druid)": [
+              "module:plotStages"
+            ],
+            "npc:Spectral Child": [
+              "module:plotStages"
+            ],
+            "npc:Nimblethorn (malevolent fae emissary)": [
+              "module:plotStages"
+            ],
+            "npc:Whisperroot (sentient, cursed tree)": [
+              "module:plotStages"
+            ],
+            "npc:Lost Ranger Serik": [
+              "module:plotStages"
+            ],
+            "npc:Thornwraith Myrlaen": [
+              "module:plotStages"
+            ],
+            "npc:Gravenbark Guardians": [
+              "module:plotStages"
+            ],
+            "npc:Shade of Alenwen (Myrlaen’s lost love)": [
+              "module:plotStages"
+            ],
+            "npc:Surviving Druids": [
+              "module:plotStages"
+            ],
+            "npc:Manifestation of the Forest’s Spirit": [
+              "module:plotStages"
+            ]
+          },
+          "validation_issues": [],
+          "generated_at": "2026-04-25T12:35:32.323994",
+          "continuity": {
+            "continuity_version": "v1",
+            "entry_state_variants": {
+              "cold_start": {
+                "summary": "Party enters The Garden of Demons with no prior continuity context. Present the opening conflict and immediate objective clearly."
+              },
+              "partial_context": {
+                "summary": "Party enters The Garden of Demons with partial prior context. Reinforce known clues before branch-critical decisions."
+              },
+              "late_arc": {
+                "summary": "Party enters The Garden of Demons in late-arc state. Provide compact recap and preserve ending accessibility."
+              }
+            },
+            "cross_module_refs": [
+              {
+                "target_module": "Night_of_the_Restless_Dead",
+                "entity_id": "sister_miriam_bramble",
+                "relation": "reference",
+                "confidence": "medium",
+                "notes": "Cult lineage and Bramble thread connect to adjacent modules."
+              },
+              {
+                "target_module": "The_Pumpkin_Kings_Curse",
+                "entity_id": "bramble_lineage",
+                "relation": "reference",
+                "confidence": "medium",
+                "notes": "Bramble family lineage appears in linked module arcs."
+              },
+              {
+                "target_module": "The_Pumpkin_Kings_Curse",
+                "entity_id": "pumpkin_king",
+                "relation": "antagonist",
+                "confidence": "medium",
+                "notes": "Pumpkin King and harvest pact are shared continuity anchors."
+              }
+            ],
+            "standalone_fallback": {
+              "enabled": true,
+              "clue_sources": [
+                "module_context",
+                "module_plot"
+              ],
+              "notes": "The_Garden_of_Demons remains playable as a standalone module when cross-module continuity is unavailable."
+            }
+          },
+          "semantic_authority": {
+            "version": "v1",
+            "module_slug": "The_Garden_of_Demons",
+            "location_aliases": {
+              "blighted heart grove": {
+                "status": "resolved",
+                "location_id": "H01",
+                "location_name": "Blighted Heart Grove",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/TTW003.json#locations[H01].aliases",
+                  "areas/TTW003.json#locations[H01].name"
+                ]
+              },
+              "fogroot barrow stalls": {
+                "status": "resolved",
+                "location_id": "H03",
+                "location_name": "Wraithwatch Hill",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H03].aliases",
+                  "areas/GV001.json#locations[H03].name"
+                ]
+              },
+              "fork of withered paths": {
+                "status": "resolved",
+                "location_id": "H01",
+                "location_name": "Blighted Heart Grove",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/SOT004.json#locations[H01].aliases",
+                  "areas/SOT004.json#locations[H01].name"
+                ]
+              },
+              "forked phantom crossing": {
+                "status": "resolved",
+                "location_id": "H02",
+                "location_name": "Forked Phantom Crossing",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/TTW003.json#locations[H02].aliases",
+                  "areas/TTW003.json#locations[H02].name"
+                ]
+              },
+              "grove of sorrowed roots": {
+                "status": "resolved",
+                "location_id": "H03",
+                "location_name": "Wraithwatch Hill",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/SOT004.json#locations[H03].aliases",
+                  "areas/SOT004.json#locations[H03].name"
+                ]
+              },
+              "h01": {
+                "status": "resolved",
+                "location_id": "H01",
+                "location_name": "Blighted Heart Grove",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H01].aliases",
+                  "areas/GV001.json#locations[H01].aliases",
+                  "areas/SOT004.json#locations[H01].aliases",
+                  "areas/TTW003.json#locations[H01].aliases"
+                ]
+              },
+              "h02": {
+                "status": "resolved",
+                "location_id": "H02",
+                "location_name": "Forked Phantom Crossing",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H02].aliases",
+                  "areas/GV001.json#locations[H02].aliases",
+                  "areas/SOT004.json#locations[H02].aliases",
+                  "areas/TTW003.json#locations[H02].aliases"
+                ]
+              },
+              "h03": {
+                "status": "resolved",
+                "location_id": "H03",
+                "location_name": "Wraithwatch Hill",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H03].aliases",
+                  "areas/GV001.json#locations[H03].aliases",
+                  "areas/SOT004.json#locations[H03].aliases",
+                  "areas/TTW003.json#locations[H03].aliases"
+                ]
+              },
+              "petrified warden stone": {
+                "status": "resolved",
+                "location_id": "H02",
+                "location_name": "Forked Phantom Crossing",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H02].aliases",
+                  "areas/BO002.json#locations[H02].name"
+                ]
+              },
+              "shadowsplit crossing": {
+                "status": "resolved",
+                "location_id": "H03",
+                "location_name": "Wraithwatch Hill",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H03].aliases",
+                  "areas/BO002.json#locations[H03].name"
+                ]
+              },
+              "twilight briar cottage": {
+                "status": "resolved",
+                "location_id": "H01",
+                "location_name": "Blighted Heart Grove",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H01].aliases",
+                  "areas/GV001.json#locations[H01].name"
+                ]
+              },
+              "twilight briar crossing": {
+                "status": "resolved",
+                "location_id": "H02",
+                "location_name": "Forked Phantom Crossing",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/SOT004.json#locations[H02].aliases",
+                  "areas/SOT004.json#locations[H02].name"
+                ]
+              },
+              "withered heart glade": {
+                "status": "resolved",
+                "location_id": "H01",
+                "location_name": "Blighted Heart Grove",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H01].aliases",
+                  "areas/BO002.json#locations[H01].name"
+                ]
+              },
+              "withered lantern square": {
+                "status": "resolved",
+                "location_id": "H02",
+                "location_name": "Forked Phantom Crossing",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H02].aliases",
+                  "areas/GV001.json#locations[H02].name"
+                ]
+              },
+              "wraithwatch hill": {
+                "status": "resolved",
+                "location_id": "H03",
+                "location_name": "Wraithwatch Hill",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/TTW003.json#locations[H03].aliases",
+                  "areas/TTW003.json#locations[H03].name"
+                ]
+              }
+            },
+            "destination_phrases": {
+              "blighted heart grove": {
+                "status": "resolved",
+                "location_id": "H01",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/TTW003.json#locations[H01].aliases",
+                  "areas/TTW003.json#locations[H01].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "fogroot barrow stalls": {
+                "status": "resolved",
+                "location_id": "H03",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H03].aliases",
+                  "areas/GV001.json#locations[H03].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "fork of withered paths": {
+                "status": "resolved",
+                "location_id": "H01",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/SOT004.json#locations[H01].aliases",
+                  "areas/SOT004.json#locations[H01].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "forked phantom crossing": {
+                "status": "resolved",
+                "location_id": "H02",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/TTW003.json#locations[H02].aliases",
+                  "areas/TTW003.json#locations[H02].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "grove of sorrowed roots": {
+                "status": "resolved",
+                "location_id": "H03",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/SOT004.json#locations[H03].aliases",
+                  "areas/SOT004.json#locations[H03].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "h01": {
+                "status": "resolved",
+                "location_id": "H01",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H01].aliases",
+                  "areas/GV001.json#locations[H01].aliases",
+                  "areas/SOT004.json#locations[H01].aliases",
+                  "areas/TTW003.json#locations[H01].aliases"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "h02": {
+                "status": "resolved",
+                "location_id": "H02",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H02].aliases",
+                  "areas/GV001.json#locations[H02].aliases",
+                  "areas/SOT004.json#locations[H02].aliases",
+                  "areas/TTW003.json#locations[H02].aliases"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "h03": {
+                "status": "resolved",
+                "location_id": "H03",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H03].aliases",
+                  "areas/GV001.json#locations[H03].aliases",
+                  "areas/SOT004.json#locations[H03].aliases",
+                  "areas/TTW003.json#locations[H03].aliases"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "petrified warden stone": {
+                "status": "resolved",
+                "location_id": "H02",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H02].aliases",
+                  "areas/BO002.json#locations[H02].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "shadowsplit crossing": {
+                "status": "resolved",
+                "location_id": "H03",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H03].aliases",
+                  "areas/BO002.json#locations[H03].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "twilight briar cottage": {
+                "status": "resolved",
+                "location_id": "H01",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H01].aliases",
+                  "areas/GV001.json#locations[H01].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "twilight briar crossing": {
+                "status": "resolved",
+                "location_id": "H02",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/SOT004.json#locations[H02].aliases",
+                  "areas/SOT004.json#locations[H02].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "withered heart glade": {
+                "status": "resolved",
+                "location_id": "H01",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H01].aliases",
+                  "areas/BO002.json#locations[H01].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "withered lantern square": {
+                "status": "resolved",
+                "location_id": "H02",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H02].aliases",
+                  "areas/GV001.json#locations[H02].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "wraithwatch hill": {
+                "status": "resolved",
+                "location_id": "H03",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/TTW003.json#locations[H03].aliases",
+                  "areas/TTW003.json#locations[H03].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              }
+            },
+            "npc_scene_authority": {
+              "Elder Maelis": {
+                "name_slug": "elder maelis",
+                "visible_location_ids": [
+                  "H01"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "GV001",
+                    "source": "module_plot.json#plotPoints[PP001].description",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H01].dcChecks",
+                  "areas/GV001.json#locations[H01].dmInstructions",
+                  "areas/GV001.json#locations[H01].npcs",
+                  "areas/GV001.json#locations[H01].plotHooks",
+                  "module_context.json#npcs.elder_maelis",
+                  "module_plot.json#plotPoints[PP001].description"
+                ],
+                "authored_mentions_count": 4,
+                "authored_mention_sources": [
+                  "areas/GV001.json#locations[H01].dcChecks",
+                  "areas/GV001.json#locations[H01].dmInstructions",
+                  "areas/GV001.json#locations[H01].plotHooks",
+                  "module_plot.json#plotPoints[PP001].description"
+                ]
+              },
+              "Gravenbark Guardians": {
+                "name_slug": "gravenbark guardians",
+                "visible_location_ids": [
+                  "H02"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "BO002",
+                    "source": "module_plot.json#plotPoints[PP004].description",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "H03",
+                    "source": "areas/BO002.json#locations[H03].description",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "TTW003",
+                    "source": "module_plot.json#plotPoints[PP006].description",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "TTW003",
+                    "source": "module_plot.json#plotPoints[PP008].description",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H03].description",
+                  "areas/TTW003.json#locations[H02].dcChecks",
+                  "areas/TTW003.json#locations[H02].dmInstructions",
+                  "areas/TTW003.json#locations[H02].npcs",
+                  "areas/TTW003.json#locations[H02].plotHooks",
+                  "module_context.json#npcs.gravenbark_guardians",
+                  "module_plot.json#plotPoints[PP004].description",
+                  "module_plot.json#plotPoints[PP006].description",
+                  "module_plot.json#plotPoints[PP008].description"
+                ],
+                "authored_mentions_count": 7,
+                "authored_mention_sources": [
+                  "areas/BO002.json#locations[H03].description",
+                  "areas/TTW003.json#locations[H02].dcChecks",
+                  "areas/TTW003.json#locations[H02].dmInstructions",
+                  "areas/TTW003.json#locations[H02].plotHooks",
+                  "module_plot.json#plotPoints[PP004].description",
+                  "module_plot.json#plotPoints[PP006].description",
+                  "module_plot.json#plotPoints[PP008].description"
+                ]
+              },
+              "Lost Ranger Serik": {
+                "name_slug": "lost ranger serik",
+                "visible_location_ids": [
+                  "H03"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "H02",
+                    "source": "areas/BO002.json#locations[H02].plotHooks",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H02].plotHooks",
+                  "areas/BO002.json#locations[H03].dmInstructions",
+                  "areas/BO002.json#locations[H03].npcs",
+                  "areas/BO002.json#locations[H03].plotHooks",
+                  "module_context.json#npcs.lost_ranger_serik"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/BO002.json#locations[H02].plotHooks",
+                  "areas/BO002.json#locations[H03].dmInstructions",
+                  "areas/BO002.json#locations[H03].plotHooks"
+                ]
+              },
+              "Manifestation of the Forest’s Spirit": {
+                "name_slug": "manifestation of the forest s spirit",
+                "visible_location_ids": [
+                  "H03"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "BO002",
+                    "source": "module_plot.json#plotPoints[PP004].description",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "H01",
+                    "source": "areas/TTW003.json#locations[H01].dmInstructions",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "H01",
+                    "source": "areas/TTW003.json#locations[H01].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "H02",
+                    "source": "areas/SOT004.json#locations[H02].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "TTW003",
+                    "source": "module_plot.json#plotPoints[PP009].description",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/SOT004.json#locations[H02].plotHooks",
+                  "areas/SOT004.json#locations[H03].dcChecks",
+                  "areas/SOT004.json#locations[H03].dmInstructions",
+                  "areas/SOT004.json#locations[H03].npcs",
+                  "areas/SOT004.json#locations[H03].plotHooks",
+                  "areas/TTW003.json#locations[H01].dmInstructions",
+                  "areas/TTW003.json#locations[H01].plotHooks",
+                  "module_context.json#npcs.manifestation_of_the_forest_s_spirit",
+                  "module_plot.json#plotPoints[PP004].description",
+                  "module_plot.json#plotPoints[PP009].description"
+                ],
+                "authored_mentions_count": 8,
+                "authored_mention_sources": [
+                  "areas/SOT004.json#locations[H02].plotHooks",
+                  "areas/SOT004.json#locations[H03].dcChecks",
+                  "areas/SOT004.json#locations[H03].dmInstructions",
+                  "areas/SOT004.json#locations[H03].plotHooks",
+                  "areas/TTW003.json#locations[H01].dmInstructions",
+                  "areas/TTW003.json#locations[H01].plotHooks",
+                  "module_plot.json#plotPoints[PP004].description",
+                  "module_plot.json#plotPoints[PP009].description"
+                ]
+              },
+              "Nimblethorn": {
+                "name_slug": "nimblethorn",
+                "visible_location_ids": [
+                  "H01"
+                ],
+                "reveal_bindings": [],
+                "sources": [
+                  "areas/BO002.json#locations[H01].accessibility",
+                  "areas/BO002.json#locations[H01].dmInstructions",
+                  "areas/BO002.json#locations[H01].npcs",
+                  "areas/BO002.json#locations[H01].plotHooks",
+                  "module_context.json#npcs.nimblethorn"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/BO002.json#locations[H01].accessibility",
+                  "areas/BO002.json#locations[H01].dmInstructions",
+                  "areas/BO002.json#locations[H01].plotHooks"
+                ]
+              },
+              "Shade of Alenwen": {
+                "name_slug": "shade of alenwen",
+                "visible_location_ids": [
+                  "H03"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "TTW003",
+                    "source": "module_plot.json#plotPoints[PP006].description",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "TTW003",
+                    "source": "module_plot.json#plotPoints[PP007].description",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/TTW003.json#locations[H03].dcChecks",
+                  "areas/TTW003.json#locations[H03].dmInstructions",
+                  "areas/TTW003.json#locations[H03].npcs",
+                  "areas/TTW003.json#locations[H03].plotHooks",
+                  "module_context.json#npcs.shade_of_alenwen",
+                  "module_plot.json#plotPoints[PP006].description",
+                  "module_plot.json#plotPoints[PP007].description"
+                ],
+                "authored_mentions_count": 5,
+                "authored_mention_sources": [
+                  "areas/TTW003.json#locations[H03].dcChecks",
+                  "areas/TTW003.json#locations[H03].dmInstructions",
+                  "areas/TTW003.json#locations[H03].plotHooks",
+                  "module_plot.json#plotPoints[PP006].description",
+                  "module_plot.json#plotPoints[PP007].description"
+                ]
+              },
+              "Spectral Child": {
+                "name_slug": "spectral child",
+                "visible_location_ids": [
+                  "H03"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "H02",
+                    "source": "areas/GV001.json#locations[H02].plotHooks",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H02].plotHooks",
+                  "areas/GV001.json#locations[H03].dcChecks",
+                  "areas/GV001.json#locations[H03].dmInstructions",
+                  "areas/GV001.json#locations[H03].npcs",
+                  "areas/GV001.json#locations[H03].plotHooks",
+                  "module_context.json#npcs.spectral_child"
+                ],
+                "authored_mentions_count": 4,
+                "authored_mention_sources": [
+                  "areas/GV001.json#locations[H02].plotHooks",
+                  "areas/GV001.json#locations[H03].dcChecks",
+                  "areas/GV001.json#locations[H03].dmInstructions",
+                  "areas/GV001.json#locations[H03].plotHooks"
+                ]
+              },
+              "Surviving Druids": {
+                "name_slug": "surviving druids",
+                "visible_location_ids": [
+                  "H01"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "BO002",
+                    "source": "module_plot.json#plotPoints[PP003].description",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "H03",
+                    "source": "areas/SOT004.json#locations[H03].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "H03",
+                    "source": "areas/TTW003.json#locations[H03].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "SOT004",
+                    "source": "module_plot.json#plotPoints[PP012].description",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/SOT004.json#locations[H01].dcChecks",
+                  "areas/SOT004.json#locations[H01].dmInstructions",
+                  "areas/SOT004.json#locations[H01].npcs",
+                  "areas/SOT004.json#locations[H01].plotHooks",
+                  "areas/SOT004.json#locations[H03].plotHooks",
+                  "areas/TTW003.json#locations[H03].plotHooks",
+                  "module_context.json#npcs.surviving_druids",
+                  "module_plot.json#plotPoints[PP003].description",
+                  "module_plot.json#plotPoints[PP012].description"
+                ],
+                "authored_mentions_count": 7,
+                "authored_mention_sources": [
+                  "areas/SOT004.json#locations[H01].dcChecks",
+                  "areas/SOT004.json#locations[H01].dmInstructions",
+                  "areas/SOT004.json#locations[H01].plotHooks",
+                  "areas/SOT004.json#locations[H03].plotHooks",
+                  "areas/TTW003.json#locations[H03].plotHooks",
+                  "module_plot.json#plotPoints[PP003].description",
+                  "module_plot.json#plotPoints[PP012].description"
+                ]
+              },
+              "Thornkin Rella": {
+                "name_slug": "thornkin rella",
+                "visible_location_ids": [
+                  "H02"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "BO002",
+                    "source": "module_plot.json#plotPoints[PP002].description",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H02].dcChecks",
+                  "areas/GV001.json#locations[H02].dmInstructions",
+                  "areas/GV001.json#locations[H02].npcs",
+                  "areas/GV001.json#locations[H02].plotHooks",
+                  "module_context.json#npcs.thornkin_rella",
+                  "module_plot.json#plotPoints[PP002].description"
+                ],
+                "authored_mentions_count": 4,
+                "authored_mention_sources": [
+                  "areas/GV001.json#locations[H02].dcChecks",
+                  "areas/GV001.json#locations[H02].dmInstructions",
+                  "areas/GV001.json#locations[H02].plotHooks",
+                  "module_plot.json#plotPoints[PP002].description"
+                ]
+              },
+              "Thornwraith Myrlaen": {
+                "name_slug": "thornwraith myrlaen",
+                "visible_location_ids": [
+                  "H01"
+                ],
+                "reveal_bindings": [],
+                "sources": [
+                  "areas/TTW003.json#locations[H01].dcChecks",
+                  "areas/TTW003.json#locations[H01].dmInstructions",
+                  "areas/TTW003.json#locations[H01].npcs",
+                  "areas/TTW003.json#locations[H01].plotHooks",
+                  "module_context.json#npcs.thornwraith_myrlaen"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/TTW003.json#locations[H01].dcChecks",
+                  "areas/TTW003.json#locations[H01].dmInstructions",
+                  "areas/TTW003.json#locations[H01].plotHooks"
+                ]
+              },
+              "Whisperroot": {
+                "name_slug": "whisperroot",
+                "visible_location_ids": [
+                  "H02"
+                ],
+                "reveal_bindings": [],
+                "sources": [
+                  "areas/BO002.json#locations[H02].dcChecks",
+                  "areas/BO002.json#locations[H02].dmInstructions",
+                  "areas/BO002.json#locations[H02].npcs",
+                  "areas/BO002.json#locations[H02].plotHooks",
+                  "module_context.json#npcs.whisperroot"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/BO002.json#locations[H02].dcChecks",
+                  "areas/BO002.json#locations[H02].dmInstructions",
+                  "areas/BO002.json#locations[H02].plotHooks"
+                ]
+              }
+            },
+            "diagnostics": {
+              "duplicate_location_aliases": [],
+              "ambiguous_destination_phrases": [],
+              "unresolved_destination_phrases": [],
+              "normalized_shortform_destination_phrases": [],
+              "missing_npc_authority": []
+            },
+            "summary": {
+              "location_count": 12,
+              "location_alias_count": 15,
+              "destination_phrase_count": 15,
+              "npc_count": 11,
+              "ambiguous_destination_count": 0,
+              "normalized_shortform_destination_count": 0,
+              "missing_npc_authority_count": 0
+            }
+          }
+        },
+        "changed": false,
+        "injected_keys": []
+      },
+      "continuity_enrichment": {
+        "status": "success",
+        "module_context": {
+          "module_name": "The Garden of Demons",
+          "module_id": "The_Garden_of_Demons",
+          "areas": {
+            "GV001": {
+              "name": "Gloamreach Village",
+              "type": "town",
+              "locations": [],
+              "npcs": [
+                "Elder Maelis",
+                "Thornkin Rella",
+                "Spectral Child"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "BO002": {
+              "name": "Blightfen Outlands",
+              "type": "wilderness",
+              "locations": [],
+              "npcs": [
+                "Nimblethorn",
+                "Whisperroot",
+                "Lost Ranger Serik"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "TTW003": {
+              "name": "The Twisted Wilds",
+              "type": "wilderness",
+              "locations": [
+                "H01",
+                "H02",
+                "H03"
+              ],
+              "npcs": [
+                "Thornwraith Myrlaen",
+                "Gravenbark Guardians",
+                "Shade of Alenwen"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "SOT004": {
+              "name": "Sanctum of Thorns",
+              "type": "wilderness",
+              "locations": [],
+              "npcs": [
+                "Surviving Druids",
+                "Manifestation of the Forest’s Spirit"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            }
+          },
+          "npcs": {
+            "elder_maelis": {
+              "name": "Elder Maelis",
+              "role": "",
+              "faction": "",
+              "description": "The kindly matriarch of Gloamreach Village, Elder Maelis is a silver-haired elven woman with gentle eyes and centuries of wisdom. She welcomes travelers with tea, tales, and measured advice, but a deep sadness shadows her when the conversation turns to the curse on the land.",
+              "appears_in": [
+                {
+                  "area": "GV001",
+                  "location": "H01"
+                }
+              ],
+              "aliases": [
+                "Elder Maelis (village leader)",
+                "Elder Maelis"
+              ]
+            },
+            "thornkin_rella": {
+              "name": "Thornkin Rella",
+              "role": "",
+              "faction": "",
+              "description": "A quick-witted, thorn-fingered half-fey merchant, Rella always has a mischievous smile and a knack for finding what others cannot. She’s famed for her rare reagents and her odd riddles.",
+              "appears_in": [
+                {
+                  "area": "GV001",
+                  "location": "H02"
+                }
+              ],
+              "aliases": [
+                "Thornkin Rella (renegade druid)",
+                "Thornkin Rella"
+              ]
+            },
+            "spectral_child": {
+              "name": "Spectral Child",
+              "role": "",
+              "faction": "",
+              "description": "A ghostly apparition of a small child who wanders the stalls at dusk. The villagers are used to her silence, but sometimes she points at items as if remembering something important.",
+              "appears_in": [
+                {
+                  "area": "GV001",
+                  "location": "H03"
+                }
+              ],
+              "aliases": [
+                "Spectral Child"
+              ]
+            },
+            "nimblethorn": {
+              "name": "Nimblethorn",
+              "role": "",
+              "faction": "",
+              "description": "A sly, fey-influenced goblin with mottled green skin and a cap of fungus for a hat. Nimblethorn skips from shadow to shadow, offering cryptic warnings and bargains to those who show respect for the old ways. Deeply connected to the glade’s curse, Nimblethorn knows secret paths and hidden dangers.",
+              "appears_in": [
+                {
+                  "area": "BO002",
+                  "location": "H01"
+                }
+              ],
+              "aliases": [
+                "Nimblethorn (malevolent fae emissary)",
+                "Nimblethorn"
+              ]
+            },
+            "whisperroot": {
+              "name": "Whisperroot",
+              "role": "",
+              "faction": "",
+              "description": "A spectral dryad, now half-fused with the stone’s roots. Whisperroot weeps for the land’s pain and offers cryptic warnings. Her influence can briefly purify an area if properly entreated.",
+              "appears_in": [
+                {
+                  "area": "BO002",
+                  "location": "H02"
+                }
+              ],
+              "aliases": [
+                "Whisperroot (sentient, cursed tree)",
+                "Whisperroot"
+              ]
+            },
+            "lost_ranger_serik": {
+              "name": "Lost Ranger Serik",
+              "role": "",
+              "faction": "",
+              "description": "A grizzled, mud-streaked human ranger, Serik has lost his bearings after days evading dangerous creatures. He is wary but desperate for help and can offer detailed knowledge of the Blightfen Wilds for those who earn his trust.",
+              "appears_in": [
+                {
+                  "area": "BO002",
+                  "location": "H03"
+                }
+              ],
+              "aliases": [
+                "Lost Ranger Serik"
+              ]
+            },
+            "thornwraith_myrlaen": {
+              "name": "Thornwraith Myrlaen",
+              "role": "",
+              "faction": "",
+              "description": "The corrupted druid responsible for the curse upon Wraithwood. Myrlaen appears as a spectral, root-entwined figure, their eyes glowing with malice and pain. They are torn between rage at intruders and an unconscious plea for release from their torment.",
+              "appears_in": [
+                {
+                  "area": "TTW003",
+                  "location": "H01"
+                }
+              ],
+              "aliases": [
+                "Thornwraith Myrlaen"
+              ]
+            },
+            "gravenbark_guardians": {
+              "name": "Gravenbark Guardians",
+              "role": "",
+              "faction": "",
+              "description": "Sentient, animated wooden statues bound to the crossroads by ancient druidic magic. They question travelers and pass judgment based on spoken intent.",
+              "appears_in": [
+                {
+                  "area": "TTW003",
+                  "location": "H02"
+                }
+              ],
+              "aliases": [
+                "Gravenbark Guardians"
+              ]
+            },
+            "shade_of_alenwen": {
+              "name": "Shade of Alenwen",
+              "role": "",
+              "faction": "",
+              "description": "A mournful spirit of a long-dead druidic guardian, bound to the hilltop. Alenwen seeks the restoration of the Wilds and offers cryptic guidance, but flies into a spectral rage if memories of betrayal are invoked.",
+              "appears_in": [
+                {
+                  "area": "TTW003",
+                  "location": "H03"
+                }
+              ],
+              "aliases": [
+                "Shade of Alenwen (Myrlaen’s lost love)",
+                "Shade of Alenwen"
+              ]
+            },
+            "surviving_druids": {
+              "name": "Surviving Druids",
+              "role": "",
+              "faction": "",
+              "description": "A haggard trio of druids, their once-green robes now stained with bramble blood and their eyes haunted. They cling to the hope of reversing the Wilds’ corruption but are wary of strangers, suspecting betrayal or madness from any who survive here.",
+              "appears_in": [
+                {
+                  "area": "SOT004",
+                  "location": "H01"
+                }
+              ],
+              "aliases": [
+                "Surviving Druids"
+              ]
+            },
+            "manifestation_of_the_forest_s_spirit": {
+              "name": "Manifestation of the Forest’s Spirit",
+              "role": "",
+              "faction": "",
+              "description": "A shimmering, wounded avatar of the ancient woods, appearing as a white stag entwined with blood-red roses and spectral vines. Its eyes plead for aid, but its form flickers with dangerous, uncontrolled power.",
+              "appears_in": [
+                {
+                  "area": "SOT004",
+                  "location": "H03"
+                }
+              ],
+              "aliases": [
+                "Manifestation of the Forest’s Spirit"
+              ]
+            }
+          },
+          "locations": {
+            "H01": {
+              "name": "Blighted Heart Grove",
+              "area": "TTW003"
+            },
+            "H02": {
+              "name": "Forked Phantom Crossing",
+              "area": "TTW003"
+            },
+            "H03": {
+              "name": "Wraithwatch Hill",
+              "area": "TTW003"
+            }
+          },
+          "plot_scopes": {
+            "PP001": "SOT004",
+            "PP002": "SOT004",
+            "PP003": "SOT004",
+            "PP004": "SOT004"
+          },
+          "references": {
+            "npc:Elder Maelis (village leader)": [
+              "module:plotStages"
+            ],
+            "npc:Thornkin Rella (renegade druid)": [
+              "module:plotStages"
+            ],
+            "npc:Spectral Child": [
+              "module:plotStages"
+            ],
+            "npc:Nimblethorn (malevolent fae emissary)": [
+              "module:plotStages"
+            ],
+            "npc:Whisperroot (sentient, cursed tree)": [
+              "module:plotStages"
+            ],
+            "npc:Lost Ranger Serik": [
+              "module:plotStages"
+            ],
+            "npc:Thornwraith Myrlaen": [
+              "module:plotStages"
+            ],
+            "npc:Gravenbark Guardians": [
+              "module:plotStages"
+            ],
+            "npc:Shade of Alenwen (Myrlaen’s lost love)": [
+              "module:plotStages"
+            ],
+            "npc:Surviving Druids": [
+              "module:plotStages"
+            ],
+            "npc:Manifestation of the Forest’s Spirit": [
+              "module:plotStages"
+            ]
+          },
+          "validation_issues": [],
+          "generated_at": "2026-04-25T12:35:32.323994",
+          "continuity": {
+            "continuity_version": "v1",
+            "entry_state_variants": {
+              "cold_start": {
+                "summary": "Party enters The Garden of Demons with no prior continuity context. Present the opening conflict and immediate objective clearly."
+              },
+              "partial_context": {
+                "summary": "Party enters The Garden of Demons with partial prior context. Reinforce known clues before branch-critical decisions."
+              },
+              "late_arc": {
+                "summary": "Party enters The Garden of Demons in late-arc state. Provide compact recap and preserve ending accessibility."
+              }
+            },
+            "cross_module_refs": [
+              {
+                "target_module": "Night_of_the_Restless_Dead",
+                "entity_id": "sister_miriam_bramble",
+                "relation": "reference",
+                "confidence": "medium",
+                "notes": "Cult lineage and Bramble thread connect to adjacent modules."
+              },
+              {
+                "target_module": "The_Pumpkin_Kings_Curse",
+                "entity_id": "bramble_lineage",
+                "relation": "reference",
+                "confidence": "medium",
+                "notes": "Bramble family lineage appears in linked module arcs."
+              },
+              {
+                "target_module": "The_Pumpkin_Kings_Curse",
+                "entity_id": "pumpkin_king",
+                "relation": "antagonist",
+                "confidence": "medium",
+                "notes": "Pumpkin King and harvest pact are shared continuity anchors."
+              }
+            ],
+            "standalone_fallback": {
+              "enabled": true,
+              "clue_sources": [
+                "module_context",
+                "module_plot"
+              ],
+              "notes": "The_Garden_of_Demons remains playable as a standalone module when cross-module continuity is unavailable."
+            }
+          },
+          "semantic_authority": {
+            "version": "v1",
+            "module_slug": "The_Garden_of_Demons",
+            "location_aliases": {
+              "blighted heart grove": {
+                "status": "resolved",
+                "location_id": "H01",
+                "location_name": "Blighted Heart Grove",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/TTW003.json#locations[H01].aliases",
+                  "areas/TTW003.json#locations[H01].name"
+                ]
+              },
+              "fogroot barrow stalls": {
+                "status": "resolved",
+                "location_id": "H03",
+                "location_name": "Wraithwatch Hill",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H03].aliases",
+                  "areas/GV001.json#locations[H03].name"
+                ]
+              },
+              "fork of withered paths": {
+                "status": "resolved",
+                "location_id": "H01",
+                "location_name": "Blighted Heart Grove",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/SOT004.json#locations[H01].aliases",
+                  "areas/SOT004.json#locations[H01].name"
+                ]
+              },
+              "forked phantom crossing": {
+                "status": "resolved",
+                "location_id": "H02",
+                "location_name": "Forked Phantom Crossing",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/TTW003.json#locations[H02].aliases",
+                  "areas/TTW003.json#locations[H02].name"
+                ]
+              },
+              "grove of sorrowed roots": {
+                "status": "resolved",
+                "location_id": "H03",
+                "location_name": "Wraithwatch Hill",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/SOT004.json#locations[H03].aliases",
+                  "areas/SOT004.json#locations[H03].name"
+                ]
+              },
+              "h01": {
+                "status": "resolved",
+                "location_id": "H01",
+                "location_name": "Blighted Heart Grove",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H01].aliases",
+                  "areas/GV001.json#locations[H01].aliases",
+                  "areas/SOT004.json#locations[H01].aliases",
+                  "areas/TTW003.json#locations[H01].aliases"
+                ]
+              },
+              "h02": {
+                "status": "resolved",
+                "location_id": "H02",
+                "location_name": "Forked Phantom Crossing",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H02].aliases",
+                  "areas/GV001.json#locations[H02].aliases",
+                  "areas/SOT004.json#locations[H02].aliases",
+                  "areas/TTW003.json#locations[H02].aliases"
+                ]
+              },
+              "h03": {
+                "status": "resolved",
+                "location_id": "H03",
+                "location_name": "Wraithwatch Hill",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H03].aliases",
+                  "areas/GV001.json#locations[H03].aliases",
+                  "areas/SOT004.json#locations[H03].aliases",
+                  "areas/TTW003.json#locations[H03].aliases"
+                ]
+              },
+              "petrified warden stone": {
+                "status": "resolved",
+                "location_id": "H02",
+                "location_name": "Forked Phantom Crossing",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H02].aliases",
+                  "areas/BO002.json#locations[H02].name"
+                ]
+              },
+              "shadowsplit crossing": {
+                "status": "resolved",
+                "location_id": "H03",
+                "location_name": "Wraithwatch Hill",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H03].aliases",
+                  "areas/BO002.json#locations[H03].name"
+                ]
+              },
+              "twilight briar cottage": {
+                "status": "resolved",
+                "location_id": "H01",
+                "location_name": "Blighted Heart Grove",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H01].aliases",
+                  "areas/GV001.json#locations[H01].name"
+                ]
+              },
+              "twilight briar crossing": {
+                "status": "resolved",
+                "location_id": "H02",
+                "location_name": "Forked Phantom Crossing",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/SOT004.json#locations[H02].aliases",
+                  "areas/SOT004.json#locations[H02].name"
+                ]
+              },
+              "withered heart glade": {
+                "status": "resolved",
+                "location_id": "H01",
+                "location_name": "Blighted Heart Grove",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H01].aliases",
+                  "areas/BO002.json#locations[H01].name"
+                ]
+              },
+              "withered lantern square": {
+                "status": "resolved",
+                "location_id": "H02",
+                "location_name": "Forked Phantom Crossing",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H02].aliases",
+                  "areas/GV001.json#locations[H02].name"
+                ]
+              },
+              "wraithwatch hill": {
+                "status": "resolved",
+                "location_id": "H03",
+                "location_name": "Wraithwatch Hill",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/TTW003.json#locations[H03].aliases",
+                  "areas/TTW003.json#locations[H03].name"
+                ]
+              }
+            },
+            "destination_phrases": {
+              "blighted heart grove": {
+                "status": "resolved",
+                "location_id": "H01",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/TTW003.json#locations[H01].aliases",
+                  "areas/TTW003.json#locations[H01].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "fogroot barrow stalls": {
+                "status": "resolved",
+                "location_id": "H03",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H03].aliases",
+                  "areas/GV001.json#locations[H03].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "fork of withered paths": {
+                "status": "resolved",
+                "location_id": "H01",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/SOT004.json#locations[H01].aliases",
+                  "areas/SOT004.json#locations[H01].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "forked phantom crossing": {
+                "status": "resolved",
+                "location_id": "H02",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/TTW003.json#locations[H02].aliases",
+                  "areas/TTW003.json#locations[H02].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "grove of sorrowed roots": {
+                "status": "resolved",
+                "location_id": "H03",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/SOT004.json#locations[H03].aliases",
+                  "areas/SOT004.json#locations[H03].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "h01": {
+                "status": "resolved",
+                "location_id": "H01",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H01].aliases",
+                  "areas/GV001.json#locations[H01].aliases",
+                  "areas/SOT004.json#locations[H01].aliases",
+                  "areas/TTW003.json#locations[H01].aliases"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "h02": {
+                "status": "resolved",
+                "location_id": "H02",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H02].aliases",
+                  "areas/GV001.json#locations[H02].aliases",
+                  "areas/SOT004.json#locations[H02].aliases",
+                  "areas/TTW003.json#locations[H02].aliases"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "h03": {
+                "status": "resolved",
+                "location_id": "H03",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H03].aliases",
+                  "areas/GV001.json#locations[H03].aliases",
+                  "areas/SOT004.json#locations[H03].aliases",
+                  "areas/TTW003.json#locations[H03].aliases"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "petrified warden stone": {
+                "status": "resolved",
+                "location_id": "H02",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H02].aliases",
+                  "areas/BO002.json#locations[H02].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "shadowsplit crossing": {
+                "status": "resolved",
+                "location_id": "H03",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H03].aliases",
+                  "areas/BO002.json#locations[H03].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "twilight briar cottage": {
+                "status": "resolved",
+                "location_id": "H01",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H01].aliases",
+                  "areas/GV001.json#locations[H01].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "twilight briar crossing": {
+                "status": "resolved",
+                "location_id": "H02",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/SOT004.json#locations[H02].aliases",
+                  "areas/SOT004.json#locations[H02].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "withered heart glade": {
+                "status": "resolved",
+                "location_id": "H01",
+                "candidate_location_ids": [
+                  "H01"
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H01].aliases",
+                  "areas/BO002.json#locations[H01].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "withered lantern square": {
+                "status": "resolved",
+                "location_id": "H02",
+                "candidate_location_ids": [
+                  "H02"
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H02].aliases",
+                  "areas/GV001.json#locations[H02].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "wraithwatch hill": {
+                "status": "resolved",
+                "location_id": "H03",
+                "candidate_location_ids": [
+                  "H03"
+                ],
+                "sources": [
+                  "areas/TTW003.json#locations[H03].aliases",
+                  "areas/TTW003.json#locations[H03].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              }
+            },
+            "npc_scene_authority": {
+              "Elder Maelis": {
+                "name_slug": "elder maelis",
+                "visible_location_ids": [
+                  "H01"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "GV001",
+                    "source": "module_plot.json#plotPoints[PP001].description",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H01].dcChecks",
+                  "areas/GV001.json#locations[H01].dmInstructions",
+                  "areas/GV001.json#locations[H01].npcs",
+                  "areas/GV001.json#locations[H01].plotHooks",
+                  "module_context.json#npcs.elder_maelis",
+                  "module_plot.json#plotPoints[PP001].description"
+                ],
+                "authored_mentions_count": 4,
+                "authored_mention_sources": [
+                  "areas/GV001.json#locations[H01].dcChecks",
+                  "areas/GV001.json#locations[H01].dmInstructions",
+                  "areas/GV001.json#locations[H01].plotHooks",
+                  "module_plot.json#plotPoints[PP001].description"
+                ]
+              },
+              "Gravenbark Guardians": {
+                "name_slug": "gravenbark guardians",
+                "visible_location_ids": [
+                  "H02"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "BO002",
+                    "source": "module_plot.json#plotPoints[PP004].description",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "H03",
+                    "source": "areas/BO002.json#locations[H03].description",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "TTW003",
+                    "source": "module_plot.json#plotPoints[PP006].description",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "TTW003",
+                    "source": "module_plot.json#plotPoints[PP008].description",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H03].description",
+                  "areas/TTW003.json#locations[H02].dcChecks",
+                  "areas/TTW003.json#locations[H02].dmInstructions",
+                  "areas/TTW003.json#locations[H02].npcs",
+                  "areas/TTW003.json#locations[H02].plotHooks",
+                  "module_context.json#npcs.gravenbark_guardians",
+                  "module_plot.json#plotPoints[PP004].description",
+                  "module_plot.json#plotPoints[PP006].description",
+                  "module_plot.json#plotPoints[PP008].description"
+                ],
+                "authored_mentions_count": 7,
+                "authored_mention_sources": [
+                  "areas/BO002.json#locations[H03].description",
+                  "areas/TTW003.json#locations[H02].dcChecks",
+                  "areas/TTW003.json#locations[H02].dmInstructions",
+                  "areas/TTW003.json#locations[H02].plotHooks",
+                  "module_plot.json#plotPoints[PP004].description",
+                  "module_plot.json#plotPoints[PP006].description",
+                  "module_plot.json#plotPoints[PP008].description"
+                ]
+              },
+              "Lost Ranger Serik": {
+                "name_slug": "lost ranger serik",
+                "visible_location_ids": [
+                  "H03"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "H02",
+                    "source": "areas/BO002.json#locations[H02].plotHooks",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/BO002.json#locations[H02].plotHooks",
+                  "areas/BO002.json#locations[H03].dmInstructions",
+                  "areas/BO002.json#locations[H03].npcs",
+                  "areas/BO002.json#locations[H03].plotHooks",
+                  "module_context.json#npcs.lost_ranger_serik"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/BO002.json#locations[H02].plotHooks",
+                  "areas/BO002.json#locations[H03].dmInstructions",
+                  "areas/BO002.json#locations[H03].plotHooks"
+                ]
+              },
+              "Manifestation of the Forest’s Spirit": {
+                "name_slug": "manifestation of the forest s spirit",
+                "visible_location_ids": [
+                  "H03"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "BO002",
+                    "source": "module_plot.json#plotPoints[PP004].description",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "H01",
+                    "source": "areas/TTW003.json#locations[H01].dmInstructions",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "H01",
+                    "source": "areas/TTW003.json#locations[H01].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "H02",
+                    "source": "areas/SOT004.json#locations[H02].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "TTW003",
+                    "source": "module_plot.json#plotPoints[PP009].description",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/SOT004.json#locations[H02].plotHooks",
+                  "areas/SOT004.json#locations[H03].dcChecks",
+                  "areas/SOT004.json#locations[H03].dmInstructions",
+                  "areas/SOT004.json#locations[H03].npcs",
+                  "areas/SOT004.json#locations[H03].plotHooks",
+                  "areas/TTW003.json#locations[H01].dmInstructions",
+                  "areas/TTW003.json#locations[H01].plotHooks",
+                  "module_context.json#npcs.manifestation_of_the_forest_s_spirit",
+                  "module_plot.json#plotPoints[PP004].description",
+                  "module_plot.json#plotPoints[PP009].description"
+                ],
+                "authored_mentions_count": 8,
+                "authored_mention_sources": [
+                  "areas/SOT004.json#locations[H02].plotHooks",
+                  "areas/SOT004.json#locations[H03].dcChecks",
+                  "areas/SOT004.json#locations[H03].dmInstructions",
+                  "areas/SOT004.json#locations[H03].plotHooks",
+                  "areas/TTW003.json#locations[H01].dmInstructions",
+                  "areas/TTW003.json#locations[H01].plotHooks",
+                  "module_plot.json#plotPoints[PP004].description",
+                  "module_plot.json#plotPoints[PP009].description"
+                ]
+              },
+              "Nimblethorn": {
+                "name_slug": "nimblethorn",
+                "visible_location_ids": [
+                  "H01"
+                ],
+                "reveal_bindings": [],
+                "sources": [
+                  "areas/BO002.json#locations[H01].accessibility",
+                  "areas/BO002.json#locations[H01].dmInstructions",
+                  "areas/BO002.json#locations[H01].npcs",
+                  "areas/BO002.json#locations[H01].plotHooks",
+                  "module_context.json#npcs.nimblethorn"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/BO002.json#locations[H01].accessibility",
+                  "areas/BO002.json#locations[H01].dmInstructions",
+                  "areas/BO002.json#locations[H01].plotHooks"
+                ]
+              },
+              "Shade of Alenwen": {
+                "name_slug": "shade of alenwen",
+                "visible_location_ids": [
+                  "H03"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "TTW003",
+                    "source": "module_plot.json#plotPoints[PP006].description",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "TTW003",
+                    "source": "module_plot.json#plotPoints[PP007].description",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/TTW003.json#locations[H03].dcChecks",
+                  "areas/TTW003.json#locations[H03].dmInstructions",
+                  "areas/TTW003.json#locations[H03].npcs",
+                  "areas/TTW003.json#locations[H03].plotHooks",
+                  "module_context.json#npcs.shade_of_alenwen",
+                  "module_plot.json#plotPoints[PP006].description",
+                  "module_plot.json#plotPoints[PP007].description"
+                ],
+                "authored_mentions_count": 5,
+                "authored_mention_sources": [
+                  "areas/TTW003.json#locations[H03].dcChecks",
+                  "areas/TTW003.json#locations[H03].dmInstructions",
+                  "areas/TTW003.json#locations[H03].plotHooks",
+                  "module_plot.json#plotPoints[PP006].description",
+                  "module_plot.json#plotPoints[PP007].description"
+                ]
+              },
+              "Spectral Child": {
+                "name_slug": "spectral child",
+                "visible_location_ids": [
+                  "H03"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "H02",
+                    "source": "areas/GV001.json#locations[H02].plotHooks",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H02].plotHooks",
+                  "areas/GV001.json#locations[H03].dcChecks",
+                  "areas/GV001.json#locations[H03].dmInstructions",
+                  "areas/GV001.json#locations[H03].npcs",
+                  "areas/GV001.json#locations[H03].plotHooks",
+                  "module_context.json#npcs.spectral_child"
+                ],
+                "authored_mentions_count": 4,
+                "authored_mention_sources": [
+                  "areas/GV001.json#locations[H02].plotHooks",
+                  "areas/GV001.json#locations[H03].dcChecks",
+                  "areas/GV001.json#locations[H03].dmInstructions",
+                  "areas/GV001.json#locations[H03].plotHooks"
+                ]
+              },
+              "Surviving Druids": {
+                "name_slug": "surviving druids",
+                "visible_location_ids": [
+                  "H01"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "BO002",
+                    "source": "module_plot.json#plotPoints[PP003].description",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "H03",
+                    "source": "areas/SOT004.json#locations[H03].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "H03",
+                    "source": "areas/TTW003.json#locations[H03].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "SOT004",
+                    "source": "module_plot.json#plotPoints[PP012].description",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/SOT004.json#locations[H01].dcChecks",
+                  "areas/SOT004.json#locations[H01].dmInstructions",
+                  "areas/SOT004.json#locations[H01].npcs",
+                  "areas/SOT004.json#locations[H01].plotHooks",
+                  "areas/SOT004.json#locations[H03].plotHooks",
+                  "areas/TTW003.json#locations[H03].plotHooks",
+                  "module_context.json#npcs.surviving_druids",
+                  "module_plot.json#plotPoints[PP003].description",
+                  "module_plot.json#plotPoints[PP012].description"
+                ],
+                "authored_mentions_count": 7,
+                "authored_mention_sources": [
+                  "areas/SOT004.json#locations[H01].dcChecks",
+                  "areas/SOT004.json#locations[H01].dmInstructions",
+                  "areas/SOT004.json#locations[H01].plotHooks",
+                  "areas/SOT004.json#locations[H03].plotHooks",
+                  "areas/TTW003.json#locations[H03].plotHooks",
+                  "module_plot.json#plotPoints[PP003].description",
+                  "module_plot.json#plotPoints[PP012].description"
+                ]
+              },
+              "Thornkin Rella": {
+                "name_slug": "thornkin rella",
+                "visible_location_ids": [
+                  "H02"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "BO002",
+                    "source": "module_plot.json#plotPoints[PP002].description",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/GV001.json#locations[H02].dcChecks",
+                  "areas/GV001.json#locations[H02].dmInstructions",
+                  "areas/GV001.json#locations[H02].npcs",
+                  "areas/GV001.json#locations[H02].plotHooks",
+                  "module_context.json#npcs.thornkin_rella",
+                  "module_plot.json#plotPoints[PP002].description"
+                ],
+                "authored_mentions_count": 4,
+                "authored_mention_sources": [
+                  "areas/GV001.json#locations[H02].dcChecks",
+                  "areas/GV001.json#locations[H02].dmInstructions",
+                  "areas/GV001.json#locations[H02].plotHooks",
+                  "module_plot.json#plotPoints[PP002].description"
+                ]
+              },
+              "Thornwraith Myrlaen": {
+                "name_slug": "thornwraith myrlaen",
+                "visible_location_ids": [
+                  "H01"
+                ],
+                "reveal_bindings": [],
+                "sources": [
+                  "areas/TTW003.json#locations[H01].dcChecks",
+                  "areas/TTW003.json#locations[H01].dmInstructions",
+                  "areas/TTW003.json#locations[H01].npcs",
+                  "areas/TTW003.json#locations[H01].plotHooks",
+                  "module_context.json#npcs.thornwraith_myrlaen"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/TTW003.json#locations[H01].dcChecks",
+                  "areas/TTW003.json#locations[H01].dmInstructions",
+                  "areas/TTW003.json#locations[H01].plotHooks"
+                ]
+              },
+              "Whisperroot": {
+                "name_slug": "whisperroot",
+                "visible_location_ids": [
+                  "H02"
+                ],
+                "reveal_bindings": [],
+                "sources": [
+                  "areas/BO002.json#locations[H02].dcChecks",
+                  "areas/BO002.json#locations[H02].dmInstructions",
+                  "areas/BO002.json#locations[H02].npcs",
+                  "areas/BO002.json#locations[H02].plotHooks",
+                  "module_context.json#npcs.whisperroot"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/BO002.json#locations[H02].dcChecks",
+                  "areas/BO002.json#locations[H02].dmInstructions",
+                  "areas/BO002.json#locations[H02].plotHooks"
+                ]
+              }
+            },
+            "diagnostics": {
+              "duplicate_location_aliases": [],
+              "ambiguous_destination_phrases": [],
+              "unresolved_destination_phrases": [],
+              "normalized_shortform_destination_phrases": [],
+              "missing_npc_authority": []
+            },
+            "summary": {
+              "location_count": 12,
+              "location_alias_count": 15,
+              "destination_phrase_count": 15,
+              "npc_count": 11,
+              "ambiguous_destination_count": 0,
+              "normalized_shortform_destination_count": 0,
+              "missing_npc_authority_count": 0
+            }
+          }
+        },
+        "changed": true,
+        "added_refs": [
+          {
+            "target_module": "The_Pumpkin_Kings_Curse",
+            "entity_id": "pumpkin_king",
+            "relation": "antagonist",
+            "confidence": "medium",
+            "notes": "Pumpkin King and harvest pact are shared continuity anchors."
+          }
+        ],
+        "existing_count": 2,
+        "final_count": 3
+      },
+      "continuity_contract": {
+        "status": "success",
+        "version": "v1",
+        "required_keys_present": [
+          "continuity_version",
+          "entry_state_variants",
+          "cross_module_refs",
+          "standalone_fallback"
+        ],
+        "missing_required_keys": [],
+        "warnings": [],
+        "errors": [],
+        "normalized_refs_count": 3,
+        "alias_resolution": {
+          "resolved": 0,
+          "ambiguous": 0,
+          "unresolved": 0
+        }
+      },
+      "context_path": "modules/The_Garden_of_Demons/module_context.json"
+    },
+    "semantic_authority": {
+      "status": "success",
+      "semantic_authority": {
+        "version": "v1",
+        "module_slug": "The_Garden_of_Demons",
+        "location_aliases": {
+          "blighted heart grove": {
+            "status": "resolved",
+            "location_id": "H01",
+            "location_name": "Blighted Heart Grove",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/TTW003.json#locations[H01].aliases",
+              "areas/TTW003.json#locations[H01].name"
+            ]
+          },
+          "fogroot barrow stalls": {
+            "status": "resolved",
+            "location_id": "H03",
+            "location_name": "Wraithwatch Hill",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/GV001.json#locations[H03].aliases",
+              "areas/GV001.json#locations[H03].name"
+            ]
+          },
+          "fork of withered paths": {
+            "status": "resolved",
+            "location_id": "H01",
+            "location_name": "Blighted Heart Grove",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/SOT004.json#locations[H01].aliases",
+              "areas/SOT004.json#locations[H01].name"
+            ]
+          },
+          "forked phantom crossing": {
+            "status": "resolved",
+            "location_id": "H02",
+            "location_name": "Forked Phantom Crossing",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/TTW003.json#locations[H02].aliases",
+              "areas/TTW003.json#locations[H02].name"
+            ]
+          },
+          "grove of sorrowed roots": {
+            "status": "resolved",
+            "location_id": "H03",
+            "location_name": "Wraithwatch Hill",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/SOT004.json#locations[H03].aliases",
+              "areas/SOT004.json#locations[H03].name"
+            ]
+          },
+          "h01": {
+            "status": "resolved",
+            "location_id": "H01",
+            "location_name": "Blighted Heart Grove",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/BO002.json#locations[H01].aliases",
+              "areas/GV001.json#locations[H01].aliases",
+              "areas/SOT004.json#locations[H01].aliases",
+              "areas/TTW003.json#locations[H01].aliases"
+            ]
+          },
+          "h02": {
+            "status": "resolved",
+            "location_id": "H02",
+            "location_name": "Forked Phantom Crossing",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/BO002.json#locations[H02].aliases",
+              "areas/GV001.json#locations[H02].aliases",
+              "areas/SOT004.json#locations[H02].aliases",
+              "areas/TTW003.json#locations[H02].aliases"
+            ]
+          },
+          "h03": {
+            "status": "resolved",
+            "location_id": "H03",
+            "location_name": "Wraithwatch Hill",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/BO002.json#locations[H03].aliases",
+              "areas/GV001.json#locations[H03].aliases",
+              "areas/SOT004.json#locations[H03].aliases",
+              "areas/TTW003.json#locations[H03].aliases"
+            ]
+          },
+          "petrified warden stone": {
+            "status": "resolved",
+            "location_id": "H02",
+            "location_name": "Forked Phantom Crossing",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/BO002.json#locations[H02].aliases",
+              "areas/BO002.json#locations[H02].name"
+            ]
+          },
+          "shadowsplit crossing": {
+            "status": "resolved",
+            "location_id": "H03",
+            "location_name": "Wraithwatch Hill",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/BO002.json#locations[H03].aliases",
+              "areas/BO002.json#locations[H03].name"
+            ]
+          },
+          "twilight briar cottage": {
+            "status": "resolved",
+            "location_id": "H01",
+            "location_name": "Blighted Heart Grove",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/GV001.json#locations[H01].aliases",
+              "areas/GV001.json#locations[H01].name"
+            ]
+          },
+          "twilight briar crossing": {
+            "status": "resolved",
+            "location_id": "H02",
+            "location_name": "Forked Phantom Crossing",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/SOT004.json#locations[H02].aliases",
+              "areas/SOT004.json#locations[H02].name"
+            ]
+          },
+          "withered heart glade": {
+            "status": "resolved",
+            "location_id": "H01",
+            "location_name": "Blighted Heart Grove",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/BO002.json#locations[H01].aliases",
+              "areas/BO002.json#locations[H01].name"
+            ]
+          },
+          "withered lantern square": {
+            "status": "resolved",
+            "location_id": "H02",
+            "location_name": "Forked Phantom Crossing",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/GV001.json#locations[H02].aliases",
+              "areas/GV001.json#locations[H02].name"
+            ]
+          },
+          "wraithwatch hill": {
+            "status": "resolved",
+            "location_id": "H03",
+            "location_name": "Wraithwatch Hill",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/TTW003.json#locations[H03].aliases",
+              "areas/TTW003.json#locations[H03].name"
+            ]
+          }
+        },
+        "destination_phrases": {
+          "blighted heart grove": {
+            "status": "resolved",
+            "location_id": "H01",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/TTW003.json#locations[H01].aliases",
+              "areas/TTW003.json#locations[H01].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "fogroot barrow stalls": {
+            "status": "resolved",
+            "location_id": "H03",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/GV001.json#locations[H03].aliases",
+              "areas/GV001.json#locations[H03].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "fork of withered paths": {
+            "status": "resolved",
+            "location_id": "H01",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/SOT004.json#locations[H01].aliases",
+              "areas/SOT004.json#locations[H01].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "forked phantom crossing": {
+            "status": "resolved",
+            "location_id": "H02",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/TTW003.json#locations[H02].aliases",
+              "areas/TTW003.json#locations[H02].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "grove of sorrowed roots": {
+            "status": "resolved",
+            "location_id": "H03",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/SOT004.json#locations[H03].aliases",
+              "areas/SOT004.json#locations[H03].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "h01": {
+            "status": "resolved",
+            "location_id": "H01",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/BO002.json#locations[H01].aliases",
+              "areas/GV001.json#locations[H01].aliases",
+              "areas/SOT004.json#locations[H01].aliases",
+              "areas/TTW003.json#locations[H01].aliases"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "h02": {
+            "status": "resolved",
+            "location_id": "H02",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/BO002.json#locations[H02].aliases",
+              "areas/GV001.json#locations[H02].aliases",
+              "areas/SOT004.json#locations[H02].aliases",
+              "areas/TTW003.json#locations[H02].aliases"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "h03": {
+            "status": "resolved",
+            "location_id": "H03",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/BO002.json#locations[H03].aliases",
+              "areas/GV001.json#locations[H03].aliases",
+              "areas/SOT004.json#locations[H03].aliases",
+              "areas/TTW003.json#locations[H03].aliases"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "petrified warden stone": {
+            "status": "resolved",
+            "location_id": "H02",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/BO002.json#locations[H02].aliases",
+              "areas/BO002.json#locations[H02].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "shadowsplit crossing": {
+            "status": "resolved",
+            "location_id": "H03",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/BO002.json#locations[H03].aliases",
+              "areas/BO002.json#locations[H03].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "twilight briar cottage": {
+            "status": "resolved",
+            "location_id": "H01",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/GV001.json#locations[H01].aliases",
+              "areas/GV001.json#locations[H01].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "twilight briar crossing": {
+            "status": "resolved",
+            "location_id": "H02",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/SOT004.json#locations[H02].aliases",
+              "areas/SOT004.json#locations[H02].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "withered heart glade": {
+            "status": "resolved",
+            "location_id": "H01",
+            "candidate_location_ids": [
+              "H01"
+            ],
+            "sources": [
+              "areas/BO002.json#locations[H01].aliases",
+              "areas/BO002.json#locations[H01].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "withered lantern square": {
+            "status": "resolved",
+            "location_id": "H02",
+            "candidate_location_ids": [
+              "H02"
+            ],
+            "sources": [
+              "areas/GV001.json#locations[H02].aliases",
+              "areas/GV001.json#locations[H02].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "wraithwatch hill": {
+            "status": "resolved",
+            "location_id": "H03",
+            "candidate_location_ids": [
+              "H03"
+            ],
+            "sources": [
+              "areas/TTW003.json#locations[H03].aliases",
+              "areas/TTW003.json#locations[H03].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          }
+        },
+        "npc_scene_authority": {
+          "Elder Maelis": {
+            "name_slug": "elder maelis",
+            "visible_location_ids": [
+              "H01"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "GV001",
+                "source": "module_plot.json#plotPoints[PP001].description",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/GV001.json#locations[H01].dcChecks",
+              "areas/GV001.json#locations[H01].dmInstructions",
+              "areas/GV001.json#locations[H01].npcs",
+              "areas/GV001.json#locations[H01].plotHooks",
+              "module_context.json#npcs.elder_maelis",
+              "module_plot.json#plotPoints[PP001].description"
+            ],
+            "authored_mentions_count": 4,
+            "authored_mention_sources": [
+              "areas/GV001.json#locations[H01].dcChecks",
+              "areas/GV001.json#locations[H01].dmInstructions",
+              "areas/GV001.json#locations[H01].plotHooks",
+              "module_plot.json#plotPoints[PP001].description"
+            ]
+          },
+          "Gravenbark Guardians": {
+            "name_slug": "gravenbark guardians",
+            "visible_location_ids": [
+              "H02"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "BO002",
+                "source": "module_plot.json#plotPoints[PP004].description",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "H03",
+                "source": "areas/BO002.json#locations[H03].description",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "TTW003",
+                "source": "module_plot.json#plotPoints[PP006].description",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "TTW003",
+                "source": "module_plot.json#plotPoints[PP008].description",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/BO002.json#locations[H03].description",
+              "areas/TTW003.json#locations[H02].dcChecks",
+              "areas/TTW003.json#locations[H02].dmInstructions",
+              "areas/TTW003.json#locations[H02].npcs",
+              "areas/TTW003.json#locations[H02].plotHooks",
+              "module_context.json#npcs.gravenbark_guardians",
+              "module_plot.json#plotPoints[PP004].description",
+              "module_plot.json#plotPoints[PP006].description",
+              "module_plot.json#plotPoints[PP008].description"
+            ],
+            "authored_mentions_count": 7,
+            "authored_mention_sources": [
+              "areas/BO002.json#locations[H03].description",
+              "areas/TTW003.json#locations[H02].dcChecks",
+              "areas/TTW003.json#locations[H02].dmInstructions",
+              "areas/TTW003.json#locations[H02].plotHooks",
+              "module_plot.json#plotPoints[PP004].description",
+              "module_plot.json#plotPoints[PP006].description",
+              "module_plot.json#plotPoints[PP008].description"
+            ]
+          },
+          "Lost Ranger Serik": {
+            "name_slug": "lost ranger serik",
+            "visible_location_ids": [
+              "H03"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "H02",
+                "source": "areas/BO002.json#locations[H02].plotHooks",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/BO002.json#locations[H02].plotHooks",
+              "areas/BO002.json#locations[H03].dmInstructions",
+              "areas/BO002.json#locations[H03].npcs",
+              "areas/BO002.json#locations[H03].plotHooks",
+              "module_context.json#npcs.lost_ranger_serik"
+            ],
+            "authored_mentions_count": 3,
+            "authored_mention_sources": [
+              "areas/BO002.json#locations[H02].plotHooks",
+              "areas/BO002.json#locations[H03].dmInstructions",
+              "areas/BO002.json#locations[H03].plotHooks"
+            ]
+          },
+          "Manifestation of the Forest’s Spirit": {
+            "name_slug": "manifestation of the forest s spirit",
+            "visible_location_ids": [
+              "H03"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "BO002",
+                "source": "module_plot.json#plotPoints[PP004].description",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "H01",
+                "source": "areas/TTW003.json#locations[H01].dmInstructions",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "H01",
+                "source": "areas/TTW003.json#locations[H01].plotHooks",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "H02",
+                "source": "areas/SOT004.json#locations[H02].plotHooks",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "TTW003",
+                "source": "module_plot.json#plotPoints[PP009].description",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/SOT004.json#locations[H02].plotHooks",
+              "areas/SOT004.json#locations[H03].dcChecks",
+              "areas/SOT004.json#locations[H03].dmInstructions",
+              "areas/SOT004.json#locations[H03].npcs",
+              "areas/SOT004.json#locations[H03].plotHooks",
+              "areas/TTW003.json#locations[H01].dmInstructions",
+              "areas/TTW003.json#locations[H01].plotHooks",
+              "module_context.json#npcs.manifestation_of_the_forest_s_spirit",
+              "module_plot.json#plotPoints[PP004].description",
+              "module_plot.json#plotPoints[PP009].description"
+            ],
+            "authored_mentions_count": 8,
+            "authored_mention_sources": [
+              "areas/SOT004.json#locations[H02].plotHooks",
+              "areas/SOT004.json#locations[H03].dcChecks",
+              "areas/SOT004.json#locations[H03].dmInstructions",
+              "areas/SOT004.json#locations[H03].plotHooks",
+              "areas/TTW003.json#locations[H01].dmInstructions",
+              "areas/TTW003.json#locations[H01].plotHooks",
+              "module_plot.json#plotPoints[PP004].description",
+              "module_plot.json#plotPoints[PP009].description"
+            ]
+          },
+          "Nimblethorn": {
+            "name_slug": "nimblethorn",
+            "visible_location_ids": [
+              "H01"
+            ],
+            "reveal_bindings": [],
+            "sources": [
+              "areas/BO002.json#locations[H01].accessibility",
+              "areas/BO002.json#locations[H01].dmInstructions",
+              "areas/BO002.json#locations[H01].npcs",
+              "areas/BO002.json#locations[H01].plotHooks",
+              "module_context.json#npcs.nimblethorn"
+            ],
+            "authored_mentions_count": 3,
+            "authored_mention_sources": [
+              "areas/BO002.json#locations[H01].accessibility",
+              "areas/BO002.json#locations[H01].dmInstructions",
+              "areas/BO002.json#locations[H01].plotHooks"
+            ]
+          },
+          "Shade of Alenwen": {
+            "name_slug": "shade of alenwen",
+            "visible_location_ids": [
+              "H03"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "TTW003",
+                "source": "module_plot.json#plotPoints[PP006].description",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "TTW003",
+                "source": "module_plot.json#plotPoints[PP007].description",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/TTW003.json#locations[H03].dcChecks",
+              "areas/TTW003.json#locations[H03].dmInstructions",
+              "areas/TTW003.json#locations[H03].npcs",
+              "areas/TTW003.json#locations[H03].plotHooks",
+              "module_context.json#npcs.shade_of_alenwen",
+              "module_plot.json#plotPoints[PP006].description",
+              "module_plot.json#plotPoints[PP007].description"
+            ],
+            "authored_mentions_count": 5,
+            "authored_mention_sources": [
+              "areas/TTW003.json#locations[H03].dcChecks",
+              "areas/TTW003.json#locations[H03].dmInstructions",
+              "areas/TTW003.json#locations[H03].plotHooks",
+              "module_plot.json#plotPoints[PP006].description",
+              "module_plot.json#plotPoints[PP007].description"
+            ]
+          },
+          "Spectral Child": {
+            "name_slug": "spectral child",
+            "visible_location_ids": [
+              "H03"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "H02",
+                "source": "areas/GV001.json#locations[H02].plotHooks",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/GV001.json#locations[H02].plotHooks",
+              "areas/GV001.json#locations[H03].dcChecks",
+              "areas/GV001.json#locations[H03].dmInstructions",
+              "areas/GV001.json#locations[H03].npcs",
+              "areas/GV001.json#locations[H03].plotHooks",
+              "module_context.json#npcs.spectral_child"
+            ],
+            "authored_mentions_count": 4,
+            "authored_mention_sources": [
+              "areas/GV001.json#locations[H02].plotHooks",
+              "areas/GV001.json#locations[H03].dcChecks",
+              "areas/GV001.json#locations[H03].dmInstructions",
+              "areas/GV001.json#locations[H03].plotHooks"
+            ]
+          },
+          "Surviving Druids": {
+            "name_slug": "surviving druids",
+            "visible_location_ids": [
+              "H01"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "BO002",
+                "source": "module_plot.json#plotPoints[PP003].description",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "H03",
+                "source": "areas/SOT004.json#locations[H03].plotHooks",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "H03",
+                "source": "areas/TTW003.json#locations[H03].plotHooks",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "SOT004",
+                "source": "module_plot.json#plotPoints[PP012].description",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/SOT004.json#locations[H01].dcChecks",
+              "areas/SOT004.json#locations[H01].dmInstructions",
+              "areas/SOT004.json#locations[H01].npcs",
+              "areas/SOT004.json#locations[H01].plotHooks",
+              "areas/SOT004.json#locations[H03].plotHooks",
+              "areas/TTW003.json#locations[H03].plotHooks",
+              "module_context.json#npcs.surviving_druids",
+              "module_plot.json#plotPoints[PP003].description",
+              "module_plot.json#plotPoints[PP012].description"
+            ],
+            "authored_mentions_count": 7,
+            "authored_mention_sources": [
+              "areas/SOT004.json#locations[H01].dcChecks",
+              "areas/SOT004.json#locations[H01].dmInstructions",
+              "areas/SOT004.json#locations[H01].plotHooks",
+              "areas/SOT004.json#locations[H03].plotHooks",
+              "areas/TTW003.json#locations[H03].plotHooks",
+              "module_plot.json#plotPoints[PP003].description",
+              "module_plot.json#plotPoints[PP012].description"
+            ]
+          },
+          "Thornkin Rella": {
+            "name_slug": "thornkin rella",
+            "visible_location_ids": [
+              "H02"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "BO002",
+                "source": "module_plot.json#plotPoints[PP002].description",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/GV001.json#locations[H02].dcChecks",
+              "areas/GV001.json#locations[H02].dmInstructions",
+              "areas/GV001.json#locations[H02].npcs",
+              "areas/GV001.json#locations[H02].plotHooks",
+              "module_context.json#npcs.thornkin_rella",
+              "module_plot.json#plotPoints[PP002].description"
+            ],
+            "authored_mentions_count": 4,
+            "authored_mention_sources": [
+              "areas/GV001.json#locations[H02].dcChecks",
+              "areas/GV001.json#locations[H02].dmInstructions",
+              "areas/GV001.json#locations[H02].plotHooks",
+              "module_plot.json#plotPoints[PP002].description"
+            ]
+          },
+          "Thornwraith Myrlaen": {
+            "name_slug": "thornwraith myrlaen",
+            "visible_location_ids": [
+              "H01"
+            ],
+            "reveal_bindings": [],
+            "sources": [
+              "areas/TTW003.json#locations[H01].dcChecks",
+              "areas/TTW003.json#locations[H01].dmInstructions",
+              "areas/TTW003.json#locations[H01].npcs",
+              "areas/TTW003.json#locations[H01].plotHooks",
+              "module_context.json#npcs.thornwraith_myrlaen"
+            ],
+            "authored_mentions_count": 3,
+            "authored_mention_sources": [
+              "areas/TTW003.json#locations[H01].dcChecks",
+              "areas/TTW003.json#locations[H01].dmInstructions",
+              "areas/TTW003.json#locations[H01].plotHooks"
+            ]
+          },
+          "Whisperroot": {
+            "name_slug": "whisperroot",
+            "visible_location_ids": [
+              "H02"
+            ],
+            "reveal_bindings": [],
+            "sources": [
+              "areas/BO002.json#locations[H02].dcChecks",
+              "areas/BO002.json#locations[H02].dmInstructions",
+              "areas/BO002.json#locations[H02].npcs",
+              "areas/BO002.json#locations[H02].plotHooks",
+              "module_context.json#npcs.whisperroot"
+            ],
+            "authored_mentions_count": 3,
+            "authored_mention_sources": [
+              "areas/BO002.json#locations[H02].dcChecks",
+              "areas/BO002.json#locations[H02].dmInstructions",
+              "areas/BO002.json#locations[H02].plotHooks"
+            ]
+          }
+        },
+        "diagnostics": {
+          "duplicate_location_aliases": [],
+          "ambiguous_destination_phrases": [],
+          "unresolved_destination_phrases": [],
+          "normalized_shortform_destination_phrases": [],
+          "missing_npc_authority": []
+        },
+        "summary": {
+          "location_count": 12,
+          "location_alias_count": 15,
+          "destination_phrase_count": 15,
+          "npc_count": 11,
+          "ambiguous_destination_count": 0,
+          "normalized_shortform_destination_count": 0,
+          "missing_npc_authority_count": 0
+        }
+      },
+      "warnings": [],
+      "errors": []
+    },
+    "registry": {
+      "status": "success",
+      "verify_before": {
+        "present": true,
+        "module_key": "The_Garden_of_Demons",
+        "folder_exists": true,
+        "areas_count": 4,
+        "area_ids": [
+          "GV001",
+          "TTW003",
+          "SOT004",
+          "BO002"
+        ],
+        "has_encounters": false,
+        "added_date": "2026-04-25T12:36:26.511631"
+      },
+      "integration_attempted": false
+    },
+    "monster_materialization": {
+      "status": "success",
+      "reason": null,
+      "returncode": 0,
+      "parsed_output": {
+        "status": "success",
+        "created_count": 0,
+        "skipped_existing_count": 10,
+        "missing_in_bestiary_count": 0,
+        "missing_names": [],
+        "path_conflicts_detected": 0,
+        "path_conflicts_repaired": 0,
+        "conflict_paths": [],
+        "hydration_modes": {
+          "existing": 10,
+          "reuse": 0,
+          "bestiary": 0,
+          "generated": 0
+        },
+        "blocker_classes": {},
+        "blocked_count": 0,
+        "monster_results": [
+          {
+            "requested_name": "Blightfen Gloomhounds",
+            "requested_slug": "blightfen_gloomhounds",
+            "canonical_slug": "blightfen_gloomhounds",
+            "canonical_name": "Blightfen Gloomhounds",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Blightfen Mirelings",
+            "requested_slug": "blightfen_mirelings",
+            "canonical_slug": "blightfen_mirelings",
+            "canonical_name": "Blightfen Mirelings",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Corrupted Dryads",
+            "requested_slug": "corrupted_dryads",
+            "canonical_slug": "corrupted_dryads",
+            "canonical_name": "Corrupted Dryads",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Rot Husk Wolves",
+            "requested_slug": "rot_husk_wolves",
+            "canonical_slug": "rot_husk_wolves",
+            "canonical_name": "Rot Husk Wolves",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Rotblight Rats",
+            "requested_slug": "rotblight_rats",
+            "canonical_slug": "rotblight_rats",
+            "canonical_name": "Rotblight Rats",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Sorrowroot Wisps",
+            "requested_slug": "sorrowroot_wisps",
+            "canonical_slug": "sorrowroot_wisps",
+            "canonical_name": "Sorrowroot Wisps",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Spectral Wayfarers",
+            "requested_slug": "spectral_wayfarers",
+            "canonical_slug": "spectral_wayfarers",
+            "canonical_name": "Spectral Wayfarers",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Thorned Husk Stalkers",
+            "requested_slug": "thorned_husk_stalkers",
+            "canonical_slug": "thorned_husk_stalkers",
+            "canonical_name": "Thorned Husk Stalkers",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Venomthorn Chimera",
+            "requested_slug": "venomthorn_chimera",
+            "canonical_slug": "venomthorn_chimera",
+            "canonical_name": "Venomthorn Chimera",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Wailing Spectres",
+            "requested_slug": "wailing_spectres",
+            "canonical_slug": "wailing_spectres",
+            "canonical_name": "Wailing Spectres",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          }
+        ],
+        "candidate_sources": {
+          "seed_count": 0,
+          "authored_count": 10,
+          "seed_missing_fallback_used": true
+        },
+        "module_path": "modules/The_Garden_of_Demons",
+        "error": null
+      }
+    }
+  },
+  "publication_parity_note": "Post-build parity now reports both structural readiness and semantic publishability.",
+  "semantic_authority_note": "Semantic authority and semantic probes now feed a standalone publishable gate distinct from readiness."
+}

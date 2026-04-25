@@ -1,0 +1,79 @@
+{
+  "name": "Blightfen Gloomhound",
+  "size": "Medium",
+  "type": "Beast",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 18,
+  "maxHitPoints": 18,
+  "speed": 40,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 15,
+    "constitution": 12,
+    "intelligence": 3,
+    "wisdom": 12,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {
+    "Perception": 4,
+    "Stealth": 4
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "poison"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "understands Sylvan but can't speak",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Pack Tactics",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Swamp Camouflage",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Blighted Hide",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    },
+    {
+      "name": "Blighted Breath (Recharge 5-6)",
+      "attackBonus": 0,
+      "damageDice": "2d6",
+      "damageBonus": 0,
+      "damageType": "poison"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Lurking within the shifting mists of Shadowsplit Crossing, the Blightfen Gloomhound is a spectral predator born of the Blightfen Wilds' corrupted marshlands. This creature manifests as a large, lupine silhouette, its sinewy frame cloaked in slick, glistening black fur that seems to absorb the faint phosphorescent glow of the fungal rings nearby. Jagged patches of mottled bark and rotting reeds grow from its shoulders and spine, blending it seamlessly into the fetid marsh environment. Its eyes burn with a cold, pale blue light, piercing the thick fog with an unnatural intelligence and hunger. The Gloomhound moves with eerie grace, its padded paws leaving no trace in the soaked earth, while a faint wet sloshing sound follows in its wake. When it snarls, a deep, hollow echo ripples through the mist, chilling the blood of unwary travelers. These predators hunt in silence, stalking the causeway and the broken statues of Shadowsplit Crossing, striking swiftly and retreating into the shadows before their victims can call for aid. The oppressive atmosphere around them is thick with damp decay, and their presence seems to draw the mists closer, swallowing light and hope alike. Encountering a Blightfen Gloomhound is to face the marsh's relentless shadow, a reminder of the Blightfen's creeping corruption and the wild's merciless hunger."
+}

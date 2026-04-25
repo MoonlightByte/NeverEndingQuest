@@ -1,0 +1,73 @@
+{
+  "mapId": "MAP_G_3",
+  "mapName": "Town Map",
+  "totalRooms": 3,
+  "rooms": [
+    {
+      "id": "G01",
+      "type": "temple",
+      "connections": [
+        "G02"
+      ],
+      "coordinates": "X10Y10",
+      "directions": {
+        "east": "G02"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "low",
+      "name": "Sanctum of Fractured Truths"
+    },
+    {
+      "id": "G02",
+      "type": "market",
+      "connections": [
+        "G01",
+        "G03"
+      ],
+      "coordinates": "X11Y10",
+      "directions": {
+        "west": "G01",
+        "east": "G03"
+      },
+      "tags": [],
+      "purpose": "unknown",
+      "landmark": false,
+      "dangerLevel": "low",
+      "name": "Miragebound Exchange"
+    },
+    {
+      "id": "G03",
+      "type": "tavern",
+      "connections": [
+        "G02"
+      ],
+      "coordinates": "X12Y10",
+      "directions": {
+        "west": "G02"
+      },
+      "tags": [
+        "rest",
+        "dead_end"
+      ],
+      "purpose": "safe_haven",
+      "landmark": true,
+      "dangerLevel": "low",
+      "name": "The Doppelglass Den"
+    }
+  ],
+  "layout": [
+    [
+      "G01",
+      "G02",
+      "G03"
+    ]
+  ],
+  "startRoom": "G02",
+  "version": "1.1",
+  "notes": "Extended schema with AI-friendly navigation fields",
+  "spatialContractVersion": 1
+}

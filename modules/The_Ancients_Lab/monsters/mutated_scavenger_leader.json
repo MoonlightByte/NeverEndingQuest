@@ -1,0 +1,82 @@
+{
+  "name": "Mutated Scavenger Leader",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Chaotic Neutral",
+  "armorClass": 13,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 30,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 14,
+    "constitution": 14,
+    "intelligence": 10,
+    "wisdom": 11,
+    "charisma": 12
+  },
+  "savingThrows": [
+    "DEX",
+    "CON"
+  ],
+  "skills": {
+    "Perception": 2,
+    "Stealth": 4,
+    "Survival": 2,
+    "Intimidation": 3
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "poison"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "Common, Undercommon",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Mutated Resilience",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Toxic Blood (1/Turn)",
+      "attackBonus": 0,
+      "damageDice": "1d6",
+      "damageBonus": 0,
+      "damageType": "poison"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Mutated Claw",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Jury-Rigged Blade",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the fractured shadows of the Aberrant Wastes, the Mutated Scavenger Leader is a grotesque testament to the warped experiments conducted in the depths of the Ancients' Lab. This towering monstrosity stands hunched, its sinewy frame a twisted amalgam of flesh and scavenged metal. Patches of mottled, pale skin ripple unnaturally over exposed muscle fibers, while jagged shards of corroded iron and bone pierce its back like crude armor. Its elongated limbs end in gnarled claws, each digit stained with the grime of countless raids through the wasteland's toxic debris. The creature's visage is a horrific mask of mutation: a shattered dwarven skull fused with aberrant growths--multiple eyeless sockets ooze a faint bioluminescent glow, casting eerie light upon its snarling maw filled with broken, jagged teeth. A faint, sickly hum of psychic static radiates from its malformed head, stirring unease in the minds of those nearby. This leader moves with unsettling intelligence and predatory cunning, barking guttural commands to lesser scavengers and stalking the warped sentinel vestibule with a relentless hunger. Around it, the air shimmers faintly with warped reality, as if the very fabric of the Aberrant Core bends to its presence. The foul stench of decay and ozone clings to its form, a chilling herald of the madness festering beneath the surface."
+}

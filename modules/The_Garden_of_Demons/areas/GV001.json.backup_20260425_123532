@@ -1,0 +1,390 @@
+{
+  "areaId": "GV001",
+  "areaName": "The Gloamreach Lowlands",
+  "areaType": "town",
+  "areaDescription": "A patchwork of misty meadows and willow-edged ponds, the Gloamreach Lowlands are dotted with sleepy hamlets where lanterns flicker at dusk and the air is rich with the scent of wet earth and wildflowers. Soft shadows linger beneath the ancient oaks, and the only real danger is losing track of time in the village\u2019s gentle twilight hush.",
+  "dangerLevel": "low",
+  "recommendedLevel": 12,
+  "climate": "temperate",
+  "terrain": "urban streets and buildings",
+  "map": {
+    "mapId": "MAP_H_3",
+    "mapName": "Town Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "H01",
+        "type": "residence",
+        "connections": [
+          "H02"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "H02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "low",
+        "name": "Twilight Briar Cottage"
+      },
+      {
+        "id": "H02",
+        "type": "market",
+        "connections": [
+          "H01",
+          "H03"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "H01",
+          "east": "H03"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "low",
+        "name": "Withered Lantern Square"
+      },
+      {
+        "id": "H03",
+        "type": "market",
+        "connections": [
+          "H02"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {
+          "west": "H02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "low",
+        "name": "Fogroot Barrow Stalls"
+      }
+    ],
+    "layout": [
+      [
+        "H01",
+        "H02",
+        "H03"
+      ]
+    ],
+    "startRoom": "H02",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "H01",
+      "name": "Twilight Briar Cottage",
+      "type": "residence",
+      "description": "This quaint, ivy-draped cottage is nestled at the heart of Gloamreach Village. Mossy stone walls rise beneath a sagging thatch roof, wreathed by wild rose and lingering mists. The faint glow of lanternlight spills through the leaded glass at dusk, and wind chimes whisper from the eaves. Inside, the air is perfumed with herbs hung to dry and the crackle of a gentle hearth.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "H02"
+      ],
+      "aliases": [
+        "Twilight Briar Cottage",
+        "H01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_residence:Twilight Briar Cottage",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ],
+      "areaConnectivity": [
+        "The Blightfen Wilds"
+      ],
+      "areaConnectivityId": [
+        "H03"
+      ],
+      "npcs": [
+        {
+          "name": "Elder Maelis",
+          "description": "The kindly matriarch of Gloamreach Village, Elder Maelis is a silver-haired elven woman with gentle eyes and centuries of wisdom. She welcomes travelers with tea, tales, and measured advice, but a deep sadness shadows her when the conversation turns to the curse on the land.",
+          "attitude": "Warm, though quietly burdened by the area\u2019s troubles"
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Pouch of rare Gloamroot tea (acts as a mild healing herb, 1d4 HP once per day)",
+        "Handwritten bestiary notes (granting advantage on Nature checks about local flora/fauna)",
+        "Amber-hued lantern (continual flame spell)"
+      ],
+      "plotHooks": [
+        "Elder Maelis speaks of strange lights drifting near the old ponds\u2014she fears the curse is spreading.",
+        "A locked journal hints at a hidden history with the Wraithwood curse and a link to an ancient druidic order."
+      ],
+      "dmInstructions": "This is the social and informational hub for Gloamreach Village. Elder Maelis is crucial for background exposition and quest hooks. Any combat here is likely accidental (e.g., a panicked animal, not a true threat). Adjust clues based on the pace of the party\u2019s progress. Maelis may offer minor healing or lore if players show respect.",
+      "doors": [
+        {
+          "name": "Front Door",
+          "description": "A sturdy oak door with a brass knocker shaped like a willow branch.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 14,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Perception DC 15: Notice the subtle runes worked into the window frames, warding against darker fey.",
+        "Insight DC 16: Sense that Elder Maelis is withholding something about the village\u2019s past."
+      ],
+      "accessibility": "Easy to access for any visitor; path is well-trodden and lit.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "The cottage displays weathered beams and moss, but is lovingly maintained. Each corner has a charm or talisman meant to ward off ill luck."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "Sloping, mismatched rooflines and gently bowed windows give the cottage a fairytale appearance."
+        },
+        {
+          "name": "Herbal Hearth",
+          "description": "Bundles of dried herbs and flowers hang from the ceiling, filling the air with soothing scents."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "Serves as a safe haven and a source of lore, with Elder Maelis guiding the party\u2019s first steps into the mysteries of the Gloamreach Lowlands."
+    },
+    {
+      "locationId": "H02",
+      "name": "Withered Lantern Square",
+      "type": "market",
+      "description": "Lanterns\u2014some flickering, some dark\u2014hang from crooked posts around this open market square. Stalls of weathered wood and faded canvas offer local crafts, foraged herbs, smoked fish, and wildflower honey. A shallow stone well in the center bubbles quietly, and each dusk the market bustles with gossip and bartering.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "H01",
+        "H03"
+      ],
+      "aliases": [
+        "Withered Lantern Square",
+        "H02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_market:Withered Lantern Square",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Thornkin Rella",
+          "description": "A quick-witted, thorn-fingered half-fey merchant, Rella always has a mischievous smile and a knack for finding what others cannot. She\u2019s famed for her rare reagents and her odd riddles.",
+          "attitude": "Cheerful, cryptic, always enjoys a good bargain"
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Bundle of dusk lotus (advantage on saving throws vs. sleep/poison for 1 hour)",
+        "Small fey-carved whistle (casts minor illusion once per day)",
+        "Satchel of moonstone beads (50 gp value, sometimes used in local rituals)"
+      ],
+      "plotHooks": [
+        "Thornkin Rella hints of a traveling spectral child seen near the western pond, causing superstitions among the villagers.",
+        "A rumor spreads that someone has seen a 'living shadow' sneaking goods from the stalls at night."
+      ],
+      "dmInstructions": "The square is ideal for introducing roleplay and information gathering. Thornkin Rella can offer unique magical reagents and minor magical items for trade. She is the best source for rumors about recent supernatural events or for tracking down special supplies. If the players try to steal or cause trouble, a crowd may gather and intervene (not a combat encounter but a social challenge).",
+      "doors": [
+        {
+          "name": "Stall Gate",
+          "description": "A simple wooden gate propped open during business hours.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Investigation DC 14: Find signs of recent theft\u2014tiny clawed footprints and a dropped moonstone bead.",
+        "Persuasion DC 16: Convince Rella to share a secret about the nearby Fogroot Barrow."
+      ],
+      "accessibility": "Easily accessible; main crossroads of the village, open to all.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Haggling Spots",
+          "description": "Designated stones and benches for extended bargaining, where merchants and buyers sometimes spend hours."
+        },
+        {
+          "name": "Crowd Areas",
+          "description": "During dusk, the square fills with villagers exchanging tales and goods."
+        },
+        {
+          "name": "Old Well",
+          "description": "A moss-ringed well that serves as a local gathering point and, to the superstitious, a wishing spot."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "A marketplace for supplies and rumors, Withered Lantern Square is the village\u2019s bustling heart and the best place for players to learn about recent events."
+    },
+    {
+      "locationId": "H03",
+      "name": "Fogroot Barrow Stalls",
+      "type": "market",
+      "description": "On the edge of the village, several market stalls cluster around a low barrow mound covered in tangled fogroot. The air here is cool and perpetually misty, with vendors hawking root vegetables, carved charms, and old relics unearthed from the barrow itself.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "H02"
+      ],
+      "aliases": [
+        "Fogroot Barrow Stalls",
+        "H03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_market:Fogroot Barrow Stalls",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ],
+      "areaConnectivity": [
+        "The Thornwound Wilds"
+      ],
+      "areaConnectivityId": [
+        "H01"
+      ],
+      "npcs": [
+        {
+          "name": "Spectral Child",
+          "description": "A ghostly apparition of a small child who wanders the stalls at dusk. The villagers are used to her silence, but sometimes she points at items as if remembering something important.",
+          "attitude": "Silent, distant, enigmatic; not overtly hostile, but unsettling"
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Bundle of fogroot (can be used to brew a mild restorative elixir, advantage on one Constitution save)",
+        "Ancient barrow coin (worth 20 gp to collectors, marked with a faded druidic symbol)",
+        "Spectral locket (glows faintly when near undead, acts as a focus for detect undead rituals)"
+      ],
+      "plotHooks": [
+        "If approached with kindness, the Spectral Child may point out a hidden cache under the barrow or lead the party to clues about the druidic curse.",
+        "A vendor tells the party of a 'whispering willow' at the edge of the barrow that has started shedding blood-red leaves at night."
+      ],
+      "dmInstructions": "Fogroot Barrow Stalls serve as both a minor market and an opportunity for supernatural investigation. The Spectral Child does not attack, but her presence can be unnerving\u2014a good place for the party to experience the subtle unease lurking beneath Gloamreach\u2019s calm. If the child is aided, she may grant a cryptic boon or clue. Social challenges are stressed over combat.",
+      "doors": [
+        {
+          "name": "Stall Shutters",
+          "description": "Hinged wooden shutters that close each stall at night.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 8,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Perception DC 17: Notice a faint silver trail where the Spectral Child walks, leading behind the barrow.",
+        "Arcana DC 15: Sense residual necromantic energy in the locket sold by one of the vendors."
+      ],
+      "accessibility": "Accessible by following a gravel path from the village square; the ground is soft and muddy, but passable.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Display Tables",
+          "description": "Old tables draped in patchwork cloths, bearing relics, charms, and roots."
+        },
+        {
+          "name": "Haggling Spots",
+          "description": "Low benches where vendors and buyers whisper over ancient coins and tokens."
+        },
+        {
+          "name": "Crowd Areas",
+          "description": "A ring of stones where villagers gather to share ghost stories as the mists rise."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "This is where the supernatural edges into the mundane\u2014Fogroot Barrow Stalls offer both commerce and a brush with the uncanny, setting the tone for deeper mysteries ahead."
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 12 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "wandering animal",
+      "description": "A wandering animal appropriate for level 12 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 12 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 12 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "wandering animal",
+      "description": "A wandering animal appropriate for level 12 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 12 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 12 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 12 parties"
+    },
+    {
+      "roll": "81-90",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 12 parties"
+    }
+  ],
+  "areaFeatures": [
+    "merchant quarter",
+    "market square",
+    "guard posts"
+  ],
+  "notes": "NPCs should have daily routines. Political factions create roleplay opportunities.",
+  "spatialContractVersion": 1
+}

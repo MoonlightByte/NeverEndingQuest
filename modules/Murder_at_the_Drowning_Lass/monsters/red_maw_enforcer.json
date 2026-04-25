@@ -1,0 +1,78 @@
+{
+  "name": "Red Maw Enforcer",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Lawful Evil",
+  "armorClass": 14,
+  "hitPoints": 18,
+  "maxHitPoints": 18,
+  "speed": 30,
+  "abilities": {
+    "strength": 15,
+    "dexterity": 12,
+    "constitution": 14,
+    "intelligence": 10,
+    "wisdom": 11,
+    "charisma": 10
+  },
+  "savingThrows": [
+    "Str",
+    "Con"
+  ],
+  "skills": {
+    "Intimidation": 2,
+    "Perception": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "Common, Thieves' Cant",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Pack Tactics",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Menacing Presence",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Heavy Mace",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "Bludgeoning"
+    },
+    {
+      "name": "Bite",
+      "attackBonus": 4,
+      "damageDice": "1d4",
+      "damageBonus": 2,
+      "damageType": "Piercing"
+    },
+    {
+      "name": "Shove",
+      "attackBonus": 4,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "In the shadow-haunted corners of Brindlehearth Vale's darker alleys and the echoing depths of the Resonant Abyss, the Red Maw Enforcer prowls as a dread sentinel of the unseen criminal underworld. Towering and sinewy, this monstrosity stands nearly eight feet tall, its elongated limbs ending in cruel, clawed fingers that scrape the stone with unsettling precision. Its skin is a mottled, ashen gray, stretched taut over rippling muscles, but the feature that arrests the eye is its cavernous maw--a jagged, gaping wound stained a vivid, unnatural crimson that looks almost like raw flesh or fresh blood. Rows of needle-sharp teeth line this maw, capable of rending armor and bone alike. Its eyes burn with a malevolent, ember-like glow, piercing the murk and hinting at a cunning intelligence beneath its bestial exterior.\n\nThe Enforcer's movements are unnervingly silent, blending shadow with silence as it stalks victims, enforcing the cruel will of the Vale's hidden crime lords. It emits a faint, wet rasping sound when it breathes, barely perceptible but enough to draw unease in the still air. Often encountered near the old gallows tree or lurking in the subterranean ruins beneath the village, the Red Maw Enforcer is a grim reminder that beneath the quaint surface of Brindlehearth, darker forces hunger and wait."
+}

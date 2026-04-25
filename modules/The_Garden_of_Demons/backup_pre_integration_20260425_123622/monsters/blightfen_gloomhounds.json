@@ -1,0 +1,78 @@
+{
+  "name": "Blightfen Gloomhound",
+  "size": "Medium",
+  "type": "Beast",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 18,
+  "maxHitPoints": 18,
+  "speed": 40,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 15,
+    "constitution": 12,
+    "intelligence": 3,
+    "wisdom": 12,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {
+    "Perception": 4,
+    "Stealth": 4
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "poison"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "understands Sylvan but can't speak",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Pack Tactics",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Swamp Camouflage",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Blighted Hide",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    },
+    {
+      "name": "Blighted Breath (Recharge 5-6)",
+      "attackBonus": 0,
+      "damageDice": "2d6",
+      "damageBonus": 0,
+      "damageType": "poison"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

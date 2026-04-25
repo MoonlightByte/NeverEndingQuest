@@ -1,0 +1,79 @@
+{
+  "name": "Mirror Servitor",
+  "size": "Medium",
+  "type": "Construct",
+  "alignment": "Neutral",
+  "armorClass": 14,
+  "hitPoints": 18,
+  "maxHitPoints": 18,
+  "speed": 30,
+  "abilities": {
+    "strength": 10,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 6,
+    "wisdom": 10,
+    "charisma": 8
+  },
+  "savingThrows": [],
+  "skills": {
+    "Perception": 2,
+    "Stealth": 5
+  },
+  "damageVulnerabilities": [
+    "bludgeoning"
+  ],
+  "damageResistances": [
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "poison"
+  ],
+  "conditionImmunities": [
+    "poisoned",
+    "charmed",
+    "frightened"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "understands the languages of its creator but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Reflective Form",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Mirror Image (1/Day)",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Mirror Slash",
+      "attackBonus": 5,
+      "damageDice": "1d6",
+      "damageBonus": 3,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Shattered Reflection",
+      "attackBonus": 3,
+      "damageDice": "1d8",
+      "damageBonus": 1,
+      "damageType": "psychic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "The Mirror Servitor is a haunting construct born from the warped psychic energies suffusing the Shrouded Psiumbra. Towering at nearly seven feet tall, its form is a shifting amalgam of perfectly polished obsidian glass and fractured mirror shards, seamlessly fused with faintly glowing veins of violet psionic energy. Its visage is featureless save for a smooth, reflective surface that distorts and fractures like a cracked looking glass, endlessly refracting the surroundings in impossible angles. The servitor's limbs are elongated and jointed with silent, fluid grace, each motion producing a faint tinkling like distant chimes. At its core pulses a radiant, multifaceted crystal that seems to absorb and scatter light, casting flickering illusions across the nearby walls. It moves with deliberate precision, its mirrored surfaces subtly warping the reality around it--hallways seem to lengthen or twist, and shadows ripple unnaturally in its wake. The air around the Mirror Servitor carries a faint metallic scent mixed with the aroma of incense and old secrets. It serves as both guardian and observer within the Mind Flayer's Masquerade Hall, silently recording and reflecting the hidden truths and masked deceptions of those who dare enter. Its presence is unsettling, as if it watches not only with eyes but with a consciousness that peers into fractured souls and secret memories."
+}

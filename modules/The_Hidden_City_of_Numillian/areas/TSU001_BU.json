@@ -1,0 +1,425 @@
+{
+  "areaId": "TSU001",
+  "areaName": "The Netherwoven Warrens",
+  "areaType": "dungeon",
+  "areaDescription": "Beneath the city's battered foundations lies a labyrinth where reality frays\u2014walls shimmer, gravity bends, and impossible echoes stalk every step. Here, the air crackles with arcane residue and the shadows themselves leer with malice, eager to ensnare the unwary.",
+  "dangerLevel": "high",
+  "recommendedLevel": 6,
+  "climate": "controlled - cool and damp",
+  "terrain": "stone corridors and chambers",
+  "map": {
+    "mapId": "MAP_H_3",
+    "mapName": "Dungeon Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "H01",
+        "type": "prison",
+        "connections": [
+          "H02"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "H02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "encounter",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Grasp of the Mindlocked"
+      },
+      {
+        "id": "H02",
+        "type": "entrance",
+        "connections": [
+          "H01",
+          "H03"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "H01",
+          "east": "H03"
+        },
+        "tags": [
+          "hub"
+        ],
+        "purpose": "transition",
+        "landmark": false,
+        "dangerLevel": "high",
+        "name": "Veilsplit Threshold"
+      },
+      {
+        "id": "H03",
+        "type": "shrine",
+        "connections": [
+          "H02"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {
+          "west": "H02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Sanctum of Mirrored Truths"
+      }
+    ],
+    "layout": [
+      [
+        "H01",
+        "H02",
+        "H03"
+      ]
+    ],
+    "startRoom": "H02",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "H01",
+      "name": "Grasp of the Mindlocked",
+      "type": "prison",
+      "description": "Sunken deep within the writhing labyrinth of the Netherwoven Warrens, this shadowed prison is fashioned from warped, overlapping cells whose bars flicker between iron and translucent force. Muffled echoes of distant screams and psychic residue haunt the air. Arcane chains bind the cells, and cryptic scratches on the walls suggest desperate attempts to map reality\u2019s instability or plead for rescue. The cells sometimes swap places or briefly overlap, causing prisoners to vanish or emerge elsewhere within the warren.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "H02"
+      ],
+      "areaConnectivity": [
+        "The Paradoxical Crossroads"
+      ],
+      "areaConnectivityId": [
+        "G03"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Mindlocked Gaoler",
+          "description": "A wraithlike humanoid wreathed in psychic chains, tasked with maintaining the prison and feeding off the memories of its captives. Its touch clouds the mind and can inflict magical confusion.",
+          "stats": "Use Wraith or Specter as a base with Mind Blast (DC 15, 30 ft. cone, 4d8 psychic, stunned on fail)"
+        },
+        {
+          "name": "Warped Prisoners",
+          "description": "Shadowy echoes of former captives, driven mad by the shifting labyrinth. Some are dangerous, others beg for release, offering cryptic warnings or riddles.",
+          "stats": "Use Shadow or Specter stats; some may have useful knowledge"
+        }
+      ],
+      "lootTable": [
+        "Ring of Mind Shielding (worn by a long-dead prisoner)",
+        "Keyring with shifting sigils (opens arcane locks in the Warrens)",
+        "Tattered journal with partial map of the Warrens"
+      ],
+      "plotHooks": [
+        "A cryptic prisoner claims to know the warren\u2019s deepest secrets, but demands freedom in exchange.",
+        "Scratched messages reference 'Xhalruun the Unraveled' and a forbidden chamber.",
+        "Magical resonance on the cell bars may help attune to the reality-warping energies elsewhere in the dungeon."
+      ],
+      "dmInstructions": "Emphasize the mutable layout and psychic tension. Prisoners can be rescued, fought, or bargained with. The Mindlocked Gaoler may stalk the party if disturbed. Adjust numbers to suit party strength.",
+      "doors": [
+        {
+          "name": "Cell Gate",
+          "description": "A flickering iron-and-force gate, sometimes solid, sometimes ethereal.",
+          "type": "regular",
+          "locked": true,
+          "lockDC": 16,
+          "breakDC": 22,
+          "keyname": "Keyring with shifting sigils",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Main Prison Door",
+          "description": "A reinforced stone door inscribed with runes that dampen magic.",
+          "type": "heavy",
+          "locked": true,
+          "lockDC": 17,
+          "breakDC": 23,
+          "keyname": "",
+          "trapped": true,
+          "trap": "Releases a psychic pulse (DC 15 Wis save or 2d6 psychic damage and disadvantage on next attack/check)"
+        }
+      ],
+      "traps": [
+        {
+          "name": "Psychic Residue Trap",
+          "description": "Crossing certain cell thresholds triggers a psychic backlash.",
+          "detectDC": 15,
+          "disableDC": 15,
+          "triggerDC": 13,
+          "damage": "2d6 psychic damage and short-term confusion (disadvantage on next check/attack)"
+        }
+      ],
+      "dcChecks": [
+        "Arcana DC 15: Sense the reality-warping energies that power the prison.",
+        "Investigation DC 16: Decipher the scratched messages and partial map."
+      ],
+      "accessibility": "Entrances shift unpredictably, but the prison is accessible from the main warren passage. Keys or successful lockpicking required.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Guard Post",
+          "description": "A raised dais where the Mindlocked Gaoler manifests, surrounded by illusory chains."
+        },
+        {
+          "name": "Chains",
+          "description": "Arcane chains shift between material and immaterial, binding the cells and prisoners."
+        },
+        {
+          "name": "Scratches On Walls",
+          "description": "Desperate messages and arcane symbols scratched by former captives, some in languages not spoken by mortals."
+        }
+      ],
+      "encounters": [
+        {
+          "description": "The Mindlocked Gaoler confronts the party if they disturb the prisoners or attempt to break open the cells. Warped Prisoners may aid or hinder the party depending on their approach."
+        }
+      ],
+      "adventureSummary": "The prison is both a threat and a source of cryptic clues. Rescuing, interrogating, or battling its inhabitants yields crucial information and items for progressing deeper into the Warrens.",
+      "aliases": [
+        "Grasp of the Mindlocked",
+        "H01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_prison:Grasp of the Mindlocked",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H02",
+      "name": "Veilsplit Threshold",
+      "type": "entrance",
+      "description": "A twisting, narrow corridor opens into a vast stone archway carved with fractal runes. The air here is thick with shimmering distortion, as if the fabric of reality is thin. Subtle vibrations can be felt through the floor, and voices sometimes echo\u2014your own, but warped and unfamiliar. The ground is broken by a simple, deceptive pressure plate and the faint outline of a circular sigil. Beyond the arch, the path leads deeper into the unreality of the Warrens.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "H01",
+        "H03"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Veil Wraith",
+          "description": "A slithering, translucent aberration that phases in and out of existence, seeking to drag intruders into the cracks between worlds.",
+          "stats": "Use Wraith or Shadow with teleport ability (bonus action, 15 ft.)"
+        }
+      ],
+      "lootTable": [
+        "Crystaline lens (acts as a one-use Detect Magic)",
+        "Fragment of a mask with shifting patterns",
+        "Scroll of Misty Step (written in mirrored script)"
+      ],
+      "plotHooks": [
+        "The threshold\u2019s runes hint at a ritual to stabilize the passage\u2014potentially useful deeper within.",
+        "Scraps of clothing and a dropped insignia suggest someone recently passed through in haste.",
+        "A psychic echo reveals a moment of betrayal connected to the deeper shrine."
+      ],
+      "dmInstructions": "This is the main entry point. The trap is visible to careful investigation. The Veil Wraith is a minor but memorable encounter. Environmental hazards (shifting gravity, spatial loops) can be introduced here.",
+      "doors": [
+        {
+          "name": "Grand Archway",
+          "description": "A massive arch inscribed with shimmering fractal sigils, the boundary between the mundane and the warped.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 20,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "name": "Simple Pressure Plate",
+          "description": "A hidden pressure plate that triggers when stepped on.",
+          "detectDC": 13,
+          "disableDC": 15,
+          "triggerDC": 12,
+          "damage": "1d6 piercing damage from hidden spikes"
+        }
+      ],
+      "dcChecks": [
+        "Perception DC 13: Notice the faint outline of the pressure plate.",
+        "Arcana DC 15: Identify the runes\u2019 connection to planar boundaries."
+      ],
+      "accessibility": "Main entrance to the Warrens; the corridor is narrow but navigable. Trap and spatial confusion present hazards.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Narrow Passage",
+          "description": "A cramped, winding corridor where the walls seem to flex and breathe."
+        },
+        {
+          "name": "Grand Archway",
+          "description": "A monumental stone arch inscribed with fractal runes, shimmering with unstable energy."
+        }
+      ],
+      "encounters": [
+        {
+          "description": "A Veil Wraith emerges if the party lingers or makes noise. Unsettling echoes may force Wisdom saving throws (DC 12) to avoid mild confusion."
+        }
+      ],
+      "adventureSummary": "The Veilsplit Threshold sets the tone for the Warrens, introducing reality-warping hazards, environmental confusion, and hints of the dangers to come.",
+      "aliases": [
+        "Veilsplit Threshold",
+        "H02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_entrance:Veilsplit Threshold",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H03",
+      "name": "Sanctum of Mirrored Truths",
+      "type": "shrine",
+      "description": "At the heart of churning unreality, this shrine is lined with warped, semi-reflective surfaces\u2014polished stones, shards of glass, and pools of liquid silver\u2014that shimmer with impossible reflections. Some mirrors show distant places, others play out possible futures or distorted memories. Offering bowls are set before a central, cracked mirror. The air hums with illusory whispers and the scent of burnt incense. At times, the reflections seem to reach out, offering guidance or threats.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "H02"
+      ],
+      "areaConnectivity": [
+        "The Unraveling Wards"
+      ],
+      "areaConnectivityId": [
+        "G01"
+      ],
+      "npcs": [
+        {
+          "name": "Fragmented Preceptor",
+          "description": "A once-whole priest now split into three illusory selves\u2014each reflecting different truths or lies. The Preceptor can offer guidance, riddles, or dangerous half-truths about the Warrens and Numillian\u2019s secrets. Sometimes helpful, sometimes a hindrance.",
+          "attitude": "Enigmatic but sometimes cooperative; reacts to party\u2019s approach and questions."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Mirror Servitor",
+          "description": "A construct of living reflective shards, emerging from the shrine\u2019s cracked mirrors to defend against desecrators or answer the Preceptor\u2019s commands.",
+          "stats": "Use Animated Armor with resistance to nonmagical damage; can blind with a flash (DC 13 Con save or blinded for 1 round)"
+        }
+      ],
+      "lootTable": [
+        "Potion of Mind Focusing (grants advantage on Int, Wis, or Cha saves for 1 hour)",
+        "Silvered shard (functions as a spellcasting focus, reveals illusions within 30 ft. once per short rest)",
+        "Scroll of Mirror Image (written in anagrammed script)"
+      ],
+      "plotHooks": [
+        "The Preceptor\u2019s riddles contain clues to the location and nature of Xhalruun the Unraveled.",
+        "A vision glimpsed in the cracked mirror hints at a surviving faction leader imprisoned deeper within.",
+        "Mirrors reveal brief flashes of Numillian\u2019s illusory heart and its connection to the mind flayer."
+      ],
+      "dmInstructions": "The shrine is a place for roleplay, lore, and psychic skill checks. The Preceptor\u2019s answers may mislead or reveal key secrets. If threatened, use the Mirror Servitor. Players can interact with the mirrors for visions or boons.",
+      "doors": [
+        {
+          "name": "Curtain of Reflections",
+          "description": "A semi-solid wall of silvered light, parting only for those who offer genuine truths or meaningful sacrifices.",
+          "type": "secret",
+          "locked": true,
+          "lockDC": 18,
+          "breakDC": 25,
+          "keyname": "Offering of personal truth or memory",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Insight DC 15: Discern the Preceptor\u2019s real intentions.",
+        "Religion DC 14: Recognize the shrine\u2019s significance to Numillian\u2019s original faith.",
+        "Investigation DC 15: Discover a hidden vision or secret message in the cracked mirror."
+      ],
+      "accessibility": "Accessible via the Veilsplit Threshold; entrance shrouded in illusion. Progress may require offering or solving a riddle.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Offering Bowls",
+          "description": "Three bowls, each carved from a different material (bone, crystal, obsidian), rest before the central mirror. Offerings placed here evoke different visions."
+        },
+        {
+          "name": "Cracked Mirror",
+          "description": "The central, damaged mirror radiates shifting illusions and hidden truths\u2014sometimes showing glimpses of other parts of the Warrens."
+        }
+      ],
+      "encounters": [
+        {
+          "description": "The party may negotiate with the Fragmented Preceptor, solve a riddle, or confront the Mirror Servitor if they anger the shrine\u2019s guardian."
+        }
+      ],
+      "adventureSummary": "This shrine offers revelations and choices\u2014wise players can earn boons or secrets, but rash actions may trigger a dangerous confrontation.",
+      "aliases": [
+        "Sanctum of Mirrored Truths",
+        "H03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_shrine:Sanctum of Mirrored Truths",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 6 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 6 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 6 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 6 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 6 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 6 parties"
+    }
+  ],
+  "areaFeatures": [
+    "hidden passages",
+    "ancient murals",
+    "mysterious mechanisms"
+  ],
+  "notes": "Consider lighting sources and trap placement. Underground areas may have limited resources.",
+  "spatialContractVersion": 1
+}

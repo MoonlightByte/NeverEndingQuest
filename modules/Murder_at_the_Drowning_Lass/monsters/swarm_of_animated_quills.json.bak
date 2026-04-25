@@ -1,0 +1,76 @@
+{
+  "name": "Swarm of Animated Quills",
+  "size": "Medium",
+  "type": "Swarm of Tiny Constructs",
+  "alignment": "Unaligned",
+  "armorClass": 13,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 30,
+  "abilities": {
+    "strength": 3,
+    "dexterity": 17,
+    "constitution": 12,
+    "intelligence": 1,
+    "wisdom": 8,
+    "charisma": 1
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [
+    "thunder"
+  ],
+  "damageResistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "poison",
+    "psychic"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained",
+    "stunned"
+  ],
+  "senses": {
+    "darkvision": 30,
+    "passivePerception": 9
+  },
+  "languages": "",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Swarm",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "The swarm can occupy another creature's space and vice versa, and the swarm can move through any opening large enough for a Tiny object. The swarm can't regain hit points or gain temporary hit points."
+    },
+    {
+      "name": "False Appearance",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "While the swarm remains motionless, it is indistinguishable from a scattering of mundane writing quills."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Needle Burst",
+      "attackBonus": 5,
+      "damageDice": "3d4",
+      "damageBonus": 0,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

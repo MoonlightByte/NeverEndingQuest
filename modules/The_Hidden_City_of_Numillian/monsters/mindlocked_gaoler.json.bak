@@ -1,0 +1,68 @@
+{
+  "name": "Mindlocked Gaoler",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Lawful Evil",
+  "armorClass": 14,
+  "hitPoints": 18,
+  "maxHitPoints": 18,
+  "speed": 30,
+  "abilities": {
+    "strength": 13,
+    "dexterity": 12,
+    "constitution": 14,
+    "intelligence": 10,
+    "wisdom": 15,
+    "charisma": 8
+  },
+  "savingThrows": [
+    "Wisdom",
+    "Constitution"
+  ],
+  "skills": {
+    "Perception": 4,
+    "Insight": 4,
+    "Intimidation": 1
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "psychic"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "Common, Undercommon",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Psionic Shackles",
+      "attackBonus": 0,
+      "damageDice": "1d6",
+      "damageBonus": 0,
+      "damageType": "psychic"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Clubswing",
+      "attackBonus": 3,
+      "damageDice": "1d6",
+      "damageBonus": 1,
+      "damageType": "bludgeoning"
+    },
+    {
+      "name": "Mindlock Glare",
+      "attackBonus": 0,
+      "damageDice": "2d4",
+      "damageBonus": 0,
+      "damageType": "psychic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

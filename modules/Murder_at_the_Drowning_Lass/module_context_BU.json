@@ -1,0 +1,505 @@
+{
+  "module_name": "Murder at the Drowning Lass",
+  "module_id": "Murder_at_the_Drowning_Lass",
+  "areas": {
+    "BV001": {
+      "name": "Brindlehearth Village",
+      "type": "town",
+      "locations": [],
+      "npcs": [
+        "Constable Farrel Dun",
+        "Old Ellyn, the folklore spinner",
+        "Gritch the One-Eared, nervous patron"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "WM001": {
+      "name": "Widdershins Moor",
+      "type": "wilderness",
+      "locations": [],
+      "npcs": [
+        "Red Maw scouts",
+        "Spirit of the Moor"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "RME001": {
+      "name": "Red Maw Encampment",
+      "type": "mixed",
+      "locations": [],
+      "npcs": [
+        "Red Maw scouts"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "THB001": {
+      "name": "The Hollowed Barrow",
+      "type": "town",
+      "locations": [],
+      "npcs": [
+        "Maela Kett, the wary tavernkeeper",
+        "Edrin Voss, eccentric proprietor"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "OKR001": {
+      "name": "The Old King\u2019s Road",
+      "type": "mixed",
+      "locations": [],
+      "npcs": [
+        "Ghostly Royal Messenger",
+        "Sable, Reluctant Scribe\u2019s Shade"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "SR001": {
+      "name": "Stoneheart Ravine",
+      "type": "dungeon",
+      "locations": [],
+      "npcs": [
+        "Corsa 'Threadneedle' Drenn",
+        "Irren the Ragged"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "EDC001": {
+      "name": "Echoing Deep Caverns",
+      "type": "dungeon",
+      "locations": [],
+      "npcs": [],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "HG001": {
+      "name": "Hearthwood Glade",
+      "type": "town",
+      "locations": [],
+      "npcs": [
+        "Sergeant Halwin Reed",
+        "Mrs. Rindleby",
+        "Tamsin Quill"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    }
+  },
+  "npcs": {
+    "maela_kett_the_wary_tavernkeeper": {
+      "name": "Maela Kett, the wary tavernkeeper",
+      "role": "",
+      "faction": "",
+      "description": "A sharp-eyed woman with close-cropped hair and a sleeve of faded tattoos. She keeps a constant watch over patrons and the bar\u2019s battered safe, wary since recent troubles. She knows much of the town\u2019s secrets but trusts few.",
+      "appears_in": [
+        {
+          "area": "THB001",
+          "location": "H01"
+        }
+      ],
+      "aliases": [
+        "Maela Kett, the wary tavernkeeper"
+      ]
+    },
+    "constable_farrel_dun": {
+      "name": "Constable Farrel Dun",
+      "role": "",
+      "faction": "",
+      "description": "The doughty, sharp-eyed local lawman with a bristly mustache, Farrel Dun is known for his even temper and sense of duty. He\u2019s quick to help townsfolk and visitors alike, though his patience for nonsense is limited. Farrel is protective of his staff and wary of outsiders meddling in village affairs, but he values honesty and courage.",
+      "appears_in": [
+        {
+          "area": "BV001",
+          "location": "H01"
+        }
+      ],
+      "aliases": [
+        "Constable Farrel Dun"
+      ]
+    },
+    "old_ellyn_the_folklore_spinner": {
+      "name": "Old Ellyn, the folklore spinner",
+      "role": "",
+      "faction": "",
+      "description": "A spry, sharp-tongued elder with wild silver hair and a knack for captivating crowds with local legends. Ellyn is beloved by children and tolerated by adults, possessing an uncanny memory for the Vale\u2019s strangest tales\u2014some of which may hold real clues.",
+      "appears_in": [
+        {
+          "area": "BV001",
+          "location": "H02"
+        }
+      ],
+      "aliases": [
+        "Old Ellyn, the folklore spinner"
+      ]
+    },
+    "maela_kett": {
+      "name": "Maela Kett",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Maela Kett"
+      ]
+    },
+    "rovan_blackjaw": {
+      "name": "Rovan Blackjaw",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Rovan Blackjaw (in disguise)",
+        "Rovan Blackjaw"
+      ]
+    },
+    "gritch_the_one_eared_nervous_patron": {
+      "name": "Gritch the One-Eared, nervous patron",
+      "role": "",
+      "faction": "",
+      "description": "A twitchy, shabby man with a missing ear, Gritch is a regular at Duskmantle Curios. He\u2019s often found pawing through oddments, muttering about curses and treasures. Gritch is evasive but knows more about local criminal dealings than he lets on.",
+      "appears_in": [
+        {
+          "area": "BV001",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Gritch the One-Eared, nervous patron"
+      ]
+    },
+    "old_ellyn": {
+      "name": "Old Ellyn",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Old Ellyn"
+      ]
+    },
+    "red_maw_scouts": {
+      "name": "Red Maw scouts",
+      "role": "",
+      "faction": "",
+      "description": "Wary, mud-splattered members of the Red Maw gang, clad in patchwork leathers and bearing shortbows and knives. Their demeanor is tense\u2014they\u2019re on the lookout for rivals and authorities, but not immediately hostile unless threatened.",
+      "appears_in": [
+        {
+          "area": "WM001",
+          "location": "H01"
+        },
+        {
+          "area": "RME001",
+          "location": "H02"
+        }
+      ],
+      "aliases": [
+        "Red Maw scouts"
+      ]
+    },
+    "bram_of_the_stones_wandering_hermit": {
+      "name": "Bram of the Stones, wandering hermit",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Bram of the Stones, wandering hermit"
+      ]
+    },
+    "lysa_quickfingers_rebellious_lieutenant": {
+      "name": "Lysa Quickfingers, rebellious lieutenant",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Lysa Quickfingers, rebellious lieutenant"
+      ]
+    },
+    "red_maw_enforcers": {
+      "name": "Red Maw enforcers",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Red Maw enforcers"
+      ]
+    },
+    "lysa_quickfingers": {
+      "name": "Lysa Quickfingers",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Lysa Quickfingers"
+      ]
+    },
+    "spirit_of_the_moor": {
+      "name": "Spirit of the Moor",
+      "role": "",
+      "faction": "",
+      "description": "An ethereal, shimmering presence that manifests as a swirl of mist and faintly glowing eyes. The spirit speaks in riddles and warnings, watching over the standing stone and judging those who approach.",
+      "appears_in": [
+        {
+          "area": "WM001",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Spirit of the Moor (folkloric apparition)",
+        "Spirit of the Moor"
+      ]
+    },
+    "echo_wraiths": {
+      "name": "Echo Wraiths",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Echo Wraiths (supernatural guardians)",
+        "Echo Wraiths"
+      ]
+    },
+    "ardwen_ghostly_map_bearer_from_legend": {
+      "name": "Ardwen, ghostly map-bearer from legend",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Ardwen, ghostly map-bearer from legend"
+      ]
+    },
+    "edrin_voss_eccentric_proprietor": {
+      "name": "Edrin Voss, eccentric proprietor",
+      "role": "",
+      "faction": "",
+      "description": "A thin, wild-haired man with a patchwork vest and eyes always darting toward the mists outside. Spends as much time spinning tales as haggling over relics. He claims some items whisper secrets if you listen closely.",
+      "appears_in": [
+        {
+          "area": "THB001",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Edrin Voss, eccentric proprietor"
+      ]
+    },
+    "ghostly_royal_messenger": {
+      "name": "Ghostly Royal Messenger",
+      "role": "",
+      "faction": "",
+      "description": "A translucent figure in tattered livery, clutching spectral scrolls and nervously peering between the roads, forever waiting to deliver a message.",
+      "appears_in": [
+        {
+          "area": "OKR001",
+          "location": "H02"
+        }
+      ],
+      "aliases": [
+        "Ghostly Royal Messenger"
+      ]
+    },
+    "sable_reluctant_scribe_s_shade": {
+      "name": "Sable, Reluctant Scribe\u2019s Shade",
+      "role": "",
+      "faction": "",
+      "description": "A spectral scribe bound to the ledger, cursed to witness every name added. Sable flickers in and out of view, her ink-stained fingers trembling.",
+      "appears_in": [
+        {
+          "area": "OKR001",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Sable, Reluctant Scribe\u2019s Shade"
+      ]
+    },
+    "corsa_threadneedle_drenn": {
+      "name": "Corsa 'Threadneedle' Drenn",
+      "role": "",
+      "faction": "",
+      "description": "A wiry, sharp-eyed thief balancing on the ledge, watching both directions for pursuers or rivals. She is wary but open to negotiation if approached with respect or evidence of shared enemies.",
+      "appears_in": [
+        {
+          "area": "SR001",
+          "location": "H02"
+        }
+      ],
+      "aliases": [
+        "Corsa 'Threadneedle' Drenn"
+      ]
+    },
+    "irren_the_ragged": {
+      "name": "Irren the Ragged",
+      "role": "",
+      "faction": "",
+      "description": "A gaunt, rag-clad prisoner hunched in the shadows of the cell, haunted but desperate for company. Once a lookout for the thieves, now abandoned and half-mad.",
+      "appears_in": [
+        {
+          "area": "SR001",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Irren the Ragged"
+      ]
+    },
+    "sergeant_halwin_reed": {
+      "name": "Sergeant Halwin Reed",
+      "role": "",
+      "faction": "",
+      "description": "A grizzled, even-tempered veteran with a deep respect for local traditions. Halwin ensures the safety of the vale with a mixture of discipline and gentle humor.",
+      "appears_in": [
+        {
+          "area": "HG001",
+          "location": "H01"
+        }
+      ],
+      "aliases": [
+        "Sergeant Halwin Reed"
+      ]
+    },
+    "mrs_rindleby": {
+      "name": "Mrs. Rindleby",
+      "role": "",
+      "faction": "",
+      "description": "A kindly halfling matron and amateur cartographer. She loves gossip, herbal teas, and puzzles, and is always eager for news from afar.",
+      "appears_in": [
+        {
+          "area": "HG001",
+          "location": "H02"
+        }
+      ],
+      "aliases": [
+        "Mrs. Rindleby"
+      ]
+    },
+    "tamsin_quill": {
+      "name": "Tamsin Quill",
+      "role": "",
+      "faction": "",
+      "description": "A sharp-eyed gnome with a quick wit and quicker hands, Tamsin deals in curiosities, maps, and secrets. She\u2019s as likely to trade for a good story as she is for coin.",
+      "appears_in": [
+        {
+          "area": "HG001",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Tamsin Quill"
+      ]
+    }
+  },
+  "locations": {},
+  "plot_scopes": {
+    "PP001": "HG001",
+    "PP002": "HG001",
+    "PP003": "HG001",
+    "PP004": "HG001"
+  },
+  "references": {
+    "npc:Maela Kett, the wary tavernkeeper": [
+      "module:plotStages"
+    ],
+    "npc:Constable Farrel Dun": [
+      "module:plotStages"
+    ],
+    "npc:Old Ellyn, the folklore spinner": [
+      "module:plotStages"
+    ],
+    "npc:Maela Kett": [
+      "module:plotStages"
+    ],
+    "npc:Rovan Blackjaw (in disguise)": [
+      "module:plotStages"
+    ],
+    "npc:Gritch the One-Eared, nervous patron": [
+      "module:plotStages"
+    ],
+    "npc:Old Ellyn": [
+      "module:plotStages"
+    ],
+    "npc:Red Maw scouts": [
+      "module:plotStages"
+    ],
+    "npc:Bram of the Stones, wandering hermit": [
+      "module:plotStages"
+    ],
+    "npc:Rovan Blackjaw": [
+      "module:plotStages"
+    ],
+    "npc:Lysa Quickfingers, rebellious lieutenant": [
+      "module:plotStages"
+    ],
+    "npc:Red Maw enforcers": [
+      "module:plotStages"
+    ],
+    "npc:Lysa Quickfingers": [
+      "module:plotStages"
+    ],
+    "npc:Spirit of the Moor (folkloric apparition)": [
+      "module:plotStages"
+    ],
+    "npc:Echo Wraiths (supernatural guardians)": [
+      "module:plotStages"
+    ],
+    "npc:Ardwen, ghostly map-bearer from legend": [
+      "module:plotStages"
+    ],
+    "npc:Echo Wraiths": [
+      "module:plotStages"
+    ]
+  },
+  "validation_issues": [
+    "NPC 'Maela Kett' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Rovan Blackjaw' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Old Ellyn' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Bram of the Stones, wandering hermit' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Lysa Quickfingers, rebellious lieutenant' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Red Maw enforcers' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Lysa Quickfingers' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Echo Wraiths' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Ardwen, ghostly map-bearer from legend' is referenced in ['module:plotStages'] but not placed in any location"
+  ],
+  "generated_at": "2026-04-25T11:09:48.038989"
+}

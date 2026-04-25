@@ -1,0 +1,90 @@
+{
+  "name": "Rot Husk Wolf",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 18,
+  "maxHitPoints": 18,
+  "speed": 40,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 15,
+    "constitution": 12,
+    "intelligence": 3,
+    "wisdom": 12,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 3,
+    "stealth": 4
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "necrotic",
+    "cold"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "poisoned",
+    "charmed"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "understands the languages it knew in life but can't speak",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Keen Hearing and Smell",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Undead Fortitude",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Pack Tactics",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Rotting Husk",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "attackBonus": 4,
+      "damageDice": "2d4",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    },
+    {
+      "name": "Rotting Bite",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 0,
+      "damageType": "necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging like spectral harbingers from the shadowed depths of the Blightfen Wilds, the Rot Husk Wolves embody the creeping corruption that blights the marshlands. These gaunt, lupine monstrosities are draped in decaying fur mottled with patches of slick, blackened flesh and festering wounds that weep a slow, viscous ichor. Their eyes burn with a sickly phosphorescent green glow, casting eerie light through the dense, sour mist that clings to the fetid air. Ragged tufts of moss and fungal growths cling to their mottled hides, blending seamlessly with the corrupted reeds and twisted trees of their marshy domain. Their jaws hang slightly agape, revealing rows of broken, yellowed teeth stained with swamp rot and the remnants of countless prey. Moving with a haunting, loping gait, they slink silently through the muck and shadows, their wet paws leaving faint, oily prints in the saturated earth. Their mournful, echoing howls pierce the oppressive silence of the Withered Heart Glade, a chilling lament that unsettles even the most stalwart wanderers. These predators are as relentless as the blight itself, drawn to the living by a hunger that is as much for vitality as for flesh, embodying the wild, decaying heart of the Blightfen's curse."
+}

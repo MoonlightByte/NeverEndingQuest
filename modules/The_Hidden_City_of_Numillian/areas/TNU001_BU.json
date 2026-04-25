@@ -1,0 +1,465 @@
+{
+  "areaId": "TNU001",
+  "areaName": "The Shifting Confluence",
+  "areaType": "town",
+  "areaDescription": "Reality wears thin in these warped streets, where buildings twist impossibly and echoes of impossible events flicker at the edge of perception. The very air hums with madness, and every step risks slipping into a fractal realm where nothing obeys the laws you once knew.",
+  "dangerLevel": "extreme",
+  "recommendedLevel": 8,
+  "climate": "temperate",
+  "terrain": "urban streets and buildings",
+  "map": {
+    "mapId": "MAP_H_3",
+    "mapName": "Town Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "H01",
+        "type": "temple",
+        "connections": [
+          "H02"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "H02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "extreme",
+        "name": "Veiled Paradox Sanctuary"
+      },
+      {
+        "id": "H02",
+        "type": "guild",
+        "connections": [
+          "H01",
+          "H03"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "H01",
+          "east": "H03"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "extreme",
+        "name": "Twilight Vein Concordium"
+      },
+      {
+        "id": "H03",
+        "type": "temple",
+        "connections": [
+          "H02"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {
+          "west": "H02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "extreme",
+        "name": "Miragebound Reliquary"
+      }
+    ],
+    "layout": [
+      [
+        "H01",
+        "H02",
+        "H03"
+      ]
+    ],
+    "startRoom": "H02",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "H01",
+      "name": "Veiled Paradox Sanctuary",
+      "type": "temple",
+      "description": "At the heart of The Nexus of Unreality stands the Veiled Paradox Sanctuary, a labyrinthine temple of shifting marble and obsidian. Its halls are lined with impossible geometries, religious symbols that flicker through shapes and languages, and whispering echoes of prayers that never were. The veil between worlds is thinnest here, and the air shimmers with potential and dread.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "H02"
+      ],
+      "areaConnectivity": [
+        "The Veiled Districts"
+      ],
+      "areaConnectivityId": [
+        "G03"
+      ],
+      "npcs": [
+        {
+          "name": "Xhalruun the Unraveled",
+          "description": "An undead mind flayer whose psychic essence has fractured across dimensions. Xhalruun presides over the Sanctuary, preaching to invisible congregations and warping the boundaries of faith and reason. His true motives are enigmatic, but he is fixated on the party and the secret of Numillian's reality.",
+          "attitude": "Inscrutable, obsessed with cosmic truth, reacts with either riddle-laden hostility or cryptic aid depending on players' actions."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Paradox Remnants",
+          "description": "Shifting, semi-corporeal entities that flicker in and out of existence, attacking intruders with psychic blasts and reality-warping effects."
+        },
+        {
+          "name": "Faithless Echoes",
+          "description": "Shadowy forms of supplicants who once worshipped in the temple and are now trapped between timelines, wailing in agony."
+        }
+      ],
+      "lootTable": [
+        "Shard of Remembered Futures (Wondrous Item, once per day, grants advantage on an Intelligence or Wisdom check)",
+        "Scroll of Banishment",
+        "Obsidian holy symbol, morphing with each touch",
+        "Pouch of shifting coinage (worth 150 gp if stabilized with a DC 18 Arcana check)"
+      ],
+      "plotHooks": [
+        "Xhalruun offers a cryptic prophecy, hinting at a hidden weakness in Numillian\u2019s illusions.",
+        "A sentient religious icon requests the party\u2019s help to reunite it with its original worshipper, whose fate is intertwined with the city\u2019s unraveling.",
+        "Fragments of the party\u2019s own memories are found woven into the shifting tapestries."
+      ],
+      "dmInstructions": "Xhalruun\u2019s presence should be unnerving but not immediately hostile unless provoked. Use shifting architecture and memory glitches to heighten unease. Adjust combat difficulty by altering the number and strength of Paradox Remnants and Faithless Echoes.",
+      "doors": [
+        {
+          "name": "Sanctuary Gate",
+          "description": "A double door of black stone that warps and reforms, its handles sliding through the air as if uncertain of their own place.",
+          "type": "regular",
+          "locked": true,
+          "lockDC": 19,
+          "breakDC": 21,
+          "keyname": "Paradox Sigil (found in a side chapel or on Xhalruun\u2019s person)",
+          "trapped": true,
+          "trap": "Mental Paradox: If triggered, DC 17 Intelligence save or suffer 3d8 psychic damage and become stunned until the end of your next turn."
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 17,
+          "disableDC": 18,
+          "triggerDC": 0,
+          "damage": "3d8 psychic (Mental Paradox, affects those attempting to bypass the Sanctuary Gate without the correct sigil)"
+        }
+      ],
+      "dcChecks": [
+        "Arcana DC 18: Identify the paradoxical runes and partially stabilize a section of reality, granting advantage on saving throws against the temple's effects.",
+        "Religion DC 16: Discern the meaning of the morphing religious iconography, revealing Xhalruun\u2019s influence.",
+        "Perception DC 15: Notice a hidden alcove containing a memory-echo and a minor treasure."
+      ],
+      "accessibility": "Difficult\u2014reality bends and challenges non-magical entry; requires a DC 16 Intelligence (Arcana) or Wisdom (Insight) check to avoid being lost in shifting hallways.",
+      "dangerLevel": "Very High",
+      "features": [
+        {
+          "name": "Religious Symbols",
+          "description": "Symbols that flicker through every known faith, blurring and reforming with each glance."
+        },
+        {
+          "name": "Worship Area",
+          "description": "Rows of fractal pews face a pulsing altar, which occasionally vanishes from sight or appears upside down."
+        },
+        {
+          "name": "Shifting Walls",
+          "description": "The walls realign themselves in response to the party\u2019s emotions and intent."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Echoes of Belief",
+          "description": "The party must resist a psychic onslaught as their deepest convictions are challenged; a Wisdom saving throw (DC 16) or be frightened for 1 minute."
+        }
+      ],
+      "adventureSummary": "This haunted temple is the epicenter of the Shifting Confluence\u2019s reality-warping effects. The party may parley or battle with Xhalruun the Unraveled and uncover vital clues to Numillian\u2019s true nature.",
+      "aliases": [
+        "Veiled Paradox Sanctuary",
+        "Paradox Sanctuary",
+        "H01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_temple:Veiled Paradox Sanctuary",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H02",
+      "name": "Twilight Vein Concordium",
+      "type": "guild",
+      "description": "The Concordium is a fractured guildhall suspended between realities, its rooms looping in impossible Escher-like patterns. Dust motes swirl in colors unseen in nature, and the air tastes faintly of memory and ozone. Here, scholars and conspirators struggle to map the confluence\u2019s shifting laws, while the desperate barter secrets for safety.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "H01",
+        "H03"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Captain Lyra Voss",
+          "description": "A pragmatic, sharp-minded leader of an outcast faction, Lyra Voss seeks to restore stability to the Confluence. She offers the party alliance and information in exchange for tangible aid against Xhalruun or the growing madness.",
+          "attitude": "Determined, wary, cooperative if shown respect, but suspicious of newcomers."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Temporal Mites",
+          "description": "Tiny, half-visible creatures that feed on memory and time, disrupting spellcasting and causing confusion."
+        }
+      ],
+      "lootTable": [
+        "Chrono-compass (points to stable reality zones in the Confluence)",
+        "Scroll of Remove Curse",
+        "Concordium Guild Badge (advantage on Charisma checks with guild members)",
+        "Vial of luminous dust (acts as Dust of Disappearance, but only functions at twilight)"
+      ],
+      "plotHooks": [
+        "Lyra Voss tasks the players with retrieving a lost reality anchor from the Miragebound Reliquary.",
+        "A Concordium scholar offers to trade a vital secret about Numillian for the safe rescue of their apprentice, lost in a time loop.",
+        "The party overhears a plot to sabotage the Veiled Paradox Sanctuary."
+      ],
+      "dmInstructions": "This guild serves as an information hub and possible ally outpost. Lyra Voss may become a quest-giver or even a temporary companion. Combat is rare here, but the threat of reality\u2019s instability should be emphasized. Temporal Mites are a nuisance, not a lethal threat unless ignored.",
+      "doors": [
+        {
+          "name": "Grand Looping Door",
+          "description": "An arched door that shifts position every hour, its surface dusted with shifting sigils.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 17,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Eastern Portal",
+          "description": "A shimmering archway leading to the Miragebound Reliquary, bordered by runes that glow at dusk.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 17,
+          "keyname": "",
+          "trapped": true,
+          "trap": "Temporal Feedback: If used during the wrong hour, DC 15 Dexterity save or lose an action to a time slip (stunned for 1 round)."
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 15,
+          "disableDC": 15,
+          "triggerDC": 0,
+          "damage": "1 round stunned (Temporal Feedback from Eastern Portal if entered at the wrong time)"
+        }
+      ],
+      "dcChecks": [
+        "Investigation DC 15: Uncover a hidden map showing secret passages in the Confluence.",
+        "Arcana DC 16: Recognize the function of the chrono-compass and how to calibrate it.",
+        "History DC 14: Identify references to Numillian in the guild\u2019s fragmented records."
+      ],
+      "accessibility": "Moderate\u2014entry is open to those who know the Concordium\u2019s shifting password or can convince guards with a DC 13 Charisma (Deception or Persuasion) check.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "Dust motes shimmer with latent magic, shifting color and density with every footstep."
+        },
+        {
+          "name": "Guild Archives",
+          "description": "A central chamber where reality stabilizes for moments at a time, filled with books that rearrange themselves."
+        },
+        {
+          "name": "Message Relays",
+          "description": "Illusory faces share news across the Confluence, though their voices sometimes contradict."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Temporal Mite Swarm",
+          "description": "The party must fend off a swarm of time-eating mites before they erase recent memories; DC 14 Intelligence save or forget the last round\u2019s actions."
+        }
+      ],
+      "adventureSummary": "The guild offers information, equipment, and allies but is threatened by temporal instability and sabotage. Lyra Voss is a key NPC for quest progression and insight into the Confluence.",
+      "aliases": [
+        "Twilight Vein Concordium",
+        "H02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_guild:Twilight Vein Concordium",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H03",
+      "name": "Miragebound Reliquary",
+      "type": "temple",
+      "description": "A spiraling reliquary of glass and mirrored metal, the Miragebound Reliquary appears to occupy multiple spaces at once. Its offerings are phantasms, and visitors risk being trapped in recursive visions. The air hums with the echo of forgotten worship, and the reliquary is tended by spectral caretakers who exist out of phase.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "H02"
+      ],
+      "areaConnectivity": [
+        "The Paradoxical Crossroads"
+      ],
+      "areaConnectivityId": [
+        "G01"
+      ],
+      "npcs": [
+        {
+          "name": "Any surviving faction leaders",
+          "description": "Representatives of various groups who have barricaded themselves in the reliquary, desperately clinging to relics and half-truths in the hope of restoring stability to the Confluence.",
+          "attitude": "Wary, desperate for aid, open to negotiation if shown the party is not a threat."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Spectral Caretakers",
+          "description": "Non-hostile unless provoked, these shimmering apparitions tend to the reliquary\u2019s offerings and attack those who attempt to steal relics."
+        },
+        {
+          "name": "Phantom Apparitions",
+          "description": "Manifestations of failed worshippers, these ghosts attempt to ensnare the unwary in endless loops of memory."
+        }
+      ],
+      "lootTable": [
+        "Reality Anchor (artifact, can be used to stabilize a section of the Confluence)",
+        "Mirrored holy relic (functions as a Mirror of Life Trapping, but only for spirits)",
+        "Scroll of Dispel Magic",
+        "Bag of Reflection Sand (can be used to reveal invisible creatures or objects for 1 minute)"
+      ],
+      "plotHooks": [
+        "The faction leaders plea for the party\u2019s help retrieving the Reality Anchor from a dangerous section guarded by Phantom Apparitions.",
+        "A vision in the reliquary gives the party a glimpse of Numillian\u2019s original form, providing a vital clue.",
+        "A spectral caretaker warns of a coming collapse in the Confluence if the reliquary\u2019s balance is upset."
+      ],
+      "dmInstructions": "This location is a high-stakes puzzle, blending exploration, negotiation, and possible combat. Spectral Caretakers may be reasoned with; combat should be a last resort. Use vision-based puzzles and time loops to heighten tension.",
+      "doors": [
+        {
+          "name": "Mirrored Archway",
+          "description": "A tall arch of polished silver that ripples when touched, showing warped reflections of those who approach.",
+          "type": "regular",
+          "locked": true,
+          "lockDC": 17,
+          "breakDC": 19,
+          "keyname": "Mirrored Key (held by a Spectral Caretaker or awarded for solving a puzzle)",
+          "trapped": true,
+          "trap": "Vision Loop: If opened improperly, DC 16 Wisdom save or be trapped in an illusory loop for 1d4 rounds, unable to act."
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 16,
+          "disableDC": 17,
+          "triggerDC": 0,
+          "damage": "Trapped in an illusory loop for 1d4 rounds (Vision Loop from Mirrored Archway if not using Mirrored Key or correct ritual phrase)"
+        }
+      ],
+      "dcChecks": [
+        "Insight DC 15: Sense the emotional resonance of the reliquary and interact with the Spectral Caretakers peacefully.",
+        "Religion DC 17: Recognize the significance of the Reality Anchor and learn how to safely move it.",
+        "Perception DC 16: Notice a hidden alcove containing a mirrored holy relic."
+      ],
+      "accessibility": "Difficult\u2014entry requires passing a shifting maze of mirrored corridors; DC 15 Intelligence (Investigation) or Wisdom (Perception) check to avoid becoming lost for 1d4 hours.",
+      "dangerLevel": "Very High",
+      "features": [
+        {
+          "name": "Offering Space",
+          "description": "Tables and alcoves filled with illusions of lost treasures, some tangible, some mere memory."
+        },
+        {
+          "name": "Worship Area",
+          "description": "A central dais surrounded by spiraling mirrors and an ever-shifting congregation of spectral forms."
+        },
+        {
+          "name": "Religious Symbols",
+          "description": "Symbols that change meaning depending on the viewer\u2019s beliefs and current emotional state."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Phantom Apparition Loop",
+          "description": "If the party attempts to take a relic unbidden, the room plunges into a shared vision: each character must make a DC 16 Wisdom save or become trapped in a looped memory until rescued or they succeed the save at the end of each round."
+        }
+      ],
+      "adventureSummary": "This reliquary is a puzzle-filled sanctuary where the party can retrieve reality-stabilizing artifacts and negotiate with desperate survivors. Success here is vital for resolving the instability of the Shifting Confluence and gaining leverage against Numillian\u2019s illusions.",
+      "aliases": [
+        "Miragebound Reliquary",
+        "H03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_temple:Miragebound Reliquary",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "deadly trap",
+      "description": "A deadly trap appropriate for level 8 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "deadly trap",
+      "description": "A deadly trap appropriate for level 8 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 8 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 8 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 8 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "boss monster",
+      "description": "A boss monster appropriate for level 8 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 8 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "deadly trap",
+      "description": "A deadly trap appropriate for level 8 parties"
+    }
+  ],
+  "areaFeatures": [
+    "local tavern",
+    "merchant quarter",
+    "guard posts"
+  ],
+  "notes": "NPCs should have daily routines. Political factions create roleplay opportunities.",
+  "spatialContractVersion": 1
+}

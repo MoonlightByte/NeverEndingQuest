@@ -1,0 +1,79 @@
+{
+  "name": "Fleshforged Aberrant",
+  "size": "Medium",
+  "type": "Monstrosity",
+  "alignment": "Chaotic Neutral",
+  "armorClass": 13,
+  "hitPoints": 32,
+  "maxHitPoints": 32,
+  "speed": 30,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 15,
+    "constitution": 14,
+    "intelligence": 7,
+    "wisdom": 10,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {
+    "Perception": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "necrotic",
+    "cold"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed",
+    "frightened"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "understands Common but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Aberrant Regeneration",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Stitched Horror",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Flesh Slam",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "bludgeoning"
+    },
+    {
+      "name": "Bite",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

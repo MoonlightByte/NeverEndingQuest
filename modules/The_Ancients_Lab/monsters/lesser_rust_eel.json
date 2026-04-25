@@ -1,0 +1,75 @@
+{
+  "name": "Lesser Rust Eel",
+  "size": "Small",
+  "type": "Beast",
+  "alignment": "Unaligned",
+  "armorClass": 13,
+  "hitPoints": 9,
+  "maxHitPoints": 9,
+  "speed": 30,
+  "abilities": {
+    "strength": 8,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 2,
+    "wisdom": 12,
+    "charisma": 5
+  },
+  "savingThrows": [],
+  "skills": {
+    "Perception": 3,
+    "Stealth": 5
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "",
+  "challengeRating": 0.25,
+  "specialAbilities": [
+    {
+      "name": "Water Breathing",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Metal Sense",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Rusting Touch",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "attackBonus": 5,
+      "damageDice": "1d4",
+      "damageBonus": 3,
+      "damageType": "Piercing"
+    },
+    {
+      "name": "Rusting Touch",
+      "attackBonus": 5,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "Special"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Within the twisted, fractured landscapes of the Aberrant Wastes, the Lesser Rust Eel slithers with uncanny purpose. This creature's elongated, serpentine body is a grotesque fusion of corroded metal and decayed flesh, its sinuous scales mottled with rust and patches of pulsating, sickly flesh that glow faintly with unholy bioluminescence. Jagged shards of oxidized iron protrude along its spine, resembling broken blades that scrape the warped stones beneath it as it moves. Its head, flattened and eel-like, bears multiple glassy black eyes that reflect the shifting, alien skies, and a maw filled with rows of needle-thin teeth that drip with acidic ichor capable of rapidly eating through both flesh and metal. The Lesser Rust Eel thrives in the warped, half-melted corridors and stagnant pools of the Aberrant Core, often lurking in oily ichor-stained water or coiled around the warped columns that weep blackened rust. It exudes a faint metallic scent mixed with the sharp tang of decay, and its movements create a disturbing wet scraping sound that echoes eerily in the oppressive silence. This creature is drawn to electrical disturbances and the faint hum of psychic energy that permeates the area, hunting anything that dares disturb the fragile balance of the aberrant environment. Encountering a Lesser Rust Eel is to confront a living embodiment of corrosion and ruin, a nightmare of twisted metal and flesh that promises a slow, agonizing demise."
+}

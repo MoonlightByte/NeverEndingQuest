@@ -1,0 +1,73 @@
+{
+  "name": "Sorrowful Deep Lurker",
+  "size": "Medium",
+  "type": "Aberration",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 27,
+  "maxHitPoints": 27,
+  "speed": 30,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 7,
+    "wisdom": 13,
+    "charisma": 10
+  },
+  "savingThrows": [
+    "Dexterity",
+    "Wisdom"
+  ],
+  "skills": {
+    "Stealth": 5,
+    "Perception": 3
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "cold"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "Undercommon, understands Deep Speech but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Amphibious",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Sorrowful Aura",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "psychic"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Claws",
+      "attackBonus": 5,
+      "damageDice": "1d6",
+      "damageBonus": 3,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Griefful Glare",
+      "attackBonus": 0,
+      "damageDice": "2d6",
+      "damageBonus": 0,
+      "damageType": "psychic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the shadows of the Reliquary of Sorrowful Depths, the Sorrowful Deep Lurker is a haunting aberration born from the abyssal chasms beneath Brindlehearth Vale. Its elongated, sinewy form slinks silently atop webbed, clawed limbs, each movement a disturbing ripple in the cold, stagnant air. The creature's pallid, translucent skin reveals a network of dark, pulsating veins, as if it carries the trapped anguish of drowned souls within its very flesh. Its face is a grotesque mask of sorrow, with hollow, sunken eyes that shimmer faintly with an eerie, blue-green luminescence--like the glow of the fungi that adorn the Vault of the Drowned Oath. Jagged rows of needle-like teeth peek from its gaping maw, stained with salt and decay, while long, tendril-like appendages writhe from its shoulders, twitching as if sensing the abyssal vibrations around it. A constant, mournful whisper seems to emanate from the creature itself, an unsettling chorus of drowned voices carried on the cold air. Wherever it moves, the faint scent of brine and old rot fills the atmosphere, and the temperature drops noticeably, chilling the very marrow of those who dare trespass. The Sorrowful Deep Lurker is a sentinel of sorrow and silence, striking swiftly and mercilessly at any who disturb the sacred reliquary or seek to unravel its ancient secrets."
+}

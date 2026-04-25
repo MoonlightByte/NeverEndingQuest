@@ -1,0 +1,396 @@
+{
+  "areaId": "HG001",
+  "areaName": "The Hearthwood Vale",
+  "areaType": "town",
+  "areaDescription": "Nestled among gently rolling hills and ancient trees, the Hearthwood Vale is a haven of warmth and camaraderie, where the aroma of fresh bread mingles with woodsmoke on the crisp morning air. Lantern light glimmers through leafy boughs as villagers greet one another on mossy lanes, their laughter blending with birdsong in this peaceful, welcoming region.",
+  "dangerLevel": "low",
+  "recommendedLevel": 5,
+  "climate": "temperate",
+  "terrain": "urban streets and buildings",
+  "map": {
+    "mapId": "MAP_H_3",
+    "mapName": "Town Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "H01",
+        "type": "barracks",
+        "connections": [
+          "H02"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "H02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "low",
+        "name": "Ironbark Watchhouse"
+      },
+      {
+        "id": "H02",
+        "type": "residence",
+        "connections": [
+          "H01",
+          "H03"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "H01",
+          "east": "H03"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "low",
+        "name": "Lanternlight Cottage"
+      },
+      {
+        "id": "H03",
+        "type": "shop",
+        "connections": [
+          "H02"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {
+          "west": "H02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "low",
+        "name": "Curio & Compass"
+      }
+    ],
+    "layout": [
+      [
+        "H01",
+        "H02",
+        "H03"
+      ]
+    ],
+    "startRoom": "H02",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "H01",
+      "name": "Ironbark Watchhouse",
+      "type": "barracks",
+      "description": "Standing beneath the spreading boughs of an ancient ironbark tree, this sturdy timber barracks serves as the heart of Hearthwood Glade\u2019s community defense. Lanterns hang from thick beams, casting a warm, reassuring glow inside even on the darkest nights. The scent of oiled leather and woodsmoke mixes with faded memories of camaraderie. A symbol of a shield and oak leaf is carved over the entrance, welcoming townsfolk and warning would-be troublemakers.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "H02"
+      ],
+      "areaConnectivity": [
+        "The Resonant Abyss"
+      ],
+      "areaConnectivityId": [
+        "H03"
+      ],
+      "aliases": [
+        "Ironbark Watchhouse",
+        "H01"
+      ],
+      "npcs": [
+        {
+          "name": "Sergeant Halwin Reed",
+          "description": "A grizzled, even-tempered veteran with a deep respect for local traditions. Halwin ensures the safety of the vale with a mixture of discipline and gentle humor.",
+          "attitude": "Protective, pragmatic, welcoming to strangers who respect the community\u2019s peace."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Polished oak shield with hearth motif (25 gp)",
+        "Set of iron keys (for local buildings)",
+        "Scroll of Alarm (1 use)",
+        "Badge of the Vale\u2019s watch"
+      ],
+      "plotHooks": [
+        "Sergeant Reed quietly asks the party if they\u2019ve seen any unfamiliar faces\u2014several trinkets have gone missing in the past week.",
+        "A battered message satchel lies forgotten in the corner, its wax seal broken. The sender\u2019s name is unfamiliar."
+      ],
+      "dmInstructions": "The Watchhouse is a safe haven and information hub. Use Sergeant Reed to deliver rumors or requests for help. If the party investigates the thefts, provide subtle clues (muddy footprints, a fabric scrap matching local attire). Adjust number of guards for party level\u2014generally friendly, but wary if provoked.",
+      "doors": [
+        {
+          "name": "Front Door",
+          "description": "A reinforced oak door bound in iron, with a neatly worked lock and a heavy crossbar on the inside.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 18,
+          "keyname": "Watchhouse Key",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Investigation DC 14: Discover a secret logbook of unusual events hidden in Sergeant Reed\u2019s desk.",
+        "Perception DC 12: Notice scuff marks near the weapons rack indicating something was recently removed in haste."
+      ],
+      "accessibility": "Normal access during daylight hours; at night, entry is restricted without cause.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "The walls are built around the living trunk of an ancient ironbark tree, its roots curling protectively through the foundation."
+        },
+        {
+          "name": "Dust",
+          "description": "A fine layer of dust lingers in unused corners, hinting at recent hurried activity."
+        },
+        {
+          "name": "Armory Alcove",
+          "description": "A small alcove lined with training weapons and shields, its racks carefully maintained."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "The Ironbark Watchhouse offers a place to learn local rumors, seek aid, and discover the first clues of recent thefts linked to the greater treasure hunt.",
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_barracks:Ironbark Watchhouse",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H02",
+      "name": "Lanternlight Cottage",
+      "type": "residence",
+      "description": "This cozy, ivy-clad cottage sits nestled under a cluster of lantern-bearing branches, their gentle glow giving the home its name. Smoke from a stone chimney curls into the twilight, while fragrant herbs frame the windows. Within, the cottage is filled with knickknacks, curious maps, and the laughter of its eccentric owner.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "H01",
+        "H03"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "aliases": [
+        "Lanternlight Cottage",
+        "H02"
+      ],
+      "npcs": [
+        {
+          "name": "Mrs. Rindleby",
+          "description": "A kindly halfling matron and amateur cartographer. She loves gossip, herbal teas, and puzzles, and is always eager for news from afar.",
+          "attitude": "Cheerful, inquisitive, eager to host travelers (especially those with stories or oddities to share)."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Hand-drawn map of the surrounding glades (marked with cryptic symbols)",
+        "Small pouch of rare nightbloom herbs (15 gp)",
+        "Silver locket with a faded miniature portrait",
+        "Sturdy lantern that never seems to run out of oil"
+      ],
+      "plotHooks": [
+        "Mrs. Rindleby confides she\u2019s seen mysterious lantern lights bobbing in the woods at night\u2014lights not of her making.",
+        "A half-burnt letter in the hearth mentions a secret meeting in the glade, but key details are charred."
+      ],
+      "dmInstructions": "Use Mrs. Rindleby for friendly roleplay scenes and to provide rumor-based clues. Her map hints at hidden or forgotten paths. If the party investigates the letter, a successful skill check allows them to reconstruct the meeting\u2019s location.",
+      "doors": [
+        {
+          "name": "Front Door",
+          "description": "A simple wooden door painted sage green, adorned with carved sunflowers. A tiny bell tinkles overhead.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Back Door",
+          "description": "A narrow back door opens into a garden, hidden under a trellis of flowering vines.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Investigation DC 12: Find a stash of coded correspondence beneath a loose floorboard.",
+        "Arcana DC 13: Detect weak lingering magic in the lanterns (harmless, but suggestive of local enchantments)."
+      ],
+      "accessibility": "Easily accessible; Mrs. Rindleby welcomes all with tea and cake, unless obviously armed or hostile.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "The rounded walls and arched windows are inlaid with colored glass, creating shifting patterns of light after sunset."
+        },
+        {
+          "name": "Dust",
+          "description": "Dust motes drift through the sunbeams, disturbed only when Mrs. Rindleby searches for an old map or book."
+        },
+        {
+          "name": "Secret Compartment",
+          "description": "A concealed space beneath a loose flagstone hides personal treasures and local secrets."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "Lanternlight Cottage is a hub for gentle intrigue and village rumors, offering a safe reprieve and a chance to gather clues about recent oddities in Hearthwood Glade.",
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_residence:Lanternlight Cottage",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H03",
+      "name": "Curio & Compass",
+      "type": "shop",
+      "description": "This tidy shop, its windows fogged by incense and candlelight, is lined floor-to-ceiling with shelves of oddments: brass compasses, carved figurines, and relics of local lore. The air crackles faintly with magic, and the proprietor is known for discretion as much as for unusual wares.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "H02"
+      ],
+      "areaConnectivity": [
+        "The King\u2019s Tread"
+      ],
+      "areaConnectivityId": [
+        "H01"
+      ],
+      "aliases": [
+        "Curio & Compass",
+        "H03"
+      ],
+      "npcs": [
+        {
+          "name": "Tamsin Quill",
+          "description": "A sharp-eyed gnome with a quick wit and quicker hands, Tamsin deals in curiosities, maps, and secrets. She\u2019s as likely to trade for a good story as she is for coin.",
+          "attitude": "Wary but intrigued by adventurers; offers help if convinced of their good intentions."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Enchanted compass (points to owner\u2019s greatest desire, once per day)",
+        "Handwritten journal of local legends",
+        "Hearthwood charm (grants advantage on saving throws vs. fear in the glade)",
+        "Small box of rare coins from distant lands"
+      ],
+      "plotHooks": [
+        "Tamsin hints she recently acquired a fragment of a treasure map\u2014but it was stolen days ago by a cloaked stranger.",
+        "A mechanical owl on the counter occasionally hoots out cryptic warnings about \u2018shifting shadows\u2019 in the woods."
+      ],
+      "dmInstructions": "Curio & Compass is an ideal place for trade, gathering information, and learning about the wider treasure hunt. Tamsin has heard rumors of the \u2018Drowning Lass\u2019 murder, and can point players toward shadowy figures seen leaving town at night.",
+      "doors": [
+        {
+          "name": "Front Door",
+          "description": "A stained-glass door depicting a winding woodland path. A bell chimes melodically when opened.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 12,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 14,
+          "disableDC": 15,
+          "triggerDC": 13,
+          "damage": "1d8 lightning (harmless shock, but triggers a loud alarm bell in the shop)"
+        }
+      ],
+      "dcChecks": [
+        "Investigation DC 13: Discover a hidden drawer containing a coded note about a thieves\u2019 meeting.",
+        "Arcana DC 15: Recognize several magical trinkets as harmless fakes, but one faintly magical coin is real."
+      ],
+      "accessibility": "Open to the public during daylight hours; at night, Tamsin bars the door and sets magical wards.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Merchandise Displays",
+          "description": "Oddments and antiques clutter the shelves, each with a handwritten tag telling a snippet of history or a tall tale."
+        },
+        {
+          "name": "Incense Burner",
+          "description": "A brass censer fills the air with a soothing, slightly spicy aroma, masking the faint scent of ozone from magical experiments."
+        },
+        {
+          "name": "Mechanical Owl",
+          "description": "This enchanted clockwork creature occasionally provides cryptic warnings, sometimes in rhyme."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "Curio & Compass is the village\u2019s center for trade and secrets, offering vital clues about the stolen map fragment and introducing the threat of outside thieves.",
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_shop:Curio & Compass",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "wandering animal",
+      "description": "A wandering animal appropriate for level 5 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 5 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 5 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "wandering animal",
+      "description": "A wandering animal appropriate for level 5 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "wandering animal",
+      "description": "A wandering animal appropriate for level 5 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 5 parties"
+    }
+  ],
+  "areaFeatures": [
+    "merchant quarter",
+    "guard posts",
+    "local tavern"
+  ],
+  "notes": "NPCs should have daily routines. Political factions create roleplay opportunities.",
+  "spatialContractVersion": 1
+}

@@ -1,0 +1,85 @@
+{
+  "name": "Crawling Shadow",
+  "size": "Small",
+  "type": "Undead",
+  "alignment": "Chaotic Evil",
+  "armorClass": 13,
+  "hitPoints": 13,
+  "maxHitPoints": 13,
+  "speed": 30,
+  "abilities": {
+    "strength": 6,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 6,
+    "wisdom": 12,
+    "charisma": 8
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 6,
+    "perception": 3
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "acid",
+    "cold",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "Understands Common but can't speak",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Shadow Stealth",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Amorphous",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Shadowy Claws",
+      "attackBonus": 4,
+      "damageDice": "2d4",
+      "damageBonus": 2,
+      "damageType": "necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the darkest recesses of the Resonant Abyss, the Crawling Shadows are haunting manifestations of twisted darkness and whispered dread. These creatures appear as semi-corporeal masses of ink-black shadow, their forms constantly shifting and writhing like smoke caught in a restless breeze. Jagged tendrils snake outward in all directions, crawling across walls and floors with unnatural, unsettling grace. Their edges blur and flicker, as if struggling to hold a tangible shape, while faint, ghostly red glimmers pulse intermittently within their depths--like the faint, malevolent heartbeat of a trapped soul. The air around them chills perceptibly, thickening with a palpable sense of despair and silent warning. Crawling Shadows move silently but with eerie purpose, drawn to any sound that disturbs the oppressive stillness of the abyss. When they swarm, the shadows coalesce into writhing masses that crawl over surfaces and victims alike, attempting to smother light and hope. Their presence is heralded by distorted echoes that ripple unnaturally through the air, as if the very sound waves recoil from their malevolent form. These creatures embody the creeping, suffocating fear of being consumed by darkness itself--perfect predators in the sunken, echoing depths beneath Brindlehearth Vale."
+}

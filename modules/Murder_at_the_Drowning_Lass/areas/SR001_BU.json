@@ -1,0 +1,456 @@
+{
+  "areaId": "SR001",
+  "areaName": "The Stoneheart Chasmlands",
+  "areaType": "dungeon",
+  "areaDescription": "Jagged cliffs and shadow-choked gorges split the land, their echoing depths riddled with ancient tunnels and treacherous ledges where unseen dangers prowl. The air is heavy with the tang of damp stone and the distant rumble of shifting earth, promising peril with every step.",
+  "dangerLevel": "high",
+  "recommendedLevel": 4,
+  "climate": "controlled - cool and damp",
+  "terrain": "stone corridors and chambers",
+  "map": {
+    "mapId": "MAP_H_3",
+    "mapName": "Dungeon Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "H01",
+        "type": "shrine",
+        "connections": [
+          "H02",
+          "H03"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "H02"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "high",
+        "name": "Veiled Echoes Shrine"
+      },
+      {
+        "id": "H02",
+        "type": "corridor",
+        "connections": [
+          "H01"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "H01"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Thieves' Threadwalk"
+      },
+      {
+        "id": "H03",
+        "type": "prison",
+        "connections": [
+          "H01"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {},
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "encounter",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Gallows Shadow Cell"
+      }
+    ],
+    "layout": [
+      [
+        "H01",
+        "H02",
+        "H03"
+      ]
+    ],
+    "startRoom": "H01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "H01",
+      "name": "Veiled Echoes Shrine",
+      "type": "shrine",
+      "description": "An ancient, half-collapsed shrine carved into the ravine\u2019s sheer rock face. Veils of mist drift between crumbling pillars and tattered prayer flags, and the air hums faintly with the resonance of whispered supplications lost to time. Faded glyphs line the altar, and the stonework is slick with condensation. Offerings and prayer mats are scattered about, some newly placed, others centuries old. The shrine has become a crossroads for desperate travelers, furtive thieves, and things that dwell in the dark.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "H02",
+        "H03"
+      ],
+      "areaConnectivity": [
+        "The Red Maw Wilds"
+      ],
+      "areaConnectivityId": [
+        "H03"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Shadowed Chasm Spider",
+          "description": "A large, stealthy spider whose webbing is nearly invisible against the damp stone. It lurks above the altar, dropping on isolated prey.",
+          "attitude": "Aggressive but fearful of fire and loud noises."
+        }
+      ],
+      "lootTable": [
+        "Obsidian Prayer Beads (25 gp, advantage on Religion checks in the Chasmlands)",
+        "Vial of Echoing Mist (1 use, cast Silence centered on user)",
+        "Silvered Dagger with a faded cult sigil"
+      ],
+      "plotHooks": [
+        "Cryptic messages are carved into the altar, pointing to a hidden cache deeper in the chasms.",
+        "Strange footprints suggest someone recently made an offering, but they vanish at the shrine\u2019s edge."
+      ],
+      "dmInstructions": "This shrine is both a spiritual landmark and a tactical challenge. Use the mist and pillars for cover and concealment. The spider prefers to ambush lone PCs. Adjust the encounter if the party is weakened. The cryptic altar may contain a clue to the next stage of the quest or a riddle guarding the deeper tunnels.",
+      "doors": [
+        {
+          "name": "Eastern Archway",
+          "description": "A carved stone arch with hanging, faded banners; open but shrouded in mist.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Northern Crack",
+          "description": "A narrow natural fissure in the rock, wide enough for a single person to squeeze through.",
+          "type": "secret",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 12,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 13,
+          "disableDC": 12,
+          "triggerDC": 10,
+          "damage": "2d6 poison (if an offering bowl is disturbed, a cloud of choking incense erupts)"
+        }
+      ],
+      "dcChecks": [
+        "Religion DC 14: Interpret the faded glyphs on the altar to glean ancient warnings.",
+        "Investigation DC 13: Spot the nearly invisible spider webs spanning the pillars.",
+        "Perception DC 12: Hear faint whispering voices coming from the cracks in the wall."
+      ],
+      "accessibility": "Normal access from a ledge or narrow stone stair carved into the cliff. Difficult for those heavily encumbered.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Altar",
+          "description": "A squat stone altar, slick with condensation and etched with faded glyphs. Offerings are piled haphazardly."
+        },
+        {
+          "name": "Offering Bowls",
+          "description": "Several cracked ceramic bowls holding coins, dried flowers, and old teeth."
+        },
+        {
+          "name": "Prayer Mats",
+          "description": "Threadbare mats and cloaks for kneeling, some fresh, others rotting to shreds."
+        },
+        {
+          "name": "Shifting Mist",
+          "description": "A low-lying mist rolls through the shrine, obscuring vision and muffling sounds."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "Combat",
+          "description": "Shadowed Chasm Spider ambushes a lone explorer or attacks if the altar is disturbed."
+        },
+        {
+          "type": "Exploration",
+          "description": "Deciphering cryptic glyphs or tracking the mysterious recent visitor."
+        }
+      ],
+      "adventureSummary": "The party arrives at the Veiled Echoes Shrine, discovering evidence of recent passage, unsettling whispers in the fog, and a lurking threat above. Clues here point deeper into the chasm\u2019s mysteries.",
+      "aliases": [
+        "Veiled Echoes Shrine",
+        "H01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_shrine:Veiled Echoes Shrine",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H02",
+      "name": "Thieves' Threadwalk",
+      "type": "corridor",
+      "description": "A precarious stone ledge winds above a dizzying drop, with sections reinforced by old ropes and planks. Faint chalk marks and scraps of thread tied to protruding rocks betray the passage of thieves. The uneven footing and sudden gusts make every step dangerous, and the corridor offers little cover save for the jagged stone walls and occasional tattered banner left as a warning.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "H01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Corsa 'Threadneedle' Drenn",
+          "description": "A wiry, sharp-eyed thief balancing on the ledge, watching both directions for pursuers or rivals. She is wary but open to negotiation if approached with respect or evidence of shared enemies.",
+          "attitude": "Nervous but willing to parley; hostile if threatened or cornered."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Chasm Bat Swarm",
+          "description": "A flurry of small, shrieking bats disturbed by noise or sudden movement. They harass intruders, threatening to knock them off balance.",
+          "attitude": "Defensive, reacts to light and loud noises."
+        }
+      ],
+      "lootTable": [
+        "Thief\u2019s Chalk (5 uses, advantage on Sleight of Hand checks for marking paths)",
+        "Loop of Spider-Silk Rope (50 ft, near-weightless, cannot be cut by mundane means)",
+        "Coin Purse with 13 gp, 2 bloodstone chips"
+      ],
+      "plotHooks": [
+        "Corsa offers information about a rival gang\u2019s hidden stash deeper in the chasm in exchange for safe passage.",
+        "A discarded mask bears the sigil glimpsed in the murder investigation, linking the thieves here to the wider plot."
+      ],
+      "dmInstructions": "This corridor is ideal for tension and negotiation. Use environmental hazards (loose rocks, sudden bat swarms) to keep the party on edge. Corsa may try to broker a deal or flee if she senses overwhelming force. The corridor is a key transition\u2014time spent here should heighten paranoia and set the tone for the dangers ahead.",
+      "doors": [
+        {
+          "name": "Ledge Entrance",
+          "description": "A narrow mouth in the ravine wall opening onto the ledge; no door, only a rope handhold.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 9,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 12,
+          "disableDC": 12,
+          "triggerDC": 10,
+          "damage": "2d8 bludgeoning (faulty plank gives way, causing a short fall and possible push into the chasm below; DC 14 Dex save to avoid falling entirely)"
+        }
+      ],
+      "dcChecks": [
+        "Acrobatics DC 13: Maintain balance while crossing the most treacherous sections.",
+        "Perception DC 12: Notice subtle chalk marks indicating a safe path or warnings.",
+        "Persuasion DC 14: Convince Corsa to share information or safe passage."
+      ],
+      "accessibility": "Narrow and treacherous, requires careful footing. Medium difficulty for encumbered or armored parties; dangerous for mounts.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Cracks In Walls",
+          "description": "Hairline cracks run jagged along the stone, some leaking water, others filled with old threads marking hidden caches or escape routes."
+        },
+        {
+          "name": "Tattered Banner",
+          "description": "A remnant of a thieves\u2019 warning: red cloth knotted around a spike, signaling danger ahead."
+        },
+        {
+          "name": "Loose Plank",
+          "description": "One support plank is worn and unstable, a simple but potentially lethal trap."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "Roleplay",
+          "description": "Negotiation or confrontation with Corsa 'Threadneedle' Drenn."
+        },
+        {
+          "type": "Hazard",
+          "description": "Bat swarm and dangerous footing threaten to knock PCs off the ledge."
+        }
+      ],
+      "adventureSummary": "Crossing the Threadwalk, the party must balance, talk their way past Corsa, and avoid dangerous falls. Crucial clues and alliances can be forged\u2014or lost\u2014here.",
+      "aliases": [
+        "Thieves' Threadwalk",
+        "H02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_corridor:Thieves' Threadwalk",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H03",
+      "name": "Gallows Shadow Cell",
+      "type": "prison",
+      "description": "Deep within the ravine, old iron bars are anchored in the stone, forming a cramped cell. The air is cold and heavy with despair; faded scratch marks and chains suggest the cell\u2019s grim history. An old guard post sits in a niche, its wooden desk covered with moldy logs and rusted keys. A single torch flickers, barely illuminating the darkness beyond. Shadows often move where no one stands.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "H01"
+      ],
+      "areaConnectivity": [
+        "The Barrowmire Settlements"
+      ],
+      "areaConnectivityId": [
+        "H01"
+      ],
+      "npcs": [
+        {
+          "name": "Irren the Ragged",
+          "description": "A gaunt, rag-clad prisoner hunched in the shadows of the cell, haunted but desperate for company. Once a lookout for the thieves, now abandoned and half-mad.",
+          "attitude": "Wary, fearful, desperate for rescue or a chance to bargain for freedom."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Specter of the Forgotten",
+          "description": "A restless ghost, the faint outline of a past prisoner wronged by betrayal. It haunts the cell, lashing out at those who disturb the remains in the corner.",
+          "attitude": "Tormented, attacks any who disrespect the dead or attempt to break open the cell."
+        }
+      ],
+      "lootTable": [
+        "Iron Keyring (opens cell and guard post drawers)",
+        "Prisoner\u2019s Ledger (lists old names, one circled in blood matching the murder case)",
+        "Potion of Second Wind (restores 1d6+2 HP, single use)"
+      ],
+      "plotHooks": [
+        "Irren claims to know the fate of a vanished map-bearer, but demands something in return.",
+        "The ledger reveals the cell held a notorious thief whose ghost now lingers, and offers a clue to a hidden stash."
+      ],
+      "dmInstructions": "This cell combines social and supernatural challenges. Irren can be a valuable informant\u2014or a dangerous liability if freed. The specter attacks when the cell is breached or if the remains are disturbed, but may be laid to rest by a proper offering at the Veiled Echoes Shrine.",
+      "doors": [
+        {
+          "name": "Barred Gate",
+          "description": "Heavy iron bars, rusted but sturdy, set into the rock. A simple lock keeps them in place.",
+          "type": "heavy",
+          "locked": true,
+          "lockDC": 15,
+          "breakDC": 18,
+          "keyname": "Iron Keyring",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 15,
+          "disableDC": 15,
+          "triggerDC": 10,
+          "damage": "3d6 necrotic (the specter\u2019s wail is triggered if the cell is opened forcefully, forcing a DC 13 Wisdom save or be frightened for 1 minute)"
+        }
+      ],
+      "dcChecks": [
+        "Insight DC 12: Sense Irren\u2019s true motivations and state of mind.",
+        "Perception DC 13: Spot the hidden bones in the cell corner.",
+        "Arcana DC 14: Recognize the signs of a haunting and the possibility of laying the spirit to rest."
+      ],
+      "accessibility": "Normal access if the key is found; hard (lockpicking or breaking) otherwise.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Guard Post",
+          "description": "A rickety wooden desk with rotting paperwork, rusted lantern, and scattered iron keys."
+        },
+        {
+          "name": "Prison Cell",
+          "description": "A cramped, iron-barred enclosure, barely enough for one person to lie down."
+        },
+        {
+          "name": "Faded Scratch Marks",
+          "description": "Desperate etchings and tallies carved into the walls by former prisoners."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "Roleplay & Combat",
+          "description": "Negotiating with Irren, and dealing with the specter if the cell is disturbed."
+        }
+      ],
+      "adventureSummary": "The party finds a desperate prisoner and a restless ghost, with potential for both valuable information and peril. Actions here may echo throughout the rest of the Chasmlands.",
+      "aliases": [
+        "Gallows Shadow Cell",
+        "H03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_prison:Gallows Shadow Cell",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 4 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 4 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 4 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 4 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 4 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 4 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 4 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 4 parties"
+    }
+  ],
+  "areaFeatures": [
+    "forgotten shrines",
+    "mysterious mechanisms",
+    "hidden passages"
+  ],
+  "notes": "Consider lighting sources and trap placement. Underground areas may have limited resources.",
+  "spatialContractVersion": 1
+}

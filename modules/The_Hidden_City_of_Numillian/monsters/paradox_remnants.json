@@ -1,0 +1,70 @@
+{
+  "name": "Paradox Remnant",
+  "size": "Medium",
+  "type": "Aberration",
+  "alignment": "Chaotic Neutral",
+  "armorClass": 13,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 30,
+  "abilities": {
+    "strength": 10,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 13,
+    "wisdom": 12,
+    "charisma": 7
+  },
+  "savingThrows": [
+    "Dexterity",
+    "Intelligence"
+  ],
+  "skills": {
+    "Perception": 3,
+    "Stealth": 5
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "psychic",
+    "force"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed",
+    "frightened"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "Understands Deep Speech but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Temporal Flicker",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Reality Warp",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Paradox Touch",
+      "attackBonus": 5,
+      "damageDice": "2d6",
+      "damageBonus": 3,
+      "damageType": "psychic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Within the twisting shadows and fractured realities of the Shrouded Psiumbra, the Paradox Remnants linger as haunting echoes of warped memory and fractured time. These aberrations appear as semi-transparent humanoid figures, their forms flickering and shifting like a broken reflection in a shattered mirror. Their features are indistinct, faces blurred and multiplied in impossible geometry, as if several conflicting identities vie for dominance within a single, unstable visage. Their limbs stretch and contract unpredictably, sometimes elongating into tendrils of shadow or fracturing into shards of spectral light that dissolve and reassemble in midair. A faint aura of psychic static surrounds them, warping the immediate environment with dissonant whispers and visual distortions that ripple like heat haze. Paradox Remnants drift silently through the labyrinthine corridors, their presence warping time and perception--seconds may stretch or snap back, memories fracture, and reality feels unmoored. They are neither fully alive nor dead, existing as psychic remnants trapped between moments, their intentions inscrutable and shifting. Encountering one is to glimpse the unraveling of logic itself, as the creature's very existence fractures the minds of those who stare too long. These remnants often manifest near the Mindsunder Vault or where psychic energies converge, drawn to memories and secrets yearning to be forgotten or rewritten."
+}

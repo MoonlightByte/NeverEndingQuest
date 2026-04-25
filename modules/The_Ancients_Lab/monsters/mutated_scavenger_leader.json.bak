@@ -1,0 +1,81 @@
+{
+  "name": "Mutated Scavenger Leader",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Chaotic Neutral",
+  "armorClass": 13,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 30,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 14,
+    "constitution": 14,
+    "intelligence": 10,
+    "wisdom": 11,
+    "charisma": 12
+  },
+  "savingThrows": [
+    "DEX",
+    "CON"
+  ],
+  "skills": {
+    "Perception": 2,
+    "Stealth": 4,
+    "Survival": 2,
+    "Intimidation": 3
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "poison"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "Common, Undercommon",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Mutated Resilience",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Toxic Blood (1/Turn)",
+      "attackBonus": 0,
+      "damageDice": "1d6",
+      "damageBonus": 0,
+      "damageType": "poison"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Mutated Claw",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Jury-Rigged Blade",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

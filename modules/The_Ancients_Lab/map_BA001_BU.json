@@ -1,0 +1,70 @@
+{
+  "mapId": "MAP_I_3",
+  "mapName": "Wilderness Map",
+  "totalRooms": 3,
+  "rooms": [
+    {
+      "id": "I01",
+      "type": "ruins",
+      "connections": [
+        "I02",
+        "I03"
+      ],
+      "coordinates": "X10Y10",
+      "directions": {
+        "east": "I02"
+      },
+      "tags": [],
+      "purpose": "unknown",
+      "landmark": false,
+      "dangerLevel": "low",
+      "name": "Shattered Forge Approach"
+    },
+    {
+      "id": "I02",
+      "type": "ravine",
+      "connections": [
+        "I01"
+      ],
+      "coordinates": "X11Y10",
+      "directions": {
+        "west": "I01"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "low",
+      "name": "Abyssal Fracture"
+    },
+    {
+      "id": "I03",
+      "type": "campsite",
+      "connections": [
+        "I01"
+      ],
+      "coordinates": "X12Y10",
+      "directions": {},
+      "tags": [
+        "rest",
+        "dead_end"
+      ],
+      "purpose": "safe_haven",
+      "landmark": true,
+      "dangerLevel": "low",
+      "name": "Forsaken Outrider Encampment"
+    }
+  ],
+  "layout": [
+    [
+      "I01",
+      "I02",
+      "I03"
+    ]
+  ],
+  "startRoom": "I01",
+  "version": "1.1",
+  "notes": "Extended schema with AI-friendly navigation fields",
+  "spatialContractVersion": 1
+}

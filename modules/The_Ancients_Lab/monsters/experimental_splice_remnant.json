@@ -1,0 +1,86 @@
+{
+  "name": "Experimental Splice Remnant",
+  "size": "Medium",
+  "type": "Aberration",
+  "alignment": "Chaotic Neutral",
+  "armorClass": 12,
+  "hitPoints": 18,
+  "maxHitPoints": 18,
+  "speed": 30,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 14,
+    "constitution": 12,
+    "intelligence": 6,
+    "wisdom": 10,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {
+    "Perception": 2,
+    "Stealth": 4
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "psychic"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "understands Deep Speech but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Unstable Form",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Regenerative Tissue",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Claw",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Bite",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    },
+    {
+      "name": "Acidic Spray (Recharge 5-6)",
+      "attackBonus": 0,
+      "damageDice": "2d6",
+      "damageBonus": 0,
+      "damageType": "acid"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the warped crucibles of The Ancients Lab, the Experimental Splice Remnant is a grotesque amalgamation of flesh, metal, and arcane filaments, a living testament to the forbidden fusion experiments that tore apart the fabric of natural order. Its form is a nightmarish silhouette, roughly humanoid yet disturbingly asymmetrical: sinewy limbs of mottled flesh intertwine with rusted mechanical components that whine softly with a faint, eerie pulse. Jagged shards of crystalline tissue sprout from its spine, glowing faintly with sickly green bioluminescence, casting unsettling shadows on the cracked, oily floor beneath it. The creature's head is a malformed mass, partially obscured by writhing tendrils and half-melted metal plates, with one glaring, multifaceted eye that gleams with unnatural intelligence and psychotic fervor. As it moves, a low hum of psychic energy vibrates through the air, distorting the surrounding space and whispering maddening secrets that gnaw at the minds of unwary intruders. Its behavior is erratic--sometimes lashing out with brutal, spasmodic strikes, other times retreating into unnatural stillness, as if listening to distant, alien commands. The lingering stench of ammonia, burnt metal, and decay clings to its presence, heightening the oppressive atmosphere of the Aberrant Wastes. This remnant is a fractured echo of the lab's darkest experiments, a sentinel of chaos that embodies the terrible cost of meddling with life and essence beyond mortal comprehension."
+}

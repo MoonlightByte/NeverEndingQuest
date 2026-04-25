@@ -1,0 +1,1915 @@
+{
+  "module_name": "Murder at the Drowning Lass",
+  "module_id": "Murder_at_the_Drowning_Lass",
+  "areas": {
+    "BV001": {
+      "name": "Brindlehearth Village",
+      "type": "town",
+      "locations": [],
+      "npcs": [
+        "Constable Farrel Dun",
+        "Old Ellyn, the folklore spinner",
+        "Gritch the One-Eared, nervous patron"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "WM001": {
+      "name": "Widdershins Moor",
+      "type": "wilderness",
+      "locations": [
+        "H01",
+        "H02",
+        "H03"
+      ],
+      "npcs": [
+        "Red Maw scouts",
+        "Spirit of the Moor"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "RME001": {
+      "name": "Red Maw Encampment",
+      "type": "mixed",
+      "locations": [],
+      "npcs": [
+        "Red Maw scouts"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "THB001": {
+      "name": "The Hollowed Barrow",
+      "type": "town",
+      "locations": [],
+      "npcs": [
+        "Maela Kett, the wary tavernkeeper",
+        "Edrin Voss, eccentric proprietor"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "OKR001": {
+      "name": "The Old King’s Road",
+      "type": "mixed",
+      "locations": [],
+      "npcs": [
+        "Ghostly Royal Messenger",
+        "Sable, Reluctant Scribe’s Shade"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "SR001": {
+      "name": "Stoneheart Ravine",
+      "type": "dungeon",
+      "locations": [],
+      "npcs": [
+        "Corsa 'Threadneedle' Drenn",
+        "Irren the Ragged"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "EDC001": {
+      "name": "Echoing Deep Caverns",
+      "type": "dungeon",
+      "locations": [],
+      "npcs": [],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "HG001": {
+      "name": "Hearthwood Glade",
+      "type": "town",
+      "locations": [],
+      "npcs": [
+        "Sergeant Halwin Reed",
+        "Mrs. Rindleby",
+        "Tamsin Quill"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    }
+  },
+  "npcs": {
+    "maela_kett_the_wary_tavernkeeper": {
+      "name": "Maela Kett, the wary tavernkeeper",
+      "role": "",
+      "faction": "",
+      "description": "A sharp-eyed woman with close-cropped hair and a sleeve of faded tattoos. She keeps a constant watch over patrons and the bar’s battered safe, wary since recent troubles. She knows much of the town’s secrets but trusts few.",
+      "appears_in": [
+        {
+          "area": "THB001",
+          "location": "H01"
+        }
+      ],
+      "aliases": [
+        "Maela Kett, the wary tavernkeeper"
+      ]
+    },
+    "constable_farrel_dun": {
+      "name": "Constable Farrel Dun",
+      "role": "",
+      "faction": "",
+      "description": "The doughty, sharp-eyed local lawman with a bristly mustache, Farrel Dun is known for his even temper and sense of duty. He’s quick to help townsfolk and visitors alike, though his patience for nonsense is limited. Farrel is protective of his staff and wary of outsiders meddling in village affairs, but he values honesty and courage.",
+      "appears_in": [
+        {
+          "area": "BV001",
+          "location": "H01"
+        }
+      ],
+      "aliases": [
+        "Constable Farrel Dun"
+      ]
+    },
+    "old_ellyn_the_folklore_spinner": {
+      "name": "Old Ellyn, the folklore spinner",
+      "role": "",
+      "faction": "",
+      "description": "A spry, sharp-tongued elder with wild silver hair and a knack for captivating crowds with local legends. Ellyn is beloved by children and tolerated by adults, possessing an uncanny memory for the Vale’s strangest tales—some of which may hold real clues.",
+      "appears_in": [
+        {
+          "area": "BV001",
+          "location": "H02"
+        }
+      ],
+      "aliases": [
+        "Old Ellyn, the folklore spinner"
+      ]
+    },
+    "maela_kett": {
+      "name": "Maela Kett",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Maela Kett"
+      ]
+    },
+    "rovan_blackjaw": {
+      "name": "Rovan Blackjaw",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Rovan Blackjaw (in disguise)",
+        "Rovan Blackjaw"
+      ]
+    },
+    "gritch_the_one_eared_nervous_patron": {
+      "name": "Gritch the One-Eared, nervous patron",
+      "role": "",
+      "faction": "",
+      "description": "A twitchy, shabby man with a missing ear, Gritch is a regular at Duskmantle Curios. He’s often found pawing through oddments, muttering about curses and treasures. Gritch is evasive but knows more about local criminal dealings than he lets on.",
+      "appears_in": [
+        {
+          "area": "BV001",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Gritch the One-Eared, nervous patron"
+      ]
+    },
+    "old_ellyn": {
+      "name": "Old Ellyn",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Old Ellyn"
+      ]
+    },
+    "red_maw_scouts": {
+      "name": "Red Maw scouts",
+      "role": "",
+      "faction": "",
+      "description": "Wary, mud-splattered members of the Red Maw gang, clad in patchwork leathers and bearing shortbows and knives. Their demeanor is tense—they’re on the lookout for rivals and authorities, but not immediately hostile unless threatened.",
+      "appears_in": [
+        {
+          "area": "WM001",
+          "location": "H01"
+        },
+        {
+          "area": "RME001",
+          "location": "H02"
+        }
+      ],
+      "aliases": [
+        "Red Maw scouts"
+      ]
+    },
+    "bram_of_the_stones_wandering_hermit": {
+      "name": "Bram of the Stones, wandering hermit",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Bram of the Stones, wandering hermit"
+      ]
+    },
+    "lysa_quickfingers_rebellious_lieutenant": {
+      "name": "Lysa Quickfingers, rebellious lieutenant",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Lysa Quickfingers, rebellious lieutenant"
+      ]
+    },
+    "red_maw_enforcers": {
+      "name": "Red Maw enforcers",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Red Maw enforcers"
+      ]
+    },
+    "lysa_quickfingers": {
+      "name": "Lysa Quickfingers",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Lysa Quickfingers"
+      ]
+    },
+    "spirit_of_the_moor": {
+      "name": "Spirit of the Moor",
+      "role": "",
+      "faction": "",
+      "description": "An ethereal, shimmering presence that manifests as a swirl of mist and faintly glowing eyes. The spirit speaks in riddles and warnings, watching over the standing stone and judging those who approach.",
+      "appears_in": [
+        {
+          "area": "WM001",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Spirit of the Moor (folkloric apparition)",
+        "Spirit of the Moor"
+      ]
+    },
+    "echo_wraiths": {
+      "name": "Echo Wraiths",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Echo Wraiths (supernatural guardians)",
+        "Echo Wraiths"
+      ]
+    },
+    "ardwen_ghostly_map_bearer_from_legend": {
+      "name": "Ardwen, ghostly map-bearer from legend",
+      "role": "",
+      "faction": "",
+      "description": "",
+      "appears_in": [],
+      "aliases": [
+        "Ardwen, ghostly map-bearer from legend"
+      ]
+    },
+    "edrin_voss_eccentric_proprietor": {
+      "name": "Edrin Voss, eccentric proprietor",
+      "role": "",
+      "faction": "",
+      "description": "A thin, wild-haired man with a patchwork vest and eyes always darting toward the mists outside. Spends as much time spinning tales as haggling over relics. He claims some items whisper secrets if you listen closely.",
+      "appears_in": [
+        {
+          "area": "THB001",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Edrin Voss, eccentric proprietor"
+      ]
+    },
+    "ghostly_royal_messenger": {
+      "name": "Ghostly Royal Messenger",
+      "role": "",
+      "faction": "",
+      "description": "A translucent figure in tattered livery, clutching spectral scrolls and nervously peering between the roads, forever waiting to deliver a message.",
+      "appears_in": [
+        {
+          "area": "OKR001",
+          "location": "H02"
+        }
+      ],
+      "aliases": [
+        "Ghostly Royal Messenger"
+      ]
+    },
+    "sable_reluctant_scribe_s_shade": {
+      "name": "Sable, Reluctant Scribe’s Shade",
+      "role": "",
+      "faction": "",
+      "description": "A spectral scribe bound to the ledger, cursed to witness every name added. Sable flickers in and out of view, her ink-stained fingers trembling.",
+      "appears_in": [
+        {
+          "area": "OKR001",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Sable, Reluctant Scribe’s Shade"
+      ]
+    },
+    "corsa_threadneedle_drenn": {
+      "name": "Corsa 'Threadneedle' Drenn",
+      "role": "",
+      "faction": "",
+      "description": "A wiry, sharp-eyed thief balancing on the ledge, watching both directions for pursuers or rivals. She is wary but open to negotiation if approached with respect or evidence of shared enemies.",
+      "appears_in": [
+        {
+          "area": "SR001",
+          "location": "H02"
+        }
+      ],
+      "aliases": [
+        "Corsa 'Threadneedle' Drenn"
+      ]
+    },
+    "irren_the_ragged": {
+      "name": "Irren the Ragged",
+      "role": "",
+      "faction": "",
+      "description": "A gaunt, rag-clad prisoner hunched in the shadows of the cell, haunted but desperate for company. Once a lookout for the thieves, now abandoned and half-mad.",
+      "appears_in": [
+        {
+          "area": "SR001",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Irren the Ragged"
+      ]
+    },
+    "sergeant_halwin_reed": {
+      "name": "Sergeant Halwin Reed",
+      "role": "",
+      "faction": "",
+      "description": "A grizzled, even-tempered veteran with a deep respect for local traditions. Halwin ensures the safety of the vale with a mixture of discipline and gentle humor.",
+      "appears_in": [
+        {
+          "area": "HG001",
+          "location": "H01"
+        }
+      ],
+      "aliases": [
+        "Sergeant Halwin Reed"
+      ]
+    },
+    "mrs_rindleby": {
+      "name": "Mrs. Rindleby",
+      "role": "",
+      "faction": "",
+      "description": "A kindly halfling matron and amateur cartographer. She loves gossip, herbal teas, and puzzles, and is always eager for news from afar.",
+      "appears_in": [
+        {
+          "area": "HG001",
+          "location": "H02"
+        }
+      ],
+      "aliases": [
+        "Mrs. Rindleby"
+      ]
+    },
+    "tamsin_quill": {
+      "name": "Tamsin Quill",
+      "role": "",
+      "faction": "",
+      "description": "A sharp-eyed gnome with a quick wit and quicker hands, Tamsin deals in curiosities, maps, and secrets. She’s as likely to trade for a good story as she is for coin.",
+      "appears_in": [
+        {
+          "area": "HG001",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Tamsin Quill"
+      ]
+    }
+  },
+  "locations": {
+    "H01": {
+      "name": "Shrouded Lantern Encampment",
+      "area": "WM001"
+    },
+    "H02": {
+      "name": "Crooked Cairn Hill",
+      "area": "WM001"
+    },
+    "H03": {
+      "name": "Witchlight Standing Stone",
+      "area": "WM001"
+    }
+  },
+  "plot_scopes": {
+    "PP001": "HG001",
+    "PP002": "HG001",
+    "PP003": "HG001",
+    "PP004": "HG001"
+  },
+  "references": {
+    "npc:Maela Kett, the wary tavernkeeper": [
+      "module:plotStages"
+    ],
+    "npc:Constable Farrel Dun": [
+      "module:plotStages"
+    ],
+    "npc:Old Ellyn, the folklore spinner": [
+      "module:plotStages"
+    ],
+    "npc:Maela Kett": [
+      "module:plotStages"
+    ],
+    "npc:Rovan Blackjaw (in disguise)": [
+      "module:plotStages"
+    ],
+    "npc:Gritch the One-Eared, nervous patron": [
+      "module:plotStages"
+    ],
+    "npc:Old Ellyn": [
+      "module:plotStages"
+    ],
+    "npc:Red Maw scouts": [
+      "module:plotStages"
+    ],
+    "npc:Bram of the Stones, wandering hermit": [
+      "module:plotStages"
+    ],
+    "npc:Rovan Blackjaw": [
+      "module:plotStages"
+    ],
+    "npc:Lysa Quickfingers, rebellious lieutenant": [
+      "module:plotStages"
+    ],
+    "npc:Red Maw enforcers": [
+      "module:plotStages"
+    ],
+    "npc:Lysa Quickfingers": [
+      "module:plotStages"
+    ],
+    "npc:Spirit of the Moor (folkloric apparition)": [
+      "module:plotStages"
+    ],
+    "npc:Echo Wraiths (supernatural guardians)": [
+      "module:plotStages"
+    ],
+    "npc:Ardwen, ghostly map-bearer from legend": [
+      "module:plotStages"
+    ],
+    "npc:Echo Wraiths": [
+      "module:plotStages"
+    ]
+  },
+  "validation_issues": [
+    "NPC 'Maela Kett' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Rovan Blackjaw' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Old Ellyn' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Bram of the Stones, wandering hermit' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Lysa Quickfingers, rebellious lieutenant' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Red Maw enforcers' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Lysa Quickfingers' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Echo Wraiths' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Ardwen, ghostly map-bearer from legend' is referenced in ['module:plotStages'] but not placed in any location"
+  ],
+  "generated_at": "2026-04-25T11:09:48.038989",
+  "continuity": {
+    "continuity_version": "v1",
+    "entry_state_variants": {
+      "cold_start": {
+        "summary": "Party enters Murder at the Drowning Lass with no prior continuity context. Present the opening conflict and immediate objective clearly."
+      },
+      "partial_context": {
+        "summary": "Party enters Murder at the Drowning Lass with partial prior context. Reinforce known clues before branch-critical decisions."
+      },
+      "late_arc": {
+        "summary": "Party enters Murder at the Drowning Lass in late-arc state. Provide compact recap and preserve ending accessibility."
+      }
+    },
+    "cross_module_refs": [
+      {
+        "target_module": "Night_of_the_Restless_Dead",
+        "entity_id": "sister_miriam_bramble",
+        "relation": "reference",
+        "confidence": "medium",
+        "notes": "Cult lineage and Bramble thread connect to adjacent modules."
+      },
+      {
+        "target_module": "The_Pumpkin_Kings_Curse",
+        "entity_id": "bramble_lineage",
+        "relation": "reference",
+        "confidence": "high",
+        "notes": "Bramble family lineage appears in linked module arcs."
+      },
+      {
+        "target_module": "The_Pumpkin_Kings_Curse",
+        "entity_id": "pumpkin_king",
+        "relation": "antagonist",
+        "confidence": "medium",
+        "notes": "Pumpkin King and harvest pact are shared continuity anchors."
+      }
+    ],
+    "standalone_fallback": {
+      "enabled": true,
+      "clue_sources": [
+        "module_context",
+        "module_plot"
+      ],
+      "notes": "Murder_at_the_Drowning_Lass remains playable as a standalone module when cross-module continuity is unavailable."
+    }
+  },
+  "semantic_authority": {
+    "version": "v1",
+    "module_slug": "Murder_at_the_Drowning_Lass",
+    "location_aliases": {
+      "bloodroot crossing": {
+        "status": "resolved",
+        "location_id": "H01",
+        "location_name": "Shrouded Lantern Encampment",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/RME001.json#locations[H01].aliases",
+          "areas/RME001.json#locations[H01].name"
+        ]
+      },
+      "boglight curiosities": {
+        "status": "resolved",
+        "location_id": "H03",
+        "location_name": "Witchlight Standing Stone",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/THB001.json#locations[H03].aliases",
+          "areas/THB001.json#locations[H03].name"
+        ]
+      },
+      "bound ledger nook": {
+        "status": "resolved",
+        "location_id": "H03",
+        "location_name": "Witchlight Standing Stone",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/OKR001.json#locations[H03].aliases",
+          "areas/OKR001.json#locations[H03].name"
+        ]
+      },
+      "brass lantern junction": {
+        "status": "resolved",
+        "location_id": "H02",
+        "location_name": "Crooked Cairn Hill",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/OKR001.json#locations[H02].aliases",
+          "areas/OKR001.json#locations[H02].name"
+        ]
+      },
+      "crimson echo nook": {
+        "status": "resolved",
+        "location_id": "H02",
+        "location_name": "Crooked Cairn Hill",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/RME001.json#locations[H02].aliases",
+          "areas/RME001.json#locations[H02].name"
+        ]
+      },
+      "crooked cairn hill": {
+        "status": "resolved",
+        "location_id": "H02",
+        "location_name": "Crooked Cairn Hill",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/WM001.json#locations[H02].aliases",
+          "areas/WM001.json#locations[H02].name"
+        ]
+      },
+      "curio compass": {
+        "status": "resolved",
+        "location_id": "H03",
+        "location_name": "Witchlight Standing Stone",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/HG001.json#locations[H03].aliases",
+          "areas/HG001.json#locations[H03].name"
+        ]
+      },
+      "drowning lass taproom": {
+        "status": "resolved",
+        "location_id": "H01",
+        "location_name": "Shrouded Lantern Encampment",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/THB001.json#locations[H01].aliases",
+          "areas/THB001.json#locations[H01].name"
+        ]
+      },
+      "duskmantle curios": {
+        "status": "resolved",
+        "location_id": "H03",
+        "location_name": "Witchlight Standing Stone",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/BV001.json#locations[H03].aliases",
+          "areas/BV001.json#locations[H03].name"
+        ]
+      },
+      "duskmire hollow": {
+        "status": "resolved",
+        "location_id": "H03",
+        "location_name": "Witchlight Standing Stone",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/RME001.json#locations[H03].aliases",
+          "areas/RME001.json#locations[H03].name"
+        ]
+      },
+      "echoing oathway": {
+        "status": "resolved",
+        "location_id": "H01",
+        "location_name": "Shrouded Lantern Encampment",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/OKR001.json#locations[H01].aliases",
+          "areas/OKR001.json#locations[H01].name"
+        ]
+      },
+      "fablewrights crossing": {
+        "status": "resolved",
+        "location_id": "H02",
+        "location_name": "Crooked Cairn Hill",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/BV001.json#locations[H02].aliases",
+          "areas/BV001.json#locations[H02].name"
+        ]
+      },
+      "gallows shadow cell": {
+        "status": "resolved",
+        "location_id": "H03",
+        "location_name": "Witchlight Standing Stone",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/SR001.json#locations[H03].aliases",
+          "areas/SR001.json#locations[H03].name"
+        ]
+      },
+      "gallowswatch garrison": {
+        "status": "resolved",
+        "location_id": "H01",
+        "location_name": "Shrouded Lantern Encampment",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/BV001.json#locations[H01].aliases",
+          "areas/BV001.json#locations[H01].name"
+        ]
+      },
+      "h01": {
+        "status": "resolved",
+        "location_id": "H01",
+        "location_name": "Shrouded Lantern Encampment",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/BV001.json#locations[H01].aliases",
+          "areas/EDC001.json#locations[H01].aliases",
+          "areas/HG001.json#locations[H01].aliases",
+          "areas/OKR001.json#locations[H01].aliases",
+          "areas/RME001.json#locations[H01].aliases",
+          "areas/SR001.json#locations[H01].aliases",
+          "areas/THB001.json#locations[H01].aliases",
+          "areas/WM001.json#locations[H01].aliases"
+        ]
+      },
+      "h02": {
+        "status": "resolved",
+        "location_id": "H02",
+        "location_name": "Crooked Cairn Hill",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/BV001.json#locations[H02].aliases",
+          "areas/EDC001.json#locations[H02].aliases",
+          "areas/HG001.json#locations[H02].aliases",
+          "areas/OKR001.json#locations[H02].aliases",
+          "areas/RME001.json#locations[H02].aliases",
+          "areas/SR001.json#locations[H02].aliases",
+          "areas/THB001.json#locations[H02].aliases",
+          "areas/WM001.json#locations[H02].aliases"
+        ]
+      },
+      "h03": {
+        "status": "resolved",
+        "location_id": "H03",
+        "location_name": "Witchlight Standing Stone",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/BV001.json#locations[H03].aliases",
+          "areas/EDC001.json#locations[H03].aliases",
+          "areas/HG001.json#locations[H03].aliases",
+          "areas/OKR001.json#locations[H03].aliases",
+          "areas/RME001.json#locations[H03].aliases",
+          "areas/SR001.json#locations[H03].aliases",
+          "areas/THB001.json#locations[H03].aliases",
+          "areas/WM001.json#locations[H03].aliases"
+        ]
+      },
+      "ironbark watchhouse": {
+        "status": "resolved",
+        "location_id": "H01",
+        "location_name": "Shrouded Lantern Encampment",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/HG001.json#locations[H01].aliases",
+          "areas/HG001.json#locations[H01].name"
+        ]
+      },
+      "lanternlight cottage": {
+        "status": "resolved",
+        "location_id": "H02",
+        "location_name": "Crooked Cairn Hill",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/HG001.json#locations[H02].aliases",
+          "areas/HG001.json#locations[H02].name"
+        ]
+      },
+      "mireshadow storage": {
+        "status": "resolved",
+        "location_id": "H02",
+        "location_name": "Crooked Cairn Hill",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/THB001.json#locations[H02].aliases",
+          "areas/THB001.json#locations[H02].name"
+        ]
+      },
+      "reliquary of sorrowful depths": {
+        "status": "resolved",
+        "location_id": "H03",
+        "location_name": "Witchlight Standing Stone",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/EDC001.json#locations[H03].aliases",
+          "areas/EDC001.json#locations[H03].name"
+        ]
+      },
+      "sanctum of echoed warnings": {
+        "status": "resolved",
+        "location_id": "H01",
+        "location_name": "Shrouded Lantern Encampment",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/EDC001.json#locations[H01].aliases",
+          "areas/EDC001.json#locations[H01].name"
+        ]
+      },
+      "shrouded lantern encampment": {
+        "status": "resolved",
+        "location_id": "H01",
+        "location_name": "Shrouded Lantern Encampment",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/WM001.json#locations[H01].aliases",
+          "areas/WM001.json#locations[H01].name"
+        ]
+      },
+      "the drowning lass taproom": {
+        "status": "resolved",
+        "location_id": "H01",
+        "location_name": "Shrouded Lantern Encampment",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/THB001.json#locations[H01].aliases",
+          "areas/THB001.json#locations[H01].name"
+        ]
+      },
+      "thieves threadwalk": {
+        "status": "resolved",
+        "location_id": "H02",
+        "location_name": "Crooked Cairn Hill",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/SR001.json#locations[H02].aliases",
+          "areas/SR001.json#locations[H02].name"
+        ]
+      },
+      "vault of the drowned oath": {
+        "status": "resolved",
+        "location_id": "H02",
+        "location_name": "Crooked Cairn Hill",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/EDC001.json#locations[H02].aliases",
+          "areas/EDC001.json#locations[H02].name"
+        ]
+      },
+      "veiled echoes shrine": {
+        "status": "resolved",
+        "location_id": "H01",
+        "location_name": "Shrouded Lantern Encampment",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/SR001.json#locations[H01].aliases",
+          "areas/SR001.json#locations[H01].name"
+        ]
+      },
+      "witchlight standing stone": {
+        "status": "resolved",
+        "location_id": "H03",
+        "location_name": "Witchlight Standing Stone",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/WM001.json#locations[H03].aliases",
+          "areas/WM001.json#locations[H03].name"
+        ]
+      }
+    },
+    "destination_phrases": {
+      "bloodroot crossing": {
+        "status": "resolved",
+        "location_id": "H01",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/RME001.json#locations[H01].aliases",
+          "areas/RME001.json#locations[H01].description",
+          "areas/RME001.json#locations[H01].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 1
+      },
+      "boglight curiosities": {
+        "status": "resolved",
+        "location_id": "H03",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/THB001.json#locations[H03].aliases",
+          "areas/THB001.json#locations[H03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "bound ledger nook": {
+        "status": "resolved",
+        "location_id": "H03",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/OKR001.json#locations[H03].aliases",
+          "areas/OKR001.json#locations[H03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "brass lantern junction": {
+        "status": "resolved",
+        "location_id": "H02",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/OKR001.json#locations[H02].aliases",
+          "areas/OKR001.json#locations[H02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "crimson echo nook": {
+        "status": "resolved",
+        "location_id": "H02",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/RME001.json#locations[H02].aliases",
+          "areas/RME001.json#locations[H02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "crooked cairn hill": {
+        "status": "resolved",
+        "location_id": "H02",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/WM001.json#locations[H02].aliases",
+          "areas/WM001.json#locations[H02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "curio compass": {
+        "status": "resolved",
+        "location_id": "H03",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/HG001.json#locations[H03].aliases",
+          "areas/HG001.json#locations[H03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "drowning lass taproom": {
+        "status": "resolved",
+        "location_id": "H01",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/THB001.json#locations[H01].aliases",
+          "areas/THB001.json#locations[H01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "duskmantle curios": {
+        "status": "resolved",
+        "location_id": "H03",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/BV001.json#locations[H03].aliases",
+          "areas/BV001.json#locations[H03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "duskmire hollow": {
+        "status": "resolved",
+        "location_id": "H03",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/RME001.json#locations[H03].aliases",
+          "areas/RME001.json#locations[H03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "echoes shrine": {
+        "status": "resolved",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/SR001.json#locations[H01].aliases",
+          "areas/SR001.json#locations[H01].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 2,
+        "location_id": "H01",
+        "normalization": {
+          "type": "shortform_alias_collapse",
+          "strategy": "resolved_suffix_anchor_with_source_overlap",
+          "anchor_phrase": "veiled echoes shrine",
+          "anchor_location_id": "H01",
+          "shared_sources": [
+            "areas/SR001.json#locations[H01].aliases",
+            "areas/SR001.json#locations[H01].name"
+          ]
+        }
+      },
+      "echoing oathway": {
+        "status": "resolved",
+        "location_id": "H01",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/OKR001.json#locations[H01].aliases",
+          "areas/OKR001.json#locations[H01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "fablewrights crossing": {
+        "status": "resolved",
+        "location_id": "H02",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/BV001.json#locations[H02].aliases",
+          "areas/BV001.json#locations[H02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "gallows shadow cell": {
+        "status": "resolved",
+        "location_id": "H03",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/SR001.json#locations[H03].aliases",
+          "areas/SR001.json#locations[H03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "gallowswatch garrison": {
+        "status": "resolved",
+        "location_id": "H01",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/BV001.json#locations[H01].aliases",
+          "areas/BV001.json#locations[H01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "h01": {
+        "status": "resolved",
+        "location_id": "H01",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/BV001.json#locations[H01].aliases",
+          "areas/EDC001.json#locations[H01].aliases",
+          "areas/HG001.json#locations[H01].aliases",
+          "areas/OKR001.json#locations[H01].aliases",
+          "areas/RME001.json#locations[H01].aliases",
+          "areas/SR001.json#locations[H01].aliases",
+          "areas/THB001.json#locations[H01].aliases",
+          "areas/WM001.json#locations[H01].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "h02": {
+        "status": "resolved",
+        "location_id": "H02",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/BV001.json#locations[H02].aliases",
+          "areas/EDC001.json#locations[H02].aliases",
+          "areas/HG001.json#locations[H02].aliases",
+          "areas/OKR001.json#locations[H02].aliases",
+          "areas/RME001.json#locations[H02].aliases",
+          "areas/SR001.json#locations[H02].aliases",
+          "areas/THB001.json#locations[H02].aliases",
+          "areas/WM001.json#locations[H02].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "h03": {
+        "status": "resolved",
+        "location_id": "H03",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/BV001.json#locations[H03].aliases",
+          "areas/EDC001.json#locations[H03].aliases",
+          "areas/HG001.json#locations[H03].aliases",
+          "areas/OKR001.json#locations[H03].aliases",
+          "areas/RME001.json#locations[H03].aliases",
+          "areas/SR001.json#locations[H03].aliases",
+          "areas/THB001.json#locations[H03].aliases",
+          "areas/WM001.json#locations[H03].aliases"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "ironbark watchhouse": {
+        "status": "resolved",
+        "location_id": "H01",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/HG001.json#locations[H01].aliases",
+          "areas/HG001.json#locations[H01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "lanternlight cottage": {
+        "status": "resolved",
+        "location_id": "H02",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/HG001.json#locations[H02].aliases",
+          "areas/HG001.json#locations[H02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "mireshadow storage": {
+        "status": "resolved",
+        "location_id": "H02",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/THB001.json#locations[H02].aliases",
+          "areas/THB001.json#locations[H02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "reliquary of sorrowful depths": {
+        "status": "resolved",
+        "location_id": "H03",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/EDC001.json#locations[H03].aliases",
+          "areas/EDC001.json#locations[H03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "sanctum of echoed warnings": {
+        "status": "resolved",
+        "location_id": "H01",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/EDC001.json#locations[H01].aliases",
+          "areas/EDC001.json#locations[H01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "shrouded lantern encampment": {
+        "status": "resolved",
+        "location_id": "H01",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/WM001.json#locations[H01].aliases",
+          "areas/WM001.json#locations[H01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "the drowning lass taproom": {
+        "status": "resolved",
+        "location_id": "H01",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/THB001.json#locations[H01].aliases",
+          "areas/THB001.json#locations[H01].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "thieves threadwalk": {
+        "status": "resolved",
+        "location_id": "H02",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/SR001.json#locations[H02].aliases",
+          "areas/SR001.json#locations[H02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "vault of the drowned oath": {
+        "status": "resolved",
+        "location_id": "H02",
+        "candidate_location_ids": [
+          "H02"
+        ],
+        "sources": [
+          "areas/EDC001.json#locations[H02].aliases",
+          "areas/EDC001.json#locations[H02].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      },
+      "veiled echoes shrine": {
+        "status": "resolved",
+        "location_id": "H01",
+        "candidate_location_ids": [
+          "H01"
+        ],
+        "sources": [
+          "areas/SR001.json#locations[H01].aliases",
+          "areas/SR001.json#locations[H01].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 2
+      },
+      "witchlight standing stone": {
+        "status": "resolved",
+        "location_id": "H03",
+        "candidate_location_ids": [
+          "H03"
+        ],
+        "sources": [
+          "areas/WM001.json#locations[H03].aliases",
+          "areas/WM001.json#locations[H03].name"
+        ],
+        "observed": false,
+        "player_facing": false,
+        "observation_count": 0
+      }
+    },
+    "npc_scene_authority": {
+      "Ardwen, ghostly map-bearer from legend": {
+        "name_slug": "ardwen ghostly map bearer from legend",
+        "visible_location_ids": [],
+        "reveal_bindings": [
+          {
+            "location_id": "H02",
+            "source": "areas/WM001.json#locations[H02].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "RME001",
+            "source": "module_plot.json#plotPoints[PP006].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "THB001",
+            "source": "module_plot.json#plotPoints[PP009].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/WM001.json#locations[H02].description",
+          "module_context.json#npcs.ardwen_ghostly_map_bearer_from_legend",
+          "module_plot.json#plotPoints[PP006].description",
+          "module_plot.json#plotPoints[PP009].description"
+        ],
+        "authored_mentions_count": 3,
+        "authored_mention_sources": [
+          "areas/WM001.json#locations[H02].description",
+          "module_plot.json#plotPoints[PP006].description",
+          "module_plot.json#plotPoints[PP009].description"
+        ]
+      },
+      "Bram of the Stones, wandering hermit": {
+        "name_slug": "bram of the stones wandering hermit",
+        "visible_location_ids": [],
+        "reveal_bindings": [],
+        "sources": [
+          "module_context.json#npcs.bram_of_the_stones_wandering_hermit"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Constable Farrel Dun": {
+        "name_slug": "constable farrel dun",
+        "visible_location_ids": [
+          "H01"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "BV001",
+            "source": "module_plot.json#plotPoints[PP001].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/BV001.json#locations[H01].npcs",
+          "module_context.json#npcs.constable_farrel_dun",
+          "module_plot.json#plotPoints[PP001].description"
+        ],
+        "authored_mentions_count": 1,
+        "authored_mention_sources": [
+          "module_plot.json#plotPoints[PP001].description"
+        ]
+      },
+      "Corsa 'Threadneedle' Drenn": {
+        "name_slug": "corsa threadneedle drenn",
+        "visible_location_ids": [
+          "H02"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/SR001.json#locations[H02].npcs",
+          "module_context.json#npcs.corsa_threadneedle_drenn"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Echo Wraiths": {
+        "name_slug": "echo wraiths",
+        "visible_location_ids": [],
+        "reveal_bindings": [
+          {
+            "location_id": "H01",
+            "source": "areas/EDC001.json#locations[H01].dmInstructions",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/EDC001.json#locations[H01].dmInstructions",
+          "module_context.json#npcs.echo_wraiths"
+        ],
+        "authored_mentions_count": 1,
+        "authored_mention_sources": [
+          "areas/EDC001.json#locations[H01].dmInstructions"
+        ]
+      },
+      "Edrin Voss, eccentric proprietor": {
+        "name_slug": "edrin voss eccentric proprietor",
+        "visible_location_ids": [
+          "H03"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/BV001.json#locations[H03].description",
+          "areas/BV001.json#locations[H03].dmInstructions",
+          "areas/HG001.json#locations[H03].description",
+          "areas/THB001.json#locations[H03].npcs",
+          "module_context.json#npcs.edrin_voss_eccentric_proprietor"
+        ],
+        "authored_mentions_count": 3,
+        "authored_mention_sources": [
+          "areas/BV001.json#locations[H03].description",
+          "areas/BV001.json#locations[H03].dmInstructions",
+          "areas/HG001.json#locations[H03].description"
+        ]
+      },
+      "Ghostly Royal Messenger": {
+        "name_slug": "ghostly royal messenger",
+        "visible_location_ids": [
+          "H02"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/OKR001.json#locations[H02].dcChecks",
+          "areas/OKR001.json#locations[H02].dmInstructions",
+          "areas/OKR001.json#locations[H02].npcs",
+          "areas/OKR001.json#locations[H02].plotHooks",
+          "module_context.json#npcs.ghostly_royal_messenger"
+        ],
+        "authored_mentions_count": 3,
+        "authored_mention_sources": [
+          "areas/OKR001.json#locations[H02].dcChecks",
+          "areas/OKR001.json#locations[H02].dmInstructions",
+          "areas/OKR001.json#locations[H02].plotHooks"
+        ]
+      },
+      "Gritch the One-Eared, nervous patron": {
+        "name_slug": "gritch the one eared nervous patron",
+        "visible_location_ids": [
+          "H03"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/BV001.json#locations[H03].npcs",
+          "module_context.json#npcs.gritch_the_one_eared_nervous_patron"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Irren the Ragged": {
+        "name_slug": "irren the ragged",
+        "visible_location_ids": [
+          "H03"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/SR001.json#locations[H03].npcs",
+          "module_context.json#npcs.irren_the_ragged"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Lysa Quickfingers": {
+        "name_slug": "lysa quickfingers",
+        "visible_location_ids": [],
+        "reveal_bindings": [],
+        "sources": [
+          "module_context.json#npcs.lysa_quickfingers"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Lysa Quickfingers, rebellious lieutenant": {
+        "name_slug": "lysa quickfingers rebellious lieutenant",
+        "visible_location_ids": [],
+        "reveal_bindings": [
+          {
+            "location_id": "BV001",
+            "source": "module_plot.json#plotPoints[PP004].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "module_context.json#npcs.lysa_quickfingers_rebellious_lieutenant",
+          "module_plot.json#plotPoints[PP004].description"
+        ],
+        "authored_mentions_count": 1,
+        "authored_mention_sources": [
+          "module_plot.json#plotPoints[PP004].description"
+        ]
+      },
+      "Maela Kett": {
+        "name_slug": "maela kett",
+        "visible_location_ids": [],
+        "reveal_bindings": [
+          {
+            "location_id": "H01",
+            "source": "areas/THB001.json#locations[H01].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "H01",
+            "source": "areas/THB001.json#locations[H01].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "H01",
+            "source": "areas/THB001.json#locations[H01].plotHooks",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/THB001.json#locations[H01].dcChecks",
+          "areas/THB001.json#locations[H01].dmInstructions",
+          "areas/THB001.json#locations[H01].plotHooks",
+          "module_context.json#npcs.maela_kett"
+        ],
+        "authored_mentions_count": 3,
+        "authored_mention_sources": [
+          "areas/THB001.json#locations[H01].dcChecks",
+          "areas/THB001.json#locations[H01].dmInstructions",
+          "areas/THB001.json#locations[H01].plotHooks"
+        ]
+      },
+      "Maela Kett, the wary tavernkeeper": {
+        "name_slug": "maela kett the wary tavernkeeper",
+        "visible_location_ids": [
+          "H01"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/THB001.json#locations[H01].npcs",
+          "module_context.json#npcs.maela_kett_the_wary_tavernkeeper"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Mrs. Rindleby": {
+        "name_slug": "mrs rindleby",
+        "visible_location_ids": [
+          "H02"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/HG001.json#locations[H02].accessibility",
+          "areas/HG001.json#locations[H02].dmInstructions",
+          "areas/HG001.json#locations[H02].features.description",
+          "areas/HG001.json#locations[H02].npcs",
+          "areas/HG001.json#locations[H02].plotHooks",
+          "module_context.json#npcs.mrs_rindleby"
+        ],
+        "authored_mentions_count": 4,
+        "authored_mention_sources": [
+          "areas/HG001.json#locations[H02].accessibility",
+          "areas/HG001.json#locations[H02].dmInstructions",
+          "areas/HG001.json#locations[H02].features.description",
+          "areas/HG001.json#locations[H02].plotHooks"
+        ]
+      },
+      "Old Ellyn": {
+        "name_slug": "old ellyn",
+        "visible_location_ids": [],
+        "reveal_bindings": [
+          {
+            "location_id": "H01",
+            "source": "areas/RME001.json#locations[H01].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "H02",
+            "source": "areas/BV001.json#locations[H02].dcChecks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "H02",
+            "source": "areas/BV001.json#locations[H02].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "H02",
+            "source": "areas/BV001.json#locations[H02].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "H02",
+            "source": "areas/WM001.json#locations[H02].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "H03",
+            "source": "areas/BV001.json#locations[H03].plotHooks",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/BV001.json#locations[H02].dcChecks",
+          "areas/BV001.json#locations[H02].dmInstructions",
+          "areas/BV001.json#locations[H02].plotHooks",
+          "areas/BV001.json#locations[H03].plotHooks",
+          "areas/RME001.json#locations[H01].plotHooks",
+          "areas/WM001.json#locations[H02].plotHooks",
+          "module_context.json#npcs.old_ellyn"
+        ],
+        "authored_mentions_count": 6,
+        "authored_mention_sources": [
+          "areas/BV001.json#locations[H02].dcChecks",
+          "areas/BV001.json#locations[H02].dmInstructions",
+          "areas/BV001.json#locations[H02].plotHooks",
+          "areas/BV001.json#locations[H03].plotHooks",
+          "areas/RME001.json#locations[H01].plotHooks",
+          "areas/WM001.json#locations[H02].plotHooks"
+        ]
+      },
+      "Old Ellyn, the folklore spinner": {
+        "name_slug": "old ellyn the folklore spinner",
+        "visible_location_ids": [
+          "H02"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/BV001.json#locations[H02].npcs",
+          "module_context.json#npcs.old_ellyn_the_folklore_spinner"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Red Maw enforcers": {
+        "name_slug": "red maw enforcers",
+        "visible_location_ids": [],
+        "reveal_bindings": [
+          {
+            "location_id": "BV001",
+            "source": "module_plot.json#plotPoints[PP003].description",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "module_context.json#npcs.red_maw_enforcers",
+          "module_plot.json#plotPoints[PP003].description"
+        ],
+        "authored_mentions_count": 1,
+        "authored_mention_sources": [
+          "module_plot.json#plotPoints[PP003].description"
+        ]
+      },
+      "Red Maw scouts": {
+        "name_slug": "red maw scouts",
+        "visible_location_ids": [
+          "H01",
+          "H02"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/RME001.json#locations[H01].description",
+          "areas/RME001.json#locations[H02].dcChecks",
+          "areas/RME001.json#locations[H02].description",
+          "areas/RME001.json#locations[H02].dmInstructions",
+          "areas/RME001.json#locations[H02].npcs",
+          "areas/RME001.json#locations[H02].plotHooks",
+          "areas/WM001.json#locations[H01].dmInstructions",
+          "areas/WM001.json#locations[H01].npcs",
+          "areas/WM001.json#locations[H01].plotHooks",
+          "module_context.json#npcs.red_maw_scouts"
+        ],
+        "authored_mentions_count": 7,
+        "authored_mention_sources": [
+          "areas/RME001.json#locations[H01].description",
+          "areas/RME001.json#locations[H02].dcChecks",
+          "areas/RME001.json#locations[H02].description",
+          "areas/RME001.json#locations[H02].dmInstructions",
+          "areas/RME001.json#locations[H02].plotHooks",
+          "areas/WM001.json#locations[H01].dmInstructions",
+          "areas/WM001.json#locations[H01].plotHooks"
+        ]
+      },
+      "Rovan Blackjaw": {
+        "name_slug": "rovan blackjaw",
+        "visible_location_ids": [],
+        "reveal_bindings": [],
+        "sources": [
+          "module_context.json#npcs.rovan_blackjaw"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Sable, Reluctant Scribe’s Shade": {
+        "name_slug": "sable reluctant scribe s shade",
+        "visible_location_ids": [
+          "H03"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/OKR001.json#locations[H03].npcs",
+          "module_context.json#npcs.sable_reluctant_scribe_s_shade"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      },
+      "Sergeant Halwin Reed": {
+        "name_slug": "sergeant halwin reed",
+        "visible_location_ids": [
+          "H01"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/HG001.json#locations[H01].dcChecks",
+          "areas/HG001.json#locations[H01].dmInstructions",
+          "areas/HG001.json#locations[H01].npcs",
+          "areas/HG001.json#locations[H01].plotHooks",
+          "module_context.json#npcs.sergeant_halwin_reed"
+        ],
+        "authored_mentions_count": 3,
+        "authored_mention_sources": [
+          "areas/HG001.json#locations[H01].dcChecks",
+          "areas/HG001.json#locations[H01].dmInstructions",
+          "areas/HG001.json#locations[H01].plotHooks"
+        ]
+      },
+      "Spirit of the Moor": {
+        "name_slug": "spirit of the moor",
+        "visible_location_ids": [
+          "H03"
+        ],
+        "reveal_bindings": [
+          {
+            "location_id": "H01",
+            "source": "areas/WM001.json#locations[H01].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "H01",
+            "source": "areas/WM001.json#locations[H01].dmInstructions",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "H01",
+            "source": "areas/WM001.json#locations[H01].features.description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "H01",
+            "source": "areas/WM001.json#locations[H01].plotHooks",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "H02",
+            "source": "areas/WM001.json#locations[H02].description",
+            "reason": "authored_text_reference"
+          },
+          {
+            "location_id": "H02",
+            "source": "areas/WM001.json#locations[H02].plotHooks",
+            "reason": "authored_text_reference"
+          }
+        ],
+        "sources": [
+          "areas/WM001.json#locations[H01].description",
+          "areas/WM001.json#locations[H01].dmInstructions",
+          "areas/WM001.json#locations[H01].features.description",
+          "areas/WM001.json#locations[H01].plotHooks",
+          "areas/WM001.json#locations[H02].description",
+          "areas/WM001.json#locations[H02].plotHooks",
+          "areas/WM001.json#locations[H03].dcChecks",
+          "areas/WM001.json#locations[H03].dmInstructions",
+          "areas/WM001.json#locations[H03].npcs",
+          "areas/WM001.json#locations[H03].plotHooks",
+          "module_context.json#npcs.spirit_of_the_moor"
+        ],
+        "authored_mentions_count": 9,
+        "authored_mention_sources": [
+          "areas/WM001.json#locations[H01].description",
+          "areas/WM001.json#locations[H01].dmInstructions",
+          "areas/WM001.json#locations[H01].features.description",
+          "areas/WM001.json#locations[H01].plotHooks",
+          "areas/WM001.json#locations[H02].description",
+          "areas/WM001.json#locations[H02].plotHooks",
+          "areas/WM001.json#locations[H03].dcChecks",
+          "areas/WM001.json#locations[H03].dmInstructions",
+          "areas/WM001.json#locations[H03].plotHooks"
+        ]
+      },
+      "Tamsin Quill": {
+        "name_slug": "tamsin quill",
+        "visible_location_ids": [
+          "H03"
+        ],
+        "reveal_bindings": [],
+        "sources": [
+          "areas/HG001.json#locations[H03].npcs",
+          "module_context.json#npcs.tamsin_quill"
+        ],
+        "authored_mentions_count": 0,
+        "authored_mention_sources": []
+      }
+    },
+    "diagnostics": {
+      "duplicate_location_aliases": [],
+      "ambiguous_destination_phrases": [],
+      "unresolved_destination_phrases": [],
+      "normalized_shortform_destination_phrases": [
+        {
+          "phrase": "echoes shrine",
+          "anchor_phrase": "veiled echoes shrine",
+          "location_id": "H01",
+          "shared_sources": [
+            "areas/SR001.json#locations[H01].aliases",
+            "areas/SR001.json#locations[H01].name"
+          ]
+        }
+      ],
+      "missing_npc_authority": [
+        {
+          "npc": "Bram of the Stones, wandering hermit",
+          "name_slug": "bram of the stones wandering hermit",
+          "sources": [
+            "module_context.json#npcs.bram_of_the_stones_wandering_hermit"
+          ],
+          "authored_mentions_count": 0,
+          "authored_mention_sources": []
+        },
+        {
+          "npc": "Lysa Quickfingers",
+          "name_slug": "lysa quickfingers",
+          "sources": [
+            "module_context.json#npcs.lysa_quickfingers"
+          ],
+          "authored_mentions_count": 0,
+          "authored_mention_sources": []
+        },
+        {
+          "npc": "Rovan Blackjaw",
+          "name_slug": "rovan blackjaw",
+          "sources": [
+            "module_context.json#npcs.rovan_blackjaw"
+          ],
+          "authored_mentions_count": 0,
+          "authored_mention_sources": []
+        }
+      ]
+    },
+    "summary": {
+      "location_count": 24,
+      "location_alias_count": 28,
+      "destination_phrase_count": 29,
+      "npc_count": 23,
+      "ambiguous_destination_count": 0,
+      "normalized_shortform_destination_count": 1,
+      "missing_npc_authority_count": 3
+    }
+  }
+}

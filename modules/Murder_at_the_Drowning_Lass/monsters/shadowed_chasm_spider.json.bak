@@ -1,0 +1,96 @@
+{
+  "name": "Shadowed Chasm Spider",
+  "size": "Medium",
+  "type": "Beast",
+  "alignment": "Unaligned",
+  "armorClass": 14,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 40,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 2,
+    "wisdom": 12,
+    "charisma": 4
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 8,
+    "perception": 3
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "necrotic"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "blinded"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Shadow Camouflage",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": "",
+      "description": "While in dim light or darkness, the Shadowed Chasm Spider has advantage on Dexterity (Stealth) checks."
+    },
+    {
+      "name": "Spider Climb",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": "",
+      "description": "The Shadowed Chasm Spider can climb difficult surfaces, including upside down on ceilings, without needing to make an ability check."
+    },
+    {
+      "name": "Web Sense",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": "",
+      "description": "While in contact with a web, the Shadowed Chasm Spider knows the exact location of any other creature in contact with the same web."
+    },
+    {
+      "name": "Web Walker",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": "",
+      "description": "The Shadowed Chasm Spider ignores movement restrictions caused by webbing."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 3,
+      "damageType": "piercing"
+    },
+    {
+      "name": "Poisonous Bite",
+      "attackBonus": 0,
+      "damageDice": "2d8",
+      "damageBonus": 0,
+      "damageType": "poison"
+    },
+    {
+      "name": "Web (Recharge 5-6)",
+      "attackBonus": 5,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": "restrain"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

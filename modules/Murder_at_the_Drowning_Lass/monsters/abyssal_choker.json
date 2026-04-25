@@ -1,0 +1,71 @@
+{
+  "name": "Abyssal Choker",
+  "size": "Small",
+  "type": "Aberration",
+  "alignment": "Chaotic Evil",
+  "armorClass": 14,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 30,
+  "abilities": {
+    "strength": 15,
+    "dexterity": 18,
+    "constitution": 14,
+    "intelligence": 6,
+    "wisdom": 12,
+    "charisma": 7
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 6,
+    "perception": 3
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "necrotic",
+    "cold"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "Understands Deep Speech but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Malleable Form",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Grasp from the Abyss",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Choking Grasp",
+      "attackBonus": 6,
+      "damageDice": "1d6",
+      "damageBonus": 4,
+      "damageType": "bludgeoning"
+    },
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Lurking within the shadowed depths of the Vault of the Drowned Oath, the Abyssal Choker embodies the suffocating terror of the Resonant Abyss. Its sinewy, serpentine body is a grotesque tapestry of slick, midnight-black flesh that seems to absorb the faint luminescence cast by the bioluminescent fungi clinging to the vault's ceiling. The creature's form is disturbingly elongated and flexible, with no visible eyes, only a cruel maw lined with jagged, needle-like teeth that gleam with a faint, eerie phosphorescence. Ringed bands of chitinous plates encircle its neck and torso, pulsating softly with a sickly greenish-blue glow that resonates with the chamber's ambient hum. The Abyssal Choker moves with unsettling silence through the ankle-deep, icy water, its movements fluid and predatory, reminiscent of a shadow weaving through darkness. It strikes with lethal precision, aiming to ensnare and constrict its prey, silencing any who dare disturb the sanctity of the drowned oath. The air around it chills perceptibly, thick with a palpable dread, and faint echoes of muffled, desperate breaths seem to ripple in the water whenever it draws near. This entity is not only a guardian of forbidden secrets but a living embodiment of the abyss's suffocating silence and unyielding grip."
+}

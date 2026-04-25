@@ -1,0 +1,91 @@
+{
+  "name": "Wailing Spectre",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Chaotic Evil",
+  "armorClass": 12,
+  "hitPoints": 16,
+  "maxHitPoints": 16,
+  "speed": 0,
+  "abilities": {
+    "strength": 1,
+    "dexterity": 14,
+    "constitution": 11,
+    "intelligence": 12,
+    "wisdom": 12,
+    "charisma": 16
+  },
+  "savingThrows": [],
+  "skills": {
+    "Perception": 3,
+    "Stealth": 4
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "acid",
+    "cold",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "understands Common and one language from life but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Incorporeal Movement",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Sunlight Sensitivity",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Wail (Recharge 6)",
+      "attackBonus": 0,
+      "damageDice": "3d6",
+      "damageBonus": 0,
+      "damageType": "psychic"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Withering Touch",
+      "attackBonus": 5,
+      "damageDice": "2d6",
+      "damageBonus": 3,
+      "damageType": "necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the suffocating mists of the Blightfen Wilds, Wailing Spectres are mournful apparitions born of sorrow and corruption. Their forms flicker like smoke, vaguely humanoid yet disturbingly twisted, as if the anguish that binds them warps their very essence. Pale, translucent flesh stretches taut over skeletal frames, with ragged shreds of tattered burial shrouds trailing behind them like wisps of dark fog. Their hollow eye sockets glow with a faint, eerie phosphorescence--an unsettling pale blue that mirrors the ghostly mushrooms dotting the Withered Heart Glade. From their gaping maws escapes a haunting, keening wail that echoes through the twisted trees and stagnant pools, chilling the soul and stirring the brackish waters below. The air around them thickens with a sour mist, heavy and clinging, carrying the faint scent of decay and blackened sap. These spectres drift silently among the corrupted reeds and shadowed hollows, their presence heralded by the sudden silence of marsh creatures and the slow, dripping sound of sap from the malformed trees. They are restless spirits, bound by grief and the Blightfen's curse, forever trapped between worlds--an eerie reminder of the land's festering pain and the cost of defiling ancient wards."
+}

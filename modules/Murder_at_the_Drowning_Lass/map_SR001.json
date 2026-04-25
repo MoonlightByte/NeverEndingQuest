@@ -1,0 +1,72 @@
+{
+  "mapId": "MAP_H_3",
+  "mapName": "Dungeon Map",
+  "totalRooms": 3,
+  "rooms": [
+    {
+      "id": "H01",
+      "type": "shrine",
+      "connections": [
+        "H02",
+        "H03"
+      ],
+      "coordinates": "X10Y10",
+      "directions": {
+        "east": "H02",
+        "south": "H03"
+      },
+      "tags": [],
+      "purpose": "unknown",
+      "landmark": false,
+      "dangerLevel": "high",
+      "name": "Veiled Echoes Shrine"
+    },
+    {
+      "id": "H02",
+      "type": "corridor",
+      "connections": [
+        "H01"
+      ],
+      "coordinates": "X11Y10",
+      "directions": {
+        "west": "H01"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "high",
+      "name": "Thieves' Threadwalk"
+    },
+    {
+      "id": "H03",
+      "type": "prison",
+      "connections": [
+        "H01"
+      ],
+      "coordinates": "X10Y11",
+      "directions": {
+        "north": "H01"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "encounter",
+      "landmark": true,
+      "dangerLevel": "high",
+      "name": "Gallows Shadow Cell"
+    }
+  ],
+  "layout": [
+    [
+      "H01",
+      "H02",
+      "H03"
+    ]
+  ],
+  "startRoom": "H01",
+  "version": "1.1",
+  "notes": "Extended schema with AI-friendly navigation fields",
+  "spatialContractVersion": 1
+}

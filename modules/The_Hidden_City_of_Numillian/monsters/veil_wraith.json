@@ -1,0 +1,84 @@
+{
+  "name": "Veil Wraith",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 27,
+  "maxHitPoints": 27,
+  "speed": 0,
+  "abilities": {
+    "strength": 6,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 12,
+    "charisma": 15
+  },
+  "savingThrows": [],
+  "skills": {
+    "Stealth": 5,
+    "Perception": 3
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "acid",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "cold",
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "Understands Common and one other language it knew in life but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Incorporeal Movement",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Life Drain",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "Necrotic"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Withering Touch",
+      "attackBonus": 5,
+      "damageDice": "2d6",
+      "damageBonus": 3,
+      "damageType": "Necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the depths of the Mindsunder Vault, the Veil Wraith is a haunting specter born of severed memories and psychic torment. Its form is a shifting silhouette of translucent shadow and flickering light, as if woven from the very fabric of forgotten thoughts and fractured identities. Wisps of ethereal mist swirl around its elongated limbs, which taper into delicate tendrils that seem to reach out not to touch, but to probe the mind itself. Its face is a blurred mask of sorrow and rage, features constantly rearranging like a nightmare's reflection in a broken mirror. When it moves, the air grows heavy with the scent of incense and cold glass, and the faint echo of muffled laughter and lost whispers trails in its wake. The Veil Wraith drifts silently through the obsidian halls, its presence warping reality; reflections twist, shadows warp, and the memories of those nearby flicker and fade, as if stolen by an unseen hand. Its arrival is heralded by a sudden chill and a psychic tremor that unsettles even the most steadfast minds. More than a mere specter, it is a guardian of secrets, bound to the Mind Flayer Archivist's will, seeking to reclaim stolen memories or punish those who disturb the fragile veil between truth and illusion."
+}

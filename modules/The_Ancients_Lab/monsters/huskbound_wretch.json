@@ -1,0 +1,66 @@
+{
+  "name": "Huskbound Wretch",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Neutral Evil",
+  "armorClass": 12,
+  "hitPoints": 13,
+  "maxHitPoints": 13,
+  "speed": 25,
+  "abilities": {
+    "strength": 13,
+    "dexterity": 14,
+    "constitution": 12,
+    "intelligence": 5,
+    "wisdom": 8,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "necrotic"
+  ],
+  "damageImmunities": [
+    "poison"
+  ],
+  "conditionImmunities": [
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 9
+  },
+  "languages": "understands the languages it knew in life but can't speak",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Undead Fortitude",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Lab-Born Resilience",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Withered Claws",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "slashing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "The Huskbound Wretch is a grotesque abomination of once-living flesh and hollowed bone, fused irrevocably to the cold, pulsating walls of the Termination Cell. Its form is a twisted mockery of a humanoid figure, skeletal and emaciated, with remnants of taut, greyish flesh stretched thin over protruding ribs and jagged vertebrae. Blackened sinews and sinewy cables fuse into its spine, binding it to the fleshy, pulsating pseudoflesh that lines the chamber itself. Flickering, sickly bioluminescent veins trace erratic paths beneath its translucent skin, casting unsettling shadows that ripple with the erratic pulse of the malformed heartbeats echoing through the cell. Its hollow eye sockets burn with a faint, malevolent inner light, and its cracked maw emits intermittent, rasping breaths that carry the stench of decay and burnt metal. Twitching, claw-like fingers endlessly scrape and claw at the warped stone and flesh it is bound to, a desperate, futile attempt to escape its eternal imprisonment. The air around it hums with static charge and faint psychic whispers, amplifying the pervasive sense of dread and unease. The creature reacts violently to any who dare to tamper with the cell's walls or the broken security devices nearby, lashing out with unnatural strength and savage desperation. This wretched entity embodies the abject horror of flesh forcibly merged with machine and stone, trapped between life and death in a nightmare of aberrant torment."
+}

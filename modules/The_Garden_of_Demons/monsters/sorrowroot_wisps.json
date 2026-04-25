@@ -1,0 +1,91 @@
+{
+  "name": "Sorrowroot Wisp",
+  "size": "Tiny",
+  "type": "Undead",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 10,
+  "maxHitPoints": 10,
+  "speed": 0,
+  "abilities": {
+    "strength": 1,
+    "dexterity": 17,
+    "constitution": 10,
+    "intelligence": 8,
+    "wisdom": 14,
+    "charisma": 13
+  },
+  "savingThrows": [],
+  "skills": {
+    "Stealth": 5,
+    "Perception": 4
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "acid",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "cold",
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "Understands Common and Sylvan but can't speak",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Incorporeal Movement",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Illuminating Aura",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Withering Touch",
+      "attackBonus": 5,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "necrotic"
+    },
+    {
+      "name": "Wail of Despair",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "psychic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Sorrowroot Wisps flit like mournful echoes amid the fetid shadows of the Blightfen Wilds, their ethereal forms barely more than flickering tendrils of pale, sickly light. Resembling slender, twisting strands of phosphorescent root, each wisp pulses with a faint, sorrowful glow that shifts between ashen blue and dull violet. Their bodies seem woven from the twisted fibers of blighted plants, with delicate, brittle leaves and thorns that glisten with a faint, blackened sap. They move with a restless, jerking grace, drifting silently above the marsh's blackened reeds and stagnant pools as if searching for something lost to the decay. When near, the air grows heavy with the scent of damp earth and rot, and a lingering chill seeps into the bones, as if the very spirit of the swamp's sorrow clings to them. The Wisps emit a soft, haunting hum--a lament that stirs the heart with quiet despair, weaving an oppressive atmosphere of loss and lingering curse. Though not overtly hostile, they react defensively to disrespect or harm to the Blightfen's fragile balance, summoning fleeting illusions of weeping faces and grasping roots to confuse and disorient intruders. These elusive fey serve as both mourners and wardens of the Withered Heart Glade, embodying the sorrow that seeps into the land itself."
+}

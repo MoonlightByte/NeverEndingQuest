@@ -1,0 +1,69 @@
+{
+  "mapId": "MAP_H_3",
+  "mapName": "Wilderness Map",
+  "totalRooms": 3,
+  "rooms": [
+    {
+      "id": "H01",
+      "type": "crossroads",
+      "connections": [
+        "H02",
+        "H03"
+      ],
+      "coordinates": "X10Y10",
+      "directions": {
+        "east": "H02"
+      },
+      "tags": [],
+      "purpose": "transition",
+      "landmark": false,
+      "dangerLevel": "extreme",
+      "name": "Fork of Withered Paths"
+    },
+    {
+      "id": "H02",
+      "type": "crossroads",
+      "connections": [
+        "H01"
+      ],
+      "coordinates": "X11Y10",
+      "directions": {
+        "west": "H01"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "transition",
+      "landmark": true,
+      "dangerLevel": "extreme",
+      "name": "Twilight Briar Crossing"
+    },
+    {
+      "id": "H03",
+      "type": "grove",
+      "connections": [
+        "H01"
+      ],
+      "coordinates": "X12Y10",
+      "directions": {},
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "extreme",
+      "name": "Grove of Sorrowed Roots"
+    }
+  ],
+  "layout": [
+    [
+      "H01",
+      "H02",
+      "H03"
+    ]
+  ],
+  "startRoom": "H01",
+  "version": "1.1",
+  "notes": "Extended schema with AI-friendly navigation fields",
+  "spatialContractVersion": 1
+}

@@ -1,0 +1,69 @@
+{
+  "mapId": "MAP_I_3",
+  "mapName": "Dungeon Map",
+  "totalRooms": 3,
+  "rooms": [
+    {
+      "id": "I01",
+      "type": "chamber",
+      "connections": [
+        "I02",
+        "I03"
+      ],
+      "coordinates": "X10Y10",
+      "directions": {
+        "east": "I02"
+      },
+      "tags": [],
+      "purpose": "unknown",
+      "landmark": false,
+      "dangerLevel": "medium",
+      "name": "Fused Iron Antechamber"
+    },
+    {
+      "id": "I02",
+      "type": "throne room",
+      "connections": [
+        "I01"
+      ],
+      "coordinates": "X11Y10",
+      "directions": {
+        "west": "I01"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "quest_goal",
+      "landmark": true,
+      "dangerLevel": "medium",
+      "name": "Throne of Twisted Lineage"
+    },
+    {
+      "id": "I03",
+      "type": "chamber",
+      "connections": [
+        "I01"
+      ],
+      "coordinates": "X12Y10",
+      "directions": {},
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "medium",
+      "name": "Forgotten Splice Vault"
+    }
+  ],
+  "layout": [
+    [
+      "I01",
+      "I02",
+      "I03"
+    ]
+  ],
+  "startRoom": "I01",
+  "version": "1.1",
+  "notes": "Extended schema with AI-friendly navigation fields",
+  "spatialContractVersion": 1
+}

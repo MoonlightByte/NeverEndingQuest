@@ -1,0 +1,20 @@
+{
+  "validation_date": "2026-04-25T11:09:48.039731",
+  "issues": [
+    "NPC 'Maela Kett' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Rovan Blackjaw' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Old Ellyn' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Bram of the Stones, wandering hermit' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Lysa Quickfingers, rebellious lieutenant' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Red Maw enforcers' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Lysa Quickfingers' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Echo Wraiths' is referenced in ['module:plotStages'] but not placed in any location",
+    "NPC 'Ardwen, ghostly map-bearer from legend' is referenced in ['module:plotStages'] but not placed in any location"
+  ],
+  "context_summary": {
+    "areas": 8,
+    "npcs": 23,
+    "locations": 0,
+    "plot_points": 4
+  }
+}

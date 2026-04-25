@@ -1,0 +1,93 @@
+{
+  "name": "Illusory Specter",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Chaotic Neutral",
+  "armorClass": 13,
+  "hitPoints": 13,
+  "maxHitPoints": 13,
+  "speed": 0,
+  "abilities": {
+    "strength": 1,
+    "dexterity": 16,
+    "constitution": 10,
+    "intelligence": 13,
+    "wisdom": 12,
+    "charisma": 15
+  },
+  "savingThrows": [],
+  "skills": {
+    "Perception": 3,
+    "Stealth": 5
+  },
+  "damageVulnerabilities": [
+    "force"
+  ],
+  "damageResistances": [
+    "acid",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "cold",
+    "necrotic",
+    "poison",
+    "psychic"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "understands all it knew in life but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Incorporeal Movement",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Illusory Form",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Sunlight Weakness",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Spectral Touch",
+      "attackBonus": 4,
+      "damageDice": "2d6",
+      "damageBonus": 2,
+      "damageType": "necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Within the shifting shadows of the Shrouded Psiumbra, Illusory Specters flicker like half-formed memories caught between reality and dream. These ephemeral apparitions manifest as translucent figures draped in tattered, swirling veils that shimmer with iridescent hues, their forms constantly warping as if struggling against the unstable psychic mists that birth them. Faces are blurred and shifting, sometimes resembling those long forgotten or hauntingly familiar--eyes hollow yet pulsing faintly with eerie, otherworldly light. They drift with unnatural grace, gliding silently through illusion-draped corridors, their presence heralded only by a chilling whisper that seems to echo from nowhere and everywhere simultaneously. The air around them ripples subtly, warping the perception of space and time, and their touch is like a cold breath of forgotten fears that can unnerve even the stoutest mind. These specters are not merely phantasms but psychic echoes conjured by the mind flayers' arcane manipulations, drawn from fractured memories and the anguish of imprisoned souls within the Mindsunder Vault. Encountering an Illusory Specter is to face both a haunting vision and a test of one's mental resilience, as they seek to ensnare intruders in maddening illusions, drawing the unwary deeper into the labyrinth of the Masquerade Hall's shifting truths."
+}

@@ -1,0 +1,90 @@
+{
+  "name": "Sorrowroot Wisp",
+  "size": "Tiny",
+  "type": "Undead",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 10,
+  "maxHitPoints": 10,
+  "speed": 0,
+  "abilities": {
+    "strength": 1,
+    "dexterity": 17,
+    "constitution": 10,
+    "intelligence": 8,
+    "wisdom": 14,
+    "charisma": 13
+  },
+  "savingThrows": [],
+  "skills": {
+    "Stealth": 5,
+    "Perception": 4
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "acid",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "cold",
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "Understands Common and Sylvan but can't speak",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Incorporeal Movement",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Illuminating Aura",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Withering Touch",
+      "attackBonus": 5,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "necrotic"
+    },
+    {
+      "name": "Wail of Despair",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "psychic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

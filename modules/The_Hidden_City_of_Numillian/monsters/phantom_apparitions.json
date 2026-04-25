@@ -1,0 +1,84 @@
+{
+  "name": "Phantom Apparition",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Chaotic Neutral",
+  "armorClass": 13,
+  "hitPoints": 16,
+  "maxHitPoints": 16,
+  "speed": 0,
+  "abilities": {
+    "strength": 6,
+    "dexterity": 17,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 12,
+    "charisma": 15
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 6,
+    "perception": 3
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "acid",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "cold",
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "Understands all languages it knew in life but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Incorporeal Movement",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Ethereal Sight",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Chilling Touch",
+      "attackBonus": 4,
+      "damageDice": "2d6",
+      "damageBonus": 2,
+      "damageType": "necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Ethereal and haunting, Phantom Apparitions drift through the labyrinthine corridors of the Shrouded Psiumbra like flickering shadows cast by unseen flames. Their translucent forms shimmer with a faint, otherworldly light, as if woven from strands of twilight and warped psychic energy. Each apparition's visage is a pale mask of sorrow and madness, features blurred and shifting as if struggling to maintain a semblance of identity amidst the swirling illusions that birthed them. They move with a languid grace, gliding silently yet deliberately, their presence warping reality around them--walls ripple, whispered laughter distorts into cries, and the air thickens with the scent of forgotten memories. When near, the shimmering opalescent chandeliers seem to pulse in resonance, casting flickering light that reveals glimpses of faces long lost to time, frozen in expressions of dread or ecstasy. Phantom Apparitions are drawn to the vulnerable, weaving psychic tendrils that tug at the minds of the living, luring them into reveries of madness or despair. They embody the fractured truths and shifting realities of Numillian's Masquerade Hall, haunting the space between illusion and reality, forever trapped in a dance of torment and allure."
+}

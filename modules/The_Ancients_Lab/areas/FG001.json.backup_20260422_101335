@@ -1,0 +1,442 @@
+{
+  "areaId": "FG001",
+  "areaName": "The Abandoned Vaultways",
+  "areaType": "dungeon",
+  "areaDescription": "Beneath the cracked stone of the ancient city lies a labyrinth of shadowed halls and echoing chambers, where the air is thick with dust and the faint scent of mold. Flickering torchlight dances across forgotten murals as distant, hollow footsteps warn intruders of lurking, unseen dangers.",
+  "dangerLevel": "medium",
+  "recommendedLevel": 2,
+  "climate": "controlled - cool and damp",
+  "terrain": "stone corridors and chambers",
+  "map": {
+    "mapId": "MAP_I_3",
+    "mapName": "Dungeon Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "I01",
+        "type": "chamber",
+        "connections": [
+          "I02",
+          "I03"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "I02"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "medium",
+        "name": "Fused Iron Antechamber"
+      },
+      {
+        "id": "I02",
+        "type": "throne room",
+        "connections": [
+          "I01"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "I01"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "quest_goal",
+        "landmark": true,
+        "dangerLevel": "medium",
+        "name": "Throne of Twisted Lineage"
+      },
+      {
+        "id": "I03",
+        "type": "chamber",
+        "connections": [
+          "I01"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {},
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "medium",
+        "name": "Forgotten Splice Vault"
+      }
+    ],
+    "layout": [
+      [
+        "I01",
+        "I02",
+        "I03"
+      ]
+    ],
+    "startRoom": "I01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "I01",
+      "name": "Fused Iron Antechamber",
+      "type": "chamber",
+      "description": "This stark chamber greets explorers with oppressive silence. The walls are inlaid with veins of metallic iron, some twisted by ancient heat into grotesque shapes. Soot-blackened fireplaces stand cold, and faded murals of dwarven craftsmen line the walls. Symbols etched in the floor hint at forgotten wards. The air is thick with dust, muffling every footfall.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "I02",
+        "I03"
+      ],
+      "areaConnectivity": [
+        "The Blackcrag Marches"
+      ],
+      "areaConnectivityId": [
+        "I03"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Lesser Rust Eel",
+          "description": "A wormlike, metallic creature that slithers among the iron veins, seeking to feed on metal and flesh alike.",
+          "attitude": "Hostile"
+        }
+      ],
+      "lootTable": [
+        "Bundle of ancient dwarven keys (useless, except for one matching the Vault's south door)",
+        "Silvered cogwheel worth 15 gp",
+        "Scroll fragment describing a dwarven security override"
+      ],
+      "plotHooks": [
+        "The scroll fragment hints at a security flaw in the Vaultways\u2019 main defense system.",
+        "Strange scrape marks suggest a recent, panicked retreat deeper into the Vaultways."
+      ],
+      "dmInstructions": "Begin with exploration and a minor combat threat. The Lesser Rust Eel is a Medium encounter for four 2nd-level PCs. If players inspect the murals or floor symbols, allow Investigation or Arcana checks to reveal lore. The ancient keys may help in later chambers.",
+      "doors": [
+        {
+          "name": "North Door",
+          "description": "A scorched, iron-plated door bearing a melted dwarven sigil. It shows signs of forced entry.",
+          "type": "heavy",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 16,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "East Door",
+          "description": "A reinforced wooden door reinforced with brass, slightly ajar and creaking on its hinges.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 12,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Investigation DC 12: Notice the floor symbols are faded magical wards.",
+        "Perception DC 13: Spot the Lesser Rust Eel before it ambushes."
+      ],
+      "accessibility": "Easily accessed from the main Vaultways corridor. Doors are unlocked, but the north door is heavy.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Fireplace",
+          "description": "A soot-blackened fireplace, unused for decades, conceals a hidden cache behind a loose stone."
+        },
+        {
+          "name": "Wall Decorations",
+          "description": "Faded murals depict dwarven artisans crafting immense machines and inscribing runes."
+        },
+        {
+          "name": "Floor Symbols",
+          "description": "Obscure dwarven glyphs etched in the floor, once magical wards now mostly inert."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "combat",
+          "description": "A Lesser Rust Eel emerges from the iron veins to attack."
+        },
+        {
+          "type": "exploration",
+          "description": "Searching fireplaces and murals may reveal hidden lore and a scroll fragment."
+        }
+      ],
+      "adventureSummary": "A tense entry chamber blending clues of the Vaultways\u2019 former splendor with hints of lurking dangers.",
+      "aliases": [
+        "Fused Iron Antechamber",
+        "I01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_chamber:Fused Iron Antechamber",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "I02",
+      "name": "Throne of Twisted Lineage",
+      "type": "throne room",
+      "description": "This grand hall is dominated by a throne of blackened, fused iron, its arms shaped into leering dwarven visages. The air is stale and heavy. Carved pillars lean unevenly, and the walls are cracked with age. Shadows gather thickly in the corners, and the floor is littered with fragments of shattered banners. A sense of faded authority lingers here.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "I01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Vaultway Shadow",
+          "description": "A lingering, malformed spirit of a long-dead dwarven noble, bound to the throne and hateful of intruders.",
+          "attitude": "Hostile"
+        }
+      ],
+      "lootTable": [
+        "Jeweled signet ring (25 gp)",
+        "Ancient dwarven command rod (brittle, but can be repaired)",
+        "Tattered banner embroidered with arcane runes (valuable to a historian or collector)"
+      ],
+      "plotHooks": [
+        "The command rod, if repaired, can interface with the Vaultways' deeper security systems.",
+        "Inscribed plaques hint at a schism among the dwarven ruling families\u2014potentially relevant to the Vaultways' downfall."
+      ],
+      "dmInstructions": "The pressure plate trap protects the throne. The Vaultway Shadow is a Medium threat but vulnerable to radiant damage. The command rod is partially fused into the throne and requires a successful check to retrieve. Encourage investigation of the room's history for plot clues.",
+      "doors": [
+        {
+          "name": "South Door",
+          "description": "A narrow, iron-bound door with faded clan markings. Slightly warped.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 12,
+          "keyname": "",
+          "trapped": true,
+          "trap": "The door is rigged to the pressure plate trap\u2014stepping through triggers the spikes."
+        }
+      ],
+      "traps": [
+        {
+          "name": "Simple Pressure Plate",
+          "description": "A nearly-invisible stone plate before the throne. Stepping on it triggers spikes to spring from the floor.",
+          "detectDC": 13,
+          "disableDC": 15,
+          "triggerDC": 12,
+          "damage": "1d6 piercing damage from hidden spikes"
+        }
+      ],
+      "dcChecks": [
+        "Investigation DC 13: Detect the pressure plate trap and its linkage to the throne.",
+        "Strength (Athletics) DC 14: Pry the command rod loose from the fused throne.",
+        "History DC 12: Learn about the fallen dwarven lineages from the wall plaques."
+      ],
+      "accessibility": "Normal access via the south door from the Fused Iron Antechamber. The throne itself is difficult to approach without triggering the trap.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "Pillars are cracked and the throne is fused with patches of molten metal, showing signs of ancient destruction."
+        },
+        {
+          "name": "Fused Iron Throne",
+          "description": "A heavy, imposing seat with built-in mechanisms and arcane engravings."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "trap",
+          "description": "A pressure plate trap guards the approach to the throne."
+        },
+        {
+          "type": "combat",
+          "description": "The Vaultway Shadow attacks anyone disturbing the throne."
+        }
+      ],
+      "adventureSummary": "A ceremonial seat of power, now defiled and haunted, conceals clues to both the Vaultways\u2019 history and its surviving defenses.",
+      "aliases": [
+        "Throne of Twisted Lineage",
+        "I02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_throne room:Throne of Twisted Lineage",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "I03",
+      "name": "Forgotten Splice Vault",
+      "type": "chamber",
+      "description": "Once a secure vault for experimental devices, this chamber\u2019s walls are marred by hasty repairs and scorch marks. An extinguished fireplace sits beneath a mural depicting strange machinery. The floor is covered in a lattice of interlocking dwarven runes forming a boundary around a central, rune-inscribed hatch.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "I01"
+      ],
+      "areaConnectivity": [
+        "The Shuddering Wilds"
+      ],
+      "areaConnectivityId": [
+        "I01"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Experimental Splice Remnant",
+          "description": "A malformed, partially mechanical creature left behind by the dwarven researchers. Its limbs flicker with unstable arcane energy.",
+          "attitude": "Hostile to all intruders."
+        }
+      ],
+      "lootTable": [
+        "Dwarven power crystal (can power minor magical devices)",
+        "Blueprint fragment showing a secret route to the Aberrant Core",
+        "Iron-banded lockbox (locked, contains 12 gp and a single-use 'Alarm' rune stone)"
+      ],
+      "plotHooks": [
+        "The blueprint fragment suggests a hidden passage deeper into The Ancients Lab.",
+        "The Splice Remnant\u2019s body yields clues for bypassing later construct security."
+      ],
+      "dmInstructions": "Run as a dangerous combat. The Splice Remnant can discharge a minor shock (1d4 lightning) as a reaction when struck in melee. Examining machinery or runes can reveal lore or interactables. Finding the blueprint fragment is crucial for plot progression.",
+      "doors": [
+        {
+          "name": "West Door",
+          "description": "A thick, dwarven door reinforced with iron bands and a complex, but broken, locking mechanism.",
+          "type": "heavy",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 16,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Vault Hatch",
+          "description": "A circular, runed hatch at the center of the floor, sealed with dwarven magic.",
+          "type": "secret",
+          "locked": true,
+          "lockDC": 16,
+          "breakDC": 18,
+          "keyname": "Ancient dwarven key (from I01 lootTable)",
+          "trapped": true,
+          "trap": "Releases a burst of arcane energy (1d8 force) if forced open without the key."
+        }
+      ],
+      "traps": [
+        {
+          "name": "Runic Vault Trap",
+          "description": "Protects the floor hatch. If lock is bypassed or forced, the runes detonate.",
+          "detectDC": 14,
+          "disableDC": 15,
+          "triggerDC": 14,
+          "damage": "1d8 force damage to any creature within 5 feet of the hatch."
+        }
+      ],
+      "dcChecks": [
+        "Arcana DC 14: Recognize the runes as a dormant security measure requiring a matching key.",
+        "Perception DC 12: Spot faint scuff marks leading to the hatch.",
+        "Investigation DC 13: Discover the blueprint fragment hidden in a wall compartment."
+      ],
+      "accessibility": "Accessible via the west door from the Fused Iron Antechamber. The floor hatch requires a key or a successful lock/break attempt.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Fireplace",
+          "description": "Cold and unused, the fireplace conceals a dislodged brick hiding the lockbox."
+        },
+        {
+          "name": "Floor Symbols",
+          "description": "A complex lattice of dwarven runes protects the vault\u2019s center."
+        },
+        {
+          "name": "Central Vault Hatch",
+          "description": "A rune-covered hatch offering access to deeper, more dangerous sections if opened."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "combat",
+          "description": "The Experimental Splice Remnant attacks anyone tampering with the hatch."
+        },
+        {
+          "type": "exploration",
+          "description": "Thorough searching reveals a blueprint for a secret route and a locked cache."
+        }
+      ],
+      "adventureSummary": "A hazardous, secretive vault where the risks\u2014and the answers\u2014are greatest. Players may gain tools to progress or face setbacks if careless.",
+      "aliases": [
+        "Forgotten Splice Vault",
+        "I03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_chamber:Forgotten Splice Vault",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "territorial beast",
+      "description": "A territorial beast appropriate for level 2 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 2 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "territorial beast",
+      "description": "A territorial beast appropriate for level 2 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "territorial beast",
+      "description": "A territorial beast appropriate for level 2 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 2 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "territorial beast",
+      "description": "A territorial beast appropriate for level 2 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "territorial beast",
+      "description": "A territorial beast appropriate for level 2 parties"
+    }
+  ],
+  "areaFeatures": [
+    "ancient murals",
+    "mysterious mechanisms",
+    "hidden passages"
+  ],
+  "notes": "Consider lighting sources and trap placement. Underground areas may have limited resources.",
+  "spatialContractVersion": 1
+}

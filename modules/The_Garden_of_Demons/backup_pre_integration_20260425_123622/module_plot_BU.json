@@ -1,0 +1,377 @@
+{
+  "plotTitle": "Garden of Demons: The Wraithwood Blight",
+  "mainObjective": "Unravel the origin of the demonic corruption twisting Wraithwood Forest and its surrounding lands, forging alliances and overcoming haunted trials to break the curse before the darkness consumes all.",
+  "plotPoints": [
+    {
+      "id": "PP001",
+      "title": "Shadows Over Lanternstream",
+      "description": "The party arrives in Gloamreach Village (GV001), greeted by Elder Maelis, who explains that a creeping gloom and unsettling disappearances plague the town. To uncover the cause of the curse, the party must investigate haunted landmarks, question villagers, and explore the lantern-lit streets, gathering clues that hint at a spreading corruption from the surrounding wilds. Clues found here will lead the party towards the dangerous Blightfen Wilds and beyond.",
+      "location": "GV001",
+      "nextPoints": [
+        "PP002"
+      ],
+      "status": "not started",
+      "plotImpact": "Establishes the central mystery and introduces key NPCs in Gloamreach Village. The clues and relationships forged here shape access to allies and information in future areas.",
+      "sideQuests": [
+        {
+          "id": "SQ001",
+          "title": "The Flickering Watch",
+          "description": "Investigate the nightly extinguishing of lanterns near the old footbridge and help the lamplighter ease the villagers\u2019 fears.",
+          "involvedLocations": [
+            "GV001"
+          ],
+          "status": "not started",
+          "plotImpact": "Earns trust and provides further clues about the haunting shadows."
+        },
+        {
+          "id": "SQ002",
+          "title": "The Willow-Sick Child",
+          "description": "Help cure a child sickened by the cursed ponds, seeking rare wildflowers and learning about the blight\u2019s unnatural energies.",
+          "involvedLocations": [
+            "GV001"
+          ],
+          "status": "not started",
+          "plotImpact": "Grants a grateful contact and dream-wrought hints about the corruption\u2019s source."
+        }
+      ]
+    },
+    {
+      "id": "PP002",
+      "title": "Into the Blightfen Outlands",
+      "description": "Clues from Gloamreach point to the Blightfen Wilds (BO002) as the origin of the corruption. The party ventures into these swampy, overgrown fields, facing natural hazards and supernatural foes. They must track the blight\u2019s source, interact with strange hermits, and possibly the Thornkin Rella, discovering that the corruption is tied to a deeper force connected to the forest\u2019s ancient heart. Success here uncovers the link between the blight and a corrupted Heartbloom, and hints at a broader demonic influence.",
+      "location": "BO002",
+      "nextPoints": [
+        "PP003"
+      ],
+      "status": "not started",
+      "plotImpact": "Navigating the Outlands and negotiating with denizens provides crucial lore and resources for future challenges.",
+      "sideQuests": [
+        {
+          "id": "SQ003",
+          "title": "Moonbow\u2019s Message",
+          "description": "Lay a spectral child\u2019s spirit to rest by retrieving her lost locket, revealing secrets of the region\u2019s haunting.",
+          "involvedLocations": [
+            "BO002"
+          ],
+          "status": "not started",
+          "plotImpact": "Grants a protective charm or a critical clue about the entity behind the gloom."
+        },
+        {
+          "id": "SQ004",
+          "title": "Hermit\u2019s Bargain",
+          "description": "Help the reclusive druid Whisperroot repel blightbeasts from her grove in exchange for cryptic assistance.",
+          "involvedLocations": [
+            "BO002"
+          ],
+          "status": "not started",
+          "plotImpact": "Rewards include potions, lore, or a shortcut deeper into the fens."
+        }
+      ]
+    },
+    {
+      "id": "PP003",
+      "title": "Signs of Rot and Resistance",
+      "description": "Deeper in the Blightfen Wilds (BO002), unnatural flora and undead beasts reveal the depth of the blight. The party encounters wary fenfolk and outcast druids who reveal that a cursed Heartbloom beneath the Marsh King\u2019s Cairn is fueling the corruption. The party must decide to ally with the locals for assistance or press ahead alone. Success here grants the information and resources to approach the Cairn and face the heart of the corruption.",
+      "location": "BO002",
+      "nextPoints": [
+        "PP004"
+      ],
+      "status": "not started",
+      "plotImpact": "Forges alliances and reveals the central threat in the Blightfen, setting up the confrontation at the Cairn.",
+      "sideQuests": [
+        {
+          "id": "SQ005",
+          "title": "The Croaking Pact",
+          "description": "Rescue the 'Egg-Prince' of a chorus of giant frogs from a sinister hag for a magical anti-blight charm.",
+          "involvedLocations": [
+            "BO002"
+          ],
+          "status": "not started",
+          "plotImpact": "Success earns blight resistance; failure may antagonize swamp denizens."
+        },
+        {
+          "id": "SQ006",
+          "title": "Plague-Bound Spirits",
+          "description": "Lay cursed spirits to rest by finding their burial tokens, weakening the undead near the Cairn.",
+          "involvedLocations": [
+            "BO002"
+          ],
+          "status": "not started",
+          "plotImpact": "Clearing the spirits eases access to the Marsh King\u2019s Cairn."
+        }
+      ]
+    },
+    {
+      "id": "PP004",
+      "title": "The Marsh King\u2019s Cairn",
+      "description": "Guided by clues and alliances, the party infiltrates the heart of the Blightfen\u2019s darkness: the ruined barrow of the Marsh King (BO002). Here, infernal corruption entwines with ancient druidic wards. The party must confront blighted guardians and solve environmental puzzles to reach the Heartbloom. Choices regarding the Marsh King\u2019s desperate spirit and the fate of the Heartbloom set the tone for the region\u2019s future and reveal that the blight is spreading further, toward the Twisted Wilds.",
+      "location": "BO002",
+      "nextPoints": [
+        "PP005"
+      ],
+      "status": "not started",
+      "plotImpact": "The party\u2019s actions determine if the Blightfen is healed, changed, or left vulnerable, and point toward the next corrupted region.",
+      "sideQuests": [
+        {
+          "id": "SQ007",
+          "title": "Whispers Beneath the Cairn",
+          "description": "Interpret ethereal runes to learn about the Marsh King\u2019s pact and how to weaken or purify the Heartbloom.",
+          "involvedLocations": [
+            "BO002"
+          ],
+          "status": "not started",
+          "plotImpact": "Unlocks advantages for the Cairn\u2019s final encounter and possible redemption for the Marsh King\u2019s spirit."
+        }
+      ]
+    },
+    {
+      "id": "PP005",
+      "title": "Purging the Heartbloom",
+      "description": "In the heart of the Marsh King\u2019s Cairn (BO002), the party faces the corrupted Heartbloom\u2014a monstrous, sentient plant fused with infernal energy. The final battle here demands strategy, courage, and possibly the aid of uneasy allies. The party\u2019s choices\u2014purification, destruction, or claiming the Heartbloom\u2019s power\u2014will affect the land\u2019s fate and the nature of the spreading corruption into the Twisted Wilds.",
+      "location": "BO002",
+      "nextPoints": [
+        "PP006"
+      ],
+      "status": "not started",
+      "plotImpact": "Climactic battle resolves the Blightfen\u2019s curse and transitions the threat to the Twisted Wilds.",
+      "sideQuests": []
+    },
+    {
+      "id": "PP006",
+      "title": "Crossing the Twisted Wilds",
+      "description": "Fresh from the struggles in the Blightfen, the party follows signs of the corruption\u2019s advance into the Twisted Wilds (TTW003). The forest is a labyrinth of warped thickets and ancient oaks, now haunted by a profane influence. Here, the party must navigate treacherous paths while evading Gravenbark Guardians and encountering the Shade of Alenwen\u2014a remnant of the Wilds\u2019 former protector. Choices here\u2014alliances or confrontations\u2014will shape the party\u2019s resources and allies for the climactic confrontation.",
+      "location": "TTW003",
+      "nextPoints": [
+        "PP007"
+      ],
+      "status": "not started",
+      "plotImpact": "Tests resourcefulness and diplomacy, affecting the outcome and support in the upcoming trials.",
+      "sideQuests": [
+        {
+          "id": "SQ008",
+          "title": "Relics of the Old Grove",
+          "description": "Recover hidden druidic relics to weaken Wilds' guardians or gain favor with the surviving druids.",
+          "involvedLocations": [
+            "TTW003"
+          ],
+          "status": "not started",
+          "plotImpact": "Turns foes into allies or grants magical aid for the climax."
+        },
+        {
+          "id": "SQ009",
+          "title": "Bargain with the Shade",
+          "description": "Persuade or banish the Shade of Alenwen for guidance or warnings about the final threat.",
+          "involvedLocations": [
+            "TTW003"
+          ],
+          "status": "not started",
+          "plotImpact": "Gaining her aid opens tactical advantages or secret passages in the final area."
+        }
+      ]
+    },
+    {
+      "id": "PP007",
+      "title": "Echoes of Old Power",
+      "description": "Deeper within the Twisted Wilds (TTW003), the party encounters restless spirits and evidence of ancient druidic rituals. Negotiating with or confronting the Shade of Alenwen reveals that the heart of the corruption lies ahead, guarded by unnatural forces. The party learns the demonic influence is attempting to merge the Feywild with the material realm, threatening the balance of all Wraithwood.",
+      "location": "TTW003",
+      "nextPoints": [
+        "PP008"
+      ],
+      "status": "not started",
+      "plotImpact": "Reveals the true stakes and sets up the final journey into the Wilds\u2019 corrupted heart.",
+      "sideQuests": [
+        {
+          "id": "SQ010",
+          "title": "Spectral Bargain",
+          "description": "Appease or banish minor spirits haunting a ruined altar to learn forbidden rites or gain a magical boon.",
+          "involvedLocations": [
+            "TTW003"
+          ],
+          "status": "not started",
+          "plotImpact": "Alters future encounters and may provide boons or complications."
+        }
+      ]
+    },
+    {
+      "id": "PP008",
+      "title": "The Heart of Thorns",
+      "description": "Guided by vision and lore, the party descends into the core of the Twisted Wilds (TTW003), where the corruption is thickest. They must survive the attacks of Gravenbark Guardians and navigate a bramble maze to confront a profane relic channeling demonic energy. The decisions made here\u2014whether to destroy, purify, or harness the relic\u2014set the stage for the climactic confrontation and the fate of the Wilds.",
+      "location": "TTW003",
+      "nextPoints": [
+        "PP009"
+      ],
+      "status": "not started",
+      "plotImpact": "Direct confrontation with the source of the corruption, with outcomes affecting the final area.",
+      "sideQuests": [
+        {
+          "id": "SQ011",
+          "title": "Seeds of Rebirth",
+          "description": "Help the surviving druids reclaim sacred seeds hidden in the maze to heal the Wilds or gain new allies.",
+          "involvedLocations": [
+            "TTW003"
+          ],
+          "status": "not started",
+          "plotImpact": "Aids in purifying the forest or provides new allies for the final battle."
+        },
+        {
+          "id": "SQ012",
+          "title": "The Old Pact",
+          "description": "Decide whether to release a cunning fiend imprisoned beneath the relic for forbidden knowledge.",
+          "involvedLocations": [
+            "TTW003"
+          ],
+          "status": "not started",
+          "plotImpact": "Grants knowledge or resources but may unleash a future threat."
+        }
+      ]
+    },
+    {
+      "id": "PP009",
+      "title": "Rite of Cleansing",
+      "description": "At the corrupted heart, the party must disrupt the relic\u2019s power through ancient rites, battle, or negotiation with the Manifestation of the Forest's Spirit (TTW003). The outcome depends on alliances and choices made in previous areas. The fate of the Twisted Wilds\u2014and the entire Wraithwood\u2014now hangs in the balance.",
+      "location": "TTW003",
+      "nextPoints": [
+        "PP010"
+      ],
+      "status": "not started",
+      "plotImpact": "Delivers the climax and alters the fate of the Twisted Wilds, opening the path to the Thornwound Wilds.",
+      "sideQuests": [
+        {
+          "id": "SQ013",
+          "title": "Last Stand of the Guardians",
+          "description": "Defend the surviving druids against a final wave of corrupted Gravenbark Guardians to secure the ritual site.",
+          "involvedLocations": [
+            "TTW003"
+          ],
+          "status": "not started",
+          "plotImpact": "Influences the ritual\u2019s success and the Wilds\u2019 future."
+        }
+      ]
+    },
+    {
+      "id": "PP010",
+      "title": "The Thornwound Wilds Beckon",
+      "description": "With the Twisted Wilds cleansed or changed, word reaches the party of a new threat: the Thornwound Wilds (SOT004), where travelers vanish and predatory horrors roam. A dying messenger tells of a demon-bloom at the heart of the Wilds. The party is commissioned to investigate, map the region, and uncover the source before it overruns the region. Their preparation and approach will determine their chances within the treacherous bramble labyrinth.",
+      "location": "SOT004",
+      "nextPoints": [
+        "PP011"
+      ],
+      "status": "not started",
+      "plotImpact": "Sets the stakes for the final area and allows the party to gather tools and lore for survival.",
+      "sideQuests": [
+        {
+          "id": "SQ014",
+          "title": "Gather Lore from the Thorn-Touched",
+          "description": "Seek out hermits and survivors who have entered the Wilds for survival tips or a protective talisman.",
+          "involvedLocations": [
+            "SOT004"
+          ],
+          "status": "not started",
+          "plotImpact": "Can grant maps or items vital for navigating the Thornwound Wilds."
+        },
+        {
+          "id": "SQ015",
+          "title": "Procure Antivenom and Supplies",
+          "description": "Negotiate for antivenoms and bramble-cutting tools from local traders.",
+          "involvedLocations": [
+            "SOT004"
+          ],
+          "status": "not started",
+          "plotImpact": "Secures resources to mitigate natural hazards."
+        }
+      ]
+    },
+    {
+      "id": "PP011",
+      "title": "Labyrinth of Blood and Thorns",
+      "description": "The party enters the Thornwound Wilds (SOT004), facing deadly undergrowth, illusions, and predatory fauna. The Wilds react to their presence, luring them into traps and testing their resolve. Allies found or choices made here will determine the party\u2019s path to the Wilds\u2019 heart and the final confrontation.",
+      "location": "SOT004",
+      "nextPoints": [
+        "PP012"
+      ],
+      "status": "not started",
+      "plotImpact": "Survival and exploration are key; the party\u2019s actions affect the ease of reaching the heart of the Wilds.",
+      "sideQuests": [
+        {
+          "id": "SQ016",
+          "title": "The Lost Band",
+          "description": "Rescue stranded fortune-seekers whose camp is besieged by venomous predators for aid or information.",
+          "involvedLocations": [
+            "SOT004"
+          ],
+          "status": "not started",
+          "plotImpact": "Can grant a guide, information, or a magical token."
+        },
+        {
+          "id": "SQ017",
+          "title": "The Ensnared Fey",
+          "description": "Free a trapped fey creature from the brambles\u2019 magic for a blessing or guidance.",
+          "involvedLocations": [
+            "SOT004"
+          ],
+          "status": "not started",
+          "plotImpact": "Assistance from the fey reveals hidden dangers or offers aid, but may incur obligations."
+        }
+      ]
+    },
+    {
+      "id": "PP012",
+      "title": "The Heart\u2019s Corruption",
+      "description": "Deep in the maze of Thornwound Wilds (SOT004), the party discovers a demon-bloom nourished by a corrupted druidic circle. They must unravel the druids\u2019 enchantments, confront the cult, and decide whether the Wilds can be healed, contained, or must be destroyed. Their choices will have lasting repercussions on the land and its spirits.",
+      "location": "SOT004",
+      "nextPoints": [
+        "PP013"
+      ],
+      "status": "not started",
+      "plotImpact": "The fate of the Thornwound Wilds and the druidic circle are decided here, echoing throughout the region.",
+      "sideQuests": [
+        {
+          "id": "SQ018",
+          "title": "Seeds of Redemption",
+          "description": "Attempt to redeem a corrupted druid and learn the true origins of the demon-bloom.",
+          "involvedLocations": [
+            "SOT004"
+          ],
+          "status": "not started",
+          "plotImpact": "Redemption grants lore and magical aid for the final confrontation."
+        },
+        {
+          "id": "SQ019",
+          "title": "Sabotage the Root-Tendrils",
+          "description": "Destroy infernal roots to weaken the bloom\u2019s guardians and disrupt its power.",
+          "involvedLocations": [
+            "SOT004"
+          ],
+          "status": "not started",
+          "plotImpact": "Weakening the bloom\u2019s defenses makes the final battle easier or may destabilize the Wilds."
+        }
+      ]
+    },
+    {
+      "id": "PP013",
+      "title": "Exodus or Exorcism",
+      "description": "At the climax in the heart of the Thornwound Wilds (SOT004), the party must perform a ritual of cleansing, broker a pact with ancient spirits, or flee before the Wilds collapse. Fey, survivors, and druidic spirits all plead for different resolutions. The fate of Wraithwood\u2014and its future\u2014rests in the party\u2019s hands. Will the Garden of Demons be banished, transformed, or left to fester?",
+      "location": "SOT004",
+      "nextPoints": [],
+      "status": "not started",
+      "plotImpact": "Final resolution and long-term consequences for the region, setting up future adventures or ongoing threats.",
+      "sideQuests": [
+        {
+          "id": "SQ020",
+          "title": "Bargain with the Old Spirits",
+          "description": "Negotiate with the ancient spirit of the Wilds for its blessing, forgiveness, or a promise of safety.",
+          "involvedLocations": [
+            "SOT004"
+          ],
+          "status": "not started",
+          "plotImpact": "A successful bargain can heal the land, while failure may doom it to perpetual blight."
+        }
+      ]
+    }
+  ],
+  "activeQuests": [],
+  "completedQuests": [],
+  "failedQuests": [],
+  "worldEvents": [],
+  "dmNotes": []
+}

@@ -1,0 +1,74 @@
+{
+  "mapId": "MAP_H_3",
+  "mapName": "Dungeon Map",
+  "totalRooms": 3,
+  "rooms": [
+    {
+      "id": "H01",
+      "type": "prison",
+      "connections": [
+        "H02"
+      ],
+      "coordinates": "X10Y10",
+      "directions": {
+        "east": "H02"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "encounter",
+      "landmark": true,
+      "dangerLevel": "high",
+      "name": "Grasp of the Mindlocked"
+    },
+    {
+      "id": "H02",
+      "type": "entrance",
+      "connections": [
+        "H01",
+        "H03"
+      ],
+      "coordinates": "X11Y10",
+      "directions": {
+        "west": "H01",
+        "east": "H03"
+      },
+      "tags": [
+        "hub"
+      ],
+      "purpose": "transition",
+      "landmark": false,
+      "dangerLevel": "high",
+      "name": "Veilsplit Threshold"
+    },
+    {
+      "id": "H03",
+      "type": "shrine",
+      "connections": [
+        "H02"
+      ],
+      "coordinates": "X12Y10",
+      "directions": {
+        "west": "H02"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "high",
+      "name": "Sanctum of Mirrored Truths"
+    }
+  ],
+  "layout": [
+    [
+      "H01",
+      "H02",
+      "H03"
+    ]
+  ],
+  "startRoom": "H02",
+  "version": "1.1",
+  "notes": "Extended schema with AI-friendly navigation fields",
+  "spatialContractVersion": 1
+}

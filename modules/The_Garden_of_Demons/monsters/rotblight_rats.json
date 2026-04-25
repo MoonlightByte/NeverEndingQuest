@@ -1,0 +1,65 @@
+{
+  "name": "Rotblight Rat",
+  "size": "Small",
+  "type": "Beast",
+  "alignment": "Unaligned",
+  "armorClass": 13,
+  "hitPoints": 7,
+  "maxHitPoints": 7,
+  "speed": 30,
+  "abilities": {
+    "strength": 7,
+    "dexterity": 15,
+    "constitution": 11,
+    "intelligence": 2,
+    "wisdom": 10,
+    "charisma": 4
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 2,
+    "stealth": 4
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [
+    "poison"
+  ],
+  "conditionImmunities": [
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "",
+  "challengeRating": 0.25,
+  "specialAbilities": [
+    {
+      "name": "Keen Smell",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Rotblight Infection",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "Poison"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "attackBonus": 4,
+      "damageDice": "1d4",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the fetid shadows around the Petrified Warden Stone, Rotblight Rats are grotesque, diseased rodents twisted by the Blightfen's corrupting miasma. Their fur is mottled with patchy, slimy clumps of decay, stained in sickly hues of mottled gray and putrid green that seem to writhe subtly as if alive. Their eyes burn with a faint, unnatural phosphorescence, casting a dim sickly glow amidst the marsh's gloom. Jagged, broken teeth jut from snarling mouths that emit guttural squeaks and rasping breaths thick with the stench of rot and swamp. Their gaunt bodies are marred by festering sores oozing dark ichor, and their long, whip-like tails drag behind them, leaving a faint trail of corrupted slime on the dank earth. These vermin skitter with unnatural speed and unsettling coordination, often swarming in unnerving numbers to overwhelm intruders. They are drawn to the lingering magic of the Warden Stone's fractured wards, animated by the cursed roots and Whisperroot's sorrowful presence. The air around them is heavy with the clammy chill of decay, and their presence heralds the creeping spread of the Blightfen's sinister corruption, making them both a physical and spiritual menace to those who dare trespass near the ancient monolith."
+}

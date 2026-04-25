@@ -1,0 +1,68 @@
+{
+  "name": "Red Maw Mercenary",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Neutral Evil",
+  "armorClass": 14,
+  "hitPoints": 16,
+  "maxHitPoints": 16,
+  "speed": 30,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 14,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 11,
+    "charisma": 10
+  },
+  "savingThrows": [],
+  "skills": {
+    "Athletics": 4,
+    "Intimidation": 2,
+    "Perception": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "Common, Goblin",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Pack Tactics",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Scimitar",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "Slashing"
+    },
+    {
+      "name": "Light Crossbow",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "Piercing"
+    },
+    {
+      "name": "Vicious Command",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

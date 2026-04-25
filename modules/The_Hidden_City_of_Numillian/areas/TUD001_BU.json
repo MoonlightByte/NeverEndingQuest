@@ -1,0 +1,475 @@
+{
+  "areaId": "TUD001",
+  "areaName": "The Unraveling Wards",
+  "areaType": "mixed",
+  "areaDescription": "Once a bustling quarter of the city, the Unraveling Wards now twist and sunder beneath unseen forces\u2014buildings fracture, cobbled streets spiral impossibly, and magic frays at the edges of reality. A constant, nerve-shredding hum permeates the air, while distorted shadows flit across shattered facades, making every step a perilous gamble.",
+  "dangerLevel": "high",
+  "recommendedLevel": 6,
+  "climate": "varied",
+  "terrain": "varied terrain",
+  "map": {
+    "mapId": "MAP_G_3",
+    "mapName": "Mixed Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "G01",
+        "type": "room",
+        "connections": [
+          "G02",
+          "G03"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "G02"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "high",
+        "name": "Veilwoven Crossroads"
+      },
+      {
+        "id": "G02",
+        "type": "room",
+        "connections": [
+          "G01"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "G01"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Specter's Choice Alcove"
+      },
+      {
+        "id": "G03",
+        "type": "room",
+        "connections": [
+          "G01"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {},
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Fractured Memory Niche"
+      }
+    ],
+    "layout": [
+      [
+        "G01",
+        "G02",
+        "G03"
+      ]
+    ],
+    "startRoom": "G01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "G01",
+      "name": "Veilwoven Crossroads",
+      "type": "room",
+      "description": "The heart of the Unraveling Wards, the Veilwoven Crossroads is a fractured junction where four ancient streets converge. The cobbles here spiral in impossible M\u00f6bius loops, and the remnants of once-grand archways now float inches above the ground, humming with destabilizing energy. As the party enters, their shadows lengthen and flicker even when no light source changes. At the center rises a cracked, rune-inscribed plinth, pulsing with erratic magical energies.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "G02",
+        "G03"
+      ],
+      "areaConnectivity": [
+        "The Netherwoven Warrens"
+      ],
+      "areaConnectivityId": [
+        "H03"
+      ],
+      "npcs": [
+        {
+          "name": "Azarel Moros",
+          "description": "A gaunt, silver-haired mage in tattered blue robes, Azarel's eyes shimmer with fragments of shattered illusions. He seems both present and slightly out of phase with reality, as if the magic of the wards has begun to unravel his very form. Azarel is obsessed with repairing the city's magical fabric, but his mind teeters on the brink from constant exposure to the wards' chaos.",
+          "attitude": "Desperate for help, but suspicious of newcomers. If the party offers genuine aid or knowledge, he warms quickly. He is afraid the mind flayer is hunting him."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Raveling Wraith",
+          "description": "A translucent, shrieking spirit, shrouded in torn pieces of reality itself. It flickers in and out of view, trailing motes of magical detritus.",
+          "quantity": 2
+        }
+      ],
+      "lootTable": [
+        "Wand of Reality Stitching (3 charges, can stabilize magical surges)",
+        "Fragmented Arcane Focus (usable as a spellcasting focus, grants +1 on checks to resist illusion magic in this area)",
+        "Scroll: Map of the Hidden City (shows safe paths through the Unraveling Districts)"
+      ],
+      "plotHooks": [
+        "Azarel Moros pleads for the party to help anchor the runes at the crossroads, warning that the entire district may collapse if left unattended.",
+        "Clues etched into the plinth hint at a hidden chamber beneath the crossroads, accessible only when the wards' energies align.",
+        "A tattered note in Azarel's possession references a secret held in the 'Fractured Memory Niche.'"
+      ],
+      "dmInstructions": "Azarel Moros is key to understanding the Unraveling Wards. Play up the area's unstable magic: describe shifting architecture, flickering sensation, and sudden DC increases for spells. The Raveling Wraiths are attracted to magical activity and will appear if the PCs use more than two spells or magical items in a short period. The crossroads is an excellent place for the party to learn about the district's dangers and receive guidance from Azarel. If the PCs stabilize the plinth (DC 17 Arcana check), magical dangers lessen in this room.",
+      "doors": [
+        {
+          "name": "Shifting South Archway",
+          "description": "A fractured stone arch, flickering between open and blocked by veils of blue energy.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 18,
+          "keyname": "",
+          "trapped": true,
+          "trap": "Crossing during a magical surge causes a burst of wild magic. DC 15 Arcana to detect instability; on failure, each crossing creature must make a DC 14 Wisdom save or suffer a random wild magic effect (choose or roll)."
+        },
+        {
+          "name": "East Spiral Door",
+          "description": "A wooden door warped into a spiral, the handle only appears when touched.",
+          "type": "regular",
+          "locked": true,
+          "lockDC": 15,
+          "breakDC": 18,
+          "keyname": "Shard of Stabilized Reality (found elsewhere)",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 15,
+          "disableDC": 17,
+          "triggerDC": 14,
+          "damage": "Random wild magic surge (choose an effect or use Wild Magic Surge table; typically minor, but can be dangerous)."
+        }
+      ],
+      "dcChecks": [
+        "Arcana DC 17: Stabilize the plinth and reduce magical hazards.",
+        "Investigation DC 15: Locate hidden runic patterns and clues about the district's design.",
+        "Perception DC 13: Hear the distant wailing of the wraiths before they arrive."
+      ],
+      "accessibility": "The Crossroads are open but hazardous: magical surges can bar passage without warning, and the layout can change unexpectedly.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "The dust here sparkles with magical residue, swirling unnaturally in the air."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "Cracks and scorched marks from failed magical experiments mar every surface."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "Archways float, walls twist subtly, and some stones seem to hum with living energy."
+        },
+        {
+          "name": "Runic Plinth",
+          "description": "An ancient stone pedestal inscribed with shifting runes, central to the district's magical fabric."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "combat",
+          "description": "2 Raveling Wraiths assault the party if magical activity draws their attention."
+        },
+        {
+          "type": "roleplay",
+          "description": "Azarel Moros requests assistance and offers lore about the wards."
+        }
+      ],
+      "adventureSummary": "At the heart of the Unraveling Wards, the party meets Azarel Moros and faces the first test of the district's unstable magic. Here, they can gain critical information about the area's dangers and hints at the hidden structure beneath the city.",
+      "aliases": [
+        "Veilwoven Crossroads",
+        "G01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Veilwoven Crossroads",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "G02",
+      "name": "Specter's Choice Alcove",
+      "type": "room",
+      "description": "A narrow, shadow-choked alcove where the city's walls seem to bleed into one another. The air here feels dense and echoing, and faint, whispering voices drift from the cracked stones. Motes of silvery mist swirl in slow eddies, and the remnants of furniture\u2014half-melted and fused to the walls\u2014hint at a violent magical upheaval. The alcove is known for presenting visitors with illusory visions, tempting them toward one of several false exits.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "G01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Mira the Shardseer",
+          "description": "A spectral oracle bound by fractured fate, Mira appears as a translucent woman with dozens of glass-like shards suspended around her. She can see glimpses of possible futures but is fractured by the district's energies. Mira offers cryptic advice, often speaking in riddles, but she is fiercely protective of those who treat her kindly.",
+          "attitude": "Guarded but helpful to respectful parties. She warns against trusting 'what you wish to see.'"
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Illusory Specters",
+          "description": "Semi-corporeal spirits that phase in and out of existence, attacking those who disrespect the alcove or attempt to force their way past the illusions.",
+          "quantity": 1
+        }
+      ],
+      "lootTable": [
+        "Shard of Stabilized Reality (can open the 'East Spiral Door' in Veilwoven Crossroads)",
+        "Spectral Lens (advantage on Perception checks to discern illusions in the Unraveling Districts for 1 hour)",
+        "Small pouch of ancient, silver coins"
+      ],
+      "plotHooks": [
+        "Mira the Shardseer offers a vision of the Mind Flayer antagonist, warning that the creature is manipulating reality from the shadows.",
+        "Visions hint at the 'Fractured Memory Niche' as a place where lost truths can be reclaimed.",
+        "If the party treats Mira kindly, she can lead them safely through the most dangerous illusions, once."
+      ],
+      "dmInstructions": "Mira the Shardseer is an important source of information. Play up her fractured, prophetic speech, and give cryptic clues about both the district and the underlying plot. If the party attacks or mistreats her, the Illusory Specter appears immediately. Otherwise, the specter only attacks if they attempt to loot or vandalize the alcove. The party must distinguish real from false exits to escape; failure leads to psychic backlash (see traps).",
+      "doors": [
+        {
+          "name": "Phantom Exit",
+          "description": "Appears as a shimmering veil at the far end of the alcove. It leads nowhere, vanishing if approached without guidance.",
+          "type": "secret",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 20,
+          "keyname": "",
+          "trapped": true,
+          "trap": "Passing through without guidance from Mira or a successful Investigation check triggers a psychic backlash (see Traps)."
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 16,
+          "disableDC": 16,
+          "triggerDC": 14,
+          "damage": "4d6 psychic damage and the victim is frightened until the end of their next turn."
+        }
+      ],
+      "dcChecks": [
+        "Investigation DC 15: Discern the real exit from the three illusory ones.",
+        "Insight DC 13: Sense Mira's warnings and interpret her riddles.",
+        "Arcana DC 14: Analyze the magical residue creating the false doors."
+      ],
+      "accessibility": "Accessible from Veilwoven Crossroads, though the exit is hard to discern. The room's illusions confuse and delay most travelers.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "Walls and ceiling appear to melt and reform, creating different possible layouts with each glance."
+        },
+        {
+          "name": "Echoing Voices",
+          "description": "Whispers drift from the walls, echoing the party's deepest doubts and hopes."
+        },
+        {
+          "name": "Fused Furnishings",
+          "description": "Remnants of tables and chairs are melded into stone, half-subsumed by the walls."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "roleplay",
+          "description": "Mira the Shardseer offers visions and advice to the party."
+        },
+        {
+          "type": "combat",
+          "description": "An Illusory Specter attacks if the party is disrespectful or attempts to loot the alcove."
+        }
+      ],
+      "adventureSummary": "Within the Specter's Choice Alcove, the party meets Mira the Shardseer, who grants cryptic warnings and insight. This chamber tests the party's ability to reason and resist deception.",
+      "aliases": [
+        "Specter's Choice Alcove",
+        "G02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Specter's Choice Alcove",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "G03",
+      "name": "Fractured Memory Niche",
+      "type": "room",
+      "description": "A cramped, labyrinthine chamber where the walls are studded with floating fragments of shattered mirrors and memory crystals. Each surface reflects not just the party\u2019s faces, but flickers of their past deeds and lost secrets. The air is heavy and cold, laced with the echo of forgotten voices. The center of the room features a cracked pedestal containing a crystalline sphere, its interior swirling with shifting images.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "G01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Raxil the Doubter",
+          "description": "A gaunt, haunted figure draped in faded scholar\u2019s robes, Raxil clutches a bundle of broken memory crystals. Raxil obsessively questions the veracity of everything, including the party\u2019s very existence. He serves as the memory-keeper of the Unraveling Wards, tormented by the knowledge that most recollections here are unreliable.",
+          "attitude": "Deeply suspicious. Raxil will quiz the party about their motives and will only share knowledge if convinced of their sincerity."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Mirrorborn Echo",
+          "description": "A shimmering doppelganger formed from the party\u2019s own memories and regrets, attacking with psychic projections.",
+          "quantity": 1
+        }
+      ],
+      "lootTable": [
+        "Memory Crystal (stores a single truthful memory, can be used to resist mind-altering effects once)",
+        "Journal Fragment (contains cryptic notes about a secret entrance to the Subreality Undercity)",
+        "Crystal Sphere of the Niche (focus: once per day, advantage on Insight checks)"
+      ],
+      "plotHooks": [
+        "Raxil the Doubter provides information about a hidden passage to the Subreality Undercity, but only if the party can earn his trust.",
+        "The Journal Fragment hints at the location of Xhalruun the Unraveled\u2019s lair.",
+        "The crystalline sphere shows glimpses of the Mind Flayer antagonist manipulating events from behind the scenes."
+      ],
+      "dmInstructions": "Raxil the Doubter is paranoid and will not cooperate unless the party passes a social challenge (Insight DC 15 or a compelling argument). The Mirrorborn Echo appears if the party tampers with the memory crystals or tries to take the crystalline sphere without Raxil\u2019s blessing. This chamber is ideal for character development, as reflections show the party\u2019s failures and triumphs.",
+      "doors": [
+        {
+          "name": "Hidden Memory Panel",
+          "description": "A mirrored panel set into the north wall, visible only to those who have proven themselves to Raxil.",
+          "type": "secret",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 22,
+          "keyname": "",
+          "trapped": true,
+          "trap": "Opening the panel without Raxil's approval triggers a psychic backlash (see Traps)."
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 17,
+          "disableDC": 19,
+          "triggerDC": 15,
+          "damage": "5d6 psychic damage and disadvantage on Insight and Investigation checks in the area for 1 hour."
+        }
+      ],
+      "dcChecks": [
+        "Insight DC 15: Convince Raxil of the party's honest intentions.",
+        "Perception DC 14: Detect the faint outline of the hidden memory panel.",
+        "Arcana DC 16: Analyze the memory crystals for clues about the area\u2019s history."
+      ],
+      "accessibility": "Accessible from Veilwoven Crossroads, but the shifting mirrors and psychic echoes can confuse unprepared intruders.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "Dusty, cracked mirrors and faded crystalline surfaces line the walls."
+        },
+        {
+          "name": "Memory Crystals",
+          "description": "Glowing fragments hover in the air, each pulsing faintly with stored emotion."
+        },
+        {
+          "name": "Crystalline Sphere",
+          "description": "A large, cracked sphere sits on a pedestal, its contents churning with living memories."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "roleplay",
+          "description": "Raxil the Doubter interrogates the party, challenging their memories and intentions."
+        },
+        {
+          "type": "combat",
+          "description": "A Mirrorborn Echo attacks if the party mishandles the memory crystals or tries to steal from the niche."
+        }
+      ],
+      "adventureSummary": "In the Fractured Memory Niche, the party faces their own past and must win over Raxil the Doubter to gain vital knowledge of the district\u2019s secrets and possible ways deeper into the city.",
+      "aliases": [
+        "Fractured Memory Niche",
+        "G03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Fractured Memory Niche",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 6 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 6 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 6 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 6 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 6 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 6 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 6 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 6 parties"
+    },
+    {
+      "roll": "81-90",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 6 parties"
+    },
+    {
+      "roll": "91-100",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 6 parties"
+    }
+  ],
+  "areaFeatures": [
+    "crossroads",
+    "landmarks",
+    "bridges"
+  ],
+  "notes": "Balance combat, exploration, and social encounters. Transitions between areas should feel natural.",
+  "spatialContractVersion": 1
+}

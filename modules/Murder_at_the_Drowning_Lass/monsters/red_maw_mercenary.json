@@ -1,0 +1,69 @@
+{
+  "name": "Red Maw Mercenary",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Neutral Evil",
+  "armorClass": 14,
+  "hitPoints": 16,
+  "maxHitPoints": 16,
+  "speed": 30,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 14,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 11,
+    "charisma": 10
+  },
+  "savingThrows": [],
+  "skills": {
+    "Athletics": 4,
+    "Intimidation": 2,
+    "Perception": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "Common, Goblin",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Pack Tactics",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Scimitar",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "Slashing"
+    },
+    {
+      "name": "Light Crossbow",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "Piercing"
+    },
+    {
+      "name": "Vicious Command",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "The Red Maw Mercenary stands as a grim shadow in the dusky streets of Brindlehearth Vale, an ominous figure clad in patchwork leather armor dyed a deep crimson, as if soaked in old blood. Their visage is obscured beneath a battered iron helm, the lower half forged into a jagged, tooth-like maw painted bright red--a grim herald to the terror they sow. Wisps of soot and the faint scent of pipe smoke cling to their worn cloak, blending them into the twilight haze that settles over the village's cobblestones. Muscular and lean, they move with a predatory grace, their boots silent against the stone, while their gauntleted hands rest lightly on the hilts of cruel, serrated blades. Rumored to be enforcers for shadowy criminal factions tied to the stolen treasure map, these mercenaries are as ruthless as they are secretive, often spotted lurking near the fountain at Fablewrights' Crossing or skulking close to the Duskmantle Curios. Their eyes, when glimpsed through the helm's narrow slits, gleam with cold calculation and a hunger for coin and chaos alike. Under the bloodied moonlight, the Red Maw's presence is a chilling promise: justice twisted by violence, and a merciless hunt that leaves no witness alive."
+}

@@ -1,0 +1,101 @@
+{
+  "name": "Corrupted Dryad",
+  "size": "Medium",
+  "type": "Fey",
+  "alignment": "Chaotic Evil",
+  "armorClass": 12,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 30,
+  "abilities": {
+    "strength": 10,
+    "dexterity": 14,
+    "constitution": 12,
+    "intelligence": 11,
+    "wisdom": 13,
+    "charisma": 15
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 4,
+    "stealth": 4,
+    "nature": 2
+  },
+  "damageVulnerabilities": [
+    "fire"
+  ],
+  "damageResistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "Elvish, Sylvan",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Fey Camouflage",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Tree Stride (Corrupted)",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Corrupted Slam",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "bludgeoning"
+    },
+    {
+      "name": "Entangling Roots",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "restrained"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "spellcasting": {
+    "ability": "Charisma",
+    "spellSaveDC": 13,
+    "spellAttackBonus": 5,
+    "spells": {
+      "cantrips": [
+        "druidcraft",
+        "thorn whip"
+      ],
+      "level1": [
+        "entangle",
+        "charm person"
+      ],
+      "level2": [
+        "hold person"
+      ],
+      "level3": [],
+      "level4": [],
+      "level5": [],
+      "level6": [],
+      "level7": [],
+      "level8": [],
+      "level9": []
+    }
+  }
+}

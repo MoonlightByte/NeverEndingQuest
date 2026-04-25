@@ -1,0 +1,92 @@
+{
+  "name": "Mirror Phantom",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 18,
+  "maxHitPoints": 18,
+  "speed": 30,
+  "abilities": {
+    "strength": 8,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 12,
+    "charisma": 14
+  },
+  "savingThrows": [],
+  "skills": {
+    "Stealth": 6,
+    "Perception": 3
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "acid",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "cold",
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "understands Common but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Ethereal Jaunt",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Reflective Form",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Spectral Touch",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "necrotic"
+    },
+    {
+      "name": "Mirror Image (1/day)",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "In the shadowed, fractured corridors of the Hall of Fractured Truths, Mirror Phantoms loom like living shards of broken glass made flesh. These eerie specters shimmer with a translucent, silvery sheen, their forms jagged and ever-shifting as if forged from countless splintered mirrors. Their bodies reflect warped, distorted images of those who dare approach--twisted visages of the past, potential futures, or hidden fears flash across their shimmering surfaces, unsettling even the steeliest minds. The phantoms move with a haunting grace, their limbs fracturing and reforming fluidly, producing a faint, tinkling chime like glass scraping against glass. Their hollow eyes glow with cold, argent light, piercing the gloom and revealing secrets best left buried. Murmurs of whispered secrets swirl around them, as if the phantoms themselves feed on the hidden truths and unspoken lies that permeate the Veiled Districts. When they attack, shards of spectral glass lash out, accompanied by psychic reverberations that blur reality and sow confusion. The air chills, and reflections waver, making it difficult to trust one's own senses. These creatures embody the fractured nature of the district--both guardian and tormentor, they haunt the crossroads of deceit, memory, and revelation."
+}

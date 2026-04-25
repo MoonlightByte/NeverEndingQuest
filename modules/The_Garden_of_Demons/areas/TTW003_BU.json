@@ -1,0 +1,420 @@
+{
+  "areaId": "TTW003",
+  "areaName": "The Twisted Wilds",
+  "areaType": "wilderness",
+  "areaDescription": "Gnarled trees writhe skyward beneath a choking tangle of thorn and mist, their roots cracking ancient stones lost to memory. Predators unseen stalk the shadowed undergrowth, and the very air is thick with the scent of rot and the prickling certainty that you are being watched.",
+  "dangerLevel": "high",
+  "recommendedLevel": 13,
+  "climate": "arctic",
+  "terrain": "coast",
+  "map": {
+    "mapId": "MAP_H_3",
+    "mapName": "Wilderness Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "H01",
+        "type": "grove",
+        "connections": [
+          "H02"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "H02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Blighted Heart Grove"
+      },
+      {
+        "id": "H02",
+        "type": "crossroads",
+        "connections": [
+          "H01",
+          "H03"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "H01",
+          "east": "H03"
+        },
+        "tags": [],
+        "purpose": "transition",
+        "landmark": false,
+        "dangerLevel": "high",
+        "name": "Forked Phantom Crossing"
+      },
+      {
+        "id": "H03",
+        "type": "hilltop",
+        "connections": [
+          "H02"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {
+          "west": "H02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Wraithwatch Hill"
+      }
+    ],
+    "layout": [
+      [
+        "H01",
+        "H02",
+        "H03"
+      ]
+    ],
+    "startRoom": "H02",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "H01",
+      "name": "Blighted Heart Grove",
+      "type": "grove",
+      "description": "At the heart of the Twisted Wilds, this grove festers with corruption. Blackened roots coil around cracked, ancient stones, and the canopy above is choked with webs and grasping, thorny vines. Sickly light filters through the mist, illuminating strange, luminescent fungi and blood-red blossoms that pulse with an unnatural rhythm. The air is thick with the scent of decay and the oppressive sense of something watching from the shadows.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "H02"
+      ],
+      "areaConnectivity": [
+        "The Thornwound Wilds"
+      ],
+      "areaConnectivityId": [
+        "H03"
+      ],
+      "npcs": [
+        {
+          "name": "Thornwraith Myrlaen",
+          "description": "The corrupted druid responsible for the curse upon Wraithwood. Myrlaen appears as a spectral, root-entwined figure, their eyes glowing with malice and pain. They are torn between rage at intruders and an unconscious plea for release from their torment.",
+          "attitude": "Hostile, but might be reasoned with by those who speak of redemption or restoration."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Corrupted Dryads",
+          "description": "Once-guardian spirits of the grove, now twisted into hostile, thorn-lashed horrors."
+        },
+        {
+          "name": "Rot Husk Wolves",
+          "description": "Gaunt, undead wolves with bark-like hides and sap-bleeding wounds."
+        }
+      ],
+      "lootTable": [
+        "Myrlaen\u2019s Thornstaff (rare druidic focus, grants advantage on spell saves to break curses in the woods)",
+        "Pouch of Bitterheart Seeds (can be used for rare poison or as a ritual component)",
+        "Fragment of a Ritual Tablet (etched with clues about breaking the druidic curse)"
+      ],
+      "plotHooks": [
+        "A fragment of a stone tablet here hints at a hidden sanctuary deeper in the Wilds, where the curse might be undone.",
+        "Myrlaen\u2019s tormented spirit speaks of a pact made under the full moon, if the party can communicate."
+      ],
+      "dmInstructions": "This location is the corrupted epicenter of the Twisted Wilds. Adjust the number and intensity of corrupted dryads and rot husk wolves according to party strength. Myrlaen should be a challenging encounter with both combat and roleplay possibilities; they may reveal critical lore if approached thoughtfully. Consider lair actions related to grasping roots, toxic spores, or spirit illusions.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 20,
+          "disableDC": 18,
+          "triggerDC": 15,
+          "damage": "4d6 poison (inhaling the spores from a disturbed, hidden fungus patch beneath the roots)"
+        }
+      ],
+      "dcChecks": [
+        "Survival DC 18: Track the source of corruption deeper into the grove.",
+        "Arcana DC 17: Recognize the ritual magic binding Myrlaen and the land.",
+        "Persuasion DC 20: Convince Myrlaen to trust the party and reveal lore."
+      ],
+      "accessibility": "Dense undergrowth and twisting, thorny vines require careful navigation. Non-magical travel is at half speed; flying creatures risk entanglement unless they succeed on a DC 15 Acrobatics check.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Birdsong",
+          "description": "Distorted, echoing birdsong that sometimes shifts to haunting whispers."
+        },
+        {
+          "name": "Unusual Plants",
+          "description": "Blooms and fungi pulse with eerie light; some seem to follow movement."
+        },
+        {
+          "name": "Ancient Stone Altar",
+          "description": "Half-buried and overgrown, covered in druidic runes now warped by dark power."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Thornwraith's Judgement",
+          "description": "Myrlaen and her corrupted guardians rise from the roots to confront trespassers, defending the grove until convinced of the party's intent or destroyed."
+        }
+      ],
+      "adventureSummary": "The party confronts the heart of the corruption and the tormented druid who caused it, gaining crucial lore and possibly allies if they succeed.",
+      "aliases": [
+        "Blighted Heart Grove",
+        "H01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_grove:Blighted Heart Grove",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H02",
+      "name": "Forked Phantom Crossing",
+      "type": "crossroads",
+      "description": "A fog-choked crossroads where ancient, mossy stones form a forked path. Ghostly will-o'-wisps drift through the mist, sometimes coalescing into fleeting, spectral forms. The intersection is haunted by restless spirits, their whispers urging travelers toward danger\u2014or salvation. Cracked statues with hollow eyes guard each trail, each pointing in a different direction with stone fingers.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "H01",
+        "H03"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Gravenbark Guardians",
+          "description": "Sentient, animated wooden statues bound to the crossroads by ancient druidic magic. They question travelers and pass judgment based on spoken intent.",
+          "attitude": "Neutral, but aggressive if the party attempts to bypass them or speak falsehoods."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Spectral Wayfarers",
+          "description": "Lost souls seeking release; harmless unless provoked by disrespect or necromancy."
+        }
+      ],
+      "lootTable": [
+        "Gravenbark Token (grants advantage on checks to navigate the Wilds, if earned from the Guardians)",
+        "Bag of Cold Iron Nails (repels fae spirits for 1 hour when scattered)",
+        "Old Map Fragment (reveals a shortcut between locations H02 and H03 if pieced together)"
+      ],
+      "plotHooks": [
+        "The Guardians may offer safe passage only if the party tells the truth about their purpose.",
+        "A spectral traveler, if aided, reveals the location of a hidden druidic cache nearby."
+      ],
+      "dmInstructions": "Use the crossroads for a tense social encounter. The Gravenbark Guardians can challenge the party with riddles or insight checks. The spirits are an opportunity for roleplay and exposition. Consider allowing the party to earn boons or face curses based on their actions.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 17,
+          "disableDC": 15,
+          "triggerDC": 13,
+          "damage": "3d8 necrotic (triggered if a party member tries to dig under the statues or deface them; a spectral hand grasps the offender)"
+        }
+      ],
+      "dcChecks": [
+        "Insight DC 16: Discern the Guardians' true motives.",
+        "Religion DC 15: Communicate respectfully with the spirits.",
+        "Deception DC 18: Fool the Gravenbark Guardians (failure brings consequences)."
+      ],
+      "accessibility": "Paths are visible but frequently shift as the mist thickens. Nonmagical torches only illuminate a 10-foot radius. Statues block direct passage and must be interacted with.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "The crossroads is layered with fine, silvery dust that muffles footsteps and sometimes swirls into fleeting images."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "Four ancient statues stand at the edges\u2014weathered, with faces worn smooth except for weeping eyes."
+        },
+        {
+          "name": "Will-o'-Wisps",
+          "description": "Eerie lights that float between the paths, sometimes guiding or misleading travelers."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Guardians' Interrogation",
+          "description": "The Gravenbark Guardians demand answers and test the party\u2019s resolve and honesty."
+        }
+      ],
+      "adventureSummary": "A test of purpose and morality. The party may earn a boon, suffer a setback, or both, shaping their path deeper into the Wilds.",
+      "aliases": [
+        "Forked Phantom Crossing",
+        "H02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_crossroads:Forked Phantom Crossing",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H03",
+      "name": "Wraithwatch Hill",
+      "type": "hilltop",
+      "description": "The highest rise in the Twisted Wilds, shrouded with perpetual mist. From its summit, one can see gnarled trees stretching endlessly, but the view is always framed by spectral figures drifting in the fog. The ruins of an old watchtower jut from the earth, its stones blackened and overgrown. Cold winds swirl, carrying faint echoes of warning and weeping.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "H02"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Shade of Alenwen",
+          "description": "A mournful spirit of a long-dead druidic guardian, bound to the hilltop. Alenwen seeks the restoration of the Wilds and offers cryptic guidance, but flies into a spectral rage if memories of betrayal are invoked.",
+          "attitude": "Cautiously helpful, but can become hostile if the party acts disrespectfully or invokes forbidden subjects."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Wailing Spectres",
+          "description": "Ghostly sentinels that attack intruders who disturb the ruins or threaten Alenwen."
+        }
+      ],
+      "lootTable": [
+        "Alenwen\u2019s Amulet (casts 'Protection from Evil and Good' 1/day; key to an ancient ritual)",
+        "Bundle of Nightshade Flowers (can be used to appease spirits or as a potent poison ingredient)",
+        "Watcher\u2019s Lens (an enchanted monocle that reveals spectral presences for 10 minutes)"
+      ],
+      "plotHooks": [
+        "Alenwen speaks of surviving druids who hide beyond the Wilds\u2019 edge, and offers a riddle leading to their refuge.",
+        "Recovering the amulet here is necessary for completing the curse-breaking ritual."
+      ],
+      "dmInstructions": "Wraithwatch Hill is a key exposition point. Alenwen can reveal vital information, but only if approached with respect and the right tokens. The spectres provide a tough but avoidable combat if the party is diplomatic. Use the ruined tower for environmental hazards and hidden clues.",
+      "doors": [
+        {
+          "name": "Collapsed Tower Door",
+          "description": "Half-buried beneath rubble, this rotten wooden door is barely recognizable.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 15,
+          "keyname": "",
+          "trapped": true,
+          "trap": "Falling stones cascade if disturbed, dealing 3d8 bludgeoning damage to anyone within 10 feet (Dexterity save DC 15 for half)."
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 15,
+          "disableDC": 14,
+          "triggerDC": 16,
+          "damage": "3d8 bludgeoning (falling stones from the ruined tower entrance)"
+        }
+      ],
+      "dcChecks": [
+        "History DC 15: Piece together the events that led to the tower\u2019s fall.",
+        "Arcana DC 17: Identify the amulet's purpose in ancient druidic rituals.",
+        "Persuasion DC 18: Convince Alenwen to trust the party and share crucial knowledge."
+      ],
+      "accessibility": "Steep, muddy slopes make climbing the hill difficult (Athletics DC 14 to ascend at normal speed). The ruins are unstable; careless movement risks triggering hazards.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "Ash-like dust coats the stones, swirling eerily around any living being."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "The remains of a circular watchtower, its stones fused with roots and bones."
+        },
+        {
+          "name": "Spectral Vista",
+          "description": "From the summit, ghostly figures drift below, sometimes pointing or miming warnings."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Alenwen\u2019s Vigil",
+          "description": "The Shade challenges the party\u2019s motives and can become a valuable source of guidance or a formidable foe."
+        }
+      ],
+      "adventureSummary": "Here, the party gains vital clues and a relic essential to breaking the Wilds\u2019 curse, but must navigate the treacherous moods of a powerful spirit.",
+      "aliases": [
+        "Wraithwatch Hill",
+        "H03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_hilltop:Wraithwatch Hill",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 13 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 13 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 13 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 13 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 13 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 13 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 13 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 13 parties"
+    },
+    {
+      "roll": "81-90",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 13 parties"
+    }
+  ],
+  "areaFeatures": [
+    "animal dens",
+    "rock formations",
+    "water sources"
+  ],
+  "notes": "Weather and terrain should affect travel times. Random encounters keep exploration tense.",
+  "spatialContractVersion": 1
+}

@@ -1,0 +1,379 @@
+{
+  "areaId": "BA001",
+  "areaName": "The Blackcrag Marches",
+  "areaType": "wilderness",
+  "areaDescription": "Rolling moorlands stretch beneath brooding basalt outcrops, their dark forms looming over a patchwork of heather and mist. A chill wind whispers through the grasses, but aside from the occasional distant call of a hawk, the Marches remain quiet and oddly welcoming to wary travelers.",
+  "dangerLevel": "low",
+  "recommendedLevel": 2,
+  "climate": "tropical",
+  "terrain": "mountains",
+  "map": {
+    "mapId": "MAP_I_3",
+    "mapName": "Wilderness Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "I01",
+        "type": "ruins",
+        "connections": [
+          "I02",
+          "I03"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "I02"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "low",
+        "name": "Shattered Forge Approach"
+      },
+      {
+        "id": "I02",
+        "type": "ravine",
+        "connections": [
+          "I01"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "I01"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "low",
+        "name": "Abyssal Fracture"
+      },
+      {
+        "id": "I03",
+        "type": "campsite",
+        "connections": [
+          "I01"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {},
+        "tags": [
+          "rest",
+          "dead_end"
+        ],
+        "purpose": "safe_haven",
+        "landmark": true,
+        "dangerLevel": "low",
+        "name": "Forsaken Outrider Encampment"
+      }
+    ],
+    "layout": [
+      [
+        "I01",
+        "I02",
+        "I03"
+      ]
+    ],
+    "startRoom": "I01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "I01",
+      "name": "Shattered Forge Approach",
+      "type": "ruins",
+      "description": "Once a proud outpost marking the borderlands of dwarven industry, these toppled basalt pillars and cracked stonework now lie half-buried in moorland heather. Moss and lichen creep over worn engravings. Bits of rusted metal and shattered tools are scattered across the ground, telling of a sudden, violent abandonment. The wind whistles through gaps in the broken masonry.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "I02",
+        "I03"
+      ],
+      "areaConnectivity": [
+        "The Aberrant Wastes"
+      ],
+      "areaConnectivityId": [
+        "I03"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Giant Weasel",
+          "count": 2,
+          "description": "Sleek, reddish-brown mustelids that have made a nest among the debris. They are wary but aggressive if disturbed."
+        }
+      ],
+      "lootTable": [
+        "Pouch of old dwarven coins (12 sp)",
+        "Broken but repairable smith's tongs (can be mended)",
+        "Scrap of parchment with half-faded dwarven script"
+      ],
+      "plotHooks": [
+        "Tracks in the mud lead toward the Abyssal Fracture.",
+        "A faint metallic ringing echoes from the east at dusk.",
+        "Recently-disturbed dust suggests someone camped here not long ago."
+      ],
+      "dmInstructions": "This open, ruined location is ideal for a gentle introduction to the Marches. If the party investigates carefully, they may spot the giant weasels hiding or uncover signs of recent humanoid passage. The area hints at the dwarves' former presence and the abruptness of their departure.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Perception DC 11: Notice the giant weasel burrow before stepping too close.",
+        "Investigation DC 12: Piece together the story of a hurried evacuation.",
+        "History DC 10: Recognize dwarven motifs and old clan marks."
+      ],
+      "accessibility": "Normal access; terrain is uneven but easily traversed.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "The ruins are heavily weathered, with stones rounded by years of wind and rain."
+        },
+        {
+          "name": "Dust",
+          "description": "Layers of fine dust and grit coat most surfaces, except for a few recently-disturbed patches."
+        },
+        {
+          "name": "Collapsed Pillar",
+          "description": "A massive, mossy stone column lies broken, partly concealing a burrow."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "exploration",
+          "description": "Players can search the ruins for clues or signs of passage."
+        },
+        {
+          "type": "combat",
+          "description": "Disturbing certain piles of debris may provoke the two giant weasels."
+        }
+      ],
+      "adventureSummary": "A windswept set of ruins, hinting at the dwarves' hasty flight and now home to opportunistic wildlife.",
+      "aliases": [
+        "Shattered Forge Approach",
+        "I01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_ruins:Shattered Forge Approach",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "I02",
+      "name": "Abyssal Fracture",
+      "type": "ravine",
+      "description": "A jagged rift splits the moor here, its basalt sides plunging twenty feet down to a narrow, mist-choked stream. Fallen stones and tangled brambles make climbing hazardous. Strange runes are carved on the exposed rock, half-eroded by centuries of rain. There is an odd chill in the air and a faint, metallic tang on the breeze.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "I01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Swarm of Bats",
+          "count": 1,
+          "description": "A cluster of small, squeaking bats roost beneath a ledge. They may panic and swarm if disturbed."
+        }
+      ],
+      "lootTable": [
+        "Iron-banded wooden case (empty, waterlogged)",
+        "Gleaming chunk of raw blackcrag basalt (5 gp to the right buyer)",
+        "Smashed dwarven lantern with a faintly glowing crystal"
+      ],
+      "plotHooks": [
+        "A broken rope dangles from a jutting stone, suggesting previous travelers tried to climb down.",
+        "Strange markings in the mud could indicate something crawled out of the ravine recently.",
+        "The runes mention a 'buried secret' beneath the Marches."
+      ],
+      "dmInstructions": "This ravine poses a physical obstacle and an atmospheric set piece. The bats are not inherently hostile, but disturbing them may cause chaos (granting disadvantage on Stealth until they settle). Careful players might discover the runes and learn something about the dwarves' approach to the Marches' dangers.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 12,
+          "disableDC": 13,
+          "triggerDC": 10,
+          "damage": "1d4 piercing (from sharp, hidden brambles at the bottom of the ravine)"
+        }
+      ],
+      "dcChecks": [
+        "Athletics DC 12: Climb down the ravine safely.",
+        "Arcana DC 14: Understand the gist of the ancient runes.",
+        "Perception DC 10: Spot the hidden brambles before climbing down."
+      ],
+      "accessibility": "Normal access, but climbing in or out requires checks; falling is hazardous.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "Scattered runic carvings in the basalt hint at ancient dwarven wards."
+        },
+        {
+          "name": "Mist Veil",
+          "description": "The bottom of the ravine is perpetually shrouded in thin, swirling mist."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "exploration",
+          "description": "Players can attempt to decipher runes or search for hidden artifacts."
+        },
+        {
+          "type": "hazard",
+          "description": "Falling or bramble traps may injure careless explorers."
+        }
+      ],
+      "adventureSummary": "A dramatic natural hazard, perfect for atmospheric exploration and planting seeds of deeper mysteries.",
+      "aliases": [
+        "Abyssal Fracture",
+        "I02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_ravine:Abyssal Fracture",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "I03",
+      "name": "Forsaken Outrider Encampment",
+      "type": "campsite",
+      "description": "This battered campsite nestles in a shallow hollow, shielded from the wind by tumble-down rocks. Blackened fire pits, scorched bedrolls, and toppled supply crates hint at a recent, hurried flight. Faded banners with a broken wheel insignia flutter from snapped poles. The faint scent of smoke and old leather lingers in the air.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "I01"
+      ],
+      "areaConnectivity": [
+        "The Abandoned Vaultways"
+      ],
+      "areaConnectivityId": [
+        "I01"
+      ],
+      "npcs": [
+        {
+          "name": "Rambling Dwarven Survivor",
+          "description": "A disheveled, wild-eyed dwarf in patched armor, muttering about monsters beneath the ground. He is wary but desperate for help\u2014and may offer warnings, rumors, or even a crude map of the Marches if befriended.",
+          "attitude": "Suspicious but persuadable; becomes friendly if offered food or basic aid."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Wolf",
+          "count": 1,
+          "description": "A gaunt, lone wolf with a torn ear lurks nearby, drawn by the scent of camp leavings. If unprovoked, it might just circle warily; if threatened, it attacks."
+        }
+      ],
+      "lootTable": [
+        "Bundle of dwarven rations (enough for 2 days)",
+        "Crumpled map showing local landmarks",
+        "Camp-made shortbow (serviceable, but unremarkable)"
+      ],
+      "plotHooks": [
+        "The survivor insists 'the real danger is below,' and claims to know secret ways into the Forsaken Galleries.",
+        "Charred scrap of a letter mentions a 'rogue construct' and 'ancient wards failing.'",
+        "Fresh tracks from the east suggest some scavengers lingered or fled recently."
+      ],
+      "dmInstructions": "Roleplay opportunity\u2014parley with the survivor for information, rumors, or aid. The wolf encounter can be avoided entirely through clever play. The survivor might trade his map for food or news. He hints at deeper threats in the Forsaken Galleries and Aberrant Core.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Persuasion DC 11: Convince the Rambling Dwarven Survivor to share information.",
+        "Animal Handling DC 13: Calm or drive off the wolf without bloodshed.",
+        "Investigation DC 12: Unearth the hidden map among the supply crates."
+      ],
+      "accessibility": "Normal access; well-worn paths approach the hollow.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "A fine coat of ash and earth covers most surfaces, disturbed by recent movement."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "Makeshift barricades of broken wagon wheels and crates encircle the camp."
+        },
+        {
+          "name": "Scorched Banner",
+          "description": "Remnants of a dwarven outrider company, hinting at their grim fate."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "roleplay",
+          "description": "Interact with the Rambling Dwarven Survivor for lore, directions, or possible aid."
+        },
+        {
+          "type": "combat",
+          "description": "A wolf, if provoked, will fight for scraps or territory."
+        }
+      ],
+      "adventureSummary": "The remains of a dwarven camp offer a chance for parley, clues about the dangers ahead, and a brush with the desperate wild.",
+      "aliases": [
+        "Forsaken Outrider Encampment",
+        "I03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_campsite:Forsaken Outrider Encampment",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 2 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 2 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 2 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "wandering animal",
+      "description": "A wandering animal appropriate for level 2 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 2 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 2 parties"
+    }
+  ],
+  "areaFeatures": [
+    "water sources",
+    "ancient trees",
+    "rock formations"
+  ],
+  "notes": "Weather and terrain should affect travel times. Random encounters keep exploration tense.",
+  "spatialContractVersion": 1
+}

@@ -1,0 +1,91 @@
+{
+  "name": "Echo Wraith",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 0,
+  "abilities": {
+    "strength": 6,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 12,
+    "wisdom": 14,
+    "charisma": 15
+  },
+  "savingThrows": [],
+  "skills": {
+    "Stealth": 5,
+    "Perception": 4
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "acid",
+    "cold",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "Understands all it knew in life but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Incorporeal Movement",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Ethereal Jaunt",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Echoing Screams (Recharge 5-6)",
+      "attackBonus": 0,
+      "damageDice": "2d6",
+      "damageBonus": 0,
+      "damageType": "psychic"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Wraith Touch",
+      "attackBonus": 4,
+      "damageDice": "2d6",
+      "damageBonus": 2,
+      "damageType": "necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "The Echo Wraith is a haunting specter born from the dark resonance of the Resonant Abyss, a place where sound itself becomes a weapon and a curse. It manifests as a translucent, elongated figure, its form wavering like mist disturbed by unseen vibrations. Its ethereal body shimmers with faint ripples of bluish-gray light, as if composed of refracted echoes rather than flesh. Where a face might be, a hollow void pulses with an eerie crimson glow resembling a cracked jaw, flickering in time with the faint, unnatural reverberations that fill the abyss. Its limbs are slender and taper into wisps of shadow that trail and dissipate into the surrounding darkness, leaving faint, lingering echoes of movement. The creature drifts silently, save for the unsettling, distorted echoes that follow its every motion--each step or gesture triggering a spectral resonance that seems to warp the very air. The sanctum it haunts is carved with sigils warning against noise; any loud sound provokes the wraith's wrath, as it hunts those who dare to break the silence. Its presence chills the air, thickening the gloom as faint whispers and mournful tones ripple through the stone walls. Encountering an Echo Wraith is like facing a living memory of the abyss's sorrow--a ghostly sentinel that embodies the peril of sound turned against the living."
+}

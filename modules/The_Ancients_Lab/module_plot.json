@@ -1,0 +1,418 @@
+{
+  "plotTitle": "The Ancients Lab: Descent into Mutation",
+  "mainObjective": "Investigate the arcane disturbances and spreading corruption emanating from the long-lost dwarven research facility buried beneath Blackcrag, traverse the tainted wilderness and forsaken vaults, and confront the mutated horrors and rogue constructs within before the land is consumed.",
+  "plotPoints": [
+    {
+      "id": "PP001",
+      "title": "The Marches Beckon",
+      "description": "The party arrives at the Blackcrag Marches (BA001), drawn by rumors of strange lights and ancient machinery stirring beneath the hills. Locals speak of arcane disturbances and missing livestock, all pointing toward a hidden dwarven facility. To proceed, the party must investigate the surface mysteries and seek clues about the sealed laboratory's location.",
+      "location": "BA001",
+      "nextPoints": [
+        "PP002"
+      ],
+      "status": "not started",
+      "plotImpact": "Introduces the main quest and hooks the party into exploring the Marches. Sets tone and context.",
+      "sideQuests": [
+        {
+          "id": "SQ001",
+          "title": "Echoes in the Heather",
+          "description": "A local shepherd asks for help finding missing sheep\u2014lost to the mists, or perhaps something stranger. Tracking the sheep to a collapsed vent, the party finds hints of ancient machinery and mutated wildlife.",
+          "involvedLocations": [
+            "BA001"
+          ],
+          "status": "not started",
+          "plotImpact": "Reveals evidence of the hidden structure and foreshadows later dangers."
+        },
+        {
+          "id": "SQ002",
+          "title": "Whispering Stones",
+          "description": "Standing stones atop a windswept ridge bear cryptic runes. Deciphering them grants lore about the facility builders and warns of 'the Thing' awakening below.",
+          "involvedLocations": [
+            "BA001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides foreshadowing and possible clues to bypass later traps."
+        }
+      ]
+    },
+    {
+      "id": "PP002",
+      "title": "Descent into the Forsaken Galleries",
+      "description": "Clues from the Marches lead the party to a hidden entrance among the basalt outcrops. They descend into the Abandoned Vaultways (FG001), a dwarven tunnel complex now infested with scavengers warped by ancient technology. Here, they must navigate hazardous corridors and seek out the Rambling Dwarven Survivor, whose knowledge is vital for entering the deeper laboratory.",
+      "location": "FG001",
+      "nextPoints": [
+        "PP003"
+      ],
+      "status": "not started",
+      "plotImpact": "Transitions the party from surface exploration to dungeon crawl. Introduces mutated scavengers and environmental hazards.",
+      "sideQuests": [
+        {
+          "id": "SQ003",
+          "title": "The Archivist's Map",
+          "description": "A forgotten scholar in Ostmere claims to have fragments of an ancient map that shows hidden entrances and traps within the Vaultways. Convincing or helping the scholar could grant the party valuable intel or shortcuts.",
+          "involvedLocations": [
+            "FG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides the party with a partial map or clues to avoid deadly traps, impacting later exploration and encounter options."
+        },
+        {
+          "id": "SQ004",
+          "title": "Lost Offerings",
+          "description": "Residents of Grimhollow Outskirts beg the party to retrieve tokens left at the vault's old shrine, said to placate vengeful spirits. They offer a protective charm in return.",
+          "involvedLocations": [
+            "FG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Party gains a charm that may help with social encounters or provide advantage on saves versus hauntings inside the Vaultways."
+        },
+        {
+          "id": "SQ005",
+          "title": "A Survivor\u2019s Tale",
+          "description": "A rambling dwarven survivor hides among the shadows. If aided, he can share secrets of the lower levels and offer a crude map.",
+          "involvedLocations": [
+            "FG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides shortcuts or warnings about traps deeper in the complex."
+        }
+      ]
+    },
+    {
+      "id": "PP003",
+      "title": "The Shadowed Halls",
+      "description": "Navigating the winding, dust-choked corridors of the Vaultways, the party encounters faded murals hinting at the facility's purpose and calamity. They must contend with environmental hazards and hostile scavengers, while seeking clues about the contamination spreading into the wilds above. The survivor's information points toward deeper anomalies linked to the ancient lab below.",
+      "location": "FG001",
+      "nextPoints": [
+        "PP004"
+      ],
+      "status": "not started",
+      "plotImpact": "Builds tension through exploration and initial threats, offers the first real choices regarding approach (stealth, negotiation, or combat).",
+      "sideQuests": [
+        {
+          "id": "SQ006",
+          "title": "Murals of Warning",
+          "description": "Investigating the murals reveals cryptic warnings and perhaps a hidden switch or puzzle. Deciphering the images could disarm a deadly trap or reveal a secret passage.",
+          "involvedLocations": [
+            "FG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Unlocks a shortcut to deeper vault sections or disables a major trap, making progress easier and safer."
+        },
+        {
+          "id": "SQ007",
+          "title": "A Scavenger\u2019s Plea",
+          "description": "A wounded scavenger, separated from their group, offers information about the dangers ahead in exchange for healing or safe passage.",
+          "involvedLocations": [
+            "FG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides party with advance warning about monster lairs or rival factions, may create future allies or rivals."
+        }
+      ]
+    },
+    {
+      "id": "PP004",
+      "title": "The Vaults' Secret Heart",
+      "description": "Deeper within the Vaultways, the party discovers the containment chamber\u2014its arcane wards flickering. Inside is a living mass of shadow and memory, once a guardian, now corrupted by the same forces infecting the land. The party must decide whether to reinforce the wards, attempt to communicate, or destroy the entity before it can escape and worsen the corruption spreading toward the surface.",
+      "location": "FG001",
+      "nextPoints": [
+        "PP005"
+      ],
+      "status": "not started",
+      "plotImpact": "Confronts players with a moral and strategic choice, combining combat, social, and magical challenges. Their decision dramatically affects the dungeon and city above.",
+      "sideQuests": [
+        {
+          "id": "SQ008",
+          "title": "Fragments of Memory",
+          "description": "Scattered memory-stones around the containment chamber reveal more about the entity\u2019s original purpose and downfall. Piecing them together may reveal a way to purify rather than destroy.",
+          "involvedLocations": [
+            "FG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Unlocks a non-violent resolution, or provides boons for the final encounter if completed."
+        }
+      ]
+    },
+    {
+      "id": "PP005",
+      "title": "The Gauntlet of Echoes",
+      "description": "After resolving the situation in the Vaults' heart, the labyrinth reacts\u2014construct defenses awaken, the halls twist, and spectral echoes attempt to bar the party's escape. The nature of these threats is shaped by the party's choices in the containment chamber, and whether the corruption is contained or unleashed. Emerging to the surface, the party finds the surrounding wilderness increasingly tainted.",
+      "location": "FG001",
+      "nextPoints": [
+        "PP006"
+      ],
+      "status": "not started",
+      "plotImpact": "Serves as the Vaultways\u2019 climax and transition to the corrupted wilderness; party must survive and escape with whatever consequences they\u2019ve unleashed or averted.",
+      "sideQuests": [
+        {
+          "id": "SQ009",
+          "title": "Echoes of Regret",
+          "description": "Ghostly figures relive their final moments, and interacting with them may offer the party a means to calm the restless dead or gain their blessing.",
+          "involvedLocations": [
+            "FG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Success can confer a boon for the escape or a haunting curse if mishandled."
+        }
+      ]
+    },
+    {
+      "id": "PP006",
+      "title": "Into the Aberrant Wastes",
+      "description": "The party journeys into the Aberrant Wastes (AC001), a region warped by strange energies emanating from the laboratory deep below. As mutated life and environmental hazards worsen, the party must survive the hazardous landscape and seek allies\u2014or at least the tolerance\u2014of the twisted denizens. Clues from the Vaultways now point directly toward the heart of the corruption.",
+      "location": "AC001",
+      "nextPoints": [
+        "PP007"
+      ],
+      "status": "not started",
+      "plotImpact": "Establishes the tone and danger of the Wastes, introduces hostile and neutral factions, and sets up the mystery of the corruption\u2019s source.",
+      "sideQuests": [
+        {
+          "id": "SQ010",
+          "title": "Whispers in the Wind",
+          "description": "Strange psychic whispers lead the party to a hidden grove where a sentient fungus colony pleads for aid in resisting further mutation.",
+          "involvedLocations": [
+            "AC001"
+          ],
+          "status": "not started",
+          "plotImpact": "If aided, the fungus provides guidance and shortcuts through the terrain."
+        },
+        {
+          "id": "SQ011",
+          "title": "Scavenger\u2019s Bargain",
+          "description": "A desperate scavenger offers information about the core in exchange for rare, untainted supplies.",
+          "involvedLocations": [
+            "AC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Secures a map of safe trails and warning about mutated patrols."
+        }
+      ]
+    },
+    {
+      "id": "PP007",
+      "title": "Shattered Realities",
+      "description": "As the party presses deeper into the Wastes, they encounter zones where reality is thin\u2014gravity warps, time loops, and monstrous wildlife stalks them. Here, they must choose whether to stabilize a reality rift or exploit its chaos, with the outcome influencing the dangers they face as they approach the ancient laboratory's boundaries.",
+      "location": "AC001",
+      "nextPoints": [
+        "PP008"
+      ],
+      "status": "not started",
+      "plotImpact": "Tests party\u2019s resourcefulness and morality; their choices shape which dangers or boons they face deeper within the Wastes.",
+      "sideQuests": [
+        {
+          "id": "SQ012",
+          "title": "Echoes of the Past",
+          "description": "Fragments of memory linger in a time-warped zone\u2014players can interact with them to learn about the origins of the Wastes.",
+          "involvedLocations": [
+            "AC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides lore and possibly reveals a weakness of the final threat."
+        },
+        {
+          "id": "SQ013",
+          "title": "The Reality Anchor",
+          "description": "A malfunctioning reality anchor device can be repaired or destroyed. Repairing it stabilizes a portion of the Wastes, making travel safer but attracting hostile attention.",
+          "involvedLocations": [
+            "AC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Changes the landscape and affects possible reinforcements in the climax."
+        }
+      ]
+    },
+    {
+      "id": "PP008",
+      "title": "The Aberrant Conclave",
+      "description": "At the center of the Wastes stands the ruined conclave, where mutated leaders and aberrant entities gather. Here, the party uncovers evidence that the spreading corruption is orchestrated by an ancient consciousness\u2014once a guardian, now twisted by lab experiments gone awry. The party\u2019s choices here determine potential allies or enemies in the final confrontation beneath the Shuddering Wilds.",
+      "location": "AC001",
+      "nextPoints": [
+        "PP009"
+      ],
+      "status": "not started",
+      "plotImpact": "Reveals the mastermind; party actions determine allies or enemies in the final confrontation.",
+      "sideQuests": [
+        {
+          "id": "SQ014",
+          "title": "The Outcast\u2019s Plea",
+          "description": "A banished mutant seer begs the party to retrieve a memory crystal lost in the conclave\u2019s depths, promising visions of the future in return.",
+          "involvedLocations": [
+            "AC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides prophetic warnings or clues for the final battle."
+        },
+        {
+          "id": "SQ015",
+          "title": "Seeds of Dissent",
+          "description": "The players discover a faction within the conclave that secretly opposes the ancient consciousness. They can choose to ally with these dissenters or expose them for a reward.",
+          "involvedLocations": [
+            "AC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Potential reinforcements or sabotage in climax, or extra rewards."
+        }
+      ]
+    },
+    {
+      "id": "PP009",
+      "title": "Confronting the Source",
+      "description": "The party descends into the pulsing heart of the Aberrant Wastes, where the ancient consciousness\u2014an alien entity merged with the land\u2014awaits. This confrontation, blending combat, psychic challenges, and environmental hazards, directly shapes the fate of the region and whether the corruption spreads to the Shuddering Wilds.",
+      "location": "AC001",
+      "nextPoints": [
+        "PP010"
+      ],
+      "status": "not started",
+      "plotImpact": "Resolution of the Wastes\u2019 corruption; outcome hinges on alliances, lore, and choices made in previous plot points.",
+      "sideQuests": [
+        {
+          "id": "SQ016",
+          "title": "Shatter the Heartstone",
+          "description": "A risky ritual can be attempted to weaken the alien consciousness, but it requires rare reagents and leaves participants vulnerable.",
+          "involvedLocations": [
+            "AC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Reduces final boss\u2019s power, but imposes conditions/exhaustion on the party."
+        }
+      ]
+    },
+    {
+      "id": "PP010",
+      "title": "Into the Heart of the Shuddering Wilds",
+      "description": "With the source of the corruption disrupted or contained, the party is drawn to the Shuddering Wilds (TTL001)\u2014the forest above the Ancients Lab. Here, unnatural mists and tremors grow stronger. The party must navigate treacherous paths and decipher signs of something colossal stirring deep underground, seeking a way to reach the sealed laboratory at the wilds\u2019 core.",
+      "location": "TTL001",
+      "nextPoints": [
+        "PP011"
+      ],
+      "status": "not started",
+      "plotImpact": "Establishes the Wilds' menacing tone and sets up the quest to locate the Ancients Lab.",
+      "sideQuests": [
+        {
+          "id": "SQ017",
+          "title": "Echoes in the Fog",
+          "description": "A series of echoing, mournful cries lead the party to a lost herbalist's camp. Rescuing the herbalist from carnivorous plants could provide useful knowledge and a strange herbal concoction.",
+          "involvedLocations": [
+            "TTL001"
+          ],
+          "status": "not started",
+          "plotImpact": "Herbalist\u2019s aid can grant advantage on certain saves or skills in the Wilds."
+        },
+        {
+          "id": "SQ018",
+          "title": "Watcher in the Thicket",
+          "description": "The party notices they are being observed by a mysterious, masked figure who vanishes into the mist. Following them leads to a cache of old maps and warnings scrawled in an ancient dialect.",
+          "involvedLocations": [
+            "TTL001"
+          ],
+          "status": "not started",
+          "plotImpact": "Old maps may reveal hidden paths or dangers, aiding future navigation."
+        }
+      ]
+    },
+    {
+      "id": "PP011",
+      "title": "Whispers Beneath the Canopy",
+      "description": "Delving deeper into the Shuddering Wilds, the party observes increasingly unnatural phenomena and learns that the land is warped by the ancient laboratory below. To reach the lab, they must seek out the enigmatic Speaker of the Mists, whose riddles are the key to breaching the wards protecting the entrance.",
+      "location": "TTL001",
+      "nextPoints": [
+        "PP012"
+      ],
+      "status": "not started",
+      "plotImpact": "Unlocks knowledge needed to access the Ancients Lab, building connection between the Wilds and the laboratory.",
+      "sideQuests": [
+        {
+          "id": "SQ019",
+          "title": "The Corrupted Grove",
+          "description": "A section of forest is dying, blighted by toxic ooze from below. Purging the corruption (by fighting or negotiating with warped fey) earns the gratitude of the forest\u2019s lesser spirits.",
+          "involvedLocations": [
+            "TTL001"
+          ],
+          "status": "not started",
+          "plotImpact": "Spirits grant boons (temporary benefits or a clue for negotiating with the Speaker of the Mists)."
+        },
+        {
+          "id": "SQ020",
+          "title": "Moss-Covered Relics",
+          "description": "Adventurers find relics partially unearthed by the tremors\u2014remnants of ancient technology. Restoring or understanding these devices could help communicate with the Speaker of the Mists.",
+          "involvedLocations": [
+            "TTL001"
+          ],
+          "status": "not started",
+          "plotImpact": "Successful identification provides leverage in social or arcane challenges."
+        }
+      ]
+    },
+    {
+      "id": "PP012",
+      "title": "Revelations at the Sunken Threshold",
+      "description": "Guided by the Speaker\u2019s riddles, the party locates the sunken entrance to the Ancients Lab. The colossal presence beneath the Wilds begins to awaken, causing dangerous tremors and unleashing mutated guardians. The party must solve the entrance puzzle and decide whether to stabilize the Wilds or risk a rapid descent to surprise whatever stirs below.",
+      "location": "TTL001",
+      "nextPoints": [
+        "PP013"
+      ],
+      "status": "not started",
+      "plotImpact": "Grants access to the Ancients Lab and sets up the climactic confrontation.",
+      "sideQuests": [
+        {
+          "id": "SQ021",
+          "title": "The Broken Circle",
+          "description": "A broken magical ward circle at the entrance could be repaired or disrupted. Repairing it may hold off the awakening force temporarily but requires rare reagents from the Wilds; disrupting it could grant boons to the party, but hasten the emergence of the thing below.",
+          "involvedLocations": [
+            "TTL001"
+          ],
+          "status": "not started",
+          "plotImpact": "Player choice here alters the tempo of the adventure and the type of final encounter."
+        }
+      ]
+    },
+    {
+      "id": "PP013",
+      "title": "The Heart Beneath the Wilds",
+      "description": "The party descends into the Ancients Lab (TTL001), now aware that their every move resonates with the stirring behemoth below. They must confront the mutated, semi-sentient entity fused with dwarven magic and machinery\u2014the final force behind the region's corruption. Their choices determine whether the Shuddering Wilds will return to peace, be consumed, or be forever changed.",
+      "location": "TTL001",
+      "nextPoints": [],
+      "status": "not started",
+      "plotImpact": "Decides the fate of the Shuddering Wilds and the sleeping horror below, with repercussions for the region.",
+      "sideQuests": [
+        {
+          "id": "SQ022",
+          "title": "The Last Attendant",
+          "description": "A surviving, semi-sapient construct within the lab claims to serve the Ancients. It offers aid\u2014or betrayal\u2014depending on how the party treats it and what they promise about the future of the Wilds.",
+          "involvedLocations": [
+            "TTL001"
+          ],
+          "status": "not started",
+          "plotImpact": "Can provide critical support in the final confrontation or sabotage the party depending on their choices."
+        },
+        {
+          "id": "SQ023",
+          "title": "Echoes of the Past",
+          "description": "Fragments of ancient logs offer glimpses into what the Ancients tried and failed to accomplish. Piecing these together may reveal hidden weaknesses or bargaining chips against the thing below.",
+          "involvedLocations": [
+            "TTL001"
+          ],
+          "status": "not started",
+          "plotImpact": "Aids the party in the final encounter or offers insight into the larger campaign\u2019s mysteries."
+        },
+        {
+          "id": "SQ024",
+          "title": "The Archivist\u2019s Bargain",
+          "description": "An ancient archivist automaton offers a deal: preserve its records in exchange for knowledge or aid in subduing the Thing. The party must decide whether to trust this relic of the past.",
+          "involvedLocations": [
+            "TTL001"
+          ],
+          "status": "not started",
+          "plotImpact": "May offer magical or tactical assistance, or create new complications if betrayed."
+        }
+      ]
+    }
+  ],
+  "activeQuests": [],
+  "completedQuests": [],
+  "failedQuests": [],
+  "worldEvents": [],
+  "dmNotes": []
+}

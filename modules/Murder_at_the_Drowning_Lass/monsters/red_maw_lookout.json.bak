@@ -1,0 +1,60 @@
+{
+  "name": "Red Maw Lookout",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Chaotic Evil",
+  "armorClass": 14,
+  "hitPoints": 11,
+  "maxHitPoints": 11,
+  "speed": 30,
+  "abilities": {
+    "strength": 11,
+    "dexterity": 14,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 11,
+    "charisma": 9
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 4,
+    "stealth": 6
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "Common, Goblin",
+  "challengeRating": 0.25,
+  "specialAbilities": [
+    {
+      "name": "Nimble Escape",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Scimitar",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "Slashing"
+    },
+    {
+      "name": "Shortbow",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "Piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

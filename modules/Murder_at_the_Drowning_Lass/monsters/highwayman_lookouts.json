@@ -1,0 +1,61 @@
+{
+  "name": "Highwayman Lookout",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Chaotic Neutral",
+  "armorClass": 13,
+  "hitPoints": 9,
+  "maxHitPoints": 9,
+  "speed": 30,
+  "abilities": {
+    "strength": 10,
+    "dexterity": 14,
+    "constitution": 12,
+    "intelligence": 11,
+    "wisdom": 13,
+    "charisma": 12
+  },
+  "savingThrows": [],
+  "skills": {
+    "Perception": 4,
+    "Stealth": 4
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "Common, Thieves' Cant",
+  "challengeRating": 0.25,
+  "specialAbilities": [
+    {
+      "name": "Keen Sight",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Scimitar",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Shortbow",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Lurking on the fringes of Brindlehearth Vale's winding roads and shadowed woodland edges, the Highwayman Lookouts are gaunt, furtive figures cloaked in tattered traveler's garb mottled with earth tones, allowing them to meld seamlessly with the hedgerows and brambles. Their weathered faces--shadowed beneath wide-brimmed hats pulled low, or rough hoods stitched from patchwork leather--bear the marks of countless nights spent in the wild: sunken, sharp eyes glinting with cunning and constant vigilance, pale scars crisscrossing cheeks, and unkempt stubble dusting their jaws. Calloused hands clutch worn crossbows or rusted short swords, ready to strike at a moment's notice. Their movements are fluid and silent, stepping lightly over twisted roots and mossy stones, blending into the murmuring wind and the rustle of leaves. At dusk, they perch like restless crows atop gnarled trees or moss-covered fence posts, their keen gazes scanning for approaching travelers or the glint of coin purses. The air around them carries the faint scent of damp earth, smoke from distant campfires, and a whisper of menace, as if the very shadows conspire with their silent watch. In the village, tales of their fleeting silhouettes provoke unease--silent sentinels of lawlessness, forever poised between the world of sunlight and the dark promise of the Resonant Abyss."
+}

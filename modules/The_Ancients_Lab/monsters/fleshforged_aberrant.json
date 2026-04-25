@@ -1,0 +1,80 @@
+{
+  "name": "Fleshforged Aberrant",
+  "size": "Medium",
+  "type": "Monstrosity",
+  "alignment": "Chaotic Neutral",
+  "armorClass": 13,
+  "hitPoints": 32,
+  "maxHitPoints": 32,
+  "speed": 30,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 15,
+    "constitution": 14,
+    "intelligence": 7,
+    "wisdom": 10,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {
+    "Perception": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "necrotic",
+    "cold"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed",
+    "frightened"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "understands Common but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Aberrant Regeneration",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Stitched Horror",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Flesh Slam",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "bludgeoning"
+    },
+    {
+      "name": "Bite",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the pulsating veins of flesh and metal that encrust the warped walls of the Fleshforged Observation Nook, the Fleshforged Aberrant is a grotesque fusion of sinew and cold steel. Towering over most humanoids, this hulking monstrosity resembles a nightmarish ogre, but its flesh is mottled with patches of corroded, riveted plating fused seamlessly with twitching muscle fibers. Its bulbous limbs end in jagged claws, each joint writhing with twitching tendons that flex unnaturally, as if struggling against the mechanical constraints binding them. A malformed head, half-melted and obscured by dripping, oozing flesh, bears no eyes; instead, faintly glowing psychic runes pulse along its cranium, emanating a low hum that vibrates through the air and rattles nearby metal. The creature's chest pulses with a thunderous heartbeat that echoes through the chamber, syncing with the rhythmic twitching of the living walls around it. It moves with a ponderous, almost mindless determination, responding only to stimuli with sudden, violent bursts of strength. The air around it is heavy with the acrid scent of ammonia and decay, and every step it takes leaves a faint residue of ichor and molten metal. This abomination embodies the horrors of the Aberrant Core--a fusion of flesh and machine warped beyond natural law, a sentinel of the fractured reality within the Ancients' Lab."
+}

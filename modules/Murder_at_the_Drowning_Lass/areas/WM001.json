@@ -1,0 +1,346 @@
+{
+  "areaId": "WM001",
+  "areaName": "The Widdershins Moors",
+  "areaType": "wilderness",
+  "areaDescription": "A vast, mist-shrouded expanse where fading heather gives way to treacherous bogs, the Widdershins Moors hum with the eerie calls of unseen creatures and the constant drip of water from tangled, stunted trees. Travelers speak of strange lights flickering at dusk and the unsettling sensation of being watched by figures just out of sight.",
+  "dangerLevel": "medium",
+  "recommendedLevel": 3,
+  "climate": "temperate",
+  "terrain": "forest",
+  "map": {
+    "mapId": "MAP_H_3",
+    "mapName": "Wilderness Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "H01",
+        "type": "campsite",
+        "connections": [
+          "H02",
+          "H03"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "H02"
+        },
+        "tags": [
+          "rest"
+        ],
+        "purpose": "safe_haven",
+        "landmark": false,
+        "dangerLevel": "medium",
+        "name": "Shrouded Lantern Encampment"
+      },
+      {
+        "id": "H02",
+        "type": "landmark",
+        "connections": [
+          "H01"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "H01"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "medium",
+        "name": "Crooked Cairn Hill"
+      },
+      {
+        "id": "H03",
+        "type": "landmark",
+        "connections": [
+          "H01"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {},
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "medium",
+        "name": "Witchlight Standing Stone"
+      }
+    ],
+    "layout": [
+      [
+        "H01",
+        "H02",
+        "H03"
+      ]
+    ],
+    "startRoom": "H01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "H01",
+      "name": "Shrouded Lantern Encampment",
+      "type": "campsite",
+      "description": "Nestled amidst the mist-draped tussocks of the Widdershins Moor, this makeshift campsite is marked by the eerie glow of oil lanterns, their glass panes painted with smudges of ash to diffuse the light. Tattered bedrolls, battered cookware, and a circle of upturned crates mark the spot as a haven for travelers and outlaws alike. The ground is soft, with patches of ancient flagstone peeking through the mud, hinting at forgotten roads or rituals from centuries past. The ever-present mist muffles sound and gives the impression of distant, shifting forms just out of sight.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "H02",
+        "H03"
+      ],
+      "areaConnectivity": [
+        "The Barrowmire Settlements"
+      ],
+      "areaConnectivityId": [
+        "H03"
+      ],
+      "npcs": [
+        {
+          "name": "Red Maw scouts",
+          "description": "Wary, mud-splattered members of the Red Maw gang, clad in patchwork leathers and bearing shortbows and knives. Their demeanor is tense—they’re on the lookout for rivals and authorities, but not immediately hostile unless threatened.",
+          "attitude": "Suspicious, defensive, open to negotiation if approached carefully."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Small pouch of mixed silver and copper coins (13 sp, 17 cp)",
+        "Vial of moor-tinged oil (functions as flask of oil, 2 uses)",
+        "Crumpled sketch of the Witchlight Standing Stone with odd runic notations",
+        "Weathered shortbow and a quiver with 7 arrows",
+        "Faded Red Maw token (gang insignia)"
+      ],
+      "plotHooks": [
+        "The Red Maw scouts are tracking a rival who fled with something precious—perhaps a map fragment. They may try to bargain for help.",
+        "One of the scouts was recently attacked by an unseen force near Crooked Cairn Hill and is too frightened to return, but their dropped satchel may hold clues.",
+        "The scouts mention hearing tales of a ghostly figure haunting the moor at night, warning travelers away from the old standing stone."
+      ],
+      "dmInstructions": "This campsite is part of Widdershins Moor. Adjust the number of Red Maw scouts (suggested: 2–3 bandits, MM p.343) based on party strength. The scouts will defend themselves but will not fight to the death, preferring flight or negotiation. Use the ambient mist for stealth or surprise. The sketch of the Witchlight Stone is a clue for curious players.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Perception DC 12: Notice signs of a recent struggle near the crates.",
+        "Investigation DC 14: Find a hidden compartment beneath a loose flagstone containing the Red Maw token.",
+        "Survival DC 11: Track muddy bootprints leading toward Crooked Cairn Hill."
+      ],
+      "accessibility": "Easily accessed from the main animal trail; visibility is limited by mist, but the lanterns can be seen from several hundred feet away at dusk.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "Hints of an ancient, sunken road or ritual site marked by mossy stones beneath the mud."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "The crates and cookware are weathered, and the lanterns are patched with mismatched glass, showing the camp has been used and abandoned several times."
+        },
+        {
+          "name": "Dust",
+          "description": "A fine layer of moor dust and ash coats all surfaces, obscuring footprints and adding to the camp’s ghostly air."
+        }
+      ],
+      "encounters": [
+        "2–3 Red Maw scouts (bandits, MM p.343), defensive and nervous",
+        "Optional: Nighttime will-o'-wisp encounter (1, MM p.301) if the party lingers after dark"
+      ],
+      "adventureSummary": "The Shrouded Lantern Encampment acts as a transitional base; it’s a chance for roleplay, gathering clues, and establishing connections with the Red Maw. Lore and rumors hint at the supernatural threats of the moor while pointing the players toward more dangerous or significant locations.",
+      "aliases": [
+        "Shrouded Lantern Encampment",
+        "H01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_campsite:Shrouded Lantern Encampment",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H02",
+      "name": "Crooked Cairn Hill",
+      "type": "landmark",
+      "description": "A squat, lopsided hillock rises from the mists of the moor, crowned with a scatter of age-blackened stones. Twisting brambles and heather cling to the earth, and the ground is uneven—pockets of bog threaten the unwary. The cairn itself is an ancient burial site, its stones arranged in a rough spiral. Local legend claims spirits walk here at twilight, and odd animal tracks circle the perimeter.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "H01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Giant Weasel",
+          "description": "A territorial moor-dwelling predator, camouflaged in dun fur and fiercely protective of its den beneath the cairn."
+        }
+      ],
+      "lootTable": [
+        "Tarnished silver signet ring (inscribed with an unfamiliar heraldic sigil)",
+        "Fragment of a stone tablet—etched with faded runes, possibly part of an ancient moorfolk legend",
+        "Sodden leather satchel (contains spoiled rations, piece of torn red cloth)"
+      ],
+      "plotHooks": [
+        "Disturbing the cairn at dusk may attract the attention of supernatural forces—or reveal clues about those interred here.",
+        "The animal tracks here match those leading from the Shrouded Lantern Encampment—a wounded Red Maw scout may have limped here and hidden something.",
+        "The signet ring might be recognized by Old Ellyn back in Brindlehearth Village, who can share cryptic lore about the moor’s ancient custodians."
+      ],
+      "dmInstructions": "The cairn is a good place for a moody, tense encounter. Use the giant weasel as a territorial hazard (MM p.329). If the players search thoroughly, they can find the signet ring and the tablet fragment. At DM discretion, disturbing the cairn at dusk may provoke a minor haunt effect—chill winds, flickering lights, or whispers.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 13,
+          "disableDC": 12,
+          "triggerDC": 13,
+          "damage": "1d8 poison (from hidden thorns and bog gas in a concealed pit if a heavy stone is moved carelessly)"
+        }
+      ],
+      "dcChecks": [
+        "Perception DC 13: Detect the concealed animal den under the cairn.",
+        "Investigation DC 15: Find the stone tablet fragment wedged between cairn stones.",
+        "Nature DC 12: Identify the tracks and the nature of the brambles."
+      ],
+      "accessibility": "Requires a short, muddy climb. Ground is unstable in places; heavy rain increases the risk of sinking into boggy patches.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "The cairn’s stones are slick with moss and worn with the passage of centuries, some bearing faint, eroded carvings."
+        }
+      ],
+      "encounters": [
+        "1 Giant Weasel (MM p.329) emerges if the cairn is disturbed or players approach the den.",
+        "Optional: At dusk, strange lights circle the cairn—players must succeed on a Wisdom saving throw (DC 12) or feel an intense, inexplicable dread."
+      ],
+      "adventureSummary": "Crooked Cairn Hill offers clues to the moor’s forgotten history and a taste of its dangers. The signs of age, hidden items, and local fauna provide both risk and reward.",
+      "aliases": [
+        "Crooked Cairn Hill",
+        "H02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_landmark:Crooked Cairn Hill",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H03",
+      "name": "Witchlight Standing Stone",
+      "type": "landmark",
+      "description": "A solitary, towering slab of stone juts from a rise in the moorland, its surface striated with ancient, glowing runes that pulse faintly at dusk. The ground around the standing stone is ringed with small, white pebbles arranged in patterns—some recently disturbed. Local stories speak of fey lights that dance around the stone at night, and of wishes made here that come true, but never as expected.",
+      "coordinates": "X10Y11",
+      "connectivity": [
+        "H01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Spirit of the Moor",
+          "description": "An ethereal, shimmering presence that manifests as a swirl of mist and faintly glowing eyes. The spirit speaks in riddles and warnings, watching over the standing stone and judging those who approach.",
+          "attitude": "Mysterious, protective, tests the intentions of visitors—may offer guidance or issue a cryptic challenge."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Will-o'-Wisp",
+          "description": "A mischievous, deadly fey spirit that appears as a floating blue light, especially active at night or when the standing stone is tampered with."
+        }
+      ],
+      "lootTable": [
+        "Smooth pebble engraved with a rune for 'safe passage' (glows faintly when held at night)",
+        "Scrap of parchment tucked under a stone, bearing part of a coded message related to the lost treasure map",
+        "Bundle of moor-sage herbs (can be used as a component for minor healing or to ward off some spirits)"
+      ],
+      "plotHooks": [
+        "The Spirit of the Moor may offer a vision or cryptic guidance to those who answer its riddle, pointing toward the next leg of the treasure hunt.",
+        "Disturbing the standing stone (removing pebbles, trying to take a rubbing) risks angering the spirit, which may summon a will-o'-wisp or bestow a minor curse.",
+        "The coded message, if pieced together with other fragments from the moor, reveals a secret about the treasure’s true location."
+      ],
+      "dmInstructions": "Use the Spirit of the Moor for a social or puzzle encounter. If players are respectful, the spirit may grant inspiration or a boon (advantage on a skill check in the moor). If not, the spirit may summon a will-o'-wisp (MM p.301) or inflict a minor curse (disadvantage on Survival checks in the moor for 24 hours). The coded message is a partial clue, only decipherable when combined with other fragments.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Arcana DC 14: Decipher the glowing runes and recognize their protective nature.",
+        "Religion DC 13: Recall legends of the standing stone and its spiritual significance.",
+        "Insight DC 15: Discern the true intentions of the Spirit of the Moor during interaction."
+      ],
+      "accessibility": "The stone is visible through the mist from far away but the hill is slick and treacherous. Climbing is required; a failed check may result in a muddy tumble.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "A fine, pale dust clings to the standing stone and the surrounding rocks, swirling into odd shapes in the wind."
+        }
+      ],
+      "encounters": [
+        "Spirit of the Moor, who may present a riddle or challenge (social/puzzle encounter)",
+        "Will-o'-wisp (MM p.301) appears if the site is defiled or the spirit is angered"
+      ],
+      "adventureSummary": "At the Witchlight Standing Stone, players face a test of wit and character, a chance to gain vital clues, and the risk of supernatural wrath if disrespectful. The location ties together the mystical and folkloric elements of the moor.",
+      "aliases": [
+        "Witchlight Standing Stone",
+        "H03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_landmark:Witchlight Standing Stone",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "territorial beast",
+      "description": "A territorial beast appropriate for level 3 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 3 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 3 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 3 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "territorial beast",
+      "description": "A territorial beast appropriate for level 3 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "territorial beast",
+      "description": "A territorial beast appropriate for level 3 parties"
+    }
+  ],
+  "areaFeatures": [
+    "water sources",
+    "ancient trees",
+    "rock formations"
+  ],
+  "notes": "Weather and terrain should affect travel times. Random encounters keep exploration tense.",
+  "spatialContractVersion": 1
+}

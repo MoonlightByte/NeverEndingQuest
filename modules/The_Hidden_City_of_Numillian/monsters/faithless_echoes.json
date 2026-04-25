@@ -1,0 +1,74 @@
+{
+  "name": "Faithless Echo",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Chaotic Evil",
+  "armorClass": 13,
+  "hitPoints": 18,
+  "maxHitPoints": 18,
+  "speed": 30,
+  "abilities": {
+    "strength": 8,
+    "dexterity": 16,
+    "constitution": 10,
+    "intelligence": 10,
+    "wisdom": 12,
+    "charisma": 14
+  },
+  "savingThrows": [
+    "Wisdom",
+    "Charisma"
+  ],
+  "skills": {
+    "Stealth": 5,
+    "Perception": 3
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "necrotic",
+    "cold",
+    "bludgeoning",
+    "piercing",
+    "slashing from nonmagical attacks"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed",
+    "frightened",
+    "exhaustion"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "understands all languages it knew in life but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Incorporeal Movement",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "Special"
+    },
+    {
+      "name": "Sorrowful Presence",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "Special"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Withering Touch",
+      "attackBonus": 4,
+      "damageDice": "2d6",
+      "damageBonus": 2,
+      "damageType": "necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Faithless Echoes are spectral remnants born from fractured memories and shattered psyches within the Mindsunder Vault of the Shrouded Psiumbra. They appear as translucent, wraithlike figures, their forms flickering and wavering like smoke caught in a restless breeze. Their bodies are humanoid but fragmented, composed of drifting shards of mist and shadow, with faint, ghostly faces emerging and dissolving upon their ephemeral surfaces--each visage a whisper of a lost or stolen memory. Their eyes burn with cold, hollow light, reflecting the torment of forgotten truths and identities unmoored from reality. These entities drift silently through the obsidian glass chamber, their movements fluid yet disjointed, as if pulled by unseen psychic currents. The very air around them vibrates with faint echoes of laughter, whispered secrets, and agonized pleas--sounds that seem to originate both within and beyond the vault's crystalline walls. Faithless Echoes are drawn to the psychic energy of living minds, seeking to drain fragments of memory and sanity, leaving victims hollow and disoriented. Their presence warps perception, causing flickers of false images and half-remembered illusions to dance at the edge of vision. Encountering a Faithless Echo is like staring into a broken mirror of the soul, where reality and nightmare blur in a chilling symphony of lost selves and haunted echoes."
+}

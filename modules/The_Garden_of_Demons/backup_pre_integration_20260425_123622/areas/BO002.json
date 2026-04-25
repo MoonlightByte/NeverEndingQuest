@@ -1,0 +1,392 @@
+{
+  "areaId": "BO002",
+  "areaName": "The Blightfen Wilds",
+  "areaType": "wilderness",
+  "areaDescription": "A tangled expanse of fetid marshes and blackened reeds, the Blightfen Wilds seep with a persistent, sour mist that clings to skin and spirit alike. Crooked trees and stagnant pools shelter lurking dangers, their silence broken only by the distant croak of unseen creatures and the slosh of something moving just out of sight.",
+  "dangerLevel": "medium",
+  "recommendedLevel": 12,
+  "climate": "arctic",
+  "terrain": "swamp",
+  "map": {
+    "mapId": "MAP_H_3",
+    "mapName": "Wilderness Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "H01",
+        "type": "grove",
+        "connections": [
+          "H02"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "H02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "medium",
+        "name": "Withered Heart Glade"
+      },
+      {
+        "id": "H02",
+        "type": "landmark",
+        "connections": [
+          "H01",
+          "H03"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "H01",
+          "east": "H03"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "medium",
+        "name": "Petrified Warden Stone"
+      },
+      {
+        "id": "H03",
+        "type": "crossroads",
+        "connections": [
+          "H02"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {
+          "west": "H02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "transition",
+        "landmark": true,
+        "dangerLevel": "medium",
+        "name": "Shadowsplit Crossing"
+      }
+    ],
+    "layout": [
+      [
+        "H01",
+        "H02",
+        "H03"
+      ]
+    ],
+    "startRoom": "H02",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "H01",
+      "name": "Withered Heart Glade",
+      "type": "grove",
+      "description": "This blighted grove lies at the edge of the Blightfen Wilds, where malformed trees lean inward as if to shield a heart-shaped patch of ashen earth. Faint phosphorescent light glimmers from clusters of ghostly mushrooms, their caps forming misshapen rings across the muddy ground. The air here is uncomfortably still, broken only by the slow drip of blackened sap from the twisted trees. The oppressive silence is pierced occasionally by the croak of unseen marsh creatures. The glade is rumored to be the burial place of a once-sacred relic, now corrupted along with the land.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "H02"
+      ],
+      "aliases": [
+        "Withered Heart Glade",
+        "H01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_grove:Withered Heart Glade",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Nimblethorn",
+          "description": "A sly, fey-influenced goblin with mottled green skin and a cap of fungus for a hat. Nimblethorn skips from shadow to shadow, offering cryptic warnings and bargains to those who show respect for the old ways. Deeply connected to the glade\u2019s curse, Nimblethorn knows secret paths and hidden dangers.",
+          "attitude": "Cautiously friendly if approached with offerings; evasive if threatened."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Blightfen Mirelings",
+          "description": "Amorphous, frog-like aberrations spawned from the corrupted soil. They lurk in the mud, attacking intruders with acidic tongues.",
+          "count": 2
+        }
+      ],
+      "lootTable": [
+        "Blighted Fetish (minor cursed trinket)",
+        "Pouch of Feydust (usable for certain rituals)",
+        "Rotshard Dagger (+1 dagger with a chance to inflict Poisoned on hit)"
+      ],
+      "plotHooks": [
+        "A ring of mushrooms glows softly at midnight, revealing a hidden message in Sylvan.",
+        "Nimblethorn offers to guide the party deeper into the Wilds\u2014for a price only spoken in riddles.",
+        "A buried lockbox, the soil churned as if recently disturbed."
+      ],
+      "dmInstructions": "Nimblethorn can be a guide, a trickster, or a quest-giver. If the party acts respectful, offer helpful clues and a safe shortcut. Aggression or disrespect provokes mischief or leads to combat with Mirelings. The glade\u2019s mushroom rings can reveal clues about the Blightfen curse if studied with a successful Intelligence (Nature or Arcana) check.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 16,
+          "disableDC": 14,
+          "triggerDC": 13,
+          "damage": "2d10 poison (spores erupt from disturbed mushrooms)"
+        }
+      ],
+      "dcChecks": [
+        "Nature DC 17: Identify the fungus as linked to fey curses.",
+        "Perception DC 15: Spot Nimblethorn's hiding place.",
+        "Arcana DC 15: Understand the significance of the mushroom circles."
+      ],
+      "accessibility": "Slog through mud; paths obscured by overgrowth. Difficult terrain unless led by Nimblethorn.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Mushroom Circles",
+          "description": "Clusters of phosphorescent mushrooms form irregular rings, some of which conceal magical glyphs or trap triggers."
+        },
+        {
+          "name": "Ashen Heart",
+          "description": "A patch of gray-black earth at the grove's center; touching it evokes visions of a druid\u2019s fall from grace."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "Combat/Roleplay",
+          "description": "Nimblethorn interacts with the party, while Blightfen Mirelings may attack if the party disturbs the glade."
+        }
+      ],
+      "adventureSummary": "Withered Heart Glade is a threshold to the Wilds, offering clues, hazards, and a fey guide. The party can learn of the deeper corruption or bargain for safe passage."
+    },
+    {
+      "locationId": "H02",
+      "name": "Petrified Warden Stone",
+      "type": "landmark",
+      "description": "A towering monolith of ancient stone, covered in petrified vines and etched with faded runes, stands at the heart of a marshy clearing. Once a sacred ward against evil, it has been partially consumed by the Blightfen corruption. The stone hums faintly with latent, warped druidic magic. The ground near its base is littered with the bones of animals and shattered wooden amulets\u2014offerings of those who once sought its protection.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "H01",
+        "H03"
+      ],
+      "aliases": [
+        "Petrified Warden Stone",
+        "H02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_landmark:Petrified Warden Stone",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Whisperroot",
+          "description": "A spectral dryad, now half-fused with the stone\u2019s roots. Whisperroot weeps for the land\u2019s pain and offers cryptic warnings. Her influence can briefly purify an area if properly entreated.",
+          "attitude": "Melancholy, helpful to those who show empathy; hostile if disturbed or threatened."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Rotblight Rats",
+          "description": "Large, aggressive rodents mutated by the Blight. They swarm when the stone is disturbed.",
+          "count": 4
+        }
+      ],
+      "lootTable": [
+        "Warden\u2019s Root Charm (+1 to saving throws vs. poison, requires attunement)",
+        "Petrified Bark Fragment (usable in restoration rituals)",
+        "Silvered Druidic Medallion (value 150 gp)"
+      ],
+      "plotHooks": [
+        "Whisperroot pleads for help restoring the Warden Stone\u2019s protective wards.",
+        "Scratched runes hint at a hidden sanctum deeper in the Blightfen.",
+        "A recent visitor\u2019s trail (Lost Ranger Serik) leads southeast."
+      ],
+      "dmInstructions": "Whisperroot may bestow a one-time boon (remove poison/curse, or bless the party) if the party listens to her story. If the stone is damaged or the party is disrespectful, she becomes an enemy and animates the surrounding roots (see Rotblight Rats as minions). The runes can point to plot-relevant locations with a successful Arcana (DC 16) or Investigation (DC 15) check.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 15,
+          "disableDC": 16,
+          "triggerDC": 14,
+          "damage": "2d8 bludgeoning (animated roots lash out if the stone or offerings are tampered with)"
+        }
+      ],
+      "dcChecks": [
+        "Arcana DC 16: Decipher the corrupted druidic runes.",
+        "Religion DC 14: Recognize the Warden Stone as a site once blessed by nature gods.",
+        "Insight DC 15: Sense Whisperroot\u2019s sincerity or hidden pain."
+      ],
+      "accessibility": "Easily visible across the marsh but surrounded by treacherous, sucking mud. Difficult terrain for 20 ft. around the stone.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Petrified Vines",
+          "description": "Stone-hard vines coil around the monolith, some carved with nearly faded runes."
+        },
+        {
+          "name": "Faded Offerings",
+          "description": "Bones and wooden charms scattered near the base, remnants of old rituals."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "Roleplay/Combat",
+          "description": "The party can interact with Whisperroot for information or blessings; provoking her or disturbing the stone triggers an attack by Rotblight Rats and possibly animated roots."
+        }
+      ],
+      "adventureSummary": "The Petrified Warden Stone offers a mix of roleplay, lore, and potential combat. It\u2019s a place to gain blessings or provoke ancient powers."
+    },
+    {
+      "locationId": "H03",
+      "name": "Shadowsplit Crossing",
+      "type": "crossroads",
+      "description": "A narrow, sunken causeway of ancient stone stretches above a tangle of deep, black water. Broken statues mark each corner, their features eroded by the Blight, now resembling hollow-eyed guardians. The crossroads is shrouded in shifting mist, and strange shadows seem to part unwillingly as travelers approach. This is a natural convergence point for those navigating the Wilds, but also a haunt for things best left unseen.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "H02"
+      ],
+      "aliases": [
+        "Shadowsplit Crossing",
+        "H03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_crossroads:Shadowsplit Crossing",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ],
+      "areaConnectivity": [
+        "The Gloamreach Lowlands"
+      ],
+      "areaConnectivityId": [
+        "H01"
+      ],
+      "npcs": [
+        {
+          "name": "Lost Ranger Serik",
+          "description": "A grizzled, mud-streaked human ranger, Serik has lost his bearings after days evading dangerous creatures. He is wary but desperate for help and can offer detailed knowledge of the Blightfen Wilds for those who earn his trust.",
+          "attitude": "Cautious, grateful for aid or supplies; suspicious if pressed about his past."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Blightfen Gloomhounds",
+          "description": "Lean, shadowy canines with glowing eyes that slip in and out of the mist. They stalk travelers crossing the causeway.",
+          "count": 3
+        }
+      ],
+      "lootTable": [
+        "Serik\u2019s Journal (contains sketch map and coded notes)",
+        "Potion of Water Breathing",
+        "Eagle-Eye Charm (+2 to Perception for 1 hour when worn)"
+      ],
+      "plotHooks": [
+        "Lost Ranger Serik seeks help escaping the Wilds, promising to guide the party to a hidden cache.",
+        "The statues bear strange marks\u2014clues to a lost druid enclave.",
+        "Shadows here react to light and magic in unnatural ways (Arcana or Investigation reveals more)."
+      ],
+      "dmInstructions": "Serik is intended as a temporary ally or guide. If aided, he can reveal safe routes and hidden locations. The Gloomhounds attack if the party lingers or makes noise. The statues may hold clues if inspected. Use the mist and shifting shadows to create tension and limit visibility.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 17,
+          "disableDC": 16,
+          "triggerDC": 15,
+          "damage": "3d6 necrotic (shadowy hands grasp from the mist if the statues are disturbed or magical light is used recklessly)"
+        }
+      ],
+      "dcChecks": [
+        "Survival DC 15: Spot Gloomhound tracks and plan an ambush or avoid them.",
+        "Investigation DC 14: Notice coded markings on the statues.",
+        "Arcana DC 15: Sense the crossroads as a weakened planar boundary."
+      ],
+      "accessibility": "Crossing is narrow and slick; the mist makes navigation hazardous. Statues block easy passage for large creatures.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "Fine, gray-black dust coats the statues, swirling in odd patterns when disturbed."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "Broken statues with hollow eyes and ancient druidic motifs hint at a forgotten order."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "Erosion and fungal growths show the crossing\u2019s long abandonment."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "Roleplay/Combat",
+          "description": "Meet Serik, who may ally with or mislead the party. Gloomhounds stalk the area, attacking isolated party members or wounded NPCs."
+        }
+      ],
+      "adventureSummary": "Shadowsplit Crossing is both a tactical chokepoint and an information hub, offering a guide, clues, and an ambush by shadowy creatures."
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 12 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 12 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 12 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 12 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 12 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 12 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 12 parties"
+    }
+  ],
+  "areaFeatures": [
+    "animal dens",
+    "water sources",
+    "ancient trees"
+  ],
+  "notes": "Weather and terrain should affect travel times. Random encounters keep exploration tense.",
+  "spatialContractVersion": 1
+}

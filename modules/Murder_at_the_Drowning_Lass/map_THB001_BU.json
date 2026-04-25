@@ -1,0 +1,71 @@
+{
+  "mapId": "MAP_H_3",
+  "mapName": "Town Map",
+  "totalRooms": 3,
+  "rooms": [
+    {
+      "id": "H01",
+      "type": "tavern",
+      "connections": [
+        "H02",
+        "H03"
+      ],
+      "coordinates": "X10Y10",
+      "directions": {
+        "east": "H02"
+      },
+      "tags": [
+        "rest"
+      ],
+      "purpose": "safe_haven",
+      "landmark": false,
+      "dangerLevel": "high",
+      "name": "The Drowning Lass Taproom"
+    },
+    {
+      "id": "H02",
+      "type": "warehouse",
+      "connections": [
+        "H01"
+      ],
+      "coordinates": "X11Y10",
+      "directions": {
+        "west": "H01"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "high",
+      "name": "Mireshadow Storage"
+    },
+    {
+      "id": "H03",
+      "type": "shop",
+      "connections": [
+        "H01"
+      ],
+      "coordinates": "X12Y10",
+      "directions": {},
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "high",
+      "name": "Boglight Curiosities"
+    }
+  ],
+  "layout": [
+    [
+      "H01",
+      "H02",
+      "H03"
+    ]
+  ],
+  "startRoom": "H01",
+  "version": "1.1",
+  "notes": "Extended schema with AI-friendly navigation fields",
+  "spatialContractVersion": 1
+}

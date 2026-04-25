@@ -1,0 +1,80 @@
+{
+  "name": "Venomthorn Chimera",
+  "size": "Large",
+  "type": "Monstrosity",
+  "alignment": "Chaotic Evil",
+  "armorClass": 13,
+  "hitPoints": 39,
+  "maxHitPoints": 39,
+  "speed": 40,
+  "abilities": {
+    "strength": 17,
+    "dexterity": 14,
+    "constitution": 15,
+    "intelligence": 3,
+    "wisdom": 12,
+    "charisma": 7
+  },
+  "savingThrows": [
+    "Dexterity",
+    "Constitution"
+  ],
+  "skills": {
+    "Perception": 3,
+    "Stealth": 4
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "poison"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "understands Abyssal but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Venomous Hide",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "poison"
+    },
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "bludgeoning"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "attackBonus": 5,
+      "damageDice": "1d10",
+      "damageBonus": 3,
+      "damageType": "piercing"
+    },
+    {
+      "name": "Claw",
+      "attackBonus": 5,
+      "damageDice": "2d6",
+      "damageBonus": 3,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Venomthorn Tail",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 3,
+      "damageType": "poison"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the fetid depths of the Blightfen Wilds, the Venomthorn Chimera is a grotesque abomination of nature's darkest corruption. Its massive, sinewy body is a tangled mass of twisted sinew and bristling thorns, resembling a malformed fusion of a great cat, a venomous serpent, and a monstrous insect. Jagged blackened horns curve backward from its skull, while its feline face is marked by glowing, sickly green eyes that pierce through the sour mist. From its spine sprout clusters of venom-dripping, barbed thorns--each capable of delivering a paralyzing toxin to prey or foe alike. Its serpentine tail flicks with a life of its own, lined with sharp, thorn-like scales that glisten with a poisonous sheen. The chimera's insectile legs, ending in wickedly curved claws, leave deep gouges in the swampy earth as it stalks silently through the Withered Heart Glade. Around it, the air thickens with the acrid scent of decay and the faint hum of corrupted druidic magic. The creature's breath carries a faint hiss, punctuated by the dripping of blackened sap from nearby twisted trees, as it waits patiently, its body coiled and ready to strike in the oppressive stillness. The Venomthorn Chimera is a living nightmare of the Blightfen's curse--an embodiment of nature's wrath twisted by unholy blight."
+}

@@ -1,0 +1,81 @@
+{
+  "name": "Mutant Scavenger Lieutenant",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Chaotic Neutral",
+  "armorClass": 13,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 30,
+  "abilities": {
+    "strength": 13,
+    "dexterity": 15,
+    "constitution": 14,
+    "intelligence": 11,
+    "wisdom": 10,
+    "charisma": 9
+  },
+  "savingThrows": [
+    "Dexterity",
+    "Constitution"
+  ],
+  "skills": {
+    "Perception": 2,
+    "Stealth": 4,
+    "Survival": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "poison"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "Common, Undercommon",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Mutant Toughness",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Scavenger's Instinct",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Mutant Claw",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Scavenged Crossbow",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the aberrant chaos of The Ancients Lab's warped wastelands, the Mutant Scavenger Lieutenant is a grotesque fusion of scavenged flesh, twisted metal, and warped bone. Standing slightly taller than a human, its hunched frame is a patchwork of mottled, decaying flesh and jagged, rusted mechanical implants, some still pulsing faintly with alien bioluminescence. Its left arm has been replaced by a crude, serrated claw forged from scrap metal, constantly twitching as if eager to rend or grasp. The creature's face is a terrifying mask of mutation: one eye sunken and milky, the other glowing with a sickly green light; its jaw disfigured and filled with jagged, uneven teeth, perpetually snarling. Tendrils of sinewy tissue and exposed cables writhe beneath thin, translucent skin stretched taut over its shoulders, emitting faint, discordant whispers into the charged, copper-tainted air. The Lieutenant moves with a predatory gait, scanning with unnerving intelligence for anything salvageable amid the bleak, shifting landscape. Its presence warps the atmosphere itself--warped shadows cling unnaturally close, and a low hum resonates from embedded circuitry fused with mutant flesh. This scavenger commands lesser aberrations with ruthless efficiency, embodying the corrupted legacy of failed experiments and abandoned dread. It is a living testament to the nightmarish blend of flesh and machine that haunts the Aberrant Wastes."
+}

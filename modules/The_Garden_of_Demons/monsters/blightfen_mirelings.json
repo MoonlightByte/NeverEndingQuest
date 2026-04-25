@@ -1,0 +1,82 @@
+{
+  "name": "Blightfen Mireling",
+  "size": "Small",
+  "type": "Plant",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 14,
+  "maxHitPoints": 14,
+  "speed": 25,
+  "abilities": {
+    "strength": 10,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 5,
+    "wisdom": 12,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {
+    "Stealth": 5,
+    "Perception": 3
+  },
+  "damageVulnerabilities": [
+    "fire"
+  ],
+  "damageResistances": [
+    "cold",
+    "necrotic"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "Understands Sylvan but can't speak",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Amphibious",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Swamp Camouflage",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Toxic Ooze",
+      "attackBonus": 0,
+      "damageDice": "1d6",
+      "damageBonus": 0,
+      "damageType": "poison"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Tendril Slash",
+      "attackBonus": 5,
+      "damageDice": "1d4",
+      "damageBonus": 3,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Toxic Spray (Recharge 5-6)",
+      "attackBonus": 0,
+      "damageDice": "2d6",
+      "damageBonus": 0,
+      "damageType": "poison"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the blackened reeds and stagnant pools of the Blightfen Wilds, Blightfen Mirelings are grotesque, amphibious monstrosities born of the marsh's corrupting curse. These creatures stand no taller than a human child but move with unnerving speed and unnatural agility, their spindly limbs ending in gnarled, root-like fingers that drip with toxic ooze. Their mottled skin is a sickly blend of swamp greens and murky browns, mottled with patches of slimy fungus and festering blight that pulse faintly with an eerie, phosphorescent glow--echoing the ghostly mushrooms that ring the Withered Heart Glade. Their bulbous heads are crowned with ragged tendrils resembling decayed reeds, framing eyes that gleam with a malevolent, amber light, reflecting the twisted hunger within. Silent and watchful, they blend seamlessly into the putrid mist, their croaking breaths barely audible over the slosh of the marsh. When disturbed, their movements become erratic and vicious, attacking intruders with jagged claws and spitting corrosive bile that burns flesh and spirit alike. The Mirelings are cunning and territorial, working in small packs to harass trespassers, their presence a chilling reminder of the Blightfen's relentless corruption--invoking a sense of dread that clings as tightly as the sour mist to the skin."
+}

@@ -1,0 +1,72 @@
+{
+  "mapId": "MAP_I_3",
+  "mapName": "Mixed Map",
+  "totalRooms": 3,
+  "rooms": [
+    {
+      "id": "I01",
+      "type": "room",
+      "connections": [
+        "I02"
+      ],
+      "coordinates": "X10Y10",
+      "directions": {
+        "east": "I02"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "high",
+      "name": "Warped Sentinel Vestibule"
+    },
+    {
+      "id": "I02",
+      "type": "room",
+      "connections": [
+        "I01",
+        "I03"
+      ],
+      "coordinates": "X11Y10",
+      "directions": {
+        "west": "I01",
+        "east": "I03"
+      },
+      "tags": [],
+      "purpose": "unknown",
+      "landmark": false,
+      "dangerLevel": "high",
+      "name": "Fleshforged Observation Nook"
+    },
+    {
+      "id": "I03",
+      "type": "room",
+      "connections": [
+        "I02"
+      ],
+      "coordinates": "X12Y10",
+      "directions": {
+        "west": "I02"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "high",
+      "name": "Huskbound Termination Cell"
+    }
+  ],
+  "layout": [
+    [
+      "I01",
+      "I02",
+      "I03"
+    ]
+  ],
+  "startRoom": "I02",
+  "version": "1.1",
+  "notes": "Extended schema with AI-friendly navigation fields",
+  "spatialContractVersion": 1
+}

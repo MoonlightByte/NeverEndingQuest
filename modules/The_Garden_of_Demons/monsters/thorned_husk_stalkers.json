@@ -1,0 +1,84 @@
+{
+  "name": "Thorned Husk Stalker",
+  "size": "Medium",
+  "type": "Plant",
+  "alignment": "Neutral Evil",
+  "armorClass": 13,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 30,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 6,
+    "wisdom": 10,
+    "charisma": 7
+  },
+  "savingThrows": [],
+  "skills": {
+    "Stealth": 6,
+    "Perception": 2
+  },
+  "damageVulnerabilities": [
+    "fire"
+  ],
+  "damageResistances": [
+    "piercing",
+    "bludgeoning"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed",
+    "frightened",
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "understands Sylvan but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Camouflage",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Thorned Body",
+      "attackBonus": 0,
+      "damageDice": "1d4",
+      "damageBonus": 0,
+      "damageType": "piercing"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Thorn Slash",
+      "attackBonus": 5,
+      "damageDice": "1d6",
+      "damageBonus": 3,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Husk Spines",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 0,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Lurking in the shadow-soaked fringes of the Blightfen Wilds, the Thorned Husk Stalkers are twisted predators born of the marsh's blight and ancient corruption. These creatures resemble grotesque, humanoid husks, their forms gaunt and elongated, as if worn thin by endless hunger. Their brittle skin is mottled with cracked bark-like plates, thorny protrusions jutting from their shoulders and spines like jagged brambles. Their limbs end in clawed fingers, sharp and gnarled like thorns, perfect for silent stalking and brutal strikes. Their hollow eye sockets emit a faint, sickly green phosphorescence, glowing dimly through the persistent sour mist. The stalkers move with unnerving nimbleness, blending seamlessly into the twisted brambles and deadwood of the Withered Heart Glade, their bodies camouflaged by the dark moss and blackened reeds that cloak the soggy earth. A faint rustling precedes their approach, like the whisper of dry leaves in a dead forest, but their attacks are swift and merciless--ripping through flesh and spirit alike. The air around them is thick with the scent of rot and resin, a chilling reminder of the Blightfen's corrupting touch. Encountering a Thorned Husk Stalker is to face a living emblem of decay and menace, a haunting sentinel of the marsh's darkest secrets."
+}

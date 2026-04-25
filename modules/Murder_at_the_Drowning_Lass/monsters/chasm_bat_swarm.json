@@ -1,0 +1,81 @@
+{
+  "name": "Chasm Bat Swarm",
+  "size": "Medium",
+  "type": "Beast",
+  "alignment": "Unaligned",
+  "armorClass": 12,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 10,
+  "abilities": {
+    "strength": 5,
+    "dexterity": 15,
+    "constitution": 10,
+    "intelligence": 2,
+    "wisdom": 12,
+    "charisma": 4
+  },
+  "savingThrows": [],
+  "skills": {
+    "Perception": 3,
+    "Stealth": 4
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Echolocation",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": ""
+    },
+    {
+      "name": "Keen Hearing",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": ""
+    },
+    {
+      "name": "Swarm",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": ""
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bites",
+      "attackBonus": 4,
+      "damageDice": "4d4",
+      "damageBonus": 0,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the yawning voids of the Resonant Abyss, the Chasm Bat Swarm is a living shadow, a writhing mass of countless small, nocturnal bats whose leathery wings beat in eerie unison. Each bat is diminutive but sharp-featured, with glistening obsidian fur mottled with faint bioluminescent speckles that pulse softly like distant stars trapped in darkness. Their eyes burn with a ghostly, phosphorescent glow--pale blue or green--that flickers in the abyssal gloom, casting unsettling light upon the jagged chasm walls. The swarm moves as one, a fluid, roiling cloud of fluttering wings and piercing shrieks that echo against the endless stone depths, their cacophonous cries reverberating as low, haunting drones that seem to unsettle even the most stalwart adventurers. They are drawn to sound and movement, descending swiftly from the shadowed crevices where the abyss's chill air condenses into mist. The swarm's behavior is erratic yet purposeful, as if driven by a collective instinct to guard the sanctity of the dark crevices and the secrets buried deep within the drowned crypts. Their presence carries a palpable chill, the air thick with dampness and a faint metallic tang, as if the very abyss seeps through their wings. To face them is to be engulfed in a living storm of darkness, a swirling tempest of teeth and shadow that threatens to rend flesh and spirit alike."
+}

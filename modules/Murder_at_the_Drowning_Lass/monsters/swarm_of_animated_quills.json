@@ -1,0 +1,77 @@
+{
+  "name": "Swarm of Animated Quills",
+  "size": "Medium",
+  "type": "Swarm of Tiny Constructs",
+  "alignment": "Unaligned",
+  "armorClass": 13,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 30,
+  "abilities": {
+    "strength": 3,
+    "dexterity": 17,
+    "constitution": 12,
+    "intelligence": 1,
+    "wisdom": 8,
+    "charisma": 1
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [
+    "thunder"
+  ],
+  "damageResistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [
+    "poison",
+    "psychic"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained",
+    "stunned"
+  ],
+  "senses": {
+    "darkvision": 30,
+    "passivePerception": 9
+  },
+  "languages": "",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Swarm",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "The swarm can occupy another creature's space and vice versa, and the swarm can move through any opening large enough for a Tiny object. The swarm can't regain hit points or gain temporary hit points."
+    },
+    {
+      "name": "False Appearance",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "While the swarm remains motionless, it is indistinguishable from a scattering of mundane writing quills."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Needle Burst",
+      "attackBonus": 5,
+      "damageDice": "3d4",
+      "damageBonus": 0,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "In the shadowed recesses of the Resonant Abyss, where silence is both shield and snare, a sinister menace stirs--a Swarm of Animated Quills. This unnatural assembly is composed of hundreds of slender, razor-sharp quills, each about the length of a human finger, their surfaces gleaming with an oily sheen that catches the faintest light. They writhe and twist in a chaotic, serpentine dance, driven by a malevolent enchantment that breathes life into the lifeless. The quills clatter and scrape against one another, creating a faint, eerie whispering sound that echoes unnervingly throughout the cavernous depths, as if the very walls listen and respond. Each quill ends in a barbed tip, stained dark with the residue of previous victims, and when the swarm strikes, it moves with terrifying speed and precision, slicing and piercing with relentless fury. The air around them hums with a subtle, magical resonance, hinting at their arcane origins tied to the cryptic seals and curses of the Abyss. Shadows cling to the swarm, and their swift, darting movements leave trails of faint phosphorescent glimmers--like fleeting ghostly fireflies--unsettling and otherworldly. Encountering this swarm is to face the embodiment of whispered dread, a living storm of needles conjured from the abyssal silence to rend flesh and silence all sound."
+}

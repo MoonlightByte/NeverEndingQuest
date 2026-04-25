@@ -1,0 +1,61 @@
+{
+  "name": "Red Maw Lookout",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Chaotic Evil",
+  "armorClass": 14,
+  "hitPoints": 11,
+  "maxHitPoints": 11,
+  "speed": 30,
+  "abilities": {
+    "strength": 11,
+    "dexterity": 14,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 11,
+    "charisma": 9
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 4,
+    "stealth": 6
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "Common, Goblin",
+  "challengeRating": 0.25,
+  "specialAbilities": [
+    {
+      "name": "Nimble Escape",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Scimitar",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "Slashing"
+    },
+    {
+      "name": "Shortbow",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "Piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the shadowed fringes of the Resonant Abyss, the Red Maw Lookout is a sinister sentinel of the deep, its form a grotesque blend of twisted sinew and ancient abyssal terror. Towering at nearly eight feet tall, its elongated, hunched body shrouded in mottled, water-streaked chitin that gleams with a faint crimson hue reminiscent of dried blood. Its most striking feature is the cavernous, gaping maw set low on its torso, a horrifying red abyss lined with rows of jagged, obsidian-black teeth that seem to drip an oily, phosphorescent saliva. Two bulbous, unblinking eyes sit high above the maw, glowing faintly with a malevolent ember-like light that pierces the dimmest gloom. Long, spindly limbs end in clawed, grasping fingers that twitch incessantly, ever alert to the slightest movement or sound. The air around it seems to ripple with a low, unnatural vibration, and faint echoes of distant, sorrowful whispers follow its slow, deliberate movements. The Red Maw Lookout is a patient, calculating predator, often found perched in the dark recesses of the abyssal ruins, silently watching for intruders to stumble into its deadly embrace. Its presence warps the atmosphere, filling the air with a suffocating sense of dread and the chilling promise of a silent, merciless hunt."
+}

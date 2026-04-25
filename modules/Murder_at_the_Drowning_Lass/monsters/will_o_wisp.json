@@ -1,0 +1,99 @@
+{
+  "name": "Will-o'-Wisp",
+  "size": "Tiny",
+  "type": "Undead",
+  "alignment": "Chaotic Evil",
+  "armorClass": 19,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 0,
+  "abilities": {
+    "strength": 1,
+    "dexterity": 28,
+    "constitution": 10,
+    "intelligence": 13,
+    "wisdom": 14,
+    "charisma": 11
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "acid",
+    "cold",
+    "fire",
+    "necrotic",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing from nonmagical attacks"
+  ],
+  "damageImmunities": [
+    "lightning",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained",
+    "unconscious"
+  ],
+  "senses": {
+    "darkvision": 120,
+    "passivePerception": 12
+  },
+  "languages": "Common, Elvish",
+  "challengeRating": 2,
+  "specialAbilities": [
+    {
+      "name": "Incorporeal Movement",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Variable Illumination",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Consume Life",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Ephemeral",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Invisibility",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Shock",
+      "attackBonus": 4,
+      "damageDice": "2d8",
+      "damageBonus": 0,
+      "damageType": "Lightning"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

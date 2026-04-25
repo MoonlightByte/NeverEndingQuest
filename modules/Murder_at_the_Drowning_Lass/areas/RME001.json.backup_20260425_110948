@@ -1,0 +1,387 @@
+{
+  "areaId": "RME001",
+  "areaName": "The Red Maw Wilds",
+  "areaType": "mixed",
+  "areaDescription": "Twisted crimson thickets and jagged stone outcrops claw at the sky, their shadows hiding the flicker of campfires and the glint of hungry eyes. The air hums with the scent of blood and smoke, for here, every step is claimed by ruthless predators and warbands vying for dominance.",
+  "dangerLevel": "high",
+  "recommendedLevel": 4,
+  "climate": "varied",
+  "terrain": "varied terrain",
+  "map": {
+    "mapId": "MAP_H_3",
+    "mapName": "Mixed Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "H01",
+        "type": "room",
+        "connections": [
+          "H02",
+          "H03"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "H02"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "high",
+        "name": "Bloodroot Crossing"
+      },
+      {
+        "id": "H02",
+        "type": "room",
+        "connections": [
+          "H01"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "H01"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Crimson Echo Nook"
+      },
+      {
+        "id": "H03",
+        "type": "room",
+        "connections": [
+          "H01"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {},
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Duskmire Hollow"
+      }
+    ],
+    "layout": [
+      [
+        "H01",
+        "H02",
+        "H03"
+      ]
+    ],
+    "startRoom": "H01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "H01",
+      "name": "Bloodroot Crossing",
+      "type": "room",
+      "description": "The heart of the Red Maw Encampment, Bloodroot Crossing is a battered intersection of winding paths, trampled moss, and blood-red thickets. A crude totem of splintered wood and animal skulls marks the center, watched warily by hungry mercenaries and skittish scouts. Crimson-stained stones bear runic carvings, and the air is thick with the tang of iron and smoke. This is where warbands gather to trade spoils or plot violent sorties into the wilds.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "H02",
+        "H03"
+      ],
+      "areaConnectivity": [
+        "The King\u2019s Tread"
+      ],
+      "areaConnectivityId": [
+        "H03"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Red Maw Mercenary",
+          "description": "A tough, scarred human bandit in mismatched armor, always watching for weakness.",
+          "statblock": "Bandit Captain (adjust to level 4 party)"
+        },
+        {
+          "name": "Red Maw Lookout",
+          "description": "A wiry half-orc peering from a lookout post, quick to raise the alarm at threats.",
+          "statblock": "Scout"
+        }
+      ],
+      "lootTable": [
+        "Tattered war banners (20 gp as trade goods)",
+        "Pouch with 30 sp, 2 bloodstone gems (25 gp each)",
+        "Engraved bone dagger (minor Red Maw insignia, 10 gp)",
+        "Leather pouch with crude sketched map of local thicket (leads to hidden cache, DC 13 Survival to interpret)"
+      ],
+      "plotHooks": [
+        "A Red Maw mercenary offers information about a rival warband for a price\u2014or a fight.",
+        "Deep knife gouges in the totem suggest a recent attempted theft; a blood trail leads into Duskmire Hollow.",
+        "A strange symbol carved into the largest stone matches that seen in tales told by Old Ellyn."
+      ],
+      "dmInstructions": "This open-air gathering spot is the first and most obvious threat the party will face on entering the encampment. Consider having the Red Maw Mercenary attempt negotiation if the party seems strong, or call for reinforcements from nearby locations if outmatched. Stealth checks are required to sneak past. For parties seeking information on the murder or the map, clues can point them deeper into the encampment. Adjust enemy numbers or disposition based on party approach.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Perception DC 13: Notice hidden blood trail leading to Duskmire Hollow.",
+        "History DC 12: Recognize runes as a warning to outsiders.",
+        "Insight DC 14: Sense tension among mercenaries\u2014something has them spooked."
+      ],
+      "accessibility": "Open air, but patrolled constantly; approaching openly triggers hostile reaction unless disguised or escorted.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Dust",
+          "description": "A gritty red dust settles on all surfaces, kicked up by constant movement."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "Ancient, moss-choked stones and battered totems show the encampment\u2019s long and violent history."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "Makeshift barricades, lean-tos, and totemic art made from scavenged bones and carved wood."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Red Maw Parley",
+          "description": "Mercenaries demand tribute, try to bribe the party, or threaten violence depending on approach."
+        },
+        {
+          "name": "Fight or Flight",
+          "description": "If hostilities break out, reinforcements arrive from nearby rooms each round."
+        }
+      ],
+      "adventureSummary": "Bloodroot Crossing serves as the entry to the encampment and its first challenge, offering multiple paths forward\u2014stealth, negotiation, or combat\u2014while providing clues towards the murder and the legendary map.",
+      "aliases": [
+        "Bloodroot Crossing",
+        "H01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Bloodroot Crossing",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H02",
+      "name": "Crimson Echo Nook",
+      "type": "room",
+      "description": "Sequestered behind a tangle of bloodroot and bramble, this dim nook is lined with rough-hewn benches and a battered firepit. Smoke stains the ceiling of a crude lean-to, and faded tapestries hang from the walls\u2014each adorned with stylized red jaws. This is where Red Maw scouts gather to exchange whispered news and plot their next moves, their voices echoing in the damp air.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "H01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Red Maw scouts",
+          "description": "Lean, sharp-eyed scouts who patrol the wilds, trading rumors and keeping a nervous watch. They are suspicious but can be bribed or intimidated for information, especially about recent events.",
+          "attitude": "Cautious, greedy, willing to deal if approached carefully."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Set of thieves\u2019 tools (well-used, 25 gp)",
+        "Crude wooden charm (offers advantage on one Survival check in the Red Maw Wilds, then crumbles)",
+        "Folded note in thieves' cant detailing patrol shifts and secret signals",
+        "Small purse with 11 gp and 3 wolf teeth"
+      ],
+      "plotHooks": [
+        "The scouts hint at an unclaimed treasure in Duskmire Hollow\u2014if sufficiently persuaded.",
+        "A scrap of cloth near the firepit matches the uniform of a missing person from Brindlehearth Village.",
+        "Scouts have heard ghostly howls at night, warning of something unnatural stalking the Wilds."
+      ],
+      "dmInstructions": "Red Maw scouts are wary but not immediately hostile unless threatened. They are a potential source of information regarding the murder at the Drowning Lass and the stolen map if the party can win their trust. If the party is caught snooping, scouts may call for help from Bloodroot Crossing.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Insight DC 13: Discern which scout seems most open to negotiation.",
+        "Stealth DC 14: Eavesdrop on the scouts without being noticed.",
+        "Persuasion DC 14: Convince a scout to share information about recent events."
+      ],
+      "accessibility": "Concealed by thickets; requires a DC 11 Survival check to find if approaching from outside the encampment.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "A low, cleverly camouflaged shelter covered with old banners and bracken, blending into the wilds."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Scout Negotiation",
+          "description": "A tense standoff or possible trade of information, depending on party actions."
+        }
+      ],
+      "adventureSummary": "Crimson Echo Nook is a key roleplay space, offering intelligence and clues for clever parties willing to negotiate or sneak. It connects to Bloodroot Crossing, allowing for quick reinforcement or escape.",
+      "aliases": [
+        "Crimson Echo Nook",
+        "H02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Crimson Echo Nook",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H03",
+      "name": "Duskmire Hollow",
+      "type": "room",
+      "description": "A fog-shrouded depression behind battered barricades and low stone walls, this hollow is choked with fetid pools and gnarled, leafless trees. The ground is always damp; the air, thick with the croak of unseen frogs and the distant howl of wolves. In the shadows, a makeshift altar of red stones and faded ribbons marks the site of old rituals\u2014and sometimes, recent sacrifices.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "H01"
+      ],
+      "areaConnectivity": [
+        "The Stoneheart Chasmlands"
+      ],
+      "areaConnectivityId": [
+        "H01"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Duskmire Wolfpack",
+          "description": "Lean, red-furred wolves, drawn to the scent of blood and trained by the Red Maw.",
+          "statblock": "Dire Wolf (x2) and Wolf (x2)"
+        },
+        {
+          "name": "Red Maw Enforcer",
+          "description": "A muscle-bound thug posted to guard the ritual site. Quick to violence if disturbed.",
+          "statblock": "Thug"
+        }
+      ],
+      "lootTable": [
+        "Bloodstained ritual dagger (engraved with wolf imagery, 15 gp)",
+        "Silver amulet in the shape of a snarling maw (25 gp, may be recognized as a Red Maw badge)",
+        "Bundle of semi-precious stones (10 gp total, hidden in a hollow stone, DC 13 Investigation to find)",
+        "Torn journal page referencing a hidden tomb 'beyond the echoing pools'"
+      ],
+      "plotHooks": [
+        "Tracks suggest someone fled here recently\u2014perhaps a thief or fugitive.",
+        "The altar displays a fresh offering: a map fragment, blood-spattered and only partially legible.",
+        "Supernatural chills occasionally grip the area, hinting at something restless beneath the ground."
+      ],
+      "dmInstructions": "Duskmire Hollow is where the party may recover part of the stolen map and encounter evidence of Red Maw rituals. The wolfpack is aggressive unless distracted with food or a high Animal Handling check. The enforcer may interrogate or threaten the party if they linger. This is a good site for a combat encounter or for parties tracking someone from Bloodroot Crossing.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 13,
+          "disableDC": 13,
+          "triggerDC": 13,
+          "damage": "2d6 poison (hidden needle trap among ritual offerings)"
+        }
+      ],
+      "dcChecks": [
+        "Investigation DC 13: Discover hidden bundle of stones in hollow rock.",
+        "Survival DC 12: Track recent passage of someone fleeing from Bloodroot Crossing.",
+        "Religion DC 14: Identify the altar as a site of old moon rites, now corrupted."
+      ],
+      "accessibility": "Low stone walls and mud make the area difficult terrain; visibility is poor due to mist.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "Old altar stones bear faded carvings and long-dried blood, showing years of grim use."
+        },
+        {
+          "name": "Dust",
+          "description": "Fine black silt coats the pools, disturbed only by recent tracks."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "The altar is a crude but ancient construct, encircled by upright stones and tattered banners."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Wolfpack Attack",
+          "description": "The wolves and enforcer attack intruders or may be calmed with clever play."
+        },
+        {
+          "name": "Ritual Discovery",
+          "description": "Finding the altar and deciphering its clues points to deeper mysteries in the Red Maw Wilds."
+        }
+      ],
+      "adventureSummary": "Duskmire Hollow is a dangerous but rewarding spot for exploration, with combat, clues, and part of the stolen map. Parties can find evidence tying the Red Maw to supernatural events and hints of a hidden tomb.",
+      "aliases": [
+        "Duskmire Hollow",
+        "H03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Duskmire Hollow",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 4 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 4 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 4 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 4 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 4 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 4 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 4 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 4 parties"
+    }
+  ],
+  "areaFeatures": [
+    "crossroads",
+    "landmarks",
+    "ruins"
+  ],
+  "notes": "Balance combat, exploration, and social encounters. Transitions between areas should feel natural.",
+  "spatialContractVersion": 1
+}

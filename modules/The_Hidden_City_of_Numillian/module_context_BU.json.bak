@@ -1,0 +1,435 @@
+{
+  "module_name": "The Hidden City of Numillian",
+  "module_id": "The_Hidden_City_of_Numillian",
+  "areas": {
+    "TPG001": {
+      "name": "The Paradoxical Gates",
+      "type": "town",
+      "locations": [],
+      "npcs": [
+        "Keeper Veyron",
+        "The Paradoxical Twins",
+        "Glim",
+        "Old Grem the Cartographer"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "TMQ001": {
+      "name": "The Masked Quarters",
+      "type": "mixed",
+      "locations": [],
+      "npcs": [
+        "Seraphine of the Silver Veil",
+        "Malk the Whisper",
+        "Various masked dignitaries"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "TUD001": {
+      "name": "The Unraveling Districts",
+      "type": "mixed",
+      "locations": [],
+      "npcs": [
+        "Azarel Moros",
+        "Mira the Shardseer",
+        "Raxil the Doubter"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "TSU001": {
+      "name": "The Subreality Undercity",
+      "type": "dungeon",
+      "locations": [],
+      "npcs": [
+        "Fragmented Preceptor"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "TMFMH001": {
+      "name": "The Mind Flayer\u2019s Masquerade Hall",
+      "type": "mixed",
+      "locations": [],
+      "npcs": [
+        "Masquerade Steward",
+        "Masked Duelist",
+        "Mind Flayer Archivist"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    },
+    "TNU001": {
+      "name": "The Nexus of Unreality",
+      "type": "town",
+      "locations": [],
+      "npcs": [
+        "Xhalruun the Unraveled",
+        "Captain Lyra Voss",
+        "Any surviving faction leaders"
+      ],
+      "plot_points": [
+        "PP001",
+        "PP002",
+        "PP003",
+        "PP004"
+      ]
+    }
+  },
+  "npcs": {
+    "keeper_veyron": {
+      "name": "Keeper Veyron",
+      "role": "",
+      "faction": "",
+      "description": "A serene, enigmatic figure clad in patchwork robes, their face partially obscured by a silver mask. Keeper Veyron is known for their cryptic wisdom and ability to guide seekers through the paradoxes of the crossroads. They offer riddles and insight\u2014sometimes both at once.",
+      "appears_in": [
+        {
+          "area": "TPG001",
+          "location": "G01"
+        }
+      ],
+      "aliases": [
+        "Keeper Veyron (enigmatic illusionist gatekeeper)",
+        "Keeper Veyron"
+      ]
+    },
+    "the_paradoxical_twins": {
+      "name": "The Paradoxical Twins",
+      "role": "",
+      "faction": "",
+      "description": "A pair of identical merchants who always finish each other\u2019s sentences, known for selling items that seem impossible or contradictory. They delight in bargains that challenge logic.",
+      "appears_in": [
+        {
+          "area": "TPG001",
+          "location": "G02"
+        }
+      ],
+      "aliases": [
+        "The Paradoxical Twins (sentient puzzle constructs)",
+        "The Paradoxical Twins"
+      ]
+    },
+    "seraphine_of_the_silver_veil": {
+      "name": "Seraphine of the Silver Veil",
+      "role": "",
+      "faction": "",
+      "description": "A poised, enigmatic woman wearing a shimmering mask of silver thread that conceals all but her luminous eyes and measured smile. She acts as both hostess and gatekeeper for all who enter the Veiled Districts, determining who may pass deeper. Her knowledge of secrets is legendary, and she trades in favors and whispered truths.",
+      "appears_in": [
+        {
+          "area": "TMQ001",
+          "location": "G01"
+        }
+      ],
+      "aliases": [
+        "Seraphine of the Silver Veil (faction leader)",
+        "Seraphine of the Silver Veil"
+      ]
+    },
+    "old_grem_the_cartographer": {
+      "name": "Old Grem the Cartographer",
+      "role": "",
+      "faction": "",
+      "description": "A wizened human hunched over a battered map case, Grem claims to have mapped every shifting street of the Crossroads\u2014though no two maps are ever quite the same. He trades information and cryptic directions, sometimes for a drink, sometimes for a secret.",
+      "appears_in": [
+        {
+          "area": "TPG001",
+          "location": "G03"
+        }
+      ],
+      "aliases": [
+        "Old Grem the Cartographer (city guide)",
+        "Old Grem the Cartographer"
+      ]
+    },
+    "azarel_moros": {
+      "name": "Azarel Moros",
+      "role": "",
+      "faction": "",
+      "description": "A gaunt, silver-haired mage in tattered blue robes, Azarel's eyes shimmer with fragments of shattered illusions. He seems both present and slightly out of phase with reality, as if the magic of the wards has begun to unravel his very form. Azarel is obsessed with repairing the city's magical fabric, but his mind teeters on the brink from constant exposure to the wards' chaos.",
+      "appears_in": [
+        {
+          "area": "TUD001",
+          "location": "G01"
+        }
+      ],
+      "aliases": [
+        "Azarel Moros (Dreamer\u2019s Uprising contact)",
+        "Azarel Moros"
+      ]
+    },
+    "xhalruun_the_unraveled": {
+      "name": "Xhalruun the Unraveled",
+      "role": "",
+      "faction": "",
+      "description": "An undead mind flayer whose psychic essence has fractured across dimensions. Xhalruun presides over the Sanctuary, preaching to invisible congregations and warping the boundaries of faith and reason. His true motives are enigmatic, but he is fixated on the party and the secret of Numillian's reality.",
+      "appears_in": [
+        {
+          "area": "TNU001",
+          "location": "H01"
+        }
+      ],
+      "aliases": [
+        "Xhalruun the Unraveled (antagonist, appearing in visions)",
+        "Xhalruun the Unraveled (in person)",
+        "Xhalruun the Unraveled"
+      ]
+    },
+    "mira_the_shardseer": {
+      "name": "Mira the Shardseer",
+      "role": "",
+      "faction": "",
+      "description": "A spectral oracle bound by fractured fate, Mira appears as a translucent woman with dozens of glass-like shards suspended around her. She can see glimpses of possible futures but is fractured by the district's energies. Mira offers cryptic advice, often speaking in riddles, but she is fiercely protective of those who treat her kindly.",
+      "appears_in": [
+        {
+          "area": "TUD001",
+          "location": "G02"
+        }
+      ],
+      "aliases": [
+        "Mira the Shardseer (trial overseer)",
+        "Mira the Shardseer"
+      ]
+    },
+    "raxil_the_doubter": {
+      "name": "Raxil the Doubter",
+      "role": "",
+      "faction": "",
+      "description": "A gaunt, haunted figure draped in faded scholar\u2019s robes, Raxil clutches a bundle of broken memory crystals. Raxil obsessively questions the veracity of everything, including the party\u2019s very existence. He serves as the memory-keeper of the Unraveling Wards, tormented by the knowledge that most recollections here are unreliable.",
+      "appears_in": [
+        {
+          "area": "TUD001",
+          "location": "G03"
+        }
+      ],
+      "aliases": [
+        "Raxil the Doubter (reluctant trial participant)",
+        "Raxil the Doubter"
+      ]
+    },
+    "malk_the_whisper": {
+      "name": "Malk the Whisper",
+      "role": "",
+      "faction": "",
+      "description": "A stooped, thin figure garbed in patchwork robes, their face obscured by a cracked porcelain mask. Malk trades in secrets, listening to the hall\u2019s whispers and sharing only what serves their mysterious agenda.",
+      "appears_in": [
+        {
+          "area": "TMQ001",
+          "location": "G02"
+        }
+      ],
+      "aliases": [
+        "Malk the Whisper (undercity informant)",
+        "Malk the Whisper"
+      ]
+    },
+    "captain_lyra_voss": {
+      "name": "Captain Lyra Voss",
+      "role": "",
+      "faction": "",
+      "description": "A pragmatic, sharp-minded leader of an outcast faction, Lyra Voss seeks to restore stability to the Confluence. She offers the party alliance and information in exchange for tangible aid against Xhalruun or the growing madness.",
+      "appears_in": [
+        {
+          "area": "TNU001",
+          "location": "H02"
+        }
+      ],
+      "aliases": [
+        "Captain Lyra Voss (rebellion leader)",
+        "Captain Lyra Voss"
+      ]
+    },
+    "glim": {
+      "name": "Glim",
+      "role": "",
+      "faction": "",
+      "description": "A diminutive, bright-eyed goblin with a knack for acquiring curiosities that vanish as soon as they\u2019re bought. Glim is well-connected and hears all the gossip of the crossroads.",
+      "appears_in": [
+        {
+          "area": "TPG001",
+          "location": "G02"
+        }
+      ],
+      "aliases": [
+        "Glim (half-illusory child guide)",
+        "Glim"
+      ]
+    },
+    "various_masked_dignitaries": {
+      "name": "Various masked dignitaries",
+      "role": "",
+      "faction": "",
+      "description": "A small gathering of influential figures in elaborate, distinctive masks, each hiding their true identity and allegiances. They are here to witness or enforce the outcomes of major bargains, and may offer the party new alliances\u2014or threats\u2014depending on what is revealed.",
+      "appears_in": [
+        {
+          "area": "TMQ001",
+          "location": "G03"
+        }
+      ],
+      "aliases": [
+        "Various masked dignitaries"
+      ]
+    },
+    "any_surviving_faction_leaders": {
+      "name": "Any surviving faction leaders",
+      "role": "",
+      "faction": "",
+      "description": "Representatives of various groups who have barricaded themselves in the reliquary, desperately clinging to relics and half-truths in the hope of restoring stability to the Confluence.",
+      "appears_in": [
+        {
+          "area": "TNU001",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Any surviving faction leaders"
+      ]
+    },
+    "fragmented_preceptor": {
+      "name": "Fragmented Preceptor",
+      "role": "",
+      "faction": "",
+      "description": "A once-whole priest now split into three illusory selves\u2014each reflecting different truths or lies. The Preceptor can offer guidance, riddles, or dangerous half-truths about the Warrens and Numillian\u2019s secrets. Sometimes helpful, sometimes a hindrance.",
+      "appears_in": [
+        {
+          "area": "TSU001",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Fragmented Preceptor"
+      ]
+    },
+    "masquerade_steward": {
+      "name": "Masquerade Steward",
+      "role": "",
+      "faction": "",
+      "description": "A tall figure in an intricate mirrored mask, greeting arrivals with a smile that never quite reaches their eyes. The steward offers cryptic advice, subtly probing the party's intentions and mental fortitude.",
+      "appears_in": [
+        {
+          "area": "TMFMH001",
+          "location": "H01"
+        }
+      ],
+      "aliases": [
+        "Masquerade Steward"
+      ]
+    },
+    "masked_duelist": {
+      "name": "Masked Duelist",
+      "role": "",
+      "faction": "",
+      "description": "A flamboyant swordsman in a shifting, glass-like mask, eager to test the wit and will of outsiders through psychic contests or riddles.",
+      "appears_in": [
+        {
+          "area": "TMFMH001",
+          "location": "H02"
+        }
+      ],
+      "aliases": [
+        "Masked Duelist"
+      ]
+    },
+    "mind_flayer_archivist": {
+      "name": "Mind Flayer Archivist",
+      "role": "",
+      "faction": "",
+      "description": "A gaunt, tentacled figure in tattered ceremonial finery, cataloging and curating psychic treasures. The archivist is aware of the party\u2019s approach, both physically and mentally.",
+      "appears_in": [
+        {
+          "area": "TMFMH001",
+          "location": "H03"
+        }
+      ],
+      "aliases": [
+        "Mind Flayer Archivist"
+      ]
+    }
+  },
+  "locations": {},
+  "plot_scopes": {
+    "PP001": "TNU001",
+    "PP002": "TNU001",
+    "PP003": "TNU001",
+    "PP004": "TNU001"
+  },
+  "references": {
+    "npc:Keeper Veyron (enigmatic illusionist gatekeeper)": [
+      "module:plotStages"
+    ],
+    "npc:The Paradoxical Twins (sentient puzzle constructs)": [
+      "module:plotStages"
+    ],
+    "npc:Seraphine of the Silver Veil (faction leader)": [
+      "module:plotStages"
+    ],
+    "npc:Old Grem the Cartographer (city guide)": [
+      "module:plotStages"
+    ],
+    "npc:Azarel Moros (Dreamer\u2019s Uprising contact)": [
+      "module:plotStages"
+    ],
+    "npc:Xhalruun the Unraveled (antagonist, appearing in visions)": [
+      "module:plotStages"
+    ],
+    "npc:Mira the Shardseer (trial overseer)": [
+      "module:plotStages"
+    ],
+    "npc:Raxil the Doubter (reluctant trial participant)": [
+      "module:plotStages"
+    ],
+    "npc:Malk the Whisper (undercity informant)": [
+      "module:plotStages"
+    ],
+    "npc:Captain Lyra Voss (rebellion leader)": [
+      "module:plotStages"
+    ],
+    "npc:Glim (half-illusory child guide)": [
+      "module:plotStages"
+    ],
+    "npc:Xhalruun the Unraveled (in person)": [
+      "module:plotStages"
+    ],
+    "npc:Seraphine of the Silver Veil": [
+      "module:plotStages"
+    ],
+    "npc:Captain Lyra Voss": [
+      "module:plotStages"
+    ],
+    "npc:Various masked dignitaries": [
+      "module:plotStages"
+    ],
+    "npc:Xhalruun the Unraveled": [
+      "module:plotStages"
+    ],
+    "npc:Azarel Moros": [
+      "module:plotStages"
+    ],
+    "npc:Any surviving faction leaders": [
+      "module:plotStages"
+    ]
+  },
+  "validation_issues": [],
+  "generated_at": "2026-04-20T16:10:00.159848"
+}

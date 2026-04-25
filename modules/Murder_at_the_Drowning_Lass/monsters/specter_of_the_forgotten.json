@@ -1,0 +1,91 @@
+{
+  "name": "Specter of the Forgotten",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Chaotic Evil",
+  "armorClass": 12,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 0,
+  "abilities": {
+    "strength": 1,
+    "dexterity": 14,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 12,
+    "charisma": 16
+  },
+  "savingThrows": [],
+  "skills": {
+    "Stealth": 4,
+    "Perception": 3
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "acid",
+    "cold",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning",
+    "piercing",
+    "slashing (from nonmagical attacks)"
+  ],
+  "damageImmunities": [
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "understands all it knew in life but can't speak",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Incorporeal Movement",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Sunlight Sensitivity",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "none"
+    },
+    {
+      "name": "Life Drain (Recharge 5-6)",
+      "attackBonus": 4,
+      "damageDice": "3d6",
+      "damageBonus": 0,
+      "damageType": "necrotic"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Withering Touch",
+      "attackBonus": 4,
+      "damageDice": "3d6",
+      "damageBonus": 0,
+      "damageType": "necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "The Specter of the Forgotten drifts silently through the shadowed corners of Gallowswatch Garrison and the haunted depths of the Resonant Abyss, a mournful wraith born of lost memories and unspoken oaths. Its form is an ephemeral silhouette, cloaked in tattered remnants of faded regimental cloth that once bore the colors of forgotten soldiers. Pale, flickering wisps of mist swirl around its gaunt frame, coalescing into a visage where hollow, sorrowful eyes glow faintly with a cold, spectral light. Its mouth, a crimson-tinged maw, appears as a jagged, blood-red fissure--an eerie echo of whispered curses and unfulfilled vengeance. Wherever it passes, the air chills abruptly, carrying a faint scent of damp earth and old leather, mingled with the distant toll of a mournful bell. The Specter moves with a haunting grace, its presence accompanied by a low, reverberating hum that seems to echo the silent pleas of the drowned and the betrayed. It lingers near places steeped in sorrow and silence--the old gallows tree, the sanctum's black-speckled stone walls, and the waterlogged crypt--waiting for those who dare disturb the fragile veil between memory and oblivion. To behold it is to glimpse the tragic weight of forgotten lives, forever bound to the shadows of Brindlehearth Vale."
+}

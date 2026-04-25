@@ -1,0 +1,424 @@
+{
+  "areaId": "AC001",
+  "areaName": "The Aberrant Wastes",
+  "areaType": "mixed",
+  "areaDescription": "Twisted landscapes writhe under sickly, shifting skies, where reality itself seems fractured and alien growths pulse with unnatural light. Even the air hums with disquieting whispers, warning intruders that nothing here abides by the laws of the sane world.",
+  "dangerLevel": "high",
+  "recommendedLevel": 3,
+  "climate": "varied",
+  "terrain": "varied terrain",
+  "map": {
+    "mapId": "MAP_I_3",
+    "mapName": "Mixed Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "I01",
+        "type": "room",
+        "connections": [
+          "I02"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "I02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Warped Sentinel Vestibule"
+      },
+      {
+        "id": "I02",
+        "type": "room",
+        "connections": [
+          "I01",
+          "I03"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "I01",
+          "east": "I03"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "high",
+        "name": "Fleshforged Observation Nook"
+      },
+      {
+        "id": "I03",
+        "type": "room",
+        "connections": [
+          "I02"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {
+          "west": "I02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "high",
+        "name": "Huskbound Termination Cell"
+      }
+    ],
+    "layout": [
+      [
+        "I01",
+        "I02",
+        "I03"
+      ]
+    ],
+    "startRoom": "I02",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "I01",
+      "name": "Warped Sentinel Vestibule",
+      "type": "room",
+      "description": "This entry chamber marks the threshold between bleak wasteland and the aberrant, shifting horrors within. Columns weep oily ichor, and every stone is warped as if half-melted. Disjointed statues of ancient dwarves, their faces twisted into impossible shapes, flank the approach. The air tastes faintly of copper and static, and faint whispers echo from no discernible source.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "I02"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Aberrant Creeper",
+          "description": "A hunched, many-eyed horror that blends with the masonry, attacking intruders who linger or make noise."
+        }
+      ],
+      "lootTable": [
+        "Warped Silver Brooch (25 gp, faintly vibrating)",
+        "Fragmented Research Notes (pages torn from a dwarven journal describing anomalous events)"
+      ],
+      "plotHooks": [
+        "A page from the research notes mentions 'the Core' deeper within, and warns about the 'sentinels that are not what they seem.'",
+        "A splatter of fresh blood leads from the vestibule deeper into the facility, suggesting something (or someone) recently passed through."
+      ],
+      "dmInstructions": "This is the initial encounter room in Aberrant Core. Use atmospheric horror: describe impossible geometry and constant psychic unease. Adjust the Aberrant Creeper's stats for a level 3 party (use a modified Shadow with extra HP and a psychic attack). If party investigates the statues, a DC 14 Investigation reveals they were once dwarven defenders, possibly petrified and mutated by exposure to the Wastes.",
+      "doors": [
+        {
+          "name": "East Door",
+          "description": "An arching door of tarnished bronze fused with bone-like growths.",
+          "type": "heavy",
+          "locked": true,
+          "lockDC": 14,
+          "breakDC": 18,
+          "keyname": "Aberrant Core Key Fragment",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Investigation DC 14: Discover the statues are warped remains of dwarven defenders.",
+        "Perception DC 13: Notice the Aberrant Creeper before it attacks.",
+        "Arcana DC 12: Recognize the oily ichor as residue from planar leakage."
+      ],
+      "accessibility": "Accessible from the wastes, but the door requires either the key fragment (findable in the wastes) or a lock-picking/breaking attempt.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "Crumbled masonry and pockmarked stones hint at centuries of neglect and corruption."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "Curved, impossible angles and twisted arches violate the laws of geometry, a visible sign of the area\u2019s corruption."
+        },
+        {
+          "name": "Dust",
+          "description": "Veins of gray and purple dust swirl in unseen currents, occasionally coalescing into tiny, formless motes."
+        },
+        {
+          "name": "Aberrant Statues",
+          "description": "Mutated dwarf statues, limbs and faces contorted, some fused into the walls themselves."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Aberrant Creeper Ambush",
+          "description": "The Aberrant Creeper lashes out from a shadowy alcove, targeting the last party member to enter. If the party is quiet and perceptive, they may spot and avoid it."
+        }
+      ],
+      "adventureSummary": "This is the gateway to the Aberrant Core, setting the tone with unsettling architecture and a dangerous initial encounter. Hints of what lies deeper may be found by examining the environment and discovering research notes.",
+      "aliases": [
+        "Warped Sentinel Vestibule",
+        "I01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Warped Sentinel Vestibule",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "I02",
+      "name": "Fleshforged Observation Nook",
+      "type": "room",
+      "description": "A claustrophobic gallery ringed with portholes and crystalline slits looking out over a pulsing chasm. The walls are veined with living flesh and metal, visibly twitching in sync with distant, thunderous heartbeats. Tables bear strange surgical implements fused to the surfaces, and the air is heavy with the scent of ammonia and decay.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "I01",
+        "I03"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Fleshforged Aberrant",
+          "description": "A mutated experiment\u2014once a dwarven guard, now a hulking, stitched-together brute that patrols the room."
+        }
+      ],
+      "lootTable": [
+        "Surgical Tools (tools, worth 15 gp, useful for medical tasks)",
+        "Partial Security Keycard (can be combined with another fragment to open deeper doors)",
+        "Strange Phial of Mutagenic Serum (Potion of Alter Self, but with a minor side effect\u2014gain a harmless mutation for 1 hour)"
+      ],
+      "plotHooks": [
+        "The security keycard fragment here fits a slot in the East Door of the Warped Sentinel Vestibule.",
+        "Scribbled notes mention the 'Overseer in the Termination Cell' and hint at a malfunctioning security system."
+      ],
+      "dmInstructions": "The Fleshforged Aberrant is a tough but mindless opponent (use Ogre stats, but reduce HP and add resistance to psychic). Sound of combat may attract attention from deeper within. Searching the room reveals the keycard fragment and experimental mutagen. Roleplay opportunity: party may learn about the dwarf-turned-experiment by piecing together notes and remains.",
+      "doors": [
+        {
+          "name": "East Door",
+          "description": "A crystalline barrier with pulsing veins running through it.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 12,
+          "keyname": "",
+          "trapped": true,
+          "trap": "Arcane pulse trap triggers if the door is forced open: DC 14 Dexterity saving throw or take 2d6 lightning damage."
+        },
+        {
+          "name": "West Door",
+          "description": "Sinew-laced metal, surprisingly light but sticky to the touch.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 13,
+          "disableDC": 15,
+          "triggerDC": 14,
+          "damage": "2d6 lightning"
+        }
+      ],
+      "dcChecks": [
+        "Medicine DC 13: Identify the implements as surgical tools meant for grafting and mutation.",
+        "Arcana DC 12: Realize the room is partially alive due to planar contamination.",
+        "Investigation DC 13: Find the partial security keycard hidden among fused notes."
+      ],
+      "accessibility": "Accessible from the vestibule or through the east crystalline barrier; the latter is trapped but not locked.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "Cracking, leathery skin covers portions of the wall, showing ancient scars and failed experiments."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "Observation portholes are grown, not built, and faintly shimmer with internal light."
+        },
+        {
+          "name": "Dust",
+          "description": "The dust is pinkish and slightly sticky, clinging to everything."
+        },
+        {
+          "name": "Living Walls",
+          "description": "Sections of the room pulse gently, responding to touch with a shiver or twitch."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Fleshforged Aberrant Patrol",
+          "description": "This mutant will attack any non-mutant, but may be calmed briefly by showing signs of dwarven heritage (DC 15 Persuasion check)."
+        }
+      ],
+      "adventureSummary": "The party faces both mortal and existential threats in this room. They find vital clues for deeper traversal, and the room\u2019s living architecture provides both danger and information for clever adventurers.",
+      "aliases": [
+        "Fleshforged Observation Nook",
+        "I02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Fleshforged Observation Nook",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "I03",
+      "name": "Huskbound Termination Cell",
+      "type": "room",
+      "description": "Once a secure holding cell for dangerous subjects, the chamber is now riddled with restraints and hollowed-out husks fused to the walls. Flickering lights cast elongated shadows, and the air buzzes with static and the faint drone of a malfunctioning security device. The far wall is cracked open, revealing a small crawlspace lined with pseudoflesh and cables.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "I02"
+      ],
+      "areaConnectivity": [
+        "The Blackcrag Marches"
+      ],
+      "areaConnectivityId": [
+        "I01"
+      ],
+      "npcs": [
+        {
+          "name": "Damaged Security Overseer",
+          "description": "A dwarven construct, scorched and stuttering, still attempts to fulfill its original security protocols. It is confused and dangerous, lashing out at perceived threats but open to persuasion or reprogramming.",
+          "attitude": "Hostile (default), but can be shifted to Neutral or even Helpful with creative problem-solving or successful skill checks."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Huskbound Wretch",
+          "description": "A semi-catatonic, mutated captive that attacks any living being with mindless fury if disturbed."
+        }
+      ],
+      "lootTable": [
+        "Overseer's Access Sigil (can deactivate some security systems in the Core)",
+        "Damaged Data Core (reconstructable for plot info and clues)",
+        "3x Vials of Strange Blue ichor (restores 1d4 HP but causes a vivid hallucination for 1 minute)"
+      ],
+      "plotHooks": [
+        "Interfacing with the Damaged Security Overseer can reveal details about the deeper facility, the mutations, and possible escape routes.",
+        "Scraps of log data mention the 'Archivist Automaton' in another sector and a failed attempt to contain the Thing."
+      ],
+      "dmInstructions": "The Damaged Security Overseer should be a challenging encounter unless the party attempts dialogue or reprogramming (checks: Persuasion, Deception, or Tools). The Huskbound Wretch attacks anyone attempting to loot or interact with the walls. The crawlspace leads to a hidden maintenance shaft (potential shortcut or escape route).",
+      "doors": [
+        {
+          "name": "West Door",
+          "description": "A reinforced steel door with multiple locking levers, partially scorched and fused.",
+          "type": "heavy",
+          "locked": true,
+          "lockDC": 17,
+          "breakDC": 22,
+          "keyname": "Overseer's Access Sigil",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Insight DC 14: Realize the Overseer is confused and may be reasoned with.",
+        "Arcana DC 14: Diagnose the Overseer's malfunction and suggest a repair.",
+        "Investigation DC 13: Find the crawlspace and a concealed panel with the vials."
+      ],
+      "accessibility": "Difficult: the locked door can be opened by defeating or reasoning with the Overseer, or with the correct sigil.",
+      "dangerLevel": "High",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "Deep scoring and blast marks from failed containment and decades of neglect."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Security Standoff",
+          "description": "The Damaged Security Overseer challenges intruders and may attack unless calmed or reprogrammed."
+        }
+      ],
+      "adventureSummary": "A tense, dangerous final chamber for this stretch of the Core\u2014featuring a potential roleplay encounter, combat, and valuable security keys to progress further into the Ancients Lab.",
+      "aliases": [
+        "Huskbound Termination Cell",
+        "I03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Huskbound Termination Cell",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 3 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "dangerous predator",
+      "description": "A dangerous predator appropriate for level 3 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 3 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 3 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 3 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "enemy squad",
+      "description": "A enemy squad appropriate for level 3 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 3 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 3 parties"
+    },
+    {
+      "roll": "81-90",
+      "encounter": "monster pack",
+      "description": "A monster pack appropriate for level 3 parties"
+    }
+  ],
+  "areaFeatures": [
+    "crossroads",
+    "bridges",
+    "ruins"
+  ],
+  "notes": "Balance combat, exploration, and social encounters. Transitions between areas should feel natural.",
+  "spatialContractVersion": 1
+}

@@ -1,0 +1,823 @@
+{
+  "plotTitle": "Murder at the Drowning Lass: Echoes of Blood and Shadow",
+  "mainObjective": "Unravel the conspiracy behind a grisly tavern murder and the theft of a legendary treasure map, outwit the Red Maw gang and their rivals, and prevent the awakening of supernatural forces whose influence threatens to plunge the region into chaos.",
+  "plotPoints": [
+    {
+      "id": "PP001",
+      "title": "Shadows Beneath the Hearth",
+      "description": "The party arrives in Brindlehearth Village (BV001) during the bustling Morning Market, where tension hangs thick: a beloved baker has vanished, and rumors swirl of strange lights near the old well. Constable Farrel Dun recruits the party to investigate. Early leads point to the Drowning Lass tavern and suggest the missing baker might be connected to a wider conspiracy. The investigation here sets the party\u2019s reputation in town and uncovers their first hints of trouble brewing beneath the surface.",
+      "location": "BV001",
+      "nextPoints": [
+        "PP002"
+      ],
+      "status": "not started",
+      "plotImpact": "The party's investigation determines their standing with villagers and uncovers the first hints of an organized conspiracy.",
+      "sideQuests": [
+        {
+          "id": "SQ001",
+          "title": "Bread and Whispers",
+          "description": "Help Old Ellyn, the folklore spinner, calm the frightened townsfolk by gathering charms and protective herbs from the market, winning trust and stories in return.",
+          "involvedLocations": [
+            "BV001"
+          ],
+          "status": "not started",
+          "plotImpact": "Improved reputation gives the party leverage in social encounters and may reveal additional rumors."
+        },
+        {
+          "id": "SQ002",
+          "title": "Well of Secrets",
+          "description": "Investigate the old well for signs of the missing baker, possibly uncovering a hidden passage or odd residue suggesting something was dragged below.",
+          "involvedLocations": [
+            "BV001"
+          ],
+          "status": "not started",
+          "plotImpact": "Unlocks a shortcut for later exploration and provides an early clue about the underground activity."
+        }
+      ]
+    },
+    {
+      "id": "PP002",
+      "title": "The Drowning Lass Unveiled",
+      "description": "The party\u2019s investigation leads to The Drowning Lass tavern (BV001), where a grisly murder has occurred. Inside, they uncover signs of a struggle and evidence of a secret society operating beneath the town's surface. Suspicious regulars and a cryptic ledger hint at connections between the missing townsfolk, the murder, and the infamous Red Maw gang. The clues begin to tie the events in Brindlehearth to a wider criminal plot.",
+      "location": "BV001",
+      "nextPoints": [
+        "PP003"
+      ],
+      "status": "not started",
+      "plotImpact": "Reveals the link between the disappearances, the tavern, and the Red Maw, setting the stage for confrontation.",
+      "sideQuests": [
+        {
+          "id": "SQ003",
+          "title": "A Nervous Ear",
+          "description": "Win the confidence of Gritch the One-Eared, a nervous patron who witnessed something vital, by protecting him from intimidation and coaxing out his secrets.",
+          "involvedLocations": [
+            "BV001"
+          ],
+          "status": "not started",
+          "plotImpact": "Gritch provides a clue to a hidden entrance and implicates a local conspirator."
+        },
+        {
+          "id": "SQ004",
+          "title": "Ledger of Shadows",
+          "description": "Decipher the cryptic ledger found in the tavern's back room to trace payments and coded communications with the Red Maw.",
+          "involvedLocations": [
+            "BV001"
+          ],
+          "status": "not started",
+          "plotImpact": "Unlocks additional suspects and pinpoints the next location to investigate."
+        }
+      ]
+    },
+    {
+      "id": "PP003",
+      "title": "Into the Vale's Underbelly",
+      "description": "Following clues from the tavern, the party uncovers a hidden tunnel beneath Brindlehearth Village (BV001), leading toward the edge of the Widdershins Moors (WM001). In these shadowy passages, they contend with traps, enforcers, and strange magical wards. Evidence mounts of a plan to abduct key townsfolk for a mysterious ritual, and the party learns of a stolen treasure map\u2014rumored to be the Red Maw\u2019s true prize.",
+      "location": "BV001",
+      "nextPoints": [
+        "PP004"
+      ],
+      "status": "not started",
+      "plotImpact": "The party discovers the full extent of the Red Maw's plot, setting up a race against time to prevent a ritual sacrifice.",
+      "sideQuests": [
+        {
+          "id": "SQ005",
+          "title": "Lost in the Tunnels",
+          "description": "Rescue a frightened child who wandered into the tunnels chasing a lost pet, avoiding traps and gaining a grateful family\u2019s support.",
+          "involvedLocations": [
+            "BV001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides an ally in the form of the child\u2019s family and knowledge of secret exits."
+        },
+        {
+          "id": "SQ006",
+          "title": "Warded Woes",
+          "description": "Disarm or subvert a series of magical traps left by the Red Maw\u2019s mage, gaining access to a hidden stash of supplies or information.",
+          "involvedLocations": [
+            "BV001"
+          ],
+          "status": "not started",
+          "plotImpact": "Unlocks magical resources for the final confrontation or reveals the ritual\u2019s timing."
+        }
+      ]
+    },
+    {
+      "id": "PP004",
+      "title": "The Ritual at Hearth's Edge",
+      "description": "On the outskirts of Brindlehearth at a ruined chapel (BV001), the Red Maw prepares to enact a ritual at dawn, using townsfolk as sacrifices to find or unlock the treasure map\u2019s secrets. The party must disrupt the ceremony, confront the Red Maw lieutenant, and decide whether to pursue the gang further or explore the ritual\u2019s supernatural consequences. Their actions here determine the fate of Brindlehearth and who escapes with the map.",
+      "location": "BV001",
+      "nextPoints": [
+        "PP005"
+      ],
+      "status": "not started",
+      "plotImpact": "The party's actions here resolve the main arc in Brindlehearth and shape the future of the Vale.",
+      "sideQuests": [
+        {
+          "id": "SQ007",
+          "title": "The Folklore Spinner\u2019s Boon",
+          "description": "Call upon Old Ellyn\u2019s knowledge of old rites to counter the ritual's magic, if the party won her trust earlier.",
+          "involvedLocations": [
+            "BV001"
+          ],
+          "status": "not started",
+          "plotImpact": "Makes disrupting the ritual easier or less dangerous."
+        },
+        {
+          "id": "SQ008",
+          "title": "Captured Comrades",
+          "description": "Free captured villagers during the chaos, facing difficult choices between saving innocents or chasing down the Red Maw\u2019s leader.",
+          "involvedLocations": [
+            "BV001"
+          ],
+          "status": "not started",
+          "plotImpact": "Each choice affects who survives and the party\u2019s reputation in the Vale."
+        }
+      ]
+    },
+    {
+      "id": "PP005",
+      "title": "Blood Trails to the Red Maw Wilds",
+      "description": "With leads from the disrupted ritual and possibly a fragment of the treasure map, the party is commissioned by a desperate trader whose caravans have been vanishing near the Red Maw Wilds (RME001). The stolen goods may be linked to the map\u2019s true value. Investigating this lawless wilderness, the party tracks the Red Maw\u2019s movements, learning that the gang\u2019s power is threatened by internal strife and a rival cult.",
+      "location": "RME001",
+      "nextPoints": [
+        "PP006"
+      ],
+      "status": "not started",
+      "plotImpact": "Entry into the Red Maw Wilds, establishing the stakes and introducing the area\u2019s dangers. Success or failure here affects available allies and knowledge.",
+      "sideQuests": [
+        {
+          "id": "SQ009",
+          "title": "Hunter or Hunted",
+          "description": "The party stumbles upon a wounded predator caught in a cruel trap. Freeing it may earn a wild ally or provoke a territorial beast.",
+          "involvedLocations": [
+            "RME001"
+          ],
+          "status": "not started",
+          "plotImpact": "Animal ally might aid party later or become a hostile encounter."
+        },
+        {
+          "id": "SQ010",
+          "title": "Campfire Whispers",
+          "description": "Scattered camps of rival scavengers and outcasts offer information for the right price\u2014or might ambush the party.",
+          "involvedLocations": [
+            "RME001"
+          ],
+          "status": "not started",
+          "plotImpact": "Gaining information here can grant shortcuts or warnings for later plot points."
+        }
+      ]
+    },
+    {
+      "id": "PP006",
+      "title": "The Shattered Pact",
+      "description": "In the Red Maw Wilds (RME001), the party discovers a fragile truce between rival warbands has collapsed after the theft of a legendary totem\u2014said to be tied to the same ancient magic as the treasure map. Each faction blames the other, and outsiders are viewed with suspicion. Navigating this powder keg, the party learns the map\u2019s legend is no mere rumor: it may lead to a power that could sway the Wilds, or unleash something far worse.",
+      "location": "RME001",
+      "nextPoints": [
+        "PP007"
+      ],
+      "status": "not started",
+      "plotImpact": "The party\u2019s alliances and approach to the fractured warbands determine the opposition and possible support in the coming climax.",
+      "sideQuests": [
+        {
+          "id": "SQ011",
+          "title": "Totem of the Crimson Fang",
+          "description": "A cunning warband leader offers information or safe passage in exchange for retrieving a stolen totem from a treacherous ravine haunted by bloodthirsty fey.",
+          "involvedLocations": [
+            "RME001"
+          ],
+          "status": "not started",
+          "plotImpact": "Returning the totem can secure a powerful, if unpredictable, ally."
+        },
+        {
+          "id": "SQ012",
+          "title": "Echoes in the Stones",
+          "description": "Rumors speak of a hidden shrine among the jagged outcrops. Exploring it may reveal ancestral secrets\u2014or awaken violent guardians.",
+          "involvedLocations": [
+            "RME001"
+          ],
+          "status": "not started",
+          "plotImpact": "Discovering the shrine can provide magical boons or critical lore about the Wilds."
+        }
+      ]
+    },
+    {
+      "id": "PP007",
+      "title": "The Ravager\u2019s Gambit",
+      "description": "Evidence reveals that neither warband is responsible for the recent violence; instead, a cult devoted to an ancient, blood-hungry spirit has orchestrated the chaos, hoping to claim the treasure map and totem for a catastrophic summoning. Their lair, hidden beneath the wilds\u2019 deepest thicket, pulses with malevolent energy. The party must infiltrate the cult, disrupt their ritual, and prevent the spirit\u2019s awakening\u2014racing against any Red Maw survivors who might seize the map for themselves.",
+      "location": "RME001",
+      "nextPoints": [
+        "PP008"
+      ],
+      "status": "not started",
+      "plotImpact": "The party\u2019s handling of the cult and the spirit\u2019s fate determines the final shape of power in the Wilds.",
+      "sideQuests": [
+        {
+          "id": "SQ013",
+          "title": "Masks of the Wilds",
+          "description": "To infiltrate the cult undetected, the party must obtain ritual masks from a paranoid recluse who knows their secrets.",
+          "involvedLocations": [
+            "RME001"
+          ],
+          "status": "not started",
+          "plotImpact": "Obtaining the masks greatly improves infiltration success and opens non-combat options during the cult encounter."
+        }
+      ]
+    },
+    {
+      "id": "PP008",
+      "title": "Red Maw\u2019s Reckoning",
+      "description": "Within the cult\u2019s blood-soaked chamber (RME001), the party faces a climactic confrontation with the cult leader and the partially-summoned spirit. The battle\u2019s outcome\u2014and the party\u2019s choices\u2014will reshape the fate of the Wilds and determine if the Red Maw gang is ended or simply scattered, and whether the treasure map is lost, found, or imbued with new power.",
+      "location": "RME001",
+      "nextPoints": [
+        "PP009"
+      ],
+      "status": "not started",
+      "plotImpact": "The party\u2019s decisions determine whether the Wilds descend into further bloodshed, find an uneasy peace, or fall under the sway of an ancient, monstrous power.",
+      "sideQuests": [
+        {
+          "id": "SQ014",
+          "title": "Scars and Spoils",
+          "description": "Following the battle, wounded warband survivors offer knowledge, rare weapons, or hidden caches in exchange for aid or a share of the spoils.",
+          "involvedLocations": [
+            "RME001"
+          ],
+          "status": "not started",
+          "plotImpact": "Securing these bargains can yield rewards, future plot hooks, or lingering rivalries."
+        }
+      ]
+    },
+    {
+      "id": "PP009",
+      "title": "Blood Oaths Beneath Canvas",
+      "description": "With the Red Maw gang\u2019s power broken and the map\u2019s secrets partially unveiled, the party traces the last leads to the Barrowmire Settlements (THB001), where a murderer is rumored to be hiding among the outlaws. The settlements are beset by restless dead, and the party must navigate a fearful, insular community to uncover the murderer and learn how the map\u2019s legend is bound to ancient barrows beneath the mists.",
+      "location": "THB001",
+      "nextPoints": [
+        "PP010"
+      ],
+      "status": "not started",
+      "plotImpact": "Introduces the supernatural threat of the restless dead and connects the murder investigation to the region\u2019s deeper mysteries.",
+      "sideQuests": [
+        {
+          "id": "SQ015",
+          "title": "Lost in the Mist",
+          "description": "A child has vanished after following a ghostlight into the old burial mounds. Searching for the child might provide clues to the escalating hauntings.",
+          "involvedLocations": [
+            "THB001"
+          ],
+          "status": "not started",
+          "plotImpact": "May yield a spectral token linked to the main threat and earn the villagers\u2019 trust."
+        },
+        {
+          "id": "SQ016",
+          "title": "Secrets Beneath the Tavern",
+          "description": "Strange noises and cold drafts emanate from beneath the Drowned Lantern tavern. Investigating may reveal hidden catacombs or a spirit anchor.",
+          "involvedLocations": [
+            "THB001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides shortcuts or secret knowledge for future plot points."
+        }
+      ]
+    },
+    {
+      "id": "PP010",
+      "title": "Echoes of the Barrowmire",
+      "description": "Exploring the ancient barrows at the settlement\u2019s edge (THB001), the party uncovers arcane sigils and evidence that someone\u2014possibly the murderer they seek\u2014has been tampering with the graves. The supernatural events are confirmed to be connected to a deliberate act, and clues reveal the treasure map\u2019s origin may lie in the oldest barrow, bound by a forgotten curse.",
+      "location": "THB001",
+      "nextPoints": [
+        "PP011"
+      ],
+      "status": "not started",
+      "plotImpact": "Confirms the supernatural events are connected to a deliberate act and raises the stakes.",
+      "sideQuests": [
+        {
+          "id": "SQ017",
+          "title": "The Mournful Piper",
+          "description": "A ghostly figure plays mournful tunes at dusk. Learning the Piper\u2019s story may grant insight into the settlement\u2019s history\u2014or provide a powerful spirit ally.",
+          "involvedLocations": [
+            "THB001"
+          ],
+          "status": "not started",
+          "plotImpact": "The Piper\u2019s favor could grant advantages during spirit encounters."
+        }
+      ]
+    },
+    {
+      "id": "PP011",
+      "title": "The Living and the Dead",
+      "description": "The investigation points to a reclusive outsider, Dolwen Marsh, who claims he\u2019s trying to contain a much greater evil beneath the barrows (THB001). As the dead begin to rise in greater numbers, the party must decide whether to help Dolwen, expose him, or find another solution\u2014while learning that the curse protecting the map\u2019s final secret is nearly broken.",
+      "location": "THB001",
+      "nextPoints": [
+        "PP012"
+      ],
+      "status": "not started",
+      "plotImpact": "Builds to a moral dilemma with lasting effects on both the settlement and its dead; choices set the stage for the climax.",
+      "sideQuests": [
+        {
+          "id": "SQ018",
+          "title": "A Bargain with the Widow Shade",
+          "description": "A powerful spirit, the Widow Shade, offers information and protection in exchange for a favor: reuniting her lost locket with her grave.",
+          "involvedLocations": [
+            "THB001"
+          ],
+          "status": "not started",
+          "plotImpact": "The Widow\u2019s help can make the final confrontation easier or provide a vital clue."
+        }
+      ]
+    },
+    {
+      "id": "PP012",
+      "title": "Night of Restless Shadows",
+      "description": "A powerful force animates the spirits and dead of Barrowmire (THB001), threatening to overrun the living. The party must confront the awakened curse beneath the largest barrow\u2014now revealed to be a ward for the map\u2019s secret. Succeeding here determines whether the map\u2019s true path is revealed, and whether Barrowmire survives.",
+      "location": "THB001",
+      "nextPoints": [
+        "PP013"
+      ],
+      "status": "not started",
+      "plotImpact": "Resolution shapes the fate of Barrowmire\u2014choices determine whether the settlement survives, falls, or remains forever haunted.",
+      "sideQuests": [
+        {
+          "id": "SQ019",
+          "title": "The Last Light",
+          "description": "The town\u2019s spirit ward, a beacon keeping the worst hauntings at bay, is failing. Repairing or defending it during the climax could buy precious time.",
+          "involvedLocations": [
+            "THB001"
+          ],
+          "status": "not started",
+          "plotImpact": "Success makes the final encounter less deadly; failure increases the challenge and cost to the townsfolk."
+        }
+      ]
+    },
+    {
+      "id": "PP013",
+      "title": "Shadows Along the King\u2019s Tread",
+      "description": "With the map\u2019s final clue in hand, the party follows its path to The King\u2019s Tread (OKR001)\u2014an ancient, haunted road said to lead to the hidden treasure. Travelers have reported disappearances and spectral processions. To reach the treasure, the party must investigate the supernatural and mundane threats along the road, gathering lore and surviving ambushes.",
+      "location": "OKR001",
+      "nextPoints": [
+        "PP014"
+      ],
+      "status": "not started",
+      "plotImpact": "Introduces the supernatural and mundane threats along The King\u2019s Tread, and allows the party to uncover the rumor of a cursed royal procession.",
+      "sideQuests": [
+        {
+          "id": "SQ020",
+          "title": "The Vanished Caravan",
+          "description": "Search the overgrown roadside for clues about a missing merchant caravan; find evidence of struggle and strange, spectral footprints.",
+          "involvedLocations": [
+            "OKR001"
+          ],
+          "status": "not started",
+          "plotImpact": "Revealing the involvement of both wolves and ghostly figures, hinting at connections between the mundane and supernatural hazards."
+        },
+        {
+          "id": "SQ021",
+          "title": "Wolfpack Hunt",
+          "description": "Track and confront a pack of unnaturally cunning wolves that have been ambushing travelers, possibly led by an intelligent, spectral dire wolf.",
+          "involvedLocations": [
+            "OKR001"
+          ],
+          "status": "not started",
+          "plotImpact": "Defeating or negotiating with the wolves can reduce future ambushes or gain temporary allies."
+        }
+      ]
+    },
+    {
+      "id": "PP014",
+      "title": "The Milestone\u2019s Curse",
+      "description": "Deeper investigation along The King\u2019s Tread (OKR001) reveals ancient milestones inscribed with binding runes, and the party encounters ghostly apparitions of a lost king\u2019s retinue. The path to the map\u2019s treasure and the next supernatural threat is blocked by a curse that must be understood\u2014and possibly lifted\u2014before the party can continue.",
+      "location": "OKR001",
+      "nextPoints": [
+        "PP015"
+      ],
+      "status": "not started",
+      "plotImpact": "Provides key lore about the ancient curse and the royal tragedy that binds the souls to the road.",
+      "sideQuests": [
+        {
+          "id": "SQ022",
+          "title": "Echoes of the Past",
+          "description": "Help a lingering ghostly squire recall his unfinished duty, piecing together pages from a scattered royal decree.",
+          "involvedLocations": [
+            "OKR001"
+          ],
+          "status": "not started",
+          "plotImpact": "Completing the squire\u2019s request earns the party a clue to breaking the curse or a protective charm."
+        },
+        {
+          "id": "SQ023",
+          "title": "Highwayman\u2019s Parley",
+          "description": "Negotiate with\u2014or defeat\u2014a gang of highwaymen who have begun to worship the restless spirits, believing them omens of fortune.",
+          "involvedLocations": [
+            "OKR001"
+          ],
+          "status": "not started",
+          "plotImpact": "Parleying may reveal a hidden shortcut to the royal tomb or information about the curse\u2019s catalyst."
+        }
+      ]
+    },
+    {
+      "id": "PP015",
+      "title": "Procession of the Forgotten King",
+      "description": "The party uncovers the site of a ruined royal camp deep in the mist-shrouded King\u2019s Tread (OKR001), where the cursed procession replays its last moments each night. They must intervene within the spectral re-enactment, confronting the ghostly king and his loyal retainers. Choices made here determine whether the curse is ended, and whether the final path to the treasure is revealed.",
+      "location": "OKR001",
+      "nextPoints": [
+        "PP016"
+      ],
+      "status": "not started",
+      "plotImpact": "The party\u2019s actions can end the curse or doom the ghosts to continue haunting The King\u2019s Tread\u2014and may draw the attention of other supernatural forces.",
+      "sideQuests": [
+        {
+          "id": "SQ024",
+          "title": "The Royal Wolf",
+          "description": "A spectral dire wolf, the former king\u2019s hound, guards the camp. Appeasing, befriending, or banishing it can sway the king\u2019s spirit in the final confrontation.",
+          "involvedLocations": [
+            "OKR001"
+          ],
+          "status": "not started",
+          "plotImpact": "Winning the wolf\u2019s loyalty can aid in the spectral battle or grant safe passage after the climax."
+        }
+      ]
+    },
+    {
+      "id": "PP016",
+      "title": "The King\u2019s Tread Restored",
+      "description": "After the curse is resolved, the mists lift from The King\u2019s Tread (OKR001), allowing the party to continue their search for the treasure\u2019s true resting place\u2014rumored to be connected to the depths of the Stoneheart Chasmlands (SR001). Unresolved consequences\u2014such as surviving highwaymen, freed spirits, or unleashed magical energies\u2014set hooks for what lies below.",
+      "location": "OKR001",
+      "nextPoints": [
+        "PP017"
+      ],
+      "status": "not started",
+      "plotImpact": "Wraps up the main arc; the party\u2019s choices affect the fate of The King\u2019s Tread, its people, and the lingering spirits.",
+      "sideQuests": [
+        {
+          "id": "SQ025",
+          "title": "Return of the Lost",
+          "description": "Help families reunite with those saved or recovered from the Tread, or escort new travelers safely through the restored road.",
+          "involvedLocations": [
+            "OKR001"
+          ],
+          "status": "not started",
+          "plotImpact": "Builds goodwill among locals, earns rewards, and seeds future quests."
+        },
+        {
+          "id": "SQ026",
+          "title": "Secrets in the Stone",
+          "description": "Hidden beneath one of the ancient milestones is a sealed royal artifact, now accessible. Deciding what to do with it could invite further intrigue.",
+          "involvedLocations": [
+            "OKR001"
+          ],
+          "status": "not started",
+          "plotImpact": "Recovering the artifact leads to future political or magical complications."
+        }
+      ]
+    },
+    {
+      "id": "PP017",
+      "title": "Descent into the Stoneheart Chasmlands",
+      "description": "The party follows the treasure map\u2019s clues to the Stoneheart Chasmlands (SR001), a dungeon of jagged cliffs, shadowy gorges, and ancient tunnels. Here, they seek the Heartshard Geode\u2014an artifact said to be the key to the map\u2019s power. The journey below is fraught with hazards both natural and supernatural, and the party must contend with rival treasure-seekers drawn by rumors of the map\u2019s awakening magic.",
+      "location": "SR001",
+      "nextPoints": [
+        "PP018"
+      ],
+      "status": "not started",
+      "plotImpact": "Establishes the location's dangers and the artifact's lure, setting up both the main quest and the ongoing threat of collapse.",
+      "sideQuests": [
+        {
+          "id": "SQ027",
+          "title": "The Lost Surveyors",
+          "description": "Rescue or recover evidence of a missing surveyor team lost in the chasmlands. Their notes may reveal secret tunnels or traps.",
+          "involvedLocations": [
+            "SR001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides additional knowledge (safe routes, hazards, or bypasses) that can help in later exploration."
+        },
+        {
+          "id": "SQ028",
+          "title": "Predator in the Shadows",
+          "description": "A territorial chasm-stalker has been hunting in the upper tunnels. Locating and confronting it can prevent future ambushes.",
+          "involvedLocations": [
+            "SR001"
+          ],
+          "status": "not started",
+          "plotImpact": "Felling the beast can win the trust of a hidden outcast (NPC) deeper within."
+        }
+      ]
+    },
+    {
+      "id": "PP018",
+      "title": "Echoes of the Deep",
+      "description": "Within the labyrinthine stone corridors of the Chasmlands (SR001), the party encounters evidence of ancient burials and strange metallic veins pulsing with magical energy\u2014the same type found in the treasure map\u2019s ink. The deeper they go, the more they are harried by spectral guardians and illusions. They must decipher ancient inscriptions to find the artifact\u2019s true resting place.",
+      "location": "SR001",
+      "nextPoints": [
+        "PP019"
+      ],
+      "status": "not started",
+      "plotImpact": "Reveals that the artifact is protected by more than just natural hazards; social and investigative skills become crucial.",
+      "sideQuests": [
+        {
+          "id": "SQ029",
+          "title": "The Echoing Pact",
+          "description": "An ancient ghost, Melaun the Bound, offers aid if the party can resolve his unfinished business\u2014reuniting two halves of a broken amulet.",
+          "involvedLocations": [
+            "SR001"
+          ],
+          "status": "not started",
+          "plotImpact": "Completing this quest pacifies some spectral threats and grants magical aid."
+        }
+      ]
+    },
+    {
+      "id": "PP019",
+      "title": "The Broken Brotherhood",
+      "description": "In a massive subterranean gallery (SR001), the party discovers the outlawed remnant of the Stone Brotherhood\u2014a secretive order that once guarded the chasmlands and now seeks to claim the Heartshard Geode for themselves. The Brotherhood\u2019s interest in the map\u2019s magic collides with the party\u2019s goals. Negotiation, infiltration, or confrontation will shape the final battle for the artifact.",
+      "location": "SR001",
+      "nextPoints": [
+        "PP020"
+      ],
+      "status": "not started",
+      "plotImpact": "Introduces a key faction with competing goals. Player choices here shape the final confrontation and potential alliances.",
+      "sideQuests": [
+        {
+          "id": "SQ030",
+          "title": "Double-Edged Offer",
+          "description": "Brotherhood lieutenant Varek will betray his leader for a share of the prize. Will the party trust him?",
+          "involvedLocations": [
+            "SR001"
+          ],
+          "status": "not started",
+          "plotImpact": "Allying with Varek bypasses some traps, but risks a double-cross later."
+        },
+        {
+          "id": "SQ031",
+          "title": "Collapse Alarm",
+          "description": "Sabotaged supports threaten a catastrophic cave-in. Preventing disaster could save innocents or trap rivals\u2014but at what risk?",
+          "involvedLocations": [
+            "SR001"
+          ],
+          "status": "not started",
+          "plotImpact": "Saving the gallery from collapse may cost precious time, but preserves key routes and resources."
+        }
+      ]
+    },
+    {
+      "id": "PP020",
+      "title": "Heart of the Chasm",
+      "description": "At the deepest vault (SR001), the party faces a climactic confrontation for control of the Heartshard Geode\u2014now revealed to be the map\u2019s ultimate secret. Rivals, spectral guardians, and desperate factions converge as the artifact\u2019s power warps reality. The party must choose: seize the geode, destroy it, or use its power to bargain with desperate factions, including the Red Maw\u2019s remnants. Their decisions here reshape the fate of the Chasmlands and the region.",
+      "location": "SR001",
+      "nextPoints": [
+        "PP021"
+      ],
+      "status": "not started",
+      "plotImpact": "Climactic showdown with high stakes and multiple possible endings based on the party's alliances, actions, and moral choices.",
+      "sideQuests": [
+        {
+          "id": "SQ032",
+          "title": "The Shard's Will",
+          "description": "The Heartshard Geode\u2019s lingering consciousness offers a bargain\u2014safeguard its legacy, and it will grant boons or visions.",
+          "involvedLocations": [
+            "SR001"
+          ],
+          "status": "not started",
+          "plotImpact": "Choosing to heed or reject the geode\u2019s offer shapes the dungeon\u2019s future and possible epilogue boons or curses."
+        }
+      ]
+    },
+    {
+      "id": "PP021",
+      "title": "Whispers from the Resonant Abyss",
+      "description": "Having uncovered the map\u2019s true power, the party is summoned to Deepharrow, a mining outpost above the Resonant Abyss (EDC001), where miners have vanished and unnatural echoes lure the unwary. Locals believe the disturbances are linked to the same magic that awakened in the Chasmlands. The party must investigate the outpost and prepare for a descent into the Abyss.",
+      "location": "EDC001",
+      "nextPoints": [
+        "PP022"
+      ],
+      "status": "not started",
+      "plotImpact": "Sets up the Abyss as the next threat and provides hooks and knowledge crucial for survival below.",
+      "sideQuests": [
+        {
+          "id": "SQ033",
+          "title": "Echoes in the Walls",
+          "description": "Some outpost workers are in catatonic states, unable to speak except by humming strange melodies. If the party can calm or heal one, they may learn key details about hazards or secret passages within the Abyss.",
+          "involvedLocations": [
+            "EDC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Reveals a hidden route in the Abyss, bypassing a deadly trap."
+        },
+        {
+          "id": "SQ034",
+          "title": "The Lost Satchel",
+          "description": "A miner\u2019s satchel containing a journal and a unique tuning fork is missing. Recovering it from a collapsed tunnel helps prepare the party for challenges below.",
+          "involvedLocations": [
+            "EDC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides a tool that aids in controlling the Abyss' reverberating hazards."
+        }
+      ]
+    },
+    {
+      "id": "PP022",
+      "title": "Descent into the Endless Echoes",
+      "description": "The party enters the Resonant Abyss (EDC001), a labyrinth of stone corridors and vast chasms where every sound is amplified and distorted. They must brave deadly hazards, echo-sensitive traps, and abyssal horrors as they learn the ancient chasm has been awakened by recent events\u2014possibly tied to the party\u2019s own actions with the Heartshard Geode.",
+      "location": "EDC001",
+      "nextPoints": [
+        "PP023"
+      ],
+      "status": "not started",
+      "plotImpact": "Draws the party deeper, escalating danger and introducing the Abyss' unique threats\u2014dissonant creatures and shifting, living stone.",
+      "sideQuests": [
+        {
+          "id": "SQ035",
+          "title": "Silent Steps",
+          "description": "A narrow side passage offers a shortcut, but it\u2019s filled with sound-sensitive fungus. Crossing without triggering a spore burst requires clever stealth or magic.",
+          "involvedLocations": [
+            "EDC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Allows the party to avoid a dangerous monster, though the fungus may have useful alchemical properties."
+        },
+        {
+          "id": "SQ036",
+          "title": "The Broken Bell",
+          "description": "A hidden alcove contains a broken resonance bell. Repairing it or deciphering its runes provides insight into the nature of the Abyss and may ward off certain horrors.",
+          "involvedLocations": [
+            "EDC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Unlocks a one-time protective ward against echo-horrors."
+        }
+      ]
+    },
+    {
+      "id": "PP023",
+      "title": "The Echoing Throne",
+      "description": "At the heart of the Abyss (EDC001), the party finds the source of the disturbances: the Resonant Sovereign, an ancient entity partially awakened by the miners\u2019 intrusion and the magical upheaval above. The Sovereign can communicate, offering cryptic bargains or threats. The party must choose between combat, negotiation, or attempting to reseal the entity\u2014each path with its own peril and consequence for the region.",
+      "location": "EDC001",
+      "nextPoints": [
+        "PP024"
+      ],
+      "status": "not started",
+      "plotImpact": "Climactic confrontation; the party's choices determine the fate of the Abyss and the outpost above.",
+      "sideQuests": [
+        {
+          "id": "SQ037",
+          "title": "Voices of the Past",
+          "description": "Ghostly echoes of previous explorers linger. If the party can appease these spirits or learn from their fate, they may gain leverage in negotiations or discover a ritual to help subdue the Resonant Sovereign.",
+          "involvedLocations": [
+            "EDC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides vital lore and possibly an advantage during the confrontation."
+        }
+      ]
+    },
+    {
+      "id": "PP024",
+      "title": "Resonance Unbound\u2014or Silenced",
+      "description": "With the Sovereign defeated, bargained with, or resealed (EDC001), the party must escape as the Abyss destabilizes. Their actions decide whether the Abyss becomes a continuing threat, a dormant power, or a source of knowledge and opportunity for the surface world. Surviving miners and townsfolk will remember the party\u2019s choices.",
+      "location": "EDC001",
+      "nextPoints": [
+        "PP025"
+      ],
+      "status": "not started",
+      "plotImpact": "Resolution of the adventure, with multiple possible outcomes and the party's reputation or future quests shaped by their choices.",
+      "sideQuests": [
+        {
+          "id": "SQ038",
+          "title": "The Last Echo",
+          "description": "A lone survivor is trapped in a collapsing tunnel. Rescuing them requires speed and ingenuity, but they may possess vital information or rewards.",
+          "involvedLocations": [
+            "EDC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides a reward and potentially an influential ally in Deepharrow."
+        },
+        {
+          "id": "SQ039",
+          "title": "Echoes for Sale",
+          "description": "Strange crystals harvested from the Abyss retain lingering echoes. The party can attempt to retrieve these dangerous artifacts on their way out, but doing so risks additional hazards.",
+          "involvedLocations": [
+            "EDC001"
+          ],
+          "status": "not started",
+          "plotImpact": "Crystals can be sold or studied, granting wealth or magical research opportunities."
+        }
+      ]
+    },
+    {
+      "id": "PP025",
+      "title": "Arrival in the Hearthwood Vale",
+      "description": "As the party rests, rumors reach them that the Hearthwood Vale (HG001)\u2014once a peaceful town\u2014now suffers from mysterious disappearances and haunting music. The mayor asks for help, believing the disturbances are linked to the magical upheavals caused by the party\u2019s earlier actions. The party\u2019s reputation precedes them, and their choices across the module begin to echo in the Vale\u2019s fate.",
+      "location": "HG001",
+      "nextPoints": [
+        "PP026"
+      ],
+      "status": "not started",
+      "plotImpact": "Introduces the core mystery and themes of community, trust, and hidden threats.",
+      "sideQuests": [
+        {
+          "id": "SQ040",
+          "title": "The Baker's Worry",
+          "description": "Jarmel the baker is distraught over his missing apprentice. Investigating his shop could turn up clues or a hidden message.",
+          "involvedLocations": [
+            "HG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides the party with a clue about the apprentice\u2019s last known contact and hints at a secret meeting spot in the woods."
+        },
+        {
+          "id": "SQ041",
+          "title": "Lantern Light Watch",
+          "description": "The town watch invites the party to join a night patrol for strange activity. They may spot a suspicious cloaked figure or uncover evidence of something unnatural disturbing the vale\u2019s peace.",
+          "involvedLocations": [
+            "HG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Reveals either a physical clue or an early encounter with a minor shadowy creature."
+        }
+      ]
+    },
+    {
+      "id": "PP026",
+      "title": "The Hidden Heart of the Vale",
+      "description": "As the party gathers clues (HG001), they discover the missing townsfolk are being lured by haunting music and dreams to the ancient woods. Investigation leads to a concealed glen where a fey-blooded minstrel, Silwen, seeks to awaken an ancient spirit\u2014her magic heightened by the map\u2019s recent disturbances. The final secret of the treasure map is revealed: it was a seal, not a guide, and now the party must decide if the spirit should be awakened, bargained with, or resealed.",
+      "location": "HG001",
+      "nextPoints": [
+        "PP027"
+      ],
+      "status": "not started",
+      "plotImpact": "Shifts the mystery from mundane to magical, introducing the antagonist and connecting disappearances to the supernatural.",
+      "sideQuests": [
+        {
+          "id": "SQ042",
+          "title": "The Old Bell-Tower",
+          "description": "An eccentric local claims the abandoned bell-tower overlooks the glen and holds a secret about the spirit beneath the vale.",
+          "involvedLocations": [
+            "HG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Provides magical or physical resources that will help in the coming confrontation with Silwen."
+        }
+      ]
+    },
+    {
+      "id": "PP027",
+      "title": "Confrontation Beneath the Lantern Boughs",
+      "description": "The party faces Silwen and her enchanted thralls (HG001) as she attempts the ritual. The fate of the Vale hangs in the balance\u2014player choices here are shaped by all they have learned about folklore, sacrifice, and the dangers of awakening powers best left sleeping. The enchanted townsfolk complicate matters, forcing players to balance aggression with care.",
+      "location": "HG001",
+      "nextPoints": [
+        "PP028"
+      ],
+      "status": "not started",
+      "plotImpact": "Leads to the climax; player choices determine the fate of the townsfolk and the spirit.",
+      "sideQuests": [
+        {
+          "id": "SQ043",
+          "title": "The Minstrel\u2019s Lament",
+          "description": "If players seek to talk or learn more, they may discover Silwen\u2019s true motivation: she is tormented by a bargain struck long ago. Finding her binding contract could allow a peaceful resolution.",
+          "involvedLocations": [
+            "HG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Unlocks a peaceful or redemptive ending if pursued, sparing the townsfolk and the fey."
+        },
+        {
+          "id": "SQ044",
+          "title": "Free the Enchanted",
+          "description": "Players can attempt to break the magical hold on the townsfolk mid-confrontation. This risks splitting their efforts but may win them grateful allies\u2014or endanger the innocent.",
+          "involvedLocations": [
+            "HG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Successfully freeing the townsfolk alters the balance of the encounter and the aftermath in the town."
+        }
+      ]
+    },
+    {
+      "id": "PP028",
+      "title": "Restoration in Hearthwood Vale",
+      "description": "With the ritual thwarted (or resolved), the party helps the townsfolk recover (HG001). The Vale celebrates with a festival of lanterns, but the party must decide how to deal with Silwen and the slumbering spirit\u2014seal it away, bargain with it, or learn from its wisdom. The outcome offers lasting consequences for the region and potential hooks for future adventures.",
+      "location": "HG001",
+      "nextPoints": [],
+      "status": "not started",
+      "plotImpact": "Concludes the adventure, offers lasting consequences for the town and potential future hooks.",
+      "sideQuests": [
+        {
+          "id": "SQ045",
+          "title": "Lantern Festival of Thanks",
+          "description": "The townsfolk invite the party to be honored guests at the festival. They may discover lingering magical effects, gain unique allies, or hear rumors of disturbances elsewhere.",
+          "involvedLocations": [
+            "HG001"
+          ],
+          "status": "not started",
+          "plotImpact": "Grants the party favors, new contacts, and potential hooks for future adventures."
+        }
+      ]
+    }
+  ],
+  "activeQuests": [],
+  "completedQuests": [],
+  "failedQuests": [],
+  "worldEvents": [],
+  "dmNotes": []
+}

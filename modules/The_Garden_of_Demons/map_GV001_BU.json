@@ -1,0 +1,72 @@
+{
+  "mapId": "MAP_H_3",
+  "mapName": "Town Map",
+  "totalRooms": 3,
+  "rooms": [
+    {
+      "id": "H01",
+      "type": "residence",
+      "connections": [
+        "H02"
+      ],
+      "coordinates": "X10Y10",
+      "directions": {
+        "east": "H02"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "low",
+      "name": "Twilight Briar Cottage"
+    },
+    {
+      "id": "H02",
+      "type": "market",
+      "connections": [
+        "H01",
+        "H03"
+      ],
+      "coordinates": "X11Y10",
+      "directions": {
+        "west": "H01",
+        "east": "H03"
+      },
+      "tags": [],
+      "purpose": "unknown",
+      "landmark": false,
+      "dangerLevel": "low",
+      "name": "Withered Lantern Square"
+    },
+    {
+      "id": "H03",
+      "type": "market",
+      "connections": [
+        "H02"
+      ],
+      "coordinates": "X12Y10",
+      "directions": {
+        "west": "H02"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "low",
+      "name": "Fogroot Barrow Stalls"
+    }
+  ],
+  "layout": [
+    [
+      "H01",
+      "H02",
+      "H03"
+    ]
+  ],
+  "startRoom": "H02",
+  "version": "1.1",
+  "notes": "Extended schema with AI-friendly navigation fields",
+  "spatialContractVersion": 1
+}

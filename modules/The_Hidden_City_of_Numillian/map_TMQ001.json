@@ -1,0 +1,72 @@
+{
+  "mapId": "MAP_G_3",
+  "mapName": "Mixed Map",
+  "totalRooms": 3,
+  "rooms": [
+    {
+      "id": "G01",
+      "type": "room",
+      "connections": [
+        "G02"
+      ],
+      "coordinates": "X10Y10",
+      "directions": {
+        "east": "G02"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "medium",
+      "name": "Shifting Veil Foyer"
+    },
+    {
+      "id": "G02",
+      "type": "room",
+      "connections": [
+        "G01",
+        "G03"
+      ],
+      "coordinates": "X11Y10",
+      "directions": {
+        "west": "G01",
+        "east": "G03"
+      },
+      "tags": [],
+      "purpose": "unknown",
+      "landmark": false,
+      "dangerLevel": "medium",
+      "name": "Hall of Fractured Truths"
+    },
+    {
+      "id": "G03",
+      "type": "room",
+      "connections": [
+        "G02"
+      ],
+      "coordinates": "X12Y10",
+      "directions": {
+        "west": "G02"
+      },
+      "tags": [
+        "dead_end"
+      ],
+      "purpose": "unknown",
+      "landmark": true,
+      "dangerLevel": "medium",
+      "name": "Illusion's End Alcove"
+    }
+  ],
+  "layout": [
+    [
+      "G01",
+      "G02",
+      "G03"
+    ]
+  ],
+  "startRoom": "G02",
+  "version": "1.1",
+  "notes": "Extended schema with AI-friendly navigation fields",
+  "spatialContractVersion": 1
+}

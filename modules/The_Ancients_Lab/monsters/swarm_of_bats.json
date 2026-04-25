@@ -1,0 +1,81 @@
+{
+  "name": "Swarm of Bat",
+  "size": "Medium",
+  "type": "Beast",
+  "alignment": "Unaligned",
+  "armorClass": 12,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 0,
+  "abilities": {
+    "strength": 5,
+    "dexterity": 15,
+    "constitution": 10,
+    "intelligence": 2,
+    "wisdom": 12,
+    "charisma": 4
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 3,
+    "stealth": 3
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "",
+  "challengeRating": 0.25,
+  "specialAbilities": [
+    {
+      "name": "Echolocation",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Keen Hearing",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Swarm",
+      "attackBonus": 0,
+      "damageDice": "",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bites",
+      "attackBonus": 4,
+      "damageDice": "4d4",
+      "damageBonus": 0,
+      "damageType": "piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the jagged depths of the Abyssal Fracture, the Swarm of Bats is a living shadow, a writhing mass of leathery wings and chittering cries that blend into the mist-choked ravine. Each bat is small yet sinewy, their fur mottled in hues of charcoal and ash, with beady, glinting eyes that flicker like dying embers in the dim light. Their wings beat in restless frenzy, stirring the chill air with a soft, unsettling rustle, as if the very fabric of the ravine trembles beneath their restless flight. The swarm moves as one, a shifting, undulating shape that seems almost alive with a sentient purpose, weaving through the jagged basalt cliffs with uncanny precision. The faint metallic tang in the breeze mingles with the scent of damp earth and ancient stone, hinting at secrets buried beneath the Marches. When disturbed, the swarm erupts in a chaotic cacophony of shrill screeches and frantic wingbeats, casting writhing shadows that dance across the rune-carved rocks. Their presence deepens the oppressive silence of the fractured landscape, a reminder of nature's eerie persistence amidst the abandoned ruins. To behold the Swarm of Bats is to glimpse a fragment of the wild, alien heartbeat pulsing beneath the surface of this haunted wilderness."
+}

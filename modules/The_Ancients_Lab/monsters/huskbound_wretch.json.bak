@@ -1,0 +1,65 @@
+{
+  "name": "Huskbound Wretch",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Neutral Evil",
+  "armorClass": 12,
+  "hitPoints": 13,
+  "maxHitPoints": 13,
+  "speed": 25,
+  "abilities": {
+    "strength": 13,
+    "dexterity": 14,
+    "constitution": 12,
+    "intelligence": 5,
+    "wisdom": 8,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "necrotic"
+  ],
+  "damageImmunities": [
+    "poison"
+  ],
+  "conditionImmunities": [
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 9
+  },
+  "languages": "understands the languages it knew in life but can't speak",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Undead Fortitude",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Lab-Born Resilience",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Withered Claws",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "slashing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

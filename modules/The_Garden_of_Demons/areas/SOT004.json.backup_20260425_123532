@@ -1,0 +1,390 @@
+{
+  "areaId": "SOT004",
+  "areaName": "The Thornwound Wilds",
+  "areaType": "wilderness",
+  "areaDescription": "A labyrinth of razor-edged brambles and tangled, venomous thickets sprawls across these forsaken wilds, where every whispering wind carries the promise of hidden predators and each step draws fresh blood. The very air hums with hostile magic, twisting the senses and making even the bravest wanderers pray for swift escape.",
+  "dangerLevel": "extreme",
+  "recommendedLevel": 15,
+  "climate": "tropical",
+  "terrain": "plains",
+  "map": {
+    "mapId": "MAP_H_3",
+    "mapName": "Wilderness Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "H01",
+        "type": "crossroads",
+        "connections": [
+          "H02",
+          "H03"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "H02"
+        },
+        "tags": [],
+        "purpose": "transition",
+        "landmark": false,
+        "dangerLevel": "extreme",
+        "name": "Fork of Withered Paths"
+      },
+      {
+        "id": "H02",
+        "type": "crossroads",
+        "connections": [
+          "H01"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "H01"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "transition",
+        "landmark": true,
+        "dangerLevel": "extreme",
+        "name": "Twilight Briar Crossing"
+      },
+      {
+        "id": "H03",
+        "type": "grove",
+        "connections": [
+          "H01"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {},
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "extreme",
+        "name": "Grove of Sorrowed Roots"
+      }
+    ],
+    "layout": [
+      [
+        "H01",
+        "H02",
+        "H03"
+      ]
+    ],
+    "startRoom": "H01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "H01",
+      "name": "Fork of Withered Paths",
+      "type": "crossroads",
+      "description": "This ragged crossroads is choked with old, splintered signposts and overgrown stone markers half-swallowed by razor-edged brambles. Faded trails cut through the tangled undergrowth in four directions, each path marked by the bones of past wanderers. The air sizzles with lingering enchantments, confusing senses and direction. Vines crawl over ancient ruins hinting that this was once a sacred meeting place before the Thornwound Wilds claimed it.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "H02",
+        "H03"
+      ],
+      "areaConnectivity": [
+        "The Gloamreach Lowlands"
+      ],
+      "areaConnectivityId": [
+        "H03"
+      ],
+      "npcs": [
+        {
+          "name": "Surviving Druids",
+          "description": "A haggard trio of druids, their once-green robes now stained with bramble blood and their eyes haunted. They cling to the hope of reversing the Wilds\u2019 corruption but are wary of strangers, suspecting betrayal or madness from any who survive here.",
+          "attitude": "Cautiously Hopeful"
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Thorned Husk Stalkers",
+          "description": "Gaunt, humanoid shapes animated by cruel vines and malice. They lurk just beyond the crossroads, preying on those who hesitate."
+        }
+      ],
+      "lootTable": [
+        "Druidic Focus carved with anti-corruption runes",
+        "Potion of Poison Resistance",
+        "Map fragment: 'Sanctum of Thorns' route"
+      ],
+      "plotHooks": [
+        "The surviving druids offer to share a warding ritual if the party can recover a lost artifact from the Grove of Sorrowed Roots.",
+        "Cryptic warnings etched in Sylvan hint at a 'heart of rot' deeper within the Wilds."
+      ],
+      "dmInstructions": "The crossroads serves as the initial entry and potential safe haven in the Thornwound Wilds. Adjust the number of Stalkers depending on party strength. The druids can provide essential information and a short rest spot if approached diplomatically.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 18,
+          "disableDC": 20,
+          "triggerDC": 15,
+          "damage": "3d6 slashing (Razorvine Snare)"
+        }
+      ],
+      "dcChecks": [
+        "Nature DC 18: Identify the brambles as magical and hazardous.",
+        "Survival DC 16: Discern the safest path forward.",
+        "Insight DC 14: Sense the druids' desperation is mixed with fear."
+      ],
+      "accessibility": "Difficult; bramble-choked and magically confusing, but most paths can be forced through or cut with time and effort.",
+      "dangerLevel": "Very High",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "Ruined stone plinths and toppled signposts overgrown with blood-thirsty vines."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "Lichen-covered bones and splintered wood hint at centuries of travelers lost here."
+        },
+        {
+          "name": "Echoes of Rituals",
+          "description": "Whispers and flickering druidic runes surface at dusk, remnants of past ceremonies."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Ambush of Thorned Husk Stalkers",
+          "description": "If the party lingers or raises their voices, hidden stalkers attack from the undergrowth."
+        }
+      ],
+      "adventureSummary": "A critical crossroads for navigation and gathering lore. The party\u2019s choices here shape alliances and reveal the dangers ahead.",
+      "aliases": [
+        "Fork of Withered Paths",
+        "H01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_crossroads:Fork of Withered Paths",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H02",
+      "name": "Twilight Briar Crossing",
+      "type": "crossroads",
+      "description": "A dusky intersection where the brambles part just enough for travelers to cross. The ground is littered with brittle, thorn-punctured lanterns and splashes of old blood. A spectral twilight hangs perpetually here, even at midday, and illusions flicker in the edges of vision. Thick, miasmic mist hugs the ground, muffling sound and hiding movement.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "H01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Venomthorn Chimera",
+          "description": "A nightmarish beast of tangled vines, serpent heads, and hooked claws, prowling through the mist as a territorial guardian."
+        }
+      ],
+      "lootTable": [
+        "Venomthorn Gland (alchemy ingredient)",
+        "Lantern of Revealing (flickers with corrupted fey magic)",
+        "Silvered Dagger with twisted hilt"
+      ],
+      "plotHooks": [
+        "A trail of luminous spores leads off the path, suggesting a hidden glade or secret lair nearby.",
+        "Eerie illusions show the past defeat of a Manifestation of the Forest\u2019s Spirit\u2014could it return?"
+      ],
+      "dmInstructions": "Use deepening mist and shifting illusions to unsettle players. The Chimera\u2019s lair is hidden in the mist; a successful Perception or Investigation check reveals its location before the ambush.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 17,
+          "disableDC": 19,
+          "triggerDC": 15,
+          "damage": "4d6 poison (Briar Needle Burst)"
+        }
+      ],
+      "dcChecks": [
+        "Perception DC 16: Spot the Chimera\u2019s movement through the mist.",
+        "Investigation DC 15: Find a lost relic among the lanterns.",
+        "Arcana DC 18: Discern the persistent twilight is a lingering magical effect."
+      ],
+      "accessibility": "Challenging; visibility is limited to 15 feet, and the mist confuses direction.",
+      "dangerLevel": "Very High",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "Scattered lanterns and broken, rune-carved poststones mark forgotten crossings."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "Faded bloodstains and rotted banners speak of old battles."
+        },
+        {
+          "name": "Dust",
+          "description": "Thick dust and pollen settle in the air, causing mild coughing fits (DC 12 CON save or be mildly poisoned for 1 hour)."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Mist-Choked Chimera",
+          "description": "The Venomthorn Chimera attacks when the party is disoriented or distracted by illusions."
+        }
+      ],
+      "adventureSummary": "A hazardous intersection offering both a lethal encounter and leads to hidden locations. Careful observation rewards the party; haste brings danger.",
+      "aliases": [
+        "Twilight Briar Crossing",
+        "H02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_crossroads:Twilight Briar Crossing",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H03",
+      "name": "Grove of Sorrowed Roots",
+      "type": "grove",
+      "description": "A mournful, sun-dappled clearing where immense, ancient trees twist together, their roots exposed and weeping black sap. The air is thick with the scent of decay and wild magic. Tangles of silver thorns and ghostly flowers mark this as a sacred, if corrupted, site. Shadows here move independently, and the ground pulses with unnatural life.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "H01"
+      ],
+      "areaConnectivity": [
+        "The Twisted Wilds"
+      ],
+      "areaConnectivityId": [
+        "H01"
+      ],
+      "npcs": [
+        {
+          "name": "Manifestation of the Forest\u2019s Spirit",
+          "description": "A shimmering, wounded avatar of the ancient woods, appearing as a white stag entwined with blood-red roses and spectral vines. Its eyes plead for aid, but its form flickers with dangerous, uncontrolled power.",
+          "attitude": "Tragically Hostile (corrupted but can be calmed or redeemed)"
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Sorrowroot Wisps",
+          "description": "Vicious fey spirits twisted by the forest\u2019s agony, attacking intruders or feeding on the wounded Spirit\u2019s rage."
+        }
+      ],
+      "lootTable": [
+        "Heartwood Amulet (grants resistance to necrotic damage)",
+        "Sorrowed Seed (can purify one small area of corruption)",
+        "Fragment of Manifestation\u2019s Antler (arcane focus)"
+      ],
+      "plotHooks": [
+        "If the party aids or redeems the Manifestation, it can guide them safely through parts of the Wilds or grant them a unique blessing.",
+        "A patch of sorrowed roots hides the lost artifact the druids seek, but taking it risks angering the Spirit."
+      ],
+      "dmInstructions": "This is the emotional heart of the Wilds\u2014a place for possible redemption, intense combat, or both. The Spirit lashes out unless the party attempts diplomacy or uses specific druidic knowledge gained at the Fork of Withered Paths.",
+      "doors": [],
+      "traps": [
+        {
+          "detectDC": 20,
+          "disableDC": 22,
+          "triggerDC": 16,
+          "damage": "4d10 necrotic (Exploding Sorrowroot Mine)"
+        }
+      ],
+      "dcChecks": [
+        "Nature DC 20: Identify the Spirit\u2019s corruption as magical and potentially reversible.",
+        "Persuasion DC 18: Calm the Manifestation and prevent unnecessary violence.",
+        "Religion DC 16: Sense the sacred nature of the grove and the risk of desecration."
+      ],
+      "accessibility": "Extremely hazardous; thorny tangles and shifting roots require care or magic to approach the center safely.",
+      "dangerLevel": "Very High",
+      "features": [
+        {
+          "name": "Unusual Plants",
+          "description": "Ghostflowers, sorrowroot thorns, and radiant mosses that glow softly in the gloom."
+        },
+        {
+          "name": "Mourning Sap",
+          "description": "Black, viscous liquid trickles from the roots\u2014painful to touch, but possibly alchemically useful."
+        }
+      ],
+      "encounters": [
+        {
+          "name": "Corrupted Spirit\u2019s Fury",
+          "description": "Manifestation of the Forest\u2019s Spirit and Sorrowroot Wisps attack unless the corruption is addressed or the party acts with compassion."
+        }
+      ],
+      "adventureSummary": "A pivotal confrontation or sanctuary depending on the party\u2019s choices. Success here can alter the fate of the Thornwound Wilds.",
+      "aliases": [
+        "Grove of Sorrowed Roots",
+        "H03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_grove:Grove of Sorrowed Roots",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "deadly trap",
+      "description": "A deadly trap appropriate for level 15 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "deadly trap",
+      "description": "A deadly trap appropriate for level 15 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "deadly trap",
+      "description": "A deadly trap appropriate for level 15 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "boss monster",
+      "description": "A boss monster appropriate for level 15 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "elite enemies",
+      "description": "A elite enemies appropriate for level 15 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "boss monster",
+      "description": "A boss monster appropriate for level 15 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "deadly trap",
+      "description": "A deadly trap appropriate for level 15 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "deadly trap",
+      "description": "A deadly trap appropriate for level 15 parties"
+    }
+  ],
+  "areaFeatures": [
+    "rock formations",
+    "animal dens",
+    "water sources"
+  ],
+  "notes": "Weather and terrain should affect travel times. Random encounters keep exploration tense.",
+  "spatialContractVersion": 1
+}

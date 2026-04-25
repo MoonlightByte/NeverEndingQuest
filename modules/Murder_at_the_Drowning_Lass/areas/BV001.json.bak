@@ -1,0 +1,401 @@
+{
+  "areaId": "BV001",
+  "areaName": "The Brindlehearth Vale",
+  "areaType": "town",
+  "areaDescription": "Nestled among rolling green hills and hedgerow-laced meadows, the Brindlehearth Vale is a patchwork of cozy cottages, cheerful market lanes, and the gentle smoke of hearth fires curling into the crisp air. Here, laughter mingles with the scent of fresh bread and wildflowers, and only the distant toll of the church bell disturbs the peace.",
+  "dangerLevel": "low",
+  "recommendedLevel": 3,
+  "climate": "temperate",
+  "terrain": "urban streets and buildings",
+  "map": {
+    "mapId": "MAP_H_3",
+    "mapName": "Town Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "H01",
+        "type": "barracks",
+        "connections": [
+          "H02",
+          "H03"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "H02"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "low",
+        "name": "Gallowswatch Garrison"
+      },
+      {
+        "id": "H02",
+        "type": "square",
+        "connections": [
+          "H01"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "H01"
+        },
+        "tags": [
+          "hub",
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "low",
+        "name": "Fablewrights\u2019 Crossing"
+      },
+      {
+        "id": "H03",
+        "type": "shop",
+        "connections": [
+          "H01"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {},
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "low",
+        "name": "Duskmantle Curios"
+      }
+    ],
+    "layout": [
+      [
+        "H01",
+        "H02",
+        "H03"
+      ]
+    ],
+    "startRoom": "H01",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "H01",
+      "name": "Gallowswatch Garrison",
+      "type": "barracks",
+      "description": "An aged, sturdy barracks of honeyed stone and mossy slate, Gallowswatch Garrison stands at the edge of Brindlehearth Village's main street. The broad wooden sign overhead is carved with a watchful crow and a gallows silhouette. Inside, rows of weapon racks line the walls, beds of straw and wool rest beneath narrow windows, and the air smells of old leather, steel, and lingering pipe smoke. Sunlight slants through dusty panes, illuminating the worn banners and faded regimental scrolls\u2014testaments to past generations\u2019 vigilant peacekeeping.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "H02",
+        "H03"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Constable Farrel Dun",
+          "description": "The doughty, sharp-eyed local lawman with a bristly mustache, Farrel Dun is known for his even temper and sense of duty. He\u2019s quick to help townsfolk and visitors alike, though his patience for nonsense is limited. Farrel is protective of his staff and wary of outsiders meddling in village affairs, but he values honesty and courage.",
+          "attitude": "Cautiously friendly, practical, and willing to enlist help if trust is earned."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Set of iron manacles",
+        "Constable\u2019s signal whistle",
+        "Brindlehearth Garrison badge",
+        "Old ledger (details minor village disputes)",
+        "Well-maintained short sword"
+      ],
+      "plotHooks": [
+        "Farrel Dun asks the party to investigate a string of petty thefts that may be connected to larger criminal activity in the Vale.",
+        "A bloodied scrap of map (matching the stolen treasure map) is logged in the lost-and-found\u2014Farrel is willing to show it for a favor.",
+        "Rumors of strange footprints near the old gallows tree at night put the garrison on edge."
+      ],
+      "dmInstructions": "Adjust social encounters to reward respectful and lawful behavior. Farrel Dun is a useful ally for information about recent crimes or local suspects. If trouble erupts in the village, guards muster here. The garrison is rarely locked, but the armory (accessed via a reinforced door) is kept secure.",
+      "doors": [
+        {
+          "name": "Main Entrance",
+          "description": "Weathered oak double doors banded with iron.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 13,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Armory Door",
+          "description": "Stout iron-bound door at the rear of the garrison, marked \u2018Authorized Staff Only\u2019.",
+          "type": "heavy",
+          "locked": true,
+          "lockDC": 15,
+          "breakDC": 18,
+          "keyname": "Garrison Armory Key",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Perception DC 12: Notice a loose floorboard concealing a hidden alcove.",
+        "Investigation DC 14: Find an overlooked bloodstain on a bunk blanket.",
+        "History DC 10: Recall that the garrison once doubled as a holding cell for infamous bandits."
+      ],
+      "accessibility": "Normal access\u2014daytime hours, rarely locked except for the armory. Known to all townsfolk.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Interesting Architecture",
+          "description": "Rough-hewn beams and arched doorways lend a sense of age and reliability to the building."
+        },
+        {
+          "name": "Signs Of Age",
+          "description": "Threadbare rugs, cracked stones, and smoke-blackened ceiling beams show the garrison\u2019s long service."
+        },
+        {
+          "name": "Dust",
+          "description": "A fine layer of dust covers the highest shelves and banners, disturbed only rarely."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "",
+      "aliases": [
+        "Gallowswatch Garrison",
+        "H01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_barracks:Gallowswatch Garrison",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H02",
+      "name": "Fablewrights\u2019 Crossing",
+      "type": "square",
+      "description": "The heart of Brindlehearth Village, this cobblestone square bustles with life. Colorful banners flutter across open market stalls, where bakers, cheese-mongers, and peddlers hawk their goods beneath striped awnings. A weathered stone fountain, carved in the likeness of a leaping fox, stands at the square\u2019s center. Around the edges, locals gather to swap tales at benches or listen to traveling performers. The square\u2019s nickname comes from village tradition: stories and legends are often shared here after sunset.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "H01"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Old Ellyn, the folklore spinner",
+          "description": "A spry, sharp-tongued elder with wild silver hair and a knack for captivating crowds with local legends. Ellyn is beloved by children and tolerated by adults, possessing an uncanny memory for the Vale\u2019s strangest tales\u2014some of which may hold real clues.",
+          "attitude": "Warm, mysterious, and eager to share tales with anyone who'll listen, especially adventurers."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Pouch of fresh sweetbreads",
+        "Handmade wooden fox pendant (lucky charm)",
+        "Weathered folktale pamphlet",
+        "Silvered coin with local stamping"
+      ],
+      "plotHooks": [
+        "Old Ellyn regales the party with a tale that hints at the truth behind the murdered map-bearer and the legendary treasure.",
+        "A child claims to have seen a 'shadowy figure with a red jaw' lurking near the fountain last night.",
+        "A traveling merchant offers to sell a cryptic token said to be linked to the lost treasure."
+      ],
+      "dmInstructions": "Use this square for public gatherings, rumors, and social roleplay. Old Ellyn is a fount of leads\u2014her stories can point the party to hidden locations, secret passageways, or even disguised NPCs. At dusk, an impromptu performance or town event could draw in all sorts of characters.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Perception DC 13: Spot a pickpocket working the crowd.",
+        "Insight DC 12: Sense that Old Ellyn is hinting at something true beneath a fanciful story.",
+        "Investigation DC 10: Locate a vendor selling unusual trinkets."
+      ],
+      "accessibility": "Open to all, dawn till dusk. Crowded during market hours.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Merchant Stalls",
+          "description": "Brightly colored tents and carts offer a variety of local goods and occasional oddities."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "",
+      "aliases": [
+        "Fablewrights\u2019 Crossing",
+        "H02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_square:Fablewrights\u2019 Crossing",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H03",
+      "name": "Duskmantle Curios",
+      "type": "shop",
+      "description": "A cramped, dimly lit curiosity shop on the edge of the square, crammed floor-to-ceiling with oddments: old books, strange herbs, faded maps, and glinting trinkets from across the region. The front window displays dried moon lilies and a cracked astrolabe. The air inside buzzes with the scent of incense and the faint aroma of mystery. A bell tinkles softly when the door opens, and the shadowy proprietor watches from behind a cluttered counter.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "H01"
+      ],
+      "areaConnectivity": [
+        "The Resonant Abyss"
+      ],
+      "areaConnectivityId": [
+        "H01"
+      ],
+      "npcs": [
+        {
+          "name": "Gritch the One-Eared, nervous patron",
+          "description": "A twitchy, shabby man with a missing ear, Gritch is a regular at Duskmantle Curios. He\u2019s often found pawing through oddments, muttering about curses and treasures. Gritch is evasive but knows more about local criminal dealings than he lets on.",
+          "attitude": "Jumpy, secretive, but bribable; will share rumors if convinced or plied with coin."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Tarnished locket with hidden compartment",
+        "Bundle of dried moorland herbs",
+        "Scrap of a hand-drawn map (partial clue)",
+        "Old silver thimble inscribed with runes"
+      ],
+      "plotHooks": [
+        "Gritch can be convinced to talk about what he saw the night of the murder\u2014if the party helps him with a 'shadowy debt'.",
+        "An item for sale matches the description of a relic from Old Ellyn\u2019s tales.",
+        "A coded message is found in a battered book behind the counter."
+      ],
+      "dmInstructions": "Roleplay opportunities abound; Gritch is evasive but will drop key hints about the thieves\u2019 gang and the stolen map. The backroom may hide secret communications or evidence. The proprietor (not named here) is taciturn but dislikes trouble.",
+      "doors": [
+        {
+          "name": "Front Door",
+          "description": "Small bell-topped spruce door with a foggy pane.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 11,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Backroom Door",
+          "description": "Narrow door behind the counter, worn from frequent use.",
+          "type": "regular",
+          "locked": true,
+          "lockDC": 13,
+          "breakDC": 14,
+          "keyname": "Duskmantle Backroom Key",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Investigation DC 14: Find a secret cache beneath a loose floorboard in the backroom.",
+        "Arcana DC 12: Identify a magical ward over certain shelves (non-lethal).",
+        "Persuasion DC 12: Get Gritch to share vital information."
+      ],
+      "accessibility": "Normal access during business hours; after hours, doors are locked.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Backroom Storage",
+          "description": "A cramped, cluttered space where unsorted goods and parcels are stacked haphazardly."
+        },
+        {
+          "name": "Merchandise Displays",
+          "description": "Glass-fronted cabinets and odd shelves display rare and peculiar items in dim candlelight."
+        },
+        {
+          "name": "Counter",
+          "description": "Worn wooden counter with a hidden compartment for valuables and secret notes."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "",
+      "aliases": [
+        "Duskmantle Curios",
+        "H03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_shop:Duskmantle Curios",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 3 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 3 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 3 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "wandering animal",
+      "description": "A wandering animal appropriate for level 3 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 3 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 3 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 3 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 3 parties"
+    },
+    {
+      "roll": "81-90",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 3 parties"
+    },
+    {
+      "roll": "91-100",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 3 parties"
+    }
+  ],
+  "areaFeatures": [
+    "guard posts",
+    "merchant quarter",
+    "market square"
+  ],
+  "notes": "NPCs should have daily routines. Political factions create roleplay opportunities.",
+  "spatialContractVersion": 1
+}

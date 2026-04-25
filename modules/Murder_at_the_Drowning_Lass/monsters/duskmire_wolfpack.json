@@ -1,0 +1,61 @@
+{
+  "name": "Duskmire Wolfpack",
+  "size": "Medium",
+  "type": "Beast",
+  "alignment": "Unaligned",
+  "armorClass": 13,
+  "hitPoints": 11,
+  "maxHitPoints": 11,
+  "speed": 40,
+  "abilities": {
+    "strength": 12,
+    "dexterity": 15,
+    "constitution": 12,
+    "intelligence": 3,
+    "wisdom": 12,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 3,
+    "stealth": 4
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "—",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Keen Hearing and Smell",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Pack Tactics",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "attackBonus": 4,
+      "damageDice": "2d4",
+      "damageBonus": 2,
+      "damageType": "Piercing"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "Emerging from the shadowed edges of Brindlehearth Vale's mist-wreathed hedgerows, the Duskmire Wolfpack moves like a whisper of twilight itself. These wolves are larger than typical forest wolves, their lean bodies cloaked in thick fur that ripples with shades of deep charcoal and muddy slate, flecked with streaks of dusky brown that mimic the decaying leaves of the vale's marshy fringes. Their eyes burn with a cold amber glow, sharp and watchful, reflecting the faintest light like twin embers smoldering in the dusk. Each breath they exhale forms a faint mist in the crisp air, blending seamlessly with the swirling fog that blankets the vale come nightfall. The pack moves with eerie synchronization, silent as the grave, their padded paws pressing softly against the soft earth and tangled underbrush, leaving almost no trace. In the stillness of the evening, their low, haunting howls echo faintly--an unsettling chorus that rises from the murky depths of the duskmire and chills the bones of those who hear it. These wolves are cunning predators, stalking both the wild woods and the outskirts of the village, drawn to the scent of fear and the faintest hint of blood. Their presence is a living shadow, a restless echo of the vale's untamed wilds and its whispered warnings."
+}

@@ -1,0 +1,417 @@
+{
+  "areaId": "TPG001",
+  "areaName": "The Paradoxical Crossroads",
+  "areaType": "town",
+  "areaDescription": "Nestled at the confluence of four ancient roads, The Paradoxical Crossroads is a town where strange coincidences are common and travelers from disparate lands share tales over fragrant tea. Lantern-lit streets twist in unexpected ways, and the air hums softly with the promise of serendipitous encounters in an otherwise peaceful haven.",
+  "dangerLevel": "low",
+  "recommendedLevel": 5,
+  "climate": "temperate",
+  "terrain": "urban streets and buildings",
+  "map": {
+    "mapId": "MAP_G_3",
+    "mapName": "Town Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "G01",
+        "type": "temple",
+        "connections": [
+          "G02"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "G02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "low",
+        "name": "Sanctum of Fractured Truths"
+      },
+      {
+        "id": "G02",
+        "type": "market",
+        "connections": [
+          "G01",
+          "G03"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "G01",
+          "east": "G03"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "low",
+        "name": "Miragebound Exchange"
+      },
+      {
+        "id": "G03",
+        "type": "tavern",
+        "connections": [
+          "G02"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {
+          "west": "G02"
+        },
+        "tags": [
+          "rest",
+          "dead_end"
+        ],
+        "purpose": "safe_haven",
+        "landmark": true,
+        "dangerLevel": "low",
+        "name": "The Doppelglass Den"
+      }
+    ],
+    "layout": [
+      [
+        "G01",
+        "G02",
+        "G03"
+      ]
+    ],
+    "startRoom": "G02",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "G01",
+      "name": "Sanctum of Fractured Truths",
+      "type": "temple",
+      "description": "A domed marble temple with shifting, mirrored mosaics. Flickering lanterns project strange, overlapping shadows across the floor. In the center, an altar of fractured crystal sits surrounded by ritual implements and an offering bowl, bathed in a rainbow of refracted light. The air is charged with an eerie, contemplative stillness.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "G02"
+      ],
+      "areaConnectivity": [
+        "The Shifting Confluence"
+      ],
+      "areaConnectivityId": [
+        "H03"
+      ],
+      "npcs": [
+        {
+          "name": "Keeper Veyron",
+          "description": "A serene, enigmatic figure clad in patchwork robes, their face partially obscured by a silver mask. Keeper Veyron is known for their cryptic wisdom and ability to guide seekers through the paradoxes of the crossroads. They offer riddles and insight\u2014sometimes both at once.",
+          "attitude": "Cautiously helpful, expects visitors to prove themselves worthy of truth."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Fractured Lens of Clarity (see-through minor illusions, once per day)",
+        "Ceremonial silver mask (worth 25 gp)",
+        "Scroll of Detect Magic"
+      ],
+      "plotHooks": [
+        "Keeper Veyron requests help deciphering a recent vision: a threat lurking behind the town\u2019s coincidences.",
+        "The altar radiates a faint magic\u2014researching it may reveal a clue about Numillian\u2019s hidden nature."
+      ],
+      "dmInstructions": "Keeper Veyron can provide cryptic clues about the town and its strange coincidences. The sanctuary is a place for rest, meditation, and subtle investigation. Ritual implements can be used for minor magical effects (e.g., Augury). Traps and combat are minimal; focus on clever roleplay and skill checks.",
+      "doors": [
+        {
+          "name": "South Entrance",
+          "description": "Tall oak double doors carved with paradoxical symbols, flanked by flickering lanterns.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 12,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Hidden Vestry Door",
+          "description": "A near-invisible seam behind the central altar, leading to a cramped vestry.",
+          "type": "secret",
+          "locked": true,
+          "lockDC": 17,
+          "breakDC": 15,
+          "keyname": "Sanctum Vestry Key",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Investigation DC 14: Notice that the mirrored mosaics shift to reveal hidden symbols when viewed at certain angles.",
+        "Religion DC 13: Recognize the temple\u2019s rituals are dedicated to the goddess of Paradox and Truth.",
+        "Insight DC 15: Sense that Keeper Veyron is hiding something about the altar\u2019s recent activity."
+      ],
+      "accessibility": "Normal access via the main doors; side vestry is hidden and locked.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Ritual Items",
+          "description": "Crystal chalices, silvered daggers, and incense burners used in paradox-themed rituals."
+        },
+        {
+          "name": "Offering Space",
+          "description": "A semi-circular dais covered in small offerings (coins, trinkets, written secrets)."
+        },
+        {
+          "name": "Mirrored Mosaics",
+          "description": "Panels that subtly shift, sometimes showing different scenes to different viewers."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "A place for contemplation and puzzle-solving, ideal for roleplay and learning about the strange nature of the Crossroads.",
+      "aliases": [
+        "Sanctum of Fractured Truths",
+        "G01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_temple:Sanctum of Fractured Truths",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "G02",
+      "name": "Miragebound Exchange",
+      "type": "market",
+      "description": "A bustling outdoor bazaar where the layout seems to change from hour to hour and rare goods sometimes appear only when most needed. Colorful tents and hanging silks obscure the view, and mysterious traders hawk wares from all corners of the world\u2014and perhaps beyond.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "G01",
+        "G03"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "The Paradoxical Twins",
+          "description": "A pair of identical merchants who always finish each other\u2019s sentences, known for selling items that seem impossible or contradictory. They delight in bargains that challenge logic.",
+          "attitude": "Cheerful, mischievous, eager to trade stories and riddles as much as goods."
+        },
+        {
+          "name": "Glim",
+          "description": "A diminutive, bright-eyed goblin with a knack for acquiring curiosities that vanish as soon as they\u2019re bought. Glim is well-connected and hears all the gossip of the crossroads.",
+          "attitude": "Friendly, fast-talking, always looking for the next interesting deal or piece of information."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Bag of Doubt (Bag of Holding, but sometimes contains something else of equal value\u2014DM\u2019s choice, once per day)",
+        "Potion of Serendipity (grants advantage on a single ability check of player\u2019s choice)",
+        "Minor illusionary trinkets (worth 5 gp each)"
+      ],
+      "plotHooks": [
+        "The Paradoxical Twins offer a cryptic deal: recover a \u2018lost hour\u2019 from the Doppelglass Den in exchange for a magical clue.",
+        "Glim knows of a masked dignitary who\u2019ll pay handsomely for news from outside Numillian."
+      ],
+      "dmInstructions": "Encourage roleplay and bargaining. The market\u2019s shifting layout can hide or reveal important NPCs and goods. Players may use Investigation or Perception to find rare items or secretive merchants.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Perception DC 13: Notice a trader with a mysterious, time-shifting hourglass.",
+        "Investigation DC 15: Find a hidden stall selling rare clues about Numillian\u2019s illusions.",
+        "Deception DC 14: Successfully haggle with the Paradoxical Twins for a better deal."
+      ],
+      "accessibility": "Normally open to all; stalls may shift unexpectedly, and some deals require a password or secret handshake.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Crowd Areas",
+          "description": "Thick clusters of shoppers and hawkers, making stealth or theft possible but challenging."
+        },
+        {
+          "name": "Mirage Stalls",
+          "description": "Some tents appear or disappear based on the time of day, offering unique goods or rumors."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "A lively, ever-shifting market ideal for roleplay, minor exploration, and setting up trade- or rumor-based hooks.",
+      "aliases": [
+        "Miragebound Exchange",
+        "G02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_market:Miragebound Exchange",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "G03",
+      "name": "The Doppelglass Den",
+      "type": "tavern",
+      "description": "A cozy, old-world tavern with walls lined in smoky mirrors and a central hearth. Patrons share tall tales over paradoxically flavored teas and mirrored ales. Shadows sometimes move independently of their owners, and the air is thick with rumor and possibility.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "G02"
+      ],
+      "areaConnectivity": [
+        "The Netherwoven Warrens"
+      ],
+      "areaConnectivityId": [
+        "H01"
+      ],
+      "npcs": [
+        {
+          "name": "Old Grem the Cartographer",
+          "description": "A wizened human hunched over a battered map case, Grem claims to have mapped every shifting street of the Crossroads\u2014though no two maps are ever quite the same. He trades information and cryptic directions, sometimes for a drink, sometimes for a secret.",
+          "attitude": "Irascible but helpful, especially to those with interesting tales or challenging questions."
+        }
+      ],
+      "monsters": [],
+      "lootTable": [
+        "Map to a forgotten alley in Numillian (may reveal hidden entrance in another area)",
+        "Mirrored Ale (consuming reveals a fleeting vision of a key event in Numillian)",
+        "Silver compass that always spins when a paradox is nearby (worth 15 gp)"
+      ],
+      "plotHooks": [
+        "Old Grem offers to trade a map fragment if the party helps him recover \u2018a lost hour\u2019 from a market stall.",
+        "A rumor circulates about a masked dignitary seeking trustworthy adventurers to undertake a secret mission."
+      ],
+      "dmInstructions": "The Den is a refuge for weary travelers and a hub for gathering rumors. Old Grem can point characters toward hidden passages, or sell unreliable but potentially useful maps. Shadows in the mirrors may hint at hidden threats or secrets.",
+      "doors": [
+        {
+          "name": "Main Entrance",
+          "description": "Heavy wooden door, stained from years of use, swinging easily on well-oiled hinges.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        },
+        {
+          "name": "Mirror Panel",
+          "description": "A sliding mirrored panel behind the bar, leading to a cramped storeroom filled with casks.",
+          "type": "secret",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 14,
+          "keyname": "",
+          "trapped": true,
+          "trap": "If opened without performing a secret gesture (DC 15 Insight to notice), triggers a spray of slippery oil (DC 13 Dexterity save or fall prone)."
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 15,
+          "disableDC": 13,
+          "triggerDC": 15,
+          "damage": "No damage, but sprayed oil causes those failing a DC 13 Dexterity saving throw to fall prone and be covered in slippery residue for 1 minute."
+        }
+      ],
+      "dcChecks": [
+        "Investigation DC 12: Find a map fragment tucked inside a hollowed-out tankard.",
+        "Insight DC 14: Realize Old Grem's directions are deliberately misleading unless persuaded with a personal story.",
+        "Arcana DC 13: Notice the mirrored ale has faint magical properties."
+      ],
+      "accessibility": "Open to all, though regulars may \u2018test\u2019 newcomers with riddles or dares.",
+      "dangerLevel": "Low",
+      "features": [
+        {
+          "name": "Bar Counter",
+          "description": "Broad counter of polished wood, decorated with curious carvings and odd stains from paradox brews."
+        },
+        {
+          "name": "Hearth",
+          "description": "A wide stone hearth that never seems to burn out, casting unusual, shifting shadows across the room."
+        },
+        {
+          "name": "Mirrored Walls",
+          "description": "Smoky mirrors reflect scenes that occasionally differ from reality, hinting at secrets or nearby paradoxes."
+        }
+      ],
+      "encounters": [],
+      "adventureSummary": "A social hub filled with rumors, minor hazards (traps), and hidden information. Ideal for roleplay and advancing plot hooks.",
+      "aliases": [
+        "The Doppelglass Den",
+        "G03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_tavern:The Doppelglass Den",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 5 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 5 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 5 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 5 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 5 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "wandering animal",
+      "description": "A wandering animal appropriate for level 5 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 5 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "environmental hazard",
+      "description": "A environmental hazard appropriate for level 5 parties"
+    },
+    {
+      "roll": "81-90",
+      "encounter": "wandering animal",
+      "description": "A wandering animal appropriate for level 5 parties"
+    },
+    {
+      "roll": "91-100",
+      "encounter": "lost traveler",
+      "description": "A lost traveler appropriate for level 5 parties"
+    }
+  ],
+  "areaFeatures": [
+    "local tavern",
+    "guard posts",
+    "merchant quarter"
+  ],
+  "notes": "NPCs should have daily routines. Political factions create roleplay opportunities.",
+  "spatialContractVersion": 1
+}

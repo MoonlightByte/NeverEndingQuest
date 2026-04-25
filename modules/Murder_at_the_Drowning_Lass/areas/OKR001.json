@@ -1,0 +1,420 @@
+{
+  "areaId": "OKR001",
+  "areaName": "The King\u2019s Tread",
+  "areaType": "mixed",
+  "areaDescription": "Ancient cobbled roads and moss-choked milestones wind through dense, whispering forests, where the shadows of forgotten royalty linger in the mist. Travelers are watched by hungry wolves and bands of highwaymen, while the haunted silence is broken only by the echo of distant footsteps on wet stone.",
+  "dangerLevel": "medium",
+  "recommendedLevel": 4,
+  "climate": "varied",
+  "terrain": "varied terrain",
+  "map": {
+    "mapId": "MAP_H_3",
+    "mapName": "Mixed Map",
+    "totalRooms": 3,
+    "rooms": [
+      {
+        "id": "H01",
+        "type": "room",
+        "connections": [
+          "H02"
+        ],
+        "coordinates": "X10Y10",
+        "directions": {
+          "east": "H02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "medium",
+        "name": "Echoing Oathway"
+      },
+      {
+        "id": "H02",
+        "type": "room",
+        "connections": [
+          "H01",
+          "H03"
+        ],
+        "coordinates": "X11Y10",
+        "directions": {
+          "west": "H01",
+          "east": "H03"
+        },
+        "tags": [],
+        "purpose": "unknown",
+        "landmark": false,
+        "dangerLevel": "medium",
+        "name": "Brass Lantern Junction"
+      },
+      {
+        "id": "H03",
+        "type": "room",
+        "connections": [
+          "H02"
+        ],
+        "coordinates": "X12Y10",
+        "directions": {
+          "west": "H02"
+        },
+        "tags": [
+          "dead_end"
+        ],
+        "purpose": "unknown",
+        "landmark": true,
+        "dangerLevel": "medium",
+        "name": "Bound Ledger Nook"
+      }
+    ],
+    "layout": [
+      [
+        "H01",
+        "H02",
+        "H03"
+      ]
+    ],
+    "startRoom": "H02",
+    "version": "1.1",
+    "notes": "Extended schema with AI-friendly navigation fields",
+    "spatialContractVersion": 1
+  },
+  "locations": [
+    {
+      "locationId": "H01",
+      "name": "Echoing Oathway",
+      "type": "room",
+      "description": "The Echoing Oathway is a stretch of ancient, timeworn cobbled road that twists between mossy milestones and gnarled, overhanging trees. Faint engravings of royal crests, nearly illegible, are carved into the stones beneath heavy lichen. The fog seems thickest here, muffling sound and amplifying even the softest footfall into ghostly echoes. The surrounding undergrowth is dense, and the oppressive silence is occasionally broken by distant wolf howls or the soft shifting of movement within the brush.",
+      "coordinates": "X10Y10",
+      "connectivity": [
+        "H02"
+      ],
+      "areaConnectivity": [
+        "The Hearthwood Vale"
+      ],
+      "areaConnectivityId": [
+        "H03"
+      ],
+      "npcs": [],
+      "monsters": [
+        {
+          "name": "Hungry Wolves",
+          "description": "A small pack of gaunt, snarling wolves, drawn to the old blood stains and the lure of easy prey.",
+          "number": "3\u20135",
+          "attitude": "Hostile unless scared off by a show of force or fire."
+        }
+      ],
+      "lootTable": [
+        "Pouch of tarnished copper coins caught in a crevice (12 cp, 5 sp)",
+        "Silvered signet ring emblazoned with a faded crown (worth 15 gp)",
+        "Fragment of a waterlogged map, showing a nearby milestone and a cryptic symbol"
+      ],
+      "plotHooks": [
+        "The faint symbol on the map fragment matches one whispered about at the Drowning Lass.",
+        "A traveler\u2019s torn cloak snagged on a branch suggests someone fled in haste.",
+        "Wolf tracks lead off the path into the woods, possibly toward a hidden camp."
+      ],
+      "dmInstructions": "This road sets the tone of faded grandeur and lurking menace. Adjust the number of wolves based on party strength; they will flee if two are killed or frightened. The map fragment is a vital clue for the treasure hunt, and the ring can be a link to the vanished royal line or a bribe for local informants.",
+      "doors": [],
+      "traps": [],
+      "dcChecks": [
+        "Survival DC 13: Track the wolf prints into the woods.",
+        "Investigation DC 12: Find the hidden pouch of coins and ring wedged between stones.",
+        "History DC 14: Identify the royal crest and recall tales of the road\u2019s haunted reputation."
+      ],
+      "accessibility": "Normal access; open road, though fog and foliage may obscure vision and muffle sound.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "Weathered and broken cobblestones, mottled with lichen and faint royal engravings."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "Moss-covered milestones shaped like ancient kings' heads, some toppled, others staring mutely into the gloom."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "combat",
+          "description": "Hungry wolves attack from the underbrush, seeking to pick off isolated travelers."
+        },
+        {
+          "type": "exploration",
+          "description": "Searching the stones yields lost trinkets and a crucial map fragment."
+        }
+      ],
+      "adventureSummary": "A haunted stretch of ancient road where the party may face predators and uncover clues to the treasure\u2019s location.",
+      "aliases": [
+        "Echoing Oathway",
+        "H01"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Echoing Oathway",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H02",
+      "name": "Brass Lantern Junction",
+      "type": "room",
+      "description": "At this broad crossroads, a rusted iron post juts from the earth, holding aloft a cracked, glass-paned lantern with faint traces of old brass. The intersection branches south and east, the stones underfoot worn smooth by centuries of royal processions and the boots of less noble travelers. Unsettling echoes carry on the mist here, and the lantern occasionally sheds ghostly blue light without any visible flame. The faint scent of old ink and wet parchment lingers in the air.",
+      "coordinates": "X11Y10",
+      "connectivity": [
+        "H01",
+        "H03"
+      ],
+      "areaConnectivity": [],
+      "areaConnectivityId": [],
+      "npcs": [
+        {
+          "name": "Ghostly Royal Messenger",
+          "description": "A translucent figure in tattered livery, clutching spectral scrolls and nervously peering between the roads, forever waiting to deliver a message.",
+          "attitude": "Wistful and confused, desperate to complete its last task but easily startled. Will respond to respectful questions about the road\u2019s history or lost secrets."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Highwayman Lookouts",
+          "description": "Two desperate bandits from a local gang, lurking in the shadows for easy marks.",
+          "number": "2",
+          "attitude": "Cautious and threatened by armed groups; may attempt to parley or demand a toll."
+        }
+      ],
+      "lootTable": [
+        "Brass lantern with faint magical resonance (casts dancing lights once per day)",
+        "Weathered map case containing a partial ledger of royal taxes (worth 10 gp to collectors)",
+        "Note scrawled in thieves\u2019 cant, hinting at a secret cache in the next location"
+      ],
+      "plotHooks": [
+        "The ghostly messenger attempts to hand over a spectral scroll, which may reveal a hidden milestone if deciphered.",
+        "Highwaymen recognize the party from rumors at the Drowning Lass and offer information about the stolen map in exchange for coin.",
+        "The lantern\u2019s light points the way to a lost royal ledger if held aloft at midnight."
+      ],
+      "dmInstructions": "The ghostly messenger can be appeased or banished; if listened to, it reveals ancient secrets or a clue to the Bound Ledger Nook. Adjust bandit tactics for party level; they may retreat or negotiate. The magical lantern is a minor reward but draws attention if used at night.",
+      "doors": [
+        {
+          "name": "East Gate",
+          "description": "An old iron gate, overgrown with vines, marking the path to Bound Ledger Nook.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 10,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [],
+      "dcChecks": [
+        "Arcana DC 12: Detect the faint magic in the lantern.",
+        "Insight DC 13: Sense the desperation in the highwaymen and negotiate a peaceful outcome.",
+        "Religion DC 14: Calm or lay to rest the ghostly messenger."
+      ],
+      "accessibility": "Normal access, but low visibility and haunting echoes can disorient travelers.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "Stonework is polished by many feet, the junction's milestones etched with faded directions."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "The lantern\u2019s intricate filigree is of lost royal design, now tarnished by time."
+        },
+        {
+          "name": "Dust",
+          "description": "Thick layers of dust and old pollen coat the ground and lantern."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "combat/roleplay",
+          "description": "The party may be ambushed by highwayman lookouts or parley with them if approached cautiously."
+        },
+        {
+          "type": "roleplay",
+          "description": "The ghostly messenger offers cryptic information about the King\u2019s Tread and its hidden dangers."
+        }
+      ],
+      "adventureSummary": "A crossroads between the past and present, offering both danger from living bandits and wisdom from the dead.",
+      "aliases": [
+        "Brass Lantern Junction",
+        "H02"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Brass Lantern Junction",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    },
+    {
+      "locationId": "H03",
+      "name": "Bound Ledger Nook",
+      "type": "room",
+      "description": "This secluded alcove is set off the main road, shaded by ancient yew trees whose roots break the cobbles. A weathered stone bench faces a cracked plinth, atop which rests a permanently closed iron-bound ledger. Names and dates are carved into the plinth in dozens of hands, some fresh, others centuries old. The air is thick with the scent of mold and old parchment, and every whisper seems to be absorbed by the stones.",
+      "coordinates": "X12Y10",
+      "connectivity": [
+        "H02"
+      ],
+      "areaConnectivity": [
+        "The Red Maw Wilds"
+      ],
+      "areaConnectivityId": [
+        "H01"
+      ],
+      "npcs": [
+        {
+          "name": "Sable, Reluctant Scribe\u2019s Shade",
+          "description": "A spectral scribe bound to the ledger, cursed to witness every name added. Sable flickers in and out of view, her ink-stained fingers trembling.",
+          "attitude": "Melancholic and wary, she resents the curse but yearns for conversation about history, forbidden secrets, or possible release."
+        }
+      ],
+      "monsters": [
+        {
+          "name": "Swarm of Animated Quills",
+          "description": "Dozens of enchanted writing quills flit about, defending the ledger from thieves or disrespect.",
+          "number": "1 swarm",
+          "attitude": "Defensive; attack anyone attempting to open or damage the ledger."
+        }
+      ],
+      "lootTable": [
+        "Sealed page torn from the ledger, inscribed with a coded map reference (valuable clue)",
+        "Antique inkwell with royal insignia (worth 25 gp)",
+        "Obsidian writing stylus, faintly magical (advantage on forgery checks for 24 hours)"
+      ],
+      "plotHooks": [
+        "Sable hints that a traitor\u2019s name is hidden behind an illusion on the plinth, vital for finding the next lead.",
+        "The coded page reveals the location of a secret milestone deep in the forest.",
+        "Anyone who adds their name to the ledger feels a chill\u2014and may be marked for ghostly attention elsewhere."
+      ],
+      "dmInstructions": "Interacting with the ledger awakens the animated quills, unless precautions are taken. Sable offers cryptic guidance and warns against tampering. The coded page is critical to the treasure hunt\u2019s progression. The obsidian stylus is a minor but flavorful magical item.",
+      "doors": [
+        {
+          "name": "Secluded Path Arch",
+          "description": "An ivy-draped stone archway leading back to Brass Lantern Junction.",
+          "type": "regular",
+          "locked": false,
+          "lockDC": 0,
+          "breakDC": 12,
+          "keyname": "",
+          "trapped": false,
+          "trap": ""
+        }
+      ],
+      "traps": [
+        {
+          "detectDC": 13,
+          "disableDC": 15,
+          "triggerDC": 12,
+          "damage": "2d6 piercing (flying quills) if someone tries to pry open the ledger"
+        }
+      ],
+      "dcChecks": [
+        "Arcana DC 15: Decipher the magical seal binding the ledger.",
+        "Perception DC 13: Notice a name on the plinth shifting under a glamor.",
+        "Persuasion DC 14: Convince Sable to share a secret about the royal family\u2019s downfall."
+      ],
+      "accessibility": "Normal access via hidden side path; easy to miss if not searching carefully.",
+      "dangerLevel": "Medium",
+      "features": [
+        {
+          "name": "Signs Of Age",
+          "description": "Ledger and plinth show the wear of centuries, initials faded and layered."
+        },
+        {
+          "name": "Interesting Architecture",
+          "description": "Stone bench and arch are carved with spiraling script and runic sigils."
+        }
+      ],
+      "encounters": [
+        {
+          "type": "roleplay",
+          "description": "Dialogue with Sable the scribe-shade can yield lore, warnings, and hints about the road\u2019s magical traps."
+        },
+        {
+          "type": "combat",
+          "description": "Animated quills defend the ledger if disturbed, creating a swarm that slashes with ink and barbed metal."
+        }
+      ],
+      "adventureSummary": "A hidden, haunted alcove where records of the past linger\u2014and meddling may bring both danger and crucial clues.",
+      "aliases": [
+        "Bound Ledger Nook",
+        "H03"
+      ],
+      "tactical_grid": [
+        "northwest:cover",
+        "north:approach",
+        "northeast:cover",
+        "west:approach",
+        "center_room:Bound Ledger Nook",
+        "east:approach",
+        "southwest:cover",
+        "south:approach",
+        "southeast:cover"
+      ]
+    }
+  ],
+  "randomEncounters": [
+    {
+      "roll": "1-10",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 4 parties"
+    },
+    {
+      "roll": "11-20",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 4 parties"
+    },
+    {
+      "roll": "21-30",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 4 parties"
+    },
+    {
+      "roll": "31-40",
+      "encounter": "bandit patrol",
+      "description": "A bandit patrol appropriate for level 4 parties"
+    },
+    {
+      "roll": "41-50",
+      "encounter": "territorial beast",
+      "description": "A territorial beast appropriate for level 4 parties"
+    },
+    {
+      "roll": "51-60",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 4 parties"
+    },
+    {
+      "roll": "61-70",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 4 parties"
+    },
+    {
+      "roll": "71-80",
+      "encounter": "hostile creature",
+      "description": "A hostile creature appropriate for level 4 parties"
+    }
+  ],
+  "areaFeatures": [
+    "crossroads",
+    "bridges",
+    "landmarks"
+  ],
+  "notes": "Balance combat, exploration, and social encounters. Transitions between areas should feel natural.",
+  "spatialContractVersion": 1
+}

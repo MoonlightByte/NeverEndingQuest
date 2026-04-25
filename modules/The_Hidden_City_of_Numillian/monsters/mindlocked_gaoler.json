@@ -1,0 +1,69 @@
+{
+  "name": "Mindlocked Gaoler",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Lawful Evil",
+  "armorClass": 14,
+  "hitPoints": 18,
+  "maxHitPoints": 18,
+  "speed": 30,
+  "abilities": {
+    "strength": 13,
+    "dexterity": 12,
+    "constitution": 14,
+    "intelligence": 10,
+    "wisdom": 15,
+    "charisma": 8
+  },
+  "savingThrows": [
+    "Wisdom",
+    "Constitution"
+  ],
+  "skills": {
+    "Perception": 4,
+    "Insight": 4,
+    "Intimidation": 1
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "psychic"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "Common, Undercommon",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Psionic Shackles",
+      "attackBonus": 0,
+      "damageDice": "1d6",
+      "damageBonus": 0,
+      "damageType": "psychic"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Clubswing",
+      "attackBonus": 3,
+      "damageDice": "1d6",
+      "damageBonus": 1,
+      "damageType": "bludgeoning"
+    },
+    {
+      "name": "Mindlock Glare",
+      "attackBonus": 0,
+      "damageDice": "2d4",
+      "damageBonus": 0,
+      "damageType": "psychic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "description": "The Mindlocked Gaoler is a chilling sentinel born of warped psychic energies, a creature perfectly suited to the shifting labyrinth of the Shrouded Psiumbra. Standing over seven feet tall, its gaunt frame is wrapped in tattered ceremonial bindings that pulse faintly with eldritch light. Its flesh appears translucent and taut, revealing twitching veins glowing with a sickly phosphorescence beneath the surface. The gaoler's head is a grotesque fusion of humanoid and cephalopod features: a crown of writhing, semi-transparent tendrils constantly undulates, each tipped with crystalline nodes that shimmer with trapped memories and psychic whispers. Its blank, pupil-less eyes emit a dim lavender glow that pierces the illusions surrounding it, granting the gaoler an uncanny perception of truth amid deception. Long, sinewy arms end in clawed hands that can manipulate invisible psychic chains, used to bind and torment those who trespass too deeply into forbidden knowledge. The gaoler moves with an unsettling, almost fluid grace despite its skeletal appearance, its presence accompanied by a low hum of psychic resonance that distorts the minds of nearby intruders. In the dim, illusion-drenched corridors of the Mind Flayer's Masquerade Hall, the Mindlocked Gaoler is both jailer and warden--its very form a living prison of fractured thoughts and suppressed memories, relentlessly hunting those who dare seek the Mindsunder Vault's secrets."
+}

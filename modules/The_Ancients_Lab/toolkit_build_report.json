@@ -1,0 +1,3731 @@
+{
+  "generated_at": "2026-04-23T03:25:34Z",
+  "module_slug": "The_Ancients_Lab",
+  "status": "degraded",
+  "ready_status": "pass",
+  "publishable_status": "pass",
+  "freshness_state": "degraded",
+  "report_freshness": {
+    "state": "degraded",
+    "authoritative": true,
+    "written_at": "2026-04-23T03:25:34Z",
+    "phase": "final",
+    "workflow": "toolkit_report_refresh",
+    "refresh_reason": "module_media_generator",
+    "contract": "toolkit_build_report_refresh_contract.v1",
+    "stale_reason": null
+  },
+  "strict": true,
+  "source": "toolkit",
+  "provenance": {
+    "source": "toolkit",
+    "artifact": "toolkit_build_report.json",
+    "contract": "toolkit_build_report_required",
+    "phase": "final",
+    "refresh_contract": "toolkit_build_report_refresh_contract.v1",
+    "refresh_workflow": "toolkit_report_refresh",
+    "refresh_reason": "module_media_generator"
+  },
+  "stages": {
+    "continuity": {
+      "status": "success",
+      "continuity_patch": {
+        "module_context": {
+          "module_name": "The Ancients Lab",
+          "module_id": "The_Ancients_Lab",
+          "areas": {
+            "BA001": {
+              "name": "Blackcrag Approach",
+              "type": "wilderness",
+              "locations": [],
+              "npcs": [
+                "Rambling Dwarven Survivor"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "FG001": {
+              "name": "Forsaken Galleries",
+              "type": "dungeon",
+              "locations": [],
+              "npcs": [],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "AC001": {
+              "name": "Aberrant Core",
+              "type": "mixed",
+              "locations": [],
+              "npcs": [
+                "Damaged Security Overseer"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "TTL001": {
+              "name": "The Thing’s Lair",
+              "type": "mixed",
+              "locations": [
+                "I01",
+                "I02",
+                "I03"
+              ],
+              "npcs": [
+                "Archivist Automaton"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            }
+          },
+          "npcs": {
+            "mutated_scavenger_leader": {
+              "name": "Mutated Scavenger Leader",
+              "role": "",
+              "faction": "",
+              "description": "",
+              "appears_in": [],
+              "aliases": [
+                "Mutated Scavenger Leader (Varn)"
+              ]
+            },
+            "rambling_dwarven_survivor": {
+              "name": "Rambling Dwarven Survivor",
+              "role": "",
+              "faction": "",
+              "description": "A disheveled, wild-eyed dwarf in patched armor, muttering about monsters beneath the ground. He is wary but desperate for help—and may offer warnings, rumors, or even a crude map of the Marches if befriended.",
+              "appears_in": [
+                {
+                  "area": "BA001",
+                  "location": "I03"
+                }
+              ],
+              "aliases": [
+                "Rambling Dwarven Survivor (Edda Coppervein)",
+                "Rambling Dwarven Survivor"
+              ]
+            },
+            "security_construct": {
+              "name": "Security Construct",
+              "role": "",
+              "faction": "",
+              "description": "",
+              "appears_in": [],
+              "aliases": [
+                "Security Construct (Warden-3)"
+              ]
+            },
+            "archivist_automaton": {
+              "name": "Archivist Automaton",
+              "role": "",
+              "faction": "",
+              "description": "A semi-sapient dwarven automaton assigned to monitor and record the cell’s experiments. Scarred and flickering, it is conflicted—its primary programming to help, but secondary instructions to prevent any subject's escape.",
+              "appears_in": [
+                {
+                  "area": "TTL001",
+                  "location": "I03"
+                }
+              ],
+              "aliases": [
+                "Archivist Automaton (Hesk)",
+                "Archivist Automaton"
+              ]
+            },
+            "the_thing": {
+              "name": "The Thing",
+              "role": "",
+              "faction": "",
+              "description": "",
+              "appears_in": [],
+              "aliases": [
+                "The Thing",
+                "The Thing (final form)"
+              ]
+            },
+            "mutant_scavenger_lieutenant": {
+              "name": "Mutant Scavenger Lieutenant",
+              "role": "",
+              "faction": "",
+              "description": "",
+              "appears_in": [],
+              "aliases": [
+                "Mutant Scavenger Lieutenant (Grahl)"
+              ]
+            },
+            "damaged_security_overseer": {
+              "name": "Damaged Security Overseer",
+              "role": "",
+              "faction": "",
+              "description": "A dwarven construct, scorched and stuttering, still attempts to fulfill its original security protocols. It is confused and dangerous, lashing out at perceived threats but open to persuasion or reprogramming.",
+              "appears_in": [
+                {
+                  "area": "AC001",
+                  "location": "I03"
+                }
+              ],
+              "aliases": [
+                "Damaged Security Overseer (Unit K-7)",
+                "Damaged Security Overseer"
+              ]
+            },
+            "edda_coppervein": {
+              "name": "Edda Coppervein",
+              "role": "",
+              "faction": "",
+              "description": "",
+              "appears_in": [],
+              "aliases": [
+                "Edda Coppervein (if survived)"
+              ]
+            },
+            "facility_security_system": {
+              "name": "Facility Security System",
+              "role": "",
+              "faction": "",
+              "description": "",
+              "appears_in": [],
+              "aliases": [
+                "Facility Security System (AI presence: 'Aegis')"
+              ]
+            }
+          },
+          "locations": {
+            "I01": {
+              "name": "Twisted Forge Atrium",
+              "area": "TTL001"
+            },
+            "I02": {
+              "name": "Bygone Mutation Vault",
+              "area": "TTL001"
+            },
+            "I03": {
+              "name": "Runebound Isolation Cell",
+              "area": "TTL001"
+            }
+          },
+          "plot_scopes": {
+            "PP001": "TTL001",
+            "PP002": "TTL001",
+            "PP003": "TTL001",
+            "PP004": "TTL001"
+          },
+          "references": {
+            "npc:Mutated Scavenger Leader (Varn)": [
+              "module:plotStages"
+            ],
+            "npc:Rambling Dwarven Survivor (Edda Coppervein)": [
+              "module:plotStages"
+            ],
+            "npc:Security Construct (Warden-3)": [
+              "module:plotStages"
+            ],
+            "npc:Archivist Automaton (Hesk)": [
+              "module:plotStages"
+            ],
+            "npc:The Thing": [
+              "module:plotStages"
+            ],
+            "npc:Mutant Scavenger Lieutenant (Grahl)": [
+              "module:plotStages"
+            ],
+            "npc:Damaged Security Overseer (Unit K-7)": [
+              "module:plotStages"
+            ],
+            "npc:The Thing (final form)": [
+              "module:plotStages"
+            ],
+            "npc:Edda Coppervein (if survived)": [
+              "module:plotStages"
+            ],
+            "npc:Facility Security System (AI presence: 'Aegis')": [
+              "module:plotStages"
+            ]
+          },
+          "validation_issues": [
+            "NPC 'The Thing' is referenced in ['module:plotStages'] but not placed in any location"
+          ],
+          "generated_at": "2026-04-22T10:13:35.488444",
+          "continuity": {
+            "continuity_version": "v1",
+            "entry_state_variants": {
+              "cold_start": {
+                "summary": "Party enters The Ancients Lab with no prior continuity context. Present the opening conflict and immediate objective clearly."
+              },
+              "partial_context": {
+                "summary": "Party enters The Ancients Lab with partial prior context. Reinforce known clues before branch-critical decisions."
+              },
+              "late_arc": {
+                "summary": "Party enters The Ancients Lab in late-arc state. Provide compact recap and preserve ending accessibility."
+              }
+            },
+            "cross_module_refs": [
+              {
+                "target_module": "Night_of_the_Restless_Dead",
+                "entity_id": "sister_miriam_bramble",
+                "relation": "reference",
+                "confidence": "medium",
+                "notes": "Cult lineage and Bramble thread connect to adjacent modules."
+              },
+              {
+                "target_module": "The_Pumpkin_Kings_Curse",
+                "entity_id": "bramble_lineage",
+                "relation": "reference",
+                "confidence": "high",
+                "notes": "Bramble family lineage appears in linked module arcs."
+              },
+              {
+                "target_module": "The_Pumpkin_Kings_Curse",
+                "entity_id": "pumpkin_king",
+                "relation": "antagonist",
+                "confidence": "medium",
+                "notes": "Pumpkin King and harvest pact are shared continuity anchors."
+              }
+            ],
+            "standalone_fallback": {
+              "enabled": true,
+              "clue_sources": [
+                "module_context",
+                "module_plot"
+              ],
+              "notes": "The_Ancients_Lab remains playable as a standalone module when cross-module continuity is unavailable."
+            }
+          },
+          "semantic_authority": {
+            "version": "v1",
+            "module_slug": "The_Ancients_Lab",
+            "location_aliases": {
+              "abyssal fracture": {
+                "status": "resolved",
+                "location_id": "I02",
+                "location_name": "Bygone Mutation Vault",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/BA001.json#locations[I02].aliases",
+                  "areas/BA001.json#locations[I02].name"
+                ]
+              },
+              "bygone mutation vault": {
+                "status": "resolved",
+                "location_id": "I02",
+                "location_name": "Bygone Mutation Vault",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I02].aliases",
+                  "areas/TTL001.json#locations[I02].name"
+                ]
+              },
+              "fleshforged observation nook": {
+                "status": "resolved",
+                "location_id": "I02",
+                "location_name": "Bygone Mutation Vault",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I02].aliases",
+                  "areas/AC001.json#locations[I02].name"
+                ]
+              },
+              "forgotten splice vault": {
+                "status": "resolved",
+                "location_id": "I03",
+                "location_name": "Runebound Isolation Cell",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/FG001.json#locations[I03].aliases",
+                  "areas/FG001.json#locations[I03].name"
+                ]
+              },
+              "forsaken outrider encampment": {
+                "status": "resolved",
+                "location_id": "I03",
+                "location_name": "Runebound Isolation Cell",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/BA001.json#locations[I03].aliases",
+                  "areas/BA001.json#locations[I03].name"
+                ]
+              },
+              "fused iron antechamber": {
+                "status": "resolved",
+                "location_id": "I01",
+                "location_name": "Twisted Forge Atrium",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/FG001.json#locations[I01].aliases",
+                  "areas/FG001.json#locations[I01].name"
+                ]
+              },
+              "huskbound termination cell": {
+                "status": "resolved",
+                "location_id": "I03",
+                "location_name": "Runebound Isolation Cell",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I03].aliases",
+                  "areas/AC001.json#locations[I03].name"
+                ]
+              },
+              "i01": {
+                "status": "resolved",
+                "location_id": "I01",
+                "location_name": "Twisted Forge Atrium",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I01].aliases",
+                  "areas/BA001.json#locations[I01].aliases",
+                  "areas/FG001.json#locations[I01].aliases",
+                  "areas/TTL001.json#locations[I01].aliases"
+                ]
+              },
+              "i02": {
+                "status": "resolved",
+                "location_id": "I02",
+                "location_name": "Bygone Mutation Vault",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I02].aliases",
+                  "areas/BA001.json#locations[I02].aliases",
+                  "areas/FG001.json#locations[I02].aliases",
+                  "areas/TTL001.json#locations[I02].aliases"
+                ]
+              },
+              "i03": {
+                "status": "resolved",
+                "location_id": "I03",
+                "location_name": "Runebound Isolation Cell",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I03].aliases",
+                  "areas/BA001.json#locations[I03].aliases",
+                  "areas/FG001.json#locations[I03].aliases",
+                  "areas/TTL001.json#locations[I03].aliases"
+                ]
+              },
+              "runebound isolation cell": {
+                "status": "resolved",
+                "location_id": "I03",
+                "location_name": "Runebound Isolation Cell",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I03].aliases",
+                  "areas/TTL001.json#locations[I03].name"
+                ]
+              },
+              "shattered forge approach": {
+                "status": "resolved",
+                "location_id": "I01",
+                "location_name": "Twisted Forge Atrium",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/BA001.json#locations[I01].aliases",
+                  "areas/BA001.json#locations[I01].name"
+                ]
+              },
+              "throne of twisted lineage": {
+                "status": "resolved",
+                "location_id": "I02",
+                "location_name": "Bygone Mutation Vault",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/FG001.json#locations[I02].aliases",
+                  "areas/FG001.json#locations[I02].name"
+                ]
+              },
+              "twisted forge atrium": {
+                "status": "resolved",
+                "location_id": "I01",
+                "location_name": "Twisted Forge Atrium",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I01].aliases",
+                  "areas/TTL001.json#locations[I01].name"
+                ]
+              },
+              "warped sentinel vestibule": {
+                "status": "resolved",
+                "location_id": "I01",
+                "location_name": "Twisted Forge Atrium",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I01].aliases",
+                  "areas/AC001.json#locations[I01].name"
+                ]
+              }
+            },
+            "destination_phrases": {
+              "abyssal fracture": {
+                "status": "resolved",
+                "location_id": "I02",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/BA001.json#locations[I02].aliases",
+                  "areas/BA001.json#locations[I02].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "bygone mutation vault": {
+                "status": "resolved",
+                "location_id": "I02",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I02].aliases",
+                  "areas/TTL001.json#locations[I02].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "fleshforged observation nook": {
+                "status": "resolved",
+                "location_id": "I02",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I02].aliases",
+                  "areas/AC001.json#locations[I02].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "forgotten splice vault": {
+                "status": "resolved",
+                "location_id": "I03",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/FG001.json#locations[I03].aliases",
+                  "areas/FG001.json#locations[I03].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "forsaken outrider encampment": {
+                "status": "resolved",
+                "location_id": "I03",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/BA001.json#locations[I03].aliases",
+                  "areas/BA001.json#locations[I03].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "fused iron antechamber": {
+                "status": "resolved",
+                "location_id": "I01",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/FG001.json#locations[I01].aliases",
+                  "areas/FG001.json#locations[I01].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "huskbound termination cell": {
+                "status": "resolved",
+                "location_id": "I03",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I03].aliases",
+                  "areas/AC001.json#locations[I03].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "i01": {
+                "status": "resolved",
+                "location_id": "I01",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I01].aliases",
+                  "areas/BA001.json#locations[I01].aliases",
+                  "areas/FG001.json#locations[I01].aliases",
+                  "areas/TTL001.json#locations[I01].aliases"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "i02": {
+                "status": "resolved",
+                "location_id": "I02",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I02].aliases",
+                  "areas/BA001.json#locations[I02].aliases",
+                  "areas/FG001.json#locations[I02].aliases",
+                  "areas/TTL001.json#locations[I02].aliases"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "i03": {
+                "status": "resolved",
+                "location_id": "I03",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I03].aliases",
+                  "areas/BA001.json#locations[I03].aliases",
+                  "areas/FG001.json#locations[I03].aliases",
+                  "areas/TTL001.json#locations[I03].aliases"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "runebound isolation cell": {
+                "status": "resolved",
+                "location_id": "I03",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I03].aliases",
+                  "areas/TTL001.json#locations[I03].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "shattered forge approach": {
+                "status": "resolved",
+                "location_id": "I01",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/BA001.json#locations[I01].aliases",
+                  "areas/BA001.json#locations[I01].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "throne of twisted lineage": {
+                "status": "resolved",
+                "location_id": "I02",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/FG001.json#locations[I02].aliases",
+                  "areas/FG001.json#locations[I02].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "twisted forge atrium": {
+                "status": "resolved",
+                "location_id": "I01",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I01].aliases",
+                  "areas/TTL001.json#locations[I01].description",
+                  "areas/TTL001.json#locations[I01].name"
+                ],
+                "observed": true,
+                "player_facing": true,
+                "observation_count": 1
+              },
+              "warped sentinel vestibule": {
+                "status": "resolved",
+                "location_id": "I01",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I01].aliases",
+                  "areas/AC001.json#locations[I01].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              }
+            },
+            "npc_scene_authority": {
+              "Archivist Automaton": {
+                "name_slug": "archivist automaton",
+                "visible_location_ids": [
+                  "I03"
+                ],
+                "reveal_bindings": [],
+                "sources": [
+                  "areas/AC001.json#locations[I03].plotHooks",
+                  "areas/TTL001.json#locations[I03].dcChecks",
+                  "areas/TTL001.json#locations[I03].dmInstructions",
+                  "areas/TTL001.json#locations[I03].npcs",
+                  "areas/TTL001.json#locations[I03].plotHooks",
+                  "module_context.json#npcs.archivist_automaton"
+                ],
+                "authored_mentions_count": 4,
+                "authored_mention_sources": [
+                  "areas/AC001.json#locations[I03].plotHooks",
+                  "areas/TTL001.json#locations[I03].dcChecks",
+                  "areas/TTL001.json#locations[I03].dmInstructions",
+                  "areas/TTL001.json#locations[I03].plotHooks"
+                ]
+              },
+              "Damaged Security Overseer": {
+                "name_slug": "damaged security overseer",
+                "visible_location_ids": [
+                  "I03"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "I02",
+                    "source": "areas/AC001.json#locations[I02].plotHooks",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I02].plotHooks",
+                  "areas/AC001.json#locations[I03].accessibility",
+                  "areas/AC001.json#locations[I03].dcChecks",
+                  "areas/AC001.json#locations[I03].dmInstructions",
+                  "areas/AC001.json#locations[I03].npcs",
+                  "areas/AC001.json#locations[I03].plotHooks",
+                  "module_context.json#npcs.damaged_security_overseer"
+                ],
+                "authored_mentions_count": 5,
+                "authored_mention_sources": [
+                  "areas/AC001.json#locations[I02].plotHooks",
+                  "areas/AC001.json#locations[I03].accessibility",
+                  "areas/AC001.json#locations[I03].dcChecks",
+                  "areas/AC001.json#locations[I03].dmInstructions",
+                  "areas/AC001.json#locations[I03].plotHooks"
+                ]
+              },
+              "Edda Coppervein": {
+                "name_slug": "edda coppervein",
+                "visible_location_ids": [],
+                "reveal_bindings": [],
+                "sources": [
+                  "module_context.json#npcs.edda_coppervein"
+                ],
+                "authored_mentions_count": 0,
+                "authored_mention_sources": []
+              },
+              "Facility Security System": {
+                "name_slug": "facility security system",
+                "visible_location_ids": [],
+                "reveal_bindings": [
+                  {
+                    "location_id": "I01",
+                    "source": "areas/FG001.json#locations[I01].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I02",
+                    "source": "areas/AC001.json#locations[I02].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I02",
+                    "source": "areas/TTL001.json#locations[I02].dcChecks",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I02].plotHooks",
+                  "areas/FG001.json#locations[I01].plotHooks",
+                  "areas/TTL001.json#locations[I02].dcChecks",
+                  "module_context.json#npcs.facility_security_system"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/AC001.json#locations[I02].plotHooks",
+                  "areas/FG001.json#locations[I01].plotHooks",
+                  "areas/TTL001.json#locations[I02].dcChecks"
+                ]
+              },
+              "Mutant Scavenger Lieutenant": {
+                "name_slug": "mutant scavenger lieutenant",
+                "visible_location_ids": [],
+                "reveal_bindings": [
+                  {
+                    "location_id": "I03",
+                    "source": "areas/TTL001.json#locations[I03].dcChecks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I03",
+                    "source": "areas/TTL001.json#locations[I03].dmInstructions",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I03",
+                    "source": "areas/TTL001.json#locations[I03].plotHooks",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I03].dcChecks",
+                  "areas/TTL001.json#locations[I03].dmInstructions",
+                  "areas/TTL001.json#locations[I03].plotHooks",
+                  "module_context.json#npcs.mutant_scavenger_lieutenant"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/TTL001.json#locations[I03].dcChecks",
+                  "areas/TTL001.json#locations[I03].dmInstructions",
+                  "areas/TTL001.json#locations[I03].plotHooks"
+                ]
+              },
+              "Mutated Scavenger Leader": {
+                "name_slug": "mutated scavenger leader",
+                "visible_location_ids": [],
+                "reveal_bindings": [
+                  {
+                    "location_id": "I01",
+                    "source": "areas/TTL001.json#locations[I01].dmInstructions",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I01",
+                    "source": "areas/TTL001.json#locations[I01].plotHooks",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I01].dmInstructions",
+                  "areas/TTL001.json#locations[I01].plotHooks",
+                  "module_context.json#npcs.mutated_scavenger_leader"
+                ],
+                "authored_mentions_count": 2,
+                "authored_mention_sources": [
+                  "areas/TTL001.json#locations[I01].dmInstructions",
+                  "areas/TTL001.json#locations[I01].plotHooks"
+                ]
+              },
+              "Rambling Dwarven Survivor": {
+                "name_slug": "rambling dwarven survivor",
+                "visible_location_ids": [
+                  "I03"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "FG001",
+                    "source": "module_plot.json#plotPoints[PP002].description",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/BA001.json#locations[I03].dcChecks",
+                  "areas/BA001.json#locations[I03].dmInstructions",
+                  "areas/BA001.json#locations[I03].npcs",
+                  "areas/BA001.json#locations[I03].plotHooks",
+                  "module_context.json#npcs.rambling_dwarven_survivor",
+                  "module_plot.json#plotPoints[PP002].description"
+                ],
+                "authored_mentions_count": 4,
+                "authored_mention_sources": [
+                  "areas/BA001.json#locations[I03].dcChecks",
+                  "areas/BA001.json#locations[I03].dmInstructions",
+                  "areas/BA001.json#locations[I03].plotHooks",
+                  "module_plot.json#plotPoints[PP002].description"
+                ]
+              },
+              "Security Construct": {
+                "name_slug": "security construct",
+                "visible_location_ids": [],
+                "reveal_bindings": [
+                  {
+                    "location_id": "FG001",
+                    "source": "module_plot.json#plotPoints[PP005].description",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I02",
+                    "source": "areas/TTL001.json#locations[I02].dcChecks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I02",
+                    "source": "areas/TTL001.json#locations[I02].dmInstructions",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I02",
+                    "source": "areas/TTL001.json#locations[I02].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I03",
+                    "source": "areas/BA001.json#locations[I03].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I03",
+                    "source": "areas/FG001.json#locations[I03].plotHooks",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/BA001.json#locations[I03].plotHooks",
+                  "areas/FG001.json#locations[I03].plotHooks",
+                  "areas/TTL001.json#locations[I02].dcChecks",
+                  "areas/TTL001.json#locations[I02].dmInstructions",
+                  "areas/TTL001.json#locations[I02].plotHooks",
+                  "module_context.json#npcs.security_construct",
+                  "module_plot.json#plotPoints[PP005].description"
+                ],
+                "authored_mentions_count": 6,
+                "authored_mention_sources": [
+                  "areas/BA001.json#locations[I03].plotHooks",
+                  "areas/FG001.json#locations[I03].plotHooks",
+                  "areas/TTL001.json#locations[I02].dcChecks",
+                  "areas/TTL001.json#locations[I02].dmInstructions",
+                  "areas/TTL001.json#locations[I02].plotHooks",
+                  "module_plot.json#plotPoints[PP005].description"
+                ]
+              },
+              "The Thing": {
+                "name_slug": "the thing",
+                "visible_location_ids": [],
+                "reveal_bindings": [
+                  {
+                    "location_id": "I01",
+                    "source": "areas/TTL001.json#locations[I01].dmInstructions",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I03",
+                    "source": "areas/AC001.json#locations[I03].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I03",
+                    "source": "areas/TTL001.json#locations[I03].plotHooks",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I03].plotHooks",
+                  "areas/TTL001.json#locations[I01].dmInstructions",
+                  "areas/TTL001.json#locations[I03].plotHooks",
+                  "module_context.json#npcs.the_thing"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/AC001.json#locations[I03].plotHooks",
+                  "areas/TTL001.json#locations[I01].dmInstructions",
+                  "areas/TTL001.json#locations[I03].plotHooks"
+                ]
+              }
+            },
+            "diagnostics": {
+              "duplicate_location_aliases": [],
+              "ambiguous_destination_phrases": [],
+              "unresolved_destination_phrases": [],
+              "missing_npc_authority": [
+                {
+                  "npc": "Edda Coppervein",
+                  "name_slug": "edda coppervein",
+                  "sources": [
+                    "module_context.json#npcs.edda_coppervein"
+                  ],
+                  "authored_mentions_count": 0,
+                  "authored_mention_sources": []
+                }
+              ]
+            },
+            "summary": {
+              "location_count": 12,
+              "location_alias_count": 15,
+              "destination_phrase_count": 15,
+              "npc_count": 9,
+              "ambiguous_destination_count": 0,
+              "missing_npc_authority_count": 1
+            }
+          }
+        },
+        "changed": false,
+        "injected_keys": []
+      },
+      "continuity_enrichment": {
+        "status": "success",
+        "module_context": {
+          "module_name": "The Ancients Lab",
+          "module_id": "The_Ancients_Lab",
+          "areas": {
+            "BA001": {
+              "name": "Blackcrag Approach",
+              "type": "wilderness",
+              "locations": [],
+              "npcs": [
+                "Rambling Dwarven Survivor"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "FG001": {
+              "name": "Forsaken Galleries",
+              "type": "dungeon",
+              "locations": [],
+              "npcs": [],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "AC001": {
+              "name": "Aberrant Core",
+              "type": "mixed",
+              "locations": [],
+              "npcs": [
+                "Damaged Security Overseer"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            },
+            "TTL001": {
+              "name": "The Thing’s Lair",
+              "type": "mixed",
+              "locations": [
+                "I01",
+                "I02",
+                "I03"
+              ],
+              "npcs": [
+                "Archivist Automaton"
+              ],
+              "plot_points": [
+                "PP001",
+                "PP002",
+                "PP003",
+                "PP004"
+              ]
+            }
+          },
+          "npcs": {
+            "mutated_scavenger_leader": {
+              "name": "Mutated Scavenger Leader",
+              "role": "",
+              "faction": "",
+              "description": "",
+              "appears_in": [],
+              "aliases": [
+                "Mutated Scavenger Leader (Varn)"
+              ]
+            },
+            "rambling_dwarven_survivor": {
+              "name": "Rambling Dwarven Survivor",
+              "role": "",
+              "faction": "",
+              "description": "A disheveled, wild-eyed dwarf in patched armor, muttering about monsters beneath the ground. He is wary but desperate for help—and may offer warnings, rumors, or even a crude map of the Marches if befriended.",
+              "appears_in": [
+                {
+                  "area": "BA001",
+                  "location": "I03"
+                }
+              ],
+              "aliases": [
+                "Rambling Dwarven Survivor (Edda Coppervein)",
+                "Rambling Dwarven Survivor"
+              ]
+            },
+            "security_construct": {
+              "name": "Security Construct",
+              "role": "",
+              "faction": "",
+              "description": "",
+              "appears_in": [],
+              "aliases": [
+                "Security Construct (Warden-3)"
+              ]
+            },
+            "archivist_automaton": {
+              "name": "Archivist Automaton",
+              "role": "",
+              "faction": "",
+              "description": "A semi-sapient dwarven automaton assigned to monitor and record the cell’s experiments. Scarred and flickering, it is conflicted—its primary programming to help, but secondary instructions to prevent any subject's escape.",
+              "appears_in": [
+                {
+                  "area": "TTL001",
+                  "location": "I03"
+                }
+              ],
+              "aliases": [
+                "Archivist Automaton (Hesk)",
+                "Archivist Automaton"
+              ]
+            },
+            "the_thing": {
+              "name": "The Thing",
+              "role": "",
+              "faction": "",
+              "description": "",
+              "appears_in": [],
+              "aliases": [
+                "The Thing",
+                "The Thing (final form)"
+              ]
+            },
+            "mutant_scavenger_lieutenant": {
+              "name": "Mutant Scavenger Lieutenant",
+              "role": "",
+              "faction": "",
+              "description": "",
+              "appears_in": [],
+              "aliases": [
+                "Mutant Scavenger Lieutenant (Grahl)"
+              ]
+            },
+            "damaged_security_overseer": {
+              "name": "Damaged Security Overseer",
+              "role": "",
+              "faction": "",
+              "description": "A dwarven construct, scorched and stuttering, still attempts to fulfill its original security protocols. It is confused and dangerous, lashing out at perceived threats but open to persuasion or reprogramming.",
+              "appears_in": [
+                {
+                  "area": "AC001",
+                  "location": "I03"
+                }
+              ],
+              "aliases": [
+                "Damaged Security Overseer (Unit K-7)",
+                "Damaged Security Overseer"
+              ]
+            },
+            "edda_coppervein": {
+              "name": "Edda Coppervein",
+              "role": "",
+              "faction": "",
+              "description": "",
+              "appears_in": [],
+              "aliases": [
+                "Edda Coppervein (if survived)"
+              ]
+            },
+            "facility_security_system": {
+              "name": "Facility Security System",
+              "role": "",
+              "faction": "",
+              "description": "",
+              "appears_in": [],
+              "aliases": [
+                "Facility Security System (AI presence: 'Aegis')"
+              ]
+            }
+          },
+          "locations": {
+            "I01": {
+              "name": "Twisted Forge Atrium",
+              "area": "TTL001"
+            },
+            "I02": {
+              "name": "Bygone Mutation Vault",
+              "area": "TTL001"
+            },
+            "I03": {
+              "name": "Runebound Isolation Cell",
+              "area": "TTL001"
+            }
+          },
+          "plot_scopes": {
+            "PP001": "TTL001",
+            "PP002": "TTL001",
+            "PP003": "TTL001",
+            "PP004": "TTL001"
+          },
+          "references": {
+            "npc:Mutated Scavenger Leader (Varn)": [
+              "module:plotStages"
+            ],
+            "npc:Rambling Dwarven Survivor (Edda Coppervein)": [
+              "module:plotStages"
+            ],
+            "npc:Security Construct (Warden-3)": [
+              "module:plotStages"
+            ],
+            "npc:Archivist Automaton (Hesk)": [
+              "module:plotStages"
+            ],
+            "npc:The Thing": [
+              "module:plotStages"
+            ],
+            "npc:Mutant Scavenger Lieutenant (Grahl)": [
+              "module:plotStages"
+            ],
+            "npc:Damaged Security Overseer (Unit K-7)": [
+              "module:plotStages"
+            ],
+            "npc:The Thing (final form)": [
+              "module:plotStages"
+            ],
+            "npc:Edda Coppervein (if survived)": [
+              "module:plotStages"
+            ],
+            "npc:Facility Security System (AI presence: 'Aegis')": [
+              "module:plotStages"
+            ]
+          },
+          "validation_issues": [
+            "NPC 'The Thing' is referenced in ['module:plotStages'] but not placed in any location"
+          ],
+          "generated_at": "2026-04-22T10:13:35.488444",
+          "continuity": {
+            "continuity_version": "v1",
+            "entry_state_variants": {
+              "cold_start": {
+                "summary": "Party enters The Ancients Lab with no prior continuity context. Present the opening conflict and immediate objective clearly."
+              },
+              "partial_context": {
+                "summary": "Party enters The Ancients Lab with partial prior context. Reinforce known clues before branch-critical decisions."
+              },
+              "late_arc": {
+                "summary": "Party enters The Ancients Lab in late-arc state. Provide compact recap and preserve ending accessibility."
+              }
+            },
+            "cross_module_refs": [
+              {
+                "target_module": "Night_of_the_Restless_Dead",
+                "entity_id": "sister_miriam_bramble",
+                "relation": "reference",
+                "confidence": "medium",
+                "notes": "Cult lineage and Bramble thread connect to adjacent modules."
+              },
+              {
+                "target_module": "The_Pumpkin_Kings_Curse",
+                "entity_id": "bramble_lineage",
+                "relation": "reference",
+                "confidence": "high",
+                "notes": "Bramble family lineage appears in linked module arcs."
+              },
+              {
+                "target_module": "The_Pumpkin_Kings_Curse",
+                "entity_id": "pumpkin_king",
+                "relation": "antagonist",
+                "confidence": "medium",
+                "notes": "Pumpkin King and harvest pact are shared continuity anchors."
+              }
+            ],
+            "standalone_fallback": {
+              "enabled": true,
+              "clue_sources": [
+                "module_context",
+                "module_plot"
+              ],
+              "notes": "The_Ancients_Lab remains playable as a standalone module when cross-module continuity is unavailable."
+            }
+          },
+          "semantic_authority": {
+            "version": "v1",
+            "module_slug": "The_Ancients_Lab",
+            "location_aliases": {
+              "abyssal fracture": {
+                "status": "resolved",
+                "location_id": "I02",
+                "location_name": "Bygone Mutation Vault",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/BA001.json#locations[I02].aliases",
+                  "areas/BA001.json#locations[I02].name"
+                ]
+              },
+              "bygone mutation vault": {
+                "status": "resolved",
+                "location_id": "I02",
+                "location_name": "Bygone Mutation Vault",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I02].aliases",
+                  "areas/TTL001.json#locations[I02].name"
+                ]
+              },
+              "fleshforged observation nook": {
+                "status": "resolved",
+                "location_id": "I02",
+                "location_name": "Bygone Mutation Vault",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I02].aliases",
+                  "areas/AC001.json#locations[I02].name"
+                ]
+              },
+              "forgotten splice vault": {
+                "status": "resolved",
+                "location_id": "I03",
+                "location_name": "Runebound Isolation Cell",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/FG001.json#locations[I03].aliases",
+                  "areas/FG001.json#locations[I03].name"
+                ]
+              },
+              "forsaken outrider encampment": {
+                "status": "resolved",
+                "location_id": "I03",
+                "location_name": "Runebound Isolation Cell",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/BA001.json#locations[I03].aliases",
+                  "areas/BA001.json#locations[I03].name"
+                ]
+              },
+              "fused iron antechamber": {
+                "status": "resolved",
+                "location_id": "I01",
+                "location_name": "Twisted Forge Atrium",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/FG001.json#locations[I01].aliases",
+                  "areas/FG001.json#locations[I01].name"
+                ]
+              },
+              "huskbound termination cell": {
+                "status": "resolved",
+                "location_id": "I03",
+                "location_name": "Runebound Isolation Cell",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I03].aliases",
+                  "areas/AC001.json#locations[I03].name"
+                ]
+              },
+              "i01": {
+                "status": "resolved",
+                "location_id": "I01",
+                "location_name": "Twisted Forge Atrium",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I01].aliases",
+                  "areas/BA001.json#locations[I01].aliases",
+                  "areas/FG001.json#locations[I01].aliases",
+                  "areas/TTL001.json#locations[I01].aliases"
+                ]
+              },
+              "i02": {
+                "status": "resolved",
+                "location_id": "I02",
+                "location_name": "Bygone Mutation Vault",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I02].aliases",
+                  "areas/BA001.json#locations[I02].aliases",
+                  "areas/FG001.json#locations[I02].aliases",
+                  "areas/TTL001.json#locations[I02].aliases"
+                ]
+              },
+              "i03": {
+                "status": "resolved",
+                "location_id": "I03",
+                "location_name": "Runebound Isolation Cell",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I03].aliases",
+                  "areas/BA001.json#locations[I03].aliases",
+                  "areas/FG001.json#locations[I03].aliases",
+                  "areas/TTL001.json#locations[I03].aliases"
+                ]
+              },
+              "runebound isolation cell": {
+                "status": "resolved",
+                "location_id": "I03",
+                "location_name": "Runebound Isolation Cell",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I03].aliases",
+                  "areas/TTL001.json#locations[I03].name"
+                ]
+              },
+              "shattered forge approach": {
+                "status": "resolved",
+                "location_id": "I01",
+                "location_name": "Twisted Forge Atrium",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/BA001.json#locations[I01].aliases",
+                  "areas/BA001.json#locations[I01].name"
+                ]
+              },
+              "throne of twisted lineage": {
+                "status": "resolved",
+                "location_id": "I02",
+                "location_name": "Bygone Mutation Vault",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/FG001.json#locations[I02].aliases",
+                  "areas/FG001.json#locations[I02].name"
+                ]
+              },
+              "twisted forge atrium": {
+                "status": "resolved",
+                "location_id": "I01",
+                "location_name": "Twisted Forge Atrium",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I01].aliases",
+                  "areas/TTL001.json#locations[I01].name"
+                ]
+              },
+              "warped sentinel vestibule": {
+                "status": "resolved",
+                "location_id": "I01",
+                "location_name": "Twisted Forge Atrium",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I01].aliases",
+                  "areas/AC001.json#locations[I01].name"
+                ]
+              }
+            },
+            "destination_phrases": {
+              "abyssal fracture": {
+                "status": "resolved",
+                "location_id": "I02",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/BA001.json#locations[I02].aliases",
+                  "areas/BA001.json#locations[I02].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "bygone mutation vault": {
+                "status": "resolved",
+                "location_id": "I02",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I02].aliases",
+                  "areas/TTL001.json#locations[I02].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "fleshforged observation nook": {
+                "status": "resolved",
+                "location_id": "I02",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I02].aliases",
+                  "areas/AC001.json#locations[I02].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "forgotten splice vault": {
+                "status": "resolved",
+                "location_id": "I03",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/FG001.json#locations[I03].aliases",
+                  "areas/FG001.json#locations[I03].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "forsaken outrider encampment": {
+                "status": "resolved",
+                "location_id": "I03",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/BA001.json#locations[I03].aliases",
+                  "areas/BA001.json#locations[I03].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "fused iron antechamber": {
+                "status": "resolved",
+                "location_id": "I01",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/FG001.json#locations[I01].aliases",
+                  "areas/FG001.json#locations[I01].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "huskbound termination cell": {
+                "status": "resolved",
+                "location_id": "I03",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I03].aliases",
+                  "areas/AC001.json#locations[I03].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "i01": {
+                "status": "resolved",
+                "location_id": "I01",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I01].aliases",
+                  "areas/BA001.json#locations[I01].aliases",
+                  "areas/FG001.json#locations[I01].aliases",
+                  "areas/TTL001.json#locations[I01].aliases"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "i02": {
+                "status": "resolved",
+                "location_id": "I02",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I02].aliases",
+                  "areas/BA001.json#locations[I02].aliases",
+                  "areas/FG001.json#locations[I02].aliases",
+                  "areas/TTL001.json#locations[I02].aliases"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "i03": {
+                "status": "resolved",
+                "location_id": "I03",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I03].aliases",
+                  "areas/BA001.json#locations[I03].aliases",
+                  "areas/FG001.json#locations[I03].aliases",
+                  "areas/TTL001.json#locations[I03].aliases"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "runebound isolation cell": {
+                "status": "resolved",
+                "location_id": "I03",
+                "candidate_location_ids": [
+                  "I03"
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I03].aliases",
+                  "areas/TTL001.json#locations[I03].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "shattered forge approach": {
+                "status": "resolved",
+                "location_id": "I01",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/BA001.json#locations[I01].aliases",
+                  "areas/BA001.json#locations[I01].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "throne of twisted lineage": {
+                "status": "resolved",
+                "location_id": "I02",
+                "candidate_location_ids": [
+                  "I02"
+                ],
+                "sources": [
+                  "areas/FG001.json#locations[I02].aliases",
+                  "areas/FG001.json#locations[I02].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              },
+              "twisted forge atrium": {
+                "status": "resolved",
+                "location_id": "I01",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I01].aliases",
+                  "areas/TTL001.json#locations[I01].description",
+                  "areas/TTL001.json#locations[I01].name"
+                ],
+                "observed": true,
+                "player_facing": true,
+                "observation_count": 1
+              },
+              "warped sentinel vestibule": {
+                "status": "resolved",
+                "location_id": "I01",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I01].aliases",
+                  "areas/AC001.json#locations[I01].name"
+                ],
+                "observed": false,
+                "player_facing": false,
+                "observation_count": 0
+              }
+            },
+            "npc_scene_authority": {
+              "Archivist Automaton": {
+                "name_slug": "archivist automaton",
+                "visible_location_ids": [
+                  "I03"
+                ],
+                "reveal_bindings": [],
+                "sources": [
+                  "areas/AC001.json#locations[I03].plotHooks",
+                  "areas/TTL001.json#locations[I03].dcChecks",
+                  "areas/TTL001.json#locations[I03].dmInstructions",
+                  "areas/TTL001.json#locations[I03].npcs",
+                  "areas/TTL001.json#locations[I03].plotHooks",
+                  "module_context.json#npcs.archivist_automaton"
+                ],
+                "authored_mentions_count": 4,
+                "authored_mention_sources": [
+                  "areas/AC001.json#locations[I03].plotHooks",
+                  "areas/TTL001.json#locations[I03].dcChecks",
+                  "areas/TTL001.json#locations[I03].dmInstructions",
+                  "areas/TTL001.json#locations[I03].plotHooks"
+                ]
+              },
+              "Damaged Security Overseer": {
+                "name_slug": "damaged security overseer",
+                "visible_location_ids": [
+                  "I03"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "I02",
+                    "source": "areas/AC001.json#locations[I02].plotHooks",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I02].plotHooks",
+                  "areas/AC001.json#locations[I03].accessibility",
+                  "areas/AC001.json#locations[I03].dcChecks",
+                  "areas/AC001.json#locations[I03].dmInstructions",
+                  "areas/AC001.json#locations[I03].npcs",
+                  "areas/AC001.json#locations[I03].plotHooks",
+                  "module_context.json#npcs.damaged_security_overseer"
+                ],
+                "authored_mentions_count": 5,
+                "authored_mention_sources": [
+                  "areas/AC001.json#locations[I02].plotHooks",
+                  "areas/AC001.json#locations[I03].accessibility",
+                  "areas/AC001.json#locations[I03].dcChecks",
+                  "areas/AC001.json#locations[I03].dmInstructions",
+                  "areas/AC001.json#locations[I03].plotHooks"
+                ]
+              },
+              "Edda Coppervein": {
+                "name_slug": "edda coppervein",
+                "visible_location_ids": [],
+                "reveal_bindings": [],
+                "sources": [
+                  "module_context.json#npcs.edda_coppervein"
+                ],
+                "authored_mentions_count": 0,
+                "authored_mention_sources": []
+              },
+              "Facility Security System": {
+                "name_slug": "facility security system",
+                "visible_location_ids": [],
+                "reveal_bindings": [
+                  {
+                    "location_id": "I01",
+                    "source": "areas/FG001.json#locations[I01].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I02",
+                    "source": "areas/AC001.json#locations[I02].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I02",
+                    "source": "areas/TTL001.json#locations[I02].dcChecks",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I02].plotHooks",
+                  "areas/FG001.json#locations[I01].plotHooks",
+                  "areas/TTL001.json#locations[I02].dcChecks",
+                  "module_context.json#npcs.facility_security_system"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/AC001.json#locations[I02].plotHooks",
+                  "areas/FG001.json#locations[I01].plotHooks",
+                  "areas/TTL001.json#locations[I02].dcChecks"
+                ]
+              },
+              "Mutant Scavenger Lieutenant": {
+                "name_slug": "mutant scavenger lieutenant",
+                "visible_location_ids": [],
+                "reveal_bindings": [
+                  {
+                    "location_id": "I03",
+                    "source": "areas/TTL001.json#locations[I03].dcChecks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I03",
+                    "source": "areas/TTL001.json#locations[I03].dmInstructions",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I03",
+                    "source": "areas/TTL001.json#locations[I03].plotHooks",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I03].dcChecks",
+                  "areas/TTL001.json#locations[I03].dmInstructions",
+                  "areas/TTL001.json#locations[I03].plotHooks",
+                  "module_context.json#npcs.mutant_scavenger_lieutenant"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/TTL001.json#locations[I03].dcChecks",
+                  "areas/TTL001.json#locations[I03].dmInstructions",
+                  "areas/TTL001.json#locations[I03].plotHooks"
+                ]
+              },
+              "Mutated Scavenger Leader": {
+                "name_slug": "mutated scavenger leader",
+                "visible_location_ids": [],
+                "reveal_bindings": [
+                  {
+                    "location_id": "I01",
+                    "source": "areas/TTL001.json#locations[I01].dmInstructions",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I01",
+                    "source": "areas/TTL001.json#locations[I01].plotHooks",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I01].dmInstructions",
+                  "areas/TTL001.json#locations[I01].plotHooks",
+                  "module_context.json#npcs.mutated_scavenger_leader"
+                ],
+                "authored_mentions_count": 2,
+                "authored_mention_sources": [
+                  "areas/TTL001.json#locations[I01].dmInstructions",
+                  "areas/TTL001.json#locations[I01].plotHooks"
+                ]
+              },
+              "Rambling Dwarven Survivor": {
+                "name_slug": "rambling dwarven survivor",
+                "visible_location_ids": [
+                  "I03"
+                ],
+                "reveal_bindings": [
+                  {
+                    "location_id": "FG001",
+                    "source": "module_plot.json#plotPoints[PP002].description",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/BA001.json#locations[I03].dcChecks",
+                  "areas/BA001.json#locations[I03].dmInstructions",
+                  "areas/BA001.json#locations[I03].npcs",
+                  "areas/BA001.json#locations[I03].plotHooks",
+                  "module_context.json#npcs.rambling_dwarven_survivor",
+                  "module_plot.json#plotPoints[PP002].description"
+                ],
+                "authored_mentions_count": 4,
+                "authored_mention_sources": [
+                  "areas/BA001.json#locations[I03].dcChecks",
+                  "areas/BA001.json#locations[I03].dmInstructions",
+                  "areas/BA001.json#locations[I03].plotHooks",
+                  "module_plot.json#plotPoints[PP002].description"
+                ]
+              },
+              "Security Construct": {
+                "name_slug": "security construct",
+                "visible_location_ids": [],
+                "reveal_bindings": [
+                  {
+                    "location_id": "FG001",
+                    "source": "module_plot.json#plotPoints[PP005].description",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I02",
+                    "source": "areas/TTL001.json#locations[I02].dcChecks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I02",
+                    "source": "areas/TTL001.json#locations[I02].dmInstructions",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I02",
+                    "source": "areas/TTL001.json#locations[I02].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I03",
+                    "source": "areas/BA001.json#locations[I03].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I03",
+                    "source": "areas/FG001.json#locations[I03].plotHooks",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/BA001.json#locations[I03].plotHooks",
+                  "areas/FG001.json#locations[I03].plotHooks",
+                  "areas/TTL001.json#locations[I02].dcChecks",
+                  "areas/TTL001.json#locations[I02].dmInstructions",
+                  "areas/TTL001.json#locations[I02].plotHooks",
+                  "module_context.json#npcs.security_construct",
+                  "module_plot.json#plotPoints[PP005].description"
+                ],
+                "authored_mentions_count": 6,
+                "authored_mention_sources": [
+                  "areas/BA001.json#locations[I03].plotHooks",
+                  "areas/FG001.json#locations[I03].plotHooks",
+                  "areas/TTL001.json#locations[I02].dcChecks",
+                  "areas/TTL001.json#locations[I02].dmInstructions",
+                  "areas/TTL001.json#locations[I02].plotHooks",
+                  "module_plot.json#plotPoints[PP005].description"
+                ]
+              },
+              "The Thing": {
+                "name_slug": "the thing",
+                "visible_location_ids": [],
+                "reveal_bindings": [
+                  {
+                    "location_id": "I01",
+                    "source": "areas/TTL001.json#locations[I01].dmInstructions",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I03",
+                    "source": "areas/AC001.json#locations[I03].plotHooks",
+                    "reason": "authored_text_reference"
+                  },
+                  {
+                    "location_id": "I03",
+                    "source": "areas/TTL001.json#locations[I03].plotHooks",
+                    "reason": "authored_text_reference"
+                  }
+                ],
+                "sources": [
+                  "areas/AC001.json#locations[I03].plotHooks",
+                  "areas/TTL001.json#locations[I01].dmInstructions",
+                  "areas/TTL001.json#locations[I03].plotHooks",
+                  "module_context.json#npcs.the_thing"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/AC001.json#locations[I03].plotHooks",
+                  "areas/TTL001.json#locations[I01].dmInstructions",
+                  "areas/TTL001.json#locations[I03].plotHooks"
+                ]
+              }
+            },
+            "diagnostics": {
+              "duplicate_location_aliases": [],
+              "ambiguous_destination_phrases": [],
+              "unresolved_destination_phrases": [],
+              "missing_npc_authority": [
+                {
+                  "npc": "Edda Coppervein",
+                  "name_slug": "edda coppervein",
+                  "sources": [
+                    "module_context.json#npcs.edda_coppervein"
+                  ],
+                  "authored_mentions_count": 0,
+                  "authored_mention_sources": []
+                }
+              ]
+            },
+            "summary": {
+              "location_count": 12,
+              "location_alias_count": 15,
+              "destination_phrase_count": 15,
+              "npc_count": 9,
+              "ambiguous_destination_count": 0,
+              "missing_npc_authority_count": 1
+            }
+          }
+        },
+        "changed": true,
+        "added_refs": [
+          {
+            "target_module": "The_Pumpkin_Kings_Curse",
+            "entity_id": "pumpkin_king",
+            "relation": "antagonist",
+            "confidence": "medium",
+            "notes": "Pumpkin King and harvest pact are shared continuity anchors."
+          }
+        ],
+        "existing_count": 2,
+        "final_count": 3
+      },
+      "continuity_contract": {
+        "status": "success",
+        "version": "v1",
+        "required_keys_present": [
+          "continuity_version",
+          "entry_state_variants",
+          "cross_module_refs",
+          "standalone_fallback"
+        ],
+        "missing_required_keys": [],
+        "warnings": [],
+        "errors": [],
+        "normalized_refs_count": 3,
+        "alias_resolution": {
+          "resolved": 0,
+          "ambiguous": 0,
+          "unresolved": 0
+        }
+      },
+      "context_path": "modules/The_Ancients_Lab/module_context.json"
+    },
+    "semantic_authority": {
+      "status": "degraded",
+      "semantic_authority": {
+        "version": "v1",
+        "module_slug": "The_Ancients_Lab",
+        "location_aliases": {
+          "abyssal fracture": {
+            "status": "resolved",
+            "location_id": "I02",
+            "location_name": "Bygone Mutation Vault",
+            "candidate_location_ids": [
+              "I02"
+            ],
+            "sources": [
+              "areas/BA001.json#locations[I02].aliases",
+              "areas/BA001.json#locations[I02].name"
+            ]
+          },
+          "bygone mutation vault": {
+            "status": "resolved",
+            "location_id": "I02",
+            "location_name": "Bygone Mutation Vault",
+            "candidate_location_ids": [
+              "I02"
+            ],
+            "sources": [
+              "areas/TTL001.json#locations[I02].aliases",
+              "areas/TTL001.json#locations[I02].name"
+            ]
+          },
+          "fleshforged observation nook": {
+            "status": "resolved",
+            "location_id": "I02",
+            "location_name": "Bygone Mutation Vault",
+            "candidate_location_ids": [
+              "I02"
+            ],
+            "sources": [
+              "areas/AC001.json#locations[I02].aliases",
+              "areas/AC001.json#locations[I02].name"
+            ]
+          },
+          "forgotten splice vault": {
+            "status": "resolved",
+            "location_id": "I03",
+            "location_name": "Runebound Isolation Cell",
+            "candidate_location_ids": [
+              "I03"
+            ],
+            "sources": [
+              "areas/FG001.json#locations[I03].aliases",
+              "areas/FG001.json#locations[I03].name"
+            ]
+          },
+          "forsaken outrider encampment": {
+            "status": "resolved",
+            "location_id": "I03",
+            "location_name": "Runebound Isolation Cell",
+            "candidate_location_ids": [
+              "I03"
+            ],
+            "sources": [
+              "areas/BA001.json#locations[I03].aliases",
+              "areas/BA001.json#locations[I03].name"
+            ]
+          },
+          "fused iron antechamber": {
+            "status": "resolved",
+            "location_id": "I01",
+            "location_name": "Twisted Forge Atrium",
+            "candidate_location_ids": [
+              "I01"
+            ],
+            "sources": [
+              "areas/FG001.json#locations[I01].aliases",
+              "areas/FG001.json#locations[I01].name"
+            ]
+          },
+          "huskbound termination cell": {
+            "status": "resolved",
+            "location_id": "I03",
+            "location_name": "Runebound Isolation Cell",
+            "candidate_location_ids": [
+              "I03"
+            ],
+            "sources": [
+              "areas/AC001.json#locations[I03].aliases",
+              "areas/AC001.json#locations[I03].name"
+            ]
+          },
+          "i01": {
+            "status": "resolved",
+            "location_id": "I01",
+            "location_name": "Twisted Forge Atrium",
+            "candidate_location_ids": [
+              "I01"
+            ],
+            "sources": [
+              "areas/AC001.json#locations[I01].aliases",
+              "areas/BA001.json#locations[I01].aliases",
+              "areas/FG001.json#locations[I01].aliases",
+              "areas/TTL001.json#locations[I01].aliases"
+            ]
+          },
+          "i02": {
+            "status": "resolved",
+            "location_id": "I02",
+            "location_name": "Bygone Mutation Vault",
+            "candidate_location_ids": [
+              "I02"
+            ],
+            "sources": [
+              "areas/AC001.json#locations[I02].aliases",
+              "areas/BA001.json#locations[I02].aliases",
+              "areas/FG001.json#locations[I02].aliases",
+              "areas/TTL001.json#locations[I02].aliases"
+            ]
+          },
+          "i03": {
+            "status": "resolved",
+            "location_id": "I03",
+            "location_name": "Runebound Isolation Cell",
+            "candidate_location_ids": [
+              "I03"
+            ],
+            "sources": [
+              "areas/AC001.json#locations[I03].aliases",
+              "areas/BA001.json#locations[I03].aliases",
+              "areas/FG001.json#locations[I03].aliases",
+              "areas/TTL001.json#locations[I03].aliases"
+            ]
+          },
+          "runebound isolation cell": {
+            "status": "resolved",
+            "location_id": "I03",
+            "location_name": "Runebound Isolation Cell",
+            "candidate_location_ids": [
+              "I03"
+            ],
+            "sources": [
+              "areas/TTL001.json#locations[I03].aliases",
+              "areas/TTL001.json#locations[I03].name"
+            ]
+          },
+          "shattered forge approach": {
+            "status": "resolved",
+            "location_id": "I01",
+            "location_name": "Twisted Forge Atrium",
+            "candidate_location_ids": [
+              "I01"
+            ],
+            "sources": [
+              "areas/BA001.json#locations[I01].aliases",
+              "areas/BA001.json#locations[I01].name"
+            ]
+          },
+          "throne of twisted lineage": {
+            "status": "resolved",
+            "location_id": "I02",
+            "location_name": "Bygone Mutation Vault",
+            "candidate_location_ids": [
+              "I02"
+            ],
+            "sources": [
+              "areas/FG001.json#locations[I02].aliases",
+              "areas/FG001.json#locations[I02].name"
+            ]
+          },
+          "twisted forge atrium": {
+            "status": "resolved",
+            "location_id": "I01",
+            "location_name": "Twisted Forge Atrium",
+            "candidate_location_ids": [
+              "I01"
+            ],
+            "sources": [
+              "areas/TTL001.json#locations[I01].aliases",
+              "areas/TTL001.json#locations[I01].name"
+            ]
+          },
+          "warped sentinel vestibule": {
+            "status": "resolved",
+            "location_id": "I01",
+            "location_name": "Twisted Forge Atrium",
+            "candidate_location_ids": [
+              "I01"
+            ],
+            "sources": [
+              "areas/AC001.json#locations[I01].aliases",
+              "areas/AC001.json#locations[I01].name"
+            ]
+          }
+        },
+        "destination_phrases": {
+          "abyssal fracture": {
+            "status": "resolved",
+            "location_id": "I02",
+            "candidate_location_ids": [
+              "I02"
+            ],
+            "sources": [
+              "areas/BA001.json#locations[I02].aliases",
+              "areas/BA001.json#locations[I02].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "bygone mutation vault": {
+            "status": "resolved",
+            "location_id": "I02",
+            "candidate_location_ids": [
+              "I02"
+            ],
+            "sources": [
+              "areas/TTL001.json#locations[I02].aliases",
+              "areas/TTL001.json#locations[I02].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "fleshforged observation nook": {
+            "status": "resolved",
+            "location_id": "I02",
+            "candidate_location_ids": [
+              "I02"
+            ],
+            "sources": [
+              "areas/AC001.json#locations[I02].aliases",
+              "areas/AC001.json#locations[I02].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "forgotten splice vault": {
+            "status": "resolved",
+            "location_id": "I03",
+            "candidate_location_ids": [
+              "I03"
+            ],
+            "sources": [
+              "areas/FG001.json#locations[I03].aliases",
+              "areas/FG001.json#locations[I03].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "forsaken outrider encampment": {
+            "status": "resolved",
+            "location_id": "I03",
+            "candidate_location_ids": [
+              "I03"
+            ],
+            "sources": [
+              "areas/BA001.json#locations[I03].aliases",
+              "areas/BA001.json#locations[I03].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "fused iron antechamber": {
+            "status": "resolved",
+            "location_id": "I01",
+            "candidate_location_ids": [
+              "I01"
+            ],
+            "sources": [
+              "areas/FG001.json#locations[I01].aliases",
+              "areas/FG001.json#locations[I01].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "huskbound termination cell": {
+            "status": "resolved",
+            "location_id": "I03",
+            "candidate_location_ids": [
+              "I03"
+            ],
+            "sources": [
+              "areas/AC001.json#locations[I03].aliases",
+              "areas/AC001.json#locations[I03].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "i01": {
+            "status": "resolved",
+            "location_id": "I01",
+            "candidate_location_ids": [
+              "I01"
+            ],
+            "sources": [
+              "areas/AC001.json#locations[I01].aliases",
+              "areas/BA001.json#locations[I01].aliases",
+              "areas/FG001.json#locations[I01].aliases",
+              "areas/TTL001.json#locations[I01].aliases"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "i02": {
+            "status": "resolved",
+            "location_id": "I02",
+            "candidate_location_ids": [
+              "I02"
+            ],
+            "sources": [
+              "areas/AC001.json#locations[I02].aliases",
+              "areas/BA001.json#locations[I02].aliases",
+              "areas/FG001.json#locations[I02].aliases",
+              "areas/TTL001.json#locations[I02].aliases"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "i03": {
+            "status": "resolved",
+            "location_id": "I03",
+            "candidate_location_ids": [
+              "I03"
+            ],
+            "sources": [
+              "areas/AC001.json#locations[I03].aliases",
+              "areas/BA001.json#locations[I03].aliases",
+              "areas/FG001.json#locations[I03].aliases",
+              "areas/TTL001.json#locations[I03].aliases"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "runebound isolation cell": {
+            "status": "resolved",
+            "location_id": "I03",
+            "candidate_location_ids": [
+              "I03"
+            ],
+            "sources": [
+              "areas/TTL001.json#locations[I03].aliases",
+              "areas/TTL001.json#locations[I03].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "shattered forge approach": {
+            "status": "resolved",
+            "location_id": "I01",
+            "candidate_location_ids": [
+              "I01"
+            ],
+            "sources": [
+              "areas/BA001.json#locations[I01].aliases",
+              "areas/BA001.json#locations[I01].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "throne of twisted lineage": {
+            "status": "resolved",
+            "location_id": "I02",
+            "candidate_location_ids": [
+              "I02"
+            ],
+            "sources": [
+              "areas/FG001.json#locations[I02].aliases",
+              "areas/FG001.json#locations[I02].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          },
+          "twisted forge atrium": {
+            "status": "resolved",
+            "location_id": "I01",
+            "candidate_location_ids": [
+              "I01"
+            ],
+            "sources": [
+              "areas/TTL001.json#locations[I01].aliases",
+              "areas/TTL001.json#locations[I01].description",
+              "areas/TTL001.json#locations[I01].name"
+            ],
+            "observed": true,
+            "player_facing": true,
+            "observation_count": 1
+          },
+          "warped sentinel vestibule": {
+            "status": "resolved",
+            "location_id": "I01",
+            "candidate_location_ids": [
+              "I01"
+            ],
+            "sources": [
+              "areas/AC001.json#locations[I01].aliases",
+              "areas/AC001.json#locations[I01].name"
+            ],
+            "observed": false,
+            "player_facing": false,
+            "observation_count": 0
+          }
+        },
+        "npc_scene_authority": {
+          "Archivist Automaton": {
+            "name_slug": "archivist automaton",
+            "visible_location_ids": [
+              "I03"
+            ],
+            "reveal_bindings": [],
+            "sources": [
+              "areas/AC001.json#locations[I03].plotHooks",
+              "areas/TTL001.json#locations[I03].dcChecks",
+              "areas/TTL001.json#locations[I03].dmInstructions",
+              "areas/TTL001.json#locations[I03].npcs",
+              "areas/TTL001.json#locations[I03].plotHooks",
+              "module_context.json#npcs.archivist_automaton"
+            ],
+            "authored_mentions_count": 4,
+            "authored_mention_sources": [
+              "areas/AC001.json#locations[I03].plotHooks",
+              "areas/TTL001.json#locations[I03].dcChecks",
+              "areas/TTL001.json#locations[I03].dmInstructions",
+              "areas/TTL001.json#locations[I03].plotHooks"
+            ]
+          },
+          "Damaged Security Overseer": {
+            "name_slug": "damaged security overseer",
+            "visible_location_ids": [
+              "I03"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "I02",
+                "source": "areas/AC001.json#locations[I02].plotHooks",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/AC001.json#locations[I02].plotHooks",
+              "areas/AC001.json#locations[I03].accessibility",
+              "areas/AC001.json#locations[I03].dcChecks",
+              "areas/AC001.json#locations[I03].dmInstructions",
+              "areas/AC001.json#locations[I03].npcs",
+              "areas/AC001.json#locations[I03].plotHooks",
+              "module_context.json#npcs.damaged_security_overseer"
+            ],
+            "authored_mentions_count": 5,
+            "authored_mention_sources": [
+              "areas/AC001.json#locations[I02].plotHooks",
+              "areas/AC001.json#locations[I03].accessibility",
+              "areas/AC001.json#locations[I03].dcChecks",
+              "areas/AC001.json#locations[I03].dmInstructions",
+              "areas/AC001.json#locations[I03].plotHooks"
+            ]
+          },
+          "Edda Coppervein": {
+            "name_slug": "edda coppervein",
+            "visible_location_ids": [],
+            "reveal_bindings": [],
+            "sources": [
+              "module_context.json#npcs.edda_coppervein"
+            ],
+            "authored_mentions_count": 0,
+            "authored_mention_sources": []
+          },
+          "Facility Security System": {
+            "name_slug": "facility security system",
+            "visible_location_ids": [],
+            "reveal_bindings": [
+              {
+                "location_id": "I01",
+                "source": "areas/FG001.json#locations[I01].plotHooks",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "I02",
+                "source": "areas/AC001.json#locations[I02].plotHooks",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "I02",
+                "source": "areas/TTL001.json#locations[I02].dcChecks",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/AC001.json#locations[I02].plotHooks",
+              "areas/FG001.json#locations[I01].plotHooks",
+              "areas/TTL001.json#locations[I02].dcChecks",
+              "module_context.json#npcs.facility_security_system"
+            ],
+            "authored_mentions_count": 3,
+            "authored_mention_sources": [
+              "areas/AC001.json#locations[I02].plotHooks",
+              "areas/FG001.json#locations[I01].plotHooks",
+              "areas/TTL001.json#locations[I02].dcChecks"
+            ]
+          },
+          "Mutant Scavenger Lieutenant": {
+            "name_slug": "mutant scavenger lieutenant",
+            "visible_location_ids": [],
+            "reveal_bindings": [
+              {
+                "location_id": "I03",
+                "source": "areas/TTL001.json#locations[I03].dcChecks",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "I03",
+                "source": "areas/TTL001.json#locations[I03].dmInstructions",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "I03",
+                "source": "areas/TTL001.json#locations[I03].plotHooks",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/TTL001.json#locations[I03].dcChecks",
+              "areas/TTL001.json#locations[I03].dmInstructions",
+              "areas/TTL001.json#locations[I03].plotHooks",
+              "module_context.json#npcs.mutant_scavenger_lieutenant"
+            ],
+            "authored_mentions_count": 3,
+            "authored_mention_sources": [
+              "areas/TTL001.json#locations[I03].dcChecks",
+              "areas/TTL001.json#locations[I03].dmInstructions",
+              "areas/TTL001.json#locations[I03].plotHooks"
+            ]
+          },
+          "Mutated Scavenger Leader": {
+            "name_slug": "mutated scavenger leader",
+            "visible_location_ids": [],
+            "reveal_bindings": [
+              {
+                "location_id": "I01",
+                "source": "areas/TTL001.json#locations[I01].dmInstructions",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "I01",
+                "source": "areas/TTL001.json#locations[I01].plotHooks",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/TTL001.json#locations[I01].dmInstructions",
+              "areas/TTL001.json#locations[I01].plotHooks",
+              "module_context.json#npcs.mutated_scavenger_leader"
+            ],
+            "authored_mentions_count": 2,
+            "authored_mention_sources": [
+              "areas/TTL001.json#locations[I01].dmInstructions",
+              "areas/TTL001.json#locations[I01].plotHooks"
+            ]
+          },
+          "Rambling Dwarven Survivor": {
+            "name_slug": "rambling dwarven survivor",
+            "visible_location_ids": [
+              "I03"
+            ],
+            "reveal_bindings": [
+              {
+                "location_id": "FG001",
+                "source": "module_plot.json#plotPoints[PP002].description",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/BA001.json#locations[I03].dcChecks",
+              "areas/BA001.json#locations[I03].dmInstructions",
+              "areas/BA001.json#locations[I03].npcs",
+              "areas/BA001.json#locations[I03].plotHooks",
+              "module_context.json#npcs.rambling_dwarven_survivor",
+              "module_plot.json#plotPoints[PP002].description"
+            ],
+            "authored_mentions_count": 4,
+            "authored_mention_sources": [
+              "areas/BA001.json#locations[I03].dcChecks",
+              "areas/BA001.json#locations[I03].dmInstructions",
+              "areas/BA001.json#locations[I03].plotHooks",
+              "module_plot.json#plotPoints[PP002].description"
+            ]
+          },
+          "Security Construct": {
+            "name_slug": "security construct",
+            "visible_location_ids": [],
+            "reveal_bindings": [
+              {
+                "location_id": "FG001",
+                "source": "module_plot.json#plotPoints[PP005].description",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "I02",
+                "source": "areas/TTL001.json#locations[I02].dcChecks",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "I02",
+                "source": "areas/TTL001.json#locations[I02].dmInstructions",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "I02",
+                "source": "areas/TTL001.json#locations[I02].plotHooks",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "I03",
+                "source": "areas/BA001.json#locations[I03].plotHooks",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "I03",
+                "source": "areas/FG001.json#locations[I03].plotHooks",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/BA001.json#locations[I03].plotHooks",
+              "areas/FG001.json#locations[I03].plotHooks",
+              "areas/TTL001.json#locations[I02].dcChecks",
+              "areas/TTL001.json#locations[I02].dmInstructions",
+              "areas/TTL001.json#locations[I02].plotHooks",
+              "module_context.json#npcs.security_construct",
+              "module_plot.json#plotPoints[PP005].description"
+            ],
+            "authored_mentions_count": 6,
+            "authored_mention_sources": [
+              "areas/BA001.json#locations[I03].plotHooks",
+              "areas/FG001.json#locations[I03].plotHooks",
+              "areas/TTL001.json#locations[I02].dcChecks",
+              "areas/TTL001.json#locations[I02].dmInstructions",
+              "areas/TTL001.json#locations[I02].plotHooks",
+              "module_plot.json#plotPoints[PP005].description"
+            ]
+          },
+          "The Thing": {
+            "name_slug": "the thing",
+            "visible_location_ids": [],
+            "reveal_bindings": [
+              {
+                "location_id": "I01",
+                "source": "areas/TTL001.json#locations[I01].dmInstructions",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "I03",
+                "source": "areas/AC001.json#locations[I03].plotHooks",
+                "reason": "authored_text_reference"
+              },
+              {
+                "location_id": "I03",
+                "source": "areas/TTL001.json#locations[I03].plotHooks",
+                "reason": "authored_text_reference"
+              }
+            ],
+            "sources": [
+              "areas/AC001.json#locations[I03].plotHooks",
+              "areas/TTL001.json#locations[I01].dmInstructions",
+              "areas/TTL001.json#locations[I03].plotHooks",
+              "module_context.json#npcs.the_thing"
+            ],
+            "authored_mentions_count": 3,
+            "authored_mention_sources": [
+              "areas/AC001.json#locations[I03].plotHooks",
+              "areas/TTL001.json#locations[I01].dmInstructions",
+              "areas/TTL001.json#locations[I03].plotHooks"
+            ]
+          }
+        },
+        "diagnostics": {
+          "duplicate_location_aliases": [],
+          "ambiguous_destination_phrases": [],
+          "unresolved_destination_phrases": [],
+          "missing_npc_authority": [
+            {
+              "npc": "Edda Coppervein",
+              "name_slug": "edda coppervein",
+              "sources": [
+                "module_context.json#npcs.edda_coppervein"
+              ],
+              "authored_mentions_count": 0,
+              "authored_mention_sources": []
+            }
+          ]
+        },
+        "summary": {
+          "location_count": 12,
+          "location_alias_count": 15,
+          "destination_phrase_count": 15,
+          "npc_count": 9,
+          "ambiguous_destination_count": 0,
+          "missing_npc_authority_count": 1
+        }
+      },
+      "warnings": [
+        "semantic_authority_missing_npc_authority=1"
+      ],
+      "errors": []
+    },
+    "registry": {
+      "status": "success",
+      "verify_before": {
+        "present": true,
+        "module_key": "The_Ancients_Lab",
+        "folder_exists": true,
+        "areas_count": 4,
+        "area_ids": [
+          "MN003",
+          "CCV004",
+          "ISA001",
+          "TC002"
+        ],
+        "has_encounters": false,
+        "added_date": "2026-04-21T10:31:16.863517"
+      },
+      "integration_attempted": false
+    },
+    "monster_materialization": {
+      "status": "success",
+      "reason": null,
+      "returncode": 0,
+      "parsed_output": {
+        "status": "success",
+        "created_count": 0,
+        "skipped_existing_count": 12,
+        "missing_in_bestiary_count": 0,
+        "missing_names": [],
+        "path_conflicts_detected": 0,
+        "path_conflicts_repaired": 0,
+        "conflict_paths": [],
+        "hydration_modes": {
+          "existing": 12,
+          "reuse": 0,
+          "bestiary": 0,
+          "generated": 0
+        },
+        "blocker_classes": {},
+        "blocked_count": 0,
+        "monster_results": [
+          {
+            "requested_name": "Aberrant Creeper",
+            "requested_slug": "aberrant_creeper",
+            "canonical_slug": "aberrant_creeper",
+            "canonical_name": "Aberrant Creeper",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Experimental Splice Remnant",
+            "requested_slug": "experimental_splice_remnant",
+            "canonical_slug": "experimental_splice_remnant",
+            "canonical_name": "Experimental Splice Remnant",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Fleshforged Aberrant",
+            "requested_slug": "fleshforged_aberrant",
+            "canonical_slug": "fleshforged_aberrant",
+            "canonical_name": "Fleshforged Aberrant",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Giant Weasel",
+            "requested_slug": "giant_weasel",
+            "canonical_slug": "giant_weasel",
+            "canonical_name": "Giant Weasel",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Huskbound Wretch",
+            "requested_slug": "huskbound_wretch",
+            "canonical_slug": "huskbound_wretch",
+            "canonical_name": "Huskbound Wretch",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Lesser Rust Eel",
+            "requested_slug": "lesser_rust_eel",
+            "canonical_slug": "lesser_rust_eel",
+            "canonical_name": "Lesser Rust Eel",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Mutant Scavenger Lieutenant",
+            "requested_slug": "mutant_scavenger_lieutenant",
+            "canonical_slug": "mutant_scavenger_lieutenant",
+            "canonical_name": "Mutant Scavenger Lieutenant",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Mutated Scavenger Leader",
+            "requested_slug": "mutated_scavenger_leader",
+            "canonical_slug": "mutated_scavenger_leader",
+            "canonical_name": "Mutated Scavenger Leader",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Security Construct",
+            "requested_slug": "security_construct",
+            "canonical_slug": "security_construct",
+            "canonical_name": "Security Construct",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Swarm of Bats",
+            "requested_slug": "swarm_of_bats",
+            "canonical_slug": "swarm_of_bats",
+            "canonical_name": "Swarm of Bats",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Vaultway Shadow",
+            "requested_slug": "vaultway_shadow",
+            "canonical_slug": "vaultway_shadow",
+            "canonical_name": "Vaultway Shadow",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          },
+          {
+            "requested_name": "Wolf",
+            "requested_slug": "wolf",
+            "canonical_slug": "wolf",
+            "canonical_name": "Wolf",
+            "ok": true,
+            "mode": "existing",
+            "blocker_class": "",
+            "error_message": "",
+            "resolution_mode": "exact",
+            "bestiary_missing": false
+          }
+        ],
+        "candidate_sources": {
+          "seed_count": 0,
+          "authored_count": 12,
+          "seed_missing_fallback_used": true
+        },
+        "module_path": "modules/The_Ancients_Lab",
+        "error": null
+      }
+    },
+    "toolkit_provenance": {
+      "status": "success",
+      "reason": "toolkit_provenance_prepared",
+      "report_path": "modules/The_Ancients_Lab/toolkit_build_report.json"
+    },
+    "publishability": {
+      "status": "success",
+      "ready_status": "pass",
+      "publishable_status": "pass",
+      "source": "toolkit",
+      "report": {
+        "module": "The_Ancients_Lab",
+        "module_path": "modules/The_Ancients_Lab",
+        "source": "toolkit",
+        "ready_status": "pass",
+        "publishable_status": "pass",
+        "readiness": {
+          "module": "The_Ancients_Lab",
+          "overall_status": "pass",
+          "gates": {
+            "gameplay": {
+              "status": "pass",
+              "reason": "pass",
+              "exit_code": 0,
+              "blocking_error_count": 0,
+              "warning_count": 12,
+              "raw": {
+                "command": "/Users/zeug/Projects/NeverEndingQuest/.venv/bin/python3 /Users/zeug/Projects/NeverEndingQuest/scripts/audit_module_gameplay.py --module The_Ancients_Lab --json --strict-instructions",
+                "exit_code": 0,
+                "stdout": "{\n  \"target\": {\n    \"blocking_errors\": [],\n    \"warnings\": [\n      \"Missing video for: aberrant_creeper\",\n      \"Missing video for: experimental_splice_remnant\",\n      \"Missing video for: fleshforged_aberrant\",\n      \"Missing video for: giant_weasel\",\n      \"Missing video for: huskbound_wretch\",\n      \"Missing video for: lesser_rust_eel\",\n      \"Missing video for: mutant_scavenger_lieutenant\",\n      \"Missing video for: mutated_scavenger_leader\",\n      \"Missing video for: security_construct\",\n      \"Missing video for: swarm_of_bats\",\n      \"Missing video for: vaultway_shadow\",\n      \"Missing video for: wolf\"\n    ],\n    \"coverage_stats\": {\n      \"module\": \"The_Ancients_Lab\",\n      \"referenced_monsters\": 12,\n      \"structural_refs\": 12,\n      \"heuristic_refs\": 0,\n      \"json_valid\": 12,\n      \"json_invalid\": 0,\n      \"json_missing\": 0,\n      \"json_coverage_pct\": 100.0,\n      \"media_base_coverage\": 12,\n      \"media_thumb_coverage\": 12,\n      \"media_video_coverage\": 0,\n      \"media_base_coverage_pct\": 100.0,\n      \"media_policy\": {\n        \"provider_generation_mode\": \"opt_in_manual_only\",\n        \"manual_toolkit_workflow\": [\n          \"Monster Management & Generator -> Generate Monster Images\",\n          \"Module Media Generator -> one-click monster media generation\"\n        ],\n        \"outcome_vocabulary\": [\n          \"reused_or_generated\",\n          \"provider_disabled_missing\",\n          \"attempted_but_unresolved\"\n        ]\n      }\n    },\n    \"fix_list\": [],\n    \"monster_media_findings\": [\n      {\n        \"slug\": \"aberrant_creeper\",\n        \"confidence\": \"structural\",\n        \"source_file\": \"AC001.json\",\n        \"source_path\": \"locations[0].monsters[0]\",\n        \"outcome\": \"reused_or_generated\",\n        \"base\": true,\n        \"thumb\": true,\n        \"video\": false\n      },\n      {\n        \"slug\": \"experimental_splice_remnant\",\n        \"confidence\": \"structural\",\n        \"source_file\": \"FG001.json\",\n        \"source_path\": \"locations[2].monsters[0]\",\n        \"outcome\": \"reused_or_generated\",\n        \"base\": true,\n        \"thumb\": true,\n        \"video\": false\n      },\n      {\n        \"slug\": \"fleshforged_aberrant\",\n        \"confidence\": \"structural\",\n        \"source_file\": \"AC001.json\",\n        \"source_path\": \"locations[1].monsters[0]\",\n        \"outcome\": \"reused_or_generated\",\n        \"base\": true,\n        \"thumb\": true,\n        \"video\": false\n      },\n      {\n        \"slug\": \"giant_weasel\",\n        \"confidence\": \"structural\",\n        \"source_file\": \"BA001.json\",\n        \"source_path\": \"locations[0].monsters[0]\",\n        \"outcome\": \"reused_or_generated\",\n        \"base\": true,\n        \"thumb\": true,\n        \"video\": false\n      },\n      {\n        \"slug\": \"huskbound_wretch\",\n        \"confidence\": \"structural\",\n        \"source_file\": \"AC001.json\",\n        \"source_path\": \"locations[2].monsters[0]\",\n        \"outcome\": \"reused_or_generated\",\n        \"base\": true,\n        \"thumb\": true,\n        \"video\": false\n      },\n      {\n        \"slug\": \"lesser_rust_eel\",\n        \"confidence\": \"structural\",\n        \"source_file\": \"FG001.json\",\n        \"source_path\": \"locations[0].monsters[0]\",\n        \"outcome\": \"reused_or_generated\",\n        \"base\": true,\n        \"thumb\": true,\n        \"video\": false\n      },\n      {\n        \"slug\": \"mutant_scavenger_lieutenant\",\n        \"confidence\": \"structural\",\n        \"source_file\": \"TTL001.json\",\n        \"source_path\": \"locations[2].monsters[0]\",\n        \"outcome\": \"reused_or_generated\",\n        \"base\": true,\n        \"thumb\": true,\n        \"video\": false\n      },\n      {\n        \"slug\": \"mutated_scavenger_leader\",\n        \"confidence\": \"structural\",\n        \"source_file\": \"TTL001.json\",\n        \"source_path\": \"locations[0].monsters[0]\",\n        \"outcome\": \"reused_or_generated\",\n        \"base\": true,\n        \"thumb\": true,\n        \"video\": false\n      },\n      {\n        \"slug\": \"security_construct\",\n        \"confidence\": \"structural\",\n        \"source_file\": \"TTL001.json\",\n        \"source_path\": \"locations[1].monsters[0]\",\n        \"outcome\": \"reused_or_generated\",\n        \"base\": true,\n        \"thumb\": true,\n        \"video\": false\n      },\n      {\n        \"slug\": \"swarm_of_bats\",\n        \"confidence\": \"structural\",\n        \"source_file\": \"BA001.json\",\n        \"source_path\": \"locations[1].monsters[0]\",\n        \"outcome\": \"reused_or_generated\",\n        \"base\": true,\n        \"thumb\": true,\n        \"video\": false\n      },\n      {\n        \"slug\": \"vaultway_shadow\",\n        \"confidence\": \"structural\",\n        \"source_file\": \"FG001.json\",\n        \"source_path\": \"locations[1].monsters[0]\",\n        \"outcome\": \"reused_or_generated\",\n        \"base\": true,\n        \"thumb\": true,\n        \"video\": false\n      },\n      {\n        \"slug\": \"wolf\",\n        \"confidence\": \"structural\",\n        \"source_file\": \"BA001.json\",\n        \"source_path\": \"locations[2].monsters[0]\",\n        \"outcome\": \"reused_or_generated\",\n        \"base\": true,\n        \"thumb\": true,\n        \"video\": false\n      }\n    ],\n    \"references\": [\n      {\n        \"slug\": \"mutated_scavenger_leader\",\n        \"file\": \"TTL001.json\",\n        \"path\": \"locations[0].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Mutated Scavenger Leader\"\n      },\n      {\n        \"slug\": \"security_construct\",\n        \"file\": \"TTL001.json\",\n        \"path\": \"locations[1].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Security Construct\"\n      },\n      {\n        \"slug\": \"mutant_scavenger_lieutenant\",\n        \"file\": \"TTL001.json\",\n        \"path\": \"locations[2].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Mutant Scavenger Lieutenant\"\n      },\n      {\n        \"slug\": \"aberrant_creeper\",\n        \"file\": \"AC001.json\",\n        \"path\": \"locations[0].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Aberrant Creeper\"\n      },\n      {\n        \"slug\": \"fleshforged_aberrant\",\n        \"file\": \"AC001.json\",\n        \"path\": \"locations[1].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Fleshforged Aberrant\"\n      },\n      {\n        \"slug\": \"huskbound_wretch\",\n        \"file\": \"AC001.json\",\n        \"path\": \"locations[2].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Huskbound Wretch\"\n      },\n      {\n        \"slug\": \"giant_weasel\",\n        \"file\": \"BA001.json\",\n        \"path\": \"locations[0].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Giant Weasel\"\n      },\n      {\n        \"slug\": \"swarm_of_bats\",\n        \"file\": \"BA001.json\",\n        \"path\": \"locations[1].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Swarm of Bats\"\n      },\n      {\n        \"slug\": \"wolf\",\n        \"file\": \"BA001.json\",\n        \"path\": \"locations[2].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Wolf\"\n      },\n      {\n        \"slug\": \"lesser_rust_eel\",\n        \"file\": \"FG001.json\",\n        \"path\": \"locations[0].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Lesser Rust Eel\"\n      },\n      {\n        \"slug\": \"vaultway_shadow\",\n        \"file\": \"FG001.json\",\n        \"path\": \"locations[1].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Vaultway Shadow\"\n      },\n      {\n        \"slug\": \"experimental_splice_remnant\",\n        \"file\": \"FG001.json\",\n        \"path\": \"locations[2].monsters[0]\",\n        \"confidence\": \"structural\",\n        \"original\": \"Experimental Splice Remnant\"\n      }\n    ],\n    \"strict_mode\": true\n  },\n  \"baseline\": null\n}",
+                "stderr": "",
+                "json": {
+                  "target": {
+                    "blocking_errors": [],
+                    "warnings": [
+                      "Missing video for: aberrant_creeper",
+                      "Missing video for: experimental_splice_remnant",
+                      "Missing video for: fleshforged_aberrant",
+                      "Missing video for: giant_weasel",
+                      "Missing video for: huskbound_wretch",
+                      "Missing video for: lesser_rust_eel",
+                      "Missing video for: mutant_scavenger_lieutenant",
+                      "Missing video for: mutated_scavenger_leader",
+                      "Missing video for: security_construct",
+                      "Missing video for: swarm_of_bats",
+                      "Missing video for: vaultway_shadow",
+                      "Missing video for: wolf"
+                    ],
+                    "coverage_stats": {
+                      "module": "The_Ancients_Lab",
+                      "referenced_monsters": 12,
+                      "structural_refs": 12,
+                      "heuristic_refs": 0,
+                      "json_valid": 12,
+                      "json_invalid": 0,
+                      "json_missing": 0,
+                      "json_coverage_pct": 100.0,
+                      "media_base_coverage": 12,
+                      "media_thumb_coverage": 12,
+                      "media_video_coverage": 0,
+                      "media_base_coverage_pct": 100.0,
+                      "media_policy": {
+                        "provider_generation_mode": "opt_in_manual_only",
+                        "manual_toolkit_workflow": [
+                          "Monster Management & Generator -> Generate Monster Images",
+                          "Module Media Generator -> one-click monster media generation"
+                        ],
+                        "outcome_vocabulary": [
+                          "reused_or_generated",
+                          "provider_disabled_missing",
+                          "attempted_but_unresolved"
+                        ]
+                      }
+                    },
+                    "fix_list": [],
+                    "monster_media_findings": [
+                      {
+                        "slug": "aberrant_creeper",
+                        "confidence": "structural",
+                        "source_file": "AC001.json",
+                        "source_path": "locations[0].monsters[0]",
+                        "outcome": "reused_or_generated",
+                        "base": true,
+                        "thumb": true,
+                        "video": false
+                      },
+                      {
+                        "slug": "experimental_splice_remnant",
+                        "confidence": "structural",
+                        "source_file": "FG001.json",
+                        "source_path": "locations[2].monsters[0]",
+                        "outcome": "reused_or_generated",
+                        "base": true,
+                        "thumb": true,
+                        "video": false
+                      },
+                      {
+                        "slug": "fleshforged_aberrant",
+                        "confidence": "structural",
+                        "source_file": "AC001.json",
+                        "source_path": "locations[1].monsters[0]",
+                        "outcome": "reused_or_generated",
+                        "base": true,
+                        "thumb": true,
+                        "video": false
+                      },
+                      {
+                        "slug": "giant_weasel",
+                        "confidence": "structural",
+                        "source_file": "BA001.json",
+                        "source_path": "locations[0].monsters[0]",
+                        "outcome": "reused_or_generated",
+                        "base": true,
+                        "thumb": true,
+                        "video": false
+                      },
+                      {
+                        "slug": "huskbound_wretch",
+                        "confidence": "structural",
+                        "source_file": "AC001.json",
+                        "source_path": "locations[2].monsters[0]",
+                        "outcome": "reused_or_generated",
+                        "base": true,
+                        "thumb": true,
+                        "video": false
+                      },
+                      {
+                        "slug": "lesser_rust_eel",
+                        "confidence": "structural",
+                        "source_file": "FG001.json",
+                        "source_path": "locations[0].monsters[0]",
+                        "outcome": "reused_or_generated",
+                        "base": true,
+                        "thumb": true,
+                        "video": false
+                      },
+                      {
+                        "slug": "mutant_scavenger_lieutenant",
+                        "confidence": "structural",
+                        "source_file": "TTL001.json",
+                        "source_path": "locations[2].monsters[0]",
+                        "outcome": "reused_or_generated",
+                        "base": true,
+                        "thumb": true,
+                        "video": false
+                      },
+                      {
+                        "slug": "mutated_scavenger_leader",
+                        "confidence": "structural",
+                        "source_file": "TTL001.json",
+                        "source_path": "locations[0].monsters[0]",
+                        "outcome": "reused_or_generated",
+                        "base": true,
+                        "thumb": true,
+                        "video": false
+                      },
+                      {
+                        "slug": "security_construct",
+                        "confidence": "structural",
+                        "source_file": "TTL001.json",
+                        "source_path": "locations[1].monsters[0]",
+                        "outcome": "reused_or_generated",
+                        "base": true,
+                        "thumb": true,
+                        "video": false
+                      },
+                      {
+                        "slug": "swarm_of_bats",
+                        "confidence": "structural",
+                        "source_file": "BA001.json",
+                        "source_path": "locations[1].monsters[0]",
+                        "outcome": "reused_or_generated",
+                        "base": true,
+                        "thumb": true,
+                        "video": false
+                      },
+                      {
+                        "slug": "vaultway_shadow",
+                        "confidence": "structural",
+                        "source_file": "FG001.json",
+                        "source_path": "locations[1].monsters[0]",
+                        "outcome": "reused_or_generated",
+                        "base": true,
+                        "thumb": true,
+                        "video": false
+                      },
+                      {
+                        "slug": "wolf",
+                        "confidence": "structural",
+                        "source_file": "BA001.json",
+                        "source_path": "locations[2].monsters[0]",
+                        "outcome": "reused_or_generated",
+                        "base": true,
+                        "thumb": true,
+                        "video": false
+                      }
+                    ],
+                    "references": [
+                      {
+                        "slug": "mutated_scavenger_leader",
+                        "file": "TTL001.json",
+                        "path": "locations[0].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Mutated Scavenger Leader"
+                      },
+                      {
+                        "slug": "security_construct",
+                        "file": "TTL001.json",
+                        "path": "locations[1].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Security Construct"
+                      },
+                      {
+                        "slug": "mutant_scavenger_lieutenant",
+                        "file": "TTL001.json",
+                        "path": "locations[2].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Mutant Scavenger Lieutenant"
+                      },
+                      {
+                        "slug": "aberrant_creeper",
+                        "file": "AC001.json",
+                        "path": "locations[0].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Aberrant Creeper"
+                      },
+                      {
+                        "slug": "fleshforged_aberrant",
+                        "file": "AC001.json",
+                        "path": "locations[1].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Fleshforged Aberrant"
+                      },
+                      {
+                        "slug": "huskbound_wretch",
+                        "file": "AC001.json",
+                        "path": "locations[2].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Huskbound Wretch"
+                      },
+                      {
+                        "slug": "giant_weasel",
+                        "file": "BA001.json",
+                        "path": "locations[0].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Giant Weasel"
+                      },
+                      {
+                        "slug": "swarm_of_bats",
+                        "file": "BA001.json",
+                        "path": "locations[1].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Swarm of Bats"
+                      },
+                      {
+                        "slug": "wolf",
+                        "file": "BA001.json",
+                        "path": "locations[2].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Wolf"
+                      },
+                      {
+                        "slug": "lesser_rust_eel",
+                        "file": "FG001.json",
+                        "path": "locations[0].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Lesser Rust Eel"
+                      },
+                      {
+                        "slug": "vaultway_shadow",
+                        "file": "FG001.json",
+                        "path": "locations[1].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Vaultway Shadow"
+                      },
+                      {
+                        "slug": "experimental_splice_remnant",
+                        "file": "FG001.json",
+                        "path": "locations[2].monsters[0]",
+                        "confidence": "structural",
+                        "original": "Experimental Splice Remnant"
+                      }
+                    ],
+                    "strict_mode": true
+                  },
+                  "baseline": null
+                }
+              }
+            },
+            "sidecar": {
+              "status": "pass",
+              "reason": "pass",
+              "source": "toolkit",
+              "exit_code": 0,
+              "raw": {
+                "json": {
+                  "valid": true,
+                  "path": "/Users/zeug/Projects/NeverEndingQuest/modules/The_Ancients_Lab/toolkit_build_report.json",
+                  "module_slug": "The_Ancients_Lab"
+                }
+              }
+            },
+            "schema": {
+              "status": "pass",
+              "reason": "pass",
+              "exit_code": 0,
+              "any_failed": false,
+              "missing_jsonschema": false,
+              "raw": {
+                "command": "/Users/zeug/Projects/NeverEndingQuest/.venv/bin/python3 /Users/zeug/Projects/NeverEndingQuest/core/validation/validate_module_files.py --module The_Ancients_Lab --json",
+                "exit_code": 0,
+                "stdout": "{\n  \"modules\": {\n    \"The_Ancients_Lab\": {\n      \"module\": \"The_Ancients_Lab\",\n      \"total_passed\": 42,\n      \"total_failed\": 0,\n      \"files\": {\n        \"area\": {\n          \"files\": [\n            \"AC001_BU.json (areas/)\",\n            \"BA001_BU.json (areas/)\",\n            \"TTL001.json (areas/)\",\n            \"AC001.json (areas/)\",\n            \"FG001_BU.json (areas/)\",\n            \"BA001.json (areas/)\",\n            \"TTL001_BU.json (areas/)\",\n            \"FG001.json (areas/)\"\n          ],\n          \"passed\": 8,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"reference_integrity\": {\n          \"files\": [],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"monster\": {\n          \"files\": [\n            \"mutant_scavenger_lieutenant.json\",\n            \"swarm_of_bats.json\",\n            \"wolf.json\",\n            \"lesser_rust_eel.json\",\n            \"experimental_splice_remnant.json\",\n            \"aberrant_creeper.json\",\n            \"mutated_scavenger_leader.json\",\n            \"giant_weasel.json\",\n            \"security_construct.json\",\n            \"vaultway_shadow.json\",\n            \"fleshforged_aberrant.json\",\n            \"huskbound_wretch.json\"\n          ],\n          \"passed\": 12,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"map\": {\n          \"files\": [\n            \"map_FG001.json\",\n            \"map_BA001.json\",\n            \"map_AC001.json\",\n            \"map_TTL001.json\"\n          ],\n          \"passed\": 4,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"plot\": {\n          \"files\": [\n            \"module_plot.json\"\n          ],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"party\": {\n          \"files\": [\n            \"party_tracker.json\"\n          ],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"module_context\": {\n          \"files\": [\n            \"module_context.json\"\n          ],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"runtime_room_reachability\": {\n          \"files\": [\n            \"areas/AC001.json\",\n            \"areas/BA001.json\",\n            \"areas/FG001.json\",\n            \"areas/TTL001.json\"\n          ],\n          \"passed\": 4,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"map_area_parity\": {\n          \"files\": [\n            \"AC001.json <-> map_AC001.json\",\n            \"BA001.json <-> map_BA001.json\",\n            \"FG001.json <-> map_FG001.json\",\n            \"TTL001.json <-> map_TTL001.json\"\n          ],\n          \"passed\": 4,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"spatial_contract\": {\n          \"files\": [\n            \"AC001.json <-> map_AC001.json\",\n            \"BA001.json <-> map_BA001.json\",\n            \"FG001.json <-> map_FG001.json\",\n            \"TTL001.json <-> map_TTL001.json\"\n          ],\n          \"passed\": 4,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"spatial_contract_warning\": {\n          \"files\": [],\n          \"passed\": 0,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"plot_progression\": {\n          \"files\": [\n            \"module_plot.json\"\n          ],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        },\n        \"connectivity\": {\n          \"files\": [],\n          \"passed\": 1,\n          \"failed\": 0,\n          \"errors\": []\n        }\n      }\n    }\n  },\n  \"summary\": {\n    \"modules_total\": 1,\n    \"any_failed\": false\n  }\n}",
+                "stderr": "",
+                "json": {
+                  "modules": {
+                    "The_Ancients_Lab": {
+                      "module": "The_Ancients_Lab",
+                      "total_passed": 42,
+                      "total_failed": 0,
+                      "files": {
+                        "area": {
+                          "files": [
+                            "AC001_BU.json (areas/)",
+                            "BA001_BU.json (areas/)",
+                            "TTL001.json (areas/)",
+                            "AC001.json (areas/)",
+                            "FG001_BU.json (areas/)",
+                            "BA001.json (areas/)",
+                            "TTL001_BU.json (areas/)",
+                            "FG001.json (areas/)"
+                          ],
+                          "passed": 8,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "reference_integrity": {
+                          "files": [],
+                          "passed": 1,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "monster": {
+                          "files": [
+                            "mutant_scavenger_lieutenant.json",
+                            "swarm_of_bats.json",
+                            "wolf.json",
+                            "lesser_rust_eel.json",
+                            "experimental_splice_remnant.json",
+                            "aberrant_creeper.json",
+                            "mutated_scavenger_leader.json",
+                            "giant_weasel.json",
+                            "security_construct.json",
+                            "vaultway_shadow.json",
+                            "fleshforged_aberrant.json",
+                            "huskbound_wretch.json"
+                          ],
+                          "passed": 12,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "map": {
+                          "files": [
+                            "map_FG001.json",
+                            "map_BA001.json",
+                            "map_AC001.json",
+                            "map_TTL001.json"
+                          ],
+                          "passed": 4,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "plot": {
+                          "files": [
+                            "module_plot.json"
+                          ],
+                          "passed": 1,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "party": {
+                          "files": [
+                            "party_tracker.json"
+                          ],
+                          "passed": 1,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "module_context": {
+                          "files": [
+                            "module_context.json"
+                          ],
+                          "passed": 1,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "runtime_room_reachability": {
+                          "files": [
+                            "areas/AC001.json",
+                            "areas/BA001.json",
+                            "areas/FG001.json",
+                            "areas/TTL001.json"
+                          ],
+                          "passed": 4,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "map_area_parity": {
+                          "files": [
+                            "AC001.json <-> map_AC001.json",
+                            "BA001.json <-> map_BA001.json",
+                            "FG001.json <-> map_FG001.json",
+                            "TTL001.json <-> map_TTL001.json"
+                          ],
+                          "passed": 4,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "spatial_contract": {
+                          "files": [
+                            "AC001.json <-> map_AC001.json",
+                            "BA001.json <-> map_BA001.json",
+                            "FG001.json <-> map_FG001.json",
+                            "TTL001.json <-> map_TTL001.json"
+                          ],
+                          "passed": 4,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "spatial_contract_warning": {
+                          "files": [],
+                          "passed": 0,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "plot_progression": {
+                          "files": [
+                            "module_plot.json"
+                          ],
+                          "passed": 1,
+                          "failed": 0,
+                          "errors": []
+                        },
+                        "connectivity": {
+                          "files": [],
+                          "passed": 1,
+                          "failed": 0,
+                          "errors": []
+                        }
+                      }
+                    }
+                  },
+                  "summary": {
+                    "modules_total": 1,
+                    "any_failed": false
+                  }
+                }
+              }
+            },
+            "continuity": {
+              "status": "pass",
+              "reason": "pass",
+              "exit_code": 0,
+              "blocking_error_count": 0,
+              "warning_count": 0,
+              "required_keys_present": [
+                "continuity_version",
+                "entry_state_variants",
+                "cross_module_refs",
+                "standalone_fallback"
+              ],
+              "continuity_version": "v1",
+              "raw": {
+                "command": "/Users/zeug/Projects/NeverEndingQuest/.venv/bin/python3 /Users/zeug/Projects/NeverEndingQuest/scripts/module_continuity_audit.py --module The_Ancients_Lab --json --strict",
+                "exit_code": 0,
+                "stdout": "{\n  \"status\": \"pass\",\n  \"module\": \"The_Ancients_Lab\",\n  \"module_path\": \"modules/The_Ancients_Lab\",\n  \"continuity_version\": \"v1\",\n  \"required_keys_present\": [\n    \"continuity_version\",\n    \"entry_state_variants\",\n    \"cross_module_refs\",\n    \"standalone_fallback\"\n  ],\n  \"missing_required_keys\": [],\n  \"normalized_refs_count\": 3,\n  \"blocking_errors\": [],\n  \"warnings\": [],\n  \"strict\": true,\n  \"exit_code\": 0\n}",
+                "stderr": "",
+                "json": {
+                  "status": "pass",
+                  "module": "The_Ancients_Lab",
+                  "module_path": "modules/The_Ancients_Lab",
+                  "continuity_version": "v1",
+                  "required_keys_present": [
+                    "continuity_version",
+                    "entry_state_variants",
+                    "cross_module_refs",
+                    "standalone_fallback"
+                  ],
+                  "missing_required_keys": [],
+                  "normalized_refs_count": 3,
+                  "blocking_errors": [],
+                  "warnings": [],
+                  "strict": true,
+                  "exit_code": 0
+                }
+              }
+            }
+          },
+          "blocking_errors": [],
+          "fix_list": [],
+          "strict_contract": {
+            "source": "toolkit",
+            "requires_gameplay": true,
+            "requires_sidecar": false,
+            "requires_toolkit_provenance": true,
+            "requires_continuity": true,
+            "requires_schema": true,
+            "strict_gameplay": true,
+            "strict_continuity": true
+          },
+          "toolkit_media_policy": {
+            "provider_generation_mode": "opt_in_manual_only",
+            "manual_remediation_workflow": [
+              "Monster Management & Generator -> Generate Monster Images",
+              "Module Media Generator -> one-click monster media generation"
+            ],
+            "structural_media_debt_count": 0,
+            "structural_media_debt_slugs": []
+          },
+          "exit_code": 0
+        },
+        "publication_gates": {
+          "semantic_audit": {
+            "status": "degraded",
+            "module": "The_Ancients_Lab",
+            "module_path": "modules/The_Ancients_Lab",
+            "version": "v1",
+            "summary": {
+              "location_alias_count": 15,
+              "destination_phrase_count": 15,
+              "npc_scene_authority_count": 9,
+              "ambiguous_destination_count": 0,
+              "unresolved_destination_count": 0,
+              "missing_npc_authority_count": 1,
+              "blocking_finding_count": 0,
+              "warning_count": 1
+            },
+            "blocker_classes": [],
+            "blocking_findings": [],
+            "blocking_errors": [],
+            "warnings": [
+              "npc_scene_authority['Edda Coppervein'] has no visible locations or reveal bindings"
+            ],
+            "exit_code": 0
+          },
+          "semantic_probes": {
+            "module": "The_Ancients_Lab",
+            "module_path": "modules/The_Ancients_Lab",
+            "status": "degraded",
+            "summary": {
+              "probe_count": 8,
+              "pass_count": 8,
+              "fail_count": 0,
+              "degraded_count": 0,
+              "travel_probe_count": 1,
+              "handoff_probe_count": 0,
+              "hidden_npc_probe_count": 7
+            },
+            "probes": [
+              {
+                "id": "travel.twisted-forge-atrium",
+                "type": "travel",
+                "phrase": "twisted forge atrium",
+                "status": "pass",
+                "resolved_location_id": "I01",
+                "candidate_location_ids": [
+                  "I01"
+                ],
+                "expected_location_ids": [
+                  "I01"
+                ],
+                "sources": [
+                  "areas/TTL001.json#locations[I01].aliases",
+                  "areas/TTL001.json#locations[I01].description",
+                  "areas/TTL001.json#locations[I01].name"
+                ],
+                "expected_location_id": "I01",
+                "status_detail": "Resolved location matches expected destination",
+                "failure_class": ""
+              },
+              {
+                "id": "hidden_npc.damaged-security-overseer",
+                "type": "hidden_npc",
+                "npc": "Damaged Security Overseer",
+                "name_slug": "damaged security overseer",
+                "visible_location_ids": [
+                  "I03"
+                ],
+                "reveal_location_ids": [
+                  "I02"
+                ],
+                "expected_location_ids": [
+                  "I02",
+                  "I03"
+                ],
+                "authored_mentions_count": 5,
+                "authored_mention_sources": [
+                  "areas/AC001.json#locations[I02].plotHooks",
+                  "areas/AC001.json#locations[I03].accessibility",
+                  "areas/AC001.json#locations[I03].dcChecks",
+                  "areas/AC001.json#locations[I03].dmInstructions",
+                  "areas/AC001.json#locations[I03].plotHooks"
+                ],
+                "status": "pass",
+                "failure_class": "",
+                "status_detail": "Revealable NPC authority aligns with authored discovery context"
+              },
+              {
+                "id": "hidden_npc.facility-security-system",
+                "type": "hidden_npc",
+                "npc": "Facility Security System",
+                "name_slug": "facility security system",
+                "visible_location_ids": [],
+                "reveal_location_ids": [
+                  "I01",
+                  "I02"
+                ],
+                "expected_location_ids": [
+                  "I01",
+                  "I02"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/AC001.json#locations[I02].plotHooks",
+                  "areas/FG001.json#locations[I01].plotHooks",
+                  "areas/TTL001.json#locations[I02].dcChecks"
+                ],
+                "status": "pass",
+                "failure_class": "",
+                "status_detail": "Revealable NPC authority aligns with authored discovery context"
+              },
+              {
+                "id": "hidden_npc.mutant-scavenger-lieutenant",
+                "type": "hidden_npc",
+                "npc": "Mutant Scavenger Lieutenant",
+                "name_slug": "mutant scavenger lieutenant",
+                "visible_location_ids": [],
+                "reveal_location_ids": [
+                  "I03"
+                ],
+                "expected_location_ids": [
+                  "I03"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/TTL001.json#locations[I03].dcChecks",
+                  "areas/TTL001.json#locations[I03].dmInstructions",
+                  "areas/TTL001.json#locations[I03].plotHooks"
+                ],
+                "status": "pass",
+                "failure_class": "",
+                "status_detail": "Revealable NPC authority aligns with authored discovery context"
+              },
+              {
+                "id": "hidden_npc.mutated-scavenger-leader",
+                "type": "hidden_npc",
+                "npc": "Mutated Scavenger Leader",
+                "name_slug": "mutated scavenger leader",
+                "visible_location_ids": [],
+                "reveal_location_ids": [
+                  "I01"
+                ],
+                "expected_location_ids": [
+                  "I01"
+                ],
+                "authored_mentions_count": 2,
+                "authored_mention_sources": [
+                  "areas/TTL001.json#locations[I01].dmInstructions",
+                  "areas/TTL001.json#locations[I01].plotHooks"
+                ],
+                "status": "pass",
+                "failure_class": "",
+                "status_detail": "Revealable NPC authority aligns with authored discovery context"
+              },
+              {
+                "id": "hidden_npc.rambling-dwarven-survivor",
+                "type": "hidden_npc",
+                "npc": "Rambling Dwarven Survivor",
+                "name_slug": "rambling dwarven survivor",
+                "visible_location_ids": [
+                  "I03"
+                ],
+                "reveal_location_ids": [
+                  "FG001"
+                ],
+                "expected_location_ids": [
+                  "FG001",
+                  "I03"
+                ],
+                "authored_mentions_count": 4,
+                "authored_mention_sources": [
+                  "areas/BA001.json#locations[I03].dcChecks",
+                  "areas/BA001.json#locations[I03].dmInstructions",
+                  "areas/BA001.json#locations[I03].plotHooks",
+                  "module_plot.json#plotPoints[PP002].description"
+                ],
+                "status": "pass",
+                "failure_class": "",
+                "status_detail": "Revealable NPC authority aligns with authored discovery context"
+              },
+              {
+                "id": "hidden_npc.security-construct",
+                "type": "hidden_npc",
+                "npc": "Security Construct",
+                "name_slug": "security construct",
+                "visible_location_ids": [],
+                "reveal_location_ids": [
+                  "FG001",
+                  "I02",
+                  "I03"
+                ],
+                "expected_location_ids": [
+                  "FG001",
+                  "I02",
+                  "I03"
+                ],
+                "authored_mentions_count": 6,
+                "authored_mention_sources": [
+                  "areas/BA001.json#locations[I03].plotHooks",
+                  "areas/FG001.json#locations[I03].plotHooks",
+                  "areas/TTL001.json#locations[I02].dcChecks",
+                  "areas/TTL001.json#locations[I02].dmInstructions",
+                  "areas/TTL001.json#locations[I02].plotHooks",
+                  "module_plot.json#plotPoints[PP005].description"
+                ],
+                "status": "pass",
+                "failure_class": "",
+                "status_detail": "Revealable NPC authority aligns with authored discovery context"
+              },
+              {
+                "id": "hidden_npc.the-thing",
+                "type": "hidden_npc",
+                "npc": "The Thing",
+                "name_slug": "the thing",
+                "visible_location_ids": [],
+                "reveal_location_ids": [
+                  "I01",
+                  "I03"
+                ],
+                "expected_location_ids": [
+                  "I01",
+                  "I03"
+                ],
+                "authored_mentions_count": 3,
+                "authored_mention_sources": [
+                  "areas/AC001.json#locations[I03].plotHooks",
+                  "areas/TTL001.json#locations[I01].dmInstructions",
+                  "areas/TTL001.json#locations[I03].plotHooks"
+                ],
+                "status": "pass",
+                "failure_class": "",
+                "status_detail": "Revealable NPC authority aligns with authored discovery context"
+              }
+            ],
+            "blocking_errors": [],
+            "warnings": [
+              "handoff_probe_fixture_missing"
+            ],
+            "exit_code": 0
+          }
+        },
+        "blocking_errors": [],
+        "warnings": [
+          "npc_scene_authority['Edda Coppervein'] has no visible locations or reveal bindings",
+          "handoff_probe_fixture_missing"
+        ],
+        "remediation_categories": [
+          "semantic_warning_only",
+          "semantic_tooling_debt"
+        ],
+        "toolkit_media_policy": {
+          "provider_generation_mode": "opt_in_manual_only",
+          "manual_remediation_workflow": [
+            "Monster Management & Generator -> Generate Monster Images",
+            "Module Media Generator -> one-click monster media generation"
+          ],
+          "structural_media_debt_count": 0,
+          "structural_media_debt_slugs": []
+        },
+        "fix_list": [
+          "Review semantic audit warnings/tooling debt and remediate if needed",
+          "Review semantic probe warnings/tooling debt and remediate if needed"
+        ],
+        "exit_code": 0
+      }
+    }
+  },
+  "publication_parity_note": "Post-build parity now reports both structural readiness and semantic publishability.",
+  "semantic_authority_note": "Semantic authority and semantic probes now feed a standalone publishable gate distinct from readiness."
+}

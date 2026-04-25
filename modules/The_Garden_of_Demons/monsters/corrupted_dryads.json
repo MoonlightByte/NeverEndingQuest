@@ -1,0 +1,102 @@
+{
+  "name": "Corrupted Dryad",
+  "size": "Medium",
+  "type": "Fey",
+  "alignment": "Chaotic Evil",
+  "armorClass": 12,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 30,
+  "abilities": {
+    "strength": 10,
+    "dexterity": 14,
+    "constitution": 12,
+    "intelligence": 11,
+    "wisdom": 13,
+    "charisma": 15
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 4,
+    "stealth": 4,
+    "nature": 2
+  },
+  "damageVulnerabilities": [
+    "fire"
+  ],
+  "damageResistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "Elvish, Sylvan",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Fey Camouflage",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Tree Stride (Corrupted)",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Corrupted Slam",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "bludgeoning"
+    },
+    {
+      "name": "Entangling Roots",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "restrained"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "spellcasting": {
+    "ability": "Charisma",
+    "spellSaveDC": 13,
+    "spellAttackBonus": 5,
+    "spells": {
+      "cantrips": [
+        "druidcraft",
+        "thorn whip"
+      ],
+      "level1": [
+        "entangle",
+        "charm person"
+      ],
+      "level2": [
+        "hold person"
+      ],
+      "level3": [],
+      "level4": [],
+      "level5": [],
+      "level6": [],
+      "level7": [],
+      "level8": [],
+      "level9": []
+    }
+  },
+  "description": "Emerging from the twisted heart of the Blightfen Wilds, Corrupted Dryads stand as haunting parodies of the once-proud guardians of the forest. Their forms are slender and humanoid, but their skin is mottled with patches of cracked, bark-like growths that weep with dark, viscous sap. Where vibrant leaves should sprout, only sickly, blackened foliage clings stubbornly, curling and brittle. Their eyes glow with an eerie phosphorescent green, flickering like the ghostly mushrooms that illuminate the Withered Heart Glade at night. Wisps of sour mist coil around their limbs, and their hair is a tangle of rotting vines and thorny tendrils that seem to writhe with a life of their own. They move with unnatural grace, their motions a twisted dance between allure and menace, often silent save for the faint crackling of dying wood. Their presence warps the air, infusing it with a heavy, unsettling stillness pierced occasionally by the distant croak of marsh creatures or the drip of corrupted sap. These dryads emit a subtle aura of despair and decay, their very touch poisoning the earth, withering plants and driving away the life they once vowed to protect. In combat, they strike with thorned claws and dark enchantments, manipulating the blighted flora around them to ensnare and sap the strength of their foes. The Corrupted Dryads embody the tragic corruption of the wilderness, a chilling reminder of the Blightfen Wilds' creeping, malevolent curse."
+}

@@ -1,0 +1,110 @@
+{
+  "name": "Illusionary Shadow Dancer",
+  "size": "Medium",
+  "type": "Fey",
+  "alignment": "Chaotic Neutral",
+  "armorClass": 14,
+  "hitPoints": 16,
+  "maxHitPoints": 16,
+  "speed": 40,
+  "abilities": {
+    "strength": 8,
+    "dexterity": 18,
+    "constitution": 12,
+    "intelligence": 13,
+    "wisdom": 14,
+    "charisma": 16
+  },
+  "savingThrows": [
+    "Dex",
+    "Cha"
+  ],
+  "skills": {
+    "Acrobatics": 6,
+    "Stealth": 8,
+    "Performance": 5,
+    "Deception": 5,
+    "Perception": 4
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "necrotic",
+    "psychic",
+    "bludgeoning",
+    "piercing",
+    "slashing from nonmagical attacks"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed",
+    "frightened"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "Common, Sylvan",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Shadow Blend",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Evasion",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    },
+    {
+      "name": "Illusory Double (1/Day)",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Shadow Blade",
+      "attackBonus": 6,
+      "damageDice": "1d6",
+      "damageBonus": 4,
+      "damageType": "psychic"
+    },
+    {
+      "name": "Dancing Step",
+      "attackBonus": 0,
+      "damageDice": "0",
+      "damageBonus": 0,
+      "damageType": "None"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "spellcasting": {
+    "ability": "Charisma",
+    "spellSaveDC": 13,
+    "spellAttackBonus": 5,
+    "spells": {
+      "cantrips": [
+        "minor illusion",
+        "dancing lights",
+        "thaumaturgy"
+      ],
+      "level1": [
+        "disguise self",
+        "silent image",
+        "color spray"
+      ],
+      "level2": []
+    }
+  },
+  "description": "Within the labyrinthine depths of the Shrouded Psiumbra, the Illusionary Shadow Dancers emerge as ephemeral wraiths of psychic deception and haunting elegance. Their forms are slender and fluid, composed of swirling shadows that ripple like silk disturbed by a phantom breeze. Each dancer wears an ever-shifting mask--crafted from translucent onyx veined with faint, iridescent hues--that conceals their hauntingly beautiful, androgynous faces, revealing only glowing, hypnotic eyes that seem to peer directly into the soul. Their slender limbs move with balletic grace, weaving through the illusion-draped corridors as if the very shadows obey their will. Around them, the air shivers with psychic resonance; faint whispers of laughter and haunting melodies trail their movements, ensnaring the minds of onlookers in a dizzying dance of madness and allure. As they twirl, their shadows stretch and fracture, creating fleeting images of faces from the past--friends, foes, and forgotten memories--disorienting those who dare to watch too long. These dancers do not speak but communicate through a haunting, silent choreography that bends perception, drawing intruders deeper into the masquerade's web. Their presence is a tempest of shifting reality, an intoxicating blend of beauty and menace that embodies the mind flayers' dominion over illusion and the psyche."
+}
