@@ -9,6 +9,7 @@
 import json
 import os
 import sys
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -193,7 +194,6 @@ class TestModuleMonsterAuthority(unittest.TestCase):
         self.assertIn("monster_slug", captured_context)
 
     def test_structured_monster_not_filtered_by_npc_overlap(self):
-        import tempfile
         from pathlib import Path
         from unittest.mock import patch
 
@@ -253,6 +253,238 @@ class TestModuleMonsterAuthority(unittest.TestCase):
             self.assertTrue(
                 any(source.get("type") == "authored_structured_monster" for source in sources)
             )
+
+    def test_schema_complete_existing_file_remains_authoritative(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target_path = os.path.join(tmpdir, "cultist.json")
+            with open(target_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "name": "Cultist",
+                        "size": "Medium",
+                        "alignment": "lawful evil",
+                        "armorClass": 12,
+                    },
+                    handle,
+                )
+
+            resolved_reference = {
+                "authorized": True,
+                "canonical_slug": "cultist",
+                "canonical_name": "Cultist",
+                "requested_slug": "cultist",
+                "resolution_mode": "exact",
+                "sources": [{"type": "authored_area_content", "name": "Cultist"}],
+            }
+
+            with (
+                patch(
+                    "utils.module_monster_authority.ModulePathManager"
+                ) as mock_manager,
+                patch(
+                    "utils.module_monster_authority.resolve_authorized_monster_reference",
+                    return_value=resolved_reference,
+                ),
+                patch(
+                    "utils.module_monster_authority.find_reusable_monster_path",
+                    return_value=None,
+                ),
+            ):
+                manager_instance = mock_manager.return_value
+                manager_instance.get_monster_path.return_value = target_path
+
+                result = materialize_authorized_monster_file(
+                    "Night_of_the_Restless_Dead",
+                    "Cultist",
+                    "core/generators/monster_builder.py",
+                    compendium_lookup={},
+                    allow_generation=False,
+                )
+
+        self.assertTrue(result.get("ok"))
+        self.assertEqual(result.get("source"), "existing")
+
+    def test_schema_incomplete_existing_file_fails_closed_without_generation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target_path = os.path.join(tmpdir, "restless_spirit.json")
+            with open(target_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "name": "Restless Spirit",
+                        "type": "undead",
+                        "description": "A spectral remnant.",
+                    },
+                    handle,
+                )
+
+            resolved_reference = {
+                "authorized": True,
+                "canonical_slug": "restless_spirit",
+                "canonical_name": "Restless Spirit",
+                "requested_slug": "restless_spirit",
+                "resolution_mode": "exact",
+                "sources": [{"type": "authored_area_content", "name": "Restless Spirit"}],
+            }
+
+            with (
+                patch(
+                    "utils.module_monster_authority.ModulePathManager"
+                ) as mock_manager,
+                patch(
+                    "utils.module_monster_authority.resolve_authorized_monster_reference",
+                    return_value=resolved_reference,
+                ),
+                patch(
+                    "utils.module_monster_authority.find_reusable_monster_path",
+                    return_value=None,
+                ),
+            ):
+                manager_instance = mock_manager.return_value
+                manager_instance.get_monster_path.return_value = target_path
+
+                result = materialize_authorized_monster_file(
+                    "Murder_at_the_Drowning_Lass",
+                    "Restless Spirit",
+                    "core/generators/monster_builder.py",
+                    compendium_lookup={
+                        "restless_spirit": {
+                            "name": "Restless Spirit",
+                            "description": "A spectral remnant.",
+                        }
+                    },
+                    allow_generation=False,
+                )
+
+        self.assertFalse(result.get("ok"))
+        self.assertEqual(
+            result.get("error_class"), "authorized_monster_provider_unavailable"
+        )
+        insufficiency = result.get("insufficient_deterministic_sources") or []
+        self.assertTrue(
+            any(item.startswith("schema_incomplete_existing:") for item in insufficiency)
+        )
+        self.assertTrue(
+            any(item.startswith("schema_incomplete_bestiary:") for item in insufficiency)
+        )
+
+    def test_schema_incomplete_reuse_is_skipped_and_bestiary_wins(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target_path = os.path.join(tmpdir, "cultist.json")
+            reusable_path = os.path.join(tmpdir, "reusable_cultist.json")
+            with open(reusable_path, "w", encoding="utf-8") as handle:
+                json.dump({"name": "Cultist", "type": "humanoid"}, handle)
+
+            resolved_reference = {
+                "authorized": True,
+                "canonical_slug": "cultist",
+                "canonical_name": "Cultist",
+                "requested_slug": "cultist",
+                "resolution_mode": "exact",
+                "sources": [{"type": "authored_area_content", "name": "Cultist"}],
+            }
+
+            with (
+                patch(
+                    "utils.module_monster_authority.ModulePathManager"
+                ) as mock_manager,
+                patch(
+                    "utils.module_monster_authority.resolve_authorized_monster_reference",
+                    return_value=resolved_reference,
+                ),
+                patch(
+                    "utils.module_monster_authority.find_reusable_monster_path",
+                    return_value=reusable_path,
+                ),
+            ):
+                manager_instance = mock_manager.return_value
+                manager_instance.get_monster_path.return_value = target_path
+
+                result = materialize_authorized_monster_file(
+                    "Night_of_the_Restless_Dead",
+                    "Cultist",
+                    "core/generators/monster_builder.py",
+                    compendium_lookup={
+                        "cultist": {
+                            "name": "Cultist",
+                            "size": "Medium",
+                            "alignment": "lawful evil",
+                            "armorClass": 12,
+                        }
+                    },
+                    allow_generation=False,
+                )
+
+            with open(target_path, "r", encoding="utf-8") as handle:
+                persisted = json.load(handle)
+
+        self.assertTrue(result.get("ok"))
+        self.assertEqual(result.get("source"), "bestiary")
+        self.assertEqual(persisted.get("armorClass"), 12)
+
+    def test_schema_incomplete_bestiary_falls_through_to_generation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target_path = os.path.join(tmpdir, "restless_spirit.json")
+            builder_path = os.path.join(tmpdir, "monster_builder.py")
+            with open(builder_path, "w", encoding="utf-8") as handle:
+                handle.write("# placeholder builder")
+
+            resolved_reference = {
+                "authorized": True,
+                "canonical_slug": "restless_spirit",
+                "canonical_name": "Restless Spirit",
+                "requested_slug": "restless_spirit",
+                "resolution_mode": "exact",
+                "sources": [{"type": "authored_area_content", "name": "Restless Spirit"}],
+            }
+
+            def _mock_builder(args, capture_output, text):
+                with open(target_path, "w", encoding="utf-8") as handle:
+                    json.dump(
+                        {
+                            "name": "Restless Spirit",
+                            "size": "Medium",
+                            "alignment": "chaotic evil",
+                            "armorClass": 13,
+                        },
+                        handle,
+                    )
+                return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+
+            with (
+                patch(
+                    "utils.module_monster_authority.ModulePathManager"
+                ) as mock_manager,
+                patch(
+                    "utils.module_monster_authority.resolve_authorized_monster_reference",
+                    return_value=resolved_reference,
+                ),
+                patch(
+                    "utils.module_monster_authority.find_reusable_monster_path",
+                    return_value=None,
+                ),
+                patch(
+                    "utils.module_monster_authority.subprocess.run",
+                    side_effect=_mock_builder,
+                ),
+            ):
+                manager_instance = mock_manager.return_value
+                manager_instance.get_monster_path.return_value = target_path
+
+                result = materialize_authorized_monster_file(
+                    "Murder_at_the_Drowning_Lass",
+                    "Restless Spirit",
+                    builder_path,
+                    compendium_lookup={
+                        "restless_spirit": {
+                            "name": "Restless Spirit",
+                            "description": "A spectral remnant.",
+                        }
+                    },
+                    allow_generation=True,
+                )
+
+        self.assertTrue(result.get("ok"))
+        self.assertEqual(result.get("source"), "generated")
 
 
 class TestCanonicalMonsterReferenceResolution(unittest.TestCase):

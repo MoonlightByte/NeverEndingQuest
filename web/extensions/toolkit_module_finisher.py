@@ -19,6 +19,9 @@ from utils.file_operations import safe_read_json, safe_write_json
 from utils.module_semantic_authority import enrich_module_semantic_authority
 
 
+_TOOLKIT_REPORT_FRESHNESS_CONTRACT_VERSION = "toolkit_build_report_refresh_contract.v1"
+
+
 def _utc_now_iso() -> str:
     """Return UTC timestamp in ISO-8601 format."""
     return (
@@ -37,6 +40,50 @@ def _normalize_stage_status(status: str) -> str:
     if normalized in {"degraded", "warning", "warn", "partial", "skipped"}:
         return "degraded"
     return "failed"
+
+
+def _derive_report_freshness(
+    *,
+    status: str,
+    phase: str,
+    ready_status: str,
+    publishable_status: str,
+    workflow: str,
+    refresh_reason: str,
+) -> Dict[str, Any]:
+    """Build machine-readable freshness metadata for toolkit reports."""
+    normalized_phase = str(phase or "").strip().lower()
+    normalized_status = str(status or "").strip().lower()
+    normalized_ready = str(ready_status or "").strip().lower()
+    normalized_publishable = str(publishable_status or "").strip().lower()
+
+    if (
+        normalized_phase == "pre_publishability"
+        or normalized_ready == "pending"
+        or normalized_publishable == "pending"
+    ):
+        freshness_state = "stale"
+        authoritative = False
+        stale_reason = "publishability_pending"
+    elif normalized_status == "degraded":
+        freshness_state = "degraded"
+        authoritative = True
+        stale_reason = None
+    else:
+        freshness_state = "current"
+        authoritative = True
+        stale_reason = None
+
+    return {
+        "state": freshness_state,
+        "authoritative": authoritative,
+        "written_at": _utc_now_iso(),
+        "phase": phase,
+        "workflow": str(workflow or "toolkit_postbuild_finisher"),
+        "refresh_reason": str(refresh_reason or "postbuild_finishing"),
+        "contract": _TOOLKIT_REPORT_FRESHNESS_CONTRACT_VERSION,
+        "stale_reason": stale_reason,
+    }
 
 
 def _run_continuity_stage(
@@ -266,20 +313,19 @@ def _detect_media_only_debt(publishability_stage: Dict[str, Any]) -> bool:
     if not isinstance(report, dict):
         return False
 
-    ready_status = str(
-        publishability_stage.get("ready_status") or report.get("ready_status") or ""
-    ).strip().lower()
     publishable_status = str(
         publishability_stage.get("publishable_status")
         or report.get("publishable_status")
         or ""
     ).strip().lower()
-    if ready_status != "pass" or publishable_status != "fail":
+    if publishable_status != "fail":
         return False
 
     readiness_report = report.get("readiness") or {}
-    if str(readiness_report.get("overall_status") or "").strip().lower() != "pass":
-        return False
+    readiness_status = str(readiness_report.get("overall_status") or "").strip().lower()
+    ready_status = str(
+        publishability_stage.get("ready_status") or report.get("ready_status") or ""
+    ).strip().lower()
 
     categories = report.get("remediation_categories") or []
     if "structured_monster_media_missing" not in categories:
@@ -289,11 +335,42 @@ def _detect_media_only_debt(publishability_stage: Dict[str, Any]) -> bool:
     if "semantic_publishability_blocking" in categories:
         return False
 
+    toolkit_media_policy = report.get("toolkit_media_policy") or {}
+    structural_media_debt_count = int(
+        toolkit_media_policy.get("structural_media_debt_count") or 0
+    )
+    if structural_media_debt_count <= 0:
+        return False
+
+    if ready_status == "pass" and readiness_status == "pass":
+        readiness_is_media_only = True
+    elif ready_status == "fail" and readiness_status == "fail":
+        gates = readiness_report.get("gates") or {}
+        failed_gates = sorted(
+            gate_name
+            for gate_name, gate in gates.items()
+            if isinstance(gate, dict)
+            and str(gate.get("status") or "").strip().lower() == "fail"
+        )
+        readiness_is_media_only = failed_gates == ["gameplay"]
+    else:
+        readiness_is_media_only = False
+
+    if not readiness_is_media_only:
+        return False
+
     blocking_errors = report.get("blocking_errors") or []
     if not blocking_errors:
         return True
 
-    media_related_terms = ("media", "monster", "portrait", "image")
+    media_related_terms = (
+        "media",
+        "monster",
+        "portrait",
+        "image",
+        "readiness_gate_failed",
+        "gameplay_gate_failed",
+    )
     return all(
         any(term in str(item or "").lower() for term in media_related_terms)
         for item in blocking_errors
@@ -358,7 +435,10 @@ def _run_publishability_stage(module_slug: str, source: str = "watcher") -> Dict
 
 
 def run_toolkit_module_postbuild_finishing(
-    module_slug: str, strict: bool = True
+    module_slug: str,
+    strict: bool = True,
+    refresh_reason: str = "postbuild_finishing",
+    refresh_workflow: str = "toolkit_postbuild_finisher",
 ) -> Dict[str, Any]:
     """Run post-build publication parity stages for toolkit-generated modules."""
     module_slug = str(module_slug or "").strip()
@@ -428,12 +508,22 @@ def run_toolkit_module_postbuild_finishing(
     def _build_report(
         *, status: str, ready_status: str, publishable_status: str, phase: str
     ) -> Dict[str, Any]:
+        freshness = _derive_report_freshness(
+            status=status,
+            phase=phase,
+            ready_status=ready_status,
+            publishable_status=publishable_status,
+            workflow=refresh_workflow,
+            refresh_reason=refresh_reason,
+        )
         return {
             "generated_at": _utc_now_iso(),
             "module_slug": module_slug,
             "status": status,
             "ready_status": ready_status,
             "publishable_status": publishable_status,
+            "freshness_state": freshness.get("state"),
+            "report_freshness": freshness,
             "strict": bool(strict),
             "source": "toolkit",
             "provenance": {
@@ -441,6 +531,11 @@ def run_toolkit_module_postbuild_finishing(
                 "artifact": "toolkit_build_report.json",
                 "contract": "toolkit_build_report_required",
                 "phase": phase,
+                "refresh_contract": _TOOLKIT_REPORT_FRESHNESS_CONTRACT_VERSION,
+                "refresh_workflow": str(
+                    refresh_workflow or "toolkit_postbuild_finisher"
+                ),
+                "refresh_reason": str(refresh_reason or "postbuild_finishing"),
             },
             "stages": stages,
             "publication_parity_note": (
@@ -543,3 +638,17 @@ def run_toolkit_module_postbuild_finishing(
         category="module_ingest",
     )
     return report
+
+
+def refresh_toolkit_build_report(
+    module_slug: str,
+    strict: bool = True,
+    refresh_reason: str = "toolkit_revalidation",
+) -> Dict[str, Any]:
+    """Run explicit report-refresh contract for publishability-facing workflows."""
+    return run_toolkit_module_postbuild_finishing(
+        module_slug=module_slug,
+        strict=strict,
+        refresh_reason=refresh_reason,
+        refresh_workflow="toolkit_report_refresh",
+    )

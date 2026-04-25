@@ -41,6 +41,12 @@ GENERIC_MONSTER_MODIFIER_TOKENS = {
     "dark",
 }
 
+HYDRATION_REQUIRED_MONSTER_FIELDS = (
+    "size",
+    "alignment",
+    "armorClass",
+)
+
 
 def normalize_monster_identity(monster_name: Any) -> str:
     """Normalize monster names with the same slug rules as combat lookup."""
@@ -56,6 +62,24 @@ def _load_json_file(file_path: str) -> Optional[Dict[str, Any]]:
         return payload if isinstance(payload, dict) else None
     except Exception:
         return None
+
+
+def _missing_hydration_fields(payload: Optional[Dict[str, Any]]) -> List[str]:
+    """Return required hydration fields missing from payload."""
+    if not isinstance(payload, dict):
+        return list(HYDRATION_REQUIRED_MONSTER_FIELDS)
+
+    missing: List[str] = []
+    for field_name in HYDRATION_REQUIRED_MONSTER_FIELDS:
+        value = payload.get(field_name)
+        if value in (None, ""):
+            missing.append(field_name)
+    return missing
+
+
+def _is_hydration_schema_sufficient(payload: Optional[Dict[str, Any]]) -> bool:
+    """Return True when payload satisfies minimum hydration schema fields."""
+    return len(_missing_hydration_fields(payload)) == 0
 
 
 def _split_creature_tokens(raw_value: str) -> List[str]:
@@ -632,20 +656,6 @@ def materialize_authorized_monster_file(
     target_path = path_manager.get_monster_path(canonical_name)
     lookup = compendium_lookup or load_monster_compendium_lookup()
 
-    if os.path.exists(target_path):
-        return {
-            "ok": True,
-            "source": "existing",
-            "target_path": target_path,
-            "slug": canonical_slug,
-            "requested_name": str(monster_name or ""),
-            "requested_slug": resolved_reference.get("requested_slug", ""),
-            "canonical_name": canonical_name,
-            "canonical_slug": canonical_slug,
-            "resolution_mode": resolved_reference.get("resolution_mode", "exact"),
-            "bestiary_missing": False,
-        }
-
     if not resolved_reference.get("authorized"):
         reason = str(resolved_reference.get("reason") or "").strip()
         candidates = resolved_reference.get("candidates", [])
@@ -676,32 +686,70 @@ def materialize_authorized_monster_file(
             "bestiary_missing": True,
         }
 
-    reusable_path = find_reusable_monster_path(module_slug, canonical_name)
-    if reusable_path:
-        if not dry_run:
-            os.makedirs(os.path.dirname(target_path), exist_ok=True)
-            shutil.copy2(reusable_path, target_path)
-        info(
-            f"TABLETOP MODE: Reused monster '{monster_name}' as canonical '{canonical_name}' from {reusable_path} -> {target_path}",
+    existing_missing_fields: List[str] = []
+    if os.path.exists(target_path):
+        existing_payload = _load_json_file(target_path)
+        if _is_hydration_schema_sufficient(existing_payload):
+            return {
+                "ok": True,
+                "source": "existing",
+                "target_path": target_path,
+                "slug": canonical_slug,
+                "requested_name": str(monster_name or ""),
+                "requested_slug": resolved_reference.get("requested_slug", ""),
+                "canonical_name": canonical_name,
+                "canonical_slug": canonical_slug,
+                "resolution_mode": resolved_reference.get("resolution_mode", "exact"),
+                "bestiary_missing": False,
+            }
+        existing_missing_fields = _missing_hydration_fields(existing_payload)
+        warning(
+            (
+                "TABLETOP MODE: Skipping schema-incomplete existing monster "
+                f"'{target_path}' (missing: {', '.join(existing_missing_fields)}); "
+                "continuing hydration fallback path"
+            ),
             category="combat_builder",
         )
-        return {
-            "ok": True,
-            "source": "reuse",
-            "target_path": target_path,
-            "slug": canonical_slug,
-            "requested_name": str(monster_name or ""),
-            "requested_slug": resolved_reference.get("requested_slug", ""),
-            "canonical_name": canonical_name,
-            "canonical_slug": canonical_slug,
-            "resolution_mode": resolved_reference.get(
-                "resolution_mode", "subset_unique"
+
+    reusable_path = find_reusable_monster_path(module_slug, canonical_name)
+    if reusable_path:
+        reusable_payload = _load_json_file(reusable_path)
+        if _is_hydration_schema_sufficient(reusable_payload):
+            if not dry_run:
+                os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                shutil.copy2(reusable_path, target_path)
+            info(
+                f"TABLETOP MODE: Reused monster '{monster_name}' as canonical '{canonical_name}' from {reusable_path} -> {target_path}",
+                category="combat_builder",
+            )
+            return {
+                "ok": True,
+                "source": "reuse",
+                "target_path": target_path,
+                "slug": canonical_slug,
+                "requested_name": str(monster_name or ""),
+                "requested_slug": resolved_reference.get("requested_slug", ""),
+                "canonical_name": canonical_name,
+                "canonical_slug": canonical_slug,
+                "resolution_mode": resolved_reference.get(
+                    "resolution_mode", "subset_unique"
+                ),
+                "bestiary_missing": False,
+            }
+
+        reuse_missing_fields = _missing_hydration_fields(reusable_payload)
+        warning(
+            (
+                "TABLETOP MODE: Skipping schema-incomplete reusable monster "
+                f"'{reusable_path}' (missing: {', '.join(reuse_missing_fields)}); "
+                "continuing hydration fallback path"
             ),
-            "bestiary_missing": False,
-        }
+            category="combat_builder",
+        )
 
     bestiary_entry = lookup.get(str(canonical_slug or "").strip())
-    if isinstance(bestiary_entry, dict):
+    if isinstance(bestiary_entry, dict) and _is_hydration_schema_sufficient(bestiary_entry):
         write_ok = True if dry_run else _write_json_atomic(target_path, bestiary_entry)
         if write_ok and (dry_run or os.path.exists(target_path)):
             info(
@@ -723,12 +771,46 @@ def materialize_authorized_monster_file(
                 "bestiary_missing": False,
             }
 
+    bestiary_missing_fields = _missing_hydration_fields(bestiary_entry)
+    if isinstance(bestiary_entry, dict) and bestiary_missing_fields:
+        warning(
+            (
+                "TABLETOP MODE: Skipping schema-incomplete bestiary monster "
+                f"'{canonical_slug}' (missing: {', '.join(bestiary_missing_fields)}); "
+                "continuing hydration fallback path"
+            ),
+            category="combat_builder",
+        )
+
     if not allow_generation:
+        insufficiency_reasons: List[str] = []
+        if existing_missing_fields:
+            insufficiency_reasons.append(
+                "schema_incomplete_existing:" + ",".join(existing_missing_fields)
+            )
+        if reusable_path:
+            reusable_payload = _load_json_file(reusable_path)
+            reuse_missing_fields = _missing_hydration_fields(reusable_payload)
+            if reuse_missing_fields:
+                insufficiency_reasons.append(
+                    "schema_incomplete_reuse:" + ",".join(reuse_missing_fields)
+                )
+        if isinstance(bestiary_entry, dict) and bestiary_missing_fields:
+            insufficiency_reasons.append(
+                "schema_incomplete_bestiary:" + ",".join(bestiary_missing_fields)
+            )
+
+        reason_suffix = (
+            f" Insufficient deterministic sources: {'; '.join(insufficiency_reasons)}."
+            if insufficiency_reasons
+            else ""
+        )
         return {
             "ok": False,
             "error_class": "authorized_monster_provider_unavailable",
             "error_message": (
                 f"Monster '{monster_name}' is authorized but controlled generation is disabled for '{target_path}'."
+                + reason_suffix
             ),
             "target_path": target_path,
             "slug": canonical_slug,
@@ -741,6 +823,7 @@ def materialize_authorized_monster_file(
             ),
             "sources": resolved_reference.get("sources", []),
             "bestiary_missing": True,
+            "insufficient_deterministic_sources": insufficiency_reasons,
         }
 
     if not monster_builder_path or not os.path.exists(monster_builder_path):

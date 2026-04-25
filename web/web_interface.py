@@ -1172,6 +1172,46 @@ def serve_module_media(media_type, filename):
     
     return "Media not found", 404
 
+
+@app.route('/api/toolkit/modules/<module_name>/media/<media_type>/<path:filename>')
+def serve_toolkit_module_media(module_name, media_type, filename):
+    """Serve MMG media scoped to selected module with static fallback only."""
+    import mimetypes
+    from flask import send_file
+
+    if media_type not in ['monsters', 'npcs', 'environment']:
+        return "Invalid media type", 404
+
+    if (
+        not module_name
+        or '..' in module_name
+        or '..' in filename
+        or filename.startswith('/')
+    ):
+        return "Not found", 404
+
+    module_media_dir = os.path.join('modules', module_name, 'media', media_type)
+    module_media_path = os.path.join(module_media_dir, filename)
+
+    if os.path.exists(module_media_path):
+        mimetype, _ = mimetypes.guess_type(module_media_path)
+        info(
+            f"TOOLKIT MMG media: serving {media_type}/{filename} from selected module {module_name}",
+            category="module_ingest"
+        )
+        return send_file(os.path.abspath(module_media_path), mimetype=mimetype)
+
+    static_media_path = os.path.join(os.path.dirname(__file__), 'static', 'media', media_type, filename)
+    if os.path.exists(static_media_path):
+        mimetype, _ = mimetypes.guess_type(static_media_path)
+        info(
+            f"TOOLKIT MMG media: serving {media_type}/{filename} from static fallback",
+            category="module_ingest"
+        )
+        return send_file(static_media_path, mimetype=mimetype)
+
+    return "Not found", 404
+
 @app.route('/get_character_data')
 def get_character_data():
     """Get character data including class for NPC portraits."""
@@ -2706,6 +2746,9 @@ def get_module_unified_assets(module_name):
                 'has_image': False,
                 'has_thumbnail': False,
                 'has_video': False,
+                'has_static_image': False,
+                'has_static_thumbnail': False,
+                'has_static_video': False,
                 'image_location': 'none',  # 'module', 'static', or 'none'
             }
             
@@ -2770,27 +2813,26 @@ def get_module_unified_assets(module_name):
                 if os.path.exists(os.path.join(module_media_dir, f"{asset_id}_video.mp4")):
                     status['has_video'] = True
             
-            # If not in module, check static folder
-            if not status['has_image']:
-                static_media_dir = os.path.join('web', 'static', 'media', media_type_folder)
-                if os.path.exists(static_media_dir):
-                    for ext in ['.jpg', '.png']:
-                        if os.path.exists(os.path.join(static_media_dir, f"{asset_id}{ext}")):
-                            status['has_image'] = True
+            # Check static media as fallback visibility only.
+            # TABLETOP MODE: MMG completion must align with module-side structural
+            # media gates, so has_image/has_thumbnail/has_video stay module-local
+            # and static media is tracked separately for operator context.
+            static_media_dir = os.path.join('web', 'static', 'media', media_type_folder)
+            if os.path.exists(static_media_dir):
+                for ext in ['.jpg', '.png']:
+                    if os.path.exists(os.path.join(static_media_dir, f"{asset_id}{ext}")):
+                        status['has_static_image'] = True
+                        if status['image_location'] == 'none':
                             status['image_location'] = 'static'
-                            break
-                    
-                    # Check thumbnail in static
-                    if not status['has_thumbnail']:
-                        for ext in ['_thumb.jpg', '_thumb.png']:
-                            if os.path.exists(os.path.join(static_media_dir, f"{asset_id}{ext}")):
-                                status['has_thumbnail'] = True
-                                break
-                    
-                    # Check video in static
-                    if not status['has_video']:
-                        if os.path.exists(os.path.join(static_media_dir, f"{asset_id}_video.mp4")):
-                            status['has_video'] = True
+                        break
+
+                for ext in ['_thumb.jpg', '_thumb.png']:
+                    if os.path.exists(os.path.join(static_media_dir, f"{asset_id}{ext}")):
+                        status['has_static_thumbnail'] = True
+                        break
+
+                if os.path.exists(os.path.join(static_media_dir, f"{asset_id}_video.mp4")):
+                    status['has_static_video'] = True
             
             return status
         

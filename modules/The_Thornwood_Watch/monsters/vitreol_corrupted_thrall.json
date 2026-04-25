@@ -1,0 +1,66 @@
+{
+  "name": "Vitreol (Corrupted Thrall)",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "neutral evil",
+  "armorClass": 13,
+  "hitPoints": 18,
+  "maxHitPoints": 18,
+  "speed": 30,
+  "abilities": {
+    "strength": 12,
+    "dexterity": 14,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 10,
+    "charisma": 8
+  },
+  "savingThrows": [
+    "Dex +4"
+  ],
+  "skills": {
+    "Perception": 2,
+    "Stealth": 4
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "necrotic"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "Common",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Corrupted Reflexes",
+      "attackBonus": 0,
+      "damageDice": "1d0",
+      "damageBonus": 0,
+      "damageType": "none"
+    }
+  ],
+  "actions": [
+    {
+      "name": "Thrall Blade",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "slashing"
+    },
+    {
+      "name": "Necrotic Burst",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 0,
+      "damageType": "necrotic"
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

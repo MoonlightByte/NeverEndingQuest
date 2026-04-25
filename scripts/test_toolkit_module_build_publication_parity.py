@@ -348,6 +348,97 @@ class TestToolkitModuleFinisher(unittest.TestCase):
         self.assertIn("goblin", media_handoff.get("media_debt_slugs", []))
         self.assertIn("Module Builder", str(media_handoff.get("message", "")))
 
+    def test_finisher_media_handoff_allows_semantic_warning_only_context(self) -> None:
+        """Semantic warning-only context must not block media handoff semantics."""
+        finisher._run_continuity_stage = lambda *args, **kwargs: {"status": "success"}
+        finisher._run_registry_stage = lambda *args, **kwargs: {"status": "success"}
+        finisher._run_monster_materialization_stage = lambda *args, **kwargs: {
+            "status": "success",
+        }
+        finisher._run_publishability_stage = lambda *args, **kwargs: {
+            "status": "degraded",
+            "ready_status": "pass",
+            "publishable_status": "fail",
+            "report": {
+                "ready_status": "pass",
+                "publishable_status": "fail",
+                "readiness": {
+                    "overall_status": "pass",
+                },
+                "remediation_categories": [
+                    "structured_monster_media_missing",
+                    "semantic_warning_only",
+                ],
+                "blocking_errors": ["missing base media files for monsters"],
+                "toolkit_media_policy": {
+                    "structural_media_debt_count": 1,
+                    "structural_media_debt_slugs": ["oathbound_shade"],
+                },
+            },
+        }
+
+        result = finisher.run_toolkit_module_postbuild_finishing(
+            self.module_slug, strict=True
+        )
+
+        self.assertEqual(result.get("status"), "success")
+        publishability_stage = result.get("stages", {}).get("publishability", {})
+        self.assertEqual(publishability_stage.get("status"), "degraded")
+        media_handoff = publishability_stage.get("media_handoff", {})
+        self.assertEqual(media_handoff.get("build_outcome"), "success_with_media_handoff")
+        self.assertEqual(media_handoff.get("media_debt_count"), 1)
+        self.assertIn("oathbound_shade", media_handoff.get("media_debt_slugs", []))
+
+    def test_finisher_media_only_readiness_fail_still_yields_handoff(self) -> None:
+        """Gameplay-only media debt failure should produce media handoff semantics."""
+        finisher._run_continuity_stage = lambda *args, **kwargs: {"status": "success"}
+        finisher._run_registry_stage = lambda *args, **kwargs: {"status": "success"}
+        finisher._run_monster_materialization_stage = lambda *args, **kwargs: {
+            "status": "success",
+        }
+        finisher._run_publishability_stage = lambda *args, **kwargs: {
+            "status": "failed",
+            "ready_status": "fail",
+            "publishable_status": "fail",
+            "report": {
+                "ready_status": "fail",
+                "publishable_status": "fail",
+                "readiness": {
+                    "overall_status": "fail",
+                    "gates": {
+                        "gameplay": {"status": "fail", "reason": "gameplay_blocking_errors"},
+                        "schema": {"status": "pass"},
+                        "continuity": {"status": "pass"},
+                        "sidecar": {"status": "pass"},
+                    },
+                },
+                "remediation_categories": [
+                    "structured_monster_media_missing",
+                    "toolkit_manual_media_generation_required",
+                ],
+                "blocking_errors": [
+                    "readiness_gate_failed: module is not structurally ready"
+                ],
+                "toolkit_media_policy": {
+                    "structural_media_debt_count": 2,
+                    "structural_media_debt_slugs": ["goblin", "ogre"],
+                },
+            },
+        }
+
+        result = finisher.run_toolkit_module_postbuild_finishing(
+            self.module_slug, strict=True
+        )
+
+        self.assertEqual(result.get("status"), "success")
+        self.assertEqual(result.get("ready_status"), "fail")
+        self.assertEqual(result.get("publishable_status"), "fail_with_media_handoff")
+        media_handoff = (
+            (result.get("stages") or {}).get("publishability") or {}
+        ).get("media_handoff", {})
+        self.assertEqual(media_handoff.get("build_outcome"), "success_with_media_handoff")
+        self.assertEqual(media_handoff.get("media_debt_count"), 2)
+
     def test_finisher_real_structural_failure_still_fails(self) -> None:
         """Real structural failure (not media-only): build still fails."""
         finisher._run_continuity_stage = lambda *args, **kwargs: {
@@ -490,6 +581,24 @@ class TestToolkitPublicationParitySourceContracts(unittest.TestCase):
         self.assertIn("MMG report refresh degraded", source)
         self.assertIn("socketio.emit('unified_generation_complete'", source)
 
+    def test_unified_assets_tracks_static_media_without_marking_module_complete(self) -> None:
+        source = Path("web/web_interface.py").read_text(encoding="utf-8")
+
+        self.assertIn("@app.route('/api/toolkit/modules/<module_name>/unified-assets')", source)
+        self.assertIn("'has_static_image': False", source)
+        self.assertIn("'has_static_thumbnail': False", source)
+        self.assertIn("'has_static_video': False", source)
+        self.assertIn("MMG completion must align with module-side structural", source)
+
+    def test_toolkit_module_scoped_media_route_exists(self) -> None:
+        source = Path("web/web_interface.py").read_text(encoding="utf-8")
+
+        self.assertIn("@app.route('/api/toolkit/modules/<module_name>/media/<media_type>/<path:filename>')", source)
+        self.assertIn("def serve_toolkit_module_media", source)
+        self.assertIn("ModulePathManager(module_name)", source)
+        self.assertIn("from selected module", source)
+        self.assertIn("from static fallback", source)
+
     def test_toolkit_template_exposes_finishing_stage_and_parity_note(self) -> None:
         source = Path("web/templates/module_toolkit.html").read_text(encoding="utf-8")
 
@@ -529,6 +638,24 @@ class TestToolkitPublicationParitySourceContracts(unittest.TestCase):
 
         self.assertIn("socket.on('unified_generation_complete'", source)
         self.assertIn("socket.emit('request_module_list');", source)
+
+    def test_toolkit_template_marks_static_fallback_as_non_complete(self) -> None:
+        source = Path("web/templates/module_toolkit.html").read_text(encoding="utf-8")
+
+        self.assertIn("getMediaStatusIcon", source)
+        self.assertIn("Missing module media; static fallback exists", source)
+        self.assertIn("[FB]", source)
+        self.assertIn("Static Img Only", source)
+        self.assertIn("Static Thumb Only", source)
+        self.assertIn("have module images", source)
+        self.assertIn("module-complete", source)
+
+    def test_toolkit_template_uses_module_scoped_media_paths(self) -> None:
+        source = Path("web/templates/module_toolkit.html").read_text(encoding="utf-8")
+
+        self.assertIn("/api/toolkit/modules/${encodedModuleName}/media/${mediaFolder}/${encodedAssetId}", source)
+        self.assertIn("const moduleSelect = document.getElementById('media-gen-module-select');", source)
+        self.assertIn("source.src = `${basePath}_video.mp4${cacheBuster}`;", source)
 
 
 if __name__ == "__main__":

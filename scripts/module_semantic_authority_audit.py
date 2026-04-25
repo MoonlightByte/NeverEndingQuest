@@ -452,6 +452,9 @@ def audit_module_semantic_authority(module_dir: Path) -> Dict[str, Any]:
     diagnostics_unresolved_destinations = _safe_list(
         diagnostics.get("unresolved_destination_phrases")
     )
+    diagnostics_normalized_shortforms = _safe_list(
+        diagnostics.get("normalized_shortform_destination_phrases")
+    )
 
     if (
         diagnostics_missing_npc
@@ -475,6 +478,19 @@ def audit_module_semantic_authority(module_dir: Path) -> Dict[str, Any]:
             "diagnostics.unresolved_destination_phrases count does not match derived unresolved destination count"
         )
 
+    normalized_shortform_count = 0
+    for row in diagnostics_normalized_shortforms:
+        row_dict = _safe_dict(row)
+        phrase = str(row_dict.get("phrase", "") or "").strip()
+        anchor_phrase = str(row_dict.get("anchor_phrase", "") or "").strip()
+        location_id = str(row_dict.get("location_id", "") or "").strip().upper()
+        if not phrase or not anchor_phrase or not location_id:
+            warnings.append(
+                "diagnostics.normalized_shortform_destination_phrases contains incomplete entry"
+            )
+            continue
+        normalized_shortform_count += 1
+
     status = "fail" if blocking_errors else ("degraded" if warnings else "pass")
     exit_code = 1 if blocking_errors else 0
 
@@ -490,9 +506,11 @@ def audit_module_semantic_authority(module_dir: Path) -> Dict[str, Any]:
             "ambiguous_destination_count": ambiguous_destination_count,
             "unresolved_destination_count": unresolved_destination_count,
             "missing_npc_authority_count": missing_npc_authority_count,
+            "normalized_shortform_destination_count": normalized_shortform_count,
             "blocking_finding_count": len(blocking_findings),
             "warning_count": len(warnings),
         },
+        "normalized_shortform_destination_phrases": diagnostics_normalized_shortforms,
         "blocker_classes": sorted(set(blocker_classes)),
         "blocking_findings": blocking_findings,
         "blocking_errors": blocking_errors,

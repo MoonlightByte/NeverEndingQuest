@@ -4,12 +4,17 @@
 TBD - created by archiving change toolkit-homebrew-md-upload-ingest. Update Purpose after archive.
 ## Requirements
 ### Requirement: Toolkit exposes structured ingest job outcomes
-The toolkit MUST expose structured ingest outcomes using the shared pipeline result contract so users can distinguish `success`, `degraded`, `failed`, and `quarantined` outcomes. For repeated Homebrew uploads that rebuild an existing module, the toolkit MUST also expose whether the run is a confirmed rebuild and MUST preserve backup outcome details in the result surface.
+The toolkit MUST expose structured ingest outcomes using the shared pipeline result contract so users can distinguish `success`, `degraded`, `failed`, and `quarantined` outcomes. For successful Homebrew uploads, reporting MUST show normalization completion and auto-started packet build progression without a separate review gate. For repeated uploads that rebuild an existing module, the toolkit MUST also expose whether the run is a confirmed rebuild and MUST preserve backup outcome details in the result surface.
 
 #### Scenario: Structured success result is shown in toolkit
 - **WHEN** a toolkit-triggered ingest job completes successfully
 - **THEN** the toolkit MUST display the final pipeline status and stage
 - **AND** MUST include the resolved module slug in the result summary.
+
+#### Scenario: Auto-started build progression remains visible
+- **WHEN** a toolkit-triggered upload finishes normalization without fatal validation errors
+- **THEN** toolkit job reporting MUST expose the transition from normalization into active packet build progression
+- **AND** MUST continue returning structured `status`, `stage`, and artifact metadata during that transition.
 
 #### Scenario: Quarantined result shows actionable reason
 - **WHEN** a toolkit-triggered ingest job is quarantined by preflight, validation, or verification gates
@@ -34,3 +39,18 @@ Toolkit status updates MUST reflect the shared ingest pipeline's stage model rat
 - **THEN** the toolkit MUST expose rebuild-preparation progress before packet build begins
 - **AND** MUST distinguish those rebuild-preparation states from ordinary fresh-upload build progress.
 
+### Requirement: Toolkit Homebrew ingest reporting SHALL support single-console UX without losing structured state
+
+The toolkit SHALL continue exposing structured shared-pipeline and build progression state while supporting a simplified single-console uploader experience.
+
+#### Scenario: Console-friendly reporting spans upload through auto-start build
+
+- **WHEN** a Homebrew upload progresses through normalization, auto-start build, or overwrite-confirmation wait states
+- **THEN** job responses SHALL continue exposing authoritative `status` and `stage` fields
+- **AND** the default uploader UX SHALL be able to render those transitions through one primary rolling console/readout surface
+
+#### Scenario: Rebuild preparation remains visible without operator-first UI clutter
+
+- **WHEN** an existing module collision triggers overwrite confirmation or backup/cleanup preparation
+- **THEN** the reporting contract SHALL continue surfacing those states and related metadata
+- **AND** the default user surface SHALL present them as concise console/status guidance rather than as multiple operator-oriented readout panes

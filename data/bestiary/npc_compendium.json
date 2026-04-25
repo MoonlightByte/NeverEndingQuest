@@ -785,6 +785,122 @@
     "scout_elen": {
       "name": "Scout Elen",
       "description": "Suspended in a cage of shadows near the ceiling, barely conscious but still alive. Her rescue is possible if Sir Garran is defeated or his humanity is restored."
+    },
+    "archivist_automaton": {
+      "name": "Archivist Automaton",
+      "description": "A semi-sapient dwarven automaton assigned to monitor and record the cell’s experiments. Scarred and flickering, it is conflicted—its primary programming to help, but secondary instructions to prevent any subject's escape."
+    },
+    "damaged_security_overseer": {
+      "name": "Damaged Security Overseer",
+      "description": "A dwarven construct, scorched and stuttering, still attempts to fulfill its original security protocols. It is confused and dangerous, lashing out at perceived threats but open to persuasion or reprogramming."
+    },
+    "rambling_dwarven_survivor": {
+      "name": "Rambling Dwarven Survivor",
+      "description": "A disheveled, wild-eyed dwarf in patched armor, muttering about monsters beneath the ground. He is wary but desperate for help—and may offer warnings, rumors, or even a crude map of the Marches if befriended."
+    },
+    "constable_farrel_dun": {
+      "name": "Constable Farrel Dun",
+      "description": "The doughty, sharp-eyed local lawman with a bristly mustache, Farrel Dun is known for his even temper and sense of duty. He’s quick to help townsfolk and visitors alike, though his patience for nonsense is limited. Farrel is protective of his staff and wary of outsiders meddling in village affairs, but he values honesty and courage."
+    },
+    "corsa_threadneedle_drenn": {
+      "name": "Corsa 'Threadneedle' Drenn",
+      "description": "A wiry, sharp-eyed thief balancing on the ledge, watching both directions for pursuers or rivals. She is wary but open to negotiation if approached with respect or evidence of shared enemies."
+    },
+    "edrin_voss,_eccentric_proprietor": {
+      "name": "Edrin Voss, eccentric proprietor",
+      "description": "A thin, wild-haired man with a patchwork vest and eyes always darting toward the mists outside. Spends as much time spinning tales as haggling over relics. He claims some items whisper secrets if you listen closely."
+    },
+    "ghostly_royal_messenger": {
+      "name": "Ghostly Royal Messenger",
+      "description": "A translucent figure in tattered livery, clutching spectral scrolls and nervously peering between the roads, forever waiting to deliver a message."
+    },
+    "gritch_the_one-eared,_nervous_patron": {
+      "name": "Gritch the One-Eared, nervous patron",
+      "description": "A twitchy, shabby man with a missing ear, Gritch is a regular at Duskmantle Curios. He’s often found pawing through oddments, muttering about curses and treasures. Gritch is evasive but knows more about local criminal dealings than he lets on."
+    },
+    "irren_the_ragged": {
+      "name": "Irren the Ragged",
+      "description": "A gaunt, rag-clad prisoner hunched in the shadows of the cell, haunted but desperate for company. Once a lookout for the thieves, now abandoned and half-mad."
+    },
+    "maela_kett,_the_wary_tavernkeeper": {
+      "name": "Maela Kett, the wary tavernkeeper",
+      "description": "A sharp-eyed woman with close-cropped hair and a sleeve of faded tattoos. She keeps a constant watch over patrons and the bar’s battered safe, wary since recent troubles. She knows much of the town’s secrets but trusts few."
+    },
+    "mrs._rindleby": {
+      "name": "Mrs. Rindleby",
+      "description": "A kindly halfling matron and amateur cartographer. She loves gossip, herbal teas, and puzzles, and is always eager for news from afar."
+    },
+    "old_ellyn,_the_folklore_spinner": {
+      "name": "Old Ellyn, the folklore spinner",
+      "description": "A spry, sharp-tongued elder with wild silver hair and a knack for captivating crowds with local legends. Ellyn is beloved by children and tolerated by adults, possessing an uncanny memory for the Vale’s strangest tales—some of which may hold real clues."
+    },
+    "red_maw_scouts": {
+      "name": "Red Maw scouts",
+      "description": "Wary, mud-splattered members of the Red Maw gang, clad in patchwork leathers and bearing shortbows and knives. Their demeanor is tense—they’re on the lookout for rivals and authorities, but not immediately hostile unless threatened."
+    },
+    "sable,_reluctant_scribe’s_shade": {
+      "name": "Sable, Reluctant Scribe’s Shade",
+      "description": "A spectral scribe bound to the ledger, cursed to witness every name added. Sable flickers in and out of view, her ink-stained fingers trembling."
+    },
+    "sergeant_halwin_reed": {
+      "name": "Sergeant Halwin Reed",
+      "description": "A grizzled, even-tempered veteran with a deep respect for local traditions. Halwin ensures the safety of the vale with a mixture of discipline and gentle humor."
+    },
+    "spirit_of_the_moor": {
+      "name": "Spirit of the Moor",
+      "description": "An ethereal, shimmering presence that manifests as a swirl of mist and faintly glowing eyes. The spirit speaks in riddles and warnings, watching over the standing stone and judging those who approach."
+    },
+    "tamsin_quill": {
+      "name": "Tamsin Quill",
+      "description": "A sharp-eyed gnome with a quick wit and quicker hands, Tamsin deals in curiosities, maps, and secrets. She’s as likely to trade for a good story as she is for coin."
+    },
+    "elder_maelis": {
+      "name": "Elder Maelis",
+      "description": "The kindly matriarch of Gloamreach Village, Elder Maelis is a silver-haired elven woman with gentle eyes and centuries of wisdom. She welcomes travelers with tea, tales, and measured advice, but a deep sadness shadows her when the conversation turns to the curse on the land."
+    },
+    "gravenbark_guardians": {
+      "name": "Gravenbark Guardians",
+      "description": "Sentient, animated wooden statues bound to the crossroads by ancient druidic magic. They question travelers and pass judgment based on spoken intent."
+    },
+    "lost_ranger_serik": {
+      "name": "Lost Ranger Serik",
+      "description": "A grizzled, mud-streaked human ranger, Serik has lost his bearings after days evading dangerous creatures. He is wary but desperate for help and can offer detailed knowledge of the Blightfen Wilds for those who earn his trust."
+    },
+    "manifestation_of_the_forest’s_spirit": {
+      "name": "Manifestation of the Forest’s Spirit",
+      "description": "A shimmering, wounded avatar of the ancient woods, appearing as a white stag entwined with blood-red roses and spectral vines. Its eyes plead for aid, but its form flickers with dangerous, uncontrolled power."
+    },
+    "nimblethorn": {
+      "name": "Nimblethorn",
+      "description": "A sly, fey-influenced goblin with mottled green skin and a cap of fungus for a hat. Nimblethorn skips from shadow to shadow, offering cryptic warnings and bargains to those who show respect for the old ways. Deeply connected to the glade’s curse, Nimblethorn knows secret paths and hidden dangers."
+    },
+    "shade_of_alenwen": {
+      "name": "Shade of Alenwen",
+      "description": "A mournful spirit of a long-dead druidic guardian, bound to the hilltop. Alenwen seeks the restoration of the Wilds and offers cryptic guidance, but flies into a spectral rage if memories of betrayal are invoked."
+    },
+    "spectral_child": {
+      "name": "Spectral Child",
+      "description": "A ghostly apparition of a small child who wanders the stalls at dusk. The villagers are used to her silence, but sometimes she points at items as if remembering something important."
+    },
+    "surviving_druids": {
+      "name": "Surviving Druids",
+      "description": "A haggard trio of druids, their once-green robes now stained with bramble blood and their eyes haunted. They cling to the hope of reversing the Wilds’ corruption but are wary of strangers, suspecting betrayal or madness from any who survive here."
+    },
+    "thornkin_rella": {
+      "name": "Thornkin Rella",
+      "description": "A quick-witted, thorn-fingered half-fey merchant, Rella always has a mischievous smile and a knack for finding what others cannot. She’s famed for her rare reagents and her odd riddles."
+    },
+    "thornwraith_myrlaen": {
+      "name": "Thornwraith Myrlaen",
+      "description": "The corrupted druid responsible for the curse upon Wraithwood. Myrlaen appears as a spectral, root-entwined figure, their eyes glowing with malice and pain. They are torn between rage at intruders and an unconscious plea for release from their torment."
+    },
+    "whisperroot": {
+      "name": "Whisperroot",
+      "description": "A spectral dryad, now half-fused with the stone’s roots. Whisperroot weeps for the land’s pain and offers cryptic warnings. Her influence can briefly purify an area if properly entreated."
+    },
+    "trapped_miner_derval": {
+      "name": "Trapped Miner Derval",
+      "description": "A gaunt, frightened dwarven miner clings to the bars of one cell. He is disoriented and haunted by ghostly whispers, but desperate for rescue."
     }
   },
   "last_updated": "2026-04-20T17:30:11.993535"

@@ -8,7 +8,7 @@ NeverEndingQuest Utility - Toolkit Homebrew Upload Contracts
 Copyright (c) 2024 MoonlightByte
 Licensed under Fair Source License 1.0
 
-Shared contract helpers for public toolkit Homebrew markdown upload artifacts.
+Shared contract helpers for public toolkit Homebrew markdown and PDF upload artifacts.
 
 This software is free for non-commercial and educational use.
 Commercial competing use is prohibited for 2 years from release.
@@ -56,6 +56,8 @@ def get_workspace_files(workspace: Path) -> Dict[str, Path]:
     """Return canonical file paths for toolkit Homebrew upload workspace."""
     return {
         "source_original": workspace / "source_original.md",
+        "source_upload_original_pdf": workspace / "source_upload_original.pdf",
+        "pdf_conversion_report": workspace / "pdf_conversion_report.json",
         "source_preflight": workspace / "source_preflight.json",
         "normalized_packet": workspace / "normalized_packet.json",
         "normalization_report": workspace / "normalization_report.json",

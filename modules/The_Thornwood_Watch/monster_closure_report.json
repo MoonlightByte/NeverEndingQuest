@@ -1,16 +1,16 @@
 {
-  "timestamp": "2026-03-17T22:00:31.420001",
-  "required": 17,
-  "existing_before": 24,
+  "timestamp": "2026-04-25T15:14:14.233386",
+  "required": 18,
+  "existing_before": 25,
   "generated": 1,
   "unresolved": 0,
   "details": {
     "generation": {
       "generated": [
         {
-          "slug": "writhing_grubs",
-          "display_name": "Writhing Grubs",
-          "path": "modules/The_Thornwood_Watch/monsters/writhing_grubs.json"
+          "slug": "vitreol_corrupted_thrall",
+          "display_name": "Vitreol (Corrupted Thrall)",
+          "path": "modules/The_Thornwood_Watch/monsters/vitreol_corrupted_thrall.json"
         }
       ],
       "failed": [],

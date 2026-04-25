@@ -361,6 +361,126 @@ class TestAuditModuleReadiness(unittest.TestCase):
             ["goblin", "ogre"],
         )
 
+    def test_toolkit_media_only_structural_debt_passes_readiness(self):
+        gameplay_payload = {
+            "target": {
+                "blocking_errors": [
+                    "Missing base media for: ogre (from areas/TST001.json:locations[LOC01].monsters[0])",
+                    "Missing base media for: goblin (from areas/TST001.json:locations[LOC01].monsters[1])",
+                ],
+                "warnings": [],
+                "monster_media_findings": [
+                    {
+                        "slug": "ogre",
+                        "confidence": "structural",
+                        "outcome": "provider_disabled_missing",
+                    },
+                    {
+                        "slug": "goblin",
+                        "confidence": "structural",
+                        "outcome": "attempted_but_unresolved",
+                    },
+                ],
+            }
+        }
+        schema_payload = {"summary": {"any_failed": False}}
+        continuity_payload = {
+            "blocking_errors": [],
+            "warnings": [],
+            "required_keys_present": [],
+            "continuity_version": "v1",
+        }
+
+        with (
+            patch.object(
+                readiness,
+                "run_gate_command",
+                side_effect=[
+                    _result(1, gameplay_payload),
+                    _result(0, schema_payload),
+                    _result(0, continuity_payload),
+                ],
+            ),
+            patch.object(
+                readiness,
+                "evaluate_toolkit_provenance_gate",
+                return_value={
+                    "status": "pass",
+                    "reason": "pass",
+                    "source": "toolkit",
+                    "exit_code": 0,
+                    "raw": {"json": {"valid": True}},
+                },
+            ),
+        ):
+            report = readiness.audit_module_readiness("example_module", source="toolkit")
+
+        self.assertEqual(report["overall_status"], "pass")
+        self.assertEqual(report["exit_code"], 0)
+        self.assertEqual(report["gates"]["gameplay"]["status"], "pass")
+        self.assertEqual(
+            report["gates"]["gameplay"]["reason"],
+            "toolkit_structural_media_handoff_only",
+        )
+        self.assertEqual(report["blocking_errors"], [])
+        self.assertEqual(
+            report["gates"]["gameplay"]["structural_media_debt_slugs"],
+            ["goblin", "ogre"],
+        )
+
+    def test_toolkit_media_plus_non_media_blocker_still_fails_readiness(self):
+        gameplay_payload = {
+            "target": {
+                "blocking_errors": [
+                    "Missing base media for: ogre (from areas/TST001.json:locations[LOC01].monsters[0])",
+                    "missing monster JSON",
+                ],
+                "warnings": [],
+                "monster_media_findings": [
+                    {
+                        "slug": "ogre",
+                        "confidence": "structural",
+                        "outcome": "provider_disabled_missing",
+                    }
+                ],
+            }
+        }
+        schema_payload = {"summary": {"any_failed": False}}
+        continuity_payload = {
+            "blocking_errors": [],
+            "warnings": [],
+            "required_keys_present": [],
+            "continuity_version": "v1",
+        }
+
+        with (
+            patch.object(
+                readiness,
+                "run_gate_command",
+                side_effect=[
+                    _result(1, gameplay_payload),
+                    _result(0, schema_payload),
+                    _result(0, continuity_payload),
+                ],
+            ),
+            patch.object(
+                readiness,
+                "evaluate_toolkit_provenance_gate",
+                return_value={
+                    "status": "pass",
+                    "reason": "pass",
+                    "source": "toolkit",
+                    "exit_code": 0,
+                    "raw": {"json": {"valid": True}},
+                },
+            ),
+        ):
+            report = readiness.audit_module_readiness("example_module", source="toolkit")
+
+        self.assertEqual(report["overall_status"], "fail")
+        self.assertEqual(report["gates"]["gameplay"]["status"], "fail")
+        self.assertEqual(report["gates"]["gameplay"]["reason"], "gameplay_blocking_errors")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,13 +3,14 @@
 ## Purpose
 TBD - created by archiving change toolkit-homebrew-existing-module-clean-rebuild. Update Purpose after archive.
 ## Requirements
-### Requirement: Existing module rebuild requires confirmation
-When a reviewed Homebrew upload resolves to a module slug that already exists on disk, the toolkit MUST require explicit operator confirmation before any destructive rebuild action begins.
+### Requirement: Existing module rebuild requires explicit destructive confirmation
+When a Homebrew markdown upload auto-starts packet build and resolves to a module slug that already exists on disk, the toolkit MUST require explicit operator confirmation before any destructive rebuild action begins.
 
 #### Scenario: Existing module collision pauses build start
-- **WHEN** the operator starts packet-driven build for an approved Homebrew upload and `modules/<derived-slug>` already exists
+- **WHEN** an auto-started Homebrew upload reaches packet build and `modules/<derived-slug>` already exists
 - **THEN** the toolkit MUST stop before backup, cleanup, or builder execution begins
-- **AND** MUST present a user-visible confirmation that the existing module will be replaced through a backup + clean rebuild flow.
+- **AND** MUST present a user-visible confirmation that the existing module will be replaced through a backup + clean rebuild flow
+- **AND** MUST NOT require a separate earlier review approval step.
 
 #### Scenario: Operator cancels repeated-upload rebuild
 - **WHEN** the operator declines the rebuild confirmation for an existing module collision
@@ -34,4 +35,3 @@ Confirmed repeated uploads MUST preserve a recoverable backup of the existing mo
 - **WHEN** backup succeeds and the active target directory is cleaned
 - **THEN** the toolkit MUST resume the normal packet-driven build and structural readiness pipeline for that upload
 - **AND** the repeated upload MUST use the same post-clean validation path as a fresh upload.
-

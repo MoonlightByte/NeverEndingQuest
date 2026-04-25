@@ -299,7 +299,7 @@ class TestFixtureDrivenUploaderOutcomes(unittest.TestCase):
                 continue
             job = payload.get("job") or {}
             if job.get("status") in {
-                "awaiting_review",
+                "awaiting_overwrite_confirmation",
                 "completed",
                 "not_publishable",
                 "finishing_failed",
@@ -346,21 +346,6 @@ class TestFixtureDrivenUploaderOutcomes(unittest.TestCase):
             }
 
             job_id = self._start_upload_from_fixture(fixture_path)
-            waiting_job = self._wait_for_terminal_job(job_id)
-            self.assertEqual(waiting_job.get("status"), "awaiting_review")
-
-            review_response = self.client.post(
-                f"/api/toolkit/homebrew/jobs/{job_id}/review",
-                json={"decision": "approve"},
-            )
-            self.assertEqual(review_response.status_code, 200)
-
-            build_response = self.client.post(
-                f"/api/toolkit/homebrew/jobs/{job_id}/build",
-                json={},
-            )
-            self.assertEqual(build_response.status_code, 200)
-
             final_job = self._wait_for_terminal_job(job_id)
             self.assertEqual(final_job.get("status"), fixture_outcome["expected"])
 

@@ -133,6 +133,38 @@ class TestToolkitHomebrewPacketBuilder(unittest.TestCase):
         self.assertEqual(build_result.get("status"), "failed")
         self.assertEqual(build_result.get("error"), "builder exploded")
 
+    def test_forwards_progress_callback_to_executor(self) -> None:
+        self._write_valid_packet()
+        self._write_approved_snapshot()
+        self.files["builder_narrative"].write_text("Module: Packet Build Adventure", encoding="utf-8")
+
+        progress_events = []
+
+        def _executor(builder_input, progress_callback=None):
+            self.assertIsNotNone(progress_callback)
+            progress_callback("base_structure", "Creating directory structure...")
+            progress_callback("log", "Step 3: Generating locations for each area...")
+            progress_events.append(builder_input["job_id"])
+
+        result = run_toolkit_homebrew_packet_build(
+            workspace=self.workspace,
+            job_id="job-1",
+            builder_executor=_executor,
+            progress_callback=lambda status, message: progress_events.append((status, message)),
+        )
+
+        self.assertEqual(result.get("status"), "success")
+        self.assertTrue(self.files["build_result"].exists())
+        self.assertIn(("base_structure", "Creating directory structure..."), progress_events)
+        self.assertIn(("log", "Step 3: Generating locations for each area..."), progress_events)
+
+    def test_module_toolkit_template_prefers_progress_message_for_building(self) -> None:
+        template_path = Path(__file__).resolve().parents[1] / "web" / "templates" / "module_toolkit.html"
+        template = template_path.read_text(encoding="utf-8")
+
+        self.assertIn("job.progress_message", template)
+        self.assertIn("progress_updated_at", template)
+
 
 if __name__ == "__main__":
     unittest.main()

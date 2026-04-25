@@ -292,6 +292,167 @@ class TestModuleSemanticAuthority(unittest.TestCase):
         self.assertNotIn("find sanctuary", phrases)
         self.assertNotIn("next hall", phrases)
 
+    def test_shortform_destination_normalizes_for_murder_canary_phrases(self):
+        module_dir = self._create_module(
+            module_slug="Murder_at_the_Drowning_Lass",
+            locations=[
+                {
+                    "locationId": "H03",
+                    "name": "Silent Oath Chamber",
+                    "aliases": ["Silent Oath Chamber"],
+                    "npcs": [],
+                },
+                {
+                    "locationId": "H01",
+                    "name": "Serpents Remnant Sanctuary",
+                    "aliases": ["Serpents Remnant Sanctuary"],
+                    "npcs": [],
+                },
+            ],
+        )
+
+        module_context = json.loads(
+            (module_dir / "module_context.json").read_text(encoding="utf-8")
+        )
+        module_plot = json.loads(
+            (module_dir / "module_plot.json").read_text(encoding="utf-8")
+        )
+
+        result = enrich_module_semantic_authority(
+            module_slug="Murder_at_the_Drowning_Lass",
+            module_context=module_context,
+            module_plot=module_plot,
+            module_dir=module_dir,
+        )
+
+        phrases = result["semantic_authority"]["destination_phrases"]
+        self.assertEqual(phrases["silent oath chamber"]["status"], "resolved")
+        self.assertEqual(phrases["serpents remnant sanctuary"]["status"], "resolved")
+
+        self.assertEqual(phrases["oath chamber"]["status"], "resolved")
+        self.assertEqual(phrases["oath chamber"]["location_id"], "H03")
+        self.assertEqual(
+            (phrases["oath chamber"].get("normalization") or {}).get("anchor_phrase"),
+            "silent oath chamber",
+        )
+
+        self.assertEqual(phrases["remnant sanctuary"]["status"], "resolved")
+        self.assertEqual(phrases["remnant sanctuary"]["location_id"], "H01")
+        self.assertEqual(
+            (phrases["remnant sanctuary"].get("normalization") or {}).get(
+                "anchor_phrase"
+            ),
+            "serpents remnant sanctuary",
+        )
+
+        diagnostics = result["semantic_authority"].get("diagnostics") or {}
+        normalized = diagnostics.get("normalized_shortform_destination_phrases") or []
+        normalized_phrases = {str(item.get("phrase") or "") for item in normalized}
+        self.assertIn("oath chamber", normalized_phrases)
+        self.assertIn("remnant sanctuary", normalized_phrases)
+
+    def test_shortform_destination_ambiguity_remains_unresolved_and_blocking(self):
+        module_dir = self._create_module(
+            module_slug="Semantic_Test_F",
+            locations=[
+                {
+                    "locationId": "H03",
+                    "name": "Silent Oath Chamber",
+                    "aliases": ["Silent Oath Chamber"],
+                    "npcs": [],
+                },
+                {
+                    "locationId": "H04",
+                    "name": "Broken Oath Chamber",
+                    "aliases": ["Broken Oath Chamber"],
+                    "npcs": [],
+                },
+            ],
+        )
+
+        module_context = json.loads(
+            (module_dir / "module_context.json").read_text(encoding="utf-8")
+        )
+        module_plot = json.loads(
+            (module_dir / "module_plot.json").read_text(encoding="utf-8")
+        )
+
+        enrich_result = enrich_module_semantic_authority(
+            module_slug="Semantic_Test_F",
+            module_context=module_context,
+            module_plot=module_plot,
+            module_dir=module_dir,
+        )
+
+        phrase_row = (enrich_result.get("semantic_authority") or {}).get(
+            "destination_phrases", {}
+        ).get("oath chamber", {})
+        self.assertEqual(phrase_row.get("status"), "unresolved")
+        self.assertEqual(phrase_row.get("candidate_location_ids"), [])
+
+        with open(module_dir / "module_context.json", "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "module_name": "Semantic_Test_F",
+                    "semantic_authority": enrich_result.get("semantic_authority", {}),
+                },
+                handle,
+                indent=2,
+            )
+
+        audit_result = audit_module_semantic_authority(module_dir)
+        self.assertEqual(audit_result.get("status"), "fail")
+        self.assertIn("phase2_ambiguity_debt", audit_result.get("blocker_classes", []))
+
+    def test_plot_title_with_authoritative_location_does_not_emit_destination_blockers(self):
+        module_dir = self._create_module(
+            module_slug="Murder_at_the_Drowning_Lass",
+            locations=[
+                {
+                    "locationId": "CBTC004",
+                    "name": "Catacombs Threshold",
+                    "aliases": ["Catacombs Threshold"],
+                    "npcs": [],
+                }
+            ],
+            plot_points=[
+                {
+                    "id": "PP006",
+                    "title": "Echoes Beneath: Unrest in the Catacombs",
+                    "description": "Strange omens gather in the catacombs beneath the district.",
+                    "location": "CBTC004",
+                }
+            ],
+        )
+
+        module_context = json.loads(
+            (module_dir / "module_context.json").read_text(encoding="utf-8")
+        )
+        module_plot = json.loads(
+            (module_dir / "module_plot.json").read_text(encoding="utf-8")
+        )
+
+        result = enrich_module_semantic_authority(
+            module_slug="Murder_at_the_Drowning_Lass",
+            module_context=module_context,
+            module_plot=module_plot,
+            module_dir=module_dir,
+        )
+
+        phrases = result["semantic_authority"].get("destination_phrases") or {}
+        diagnostics = result["semantic_authority"].get("diagnostics") or {}
+        unresolved = {
+            str(item.get("phrase") or "")
+            for item in (diagnostics.get("unresolved_destination_phrases") or [])
+        }
+
+        self.assertNotIn("catacombs", phrases)
+        self.assertNotIn("unrest in the catacombs", phrases)
+        self.assertNotIn("beneath unrest in the catacombs", phrases)
+        self.assertNotIn("echoes beneath unrest in the catacombs", phrases)
+        self.assertNotIn("catacombs", unresolved)
+        self.assertNotIn("unrest in the catacombs", unresolved)
+
 
 class TestModuleSemanticAuthorityAudit(unittest.TestCase):
     def setUp(self):

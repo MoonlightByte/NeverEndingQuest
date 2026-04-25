@@ -51,11 +51,49 @@ Sidebar enrichment SHALL reuse persisted report artifacts only and SHALL NOT run
 - **WHEN** the backend enriches module entries with failure-state fields
 - **THEN** it SHALL derive those fields from persisted report artifacts only
 - **AND** it SHALL NOT invoke audit scripts or long-running validation flows
-- **AND** it SHALL fail open if report parsing fails
+- **AND** it SHALL fail open if report parsing fails.
 
 #### Scenario: Duplicate renderers stay aligned
 
 - **GIVEN** the repository contains duplicate module-card renderers in `web/templates/module_toolkit.html` and `web/templates/module_builder.html`
 - **WHEN** the new failure and handoff signals are implemented
-- **THEN** both renderers SHALL support the same sidebar signaling behavior
+- **THEN** both renderers SHALL support the same sidebar signaling behavior.
+
+#### Scenario: MMG completion refreshes sidebar cards through persisted module-list data
+
+- **GIVEN** a module whose sidebar card currently shows persisted media-debt failure text
+- **AND** MMG successfully refreshes that module's persisted build report
+- **WHEN** the GUI refreshes sidebar module-list data after MMG completion
+- **THEN** both Module Builder and Module Toolkit card renderers SHALL consume the updated persisted report fields through the existing module-list path
+- **AND** neither renderer SHALL recompute media debt directly from live MMG asset scan state.
+
+### Requirement: Sidebar Failure Signals Require Authoritative Report Freshness
+
+Persisted Module Builder sidebar failure signals SHALL only be derived from current authoritative `toolkit_build_report.json` artifacts.
+
+#### Scenario: Current authoritative failed report produces compact failure text
+
+- **GIVEN** `modules/<slug>/toolkit_build_report.json` exists
+- **AND** `report_freshness.authoritative` is true
+- **AND** `report_freshness.state` is `current`
+- **AND** the report indicates failed readiness or publishability state
+- **WHEN** the sidebar module list is derived
+- **THEN** the sidebar SHALL emit the compact `brief_failure` mapping for the canonical blocker class
+
+#### Scenario: Legacy failed report without freshness metadata fails open
+
+- **GIVEN** `modules/<slug>/toolkit_build_report.json` exists
+- **AND** the report indicates failed readiness or publishability state
+- **AND** freshness metadata is absent or non-authoritative
+- **WHEN** the sidebar module list is derived
+- **THEN** the sidebar SHALL NOT emit `brief_failure`
+- **AND** the sidebar SHALL NOT emit `media_generator_needed`
+
+#### Scenario: Structural media handoff remains tied to structural debt
+
+- **GIVEN** a current authoritative failed report
+- **AND** the canonical remediation data indicates structural media debt
+- **WHEN** the sidebar module list is derived
+- **THEN** the sidebar SHALL emit `media_generator_needed`
+- **AND** optional non-structural media warnings alone SHALL NOT create media handoff state
 

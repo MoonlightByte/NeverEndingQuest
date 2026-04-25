@@ -318,7 +318,19 @@ def test_materialize_no_seed_uses_authored_fallback():
         bestiary_path.mkdir(parents=True)
         compendium_file = bestiary_path / "monster_compendium.json"
         compendium_file.write_text(
-            json.dumps({"monsters": {"goblin": {"name": "Goblin", "hitPoints": 7}}}),
+            json.dumps(
+                {
+                    "monsters": {
+                        "goblin": {
+                            "name": "Goblin",
+                            "hitPoints": 7,
+                            "size": "Small",
+                            "alignment": "neutral evil",
+                            "armorClass": 15,
+                        }
+                    }
+                }
+            ),
             encoding="utf-8",
         )
 

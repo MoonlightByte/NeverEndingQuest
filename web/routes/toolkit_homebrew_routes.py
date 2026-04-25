@@ -4,7 +4,7 @@
 # This software is subject to the terms of the Fair Source License.
 
 """
-NeverEndingQuest Web Routes - Toolkit Homebrew markdown ingest routes.
+NeverEndingQuest Web Routes - Toolkit Homebrew source ingest routes.
 Copyright (c) 2024 MoonlightByte
 Licensed under Fair Source License 1.0
 """
@@ -20,6 +20,10 @@ from flask import Flask, jsonify, request
 
 from utils.enhanced_logger import error, info, warning
 from utils.file_operations import safe_write_json
+from utils.toolkit_homebrew_pdf_adapter import (
+    PdfConversionError,
+    convert_pdf_upload_to_markdown,
+)
 from utils.toolkit_homebrew_normalizer import normalize_homebrew_upload
 from utils.toolkit_homebrew_upload_contract import (
     REVIEW_DECISION_APPROVE,
@@ -71,6 +75,8 @@ def _build_artifact_manifest(workspace: Path, job_status: str) -> Dict[str, Any]
 
     artifact_keys = [
         "source_original",
+        "source_upload_original_pdf",
+        "pdf_conversion_report",
         "normalized_packet",
         "normalization_report",
         "ui_review_snapshot",
@@ -201,7 +207,7 @@ def _build_hydration_summary(job_payload: Dict[str, Any]) -> Dict[str, Any]:
     return summary
 
 
-ALLOWED_HOME_BREW_EXTENSIONS = {".md"}
+ALLOWED_HOME_BREW_EXTENSIONS = {".md", ".pdf"}
 TOOLKIT_HOMEBREW_UPLOAD_ROOT = Path("user_uploads") / "toolkit" / "homebrew_md"
 TOOLKIT_HOMEBREW_MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
@@ -247,6 +253,88 @@ def _set_job_state(job_id: str, status: str, **fields: Any) -> None:
         job["updated_at"] = _utc_now_iso()
         for key, value in fields.items():
             job[key] = value
+
+
+def _normalize_homebrew_build_progress_stage(
+    progress_status: str, progress_message: str
+) -> str:
+    """Map ModuleBuilder progress signals to stable toolkit stage labels."""
+    status_text = f"{progress_status} {progress_message}".strip().lower()
+    if "getting party members" in status_text or "initializing" in status_text:
+        return "builder_initializing"
+    if "directory structure" in status_text or "creating builder" in status_text:
+        return "builder_setup"
+    if "module overview" in status_text:
+        return "builder_overview"
+    if "generating areas" in status_text:
+        return "builder_areas"
+    if "generating locations" in status_text:
+        return "builder_locations"
+    if "finalizing location" in status_text or "connections" in status_text:
+        return "builder_connections"
+    if "generating plots" in status_text:
+        return "builder_plots"
+    if "unified module plot" in status_text:
+        return "builder_plot_merge"
+    if "plot hooks" in status_text:
+        return "builder_plot_hooks"
+    if "antagonist placement" in status_text:
+        return "builder_antagonist"
+    if "party tracker" in status_text:
+        return "builder_party_tracker"
+    if "module summary" in status_text:
+        return "builder_summary"
+    if "npc names" in status_text or "reconciling" in status_text:
+        return "builder_reconciliation"
+    if "validating module consistency" in status_text:
+        return "builder_validation"
+    if "backup files" in status_text:
+        return "builder_backups"
+    if "starting module build process" in status_text:
+        return "builder_start"
+    return "builder_progress"
+
+
+def _update_homebrew_build_progress(
+    job_id: str, progress_status: str, progress_message: str
+) -> None:
+    """Persist the latest packet-build progress milestone for polling UI."""
+    message = str(progress_message or "").strip()
+    if not message:
+        return
+
+    progress_stage = _normalize_homebrew_build_progress_stage(progress_status, message)
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if not job:
+            return
+        job["status"] = "building"
+        job["stage"] = "build"
+        job["pipeline_status"] = "building"
+        job["progress_message"] = message
+        job["progress_stage"] = progress_stage
+        job["progress_updated_at"] = _utc_now_iso()
+        job["progress_tick"] = int(job.get("progress_tick") or 0) + 1
+        job["updated_at"] = _utc_now_iso()
+
+
+def _make_homebrew_build_progress_callback(job_id: str):
+    """Create a fail-open callback for packet-build progress updates."""
+
+    def _callback(progress_status: str, progress_message: str) -> None:
+        try:
+            _update_homebrew_build_progress(job_id, progress_status, progress_message)
+        except Exception as progress_error:
+            warning(
+                (
+                    f"TOOLKIT_HOMEBREW: Progress update failed for job {job_id}: "
+                    f"{progress_error}"
+                ),
+                exception=progress_error,
+                category="web_interface",
+            )
+
+    return _callback
 
 
 def _extract_quarantine_reason(result: Dict[str, Any]) -> Optional[str]:
@@ -313,6 +401,7 @@ def _run_homebrew_normalization(
 def _run_homebrew_packet_build(
     artifact_workspace: Path,
     job_id: str,
+    progress_callback: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Run packet-driven builder for one approved toolkit Homebrew job."""
     from web.extensions.toolkit_homebrew_packet_builder import (
@@ -322,6 +411,7 @@ def _run_homebrew_packet_build(
     return run_toolkit_homebrew_packet_build(
         workspace=artifact_workspace,
         job_id=job_id,
+        progress_callback=progress_callback,
     )
 
 
@@ -345,10 +435,14 @@ def _run_homebrew_readiness_gate(
 def _run_homebrew_finisher(module_slug: str) -> Dict[str, Any]:
     """Run shared toolkit finisher/publication stack for one module."""
     from web.extensions.toolkit_module_finisher import (
-        run_toolkit_module_postbuild_finishing,
+        refresh_toolkit_build_report,
     )
 
-    return run_toolkit_module_postbuild_finishing(module_slug, strict=True)
+    return refresh_toolkit_build_report(
+        module_slug,
+        strict=True,
+        refresh_reason="toolkit_homebrew_route_finisher",
+    )
 
 
 def _resolve_finisher_module_name(
@@ -554,21 +648,122 @@ def _run_homebrew_ingest_job(
                 )
                 return
 
+            auto_build_result: Dict[str, Any] = {
+                "routing": result,
+                "normalization": normalization_result,
+            }
+            routing_outcome = str(
+                result.get("routing_outcome") or "normalization_required"
+            )
+
+            # TABLETOP MODE: Preserve review snapshot artifact compatibility even though
+            # upload now auto-approves and auto-starts packet build.
+            snapshot = build_review_snapshot(
+                job_id=job_id,
+                decision=REVIEW_DECISION_APPROVE,
+                packet=load_normalized_packet_artifact(artifact_workspace),
+                source_rights_class=source_rights_class,
+            )
+            if persist_review_snapshot_artifact(artifact_workspace, snapshot):
+                auto_build_result["auto_review_snapshot"] = snapshot
+                workspace_files = get_workspace_files(artifact_workspace)
+                _set_job_state(
+                    job_id,
+                    "approved_for_build",
+                    stage="build",
+                    pipeline_status="normalization_ready",
+                    routing_outcome=routing_outcome,
+                    review_decision=REVIEW_DECISION_APPROVE,
+                    review_snapshot=snapshot,
+                    review_snapshot_path=str(workspace_files["ui_review_snapshot"]),
+                    quarantine_reason=None,
+                    result=auto_build_result,
+                )
+            else:
+                warning(
+                    f"TOOLKIT_HOMEBREW: Failed to persist review snapshot for job {job_id}; proceeding with auto-build",
+                    category="web_interface",
+                )
+                _set_job_state(
+                    job_id,
+                    "approved_for_build",
+                    stage="build",
+                    pipeline_status="normalization_ready",
+                    routing_outcome=routing_outcome,
+                    review_decision=REVIEW_DECISION_APPROVE,
+                    quarantine_reason=None,
+                    result=auto_build_result,
+                )
+
+            target_info = _resolve_homebrew_build_target(artifact_workspace)
+            if target_info.get("status") != "success":
+                _set_job_state(
+                    job_id,
+                    "failed",
+                    stage="build",
+                    pipeline_status="failed",
+                    routing_outcome=routing_outcome,
+                    quarantine_reason=None,
+                    error="build_target_resolution_failed",
+                    result={
+                        **auto_build_result,
+                        "build_target": target_info,
+                    },
+                )
+                return
+
+            module_name = str(target_info.get("module_name") or "").strip()
+            collision = (
+                target_info.get("collision")
+                if isinstance(target_info.get("collision"), dict)
+                else {}
+            )
+            module_dir_exists = bool((collision or {}).get("module_dir_exists"))
+            if module_dir_exists:
+                _set_job_state(
+                    job_id,
+                    "awaiting_overwrite_confirmation",
+                    stage="build",
+                    pipeline_status="awaiting_confirmation",
+                    routing_outcome=routing_outcome,
+                    review_decision=REVIEW_DECISION_APPROVE,
+                    expected_module_name=module_name,
+                    rebuild_mode=True,
+                    rebuild_collision=collision,
+                    quarantine_reason=None,
+                    result={
+                        **auto_build_result,
+                        "build_target": target_info,
+                    },
+                )
+                return
+
+            build_options = {
+                "finishing_only": False,
+                "rebuild_mode": False,
+                "module_name": module_name,
+                "module_dir": str((collision or {}).get("module_dir") or ""),
+                "overwrite_policy": "backup_clean",
+            }
             _set_job_state(
                 job_id,
-                "awaiting_review",
-                stage="normalizing",
-                pipeline_status="normalization_ready",
-                routing_outcome=str(
-                    result.get("routing_outcome") or "normalization_required"
-                ),
-                review_decision=None,
+                "building",
+                stage="build",
+                pipeline_status="building",
+                routing_outcome=routing_outcome,
+                review_decision=REVIEW_DECISION_APPROVE,
+                expected_module_name=module_name,
+                rebuild_mode=False,
+                rebuild_collision=collision,
+                overwrite_policy="backup_clean",
+                build_started_at=_utc_now_iso(),
                 quarantine_reason=None,
                 result={
-                    "routing": result,
-                    "normalization": normalization_result,
+                    **auto_build_result,
+                    "build_target": target_info,
                 },
             )
+            _run_homebrew_build_job(job_id, build_options)
             return
 
         if pipeline_status in {"success", "degraded"}:
@@ -837,6 +1032,7 @@ def _run_homebrew_build_job(
             return
 
         rebuild_mode = bool(build_opts.get("rebuild_mode"))
+        build_progress_callback = _make_homebrew_build_progress_callback(job_id)
         if rebuild_mode:
             rebuild_module_name = str(build_opts.get("module_name") or "").strip()
             overwrite_policy = (
@@ -882,17 +1078,34 @@ def _run_homebrew_build_job(
                 )
                 return
 
-            _set_job_state(
-                job_id,
-                "rebuild_clean_running",
-                stage="build",
-                pipeline_status="rebuild_clean",
-                result=rebuild_prep_result,
-                rebuild_backup_path=str(rebuild_prep_result.get("backup_dir") or ""),
-                rebuild_mode=True,
-            )
+        if rebuild_prep_result:
+            initial_progress_message = "Rebuild preparation complete. Continuing packet build."
+            initial_progress_stage = "builder_handoff"
+        else:
+            initial_progress_message = "Packet-driven Homebrew build in progress."
+            initial_progress_stage = "builder_start"
 
-        build_result = _run_homebrew_packet_build(workspace, job_id)
+        initial_progress_fields: Dict[str, Any] = {
+            "pipeline_status": "building",
+            "progress_message": initial_progress_message,
+            "progress_stage": initial_progress_stage,
+            "progress_updated_at": _utc_now_iso(),
+            "progress_tick": 0,
+        }
+        if rebuild_prep_result:
+            initial_progress_fields["result"] = rebuild_prep_result
+            initial_progress_fields["rebuild_backup_path"] = str(
+                rebuild_prep_result.get("backup_dir") or ""
+            )
+            initial_progress_fields["rebuild_mode"] = True
+
+        _set_job_state(job_id, "building", stage="build", **initial_progress_fields)
+
+        build_result = _run_homebrew_packet_build(
+            workspace,
+            job_id,
+            progress_callback=build_progress_callback,
+        )
         build_status = str(build_result.get("status") or "failed").lower()
         if rebuild_prep_result:
             build_result["rebuild"] = rebuild_prep_result
@@ -1208,11 +1421,11 @@ def _run_homebrew_build_job(
 
 
 def register_toolkit_homebrew_routes(app: Flask) -> None:
-    """Register toolkit Homebrew markdown upload and job-status routes."""
+    """Register toolkit Homebrew source upload and job-status routes."""
 
     @app.route("/api/toolkit/homebrew/upload", methods=["POST"])
     def upload_toolkit_homebrew_markdown() -> Any:
-        """Upload one Homebrew markdown file and start ingest job."""
+        """Upload one Homebrew source file and start ingest job."""
         global _active_job_id
 
         try:
@@ -1241,7 +1454,7 @@ def register_toolkit_homebrew_routes(app: Flask) -> None:
                 return jsonify(
                     {
                         "status": "error",
-                        "message": "File type not allowed. Upload a .md file.",
+                        "message": "File type not allowed. Upload a .md or .pdf file.",
                         "allowed_extensions": sorted(ALLOWED_HOME_BREW_EXTENSIONS),
                     }
                 ), 400
@@ -1253,16 +1466,76 @@ def register_toolkit_homebrew_routes(app: Flask) -> None:
             ensure_workspace_placeholders(workspace)
             workspace_files = get_workspace_files(workspace)
             destination = workspace_files["source_original"]
-            incoming.save(str(destination))
+            source_kind = "markdown"
+            raw_pdf_path = None
+            pdf_conversion_report = None
+
+            if extension == ".pdf":
+                source_kind = "pdf"
+                raw_pdf_path = workspace_files["source_upload_original_pdf"]
+                incoming.save(str(raw_pdf_path))
+
+                raw_pdf_size = raw_pdf_path.stat().st_size
+                if raw_pdf_size > TOOLKIT_HOMEBREW_MAX_UPLOAD_BYTES:
+                    raw_pdf_path.unlink(missing_ok=True)
+                    return jsonify(
+                        {
+                            "status": "error",
+                            "message": "File exceeds max upload size",
+                            "max_bytes": TOOLKIT_HOMEBREW_MAX_UPLOAD_BYTES,
+                        }
+                    ), 400
+
+                try:
+                    pdf_conversion_report = convert_pdf_upload_to_markdown(
+                        raw_pdf_path,
+                        destination,
+                        source_filename=safe_name,
+                    )
+                except PdfConversionError as conversion_error:
+                    pdf_conversion_report = dict(getattr(conversion_error, "report", {}) or {})
+                    report_path = workspace_files["pdf_conversion_report"]
+                    if pdf_conversion_report:
+                        if not safe_write_json(str(report_path), pdf_conversion_report):
+                            warning(
+                                (
+                                    f"TOOLKIT_HOMEBREW: Failed to persist PDF conversion report for job {job_id}"
+                                ),
+                                category="web_interface",
+                            )
+                    return jsonify(
+                        {
+                            "status": "error",
+                            "message": str(conversion_error),
+                            "allowed_extensions": sorted(ALLOWED_HOME_BREW_EXTENSIONS),
+                            "pdf_conversion_report": pdf_conversion_report,
+                        }
+                    ), 400
+                if pdf_conversion_report and not safe_write_json(
+                    str(workspace_files["pdf_conversion_report"]), pdf_conversion_report
+                ):
+                    warning(
+                        (
+                            f"TOOLKIT_HOMEBREW: Failed to persist PDF conversion report for job {job_id}"
+                        ),
+                        category="web_interface",
+                    )
+            else:
+                incoming.save(str(destination))
 
             raw_rights = str(request.form.get("source_rights_class") or "").strip()
             source_rights_class = raw_rights or SOURCE_RIGHTS_USER_AUTHORED
             if source_rights_class not in VALID_SOURCE_RIGHTS_CLASSES:
                 source_rights_class = SOURCE_RIGHTS_USER_AUTHORED
 
-            size_bytes = destination.stat().st_size
+            size_bytes = raw_pdf_path.stat().st_size if raw_pdf_path else destination.stat().st_size
             if size_bytes > TOOLKIT_HOMEBREW_MAX_UPLOAD_BYTES:
-                destination.unlink(missing_ok=True)
+                if raw_pdf_path:
+                    raw_pdf_path.unlink(missing_ok=True)
+                    destination.unlink(missing_ok=True)
+                    workspace_files["pdf_conversion_report"].unlink(missing_ok=True)
+                else:
+                    destination.unlink(missing_ok=True)
                 return jsonify(
                     {
                         "status": "error",
@@ -1284,7 +1557,14 @@ def register_toolkit_homebrew_routes(app: Flask) -> None:
                     "created_at": _utc_now_iso(),
                     "updated_at": _utc_now_iso(),
                     "source_path": str(destination),
+                    "source_kind": source_kind,
                     "source_filename": safe_name,
+                    "source_original_path": str(destination),
+                    "source_upload_path": str(raw_pdf_path or destination),
+                    "pdf_conversion_report_path": str(workspace_files["pdf_conversion_report"])
+                    if raw_pdf_path
+                    else None,
+                    "pdf_conversion_report": pdf_conversion_report,
                     "artifact_workspace": str(workspace),
                     "source_rights_class": source_rights_class,
                     "size_bytes": size_bytes,
@@ -1300,7 +1580,9 @@ def register_toolkit_homebrew_routes(app: Flask) -> None:
             worker.start()
 
             info(
-                f"TOOLKIT_HOMEBREW: Started markdown ingest job {job_id} for {safe_name}",
+                (
+                    f"TOOLKIT_HOMEBREW: Started {source_kind} ingest job {job_id} for {safe_name}"
+                ),
                 category="web_interface",
             )
             return jsonify(
@@ -1309,6 +1591,12 @@ def register_toolkit_homebrew_routes(app: Flask) -> None:
                     "job_id": job_id,
                     "allowed_extensions": sorted(ALLOWED_HOME_BREW_EXTENSIONS),
                     "size_bytes": size_bytes,
+                    "source_kind": source_kind,
+                    "source_path": str(destination),
+                    "source_upload_path": str(raw_pdf_path or destination),
+                    "pdf_conversion_report_path": str(workspace_files["pdf_conversion_report"])
+                    if raw_pdf_path
+                    else None,
                 }
             )
 

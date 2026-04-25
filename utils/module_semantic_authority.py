@@ -352,9 +352,17 @@ def _collect_plot_evidence(module_plot: Dict[str, Any]) -> List[Dict[str, Any]]:
             continue
         plot_id = str(plot_point.get("id", "") or "").strip() or "plot_point"
         location_id = str(plot_point.get("location", "") or "").strip().upper()
+        involved_locations = [
+            str(value or "").strip().upper()
+            for value in _safe_list(plot_point.get("involvedLocations"))
+            if str(value or "").strip()
+        ]
+        has_authoritative_location_binding = bool(location_id or involved_locations)
         source_prefix = f"module_plot.json#plotPoints[{plot_id}]"
         for field_name in ["title", "description", "plotImpact"]:
-            destination_eligible = field_name == "title"
+            destination_eligible = (
+                field_name == "title" and not has_authoritative_location_binding
+            )
             _append_evidence(
                 evidence,
                 plot_point.get(field_name),
@@ -424,6 +432,148 @@ def _extract_destination_phrase_candidates(normalized_text: str) -> List[str]:
             candidates.add(phrase)
 
     return sorted(candidates)
+
+
+def _normalize_shortform_destination_phrases(
+    destination_phrases: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Collapse deterministically anchored short-form destination phrases.
+
+    A short-form phrase is normalized only when:
+    - it is currently unresolved,
+    - it is player-facing,
+    - it has exactly one resolved strong-form anchor phrase,
+    - the strong-form phrase ends with the short-form phrase, and
+    - both phrases share authored provenance sources.
+    """
+    normalized_rows: List[Dict[str, Any]] = []
+
+    resolved_rows: Dict[str, Dict[str, Any]] = {}
+    for phrase, row in destination_phrases.items():
+        row_dict = row if isinstance(row, dict) else {}
+        if str(row_dict.get("status", "") or "").strip().lower() != "resolved":
+            continue
+        location_id = str(row_dict.get("location_id", "") or "").strip().upper()
+        if not location_id:
+            continue
+        resolved_rows[phrase] = row_dict
+
+    for phrase in sorted(destination_phrases.keys()):
+        row = destination_phrases.get(phrase)
+        row_dict = row if isinstance(row, dict) else {}
+        status = str(row_dict.get("status", "") or "").strip().lower()
+        if status != "unresolved":
+            continue
+        if not bool(row_dict.get("player_facing", False)):
+            continue
+
+        phrase_sources = {
+            str(source).strip()
+            for source in _safe_list(row_dict.get("sources"))
+            if str(source).strip()
+        }
+        if not phrase_sources:
+            continue
+
+        anchored_candidates: List[Dict[str, Any]] = []
+        phrase_with_space = f" {phrase}"
+
+        for anchor_phrase, anchor_row in resolved_rows.items():
+            if anchor_phrase == phrase:
+                continue
+            if not anchor_phrase.endswith(phrase_with_space):
+                continue
+            anchor_sources = {
+                str(source).strip()
+                for source in _safe_list(anchor_row.get("sources"))
+                if str(source).strip()
+            }
+            shared_sources = sorted(phrase_sources.intersection(anchor_sources))
+            if not shared_sources:
+                continue
+
+            anchor_location_id = str(anchor_row.get("location_id", "") or "").strip().upper()
+            if not anchor_location_id:
+                continue
+
+            anchored_candidates.append(
+                {
+                    "anchor_phrase": anchor_phrase,
+                    "anchor_location_id": anchor_location_id,
+                    "anchor_sources": sorted(anchor_sources),
+                    "shared_sources": shared_sources,
+                }
+            )
+
+        if len(anchored_candidates) != 1:
+            continue
+
+        anchor = anchored_candidates[0]
+        row_dict["status"] = "resolved"
+        row_dict["location_id"] = anchor["anchor_location_id"]
+        row_dict["candidate_location_ids"] = [anchor["anchor_location_id"]]
+        row_dict["normalization"] = {
+            "type": "shortform_alias_collapse",
+            "strategy": "resolved_suffix_anchor_with_source_overlap",
+            "anchor_phrase": anchor["anchor_phrase"],
+            "anchor_location_id": anchor["anchor_location_id"],
+            "shared_sources": anchor["shared_sources"],
+        }
+
+        normalized_rows.append(
+            {
+                "phrase": phrase,
+                "anchor_phrase": anchor["anchor_phrase"],
+                "location_id": anchor["anchor_location_id"],
+                "shared_sources": anchor["shared_sources"],
+            }
+        )
+
+    ambiguous: List[Dict[str, Any]] = []
+    unresolved: List[Dict[str, Any]] = []
+    for phrase in sorted(destination_phrases.keys()):
+        row_dict = destination_phrases[phrase]
+        status = str(row_dict.get("status", "") or "").strip().lower()
+        candidate_ids = sorted(
+            {
+                str(value).strip().upper()
+                for value in _safe_list(row_dict.get("candidate_location_ids"))
+                if str(value).strip()
+            }
+        )
+        sources = sorted(
+            {
+                str(value).strip()
+                for value in _safe_list(row_dict.get("sources"))
+                if str(value).strip()
+            }
+        )
+        player_facing = bool(row_dict.get("player_facing", False))
+
+        if status == "ambiguous":
+            ambiguous.append(
+                {
+                    "phrase": phrase,
+                    "candidate_location_ids": candidate_ids,
+                    "sources": sources,
+                    "player_facing": player_facing,
+                }
+            )
+        elif status == "unresolved":
+            unresolved.append(
+                {
+                    "phrase": phrase,
+                    "sources": sources,
+                    "player_facing": player_facing,
+                }
+            )
+
+    return {
+        "destination_phrases": destination_phrases,
+        "ambiguous_destination_phrases": ambiguous,
+        "unresolved_destination_phrases": unresolved,
+        "normalized_shortform_destination_phrases": normalized_rows,
+    }
 
 
 def _build_destination_phrase_map(
@@ -530,10 +680,15 @@ def _build_destination_phrase_map(
                 }
             )
 
+    normalized_result = _normalize_shortform_destination_phrases(destination_phrases)
+    if normalized_result.get("normalized_shortform_destination_phrases"):
+        return normalized_result
+
     return {
         "destination_phrases": destination_phrases,
         "ambiguous_destination_phrases": ambiguous,
         "unresolved_destination_phrases": unresolved,
+        "normalized_shortform_destination_phrases": [],
     }
 
 
@@ -786,6 +941,9 @@ def build_module_semantic_authority(
         "unresolved_destination_phrases": destination_result[
             "unresolved_destination_phrases"
         ],
+        "normalized_shortform_destination_phrases": destination_result[
+            "normalized_shortform_destination_phrases"
+        ],
         "missing_npc_authority": npc_result["missing_npc_authority"],
     }
 
@@ -803,6 +961,9 @@ def build_module_semantic_authority(
             "npc_count": len(npc_result["npc_scene_authority"]),
             "ambiguous_destination_count": len(
                 destination_result["ambiguous_destination_phrases"]
+            ),
+            "normalized_shortform_destination_count": len(
+                destination_result["normalized_shortform_destination_phrases"]
             ),
             "missing_npc_authority_count": len(npc_result["missing_npc_authority"]),
         },
@@ -875,6 +1036,16 @@ def enrich_module_semantic_authority(
     if unresolved_destinations:
         warnings.append(
             f"semantic_authority_unresolved_destination_phrases={len(unresolved_destinations)}"
+        )
+    normalized_shortform_destinations = (
+        diagnostics.get("normalized_shortform_destination_phrases")
+        if isinstance(diagnostics.get("normalized_shortform_destination_phrases"), list)
+        else []
+    )
+    if normalized_shortform_destinations:
+        warnings.append(
+            "semantic_authority_normalized_shortform_destination_phrases="
+            f"{len(normalized_shortform_destinations)}"
         )
     if missing_npc_authority:
         warnings.append(

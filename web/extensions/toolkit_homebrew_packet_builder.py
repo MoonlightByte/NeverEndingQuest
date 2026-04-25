@@ -129,7 +129,10 @@ def _validate_review_snapshot(packet: Dict[str, Any], review_snapshot: Dict[str,
     return None
 
 
-def _execute_module_builder(builder_input: Dict[str, Any]) -> None:
+def _execute_module_builder(
+    builder_input: Dict[str, Any],
+    progress_callback: Optional[Callable[[str, str], None]] = None,
+) -> None:
     """Run the upstream module builder using derived packet parameters."""
     from core.generators.module_builder import BuilderConfig, ModuleBuilder
 
@@ -142,13 +145,25 @@ def _execute_module_builder(builder_input: Dict[str, Any]) -> None:
         verbose=True,
     )
     builder = ModuleBuilder(config)
+    if progress_callback:
+        builder.progress_callback = progress_callback
+
+        original_log = builder.log
+
+        def _log_with_progress(message: str) -> None:
+            original_log(message)
+            progress_callback("log", message)
+
+        builder.log = _log_with_progress  # type: ignore[assignment]
+
     builder.build_module(builder_input["builder_narrative"])
 
 
 def run_toolkit_homebrew_packet_build(
     workspace: Path,
     job_id: str,
-    builder_executor: Optional[Callable[[Dict[str, Any]], None]] = None,
+    builder_executor: Optional[Callable[..., None]] = None,
+    progress_callback: Optional[Callable[[str, str], None]] = None,
 ) -> Dict[str, Any]:
     """Build one approved Homebrew upload workspace from normalized packet."""
     files = get_workspace_files(workspace)
@@ -216,7 +231,18 @@ def run_toolkit_homebrew_packet_build(
             ),
             category="web_interface",
         )
-        executor(builder_input)
+        try:
+            if progress_callback:
+                executor(builder_input, progress_callback=progress_callback)
+            else:
+                executor(builder_input)
+        except TypeError as executor_error:
+            if progress_callback and "unexpected keyword argument 'progress_callback'" in str(
+                executor_error
+            ):
+                executor(builder_input)
+            else:
+                raise
 
         build_result = {
             "status": "success",

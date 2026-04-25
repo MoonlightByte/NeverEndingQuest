@@ -25,7 +25,6 @@
       "locations": [],
       "npcs": [
         "Wounded Scout Neris",
-        "Merchant Lira",
         "Spirit-Touched Hermit Maelo"
       ],
       "plot_points": [
@@ -95,17 +94,6 @@
         }
       ]
     },
-    "merchant_lira": {
-      "name": "Merchant Lira",
-      "role": "",
-      "faction": "",
-      "appears_in": [
-        {
-          "area": "TW001",
-          "location": "TW06"
-        }
-      ]
-    },
     "wounded_scout_neris": {
       "name": "Wounded Scout Neris",
       "role": "",
@@ -170,9 +158,6 @@
       "module:plotStages"
     ],
     "npc:Captured Bandit Leader Rusk": [
-      "module:plotStages"
-    ],
-    "npc:Merchant Lira": [
       "module:plotStages"
     ],
     "npc:Wounded Scout Neris": [

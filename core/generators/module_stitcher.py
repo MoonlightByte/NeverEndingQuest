@@ -1286,6 +1286,61 @@ Respond with JSON:
             return source_report
         return report_data
 
+    def _is_sidebar_report_authoritative(self, report_data: Dict[str, Any]) -> bool:
+        """Return True only for current authoritative persisted sidebar reports.
+
+        Fail-open behavior: legacy or non-current reports without explicit freshness
+        authority are suppressed rather than surfaced as active blocker state.
+        """
+        if not isinstance(report_data, dict):
+            return False
+
+        report_freshness = report_data.get("report_freshness")
+        if isinstance(report_freshness, dict):
+            freshness_state = str(
+                report_freshness.get("state") or report_data.get("freshness_state") or ""
+            ).strip().lower()
+            return bool(report_freshness.get("authoritative")) and freshness_state == "current"
+
+        freshness_state = str(report_data.get("freshness_state") or "").strip().lower()
+        if freshness_state:
+            return freshness_state == "current"
+
+        return False
+
+    def _is_sidebar_media_handoff_authoritative(self, report_data: Dict[str, Any]) -> bool:
+        """Return True when sidebar media handoff can be trusted.
+
+        Media handoff is narrower than build/semantic failure surfacing. A final
+        authoritative toolkit refresh can be degraded while still carrying
+        deterministic structural media debt that should remain visible for
+        publication follow-up.
+        """
+        if self._is_sidebar_report_authoritative(report_data):
+            return True
+
+        if not isinstance(report_data, dict):
+            return False
+
+        report_freshness = report_data.get("report_freshness")
+        if not isinstance(report_freshness, dict):
+            return False
+
+        freshness_state = str(
+            report_freshness.get("state") or report_data.get("freshness_state") or ""
+        ).strip().lower()
+        phase = str(report_freshness.get("phase") or "").strip().lower()
+        workflow = str(report_freshness.get("workflow") or "").strip().lower()
+        contract = str(report_freshness.get("contract") or "").strip().lower()
+
+        return (
+            bool(report_freshness.get("authoritative"))
+            and freshness_state == "degraded"
+            and phase == "final"
+            and workflow == "toolkit_report_refresh"
+            and contract == "toolkit_build_report_refresh_contract.v1"
+        )
+
     def _derive_sidebar_audit_signals(self, report_data: Dict[str, Any]) -> Dict[str, Any]:
         """Derive compact sidebar failure and media handoff signals from persisted reports."""
         try:
@@ -1297,14 +1352,6 @@ Respond with JSON:
             ready_status = str(report_data.get("ready_status", source_report.get("ready_status", ""))).lower()
             publishable_status = str(report_data.get("publishable_status", source_report.get("publishable_status", ""))).lower()
             report_status = str(report_data.get("status", source_report.get("status", ""))).lower()
-
-            failure_state = (
-                ready_status == "fail"
-                or publishable_status.startswith("fail")
-                or report_status in {"failed", "fail"}
-            )
-            if not failure_state:
-                return {}
 
             remediation_categories = [
                 str(category).lower()
@@ -1337,19 +1384,43 @@ Respond with JSON:
                 "semantic_publishability_blocking" in remediation_categories
                 or "missing semantic_authority payload" in canonical_text
             )
+            has_build_failure = (
+                ready_status == "fail"
+                or report_status in {"failed", "fail"}
+                or has_missing_monster_json
+                or has_unresolved_destinations
+                or has_semantic_blocking
+            )
+            has_publication_blocker = media_generator_needed or publishable_status.startswith("fail")
+
+            if not (has_build_failure or has_publication_blocker):
+                return {}
+
+            media_only_publication_handoff = (
+                media_generator_needed
+                and not has_build_failure
+                and not publishable_status.startswith("fail")
+            )
+            if media_only_publication_handoff:
+                if not self._is_sidebar_media_handoff_authoritative(report_data):
+                    return {}
+            elif not self._is_sidebar_report_authoritative(report_data):
+                return {}
 
             if has_missing_monster_json and media_generator_needed:
                 brief_failure = "Build failed: missing monsters/media"
-            elif media_generator_needed and has_unresolved_destinations:
+            elif has_unresolved_destinations and media_generator_needed:
                 brief_failure = "Build failed: media + destination issues"
-            elif media_generator_needed:
-                brief_failure = "Build failed: missing monster media"
             elif has_missing_monster_json:
                 brief_failure = "Build failed: missing monster files"
             elif has_unresolved_destinations:
                 brief_failure = "Build failed: unresolved destinations"
             elif has_semantic_blocking:
                 brief_failure = "Build failed: semantic publishability checks"
+            elif media_generator_needed:
+                brief_failure = "Publication blocked: missing media"
+            elif publishable_status.startswith("fail"):
+                brief_failure = "Publication blocked: module not publishable"
             else:
                 brief_failure = "Build failed: module not publishable"
 

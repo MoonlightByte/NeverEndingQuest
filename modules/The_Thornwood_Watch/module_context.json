@@ -3,7 +3,7 @@
   "module_id": "The_Thornwood_Watch",
   "areas": {
     "RO001": {
-      "name": "Rangers\u2019 Outpost",
+      "name": "Rangers’ Outpost",
       "type": "wilderness",
       "locations": [],
       "npcs": [
@@ -25,7 +25,6 @@
       "locations": [],
       "npcs": [
         "Wounded Scout Neris",
-        "Merchant Lira",
         "Spirit-Touched Hermit Maelo"
       ],
       "plot_points": [
@@ -95,17 +94,6 @@
         }
       ]
     },
-    "merchant_lira": {
-      "name": "Merchant Lira",
-      "role": "",
-      "faction": "",
-      "appears_in": [
-        {
-          "area": "TW001",
-          "location": "TW06"
-        }
-      ]
-    },
     "wounded_scout_neris": {
       "name": "Wounded Scout Neris",
       "role": "",
@@ -170,9 +158,6 @@
       "module:plotStages"
     ],
     "npc:Captured Bandit Leader Rusk": [
-      "module:plotStages"
-    ],
-    "npc:Merchant Lira": [
       "module:plotStages"
     ],
     "npc:Wounded Scout Neris": [
@@ -421,6 +406,17 @@
           "areas/NCW001.json#locations[NC05].aliases"
         ]
       },
+      "north tower": {
+        "status": "resolved",
+        "location_id": "RO06",
+        "location_name": "North Tower Overlook",
+        "candidate_location_ids": [
+          "RO06"
+        ],
+        "sources": [
+          "areas/RO001.json#locations[RO06].aliases"
+        ]
+      },
       "north tower overlook": {
         "status": "resolved",
         "location_id": "RO06",
@@ -647,13 +643,11 @@
         ],
         "sources": [
           "areas/TW001.json#locations[TW03].aliases",
-          "areas/TW001.json#locations[TW03].dmInstructions",
-          "areas/TW001.json#locations[TW03].name",
-          "areas/TW001.json#locations[TW03].plotHooks"
+          "areas/TW001.json#locations[TW03].name"
         ],
         "observed": true,
         "player_facing": true,
-        "observation_count": 4
+        "observation_count": 2
       },
       "ambush site": {
         "status": "resolved",
@@ -755,18 +749,27 @@
       },
       "explorers camp": {
         "status": "resolved",
-        "location_id": "NC04",
         "candidate_location_ids": [
           "NC04"
         ],
         "sources": [
           "areas/NCW001.json#locations[NC04].aliases",
-          "areas/NCW001.json#locations[NC04].name",
-          "module_context.json#semantic_authority.manual_remediation"
+          "areas/NCW001.json#locations[NC04].name"
         ],
         "observed": true,
         "player_facing": true,
-        "observation_count": 2
+        "observation_count": 2,
+        "location_id": "NC04",
+        "normalization": {
+          "type": "shortform_alias_collapse",
+          "strategy": "resolved_suffix_anchor_with_source_overlap",
+          "anchor_phrase": "doomed explorers camp",
+          "anchor_location_id": "NC04",
+          "shared_sources": [
+            "areas/NCW001.json#locations[NC04].aliases",
+            "areas/NCW001.json#locations[NC04].name"
+          ]
+        }
       },
       "forgotten waystation": {
         "status": "resolved",
@@ -782,6 +785,20 @@
         "player_facing": false,
         "observation_count": 0
       },
+      "hermits refuge": {
+        "status": "resolved",
+        "location_id": "TW04",
+        "candidate_location_ids": [
+          "TW04"
+        ],
+        "sources": [
+          "areas/TW001.json#locations[TW04].aliases",
+          "areas/TW001.json#locations[TW04].name"
+        ],
+        "observed": true,
+        "player_facing": true,
+        "observation_count": 2
+      },
       "hollow of the withered hart": {
         "status": "resolved",
         "location_id": "NC03",
@@ -795,20 +812,6 @@
         "observed": false,
         "player_facing": false,
         "observation_count": 0
-      },
-      "hook to the keep": {
-        "status": "resolved",
-        "location_id": "RO001",
-        "candidate_location_ids": [
-          "RO001"
-        ],
-        "sources": [
-          "module_context.json#semantic_authority.manual_remediation",
-          "module_plot.json#plotPoints[PP005].description"
-        ],
-        "observed": true,
-        "player_facing": true,
-        "observation_count": 1
       },
       "nc01": {
         "status": "resolved",
@@ -883,12 +886,11 @@
         ],
         "sources": [
           "areas/RO001.json#locations[RO06].aliases",
-          "areas/RO001.json#locations[RO06].name",
-          "module_context.json#semantic_authority.manual_remediation"
+          "areas/RO001.json#locations[RO06].name"
         ],
         "observed": true,
         "player_facing": true,
-        "observation_count": 2
+        "observation_count": 3
       },
       "north tower overlook": {
         "status": "resolved",
@@ -917,34 +919,6 @@
         "observed": false,
         "player_facing": false,
         "observation_count": 0
-      },
-      "reach the camp": {
-        "status": "resolved",
-        "location_id": "TW001",
-        "candidate_location_ids": [
-          "TW001"
-        ],
-        "sources": [
-          "module_context.json#semantic_authority.manual_remediation",
-          "module_plot.json#plotPoints[PP002].description"
-        ],
-        "observed": true,
-        "player_facing": true,
-        "observation_count": 1
-      },
-      "reveals the bandit camp": {
-        "status": "resolved",
-        "location_id": "RO001",
-        "candidate_location_ids": [
-          "RO001"
-        ],
-        "sources": [
-          "module_context.json#semantic_authority.manual_remediation",
-          "module_plot.json#plotPoints[PP001].description"
-        ],
-        "observed": true,
-        "player_facing": true,
-        "observation_count": 1
       },
       "ro01": {
         "status": "resolved",
@@ -1157,20 +1131,6 @@
         "observed": false,
         "player_facing": false,
         "observation_count": 0
-      },
-      "west tower": {
-        "status": "resolved",
-        "location_id": "RO05",
-        "candidate_location_ids": [
-          "RO05"
-        ],
-        "sources": [
-          "areas/RO001.json#locations[RO05].features.name",
-          "module_context.json#semantic_authority.manual_remediation"
-        ],
-        "observed": true,
-        "player_facing": true,
-        "observation_count": 1
       },
       "wolfs den cave rescue the lost sq004": {
         "status": "resolved",
@@ -1610,13 +1570,7 @@
           "RO01",
           "TW01"
         ],
-        "reveal_bindings": [
-          {
-            "location_id": "RO01",
-            "source": "module_context.json#semantic_authority.manual_remediation",
-            "reason": "manual_authored_presence_reveal_binding"
-          }
-        ],
+        "reveal_bindings": [],
         "sources": [
           "areas/RO001.json#locations[RO01].npcs",
           "areas/RO001.json#locations[RO01].plotHooks",
@@ -1640,13 +1594,7 @@
         "visible_location_ids": [
           "RO02"
         ],
-        "reveal_bindings": [
-          {
-            "location_id": "RO02",
-            "source": "module_context.json#semantic_authority.manual_remediation",
-            "reason": "manual_authored_presence_reveal_binding"
-          }
-        ],
+        "reveal_bindings": [],
         "sources": [
           "areas/RO001.json#locations[RO02].dcChecks",
           "areas/RO001.json#locations[RO02].description",
@@ -1867,13 +1815,7 @@
         "visible_location_ids": [
           "NC03"
         ],
-        "reveal_bindings": [
-          {
-            "location_id": "NC03",
-            "source": "module_context.json#semantic_authority.manual_remediation",
-            "reason": "manual_authored_presence_reveal_binding"
-          }
-        ],
+        "reveal_bindings": [],
         "sources": [
           "areas/NCW001.json#locations[NC03].aliases",
           "areas/NCW001.json#locations[NC03].dcChecks",
@@ -1899,13 +1841,7 @@
         "visible_location_ids": [
           "NC02"
         ],
-        "reveal_bindings": [
-          {
-            "location_id": "NC02",
-            "source": "module_context.json#semantic_authority.manual_remediation",
-            "reason": "manual_authored_presence_reveal_binding"
-          }
-        ],
+        "reveal_bindings": [],
         "sources": [
           "areas/NCW001.json#locations[NC02].dmInstructions",
           "areas/NCW001.json#locations[NC02].npcs",
@@ -1934,13 +1870,7 @@
         "visible_location_ids": [
           "RO03"
         ],
-        "reveal_bindings": [
-          {
-            "location_id": "RO03",
-            "source": "module_context.json#semantic_authority.manual_remediation",
-            "reason": "manual_authored_presence_reveal_binding"
-          }
-        ],
+        "reveal_bindings": [],
         "sources": [
           "areas/RO001.json#locations[RO03].dcChecks",
           "areas/RO001.json#locations[RO03].description",
@@ -2004,14 +1934,26 @@
       "duplicate_location_aliases": [],
       "ambiguous_destination_phrases": [],
       "unresolved_destination_phrases": [],
+      "normalized_shortform_destination_phrases": [
+        {
+          "phrase": "explorers camp",
+          "anchor_phrase": "doomed explorers camp",
+          "location_id": "NC04",
+          "shared_sources": [
+            "areas/NCW001.json#locations[NC04].aliases",
+            "areas/NCW001.json#locations[NC04].name"
+          ]
+        }
+      ],
       "missing_npc_authority": []
     },
     "summary": {
       "location_count": 17,
-      "location_alias_count": 35,
-      "destination_phrase_count": 40,
+      "location_alias_count": 36,
+      "destination_phrase_count": 37,
       "npc_count": 22,
       "ambiguous_destination_count": 0,
+      "normalized_shortform_destination_count": 1,
       "missing_npc_authority_count": 0
     }
   }

@@ -82,6 +82,9 @@ class ModuleSidebarAuditFailureSignalsTests(unittest.TestCase):
         toolkit_media_policy: Any = None,
         blocking_errors: Any = None,
         nested_marker: str = "",
+        include_freshness: bool = True,
+        freshness_state: str = "current",
+        authoritative: bool = True,
     ) -> Dict[str, Any]:
         canonical_report = {
             "remediation_categories": remediation_categories or [],
@@ -97,7 +100,7 @@ class ModuleSidebarAuditFailureSignalsTests(unittest.TestCase):
             },
         }
 
-        return {
+        report = {
             "status": status,
             "ready_status": ready_status,
             "publishable_status": publishable_status,
@@ -110,6 +113,21 @@ class ModuleSidebarAuditFailureSignalsTests(unittest.TestCase):
                 }
             },
         }
+
+        if include_freshness:
+            report["freshness_state"] = freshness_state
+            report["report_freshness"] = {
+                "state": freshness_state,
+                "authoritative": authoritative,
+                "written_at": "2026-04-24T12:00:00Z",
+                "phase": "final",
+                "workflow": "toolkit_report_refresh",
+                "refresh_reason": "test_fixture",
+                "contract": "toolkit_build_report_refresh_contract.v1",
+                "stale_reason": None if freshness_state == "current" else "test_fixture_stale",
+            }
+
+        return report
 
     def test_missing_report_fails_open_without_sidebar_fields(self) -> None:
         modules = self.stitcher.get_available_modules()
@@ -127,12 +145,12 @@ class ModuleSidebarAuditFailureSignalsTests(unittest.TestCase):
         self.assertNotIn("brief_failure", no_report_entry)
         self.assertNotIn("media_generator_needed", no_report_entry)
 
-    def test_media_handoff_detected_from_remediation_categories(self) -> None:
+    def test_media_only_debt_surfaces_publication_blocker(self) -> None:
         report = self._build_report(
-            remediation_categories=[
-                "structured_monster_media_missing",
-                "toolkit_manual_media_generation_required",
-            ],
+            status="success",
+            ready_status="pass",
+            publishable_status="pass",
+            remediation_categories=["toolkit_manual_media_generation_required"],
             toolkit_media_policy={"structural_media_debt_count": 5},
         )
         _write_json(
@@ -142,8 +160,52 @@ class ModuleSidebarAuditFailureSignalsTests(unittest.TestCase):
 
         modules = self.stitcher.get_available_modules()
         entry = next(m for m in modules if m["moduleName"] == "Murder_at_the_Drowning_Lass")
-        self.assertEqual(entry.get("brief_failure"), "Build failed: missing monster media")
+        self.assertEqual(entry.get("brief_failure"), "Publication blocked: missing media")
         self.assertTrue(entry.get("media_generator_needed"))
+
+    def test_degraded_authoritative_final_media_only_report_surfaces_handoff(self) -> None:
+        report = self._build_report(
+            status="degraded",
+            ready_status="pass",
+            publishable_status="pass",
+            remediation_categories=[
+                "structured_monster_media_missing",
+                "toolkit_manual_media_generation_required",
+            ],
+            toolkit_media_policy={"structural_media_debt_count": 16},
+            freshness_state="degraded",
+            authoritative=True,
+        )
+        _write_json(
+            self.modules_dir / "Murder_at_the_Drowning_Lass" / "toolkit_build_report.json",
+            report,
+        )
+
+        modules = self.stitcher.get_available_modules()
+        entry = next(m for m in modules if m["moduleName"] == "Murder_at_the_Drowning_Lass")
+        self.assertEqual(entry.get("brief_failure"), "Publication blocked: missing media")
+        self.assertTrue(entry.get("media_generator_needed"))
+
+    def test_degraded_authoritative_final_semantic_failure_still_fails_open(self) -> None:
+        report = self._build_report(
+            status="degraded",
+            ready_status="pass",
+            publishable_status="fail",
+            remediation_categories=["semantic_publishability_blocking"],
+            toolkit_media_policy={"structural_media_debt_count": 0},
+            blocking_errors=["Missing semantic_authority payload in module_context.json"],
+            freshness_state="degraded",
+            authoritative=True,
+        )
+        _write_json(
+            self.modules_dir / "Semantic_Only_Module" / "toolkit_build_report.json",
+            report,
+        )
+
+        modules = self.stitcher.get_available_modules()
+        entry = next(m for m in modules if m["moduleName"] == "Semantic_Only_Module")
+        self.assertNotIn("brief_failure", entry)
+        self.assertNotIn("media_generator_needed", entry)
 
     def test_mixed_missing_monsters_and_media_maps_to_compact_message(self) -> None:
         report = self._build_report(
@@ -194,6 +256,39 @@ class ModuleSidebarAuditFailureSignalsTests(unittest.TestCase):
         entry = next(m for m in modules if m["moduleName"] == "The_Ancients_Lab")
         self.assertEqual(entry.get("brief_failure"), "Build failed: unresolved destinations")
         self.assertFalse(entry.get("media_generator_needed"))
+
+    def test_legacy_failed_report_without_freshness_fails_open(self) -> None:
+        report = self._build_report(
+            remediation_categories=["semantic_publishability_blocking"],
+            blocking_errors=["travel_unresolved_destination_phrase: paradox sanctuary"],
+            include_freshness=False,
+        )
+        _write_json(
+            self.modules_dir / "Semantic_Only_Module" / "toolkit_build_report.json",
+            report,
+        )
+
+        modules = self.stitcher.get_available_modules()
+        entry = next(m for m in modules if m["moduleName"] == "Semantic_Only_Module")
+        self.assertNotIn("brief_failure", entry)
+        self.assertNotIn("media_generator_needed", entry)
+
+    def test_non_authoritative_failed_report_fails_open(self) -> None:
+        report = self._build_report(
+            remediation_categories=["structured_monster_media_missing"],
+            toolkit_media_policy={"structural_media_debt_count": 4},
+            freshness_state="stale",
+            authoritative=False,
+        )
+        _write_json(
+            self.modules_dir / "Murder_at_the_Drowning_Lass" / "toolkit_build_report.json",
+            report,
+        )
+
+        modules = self.stitcher.get_available_modules()
+        entry = next(m for m in modules if m["moduleName"] == "Murder_at_the_Drowning_Lass")
+        self.assertNotIn("brief_failure", entry)
+        self.assertNotIn("media_generator_needed", entry)
 
     def test_renderer_contracts_present_in_both_templates(self) -> None:
         toolkit_template = Path("web/templates/module_toolkit.html").read_text(encoding="utf-8")

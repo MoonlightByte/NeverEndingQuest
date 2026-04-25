@@ -20,6 +20,7 @@ A module is ready only when ALL enabled gates pass.
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -31,6 +32,14 @@ GAMEPLAY_AUDIT_SCRIPT = REPO_ROOT / "scripts" / "audit_module_gameplay.py"
 SIDECAR_AUDIT_SCRIPT = REPO_ROOT / "scripts" / "homebrew_sidecar_audit.py"
 SCHEMA_VALIDATOR_SCRIPT = REPO_ROOT / "core" / "validation" / "validate_module_files.py"
 CONTINUITY_AUDIT_SCRIPT = REPO_ROOT / "scripts" / "module_continuity_audit.py"
+
+_TOOLKIT_MEDIA_HANDOFF_OUTCOMES = {
+    "provider_disabled_missing",
+    "attempted_but_unresolved",
+}
+_STRUCTURAL_MEDIA_BLOCKER_RE = re.compile(
+    r"^Missing base media for:\s+([a-z0-9_]+)\s+\(from "
+)
 
 
 def _safe_json_load(text: str) -> Optional[Dict[str, Any]]:
@@ -108,6 +117,80 @@ def _extract_gameplay_payload(result: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(target_payload, dict):
         return target_payload
     return payload
+
+
+def _extract_structural_toolkit_media_debt(
+    gameplay_payload: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Return structural monster-media debt eligible for toolkit manual handoff."""
+    media_findings = (
+        gameplay_payload.get("monster_media_findings", [])
+        if isinstance(gameplay_payload, dict)
+        else []
+    )
+    return [
+        entry
+        for entry in media_findings
+        if isinstance(entry, dict)
+        and str(entry.get("confidence") or "") == "structural"
+        and str(entry.get("outcome") or "") in _TOOLKIT_MEDIA_HANDOFF_OUTCOMES
+    ]
+
+
+def _extract_media_blocker_slugs(blocking_errors: List[Any]) -> List[str]:
+    """Parse structural media blocker slugs from gameplay blocking errors."""
+    slugs: List[str] = []
+    for entry in blocking_errors:
+        message = str(entry or "").strip()
+        match = _STRUCTURAL_MEDIA_BLOCKER_RE.match(message)
+        if not match:
+            return []
+        slug = str(match.group(1) or "").strip()
+        if not slug:
+            return []
+        slugs.append(slug)
+    return slugs
+
+
+def _maybe_relax_toolkit_media_only_gameplay_gate(
+    gate: Dict[str, Any],
+    gameplay_payload: Dict[str, Any],
+    source_value: str,
+) -> Dict[str, Any]:
+    """Downgrade toolkit gameplay failure when debt is media handoff only."""
+    if source_value != "toolkit":
+        return gate
+    if str((gate or {}).get("status") or "") != "fail":
+        return gate
+    if not isinstance(gameplay_payload, dict):
+        return gate
+
+    blocking_errors = gameplay_payload.get("blocking_errors", [])
+    if not isinstance(blocking_errors, list) or not blocking_errors:
+        return gate
+
+    blocking_slugs = _extract_media_blocker_slugs(blocking_errors)
+    if len(blocking_slugs) != len(blocking_errors):
+        return gate
+
+    structural_media_debt = _extract_structural_toolkit_media_debt(gameplay_payload)
+    structural_slugs = {
+        str(entry.get("slug") or "").strip()
+        for entry in structural_media_debt
+        if str(entry.get("slug") or "").strip()
+    }
+    if not structural_slugs:
+        return gate
+    if set(blocking_slugs) != structural_slugs:
+        return gate
+
+    relaxed_gate = dict(gate)
+    relaxed_gate["status"] = "pass"
+    relaxed_gate["reason"] = "toolkit_structural_media_handoff_only"
+    relaxed_gate["manual_handoff_only"] = True
+    relaxed_gate["structural_media_debt_count"] = len(structural_media_debt)
+    relaxed_gate["structural_media_debt_slugs"] = sorted(structural_slugs)
+    return relaxed_gate
 
 
 def evaluate_sidecar_gate(result: Dict[str, Any]) -> Dict[str, Any]:
@@ -484,31 +567,17 @@ def audit_module_readiness(
             "exit_code": None,
         }
 
-    for gate_name in ["gameplay", "sidecar", "schema", "continuity"]:
-        gate = gates.get(gate_name, {})
-        if gate.get("status") == "fail":
-            blocking_errors.append(f"{gate_name}_gate_failed: {gate.get('reason')}")
-
-    fix_list = _build_fix_list(gates, source=source_value)
-
     toolkit_media_policy: Dict[str, Any] = {}
     if source_value == "toolkit":
         gameplay_json = _extract_gameplay_payload(
             ((gates.get("gameplay") or {}).get("raw") or {})
         )
-        media_findings = (
-            gameplay_json.get("monster_media_findings", [])
-            if isinstance(gameplay_json, dict)
-            else []
+        gates["gameplay"] = _maybe_relax_toolkit_media_only_gameplay_gate(
+            gates.get("gameplay") or {},
+            gameplay_json,
+            source_value,
         )
-        structural_media_debt = [
-            entry
-            for entry in media_findings
-            if isinstance(entry, dict)
-            and str(entry.get("confidence") or "") == "structural"
-            and str(entry.get("outcome") or "")
-            in {"provider_disabled_missing", "attempted_but_unresolved"}
-        ]
+        structural_media_debt = _extract_structural_toolkit_media_debt(gameplay_json)
         toolkit_media_policy = {
             "provider_generation_mode": "opt_in_manual_only",
             "manual_remediation_workflow": [
@@ -524,6 +593,13 @@ def audit_module_readiness(
                 }
             ),
         }
+
+    for gate_name in ["gameplay", "sidecar", "schema", "continuity"]:
+        gate = gates.get(gate_name, {})
+        if gate.get("status") == "fail":
+            blocking_errors.append(f"{gate_name}_gate_failed: {gate.get('reason')}")
+
+    fix_list = _build_fix_list(gates, source=source_value)
 
     overall_pass = True
     for gate_name in ["gameplay", "sidecar", "schema", "continuity"]:

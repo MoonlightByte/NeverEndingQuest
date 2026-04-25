@@ -391,6 +391,55 @@ class TestAuditModulePublishability(unittest.TestCase):
         self.assertIn("scene_entity_modeling_candidate", report["remediation_categories"])
         self.assertNotIn("mixed_media_semantic_blocking", report["remediation_categories"])
 
+    def test_normalized_shortform_semantic_context_does_not_create_semantic_blocker(self):
+        with (
+            patch.object(
+                publishability,
+                "audit_module_readiness",
+                return_value={
+                    "overall_status": "fail",
+                    "fix_list": [],
+                    "gates": {"sidecar": {"reason": "pass"}},
+                    "toolkit_media_policy": {
+                        "structural_media_debt_count": 1,
+                        "structural_media_debt_slugs": ["oathbound_shade"],
+                    },
+                },
+            ),
+            patch.object(
+                publishability,
+                "audit_module_semantic_authority",
+                return_value={
+                    "status": "degraded",
+                    "blocking_errors": [],
+                    "warnings": [
+                        "normalized short-form destination: oath chamber -> silent oath chamber"
+                    ],
+                    "normalized_shortform_destination_phrases": [
+                        {
+                            "phrase": "oath chamber",
+                            "anchor_phrase": "silent oath chamber",
+                            "location_id": "H03",
+                        }
+                    ],
+                },
+            ),
+            patch.object(
+                publishability,
+                "run_module_semantic_probes",
+                return_value={"status": "pass", "blocking_errors": [], "warnings": []},
+            ),
+        ):
+            report = publishability.audit_module_publishability(
+                "Murder_at_the_Drowning_Lass", source="toolkit"
+            )
+
+        self.assertEqual(report["publishable_status"], "fail")
+        self.assertIn("structured_monster_media_missing", report["remediation_categories"])
+        self.assertIn("semantic_warning_only", report["remediation_categories"])
+        self.assertNotIn("semantic_publishability_blocking", report["remediation_categories"])
+        self.assertNotIn("mixed_media_semantic_blocking", report["remediation_categories"])
+
 
 if __name__ == "__main__":
     unittest.main()
