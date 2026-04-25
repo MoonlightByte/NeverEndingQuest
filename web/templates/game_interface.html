@@ -523,7 +523,8 @@
             transform: scale(1.05);
         }
         
-        /* Video popup styles - hover-activated preview */
+        /* Video popup styles - hover-activated preview.
+           Image popups switch into a centered modal layout. */
         .video-popup {
             position: fixed;
             top: 0;
@@ -531,6 +532,8 @@
             width: 100%;
             height: 100%;
             z-index: 10000;
+            background-color: transparent;
+            box-sizing: border-box;
             
             /* Control visibility with opacity and a transition */
             opacity: 0;
@@ -544,6 +547,14 @@
             transition: opacity 0.2s ease-in-out;
         }
 
+        .video-popup.image-popup-mode {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+
         .video-popup-content {
             position: absolute; /* This will be positioned by JavaScript */
             width: 350px;
@@ -555,10 +566,45 @@
             pointer-events: auto; /* Ensure clicks on content don't close popup */
         }
 
+        .video-popup.image-popup-mode .video-popup-content {
+            position: relative;
+            top: auto !important;
+            left: auto !important;
+            width: auto;
+            max-width: 80vw;
+            max-height: 80vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .video-popup.image-popup-mode #popup-video {
+            max-width: 80vw;
+            max-height: 70vh;
+            border-radius: 5px;
+        }
+
+        .video-popup.image-popup-mode #popup-image {
+            max-width: 80vw;
+            max-height: 70vh;
+            border-radius: 5px;
+        }
+
         #popup-video {
             width: 100%;
             height: auto;
-            display: block; /* Removes any extra space below the video */
+            display: block;
+            border-radius: 5px;
+        }
+
+        #popup-image {
+            display: none;
+            max-width: 100%;
+            max-height: 70vh;
+            width: auto;
+            height: auto;
+            object-fit: contain;
             border-radius: 5px;
         }
         
@@ -5982,51 +6028,71 @@
             socket.emit('request_party_data');
         }
         
-        // Video popup functions - hover-activated with requestAnimationFrame
-        function showVideoPopup(targetElement, videoSrc) {
+        // Video popup functions - supports both hover-style and modal-style display
+        function showVideoPopup(targetElement, videoSrc, modalMode) {
             const popup = document.getElementById('media-popup');
             const popupContent = popup.querySelector('.video-popup-content');
             const video = document.getElementById('popup-video');
             const image = document.getElementById('popup-image');
             
             // Hide image, show video
+            if (modalMode) {
+                popup.classList.add('image-popup-mode');
+            } else {
+                popup.classList.remove('image-popup-mode');
+            }
             image.style.display = 'none';
             video.style.display = 'block';
             video.src = videoSrc;
             popup.classList.add('visible');
 
-            // Use requestAnimationFrame to ensure the element is measurable before positioning.
-            // This is a robust way to wait for the browser to be ready.
-            requestAnimationFrame(() => {
-                const targetRect = targetElement.getBoundingClientRect();
-                const popupRect = popupContent.getBoundingClientRect();
+            if (modalMode) {
+                popupContent.style.top = '';
+                popupContent.style.left = '';
+                var sizeModalVideo = function() {
+                    var maxW = window.innerWidth * 0.8;
+                    var maxH = window.innerHeight * 0.7;
+                    var vw = video.videoWidth || 0;
+                    var vh = video.videoHeight || 0;
+                    if (vw > 0 && vh > 0) {
+                        var ratio = vw / vh;
+                        var w, h;
+                        if (maxW / ratio <= maxH) { w = maxW; h = maxW / ratio; }
+                        else { h = maxH; w = maxH * ratio; }
+                        video.style.width = Math.round(w) + 'px';
+                        video.style.height = Math.round(h) + 'px';
+                        popupContent.style.width = Math.round(w) + 'px';
+                        popupContent.style.height = Math.round(h) + 'px';
+                    }
+                    video.play().catch(e => console.error("Video autoplay was prevented:", e));
+                };
+                if (video.readyState >= 1) { sizeModalVideo(); }
+                else { video.onloadedmetadata = sizeModalVideo; }
+            } else {
+                // Use requestAnimationFrame to ensure the element is measurable before positioning.
+                requestAnimationFrame(() => {
+                    const targetRect = targetElement.getBoundingClientRect();
+                    const popupRect = popupContent.getBoundingClientRect();
 
-                let top, left;
+                    let top, left;
 
-                // Try to position the popup ABOVE the icon
-                top = targetRect.top - popupRect.height - 10; // 10px margin
+                    top = targetRect.top - popupRect.height - 10;
+                    if (top < 10) {
+                        top = targetRect.bottom + 10;
+                    }
+                    left = targetRect.left + (targetRect.width / 2) - (popupRect.width / 2);
+                    if (left < 10) {
+                        left = 10;
+                    } else if (left + popupRect.width > window.innerWidth - 10) {
+                        left = window.innerWidth - popupRect.width - 10;
+                    }
 
-                // If it goes off the top of the screen, position it BELOW instead
-                if (top < 10) {
-                    top = targetRect.bottom + 10;
-                }
-
-                // Center it horizontally with the icon
-                left = targetRect.left + (targetRect.width / 2) - (popupRect.width / 2);
-
-                // If it goes off the left or right edges, push it back into view
-                if (left < 10) {
-                    left = 10;
-                } else if (left + popupRect.width > window.innerWidth - 10) {
-                    left = window.innerWidth - popupRect.width - 10;
-                }
-
-                // Apply the final, calculated positions
-                popupContent.style.top = `${top}px`;
-                popupContent.style.left = `${left}px`;
-                
-                video.play().catch(e => console.error("Video autoplay was prevented:", e));
-            });
+                    popupContent.style.top = `${top}px`;
+                    popupContent.style.left = `${left}px`;
+                    
+                    video.play().catch(e => console.error("Video autoplay was prevented:", e));
+                });
+            }
         }
 
         function hideVideoPopup() {
@@ -6036,47 +6102,57 @@
             const image = document.getElementById('popup-image');
             
             popup.classList.remove('visible');
+            popup.classList.remove('image-popup-mode');
             
-            // Stop the video after a short delay to prevent it from playing while invisible
             setTimeout(() => {
                 video.pause();
                 video.src = '';
                 video.style.display = 'none';
+                video.style.width = '';
+                video.style.height = '';
                 image.src = '';
                 image.style.display = 'none';
-            }, 200); // This duration matches the CSS transition
+                image.style.width = '';
+                image.style.height = '';
+                var popupContent = popup.querySelector('.video-popup-content');
+                if (popupContent) { popupContent.style.width = ''; popupContent.style.height = ''; }
+            }, 200);
         }
         
         // New unified function to show images in the popup
         function showImagePopup(targetElement, imageSrc) {
-            const popup = document.getElementById('media-popup');
-            const popupContent = popup.querySelector('.video-popup-content');
-            const video = document.getElementById('popup-video');
-            const image = document.getElementById('popup-image');
+            var popup = document.getElementById('media-popup');
+            var popupContent = popup.querySelector('.video-popup-content');
+            var video = document.getElementById('popup-video');
+            var image = document.getElementById('popup-image');
             
-            // Hide video, show image
+            popup.classList.add('image-popup-mode');
             video.style.display = 'none';
             image.style.display = 'block';
             image.src = imageSrc;
             popup.classList.add('visible');
-            
-            // Position the popup (same as video)
-            requestAnimationFrame(() => {
-                const targetRect = targetElement.getBoundingClientRect();
-                const popupRect = popupContent.getBoundingClientRect();
-                let top = targetRect.top - popupRect.height - 10;
-                if (top < 10) {
-                    top = targetRect.bottom + 10;
+
+            popupContent.style.top = '';
+            popupContent.style.left = '';
+
+            var sizeModalImage = function() {
+                var maxW = window.innerWidth * 0.8;
+                var maxH = window.innerHeight * 0.7;
+                var iw = image.naturalWidth || 0;
+                var ih = image.naturalHeight || 0;
+                if (iw > 0 && ih > 0) {
+                    var ratio = iw / ih;
+                    var w, h;
+                    if (maxW / ratio <= maxH) { w = maxW; h = maxW / ratio; }
+                    else { h = maxH; w = maxH * ratio; }
+                    image.style.width = Math.round(w) + 'px';
+                    image.style.height = Math.round(h) + 'px';
+                    popupContent.style.width = Math.round(w) + 'px';
+                    popupContent.style.height = Math.round(h) + 'px';
                 }
-                let left = targetRect.left + (targetRect.width / 2) - (popupRect.width / 2);
-                if (left < 10) {
-                    left = 10;
-                } else if (left + popupRect.width > window.innerWidth - 10) {
-                    left = window.innerWidth - popupRect.width - 10;
-                }
-                popupContent.style.top = `${top}px`;
-                popupContent.style.left = `${left}px`;
-            });
+            };
+            if (image.complete && image.naturalWidth) { sizeModalImage(); }
+            else { image.onload = sizeModalImage; }
         }
         
         // --- START: Stats Tooltip Functions ---
@@ -8060,7 +8136,7 @@
                         // If not, fall back to showing the full-size image.
                         const video = document.createElement('video');
                         video.src = monsterVideoUrl;
-                        video.onloadedmetadata = () => showVideoPopup(item, monsterVideoUrl);
+                        video.onloadedmetadata = () => showVideoPopup(item, monsterVideoUrl, true);
                         video.onerror = () => {
                             // Video failed, try full-size JPG image
                             const imgJpg = new Image();
@@ -8135,7 +8211,7 @@
                     item.addEventListener('click', function() {
                         const video = document.createElement('video');
                         video.src = npcVideoUrl;
-                        video.onloadedmetadata = () => showVideoPopup(item, npcVideoUrl);
+                        video.onloadedmetadata = () => showVideoPopup(item, npcVideoUrl, true);
                         video.onerror = () => {
                             const tryFullPortrait = () => {
                                 const imgFull = new Image();
@@ -8225,7 +8301,7 @@
                         const video = document.createElement('video');
                         video.src = npcVideoUrl;
                         video.onloadedmetadata = () => {
-                            showVideoPopup(event.currentTarget, npcVideoUrl);
+                            showVideoPopup(event.currentTarget, npcVideoUrl, true);
                         };
                         video.onerror = () => {
                             // Video not available, try full image chain
@@ -8395,6 +8471,18 @@
                                 withAssetVersion(`${npcBasePath}_thumb.jpg`, versionFromMeta),
                             ]);
 
+                    // TABLETOP MODE: Party companions should use the same portrait-first asset chain as PCs,
+                    // so recruited allies with static portraits open at full modal scale instead of thumb-only NPC media.
+                    const companionPopupImageCandidates = [
+                        playerFullPortraitUrl,
+                        playerPortraitUrl,
+                        withAssetVersion(`/static/portraits/${slugFromMeta}.jpg`, versionFromMeta),
+                        withAssetVersion(`/static/portraits/${slugFromMeta}.png`, versionFromMeta),
+                        withAssetVersion(`${npcBasePath}.jpg`, versionFromMeta),
+                        withAssetVersion(`${npcBasePath}.png`, versionFromMeta),
+                        withAssetVersion(`${npcBasePath}_thumb.jpg`, versionFromMeta),
+                    ];
+
                     item.style.backgroundSize = 'cover';
                     item.style.backgroundPosition = 'center';
                     item.style.color = 'white';
@@ -8417,6 +8505,8 @@
                     applyFirstAvailableImage(tileImageCandidates, (hasImage, selectedImage) => {
                         item.style.backgroundImage = hasImage ? `url('${selectedImage}')` : '';
                     });
+
+                    const isPartyCompanion = member.type === 'npc' && !isLocationNpc && !isLocationHostile;
 
                     const textSpan = document.createElement('span');
                     textSpan.classList.add('initiative-item-text');
@@ -8445,11 +8535,16 @@
                     attachTooltipListeners(item);
 
                     item.addEventListener('click', function() {
+                        // TABLETOP MODE: All member types use unified video-first path.
+                        // Companions use companionPopupImageCandidates for image fallback;
+                        // others use popupImageCandidates.
+                        const imageFallback = isPartyCompanion ? companionPopupImageCandidates : popupImageCandidates;
+
                         // On click, check for video first. If it exists, show it.
                         // If not, fall back to showing the full-size image.
                         const tryVideoAt = (urls) => {
                             if (!urls.length) {
-                                applyFirstAvailableImage(popupImageCandidates, (hasImage, selectedImage) => {
+                                applyFirstAvailableImage(imageFallback, (hasImage, selectedImage) => {
                                     if (hasImage) {
                                         showImagePopup(item, selectedImage);
                                     }
@@ -8459,7 +8554,7 @@
                             const [firstVideo, ...restVideos] = urls;
                             const video = document.createElement('video');
                             video.src = firstVideo;
-                            video.onloadedmetadata = () => showVideoPopup(item, firstVideo);
+                            video.onloadedmetadata = () => showVideoPopup(item, firstVideo, true);
                             video.onerror = () => tryVideoAt(restVideos);
                         };
 
@@ -10645,7 +10740,7 @@
     <div id="media-popup" class="video-popup">
         <div class="video-popup-content">
             <video id="popup-video" style="display: none;" autoplay loop muted playsinline></video>
-            <img id="popup-image" style="display: none; width: 100%; height: auto; border-radius: 5px;" src="" alt="Character Portrait"/>
+            <img id="popup-image" src="" alt="Character Portrait"/>
         </div>
     </div>
     

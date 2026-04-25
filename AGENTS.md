@@ -1034,6 +1034,67 @@ character_data["is_active_pc"] = True
 
 ## Recent Changes
 
+### Portrait Popup Modal Sizing + Video-First Path Unification (COMPLETED - 2026-04-25)
+
+**Status:** COMPLETED - Top menubar NPC/PC portrait click popups now use the same large centered modal style as Module Media Generator popups instead of the old small 350px anchored hover preview.
+
+**Objective:**
+- Make portrait/image popups fill up to 80vw x 70vh with aspect-ratio-correct sizing, matching the Module Media Generator modal style.
+- Ensure video popups also use the large centered modal when click-initiated (not just image popups).
+- Unify all member types (PC, allied NPC, hostile NPC, monster) through a video-first popup path with image fallback.
+- Eliminate allied NPC popup size discrepancy and video skip.
+
+**Implementation Summary:**
+- **CSS (`image-popup-mode`):** Added `.video-popup.image-popup-mode` class that switches the overlay to centered flex layout with dark backdrop. `.video-popup-content` gets `max-width:80vw; max-height:80vh`. `#popup-video` and `#popup-image` get `max-width:80vw; max-height:70vh` as viewport caps.
+- **JS dynamic sizing:** Replaced CSS `width:80vw` with `sizeModalVideo()` and `sizeModalImage()` functions that calculate exact display dimensions from media aspect ratio within 80vw/70vh bounds, setting both media and container to exact pixel sizes (no pillarboxing). `hideVideoPopup()` resets inline styles.
+- **`showVideoPopup(targetElement, videoSrc, modalMode)`:** Added `modalMode` parameter. When true: adds `image-popup-mode`, clears position, uses centered modal layout. When falsy: removes `image-popup-mode`, uses old icon-relative hover positioning.
+- **All click-initiated `showVideoPopup()` calls** now pass `modalMode=true`: combat monster, combat player, combat NPC, party strip.
+- **`showImagePopup()`** always adds `image-popup-mode` for centered modal.
+- **`hideVideoPopup()`** removes `image-popup-mode` on close.
+- **Party strip click handler:** Removed `isPartyCompanion` early return that skipped video for allied NPCs. All member types now use unified `tryVideoAt(videoCandidates)` video-first path with `companionPopupImageCandidates` fallback for companions.
+- **Split candidate arrays:** `tileImageCandidates` (thumb-first for strip rendering) vs `popupImageCandidates`/`companionPopupImageCandidates` (full-image-first for quality modals).
+
+**Files Modified:**
+- `web/templates/game_interface.html` - CSS modal-mode rules, JS popup functions, party strip click handler unification, dynamic aspect-ratio sizing
+
+### OpenSpec Archive Sweep + Sidebar/Thornwood Regression Closure (COMPLETED - 2026-04-24)
+
+**Status:** COMPLETED - Archived all currently completed active OpenSpec changes, synced main specs, hardened sidebar report freshness handling, and closed the Thornwood unresolved-destination regression with authored-source fixes.
+
+**Objective:**
+- Archive every completed active OpenSpec change to clean the active deck.
+- Fix stale sidebar failure surfacing from legacy/non-authoritative persisted reports.
+- Resolve Thornwood's real `north tower` semantic blocker and remove orphan `Merchant Lira` authority drift.
+
+**Implementation Summary:**
+- Archived completed active changes:
+  - `openspec/changes/archive/2026-04-23-toolkit-build-report-refresh-contract/`
+  - `openspec/changes/archive/2026-04-23-toolkit-mmg-build-report-refresh/`
+  - `openspec/changes/archive/2026-04-23-toolkit-semantic-shortform-destination-normalization/`
+  - `openspec/changes/archive/2026-04-23-toolkit-monster-hydration-schema-sufficiency/`
+  - `openspec/changes/archive/2026-04-23-toolkit-sidebar-report-freshness-and-severity/`
+  - `openspec/changes/archive/2026-04-23-thornwood-semantic-destination-normalization/`
+- Synced specs during archive flow (no `--skip-specs`) for refreshed toolkit/sidebar/semantic surfaces.
+- Sidebar freshness/severity remediation:
+  - `core/generators/module_stitcher.py`
+  - `scripts/test_module_sidebar_audit_failure_signals.py`
+  - Sidebar failure signals now require current authoritative report freshness; stale/legacy failed reports fail open.
+- Thornwood durable semantic/source remediation:
+  - `modules/The_Thornwood_Watch/areas/RO001.json` (added `North Tower` alias on `RO06`)
+  - `modules/The_Thornwood_Watch/module_context.json`
+  - `modules/The_Thornwood_Watch/module_context_BU.json`
+  - Removed orphan module-context-only `Merchant Lira` entry that had no authored scene authority source.
+- Refreshed persisted Thornwood toolkit report through shared finisher contract after source fixes.
+
+**Verification:**
+- `openspec validate toolkit-sidebar-report-freshness-and-severity` -> VALID
+- `openspec validate thornwood-semantic-destination-normalization` -> VALID
+- `.venv/bin/python scripts/test_module_sidebar_audit_failure_signals.py` -> PASS
+- `.venv/bin/python scripts/module_semantic_authority_audit.py --module The_Thornwood_Watch --json` -> PASS
+- `.venv/bin/python scripts/audit_module_publishability.py --module The_Thornwood_Watch --json` -> PASS (`ready_status=pass`, `publishable_status=pass`)
+- `.venv/bin/python scripts/audit_module_publishability.py --module The_Hidden_City_of_Numillian --json` -> PASS (`ready_status=pass`, `publishable_status=pass`)
+- Sidebar sanity check via `ModuleStitcher.get_available_modules()` now returns no `brief_failure` for both Thornwood and Numillian.
+
 ### Module Publishability Bucket A/B Closure + Scene-Entity Gate Guard (COMPLETED - 2026-04-22)
 
 **Status:** COMPLETED - Closed active non-excluded module publishability blockers, completed Bucket B Numillian semantic/provenance closure, and finished `gui-builder-structural-stabilization` section 4 guardrails.
