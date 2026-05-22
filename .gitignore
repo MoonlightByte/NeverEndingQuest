@@ -233,6 +233,7 @@ test_*.py
 !tests/test_combat_builder_npc_compendium_lookup.py
 !tests/test_character_builders_json_retry.py
 !tests/test_campaign_context_newlines.py
+!tests/test_module_builder_collision.py
 *_test.py
 
 # Reference documents (local working docs, do not commit)

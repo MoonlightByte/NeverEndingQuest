@@ -446,14 +446,43 @@ MODULE INDEPENDENCE RULES:
         return character_names
     
     def create_module_directories(self):
-        """Create all required module directories"""
+        """Create all required module directories.
+
+        OW-H2 (T5-7): Detect collision with an existing built module BEFORE
+        creating any subdirectories. The marker for a previously completed
+        build is ``module_plot.json`` in ``output_directory``. If found,
+        pick the next free ``<base>_v2``, ``<base>_v3``, ... slot under
+        the same parent directory and update ``self.config.module_name``
+        plus ``self.config.output_directory`` to point at it. This avoids
+        overwriting the existing module's areas, plot, party tracker, and
+        _BU.json backups. Bare empty directories (e.g., the one created by
+        ``ModuleBuilder.__init__`` at line 88, or an aborted prior run) do
+        NOT trip collision detection -- only a completed build does.
+        """
+        existing_plot = os.path.join(self.config.output_directory, "module_plot.json")
+        if os.path.exists(existing_plot):
+            parent_dir = os.path.dirname(self.config.output_directory) or "."
+            base = self.config.module_name
+            suffix = 2
+            while os.path.exists(os.path.join(parent_dir, f"{base}_v{suffix}")):
+                suffix += 1
+            new_name = f"{base}_v{suffix}"
+            new_output = os.path.join(parent_dir, new_name)
+            warning(
+                f"Module name collision detected at {self.config.output_directory}; "
+                f"renamed in-progress build to {new_output} to protect the existing module",
+                category="module_generation",
+            )
+            self.config.module_name = new_name
+            self.config.output_directory = new_output
+
         required_dirs = ["characters", "monsters", "encounters", "areas"]
-        
+
         # Add media directories for module-specific assets
         media_dirs = ["media", "media/monsters", "media/npcs", "media/environment"]
-        
+
         all_dirs = required_dirs + media_dirs
-        
+
         for dir_name in all_dirs:
             dir_path = os.path.join(self.config.output_directory, dir_name)
             os.makedirs(dir_path, exist_ok=True)
