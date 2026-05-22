@@ -379,6 +379,96 @@ class ModuleValidator:
 
         return len(errors) == 0, errors
 
+    def validate_bidirectional_connectivity(self, module_path=None):
+        """Validate that location-to-location connections are bidirectional.
+
+        For each location L with connection target T in its `connectivity`
+        array, verify that another location named T exists within the SAME
+        area and lists L in its own `connectivity`. Per loca_schema,
+        `connectivity` entries are location NAMES (not IDs).
+
+        This addresses VAL-H2 / MP-H4: one-way connections strand players,
+        because navigation works A -> B but B does not list A so there is
+        no way back.
+
+        Vacuous case: if no location declares any connectivity, the
+        bidirectional property is trivially satisfied -> (True, []).
+        Unreachable-area detection is the job of
+        `validate_area_connectivity`, not this validator.
+
+        Args:
+            module_path: Optional path to override `self.module_path`.
+                When None, uses `self.module_path`.
+
+        Returns:
+            (passed, errors) tuple. `passed` is True iff `errors` is empty.
+            Error format:
+                "Location '<name>' connects to '<target>' but '<target>'
+                 does not connect back"
+            When `<target>` does not exist as a location at all, the error
+            instead reads:
+                "Location '<name>' connects to '<target>' but '<target>'
+                 does not exist"
+        """
+        import json
+
+        base_path = Path(module_path) if module_path is not None else self.module_path
+        areas_dir = base_path / "areas"
+
+        errors = []
+
+        if not areas_dir.exists():
+            return True, errors
+
+        # VAL-C1: exclude *_BU.json backups; live files are the source of truth.
+        area_files = [
+            f for f in areas_dir.glob("*.json")
+            if not f.name.endswith("_BU.json")
+        ]
+
+        for file_path in area_files:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception:
+                # Malformed area files are caught by schema validation
+                # elsewhere; skip them here so this validator stays focused.
+                continue
+
+            locations = data.get('locations', []) or []
+
+            # Build name -> connectivity-list map for THIS area only.
+            # Per loca_schema, connectivity is a list of location names
+            # within the same area (areaConnectivity handles cross-area).
+            name_to_conns = {}
+            for loc in locations:
+                if not isinstance(loc, dict):
+                    continue
+                name = loc.get('name')
+                if not name:
+                    continue
+                conns = loc.get('connectivity', []) or []
+                name_to_conns[name] = list(conns)
+
+            # Check each declared connection has a matching reverse edge.
+            for src_name, conn_list in name_to_conns.items():
+                for target_name in conn_list:
+                    if target_name not in name_to_conns:
+                        errors.append(
+                            f"Location '{src_name}' connects to "
+                            f"'{target_name}' but '{target_name}' does "
+                            f"not exist"
+                        )
+                        continue
+                    if src_name not in name_to_conns[target_name]:
+                        errors.append(
+                            f"Location '{src_name}' connects to "
+                            f"'{target_name}' but '{target_name}' does "
+                            f"not connect back"
+                        )
+
+        return len(errors) == 0, errors
+
     def validate_all_files(self):
         """Validate all files and return results (required by module_stitcher)"""
         self.run_all_validations()
@@ -414,7 +504,15 @@ class ModuleValidator:
         else:
             self.results["connectivity"]["failed"] = 1
             self.results["connectivity"]["errors"] = errors
-                
+
+        # VAL-H2 / MP-H4: bidirectional location-to-location connectivity
+        bi_success, bi_errors = self.validate_bidirectional_connectivity()
+        if bi_success:
+            self.results["bidirectional_connectivity"]["passed"] = 1
+        else:
+            self.results["bidirectional_connectivity"]["failed"] = 1
+            self.results["bidirectional_connectivity"]["errors"] = bi_errors
+
     def run_validation(self):
         """Run all validations"""
         print(f"\nValidating module: {self.module_path}")
@@ -433,7 +531,15 @@ class ModuleValidator:
         self.validate_party_tracker()
         self.validate_module_context()
         self.validate_encounter_files()
-        
+
+        # VAL-H2 / MP-H4: bidirectional location-to-location connectivity
+        bi_success, bi_errors = self.validate_bidirectional_connectivity()
+        if bi_success:
+            self.results["bidirectional_connectivity"]["passed"] = 1
+        else:
+            self.results["bidirectional_connectivity"]["failed"] = 1
+            self.results["bidirectional_connectivity"]["errors"] = bi_errors
+
     def print_report(self):
         """Print comprehensive validation report"""
         print("\n" + "=" * 80)
@@ -460,8 +566,9 @@ class ModuleValidator:
         print("-" * 80)
         
         file_type_order = ["module", "area", "character", "monster", "map", "plot",
-                          "party", "module_context", "encounter", "connectivity"]
-        
+                          "party", "module_context", "encounter", "connectivity",
+                          "bidirectional_connectivity"]
+
         for file_type in file_type_order:
             if file_type not in self.results:
                 continue
@@ -479,6 +586,24 @@ class ModuleValidator:
                         print(f"    - {error}")
                 else:
                     print(f"  Status: [SKIPPED] No multi-area module")
+                continue
+
+            # Special handling for bidirectional connectivity (no files list)
+            if file_type == "bidirectional_connectivity":
+                result = self.results[file_type]
+                print(f"\nBIDIRECTIONAL CONNECTIVITY CHECK")
+                if result.get("passed", 0) > 0:
+                    print(f"  Status: [OK] ALL CONNECTIONS BIDIRECTIONAL")
+                elif result.get("failed", 0) > 0:
+                    print(f"  Status: [ERROR] ONE-WAY CONNECTIONS DETECTED")
+                    print("  Errors:")
+                    for error in result.get("errors", [])[:10]:
+                        print(f"    - {error}")
+                    remaining = len(result.get("errors", [])) - 10
+                    if remaining > 0:
+                        print(f"    ... and {remaining} more errors")
+                else:
+                    print(f"  Status: [SKIPPED]")
                 continue
 
             if not self.results[file_type].get("files"):
