@@ -296,7 +296,7 @@ MODULE INDEPENDENCE RULES:
         climactic_location.setdefault("npcs", []).append(antagonist_npc_entry)
         
         # 7. Save the updated area file
-        safe_write_json(area_data, area_file_path)
+        safe_write_json(area_file_path, area_data)
         self.log(f"  - SUCCESS: Mandated placement of '{antagonist_name}' in {climactic_area_id}:{climactic_location_id}.")
 
     def generate_areas(self):
