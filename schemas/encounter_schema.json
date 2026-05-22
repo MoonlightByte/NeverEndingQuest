@@ -52,10 +52,12 @@
             "required": ["actionType", "target"]
           },
           "currentHitPoints": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1
           },
           "maxHitPoints": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1
           }
         },
         "required": ["name", "type", "initiative", "status", "conditions", "actions", "currentHitPoints", "maxHitPoints"],

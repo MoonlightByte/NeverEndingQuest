@@ -16,13 +16,16 @@
         "type": "string"
       },
       "armorClass": {
-        "type": "integer"
+        "type": "integer",
+        "minimum": 1
       },
       "hitPoints": {
-        "type": "integer"
+        "type": "integer",
+        "minimum": 1
       },
       "maxHitPoints": {
-        "type": "integer"
+        "type": "integer",
+        "minimum": 1
       },
       "speed": {
         "type": "integer"
@@ -109,7 +112,8 @@
         "type": "string"
       },
       "challengeRating": {
-        "type": "number"
+        "type": "number",
+        "minimum": 0
       },
       "specialAbilities": {
         "type": "array",
@@ -282,6 +286,7 @@
       "alignment",
       "armorClass",
       "hitPoints",
+      "maxHitPoints",
       "speed",
       "abilities",
       "savingThrows",
