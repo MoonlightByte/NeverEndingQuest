@@ -228,27 +228,44 @@ def remove_nested_values(data):
         return data
 
 def main():
-    if len(sys.argv) != 2:
-        print(f"{RED}Usage: python monster_builder.py <monster_name>{RESET}")
-        return
+    # Parse args. --party-level is optional for backward compatibility:
+    # legacy callers that supply only the monster name still work and
+    # fall back to the party_tracker.json read below.
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Generate a 5e monster JSON file.")
+    parser.add_argument("monster_name",
+                        help="Name of the monster to generate.")
+    parser.add_argument("--party-level", type=int, default=None,
+                        help="Average party level for CR scaling. If "
+                             "omitted, falls back to reading "
+                             "party_tracker.json.")
+    args = parser.parse_args()
 
-    monster_name_arg = sys.argv[1]
-    
-    # Get average party level from all character files
-    party_level = 1
-    try:
-        from utils.encoding_utils import safe_json_load
-        party_tracker = safe_json_load("party_tracker.json")
-        if party_tracker and party_tracker.get("partyMembers"):
-            levels = []
-            for character_name in party_tracker["partyMembers"]:
-                character_data = safe_json_load(f"characters/{character_name}.json")
-                if character_data:
-                    levels.append(character_data.get("level", 1))
-            if levels:
-                party_level = round(sum(levels) / len(levels))
-    except:
+    monster_name_arg = args.monster_name
+    cli_party_level = args.party_level
+
+    # Resolve party level: CLI flag wins, else fall back to reading
+    # party_tracker.json (legacy behavior). Bare except on the fallback
+    # preserves the prior contract -- if anything goes wrong we use 1.
+    if cli_party_level is not None:
+        party_level = cli_party_level
+    else:
         party_level = 1
+        try:
+            from utils.encoding_utils import safe_json_load
+            party_tracker = safe_json_load("party_tracker.json")
+            if party_tracker and party_tracker.get("partyMembers"):
+                levels = []
+                for character_name in party_tracker["partyMembers"]:
+                    character_data = safe_json_load(
+                        f"characters/{character_name}.json")
+                    if character_data:
+                        levels.append(character_data.get("level", 1))
+                if levels:
+                    party_level = round(sum(levels) / len(levels))
+        except:
+            party_level = 1
     
     schema_data = load_schema("schemas/mon_schema.json")
     if not schema_data:

@@ -199,26 +199,51 @@ def remove_nested_values(data):
         return data
 
 def main():
-    if len(sys.argv) < 2:
-        print(f"{RED}Usage: python npc_builder.py <npc_name> [race] [class] [level] [background]{RESET}")
-        sys.exit(1)
+    # Use argparse so we can accept --party-level alongside the existing
+    # positional args. Positional args remain optional for backward
+    # compatibility with any legacy callers.
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Generate a 5e NPC JSON file.")
+    parser.add_argument("npc_name", help="Name of the NPC to generate.")
+    parser.add_argument("race", nargs="?", default=None,
+                        help="Optional race override.")
+    parser.add_argument("npc_class", nargs="?", default=None,
+                        help="Optional class override.")
+    parser.add_argument("level", nargs="?", default=None,
+                        help="Optional explicit NPC level (integer or "
+                             "empty string).")
+    parser.add_argument("background", nargs="?", default=None,
+                        help="Optional background override.")
+    parser.add_argument("--party-level", type=int, default=None,
+                        help="Average party level. When supplied, overrides "
+                             "the default 'level 1-3' guidance used for "
+                             "NPC creation if no explicit level is given.")
+    args = parser.parse_args()
 
-    npc_name_arg = sys.argv[1] # Renamed variable
-    npc_race_arg = sys.argv[2] if len(sys.argv) > 2 else None # Renamed variable
-    npc_class_arg = sys.argv[3] if len(sys.argv) > 3 else None # Renamed variable
-    npc_level_arg = None # Renamed variable
-    if len(sys.argv) > 4 and sys.argv[4].isdigit():
-        try:
-            npc_level_arg = int(sys.argv[4])
-        except ValueError:
-            print(f"{RED}Error: Level must be an integer.{RESET}")
+    npc_name_arg = args.npc_name
+    npc_race_arg = args.race
+    npc_class_arg = args.npc_class
+
+    # Parse explicit positional level (preserve legacy validation).
+    npc_level_arg = None
+    if args.level is not None and args.level != "":
+        if args.level.isdigit():
+            try:
+                npc_level_arg = int(args.level)
+            except ValueError:
+                print(f"{RED}Error: Level must be an integer.{RESET}")
+                sys.exit(1)
+        else:
+            print(f"{RED}Error: Level must be an integer or empty if not specified.{RESET}")
             sys.exit(1)
-    elif len(sys.argv) > 4 and not sys.argv[4].isdigit() and sys.argv[4] != '': # handle empty string for level
-        print(f"{RED}Error: Level must be an integer or empty if not specified.{RESET}")
-        sys.exit(1)
 
+    npc_background_arg = args.background
 
-    npc_background_arg = sys.argv[5] if len(sys.argv) > 5 else None # Renamed variable
+    # If no explicit positional level was supplied, use --party-level as
+    # the level guidance so the NPC is scaled to the party.
+    if npc_level_arg is None and args.party_level is not None:
+        npc_level_arg = args.party_level
 
     debug(f"INPUT_PROCESSING: Received arguments - Name: {npc_name_arg}, Race: {npc_race_arg}, Class: {npc_class_arg}, Level: {npc_level_arg}, Background: {npc_background_arg}", category="npc_creation")
 

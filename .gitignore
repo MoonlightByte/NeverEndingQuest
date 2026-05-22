@@ -210,6 +210,7 @@ test_*.py
 !tests/test_campaign_summary_failure.py
 !tests/test_module_stitcher_has_area_files_logging.py
 !tests/test_module_stitcher_safety_check_failclosed.py
+!tests/test_character_builders_party_level_cli.py
 *_test.py
 
 # Reference documents (local working docs, do not commit)

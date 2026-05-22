@@ -131,6 +131,32 @@ def update_party_tracker(encounter_id):
         return encounter_id
     return False
 
+def _get_party_level():
+    """Compute the average party level from party_tracker.json + character
+    files. Falls back to level 1 on any failure (file lock, missing files,
+    parse errors). This mirrors the legacy fallback in monster_builder.main()
+    but resolves the level in the parent process so we can forward it
+    explicitly on the subprocess command line via --party-level. That way
+    a transient read failure in the child does NOT silently degrade a
+    level-8 party to a level-1 encounter (bugs CH-C1, CH-M3).
+    """
+    try:
+        from utils.encoding_utils import safe_json_load
+        party_tracker = safe_json_load("party_tracker.json")
+        if not party_tracker or not party_tracker.get("partyMembers"):
+            return 1
+        levels = []
+        for character_name in party_tracker["partyMembers"]:
+            character_data = safe_json_load(f"characters/{character_name}.json")
+            if character_data:
+                levels.append(character_data.get("level", 1))
+        if levels:
+            return round(sum(levels) / len(levels))
+        return 1
+    except Exception:
+        return 1
+
+
 def load_or_create_monster(monster_type):
     formatted_monster_type = format_type_name(monster_type)
     print(f"[COMBAT_BUILDER] Monster load/create: '{monster_type}' -> '{formatted_monster_type}'")
@@ -150,7 +176,14 @@ def load_or_create_monster(monster_type):
         # Get the path to monster_builder.py relative to the current file
         current_dir = os.path.dirname(os.path.abspath(__file__))
         monster_builder_path = os.path.join(current_dir, "monster_builder.py")
-        result = subprocess.run(["python", monster_builder_path, monster_type], capture_output=True, text=True)
+        # Resolve party level here and pass it explicitly so the child
+        # process is not vulnerable to a transient party_tracker.json read
+        # failure silently falling back to level 1 (bug CH-M3).
+        party_level = _get_party_level()
+        result = subprocess.run(
+            ["python", monster_builder_path, monster_type,
+             "--party-level", str(party_level)],
+            capture_output=True, text=True)
         if result.returncode == 0:
             print(f"[COMBAT_BUILDER] Monster creation successful: {monster_type}")
             info(f"SUCCESS: Monster builder ({monster_type}) - PASS", category="combat_builder")
@@ -238,7 +271,14 @@ def load_or_create_npc(npc_name):
         # Get the path to npc_builder.py relative to the current file
         current_dir = os.path.dirname(os.path.abspath(__file__))
         npc_builder_path = os.path.join(current_dir, "npc_builder.py")
-        result = subprocess.run(["python", npc_builder_path, formatted_npc_name], capture_output=True, text=True)
+        # Resolve party level here and pass it explicitly so npc_builder
+        # does not silently fall back to "level 1-3" guidance for a
+        # high-level party (bug CH-C1).
+        party_level = _get_party_level()
+        result = subprocess.run(
+            ["python", npc_builder_path, formatted_npc_name,
+             "--party-level", str(party_level)],
+            capture_output=True, text=True)
         if result.returncode == 0:
             print(f"[COMBAT_BUILDER] NPC creation successful: {npc_name}")
             info(f"SUCCESS: NPC builder ({npc_name}) - PASS", category="combat_builder")
