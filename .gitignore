@@ -231,6 +231,7 @@ test_*.py
 !tests/test_validate_module_files_strict.py
 !tests/test_location_generator_id_preservation.py
 !tests/test_combat_builder_npc_compendium_lookup.py
+!tests/test_character_builders_json_retry.py
 *_test.py
 
 # Reference documents (local working docs, do not commit)

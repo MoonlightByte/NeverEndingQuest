@@ -150,34 +150,79 @@ Adhere strictly to 5e rules and the provided schema."""
     else:  # legacy
         npc_config = config.NPC_BUILD_LEGACY
 
+    # CH-H1: Retry on JSON parse / schema validation failures. The AI
+    # occasionally returns truncated or malformed JSON on the first try;
+    # retrying recovers without failing the whole combat/module build.
+    # Bound by model_config.MAX_VALIDATION_RETRIES (default 1 => 2 total
+    # attempts). Network/API exceptions are NOT retried -- only parse and
+    # validation errors. Defensive fallback to 1 if the constant is
+    # missing or model_config import fails.
     try:
-        response = capture_and_fanout("T035", api_client.create_completion,
-            messages=prompt_messages,
-            model=npc_config["model"],
-            temperature=0.7,
-            **{k: v for k, v in npc_config.items() if k != "model"})
+        import model_config as _mc
+        _max_retries = getattr(_mc, "MAX_VALIDATION_RETRIES", 1)
+    except Exception:
+        _max_retries = 1
 
-        ai_response = response.choices[0].message.content.strip()
-        #print(f"{YELLOW}AI Response:{RESET}\n{ai_response}")
+    last_json_err = None
+    last_validation_err = None
+    last_ai_response = None
+    last_parsed_data = None
 
-        # Remove markdown code block if present
-        ai_response = re.sub(r'^```json\s*|\s*```$', '', ai_response, flags=re.MULTILINE)
-
+    for attempt in range(_max_retries + 1):
         try:
-            npc_data = json.loads(ai_response)
-            # Remove nested 'value' fields if they exist
-            npc_data = remove_nested_values(npc_data)
-            npc_data, _ = repair_required_ammunition_field(npc_data)
-            validate(instance=npc_data, schema=schema)
-            return npc_data
-        except json.JSONDecodeError as e:
-            print(f"{RED}Error: Invalid JSON in AI response. {str(e)}{RESET}")
-            print(f"{YELLOW}Processed AI response:{RESET}\n{ai_response}")
-        except ValidationError as e:
-            print(f"{RED}Error: Generated NPC data does not match schema. {str(e)}{RESET}")
-            print(f"{YELLOW}Problematic NPC data:{RESET}\n{json.dumps(npc_data, indent=2)}") # Log problematic data
-    except Exception as e:
-        print(f"{RED}Error: Failed to generate NPC data. {str(e)}{RESET}")
+            response = capture_and_fanout("T035", api_client.create_completion,
+                messages=prompt_messages,
+                model=npc_config["model"],
+                temperature=0.7,
+                **{k: v for k, v in npc_config.items() if k != "model"})
+
+            ai_response = response.choices[0].message.content.strip()
+            #print(f"{YELLOW}AI Response:{RESET}\n{ai_response}")
+
+            # Remove markdown code block if present
+            ai_response = re.sub(r'^```json\s*|\s*```$', '', ai_response, flags=re.MULTILINE)
+            last_ai_response = ai_response
+
+            try:
+                npc_data = json.loads(ai_response)
+                # Remove nested 'value' fields if they exist
+                npc_data = remove_nested_values(npc_data)
+                npc_data, _ = repair_required_ammunition_field(npc_data)
+                last_parsed_data = npc_data
+                validate(instance=npc_data, schema=schema)
+                return npc_data
+            except json.JSONDecodeError as e:
+                last_json_err = e
+                last_validation_err = None
+                warning(
+                    f"NPC build attempt {attempt + 1}/{_max_retries + 1} "
+                    f"returned invalid JSON: {str(e)}",
+                    category="npc_creation",
+                )
+                continue
+            except ValidationError as e:
+                last_json_err = None
+                last_validation_err = e
+                warning(
+                    f"NPC build attempt {attempt + 1}/{_max_retries + 1} "
+                    f"failed schema validation: {str(e)}",
+                    category="npc_creation",
+                )
+                continue
+        except Exception as e:
+            # Network / API failures are not retried here -- preserve the
+            # original outer-Exception contract.
+            print(f"{RED}Error: Failed to generate NPC data. {str(e)}{RESET}")
+            return None
+
+    # All retries exhausted -- emit the original-style final error
+    # messages so log scrapers and operators see the familiar output.
+    if last_json_err is not None:
+        print(f"{RED}Error: Invalid JSON in AI response. {str(last_json_err)}{RESET}")
+        print(f"{YELLOW}Processed AI response:{RESET}\n{last_ai_response}")
+    elif last_validation_err is not None:
+        print(f"{RED}Error: Generated NPC data does not match schema. {str(last_validation_err)}{RESET}")
+        print(f"{YELLOW}Problematic NPC data:{RESET}\n{json.dumps(last_parsed_data, indent=2)}")
 
     return None
 
