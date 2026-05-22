@@ -216,10 +216,11 @@ class ModuleStitcher:
                 # Check if it's an area file by loading and checking structure
                 try:
                     data = safe_json_load(file_path)
-                    if (data and 'areaId' in data and 'areaName' in data and 
+                    if (data and 'areaId' in data and 'areaName' in data and
                         'locations' in data):
                         area_files.append(filename)
-                except:
+                except Exception as e:
+                    warning(f"Skipped malformed area file {file_path}: {e}", category="module_integration")
                     continue
             
             return len(area_files) > 0
