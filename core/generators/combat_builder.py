@@ -356,41 +356,39 @@ def load_or_create_npc(npc_name):
             warning(f"FUZZY_MATCH: NPC fuzzy match failed for '{npc_name}' (best score: {best_score:.2f})", category="combat_builder")
     
     # CH-H2 (T5-4): consult the central NPC compendium BEFORE falling
-    # through to AI generation. Prevents duplicate identities when a
-    # module references a known canonical NPC under a slightly
-    # different surface form.
+    # through to AI generation. The compendium carries identity-only
+    # records (canonical name + description); it does NOT contain stat
+    # blocks (HP, AC, abilities, actions). To prevent NAME DRIFT without
+    # losing the AI-generated stat block, on a compendium hit we PIN
+    # the canonical name and then defer stat generation to npc_builder
+    # by passing the canonical name into the subprocess. Future calls
+    # for the same canonical name will resolve via the module-local
+    # character file (named after the canonical form) and skip both
+    # compendium lookup and AI generation entirely.
     if not npc_data:
         compendium_entry = _lookup_npc_in_compendium(npc_name)
         if compendium_entry is not None:
+            canonical_name = compendium_entry.get("name") or npc_name
             print(f"[COMBAT_BUILDER] Compendium hit for '{npc_name}' "
-                  f"-> '{compendium_entry.get('name', npc_name)}'")
+                  f"-> canonical name '{canonical_name}' "
+                  f"(stats deferred to npc_builder)")
             info(
-                f"COMPENDIUM_HIT: NPC '{npc_name}' resolved from compendium "
-                f"as '{compendium_entry.get('name', npc_name)}' "
-                f"(no AI generation)",
+                f"COMPENDIUM_HIT: NPC '{npc_name}' pinned to canonical "
+                f"name '{canonical_name}'; stat block will be generated "
+                f"by npc_builder",
                 category="combat_builder",
             )
-            # Persist the compendium entry to the module-local
-            # characters/ directory so downstream combat code can load
-            # it like any other character file. Mark character_type so
-            # the rest of the pipeline recognizes it as an NPC.
-            npc_data = dict(compendium_entry)
-            npc_data.setdefault("character_type", "npc")
-            try:
-                os.makedirs(os.path.dirname(npc_file), exist_ok=True)
-                with open(npc_file, "w", encoding="utf-8") as fh:
-                    json.dump(npc_data, fh, indent=2)
-            except OSError as write_exc:
-                # If the write fails, fall through to AI generation
-                # rather than returning broken state.
-                warning(
-                    f"COMPENDIUM_WRITE: failed to persist compendium "
-                    f"entry to {npc_file!r} "
-                    f"({type(write_exc).__name__}: {write_exc}); "
-                    "falling back to AI generation",
-                    category="combat_builder",
-                )
-                npc_data = None
+            # Re-resolve the target file path using the canonical name
+            # so the subprocess output lands at the canonical location.
+            # Subsequent calls for any surface form that maps to this
+            # canonical name will find the file on disk.
+            formatted_npc_name = format_type_name(canonical_name)
+            npc_file = path_manager.get_character_path(formatted_npc_name)
+            # Use the canonical name as the npc_name fed to npc_builder.
+            # The subprocess prompt asks the AI to "create an NPC named
+            # '<name>'", so the canonical name flows into the generated
+            # JSON and the resulting filename.
+            npc_name = canonical_name
 
     if not npc_data:
         print(f"[COMBAT_BUILDER] NPC file not found, creating: {npc_file}")
