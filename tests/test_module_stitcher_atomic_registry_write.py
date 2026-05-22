@@ -1,7 +1,7 @@
 """Tests for T3-3 (INT-H7): module_stitcher uses atomic safe_write_json
-for the world_registry.json save inside integrate_module (line 584).
+for the world_registry.json save inside integrate_module.
 
-The legacy code path at core/generators/module_stitcher.py:585 was:
+The legacy code path was:
 
     safe_json_dump(self.world_registry, self.world_registry_file)
 
@@ -9,12 +9,12 @@ The legacy code path at core/generators/module_stitcher.py:585 was:
 atomic. An interruption mid-write corrupts the registry, which is the
 single source of truth for inter-module world state.
 
-T3-3 replaces ONLY that one callsite with:
+T3-3 replaced ONLY the integrate_module callsite with:
 
     safe_write_json(self.world_registry_file, self.world_registry)
 
-The other 7 `safe_json_dump` callsites in this file are deferred to
-T3-3b and must remain unchanged in this commit.
+T3-3b then extended that fix to the remaining 7 safe_json_dump callsites
+in module_stitcher.py (see test_module_stitcher_atomic_writes_all.py).
 
 These tests verify:
   1. The integrate_module success path calls safe_write_json with
@@ -22,8 +22,7 @@ These tests verify:
   2. That same path does NOT use safe_json_dump for the registry save.
   3. The import `from utils.file_operations import safe_write_json`
      is present in module_stitcher.py so the call resolves at runtime.
-  4. The other 7 safe_json_dump callsites (T3-3b scope) still exist
-     and are untouched -- this commit must not regress them.
+  4. After T3-3b, ZERO safe_json_dump callsites remain.
 """
 
 import os
@@ -156,8 +155,7 @@ def test_integrate_module_does_not_use_safe_json_dump_for_registry(tmp_path):
         "travelNarration": {},
     }
 
-    with mock.patch.object(ms_module, "safe_write_json", return_value=True) as m_atomic, \
-         mock.patch.object(ms_module, "safe_json_dump", return_value=None) as m_legacy:
+    with mock.patch.object(ms_module, "safe_write_json", return_value=True) as m_atomic:
         _patched_integrate_module_to_success_point(
             stitcher, module_name, module_data
         )
@@ -173,30 +171,23 @@ def test_integrate_module_does_not_use_safe_json_dump_for_registry(tmp_path):
         f"safe_write_json calls: {m_atomic.call_args_list}"
     )
 
-    # Did safe_json_dump get the registry write? It must NOT.
-    legacy_registry_calls = [
-        call for call in m_legacy.call_args_list
-        # safe_json_dump signature is (data, filepath) -- check arg[1].
-        if len(call.args) >= 2 and isinstance(call.args[1], str)
-           and call.args[1].endswith("world_registry.json")
-    ]
-    assert legacy_registry_calls == [], (
-        "world_registry.json was still saved via the non-atomic safe_json_dump. "
-        f"Offending calls: {legacy_registry_calls}"
+    # After T3-3b, safe_json_dump is no longer imported into module_stitcher.
+    assert not hasattr(ms_module, "safe_json_dump"), (
+        "safe_json_dump should no longer be imported in module_stitcher.py "
+        "after T3-3b. Found a reference -- the dead import remains."
     )
 
 
 # ---------------------------------------------------------------------------
-# Scope guard: T3-3b sites untouched
+# Post-T3-3b: zero safe_json_dump callsites remain
 # ---------------------------------------------------------------------------
 
-def test_t3_3b_safe_json_dump_callsites_still_present():
-    """T3-3 fixes ONLY the line 584/585 callsite. The other 7
-    safe_json_dump callsites (lines 139, 156, 705, 770, 869, 962, 984)
-    are deferred to T3-3b and must remain unchanged in this commit.
+def test_no_safe_json_dump_callsites_remain():
+    """After T3-3b, ALL 8 safe_json_dump callsites in module_stitcher.py
+    have been migrated to safe_write_json. None should remain.
 
-    This guards against an over-eager rewrite that accidentally migrates
-    all 8 sites at once.
+    This is the post-condition for the XS-1 atomic-write migration in
+    this file.
     """
     src_path = (
         Path(__file__).resolve().parents[1]
@@ -211,23 +202,8 @@ def test_t3_3b_safe_json_dump_callsites_still_present():
         for i, line in enumerate(text.splitlines())
         if "safe_json_dump(" in line and "import" not in line
     ]
-    # T3-3 removes 1 (line 585) of the 8 original callsites, leaving 7.
-    # The remaining 7 are T3-3b scope: lines 139 (__init__), 156
-    # (_load_world_registry), 705, 770, 869, 962, 984. The line 139 and
-    # 156 sites ALSO save world_registry but are explicitly deferred --
-    # they handle creation/load-default, not integration.
-    assert len(call_lines) == 7, (
-        f"Expected 7 remaining safe_json_dump callsites after T3-3 (T3-3b scope), "
-        f"got {len(call_lines)}. Either T3-3 was not applied (still 8) or T3-3b "
-        f"was applied early (less than 7). Lines found: "
+    assert len(call_lines) == 0, (
+        f"Expected 0 safe_json_dump callsites after T3-3b, "
+        f"got {len(call_lines)}. Lines found: "
         + ", ".join(f"L{ln}" for ln, _ in call_lines)
-    )
-
-    # Belt-and-suspenders: the line numbers of the remaining 7 sites must
-    # NOT include 585 (or whatever new line the registry save in
-    # integrate_module now occupies). Easier: just confirm 585 is gone.
-    line_numbers = [ln for ln, _ in call_lines]
-    assert 585 not in line_numbers, (
-        f"Line 585 still uses safe_json_dump -- T3-3 was not applied. "
-        f"Lines with safe_json_dump: {line_numbers}"
     )

@@ -100,7 +100,6 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
-from openai import OpenAI
 from core.ai import api_client
 import config
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -110,7 +109,7 @@ register_callsite("T033", "core/generators/module_stitcher.py", 1095)
 
 # Set script name for logging
 set_script_name("module_stitcher")
-from utils.encoding_utils import safe_json_load, safe_json_dump
+from utils.encoding_utils import safe_json_load
 from utils.file_operations import safe_write_json
 from utils.module_path_manager import ModulePathManager
 
@@ -124,7 +123,6 @@ class ModuleStitcher:
         self.root_dir = os.path.dirname(self.modules_dir)
         self.world_registry_file = os.path.join(self.modules_dir, "world_registry.json")
         self.party_tracker_file = os.path.join(self.root_dir, "party_tracker.json")
-        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
 
         # Ensure directories exist
         os.makedirs(self.modules_dir, exist_ok=True)
@@ -137,7 +135,7 @@ class ModuleStitcher:
             print("Migrating to isolated module architecture - removing cross-module connections")
             del self.world_registry['connections']
             self.world_registry['isolatedModules'] = True
-            safe_json_dump(self.world_registry, self.world_registry_file)
+            safe_write_json(self.world_registry_file, self.world_registry)
     
     def _load_world_registry(self) -> Dict[str, Any]:
         """Load world registry or create default"""
@@ -154,7 +152,7 @@ class ModuleStitcher:
                 "themes": {},
                 "isolatedModules": True
             }
-            safe_json_dump(default_registry, self.world_registry_file)
+            safe_write_json(self.world_registry_file, default_registry)
             return default_registry
     
     def detect_new_modules(self) -> List[str]:
@@ -705,7 +703,7 @@ Create atmospheric travel narration that leads into this adventure."""
 
                     # Save updated area file
                     new_area_file = os.path.join(module_path, f"{new_id}.json")
-                    safe_json_dump(area_data, new_area_file)
+                    safe_write_json(new_area_file, area_data)
 
                     # Remove old file
                     os.remove(area_file)
@@ -770,7 +768,7 @@ Create atmospheric travel narration that leads into this adventure."""
                 party_tracker['worldConditions'] = world_conditions
 
                 # Save updated party tracker
-                safe_json_dump(party_tracker, party_tracker_path)
+                safe_write_json(party_tracker_path, party_tracker)
                 print(f"DEBUG: [Module Stitcher] Updated party_tracker.json: {current_location_id} -> {new_location_id} (area ID change)")
                 return True
 
@@ -869,7 +867,7 @@ Create atmospheric travel narration that leads into this adventure."""
                 from core.generators.module_generator import ModuleGenerator
                 temp_generator = ModuleGenerator()
                 updated_area_data = temp_generator.update_area_with_prefix(area_data, new_prefix)
-                safe_json_dump(updated_area_data, area_file_path)
+                safe_write_json(area_file_path, updated_area_data)
                 conflicts_resolved += len(updated_area_data.get('locations', []))
 
         # After re-prefixing, we need to update all references to the old IDs
@@ -962,7 +960,7 @@ Create atmospheric travel narration that leads into this adventure."""
                             
                             # Check if any changes were made before writing
                             if data != updated_data:
-                                safe_json_dump(updated_data, file_path)
+                                safe_write_json(file_path, updated_data)
                                 print(f"DEBUG: [Module Stitcher] Updated location ID references in {os.path.relpath(file_path, module_path)}")
                         
                         except Exception as e:
@@ -984,7 +982,7 @@ Create atmospheric travel narration that leads into this adventure."""
                                 new_location_id = id_mapping[current_location_id]
                                 world_conditions['currentLocationId'] = new_location_id
                                 party_tracker['worldConditions'] = world_conditions
-                                safe_json_dump(party_tracker, party_tracker_path)
+                                safe_write_json(party_tracker_path, party_tracker)
                                 print(f"DEBUG: [Module Stitcher] Updated party_tracker.json: {current_location_id} -> {new_location_id}")
                 except Exception as tracker_error:
                     print(f"DEBUG: [Module Stitcher] WARNING: Could not update party_tracker.json: {tracker_error}")
