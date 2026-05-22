@@ -227,6 +227,7 @@ test_*.py
 !tests/test_schema_numeric_constraints.py
 !tests/test_validate_plot_nextpoints.py
 !tests/test_generate_plots_validation.py
+!tests/test_module_debugger_no_npc_schema_warning.py
 *_test.py
 
 # Reference documents (local working docs, do not commit)

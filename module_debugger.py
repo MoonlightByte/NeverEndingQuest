@@ -77,13 +77,18 @@ class ModuleDebugger:
     
     def load_schemas(self) -> bool:
         """Load all JSON schemas"""
+        # VAL-L1: npc_schema.json was previously listed here but no such
+        # file exists in schemas/ and nothing in this module ever reads
+        # self.schemas["npc_schema.json"] or self.schemas["npc"]. The
+        # entry produced a "Schema not found" warning on every debugger
+        # run with no effect on validation. Removing the dead lookup;
+        # creating a real NPC schema is a separate, deliberate task.
         schema_files = [
             "module_schema.json",
-            "loca_schema.json", 
+            "loca_schema.json",
             "plot_schema.json",
             "party_schema.json",
             "char_schema.json",
-            "npc_schema.json",
             "mon_schema.json",
             "map_schema.json",
             "encounter_schema.json",
