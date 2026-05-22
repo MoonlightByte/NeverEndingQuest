@@ -202,6 +202,7 @@ test_*.py
 !tests/test_module_builder_antagonist_injection.py
 !tests/test_module_builder_summary.py
 !tests/test_module_generator_validation_report_write.py
+!tests/test_validate_module_files_connectivity.py
 *_test.py
 
 # Reference documents (local working docs, do not commit)

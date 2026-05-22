@@ -299,10 +299,13 @@ class ModuleValidator:
 
         # Load all area files
         area_data = {}
-        area_files = list(areas_dir.glob("*_BU.json"))
-
-        if not area_files:
-            area_files = list(areas_dir.glob("*.json"))
+        # VAL-C1: exclude *_BU.json backups; live files are the source of truth.
+        # Previously globbed BU files first, which caused stale backups to poison
+        # connectivity validation by hiding the live (correct) area files.
+        area_files = [
+            f for f in areas_dir.glob("*.json")
+            if not f.name.endswith("_BU.json")
+        ]
 
         for file_path in area_files:
             try:
