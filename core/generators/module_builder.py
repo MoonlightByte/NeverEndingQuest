@@ -559,10 +559,26 @@ The plot title should reference this specific area, not other locations.
                 context=self.context,
                 context_header=area_specific_context
             )
-            
+
+            # MP-C2: Run validate_plot() against the just-generated plot so the
+            # production pipeline catches dangling location / nextPoints refs
+            # before they reach disk. Previously validate_plot was only called
+            # from plot_generator.main(), so bad refs slipped through silently.
+            # Raising ValueError here propagates up to
+            # ai_driven_module_creation()'s try/except cleanup wrapper (added
+            # in OW-H4 / T0-1), which removes the partial module directory.
+            errors = self.plot_gen.validate_plot(plot_data, location_data)
+            if errors:
+                error_msg = "; ".join(errors)
+                warning(
+                    f"Plot validation failed for {area_id}: {error_msg}",
+                    category="module_generation",
+                )
+                raise ValueError(f"Plot validation failed: {error_msg}")
+
             self.plots_data[area_id] = plot_data
             # Individual plot files removed - using centralized module_plot.json instead
-            
+
             # Update context with plot points
             for plot_point in plot_data.get("plotPoints", []):
                 self.context.add_plot_point(
@@ -570,7 +586,7 @@ The plot title should reference this specific area, not other locations.
                     area_id,
                     plot_point.get("location")
                 )
-            
+
             self.log(f"Generated plot for {area_id}")
     
     def unify_plots(self):
