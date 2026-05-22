@@ -66,6 +66,7 @@ from jsonschema import validate, ValidationError
 import config
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.file_operations import safe_write_json
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T034", "core/generators/monster_builder.py", 190)
 
@@ -90,20 +91,29 @@ def load_schema(file_name):
         return None
 
 def save_json(file_name, data):
-    try:
-        # Create directory if it doesn't exist
-        directory = os.path.dirname(file_name)
-        if directory and not os.path.exists(directory):
+    """Atomically save JSON to file via safe_write_json.
+
+    Routes through utils.file_operations.safe_write_json so a crash
+    mid-write cannot corrupt the target file. Preserves the legacy
+    (file_name, data) call order used by existing callers. The parent
+    directory is created up-front because safe_write_json does not
+    create directories.
+    """
+    # Create directory if it doesn't exist (safe_write_json does not).
+    directory = os.path.dirname(file_name)
+    if directory and not os.path.exists(directory):
+        try:
             os.makedirs(directory)
             print(f"{YELLOW}Created directory: {directory}{RESET}")
-        
-        with open(file_name, 'w') as file:
-            json.dump(data, file, indent=2)
+        except OSError as e:
+            print(f"{RED}Error creating directory {directory}: {str(e)}{RESET}")
+            return False
+
+    if safe_write_json(file_name, data):
         info(f"SUCCESS: Monster save ({file_name}) - PASS", category="monster_creation")
         return True
-    except Exception as e:
-        print(f"{RED}Error saving to {file_name}: {str(e)}{RESET}")
-        return False
+    print(f"{RED}Error saving to {file_name}: atomic write failed{RESET}")
+    return False
 
 def generate_monster(monster_name, schema, party_level=1):
     # Build context-aware system prompt

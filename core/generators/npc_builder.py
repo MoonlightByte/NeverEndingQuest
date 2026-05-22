@@ -44,6 +44,7 @@ from core.ai import api_client
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.character_sheet_contract import repair_required_ammunition_field
+from utils.file_operations import safe_write_json
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T035", "core/generators/npc_builder.py", 149)
 
@@ -87,14 +88,17 @@ def load_prompt(file_name):
         return None
 
 def save_json(file_name, data):
-    try:
-        with open(file_name, 'w') as file:
-            json.dump(data, file, indent=2)
+    """Atomically save JSON to file via safe_write_json.
+
+    Routes through utils.file_operations.safe_write_json so a crash
+    mid-write cannot corrupt the target file. Preserves the legacy
+    (file_name, data) call order used by existing callers.
+    """
+    if safe_write_json(file_name, data):
         info(f"SUCCESS: NPC save ({file_name}) - PASS", category="npc_creation")
         return True
-    except Exception as e:
-        print(f"{RED}Error saving to {file_name}: {str(e)}{RESET}")
-        return False
+    print(f"{RED}Error saving to {file_name}: atomic write failed{RESET}")
+    return False
 
 def generate_npc(npc_name, schema, npc_race=None, npc_class=None, npc_level=None, npc_background=None):
     system_prompt_text = load_prompt("prompts/generators/npc_builder_prompt.txt") # Renamed variable

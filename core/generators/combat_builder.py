@@ -17,6 +17,7 @@ import logging
 import shutil
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.file_operations import safe_write_json
 
 # Set script name for logging
 set_script_name("combat_builder")
@@ -69,13 +70,16 @@ def backup_player_file(player_file):
         logging.error(f"Failed to backup player file: {str(e)}")
 
 def save_json(file_name, data):
-    try:
-        with open(file_name, 'w', encoding='utf-8') as file:
-            json.dump(data, file, indent=2, ensure_ascii=False)
+    """Atomically save JSON to file via safe_write_json.
+
+    Routes through utils.file_operations.safe_write_json so a crash
+    mid-write cannot corrupt the target file. Preserves the legacy
+    (file_name, data) call order used by existing callers.
+    """
+    if safe_write_json(file_name, data):
         return True
-    except Exception as e:
-        print(colored(f"Error saving to {file_name}: {str(e)}", "red"))
-        return False
+    print(colored(f"Error saving to {file_name}: atomic write failed", "red"))
+    return False
 
 def get_current_area_id():
     with open("party_tracker.json", "r", encoding="utf-8") as file:
