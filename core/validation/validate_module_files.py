@@ -42,11 +42,28 @@ class ModuleValidator:
         self.results = defaultdict(lambda: {"files": [], "passed": 0, "failed": 0, "errors": []})
         self.schemas = {}
         
-    def load_schemas(self):
-        """Load all available schemas"""
+    def load_schemas(self, strict: bool = False):
+        """Load all available schemas.
+
+        VAL-C2: When strict=True, the area schema is swapped for
+        `locationfile_schema_strict.json`, which composes the top-level
+        wrapper requirements from `locationfile_schema.json`
+        (areaName/areaId/locations) with the full per-location
+        requirements from `loca_schema.json` (all 21 location fields).
+        This catches omissions (e.g. a missing `doors` array) that the
+        legacy 3-field schema silently allowed.
+
+        Default strict=False preserves backward compatibility with
+        existing callers; only new entry points (e.g. module_stitcher's
+        post-generation validation) opt in.
+        """
+        area_schema = (
+            "locationfile_schema_strict.json" if strict
+            else "locationfile_schema.json"
+        )
         schema_mappings = {
             "module": "module_schema.json",
-            "area": "locationfile_schema.json",  # Area files use locationfile schema
+            "area": area_schema,  # VAL-C2: strict swaps in composed schema
             "character": "char_schema.json",
             "monster": "mon_schema.json",  # Monsters have their own schema
             "map": "map_schema.json",
@@ -601,9 +618,15 @@ class ModuleValidator:
 
         return len(errors) == 0, errors
 
-    def validate_all_files(self):
-        """Validate all files and return results (required by module_stitcher)"""
-        self.run_all_validations()
+    def validate_all_files(self, strict: bool = False):
+        """Validate all files and return results (required by module_stitcher).
+
+        VAL-C2: Pass strict=True to enforce the composed
+        `locationfile_schema_strict.json` for area files. Default
+        strict=False preserves backward compatibility for existing
+        callers that invoke `validate_all_files()` with no arguments.
+        """
+        self.run_all_validations(strict=strict)
         return self.results
     
     def get_success_rate(self):
@@ -617,8 +640,14 @@ class ModuleValidator:
         
         return total_passed / total_files
 
-    def run_all_validations(self):
-        """Run all validation checks"""
+    def run_all_validations(self, strict: bool = False):
+        """Run all validation checks.
+
+        VAL-C2: Forwards `strict` to `load_schemas()` so the stricter
+        area schema is used when requested. Default strict=False keeps
+        existing callers unaffected.
+        """
+        self.load_schemas(strict=strict)
         self.validate_module_files()
         self.validate_area_files()
         self.validate_character_files()
@@ -653,12 +682,17 @@ class ModuleValidator:
             self.results["encounter_creature_resolution"]["failed"] = 1
             self.results["encounter_creature_resolution"]["errors"] = enc_errors
 
-    def run_validation(self):
-        """Run all validations"""
+    def run_validation(self, strict: bool = False):
+        """Run all validations.
+
+        VAL-C2: Pass strict=True to enforce the composed strict area
+        schema. Default strict=False preserves backward compatibility
+        with existing callers and the CLI entry point.
+        """
         print(f"\nValidating module: {self.module_path}")
         print("=" * 80)
-        
-        self.load_schemas()
+
+        self.load_schemas(strict=strict)
         print("\nRunning validations...")
         
         # Run all validation methods

@@ -1339,17 +1339,21 @@ Respond with JSON:
             from core.validation.validate_module_files import ModuleValidator
             
             validator = ModuleValidator(module_path, "schemas")
-            validator.load_schemas()
-            
+
             # Run validation (suppress output)
             import sys
             from io import StringIO
-            
+
             old_stdout = sys.stdout
             sys.stdout = StringIO()
-            
+
             try:
-                results = validator.validate_all_files()
+                # VAL-C2: newly stitched modules must satisfy the full
+                # per-location contract from loca_schema (21 fields),
+                # not just the 3-field legacy locationfile_schema.
+                # validate_all_files(strict=True) loads
+                # locationfile_schema_strict.json for area validation.
+                results = validator.validate_all_files(strict=True)
                 success_rate = validator.get_success_rate()
             finally:
                 sys.stdout = old_stdout
