@@ -251,7 +251,7 @@ MODULE INDEPENDENCE RULES:
             self.log(f"  - WARNING: module_plot.json not found. Cannot determine climactic location.")
             return
 
-        from utils.file_operations import safe_read_json, safe_write_json
+        from utils.file_operations import safe_read_json
         unified_plot = safe_read_json(plot_file_path)
         plot_points = unified_plot.get("plotPoints", [])
         if not plot_points:
@@ -787,9 +787,8 @@ IMPORTANT:
 
     def _update_single_area_plot_hooks(self, area_id, unified_plot):
         """Atomically update plot hooks for a single area with deep merge and safety guards"""
-        # Import here to avoid circular imports
-        from utils.file_operations import safe_write_json, safe_read_json
-        
+        from utils.file_operations import safe_read_json
+
         area_file_path = os.path.join(self.config.output_directory, "areas", f"{area_id}.json")
         
         # STEP 1: Create backup before any changes
