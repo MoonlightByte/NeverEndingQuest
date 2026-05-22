@@ -403,6 +403,24 @@ DM_SUMM_T039_GEMINI_FLASHLITE_MINIMAL = {"model": "gemini-3.1-flash-lite-preview
 DM_SUMM_T039_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 DM_SUMM_T039_LMSTUDIO = {"model": "local-model"}
 
+# --- T012: Starting-location analysis helper (short JSON, mini tier) ---
+# Called by _ai_analyze_starting_location in core/ai/action_handler.py when
+# module integration needs to identify the best starting location for player
+# arrival. Reads a structured module_data dict (areas, locations, NPCs, plot
+# points) and emits a 5-field JSON object: locationId, locationName, areaId,
+# areaName, reasoning. Temperature=0.1 stays at callsite (deterministic IDs).
+#
+# Rationale: structured extraction over already-structured data. The function
+# itself has a deterministic fallback (_get_fallback_starting_location) when
+# AI parsing fails, so this is a quality-of-life enhancer rather than a
+# correctness-critical generator. Mini-tier models are appropriate.
+# Initial selections mirror T039 (also a mini-tier JSON-extraction helper).
+# TODO: Run capture comparison vs DM_SUMM_GPT54MINI_NONE / DM_SUMM_GEMINI_FLASH_LOW.
+DM_LOCSTART_T012_GPT5MINI = {"model": "gpt-5-mini"}
+DM_LOCSTART_T012_GEMINI_FLASHLITE_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal"}
+DM_LOCSTART_T012_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+DM_LOCSTART_T012_LMSTUDIO = {"model": "local-model"}
+
 # --- T015/T016/T018/T019: Adventure Summaries (location updates, chronicles, journals) ---
 # 12/12 synthetic tests passed (4 scenarios x 3 models). Mini-tier (ADVENTURE_SUMMARY_MODEL).
 # T015: location JSON update (temp=0.8). T016: adventure chronicle (temp=0.8, plain text).
@@ -721,6 +739,9 @@ TASK_CAPTURE_CONFIGS = {
     "T033": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
     "T038": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
     "T066": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
+
+    # Module-integration helper: starting location analysis
+    "T012": ("DM_LOCSTART_T012_GPT5MINI", "DM_LOCSTART_T012_GEMINI_FLASHLITE_MINIMAL"),
 
     # Adventure summaries (T015, T016, T018, T019)
     "T015": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),

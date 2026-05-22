@@ -205,6 +205,7 @@ test_*.py
 !tests/test_validate_module_files_connectivity.py
 !tests/test_module_debugger_area_detection.py
 !tests/test_t039_module_summary_export.py
+!tests/test_t012_starting_location_analyzer.py
 *_test.py
 
 # Reference documents (local working docs, do not commit)

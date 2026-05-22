@@ -522,8 +522,6 @@ def get_module_starting_location(module_name: str) -> tuple:
 def _ai_analyze_starting_location(module_data: dict) -> tuple:
     """Use AI to analyze module data and determine the best starting location"""
     try:
-        client = OpenAI(api_key=config.OPENAI_API_KEY)
-        
         system_prompt = """You are an expert 5th edition adventure module analyst. Analyze the provided module data to determine the most logical starting location for player characters entering this adventure module.
 
 ANALYSIS CRITERIA:
@@ -552,10 +550,27 @@ MODULE DATA:
 
 Determine the most logical starting location based on adventure flow, area types, NPCs, and narrative logic."""
 
-        response = capture_and_fanout("T012", client.chat.completions.create, messages=[
+        # T012: starting-location analysis helper (mini-tier JSON extraction).
+        # Route through the provider-aware router so MODEL_PROVIDER toggle
+        # actually drives which provider/model handles the call.
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            locstart_cfg = config.DM_LOCSTART_T012_GPT5MINI
+        elif MODEL_PROVIDER == "gemini":
+            locstart_cfg = config.DM_LOCSTART_T012_GEMINI_FLASHLITE_MINIMAL
+        elif MODEL_PROVIDER == "lmstudio":
+            locstart_cfg = config.DM_LOCSTART_T012_LMSTUDIO
+        else:  # legacy
+            locstart_cfg = config.DM_LOCSTART_T012_LEGACY
+
+        response = capture_and_fanout("T012", api_client.create_completion,
+            messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
-            ], model=config.DM_MINI_MODEL, temperature=0.1)
+            ],
+            model=locstart_cfg["model"],
+            temperature=0.1,
+            **{k: v for k, v in locstart_cfg.items() if k != "model"})
         
         # Track token usage
         if USAGE_TRACKING_AVAILABLE:
