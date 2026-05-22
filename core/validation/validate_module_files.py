@@ -469,6 +469,138 @@ class ModuleValidator:
 
         return len(errors) == 0, errors
 
+    def validate_encounter_creature_resolution(self, module_path=None):
+        """Validate that every enemy in every encounter resolves to a real
+        monster stat block.
+
+        Loads:
+          - data/bestiary/monster_compendium.json (global bestiary; keys
+            in the ``monsters`` dict are the snake_case monsterType ids)
+          - modules/<module>/monsters/*.json (module-local stat blocks;
+            the filename sans ``.json`` is the monsterType id)
+
+        For each encounter file under modules/<module>/encounters/,
+        iterates ``creatures[]``. Only creatures with ``type == 'enemy'``
+        are checked; player/npc entries are skipped. The lookup key is
+        ``creature['monsterType']`` (falling back to a snake_cased
+        ``creature['name']`` if monsterType is absent). If the key
+        resolves to neither the global bestiary nor a module-local
+        monster file, an error is recorded.
+
+        This addresses VAL-H4: the schema only requires ``monsterType``
+        to be a string -- it does not verify that the string identifies
+        a real monster. Encounters referencing nonexistent creatures
+        (e.g. "ancient_purple_dragon") otherwise pass validation.
+
+        Vacuous cases (no encounters dir, encounter with no enemy
+        creatures) return (True, []).
+
+        Args:
+            module_path: Optional path to override ``self.module_path``.
+                When None, uses ``self.module_path``.
+
+        Returns:
+            (passed, errors) tuple. ``passed`` is True iff ``errors``
+            is empty. Each error names the encounter filename and the
+            unresolved monsterType so a fixer can locate the bug.
+        """
+        import json
+        import os
+
+        base_path = Path(module_path) if module_path is not None else self.module_path
+        encounters_dir = base_path / "encounters"
+
+        errors = []
+
+        if not encounters_dir.exists():
+            return True, errors
+
+        # Load global bestiary keys. We tolerate the file being missing
+        # or malformed -- in that case resolution falls back to the
+        # module-local monsters dir only.
+        #
+        # Resolution order for the bestiary path:
+        #   1. cwd-relative ``data/bestiary/monster_compendium.json``
+        #      (used in production: the validator is run from repo root)
+        #   2. repo-root-relative, resolved from this file's location
+        #      (fallback for callers running from elsewhere)
+        # Tests can isolate via ``monkeypatch.chdir`` to a fixture root
+        # containing a fake ``data/bestiary/monster_compendium.json``.
+        global_monster_keys = set()
+        cwd_bestiary = Path.cwd() / "data" / "bestiary" / "monster_compendium.json"
+        # core/validation/validate_module_files.py -> parents[2] is repo root
+        repo_root = Path(__file__).resolve().parents[2]
+        repo_bestiary = repo_root / "data" / "bestiary" / "monster_compendium.json"
+        bestiary_path = cwd_bestiary if cwd_bestiary.exists() else repo_bestiary
+        if bestiary_path.exists():
+            try:
+                with open(bestiary_path, "r", encoding="utf-8") as f:
+                    bestiary_data = json.load(f)
+                monsters = bestiary_data.get("monsters", {}) or {}
+                if isinstance(monsters, dict):
+                    global_monster_keys = set(monsters.keys())
+            except Exception:
+                # Malformed bestiary -- treat as empty, fall back to
+                # module-local resolution only.
+                global_monster_keys = set()
+
+        # Load module-local monster file stems (filename sans .json).
+        local_monster_keys = set()
+        local_monsters_dir = base_path / "monsters"
+        if local_monsters_dir.exists():
+            for mon_file in local_monsters_dir.glob("*.json"):
+                if any(part in mon_file.name for part in ["_BU", ".bak", ".backup", ".tmp"]):
+                    continue
+                local_monster_keys.add(mon_file.stem)
+
+        known_keys = global_monster_keys | local_monster_keys
+
+        # Iterate every encounter file. Skip backups.
+        for enc_file in sorted(encounters_dir.glob("*.json")):
+            if any(part in enc_file.name for part in ["_BU", ".bak", ".backup", ".tmp"]):
+                continue
+
+            try:
+                with open(enc_file, "r", encoding="utf-8") as f:
+                    enc_data = json.load(f)
+            except Exception:
+                # Malformed JSON is caught by schema validation
+                # elsewhere; skip here so this validator stays focused.
+                continue
+
+            creatures = enc_data.get("creatures", []) or []
+            for creature in creatures:
+                if not isinstance(creature, dict):
+                    continue
+                ctype = creature.get("type")
+                if ctype != "enemy":
+                    # Only enemies need a monster stat block. Players
+                    # and NPCs are out of scope for this validator.
+                    continue
+
+                # Prefer explicit monsterType. Fall back to a
+                # snake_cased name if monsterType is absent (schema
+                # requires monsterType for enemies, but be defensive
+                # against legacy files that pre-date the requirement).
+                key = creature.get("monsterType")
+                if not key:
+                    name = creature.get("name") or ""
+                    key = name.strip().lower().replace(" ", "_")
+                if not key:
+                    # No identifier at all -- schema validator will
+                    # catch this; do not double-report.
+                    continue
+
+                if key not in known_keys:
+                    errors.append(
+                        f"{enc_file.name}: creature monsterType "
+                        f"'{key}' does not resolve to any monster in "
+                        f"data/bestiary/monster_compendium.json or "
+                        f"modules/{base_path.name}/monsters/"
+                    )
+
+        return len(errors) == 0, errors
+
     def validate_all_files(self):
         """Validate all files and return results (required by module_stitcher)"""
         self.run_all_validations()
@@ -513,6 +645,14 @@ class ModuleValidator:
             self.results["bidirectional_connectivity"]["failed"] = 1
             self.results["bidirectional_connectivity"]["errors"] = bi_errors
 
+        # VAL-H4: encounter creatures must resolve to real monster stat blocks
+        enc_success, enc_errors = self.validate_encounter_creature_resolution()
+        if enc_success:
+            self.results["encounter_creature_resolution"]["passed"] = 1
+        else:
+            self.results["encounter_creature_resolution"]["failed"] = 1
+            self.results["encounter_creature_resolution"]["errors"] = enc_errors
+
     def run_validation(self):
         """Run all validations"""
         print(f"\nValidating module: {self.module_path}")
@@ -539,6 +679,14 @@ class ModuleValidator:
         else:
             self.results["bidirectional_connectivity"]["failed"] = 1
             self.results["bidirectional_connectivity"]["errors"] = bi_errors
+
+        # VAL-H4: encounter creatures must resolve to real monster stat blocks
+        enc_success, enc_errors = self.validate_encounter_creature_resolution()
+        if enc_success:
+            self.results["encounter_creature_resolution"]["passed"] = 1
+        else:
+            self.results["encounter_creature_resolution"]["failed"] = 1
+            self.results["encounter_creature_resolution"]["errors"] = enc_errors
 
     def print_report(self):
         """Print comprehensive validation report"""
@@ -567,7 +715,7 @@ class ModuleValidator:
         
         file_type_order = ["module", "area", "character", "monster", "map", "plot",
                           "party", "module_context", "encounter", "connectivity",
-                          "bidirectional_connectivity"]
+                          "bidirectional_connectivity", "encounter_creature_resolution"]
 
         for file_type in file_type_order:
             if file_type not in self.results:
@@ -596,6 +744,24 @@ class ModuleValidator:
                     print(f"  Status: [OK] ALL CONNECTIONS BIDIRECTIONAL")
                 elif result.get("failed", 0) > 0:
                     print(f"  Status: [ERROR] ONE-WAY CONNECTIONS DETECTED")
+                    print("  Errors:")
+                    for error in result.get("errors", [])[:10]:
+                        print(f"    - {error}")
+                    remaining = len(result.get("errors", [])) - 10
+                    if remaining > 0:
+                        print(f"    ... and {remaining} more errors")
+                else:
+                    print(f"  Status: [SKIPPED]")
+                continue
+
+            # Special handling for encounter creature resolution (no files list)
+            if file_type == "encounter_creature_resolution":
+                result = self.results[file_type]
+                print(f"\nENCOUNTER CREATURE RESOLUTION CHECK")
+                if result.get("passed", 0) > 0:
+                    print(f"  Status: [OK] ALL ENEMY CREATURES RESOLVE TO BESTIARY")
+                elif result.get("failed", 0) > 0:
+                    print(f"  Status: [ERROR] UNRESOLVED MONSTER REFERENCES DETECTED")
                     print("  Errors:")
                     for error in result.get("errors", [])[:10]:
                         print(f"    - {error}")

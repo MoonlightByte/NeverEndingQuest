@@ -205,6 +205,7 @@ test_*.py
 !tests/test_module_generator_validation_report_write.py
 !tests/test_validate_module_files_connectivity.py
 !tests/test_validate_bidirectional_connectivity.py
+!tests/test_validate_encounter_creatures.py
 !tests/test_module_debugger_area_detection.py
 !tests/test_module_debugger_connectivity_check.py
 !tests/test_module_debugger_areas_subdirectory.py
