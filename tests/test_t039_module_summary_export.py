@@ -110,10 +110,10 @@ def _run_generate_summary(provider, monkeypatch):
 # --------------------------------------------------------------------------
 
 EXPECTED = {
-    "openai":   ("DM_SUMMARY_GPT5MINI",            "gpt-5-mini"),
-    "gemini":   ("DM_SUMMARY_GEMINI_FLASH_MINIMAL","gemini-3.1-flash-lite-preview"),
-    "lmstudio": ("DM_SUMMARY_LMSTUDIO",            "local-model"),
-    "legacy":   ("DM_SUMMARY_LEGACY",              "gpt-4.1-mini-2025-04-14"),
+    "openai":   ("DM_SUMM_T039_GPT5MINI",                 "gpt-5-mini"),
+    "gemini":   ("DM_SUMM_T039_GEMINI_FLASHLITE_MINIMAL", "gemini-3.1-flash-lite-preview"),
+    "lmstudio": ("DM_SUMM_T039_LMSTUDIO",                 "local-model"),
+    "legacy":   ("DM_SUMM_T039_LEGACY",                   "gpt-4.1-mini-2025-04-14"),
 }
 
 

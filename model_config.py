@@ -389,10 +389,19 @@ DM_SUMM_LMSTUDIO = {"model": "local-model"}
 # campaign-relevant fields (relationships, artifacts, hubs, worldState,
 # unlockedModules) from the human-readable saga produced by T038.
 # JSON object output, temp=0.3 stays at callsite.
-DM_SUMMARY_GPT5MINI = {"model": "gpt-5-mini"}
-DM_SUMMARY_GEMINI_FLASH_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal"}
-DM_SUMMARY_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-DM_SUMMARY_LMSTUDIO = {"model": "local-model"}
+#
+# Rationale for cheaper models than T038's sibling DM_SUMM_* group:
+# T039 is a JSON-extraction task (data extraction from completed module summary).
+# It runs AFTER T038 (saga generation) on T038's output, so the upstream summary
+# is already AI-polished. Mini-tier models are sufficient because the task is
+# structured-data extraction, not creative generation. These selections are
+# starting points; capture testing should validate them later.
+# TODO: Run capture comparison vs DM_SUMM_GPT54MINI_NONE / DM_SUMM_GEMINI_FLASH_LOW.
+# The _T039_ segment disambiguates from T038's DM_SUMM_* group (different model/effort).
+DM_SUMM_T039_GPT5MINI = {"model": "gpt-5-mini"}
+DM_SUMM_T039_GEMINI_FLASHLITE_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal"}
+DM_SUMM_T039_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+DM_SUMM_T039_LMSTUDIO = {"model": "local-model"}
 
 # --- T015/T016/T018/T019: Adventure Summaries (location updates, chronicles, journals) ---
 # 12/12 synthetic tests passed (4 scenarios x 3 models). Mini-tier (ADVENTURE_SUMMARY_MODEL).

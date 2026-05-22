@@ -633,13 +633,13 @@ Focus on story outcomes, character development, and decisions that will matter i
             # T039: campaign export-data extraction (mini-tier JSON).
             # MODEL_PROVIDER already imported above for the T038 branch.
             if MODEL_PROVIDER == "openai":
-                summ_cfg = config.DM_SUMMARY_GPT5MINI
+                summ_cfg = config.DM_SUMM_T039_GPT5MINI
             elif MODEL_PROVIDER == "gemini":
-                summ_cfg = config.DM_SUMMARY_GEMINI_FLASH_MINIMAL
+                summ_cfg = config.DM_SUMM_T039_GEMINI_FLASHLITE_MINIMAL
             elif MODEL_PROVIDER == "lmstudio":
-                summ_cfg = config.DM_SUMMARY_LMSTUDIO
+                summ_cfg = config.DM_SUMM_T039_LMSTUDIO
             else:  # legacy
-                summ_cfg = config.DM_SUMMARY_LEGACY
+                summ_cfg = config.DM_SUMM_T039_LEGACY
 
             try:
                 export_response = capture_and_fanout("T039", api_client.create_completion,
