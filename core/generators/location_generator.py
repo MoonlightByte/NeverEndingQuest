@@ -551,6 +551,8 @@ AREA CONNECTIVITY RULES:
 
 Check the location schema carefully for all required fields.
 Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
+
+CRITICAL: You MUST use the exact locationId values from the stubs provided. Do not change, rename, or replace any locationId. The map grid was generated with these specific IDs and the entire module wiring (connectivity, plot references, area cross-links) depends on them. Renaming an ID -- for example returning "R01" when the stub says "A01" -- breaks the module.
 """
 
         from model_config import MODEL_PROVIDER
@@ -573,7 +575,59 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
             response_format={"type": "json_object"},
             **{k: v for k, v in main_cfg.items() if k != "model"})
 
-        return json.loads(response.choices[0].message.content)
+        parsed = json.loads(response.choices[0].message.content)
+
+        # MP-C1: validate that the AI preserved the locationId values from
+        # the stubs. The map grid and all downstream wiring depend on these
+        # exact IDs. If the AI invented new ones (e.g. R-prefixed instead of
+        # the area's actual prefix), the map is effectively orphaned. We
+        # log warnings for minor drift and reject the batch on significant
+        # drift so the caller can retry or fail the build cleanly.
+        returned_locations = parsed.get("locations", []) if isinstance(parsed, dict) else []
+        expected_ids = {
+            stub["locationId"] for stub in location_stubs
+            if isinstance(stub, dict) and "locationId" in stub
+        }
+        if expected_ids and returned_locations:
+            drifted_ids = []
+            for loc in returned_locations:
+                if not isinstance(loc, dict):
+                    continue
+                lid = loc.get("locationId")
+                if lid is not None and lid not in expected_ids:
+                    drifted_ids.append(lid)
+            total_returned = len([l for l in returned_locations if isinstance(l, dict)])
+            if drifted_ids:
+                drift_ratio = len(drifted_ids) / total_returned if total_returned else 0.0
+                # Significant drift -> reject the batch.
+                if drift_ratio > 0.30:
+                    msg = (
+                        "[Location Generator] AI returned wrong locationId values "
+                        "for {drifted}/{total} locations (drift={ratio:.0%}). "
+                        "Expected one of {expected}, got drifted IDs {got}. "
+                        "Rejecting batch -- the AI did not preserve the stub "
+                        "locationIds (MP-C1).".format(
+                            drifted=len(drifted_ids),
+                            total=total_returned,
+                            ratio=drift_ratio,
+                            expected=sorted(expected_ids),
+                            got=drifted_ids,
+                        )
+                    )
+                    print("DEBUG: " + msg)
+                    raise ValueError(msg)
+                # Minor drift -> warn but proceed (best-effort).
+                print(
+                    "DEBUG: [Location Generator] WARNING: AI changed {n} locationId "
+                    "value(s) {drifted} (expected from stubs: {expected}). "
+                    "Proceeding with AI output (drift under threshold).".format(
+                        n=len(drifted_ids),
+                        drifted=drifted_ids,
+                        expected=sorted(expected_ids),
+                    )
+                )
+
+        return parsed
     
     def generate_locations(self,
                           area_data: Dict[str, Any],
