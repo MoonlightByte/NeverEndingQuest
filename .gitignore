@@ -213,6 +213,7 @@ test_*.py
 !tests/test_module_stitcher_safety_check_failclosed.py
 !tests/test_character_builders_party_level_cli.py
 !tests/test_monster_builder_failure_surfacing.py
+!tests/test_module_builder_atomic_writes.py
 *_test.py
 
 # Reference documents (local working docs, do not commit)

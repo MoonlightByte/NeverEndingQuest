@@ -47,6 +47,7 @@ except ImportError:
 from utils.module_context import ModuleContext
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.npc_reconciler import NpcReconciler
+from utils.file_operations import safe_write_json
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T028", "core/generators/module_builder.py", 685)
 register_callsite("T029", "core/generators/module_builder.py", 943)
@@ -92,12 +93,18 @@ class ModuleBuilder:
             timestamp = datetime.now().strftime("%H:%M:%S")
             print(f"DEBUG: [Module Generator] [{timestamp}] {message}")
     
-    def save_json(self, data: Dict[str, Any], filename: str):
-        """Save JSON data to the output directory"""
-        filepath = os.path.join(self.config.output_directory, filename)
-        with open(filepath, "w") as f:
-            json.dump(data, f, indent=2)
-        self.log(f"Saved: {filename}")
+    def _atomic_save_json(self, relative_filename: str, data: Dict[str, Any]) -> bool:
+        """Atomic JSON write to self.config.output_directory/<relative_filename>.
+
+        Argument order is intentionally (filename, data) to mirror the legacy
+        save_json(data, filename) signature swap and minimize per-callsite
+        cognitive load when migrating callers. The underlying
+        utils.file_operations.safe_write_json takes (filepath, data).
+        """
+        filepath = os.path.join(self.config.output_directory, relative_filename)
+        result = safe_write_json(filepath, data)
+        self.log(f"Saved: {relative_filename}")
+        return result
     
     def create_context_header(self, party_members: List[str]) -> str:
         """Create a context header to prepend to all generator prompts"""
@@ -351,11 +358,11 @@ MODULE INDEPENDENCE RULES:
             self.validate_area_consistency(area_data, self.module_data)
             
             self.areas_data[area_id] = area_data
-            self.save_json(area_data, f"areas/{area_id}.json")
-            
+            self._atomic_save_json(f"areas/{area_id}.json", area_data)
+
             # Save the map separately
             if "map" in area_data:
-                self.save_json(area_data["map"], f"map_{area_id}.json")
+                self._atomic_save_json(f"map_{area_id}.json", area_data["map"])
             
             # Context will be updated when locations are generated
             self.context.add_area(area_id, region['regionName'], area_data["areaType"])
@@ -517,8 +524,8 @@ MODULE INDEPENDENCE RULES:
             
             # Add locations to area data and save complete area file
             area_data["locations"] = location_data["locations"]
-            self.save_json(area_data, f"areas/{area_id}.json")
-            
+            self._atomic_save_json(f"areas/{area_id}.json", area_data)
+
             self.log(f"Generated {len(location_data['locations'])} locations for {area_id}")
     
     def generate_plots(self):
@@ -702,8 +709,8 @@ IMPORTANT:
             
             # Save the unified plot
             output_path = os.path.join(self.config.output_directory, "module_plot.json")
-            self.save_json(unified_plot, "module_plot.json")
-            
+            self._atomic_save_json("module_plot.json", unified_plot)
+
             self.log(f"Created unified module plot with {len(unified_plot.get('plotPoints', []))} plot points")
             
         except Exception as e:
@@ -757,7 +764,7 @@ IMPORTANT:
                 unified_plot["plotPoints"].append(new_pp)
                 plot_counter += 1
         
-        self.save_json(unified_plot, "module_plot.json")
+        self._atomic_save_json("module_plot.json", unified_plot)
         self.log(f"Created fallback unified plot with {len(unified_plot['plotPoints'])} plot points")
     
     def update_area_plot_hooks(self):
@@ -1067,7 +1074,7 @@ IMPORTANT:
             "activeQuests": []
         }
         
-        self.save_json(party_tracker, "party_tracker.json")
+        self._atomic_save_json("party_tracker.json", party_tracker)
         self.log("Created party tracker")
     
     def create_module_summary(self):
@@ -1158,8 +1165,8 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 "plot_points": len(self.context.plot_scopes)
             }
         }
-        self.save_json(report, "validation_report.json")
-    
+        self._atomic_save_json("validation_report.json", report)
+
     def create_bu_backups(self):
         """Create _BU.json backup files for all generated module files"""
         import shutil
@@ -1323,8 +1330,8 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 self._create_bidirectional_connection(area_files_for_connection, from_area_id, to_area_id)
                 
                 # Save the updated files after adding connections
-                self.save_json(self.areas_data[from_area_id], f"areas/{from_area_id}.json")
-                self.save_json(self.areas_data[to_area_id], f"areas/{to_area_id}.json")
+                self._atomic_save_json(f"areas/{from_area_id}.json", self.areas_data[from_area_id])
+                self._atomic_save_json(f"areas/{to_area_id}.json", self.areas_data[to_area_id])
 
 def main():
     """Interactive module builder"""
