@@ -1084,7 +1084,7 @@ IMPORTANT:
             for conflict in self.module_data['moduleConflicts']:
                 summary += f"- **{conflict['conflictName']}** ({conflict['scope']}): {conflict['description']}\n"
         
-        summary += """
+        summary += f"""
 
 ## Main Plot
 **Objective**: {self.module_data['mainPlot']['mainObjective']}
