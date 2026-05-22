@@ -155,9 +155,11 @@ class ModuleDebugger:
                 schema_name = schema_mappings[filename]
                 
             # Special handling for area files (locations)
-            # Area files have pattern like HH001.json, GV001.json, etc.
-            if (len(filename) <= 10 and filename.endswith(".json") and 
-                any(filename.startswith(prefix) for prefix in ["HH", "GV", "BH", "BV", "DS", "EM", "DG"])):
+            # Detect area files by STRUCTURE (areaId + locations), not by
+            # filename prefix. The previous hardcoded prefix allowlist
+            # (HH/GV/BH/BV/DS/EM/DG) silently skipped any module using a
+            # different prefix (e.g. VO, TOWN, ZZ).
+            if self._is_area_file(data):
                 self.validate_location_file(filename, data)
                 continue
                 
@@ -179,6 +181,16 @@ class ModuleDebugger:
             else:
                 self.log_warning(f"No schema mapping for: {filename}")
     
+    def _is_area_file(self, data: Any) -> bool:
+        """Detect area files by structure, not filename prefix.
+
+        Area files have both `areaId` and `locations` at the top level.
+        Module-level files (e.g. *_module.json), party_tracker, plot
+        files, and validation reports do not have this shape, so the
+        check is sufficient to disambiguate without false positives.
+        """
+        return isinstance(data, dict) and "areaId" in data and "locations" in data
+
     def validate_location_file(self, filename: str, data: Dict[str, Any]):
         """Special validation for location files"""
         # Area files should have these fields
