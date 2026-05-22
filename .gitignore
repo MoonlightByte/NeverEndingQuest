@@ -219,6 +219,7 @@ test_*.py
 !tests/test_module_stitcher_atomic_registry_write.py
 !tests/test_module_stitcher_atomic_writes_all.py
 !tests/test_module_stitcher_backup_location.py
+!tests/test_module_stitcher_rollback.py
 *_test.py
 
 # Reference documents (local working docs, do not commit)

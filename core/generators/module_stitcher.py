@@ -547,7 +547,7 @@ Create atmospheric travel narration that leads into this adventure."""
         not grow unbounded.
 
         Idempotent and best-effort: safe to call with an empty/None path
-        or with a path that no longer exists. T3-5 will wire this same
+        or with a path that no longer exists. T3-5 wires this same
         helper into the rollback path, which may legitimately call
         cleanup after the backup has already been consumed.
         """
@@ -563,8 +563,106 @@ Create atmospheric travel narration that leads into this adventure."""
             # the integration that just succeeded.
             print(f"    - Warning: Could not clean up backup {backup_path}: {e}")
 
+    def _rollback_module(self, module_name: str, backup_path: str) -> bool:
+        """Restore a module directory from its integration backup.
+
+        Used by `integrate_module` when EITHER the safety-check fails
+        AFTER mutations have already been applied, OR a helper raises
+        mid-mutation and the outer `except Exception` catches it.
+        Without this, the module dir would be left in a half-mutated
+        Frankenstein state (some files renamed, others not).
+
+        Strategy: wipe the current module dir, then copy the backup
+        tree back into place. We do NOT attempt a per-file merge --
+        the backup is the canonical pre-integration snapshot, and a
+        bulk copy is the simplest safe restore.
+
+        Returns True on success. Returns False on any failure
+        (missing backup path, IOError during restore, etc.). When this
+        returns False, the caller is expected to write a `.corrupted`
+        sentinel and RETAIN the backup for forensics.
+        """
+        if not backup_path or not os.path.exists(backup_path):
+            error(
+                f"Rollback failed for {module_name}: backup path missing or "
+                f"empty (path={backup_path!r})",
+                category="module_integration",
+            )
+            return False
+        try:
+            import shutil
+            module_path = os.path.join(self.modules_dir, module_name)
+            # Wipe the (potentially mutated) live module dir before
+            # restoring. copytree() refuses to overwrite, so we must
+            # remove first. ignore_errors=False here so we surface a
+            # genuine permission failure rather than silently swallowing
+            # it and proceeding to copytree() over an inconsistent tree.
+            if os.path.exists(module_path):
+                shutil.rmtree(module_path)
+            shutil.copytree(backup_path, module_path)
+            info(
+                f"Successfully rolled back module {module_name} from backup",
+                category="module_integration",
+            )
+            return True
+        except Exception as e:
+            error(
+                f"Rollback failed for module {module_name}: {e}",
+                exception=e,
+                category="module_integration",
+            )
+            return False
+
+    def _write_corrupted_sentinel(self, module_name: str, reason: str) -> None:
+        """Write a `.corrupted` marker file into the module directory.
+
+        Called when rollback ITSELF fails -- the module is in an
+        unknown half-restored state. The sentinel:
+          - Signals operators / subsequent runs that this module is
+            broken and must not be loaded.
+          - Documents the reason for forensics.
+
+        Best-effort: writing the sentinel must never raise, since by
+        the time we're here something has already gone badly wrong.
+        """
+        try:
+            module_path = os.path.join(self.modules_dir, module_name)
+            if not os.path.isdir(module_path):
+                # If even the module dir is gone, write to the parent
+                # so the marker isn't lost entirely.
+                os.makedirs(module_path, exist_ok=True)
+            sentinel = os.path.join(module_path, ".corrupted")
+            with open(sentinel, "w", encoding="utf-8") as fh:
+                fh.write(reason + "\n")
+        except Exception:
+            # Never raise from the sentinel writer -- the caller is
+            # already on the failure path.
+            pass
+
     def integrate_module(self, module_name: str) -> bool:
-        """Integrate a new module into the world registry with conflict resolution"""
+        """Integrate a new module into the world registry with conflict resolution.
+
+        Rollback contract (T3-5 / INT-C3):
+          - `backup_dir` is created BEFORE any mutation.
+          - `mutations_applied` flips True the moment we call
+            `_resolve_id_conflicts` (which may rename files / rewrite
+            JSON). From that point on, any failure path -- whether
+            the safety check returns False OR the outer
+            `except Exception` fires -- MUST roll the module back
+            from the backup. Without this, partial mutations linger
+            on disk and the module is half-renamed.
+          - If rollback succeeds, the backup is cleaned up.
+          - If rollback FAILS, the backup is RETAINED and a
+            `.corrupted` sentinel is written into the module dir so
+            operators / subsequent runs see the breakage.
+          - Failures BEFORE the first mutation (e.g. analyze_module
+            returns None) do NOT trigger rollback -- nothing changed
+            so there's nothing to restore. The backup is still
+            cleaned up to avoid leaking entries in
+            modules/.integration_backups/.
+        """
+        backup_dir = None
+        mutations_applied = False
         try:
             print(f"Integrating module: {module_name}")
 
@@ -577,9 +675,16 @@ Create atmospheric travel narration that leads into this adventure."""
             module_data = self.analyze_module(module_name)
             if not module_data:
                 print(f"Failed to analyze module: {module_name}")
+                # Pre-mutation failure -- no rollback needed. Clean up
+                # the backup to avoid leaking entries.
+                self._cleanup_backup(backup_dir)
                 return False
 
-            # Check for conflicts and resolve them
+            # Check for conflicts and resolve them.
+            # NOTE: _resolve_id_conflicts may rename area files and
+            # rewrite location IDs in place. Once we enter this call,
+            # we are committed to the rollback contract.
+            mutations_applied = True
             conflicts_resolved = self._resolve_id_conflicts(module_name, module_data, backup_dir)
             if conflicts_resolved:
                 print(f"  - Resolved {conflicts_resolved} ID conflicts")
@@ -593,13 +698,25 @@ Create atmospheric travel narration that leads into this adventure."""
                 module_data = self.analyze_module(module_name)
                 if not module_data:
                     print(f"Failed to re-analyze module after conflict resolution: {module_name}")
+                    # Mutations have already been applied at this
+                    # point -- rollback.
+                    self._handle_integration_failure(
+                        module_name, backup_dir,
+                        reason="Failed to re-analyze module after conflict resolution",
+                    )
                     return False
-            
+
             # Validate module safety
             if not self._validate_module_safety(module_name, module_data):
                 print(f"Module {module_name} failed safety validation - skipping integration")
+                # PATH A: safety check rejected the module AFTER
+                # mutations were applied. Restore from backup.
+                self._handle_integration_failure(
+                    module_name, backup_dir,
+                    reason="Module failed safety validation",
+                )
                 return False
-            
+
             # Add module to registry
             self.world_registry['modules'][module_name] = {
                 "moduleName": module_name,
@@ -610,7 +727,7 @@ Create atmospheric travel narration that leads into this adventure."""
                 "areaCount": len(module_data.get('areas', {})),
                 "travelNarration": module_data.get('travelNarration', {})
             }
-            
+
             # Add areas to registry
             for area_id, area_data in module_data.get('areas', {}).items():
                 self.world_registry['areas'][area_id] = {
@@ -618,13 +735,13 @@ Create atmospheric travel narration that leads into this adventure."""
                     "module": module_name,
                     "addedDate": datetime.now().isoformat()
                 }
-            
+
             # Note: Cross-module connections disabled for clean module isolation
             # Each module is self-contained and transitions are handled by AI narration
-            
+
             # Update registry metadata
             self.world_registry['lastUpdated'] = datetime.now().isoformat()
-            
+
             # Save registry (atomic write: world_registry is the single source
             # of truth for inter-module world state; interruption mid-write
             # would corrupt it).
@@ -638,15 +755,47 @@ Create atmospheric travel narration that leads into this adventure."""
 
             # Integration committed -- rollback is no longer meaningful.
             # Remove the backup so modules/.integration_backups/ does not
-            # accumulate one entry per successful integration. T3-5 will
-            # add cleanup to the rollback path; do NOT wire it there yet.
+            # accumulate one entry per successful integration.
             self._cleanup_backup(backup_dir)
 
             return True
 
         except Exception as e:
+            # PATH B: a helper raised mid-integration. If mutations
+            # were applied before the crash, restore the module from
+            # backup; otherwise it's safe to just leave things alone.
             print(f"Error integrating module {module_name}: {e}")
+            # Drop the partially-built registry entries so we don't
+            # write them on the next integrate call.
+            self.world_registry.get('modules', {}).pop(module_name, None)
+            if mutations_applied:
+                self._handle_integration_failure(
+                    module_name, backup_dir,
+                    reason=f"Integration error: {e}",
+                )
+            else:
+                # Nothing was mutated -- just clean up the backup.
+                self._cleanup_backup(backup_dir)
             return False
+
+    def _handle_integration_failure(self, module_name: str,
+                                     backup_dir: str, reason: str) -> None:
+        """Centralised rollback-and-cleanup for integration failures.
+
+        Tries to restore from `backup_dir`. On rollback success,
+        cleans up the backup. On rollback failure, RETAINS the
+        backup for forensics and writes a `.corrupted` sentinel
+        into the module directory so operators see the breakage.
+
+        Used by both the safety-check-fail path and the outer
+        `except Exception` path in `integrate_module`.
+        """
+        rollback_ok = self._rollback_module(module_name, backup_dir)
+        if rollback_ok:
+            self._cleanup_backup(backup_dir)
+        else:
+            self._write_corrupted_sentinel(module_name, reason)
+            # Backup deliberately NOT cleaned up -- needed for forensics.
     
     def _resolve_id_conflicts(self, module_name: str, module_data: Dict[str, Any], backup_dir: str) -> int:
         """Resolve area ID and location ID conflicts by modifying the new module"""
