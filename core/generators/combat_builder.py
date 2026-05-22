@@ -46,6 +46,84 @@ def format_type_name(name):
     from updates.update_character_info import normalize_character_name
     return normalize_character_name(name)
 
+
+def _normalize_compendium_key(value):
+    """Normalize a name/key for compendium lookup.
+
+    Lowercases, drops anything that is not alphanumeric, and collapses
+    runs of whitespace/punctuation into single underscores. This lets
+    'Garrick the Innkeeper', 'garrick_the_innkeeper', and
+    'garrick the innkeeper' all match the same compendium key.
+    """
+    if not value:
+        return ""
+    out = []
+    prev_sep = False
+    for ch in str(value).lower():
+        if ch.isalnum():
+            out.append(ch)
+            prev_sep = False
+        else:
+            if not prev_sep and out:
+                out.append("_")
+            prev_sep = True
+    # Trim trailing underscore if present.
+    while out and out[-1] == "_":
+        out.pop()
+    return "".join(out)
+
+
+def _lookup_npc_in_compendium(requested_name,
+                              compendium_path="data/bestiary/npc_compendium.json"):
+    """Look the requested NPC up in the central compendium.
+
+    Returns the compendium entry dict on match, or None on miss /
+    missing file / malformed file. Never raises -- callers fall through
+    to AI generation when this returns None.
+
+    Match strategy: normalize the requested name and compare against
+    both each compendium key AND each entry's 'name' field, both
+    normalized the same way. This catches modules that reference an
+    NPC by either form.
+    """
+    try:
+        with open(compendium_path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
+        # Missing or corrupt compendium must NEVER block production.
+        # Log and let the caller proceed with the existing AI path.
+        warning(
+            f"COMPENDIUM_LOOKUP: skipped (path={compendium_path!r}, "
+            f"reason={type(exc).__name__}: {exc})",
+            category="combat_builder",
+        )
+        return None
+    except Exception as exc:  # defensive: never raise out of this helper
+        warning(
+            f"COMPENDIUM_LOOKUP: unexpected error "
+            f"({type(exc).__name__}: {exc})",
+            category="combat_builder",
+        )
+        return None
+
+    npcs = data.get("npcs") if isinstance(data, dict) else None
+    if not isinstance(npcs, dict):
+        return None
+
+    needle = _normalize_compendium_key(requested_name)
+    if not needle:
+        return None
+
+    for key, entry in npcs.items():
+        if not isinstance(entry, dict):
+            continue
+        if _normalize_compendium_key(key) == needle:
+            return entry
+        entry_name = entry.get("name", "")
+        if _normalize_compendium_key(entry_name) == needle:
+            return entry
+    return None
+
 def load_json(file_name):
     try:
         with open(file_name, 'r', encoding='utf-8') as file:
@@ -277,6 +355,43 @@ def load_or_create_npc(npc_name):
             print(f"[COMBAT_BUILDER] No suitable fuzzy match found (best score: {best_score:.2f})")
             warning(f"FUZZY_MATCH: NPC fuzzy match failed for '{npc_name}' (best score: {best_score:.2f})", category="combat_builder")
     
+    # CH-H2 (T5-4): consult the central NPC compendium BEFORE falling
+    # through to AI generation. Prevents duplicate identities when a
+    # module references a known canonical NPC under a slightly
+    # different surface form.
+    if not npc_data:
+        compendium_entry = _lookup_npc_in_compendium(npc_name)
+        if compendium_entry is not None:
+            print(f"[COMBAT_BUILDER] Compendium hit for '{npc_name}' "
+                  f"-> '{compendium_entry.get('name', npc_name)}'")
+            info(
+                f"COMPENDIUM_HIT: NPC '{npc_name}' resolved from compendium "
+                f"as '{compendium_entry.get('name', npc_name)}' "
+                f"(no AI generation)",
+                category="combat_builder",
+            )
+            # Persist the compendium entry to the module-local
+            # characters/ directory so downstream combat code can load
+            # it like any other character file. Mark character_type so
+            # the rest of the pipeline recognizes it as an NPC.
+            npc_data = dict(compendium_entry)
+            npc_data.setdefault("character_type", "npc")
+            try:
+                os.makedirs(os.path.dirname(npc_file), exist_ok=True)
+                with open(npc_file, "w", encoding="utf-8") as fh:
+                    json.dump(npc_data, fh, indent=2)
+            except OSError as write_exc:
+                # If the write fails, fall through to AI generation
+                # rather than returning broken state.
+                warning(
+                    f"COMPENDIUM_WRITE: failed to persist compendium "
+                    f"entry to {npc_file!r} "
+                    f"({type(write_exc).__name__}: {write_exc}); "
+                    "falling back to AI generation",
+                    category="combat_builder",
+                )
+                npc_data = None
+
     if not npc_data:
         print(f"[COMBAT_BUILDER] NPC file not found, creating: {npc_file}")
         warning(f"NPC_LOADING: NPC loading ({npc_name}) - attempting creation", category="combat_builder")
