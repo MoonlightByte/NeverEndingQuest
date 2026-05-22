@@ -618,7 +618,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                     
                     # Create validation report
                     module_dir = f"modules/{module_name}"
-                    save_json_safely({"issues": issues}, f"{module_dir}/validation_report.json")
+                    save_json_safely(f"{module_dir}/validation_report.json", {"issues": issues})
                     print(f"DEBUG: [Module Generator] Validation report saved to {module_dir}/validation_report.json")
                 else:
                     print("DEBUG: [Module Generator] Module validation passed!")
@@ -1009,7 +1009,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
             "errors": debugger.errors,
             "warnings": debugger.warnings
         }
-        save_json_safely(validation_data, f"{module_dir}/validation_report.json")
+        save_json_safely(f"{module_dir}/validation_report.json", validation_data)
         
         print(f"DEBUG: [Module Generator] Validation complete - {len(debugger.errors)} errors, {len(debugger.warnings)} warnings")
         print(f"DEBUG: [Module Generator] Validation report saved to {module_dir}/validation_report.json")
