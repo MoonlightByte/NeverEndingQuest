@@ -246,8 +246,12 @@ def main():
     cli_party_level = args.party_level
 
     # Resolve party level: CLI flag wins, else fall back to reading
-    # party_tracker.json (legacy behavior). Bare except on the fallback
-    # preserves the prior contract -- if anything goes wrong we use 1.
+    # party_tracker.json (legacy behavior, used only when no --party-level
+    # is supplied -- post T5-2 combat_builder always supplies it).
+    # If the fallback read raises (corrupt party_tracker.json, parse
+    # error in a character file, etc.) we used to silently default to
+    # 1, which silently scaled a level-8 party down to CR 1/8 monsters.
+    # Instead surface the failure (CH-C1).
     if cli_party_level is not None:
         party_level = cli_party_level
     else:
@@ -264,8 +268,13 @@ def main():
                         levels.append(character_data.get("level", 1))
                 if levels:
                     party_level = round(sum(levels) / len(levels))
-        except:
-            party_level = 1
+        except Exception as e:
+            print(
+                f"{RED}ERROR: Could not read party_tracker.json for "
+                f"party level fallback: {e}{RESET}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
     
     schema_data = load_schema("schemas/mon_schema.json")
     if not schema_data:

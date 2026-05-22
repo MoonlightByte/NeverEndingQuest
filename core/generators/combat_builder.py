@@ -196,10 +196,19 @@ def load_or_create_monster(monster_type):
                 print(colored(f"Error: Monster file {monster_file} was not created", "red"))
                 return None
         else:
+            # Non-zero return code from monster_builder subprocess
+            # MUST surface to the caller -- previously this returned
+            # None, which generate_encounter() then returned silently,
+            # leaving callers with no indication that the build failed
+            # (CH-C1). Raise RuntimeError so the failure propagates.
             print(f"[COMBAT_BUILDER] Monster creation failed: {monster_type}")
             print(f"[COMBAT_BUILDER] Error output: {result.stderr}")
             error(f"FAILURE: Monster builder ({monster_type}) - FAIL", category="combat_builder")
-            return None
+            raise RuntimeError(
+                f"monster_builder subprocess failed for "
+                f"'{monster_type}' (exit code {result.returncode}): "
+                f"{result.stderr}"
+            )
     else:
         print(f"[COMBAT_BUILDER] Monster loaded from file: {monster_type}")
     return monster_data
