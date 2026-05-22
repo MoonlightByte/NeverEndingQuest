@@ -104,23 +104,58 @@ class ModuleDebugger:
         return True
     
     def load_module_files(self) -> bool:
-        """Load all files from the module directory"""
+        """Load all JSON files from the module directory and its
+        `areas/` subdirectory.
+
+        VAL-H5: Area files live in `<module>/areas/*.json` per the
+        canonical module layout (see CLAUDE.md Module Structure). The
+        previous implementation globbed only the module root, which
+        meant validate_references() had an empty location_ids set and
+        every plot location reference was logged as a false-positive
+        "Plot references non-existent location" error. Files in the
+        areas/ subdir are stored under a path-aware key
+        (`"areas/<filename>"`) so a name collision with a root-level
+        file does not overwrite either entry.
+        """
         if not self.module_path:
             return False
-            
-        module_files = list(Path(self.module_path).glob("*.json"))
-        
-        for file_path in module_files:
+
+        module_root = Path(self.module_path)
+
+        # Root-level files: keyed by bare filename (preserves all
+        # existing behavior for plot_*, *_module.json, party_tracker,
+        # etc. which other validators look up by bare name).
+        root_files = list(module_root.glob("*.json"))
+        for file_path in root_files:
+            filename = file_path.name
             try:
                 with open(file_path, 'r') as f:
                     data = json.load(f)
-                    filename = file_path.name
                     self.module_data[filename] = data
                     self.log_success(f"Loaded: {filename}")
             except json.JSONDecodeError as e:
                 self.log_error(f"Invalid JSON in {filename}: {e}")
                 return False
-                
+
+        # areas/ subdirectory: keyed as "areas/<filename>" so a root
+        # file with the same bare name does not collide. Downstream
+        # validators that iterate self.module_data.items() look at the
+        # data shape (e.g. presence of `areaId` + `locations`), not at
+        # the key path, so the path-prefixed key is safe.
+        areas_dir = module_root / "areas"
+        if areas_dir.exists() and areas_dir.is_dir():
+            area_files = list(areas_dir.glob("*.json"))
+            for file_path in area_files:
+                key = f"areas/{file_path.name}"
+                try:
+                    with open(file_path, 'r') as f:
+                        data = json.load(f)
+                        self.module_data[key] = data
+                        self.log_success(f"Loaded: {key}")
+                except json.JSONDecodeError as e:
+                    self.log_error(f"Invalid JSON in {key}: {e}")
+                    return False
+
         return True
     
     def validate_schema_compliance(self):

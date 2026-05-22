@@ -207,6 +207,7 @@ test_*.py
 !tests/test_validate_bidirectional_connectivity.py
 !tests/test_module_debugger_area_detection.py
 !tests/test_module_debugger_connectivity_check.py
+!tests/test_module_debugger_areas_subdirectory.py
 !tests/test_t039_module_summary_export.py
 !tests/test_t012_starting_location_analyzer.py
 !tests/test_t049_storage_processor.py
