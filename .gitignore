@@ -206,6 +206,7 @@ test_*.py
 !tests/test_module_debugger_area_detection.py
 !tests/test_t039_module_summary_export.py
 !tests/test_t012_starting_location_analyzer.py
+!tests/test_t049_storage_processor.py
 !tests/test_create_new_module_stitching_failure.py
 !tests/test_campaign_summary_failure.py
 !tests/test_module_stitcher_has_area_files_logging.py

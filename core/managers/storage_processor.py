@@ -37,6 +37,8 @@ from openai import OpenAI
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T049", "core/managers/storage_processor.py", 286)
 import config
+from core.ai import api_client
+from model_config import MODEL_PROVIDER
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.module_path_manager import ModulePathManager
 import jsonschema
@@ -281,9 +283,25 @@ For "What's in our storage here?":
                 
                 # Create AI prompt
                 messages = self._create_processing_prompt(description, context)
-                
+
+                # T049: storage-action extraction (mini-tier JSON extraction).
+                # Route through the provider-aware router so MODEL_PROVIDER toggle
+                # actually drives which provider/model handles the call.
+                if MODEL_PROVIDER == "openai":
+                    sp_cfg = config.STORAGE_PROCESSOR_T049_GPT5MINI
+                elif MODEL_PROVIDER == "gemini":
+                    sp_cfg = config.STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_MINIMAL
+                elif MODEL_PROVIDER == "lmstudio":
+                    sp_cfg = config.STORAGE_PROCESSOR_T049_LMSTUDIO
+                else:  # legacy
+                    sp_cfg = config.STORAGE_PROCESSOR_T049_LEGACY
+
                 # Call AI model
-                response = capture_and_fanout("T049", self.client.chat.completions.create, messages=messages, model=self.model, temperature=0.1)
+                response = capture_and_fanout("T049", api_client.create_completion,
+                    messages=messages,
+                    model=sp_cfg["model"],
+                    temperature=0.1,    # callsite owns temperature
+                    **{k: v for k, v in sp_cfg.items() if k != "model"})
                 
                 # Parse AI response
                 ai_response = response.choices[0].message.content.strip()

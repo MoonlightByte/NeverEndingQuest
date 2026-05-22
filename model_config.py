@@ -421,6 +421,24 @@ DM_LOCSTART_T012_GEMINI_FLASHLITE_MINIMAL = {"model": "gemini-3.1-flash-lite-pre
 DM_LOCSTART_T012_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 DM_LOCSTART_T012_LMSTUDIO = {"model": "local-model"}
 
+# --- T049: Storage action extraction (short JSON, mini tier) ---
+# Called when a player issues a storage-related action (deposit, withdraw,
+# transfer, view) on a container at a location. StorageProcessor uses an AI
+# pass to translate the natural-language description into a structured JSON
+# operation that the validator/schema layer then enforces. Temp=0.1 stays at
+# the callsite (deterministic JSON extraction).
+#
+# Rationale: this is a constrained JSON-extraction task over already-known
+# game state (character inventory, container contents). The downstream schema
+# validator + retry loop (max_attempts=3 in storage_processor.process_storage_description)
+# catches any malformed output, so a mini-tier model is correctness-safe.
+# Initial selections mirror T012/T039 (other mini-tier JSON-extraction helpers).
+# TODO: Run capture comparison once telemetry is collected on this callsite.
+STORAGE_PROCESSOR_T049_GPT5MINI = {"model": "gpt-5-mini"}
+STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal"}
+STORAGE_PROCESSOR_T049_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+STORAGE_PROCESSOR_T049_LMSTUDIO = {"model": "local-model"}
+
 # --- T015/T016/T018/T019: Adventure Summaries (location updates, chronicles, journals) ---
 # 12/12 synthetic tests passed (4 scenarios x 3 models). Mini-tier (ADVENTURE_SUMMARY_MODEL).
 # T015: location JSON update (temp=0.8). T016: adventure chronicle (temp=0.8, plain text).
@@ -742,6 +760,9 @@ TASK_CAPTURE_CONFIGS = {
 
     # Module-integration helper: starting location analysis
     "T012": ("DM_LOCSTART_T012_GPT5MINI", "DM_LOCSTART_T012_GEMINI_FLASHLITE_MINIMAL"),
+
+    # Storage action extraction (natural-language -> JSON op)
+    "T049": ("STORAGE_PROCESSOR_T049_GPT5MINI", "STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_MINIMAL"),
 
     # Adventure summaries (T015, T016, T018, T019)
     "T015": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),
