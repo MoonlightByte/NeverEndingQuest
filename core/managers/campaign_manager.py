@@ -1148,28 +1148,28 @@ Focus on story outcomes, character development, and decisions that will matter i
         # Add all completed module summaries (multiple visits per module)
         debug(f"STATE_CHANGE: Completed modules: {self.campaign_data.get('completedModules', [])}", category="summary_building")
         if self.campaign_data['completedModules']:
-            context_parts.append("\\nPREVIOUS ADVENTURES:")
+            context_parts.append("\nPREVIOUS ADVENTURES:")
             for module in self.campaign_data['completedModules']:
                 debug(f"FILE_OP: Loading summaries for module: {module}", category="summary_building")
                 summaries = self._load_module_summaries(module)
                 debug(f"FILE_OP: Found {len(summaries)} summaries for {module}", category="summary_building")
                 if summaries:
-                    context_parts.append(f"\\n=== CHRONICLES OF {module.upper()} ===")
+                    context_parts.append(f"\n=== CHRONICLES OF {module.upper()} ===")
                     for i, summary in enumerate(summaries):
                         visit_num = i + 1
                         seq_num = summary.get('sequenceNumber', visit_num)
-                        context_parts.append(f"\\n--- Visit {visit_num} (Chronicle {seq_num:03d}) ---")
+                        context_parts.append(f"\n--- Visit {visit_num} (Chronicle {seq_num:03d}) ---")
                         summary_text = summary.get('summary', 'No summary available')
                         context_parts.append(summary_text)
                         debug(f"FILE_OP: Added summary {seq_num} ({len(summary_text)} chars)", category="summary_building")
-        
+
         # Add current world state
         if self.campaign_data.get('worldState'):
-            context_parts.append("\\nWORLD STATE:")
+            context_parts.append("\nWORLD STATE:")
             for key, value in self.campaign_data['worldState'].items():
                 context_parts.append(f"- {key}: {value}")
-        
-        final_context = "\\n".join(context_parts)
+
+        final_context = "\n".join(context_parts)
         debug(f"SUCCESS: Final context length: {len(final_context)} characters", category="summary_building")
         return final_context
 
