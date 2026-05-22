@@ -98,6 +98,7 @@ backup_*/
 old_files/
 legacy/
 modules/backups/
+modules/.integration_backups/
 
 # Game state files - ignore live files, keep BU files
 modules/**/areas/*.json
@@ -217,6 +218,7 @@ test_*.py
 !tests/test_character_builders_atomic_writes.py
 !tests/test_module_stitcher_atomic_registry_write.py
 !tests/test_module_stitcher_atomic_writes_all.py
+!tests/test_module_stitcher_backup_location.py
 *_test.py
 
 # Reference documents (local working docs, do not commit)

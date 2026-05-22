@@ -459,7 +459,22 @@ Create atmospheric travel narration that leads into this adventure."""
             }
     
     def _create_module_backup(self, module_name: str) -> str:
-        """Create backup of all module files before integration
+        """Create backup of all module files before integration.
+
+        Backups are stored OUTSIDE the module being backed up, under
+        modules/.integration_backups/<module_name>_<timestamp>/. This
+        prevents two failure modes (INT-C2):
+
+          1. A backup placed inside the module directory means a rollback
+             would restore from a path that may itself have been mutated
+             (or whose parent dir is the corruption target).
+          2. Module-discovery walks would see the backup directory as a
+             candidate module. (Discovery already skips dotted-name dirs
+             at line ~171, which is why the parent is `.integration_backups`.)
+
+        The backup is cleaned up by `_cleanup_backup` once the
+        integration commits successfully -- it is only useful during the
+        narrow integrate_module window.
 
         Returns:
             str: Path to backup directory if successful, None otherwise
@@ -469,9 +484,13 @@ Create atmospheric travel narration that leads into this adventure."""
             if not os.path.exists(module_path):
                 return None
 
-            # Create backup directory with timestamp
+            # Create backup directory with timestamp, OUTSIDE the module dir.
+            # The dotted parent name (`.integration_backups`) ensures the
+            # discovery filter at _detect_new_modules skips this tree.
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            backup_dir = os.path.join(module_path, f"backup_pre_integration_{timestamp}")
+            backups_root = os.path.join(self.modules_dir, ".integration_backups")
+            os.makedirs(backups_root, exist_ok=True)
+            backup_dir = os.path.join(backups_root, f"{module_name}_{timestamp}")
             os.makedirs(backup_dir, exist_ok=True)
 
             # List all files to backup
@@ -517,7 +536,33 @@ Create atmospheric travel narration that leads into this adventure."""
         except Exception as e:
             print(f"Error creating module backup: {e}")
             return None
-    
+
+    def _cleanup_backup(self, backup_path: str):
+        """Remove an integration backup directory.
+
+        The integration backup is only useful during the narrow window of
+        integrate_module. Once the world_registry has been committed (or
+        once rollback has consumed the backup), the directory is dead
+        weight and must be removed so modules/.integration_backups/ does
+        not grow unbounded.
+
+        Idempotent and best-effort: safe to call with an empty/None path
+        or with a path that no longer exists. T3-5 will wire this same
+        helper into the rollback path, which may legitimately call
+        cleanup after the backup has already been consumed.
+        """
+        if not backup_path:
+            return
+        if not os.path.exists(backup_path):
+            return
+        try:
+            import shutil
+            shutil.rmtree(backup_path, ignore_errors=True)
+        except Exception as e:
+            # Best-effort cleanup -- never let a stale backup dir crash
+            # the integration that just succeeded.
+            print(f"    - Warning: Could not clean up backup {backup_path}: {e}")
+
     def integrate_module(self, module_name: str) -> bool:
         """Integrate a new module into the world registry with conflict resolution"""
         try:
@@ -590,9 +635,15 @@ Create atmospheric travel narration that leads into this adventure."""
             travel_text = module_data.get('travelNarration', {}).get('travelNarration', '')
             if travel_text:
                 print(f"  - Generated travel narration: {travel_text[:60]}...")
-            
+
+            # Integration committed -- rollback is no longer meaningful.
+            # Remove the backup so modules/.integration_backups/ does not
+            # accumulate one entry per successful integration. T3-5 will
+            # add cleanup to the rollback path; do NOT wire it there yet.
+            self._cleanup_backup(backup_dir)
+
             return True
-            
+
         except Exception as e:
             print(f"Error integrating module {module_name}: {e}")
             return False
