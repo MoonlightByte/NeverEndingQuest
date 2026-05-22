@@ -357,7 +357,7 @@ def update_location_references(file_path, id_mappings):
         
         # Save if modified
         if modified:
-            save_json_safely(data, file_path)
+            save_json_safely(file_path, data)
             print(f"DEBUG: [Module Generator] Updated location references in {file_path}")
     
     except (json.JSONDecodeError, IOError):
@@ -944,7 +944,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
             module_plot["plotPoints"].append(plot_point)
         
         # Save unified plot file
-        save_json_safely(module_plot, f"{module_dir}/module_plot.json")
+        save_json_safely(f"{module_dir}/module_plot.json", module_plot)
         print(f"DEBUG: [Module Generator] Generated unified module plot file with {len(module_plot['plotPoints'])} plot points")
     
     def save_module(self, module_data: Dict[str, Any], filename: str = None):

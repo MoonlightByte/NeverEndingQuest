@@ -1,6 +1,6 @@
 """
-Tests for OW-C2: correct save_json_safely argument order in production
-validation-report writes.
+Tests for OW-C2: correct save_json_safely argument order in
+`core/generators/module_generator.py`.
 
 `module_generator.py` imports safe_write_json under the alias
 `save_json_safely` (line 82):
@@ -9,36 +9,28 @@ validation-report writes.
 `safe_write_json`'s real signature (utils/file_operations.py:278) is
     safe_write_json(filepath: str, data: Dict[str, Any], ...)
 
-Two production-path call sites in `core/generators/module_generator.py`
-had the arguments REVERSED:
+Four call sites had the arguments REVERSED:
 
-  Line 621 (inside `ModuleGenerator.generate_module()`):
-      save_json_safely({"issues": issues}, f"{module_dir}/validation_report.json")
-      -- dict was passed as filepath.
+  PRODUCTION PATHS (covered by T1-2a):
+    Line 621 (inside `ModuleGenerator.generate_module()`)
+    Line 1012 (inside `ModuleGenerator.save_module()`)
 
-  Line 1012 (inside `ModuleGenerator.save_module()`):
-      save_json_safely(validation_data, f"{module_dir}/validation_report.json")
-      -- dict was passed as filepath.
+  DEAD-CODE PATHS (covered by T1-2b):
+    Line 360 (inside standalone `update_location_references()` function)
+    Line 947 (inside `ModuleGenerator.generate_unified_plot_file()`)
 
-With the bug, atomic_writer.write_json receives a dict where it expects a
-path string. The atomic writer either raises TypeError (path operations on
-dict) or writes the validation report to a file literally named after the
-stringified dict. Either way, the expected on-disk file
-`<module_dir>/validation_report.json` is never created with the validation
-report's JSON contents.
+With the bug, the atomic writer receives a dict where it expects a path
+string. `safe_write_json` stringifies the dict via `str(filepath)` and
+either writes the temp file to a path literally named after the
+stringified dict or returns False. Either way, the expected on-disk file
+is never created with the JSON payload.
 
-This test verifies BOTH call sites by:
-1. Bypassing ModuleGenerator.__init__ so we do not load the real schema
-   or invoke the OpenAI client.
-2. For line 621: invoking generate_module() with custom_values that
-   short-circuit AI field generation, against a minimal module dir whose
-   structure intentionally triggers validation issues.
-3. For line 1012: invoking save_module() with all heavy collaborators
-   (generate_all_areas, generate_unified_plot_file, ModuleDebugger) mocked
-   so only the validation report write path executes.
+Smoke tests for the dead-code paths invoke the containing functions
+in isolation against a tmp directory and assert that the expected file
+is written with the correct contents.
 
-Pre-fix, both assertions fail: either the file does not exist or it does
-not contain the expected JSON contents (issues / errors / warnings keys).
+Pre-fix, all assertions fail: either the file does not exist or it does
+not contain the expected JSON payload.
 """
 
 import json
@@ -182,3 +174,129 @@ def test_save_module_writes_validation_report_with_errors_and_warnings(tmp_path,
     assert report["warnings"] == ["fake_warning_1"], (
         f"Warnings mismatch. Expected mocked warnings, got: {report['warnings']}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Line 360: standalone update_location_references() dead-code path (T1-2b)
+# ---------------------------------------------------------------------------
+
+def test_update_location_references_writes_remapped_file(tmp_path):
+    """When `update_location_references()` finds location IDs to remap, it
+    must persist the remapped data back to `file_path`. Pre-fix the args
+    were swapped: `save_json_safely(data, file_path)` instead of
+    `save_json_safely(file_path, data)`, so the rewrite went nowhere and
+    the file kept its original (old-ID) contents."""
+    area_file = tmp_path / "AA01.json"
+    original = {
+        "locations": [
+            {"locationId": "OLD_ID_1", "name": "Entry"},
+            {"locationId": "OLD_ID_2", "name": "Hall"},
+        ],
+        "map": {
+            "rooms": [
+                {"id": "OLD_ID_1"},
+                {"id": "OLD_ID_2"},
+            ]
+        },
+    }
+    with open(area_file, "w", encoding="utf-8") as f:
+        json.dump(original, f)
+
+    id_mappings = {
+        "OLD_ID_1": "NEW_ID_1",
+        "OLD_ID_2": "NEW_ID_2",
+    }
+
+    # Should not raise.
+    module_generator.update_location_references(str(area_file), id_mappings)
+
+    # File must still exist at the original path.
+    assert area_file.exists(), (
+        f"File {area_file} disappeared after update_location_references()."
+    )
+
+    with open(area_file, "r", encoding="utf-8") as f:
+        updated = json.load(f)
+
+    # All four references must be remapped.
+    assert updated["locations"][0]["locationId"] == "NEW_ID_1", (
+        f"Pre-fix, the args were reversed so the rewrite never persisted. "
+        f"Got: {updated}"
+    )
+    assert updated["locations"][1]["locationId"] == "NEW_ID_2", updated
+    assert updated["map"]["rooms"][0]["id"] == "NEW_ID_1", updated
+    assert updated["map"]["rooms"][1]["id"] == "NEW_ID_2", updated
+
+
+# ---------------------------------------------------------------------------
+# Line 947: ModuleGenerator.generate_unified_plot_file() dead-code path
+# ---------------------------------------------------------------------------
+
+def test_generate_unified_plot_file_writes_module_plot_json(tmp_path, monkeypatch):
+    """When `generate_unified_plot_file()` runs successfully, it must
+    write the unified plot to `modules/<module_name>/module_plot.json`.
+    Pre-fix the args were swapped: `save_json_safely(module_plot, path)`
+    instead of `save_json_safely(path, module_plot)`, so the on-disk
+    plot file was never created at the expected location."""
+    module_name = "OWC2_TestPlotFile"
+
+    # generate_unified_plot_file() writes to a HARDCODED relative path:
+    # f"modules/{module_name.replace(' ', '_')}/module_plot.json".
+    # chdir into tmp_path so writes land inside the sandbox.
+    monkeypatch.chdir(tmp_path)
+
+    module_dir = tmp_path / "modules" / module_name
+    module_dir.mkdir(parents=True, exist_ok=True)
+
+    # Seed the area file the function reads at f"{module_dir}/{area_id}.json".
+    area_id = "AA01"
+    area_payload = {"recommendedLevel": 1, "areaName": "Test Area"}
+    with open(module_dir / f"{area_id}.json", "w", encoding="utf-8") as f:
+        json.dump(area_payload, f)
+
+    module_data = {
+        "moduleName": module_name,
+        "mainPlot": {
+            "mainObjective": "Test objective",
+            "plotStages": [
+                {
+                    "stageName": "Stage One",
+                    "stageDescription": "First stage",
+                    "keyNPCs": ["NPC One"],
+                    "majorEvents": ["Event A"],
+                },
+            ],
+        },
+    }
+
+    gen = _make_generator()
+
+    # Should not raise.
+    gen.generate_unified_plot_file(module_data, [area_id], module_name)
+
+    expected_path = module_dir / "module_plot.json"
+    assert expected_path.exists(), (
+        f"module_plot.json was not written to expected path {expected_path}. "
+        f"Pre-fix, the dict was passed as filepath so the file never got "
+        f"created at this path. Files in module_dir: "
+        f"{list(module_dir.iterdir())}"
+    )
+
+    with open(expected_path, "r", encoding="utf-8") as f:
+        plot = json.load(f)
+
+    assert plot.get("plotTitle") == module_name, (
+        f"plotTitle mismatch. Got: {plot}"
+    )
+    assert plot.get("mainObjective") == "Test objective", (
+        f"mainObjective mismatch. Got: {plot}"
+    )
+    assert isinstance(plot.get("plotPoints"), list), (
+        f"plotPoints should be a list. Got: {plot}"
+    )
+    assert len(plot["plotPoints"]) == 1, (
+        f"Expected 1 plot point from 1 stage. Got: {plot['plotPoints']}"
+    )
+    assert plot["plotPoints"][0]["id"] == "PP001", plot["plotPoints"][0]
+    assert plot["plotPoints"][0]["title"] == "Stage One", plot["plotPoints"][0]
+    assert plot["plotPoints"][0]["location"] == area_id, plot["plotPoints"][0]
