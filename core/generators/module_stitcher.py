@@ -1109,13 +1109,27 @@ Respond with JSON:
                     print(f"  - Content safety issue: {safety_result.get('reason', 'Unspecified')}")
                     return False
                 return True
-            except json.JSONDecodeError:
-                print(f"  - AI safety validation failed to parse response")
-                return True  # Default to safe if parsing fails
-                
+            except json.JSONDecodeError as e:
+                # INT-M4: Fail CLOSED. A submitter cannot bypass content
+                # safety by inducing a parse failure -- unparseable means
+                # the validation did not occur, so the content is rejected.
+                warning(
+                    f"Safety check returned invalid JSON ({e}); failing closed (unsafe)",
+                    category="module_integration",
+                )
+                print(f"  - AI safety validation failed to parse response (failing closed)")
+                return False
+
         except Exception as e:
-            print(f"Warning: AI content validation failed: {e}")
-            return True  # Default to safe if validation fails
+            # INT-M4: Fail CLOSED. An API/runtime failure during safety
+            # validation means the check did not occur. Reject rather than
+            # silently approve.
+            error(
+                f"Safety check API call failed: {e}; failing closed (unsafe)",
+                category="module_integration",
+            )
+            print(f"Warning: AI content validation failed: {e} (failing closed)")
+            return False
     
     def _validate_against_schemas(self, module_path: str) -> bool:
         """Validate module files against schemas"""
