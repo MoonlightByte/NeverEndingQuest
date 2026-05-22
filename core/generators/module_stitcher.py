@@ -111,6 +111,7 @@ register_callsite("T033", "core/generators/module_stitcher.py", 1095)
 # Set script name for logging
 set_script_name("module_stitcher")
 from utils.encoding_utils import safe_json_load, safe_json_dump
+from utils.file_operations import safe_write_json
 from utils.module_path_manager import ModulePathManager
 
 class ModuleStitcher:
@@ -581,9 +582,11 @@ Create atmospheric travel narration that leads into this adventure."""
             # Update registry metadata
             self.world_registry['lastUpdated'] = datetime.now().isoformat()
             
-            # Save registry
-            safe_json_dump(self.world_registry, self.world_registry_file)
-            
+            # Save registry (atomic write: world_registry is the single source
+            # of truth for inter-module world state; interruption mid-write
+            # would corrupt it).
+            safe_write_json(self.world_registry_file, self.world_registry)
+
             print(f"Successfully integrated module: {module_name}")
             print(f"  - Added {len(module_data.get('areas', {}))} areas")
             travel_text = module_data.get('travelNarration', {}).get('travelNarration', '')
