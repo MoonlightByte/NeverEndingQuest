@@ -384,6 +384,16 @@ DM_SUMM_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level":
 DM_SUMM_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 DM_SUMM_LMSTUDIO = {"model": "local-model"}
 
+# --- T039: Campaign export-data extraction (short JSON, mini tier) ---
+# Secondary call inside _generate_module_summary that extracts structured
+# campaign-relevant fields (relationships, artifacts, hubs, worldState,
+# unlockedModules) from the human-readable saga produced by T038.
+# JSON object output, temp=0.3 stays at callsite.
+DM_SUMMARY_GPT5MINI = {"model": "gpt-5-mini"}
+DM_SUMMARY_GEMINI_FLASH_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal"}
+DM_SUMMARY_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+DM_SUMMARY_LMSTUDIO = {"model": "local-model"}
+
 # --- T015/T016/T018/T019: Adventure Summaries (location updates, chronicles, journals) ---
 # 12/12 synthetic tests passed (4 scenarios x 3 models). Mini-tier (ADVENTURE_SUMMARY_MODEL).
 # T015: location JSON update (temp=0.8). T016: adventure chronicle (temp=0.8, plain text).

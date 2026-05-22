@@ -630,14 +630,30 @@ Focus on story outcomes, character development, and decisions that will matter i
             
             Format as JSON with keys: relationships, artifacts, hubs, worldState, unlockedModules"""
             
+            # T039: campaign export-data extraction (mini-tier JSON).
+            # MODEL_PROVIDER already imported above for the T038 branch.
+            if MODEL_PROVIDER == "openai":
+                summ_cfg = config.DM_SUMMARY_GPT5MINI
+            elif MODEL_PROVIDER == "gemini":
+                summ_cfg = config.DM_SUMMARY_GEMINI_FLASH_MINIMAL
+            elif MODEL_PROVIDER == "lmstudio":
+                summ_cfg = config.DM_SUMMARY_LMSTUDIO
+            else:  # legacy
+                summ_cfg = config.DM_SUMMARY_LEGACY
+
             try:
-                export_response = capture_and_fanout("T039", self.client.chat.completions.create, messages=[
+                export_response = capture_and_fanout("T039", api_client.create_completion,
+                    messages=[
                         {"role": "system", "content": "Extract campaign-relevant data from module completion summary. Be concise and factual."},
                         {"role": "user", "content": export_prompt}
-                    ], model=config.DM_SUMMARY_MODEL, temperature=0.3)
-                
+                    ],
+                    model=summ_cfg["model"],
+                    temperature=0.3,
+                    **{k: v for k, v in summ_cfg.items() if k != "model"})
+
                 exported_data = json.loads(export_response.choices[0].message.content)
-            except:
+            except Exception as e:
+                debug(f"T039 fallback to local processor: {e}", category="campaign_management")
                 exported_data = self._process_module_summary_for_export(summary_text, party_tracker_data)
             
             return {
