@@ -118,6 +118,33 @@ ACTION_DELETE_SAVE = "deleteSave"
 # to work with the regular conversation update cycle
 
 
+def _cleanup_orphan_module(module_name):
+    """INT-H8: Remove a partially-created module directory after the
+    post-creation, pre-integration window fails.
+
+    ai_driven_module_creation() returned success and produced
+    ./modules/<module_name>/ on disk, but the subsequent stitcher
+    integration step raised. Without cleanup, the partial directory is
+    later picked up by scan_and_integrate_new_modules() as a "new module"
+    to integrate -- the exact orphan state we are trying to prevent.
+
+    This is intentionally narrow: it only handles the stitching-failure
+    window. The build-failure window is handled separately in
+    core/generators/module_builder.py (OW-H4).
+    """
+    import shutil
+    if not module_name:
+        return
+    module_dir = os.path.join("modules", module_name)
+    if not os.path.exists(module_dir):
+        return
+    try:
+        shutil.rmtree(module_dir)
+        debug(f"Cleaned up orphan module dir after stitching failure: {module_dir}", category="module_management")
+    except Exception as cleanup_err:
+        warning(f"Failed to clean up orphan module dir {module_dir}: {cleanup_err}", category="module_management")
+
+
 def pre_validate_transition(parameters, party_tracker_data, conversation_history, location_graph, path_manager):
     """
     Pre-validate a transitionLocation action using the transition intelligence agent.
@@ -1290,7 +1317,34 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     info(f"SUCCESS: Module '{module_name}' integrated into world registry", category="module_management")
                     debug(f"STATE_CHANGE: Integration summary: {integrated_modules}", category="module_management")
                 except Exception as e:
-                    print(f"WARNING: Module created but stitching failed: {e}")
+                    # INT-H8: Stitching failed. The module exists on disk but is
+                    # NOT integrated into the world registry. We must NOT pretend
+                    # it succeeded -- that would append a "module created" DM note
+                    # to history and leave an orphan dir for the next stitcher
+                    # scan to pick up. Surface the failure to the caller and
+                    # remove the partial module directory.
+                    error(
+                        f"FAILURE: Module '{module_name}' created but stitching failed",
+                        exception=e,
+                        category="module_management",
+                    )
+                    _cleanup_orphan_module(module_name)
+                    # Reset status so the UI is not stuck "processing".
+                    try:
+                        from core.managers.status_manager import status_ready
+                        status_ready()
+                        debug("STATE_CHANGE: Status reset after stitching failure", category="session_management")
+                    except Exception as status_e:
+                        error(
+                            f"FAILURE: Error resetting status after stitching failure",
+                            exception=status_e,
+                            category="session_management",
+                        )
+                    return {
+                        "success": False,
+                        "error": f"Module integration failed: {e}",
+                        "needs_dm_response": False,
+                    }
                 
                 # Reset processing status to ready
                 try:

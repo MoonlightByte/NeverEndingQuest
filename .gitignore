@@ -206,6 +206,7 @@ test_*.py
 !tests/test_module_debugger_area_detection.py
 !tests/test_t039_module_summary_export.py
 !tests/test_t012_starting_location_analyzer.py
+!tests/test_create_new_module_stitching_failure.py
 *_test.py
 
 # Reference documents (local working docs, do not commit)
