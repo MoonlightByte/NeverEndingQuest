@@ -1543,6 +1543,11 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
             - success_status: True if module was created successfully, False otherwise
             - module_name: Name of the created module if successful, None if failed
     """
+    # OW-H4: Track module_name and output_dir so the except branch can clean up
+    # any partial directory created before the failure (e.g., by ModuleBuilder
+    # __init__ at line 87 or create_module_directories() inside build_module).
+    module_name = None
+    output_dir = None
     try:
         # Report progress if callback provided
         if progress_callback:
@@ -1552,7 +1557,7 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
         if not narrative:
             print(f"DEBUG: [Module Generator] ERROR: No narrative or concept provided")
             return False, None
-        
+
         # Parse narrative with AI to get module parameters
         if progress_callback:
             progress_callback({'stage': 1, 'total_stages': 9, 'stage_name': 'Parsing narrative', 'percentage': 11, 'message': 'Analyzing narrative to extract module parameters...'})
@@ -1606,6 +1611,10 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
             output_directory=f"./modules/{module_name}",
             verbose=True
         )
+        # OW-H4: Record output_dir BEFORE any directory-creating work so the
+        # except branch can remove the partial dir even if ModuleBuilder's
+        # __init__ raises after creating it.
+        output_dir = config.output_directory
         
         # Create and run the builder
         if progress_callback:
@@ -1682,6 +1691,16 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
         print(f"DEBUG: [Module Generator] ERROR: AI-driven module creation failed: {str(e)}")
         import traceback
         traceback.print_exc()
+        error(f"Module creation failed for '{module_name}': {e}", exception=e, category="module_creation")
+        # OW-H4: Clean up partial module directory to prevent orphan state.
+        # Without this, the partial dir is later picked up by
+        # scan_and_integrate_new_modules as a "new module" to integrate.
+        if output_dir and os.path.exists(output_dir):
+            try:
+                shutil.rmtree(output_dir)
+                debug(f"Cleaned up partial module dir: {output_dir}", category="module_creation")
+            except Exception as cleanup_err:
+                warning(f"Failed to clean up partial module dir {output_dir}: {cleanup_err}", category="module_creation")
         return False, None
 
 if __name__ == "__main__":
