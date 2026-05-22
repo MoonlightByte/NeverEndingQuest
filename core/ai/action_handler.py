@@ -55,7 +55,6 @@ import json
 import subprocess
 import os
 from datetime import datetime
-from openai import OpenAI
 from core.ai import api_client
 import model_config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
