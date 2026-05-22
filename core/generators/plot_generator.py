@@ -535,23 +535,38 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
         
         # Content validation
         available_locations = {loc["locationId"] for loc in location_data.get("locations", [])}
-        
+
         # Check plot point locations exist
         for pp in plot_data.get("plotPoints", []):
             if pp["location"] not in available_locations:
                 errors.append(f"Plot point {pp['id']} references non-existent location {pp['location']}")
-            
-            # Check next points exist
-            all_pp_ids = {p["id"] for p in plot_data.get("plotPoints", [])}
-            for next_id in pp.get("nextPoints", []):
-                if next_id not in all_pp_ids:
-                    errors.append(f"Plot point {pp['id']} references non-existent next point {next_id}")
-            
+
             # Check side quest locations
             for sq in pp.get("sideQuests", []):
                 for loc_id in sq.get("involvedLocations", []):
                     if loc_id not in available_locations:
                         errors.append(f"Side quest {sq['id']} references non-existent location {loc_id}")
+
+        # Cross-reference nextPoints against the set of declared plot point IDs.
+        # Schema only enforces that nextPoints items are strings (VAL-M5), so
+        # a generated plot with nextPoints=["PP99"] -- where PP99 does not
+        # exist in plotPoints -- would otherwise pass validation and produce
+        # a dangling pointer at runtime. Defensive isinstance/"id in pp" guards
+        # keep this pass from crashing on malformed entries that somehow slip
+        # past schema validation (e.g. a future schema change relaxing it).
+        plot_point_ids = {
+            pp["id"]
+            for pp in plot_data.get("plotPoints", [])
+            if isinstance(pp, dict) and "id" in pp
+        }
+        for pp in plot_data.get("plotPoints", []):
+            if not isinstance(pp, dict):
+                continue
+            for next_id in pp.get("nextPoints", []):
+                if next_id not in plot_point_ids:
+                    errors.append(
+                        f"plotPoint {pp.get('id', '?')} references unknown nextPoint '{next_id}'"
+                    )
         
         # Check for orphaned plot points (no incoming connections)
         all_next_points = set()
