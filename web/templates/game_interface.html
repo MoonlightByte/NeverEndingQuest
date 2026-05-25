@@ -5485,6 +5485,32 @@
             requestInitiativeData(); // Check for combat on game start
         });
 
+        socket.on('game_resumed', (data) => {
+            // Issue #122: a reopened tab reattaching to a live game. Restore the
+            // gameStarted switch (without it, sendInput() silently drops input)
+            // and re-enable controls. Only enable typing if the engine isn't busy;
+            // otherwise the normal status_update flow enables it when it finishes.
+            gameStarted = true;
+            document.getElementById('start-button').textContent = 'Game Running';
+            document.getElementById('start-button').disabled = true;
+            document.getElementById('save-button').disabled = false;
+            document.getElementById('load-button').disabled = false;
+            document.getElementById('reset-button').disabled = false;
+            const busy = !!(data && data.is_processing);
+            document.getElementById('user-input').disabled = busy;
+            document.getElementById('send-button').disabled = busy;
+            if (!busy) {
+                document.getElementById('user-input').focus();
+            }
+            addMessage('game-output', {
+                type: 'system',
+                content: (data && data.message) || 'Reconnected to your game in progress.'
+            });
+            loadCharacterStats();
+            loadLocationData();
+            requestInitiativeData();
+        });
+
         socket.on('startup_status', (data) => {
             if (data.status === 'in_progress') {
                 document.getElementById('start-button').textContent = 'Starting...';

@@ -541,31 +541,28 @@ class WebInput:
             # If status_ready fails, continue without it
             pass
         
-        # Wait for input from the web interface
-        retry_count = 0
-        max_retries = 1000  # Prevent infinite loops
-        
-        while retry_count < max_retries:
+        # Wait patiently for input from the web interface. A turn-based game
+        # should block at the prompt indefinitely, exactly like a terminal would.
+        # (Previously this capped at 1000 * 0.1s = 100s and then returned '\n',
+        # which made the combat loop busy-spin on empty input -- see issue #122.)
+        while True:
             try:
-                user_input = self.queue.get(timeout=0.1)
+                user_input = self.queue.get(timeout=0.5)
                 # Ensure input is a string and handle encoding issues
                 if isinstance(user_input, str):
                     return user_input + '\n'
-                else:
-                    # Convert to string if needed
-                    return str(user_input) + '\n'
+                # Convert to string if needed
+                return str(user_input) + '\n'
             except queue.Empty:
-                retry_count += 1
                 continue
-            except (BrokenPipeError, OSError, IOError):
-                # Handle pipe errors gracefully
-                return '\n'  # Return empty input to keep game running
+            except (BrokenPipeError, OSError, IOError, EOFError):
+                # Genuine end-of-input: return '' so input() raises EOFError and
+                # the caller's loop exits cleanly instead of spinning on empty lines.
+                return ''
             except Exception:
-                # Handle any other unexpected errors
-                return '\n'
-        
-        # If we've retried too many times, return empty input
-        return '\n'
+                # Unexpected failure: signal EOF for a clean exit rather than
+                # looping forever on empty input.
+                return ''
 
 @app.route('/')
 def index():
@@ -2024,6 +2021,24 @@ def get_module_unified_assets(module_name):
         error(f"TOOLKIT: Failed to get unified assets for module {module_name}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+def _emit_game_resumed():
+    """Tell the currently-connecting client it is (re)attached to a live game.
+
+    Approach A for issue #122: the server volunteers session state so a reopened
+    browser tab can restore its `gameStarted` flag and re-enable input. Uses the
+    request-context `emit` (this client only), not the all-clients broadcast.
+    """
+    from core.managers.status_manager import status_manager
+    try:
+        _status_message, is_processing = status_manager.get_status()
+    except Exception:
+        is_processing = False
+    emit('game_resumed', {
+        'is_processing': is_processing,
+        'message': 'Reconnected to your game in progress.'
+    })
+
+
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection"""
@@ -2048,6 +2063,10 @@ def handle_connect():
     if cached_messages:
         emit('cached_messages', cached_messages)
         print(f"[MESSAGE_CACHE] Sent {len(cached_messages)} cached messages to client")
+
+    # If a game is already running, tell THIS client to reattach (issue #122).
+    if game_thread and game_thread.is_alive():
+        _emit_game_resumed()
 
     # Send any queued messages
     while not game_output_queue.empty():
@@ -2275,7 +2294,9 @@ def handle_start_game():
     global game_thread, startup_handoff_active, startup_ready_emitted, message_cache
     
     if game_thread and game_thread.is_alive():
-        emit('error', {'message': 'Game is already running'})
+        # Browser reopened on a live game: reconnect this client instead of
+        # erroring out (issue #122 -- this error was the literal report title).
+        _emit_game_resumed()
         return
     
     # Uninstall debug interceptor to prevent competing stdout redirections
