@@ -216,13 +216,34 @@ status_manager.set_callback(status_callback)
 
 
 def emit_startup_marker(phase, **extra):
-    """Emit structured startup marker logs for debugging startup handoff."""
+    """Emit a structured startup-handoff marker.
+
+    The marker is always logged (file + console handlers) for debugging. In WEB
+    mode it must ALSO be printed to the live sys.stdout: the web layer parses
+    `STARTUP_MARKER:` lines off sys.stdout via WebOutputCapture to drive the
+    `game_started` UI unlock. The logger's console handler is bound to the
+    original stdout at import time (before WebOutputCapture is installed), so the
+    logger alone never reaches the web parser -- leaving the UI stuck on
+    "Starting..." until the slow prompt fallback fires.
+
+    The print() is guarded to fire only when stdout is a capture wrapper
+    (duck-typed via `original_stream`, the attribute WebOutputCapture exposes).
+    In a plain terminal the logger already reaches the console, so printing there
+    would double the output.
+    """
     payload = {
         "phase": phase,
         "timestamp": datetime.now().isoformat(),
     }
     payload.update(extra)
-    info(f"STARTUP_MARKER: {json.dumps(payload, ensure_ascii=False)}", category="startup")
+    marker_line = f"STARTUP_MARKER: {json.dumps(payload, ensure_ascii=False)}"
+    info(marker_line, category="startup")
+    # Web-delivery path (see docstring). Guard prevents terminal-mode double print.
+    if hasattr(sys.stdout, "original_stream"):
+        try:
+            print(marker_line, flush=True)
+        except (BrokenPipeError, OSError, ValueError):
+            pass
 
 
 def _run_get_ai_response_with_timeout(conversation_history, timeout_seconds=120):
