@@ -52,8 +52,7 @@
             "required": ["actionType", "target"]
           },
           "currentHitPoints": {
-            "type": "integer",
-            "minimum": 0
+            "type": "integer"
           },
           "maxHitPoints": {
             "type": "integer",

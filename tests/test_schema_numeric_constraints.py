@@ -24,8 +24,8 @@ This test module covers:
   2. Monster with armorClass=0 -> fails (minimum is 1)
   3. Monster with challengeRating=-1 -> fails (minimum is 0)
   4. Monster missing maxHitPoints -> fails (now required)
-  5. Encounter creature with currentHitPoints=0 -> PASSES (dead monster);
-     currentHitPoints=-5 -> fails (minimum is 0)
+  5. Encounter creature currentHitPoints=0 AND negative (overkill) -> PASSES
+     (no minimum; negative HP is legitimate persisted state)
   6. Regression: a valid, fully-populated monster passes mon_schema
   7. Regression: a valid encounter passes encounter_schema
 """
@@ -212,12 +212,13 @@ def test_monster_missing_max_hitpoints_fails(mon_schema):
 
 
 # ---------------------------------------------------------------------------
-# Test 5: encounter creature with currentHitPoints=0 must PASS.
-# VAL-H3 regression guard: a monster reduced to 0 HP is dead -- a legitimate,
-# common combat state. update_encounter.py validates the full encounter on
-# every update, so a minimum of 1 would reject every kill update and silently
-# drop the monster's death. currentHitPoints minimum must be 0; a NEGATIVE
-# value must still fail.
+# Test 5: encounter creature currentHitPoints must accept 0 AND negatives.
+# BACKWARD-COMPAT guard: the engine records overkill damage as NEGATIVE
+# currentHitPoints (observed down to -18) for dead enemies, and persists it.
+# update_encounter.py re-validates the WHOLE encounter on every combat update,
+# so any minimum on currentHitPoints would reject ~1300 existing encounter
+# files and silently freeze combat in saved games. currentHitPoints must have
+# NO minimum (the pre-merge baseline). Only maxHitPoints (capacity) is >=1.
 # ---------------------------------------------------------------------------
 
 def test_encounter_with_zero_current_hitpoints_passes(encounter_schema):
@@ -228,17 +229,14 @@ def test_encounter_with_zero_current_hitpoints_passes(encounter_schema):
     validate(instance=encounter, schema=encounter_schema)
 
 
-def test_encounter_with_negative_current_hitpoints_fails(encounter_schema):
+def test_encounter_with_negative_current_hitpoints_passes(encounter_schema):
     encounter = _valid_encounter()
-    encounter["creatures"][1]["currentHitPoints"] = -5
+    # Overkill damage: the engine stores the post-damage HP as a negative int.
+    encounter["creatures"][1]["currentHitPoints"] = -18
 
-    with pytest.raises(ValidationError) as exc:
-        validate(instance=encounter, schema=encounter_schema)
-
-    msg = str(exc.value).lower()
-    assert "currenthitpoints" in msg or "minimum" in msg or "-5" in msg, (
-        f"Expected validation error to mention currentHitPoints/minimum; got: {exc.value}"
-    )
+    # Must NOT raise: negative currentHitPoints is legitimate persisted
+    # overkill state and appears in ~1300 existing encounter files.
+    validate(instance=encounter, schema=encounter_schema)
 
 
 # ---------------------------------------------------------------------------
