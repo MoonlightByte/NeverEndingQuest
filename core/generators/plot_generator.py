@@ -435,17 +435,30 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
         else:  # legacy
             main_cfg = config.DM_MAIN_LEGACY
 
-        response = capture_and_fanout("T037", api_client.create_completion,
-            messages=[
-                {"role": "system", "content": "You are an expert 5e adventure designer."},
-                {"role": "user", "content": prompt}
-            ],
-            model=main_cfg["model"],
-            temperature=0.8,
-            response_format={"type": "json_object"},
-            **{k: v for k, v in main_cfg.items() if k != "model"})
-
-        return json.loads(response.choices[0].message.content)
+        # MP-H1: a malformed AI response previously raised an uncaught
+        # JSONDecodeError that crashed the entire module build. Retry once on
+        # a parse failure, then fail with a clear, logged error instead.
+        last_err = None
+        for attempt in range(2):
+            response = capture_and_fanout("T037", api_client.create_completion,
+                messages=[
+                    {"role": "system", "content": "You are an expert 5e adventure designer."},
+                    {"role": "user", "content": prompt}
+                ],
+                model=main_cfg["model"],
+                temperature=0.8,
+                response_format={"type": "json_object"},
+                **{k: v for k, v in main_cfg.items() if k != "model"})
+            raw = response.choices[0].message.content
+            try:
+                return json.loads(raw)
+            except (json.JSONDecodeError, TypeError) as e:
+                last_err = e
+                print(f"WARNING: T037 plot structure returned invalid JSON "
+                      f"(attempt {attempt + 1}/2): {e}. Raw (truncated): {str(raw)[:300]}")
+        raise ValueError(
+            f"Plot structure generation returned invalid JSON after 2 attempts: {last_err}"
+        )
     
     def generate_plot(self, module_data: Dict[str, Any], 
                      area_data: Dict[str, Any],

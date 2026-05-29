@@ -565,17 +565,33 @@ CRITICAL: You MUST use the exact locationId values from the stubs provided. Do n
         else:  # legacy
             main_cfg = config.DM_MAIN_LEGACY
 
-        response = capture_and_fanout("T026", api_client.create_completion,
-            messages=[
-                {"role": "system", "content": "You are an expert 5e dungeon designer creating cohesive, interconnected locations."},
-                {"role": "user", "content": batch_prompt}
-            ],
-            model=main_cfg["model"],
-            temperature=0.8,
-            response_format={"type": "json_object"},
-            **{k: v for k, v in main_cfg.items() if k != "model"})
-
-        parsed = json.loads(response.choices[0].message.content)
+        # MP-H2: a malformed AI response previously raised an uncaught
+        # JSONDecodeError that crashed the entire build for the whole area.
+        # Retry once on a parse failure, then fail with a clear, logged error.
+        last_err = None
+        parsed = None
+        for attempt in range(2):
+            response = capture_and_fanout("T026", api_client.create_completion,
+                messages=[
+                    {"role": "system", "content": "You are an expert 5e dungeon designer creating cohesive, interconnected locations."},
+                    {"role": "user", "content": batch_prompt}
+                ],
+                model=main_cfg["model"],
+                temperature=0.8,
+                response_format={"type": "json_object"},
+                **{k: v for k, v in main_cfg.items() if k != "model"})
+            raw = response.choices[0].message.content
+            try:
+                parsed = json.loads(raw)
+                break
+            except (json.JSONDecodeError, TypeError) as e:
+                last_err = e
+                print(f"WARNING: T026 location batch returned invalid JSON "
+                      f"(attempt {attempt + 1}/2): {e}. Raw (truncated): {str(raw)[:300]}")
+        if parsed is None:
+            raise ValueError(
+                f"Location batch generation returned invalid JSON after 2 attempts: {last_err}"
+            )
 
         # MP-C1: validate that the AI preserved the locationId values from
         # the stubs. The map grid and all downstream wiring depend on these
