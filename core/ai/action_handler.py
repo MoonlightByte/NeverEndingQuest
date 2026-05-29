@@ -462,12 +462,15 @@ def get_module_starting_location(module_name: str) -> tuple:
             module_data = world_registry['modules'].get(module_name, {})
             cached_start = module_data.get('startingLocation')
             
-            if cached_start:
+            # INT-H5: only trust the cache if it has the real IDs. A partial
+            # cache (missing locationId/areaId) must NOT yield A01/AREA001
+            # placeholders that strand the player -- fall through to analysis.
+            if cached_start and cached_start.get('locationId') and cached_start.get('areaId'):
                 debug(f"FILE_OP: Using cached starting location for {module_name}", category="module_loading")
                 return (
-                    cached_start.get('locationId', 'A01'),
+                    cached_start['locationId'],
                     cached_start.get('locationName', 'Unknown Location'),
-                    cached_start.get('areaId', 'AREA001'),
+                    cached_start['areaId'],
                     cached_start.get('areaName', 'Unknown Area')
                 )
         
@@ -478,6 +481,8 @@ def get_module_starting_location(module_name: str) -> tuple:
         area_ids = path_manager.get_area_ids()
         
         if not area_ids:
+            error(f"FAILURE: Module {module_name} has no area files; cannot "
+                  f"determine a valid starting location.", category="module_loading")
             return ("A01", "Unknown Location", "AREA001", "Unknown Area")
         
         # Gather all module data for AI analysis
@@ -536,13 +541,26 @@ def get_module_starting_location(module_name: str) -> tuple:
                 'timestamp': datetime.now().isoformat()
             }
             
-            safe_json_dump(world_registry, world_registry_path)
-            info(f"SUCCESS: Cached AI-determined starting location for {module_name}", category="module_loading")
-        
+            try:
+                safe_json_dump(world_registry, world_registry_path)
+                info(f"SUCCESS: Cached AI-determined starting location for {module_name}", category="module_loading")
+            except Exception as cache_err:
+                # INT-H5: a cache-WRITE failure must not discard an already-valid
+                # starting location and strand the player; log and continue.
+                warning(f"FILE_OP: Could not cache starting location for {module_name}: {cache_err}", category="module_loading")
+
         return starting_location
-        
+
     except Exception as e:
         error(f"FAILURE: Could not get starting location for {module_name}: {e}", category="module_loading")
+        # INT-H5: recover a REAL location from the module's area files rather
+        # than writing placeholder IDs (A01/AREA001) that resolve to no area
+        # file and strand the player at a non-existent location.
+        real = _first_real_location_from_files(module_name)
+        if real:
+            warning(f"STARTING_LOCATION: falling back to first real location "
+                    f"{real[2]}:{real[0]} for {module_name}", category="module_loading")
+            return real
         return ("A01", "Unknown Location", "AREA001", "Unknown Area")
 
 def _ai_analyze_starting_location(module_data: dict) -> tuple:
@@ -676,10 +694,40 @@ def _get_fallback_starting_location(module_data: dict) -> tuple:
                 )
         
         return ("A01", "Unknown Location", "AREA001", "Unknown Area")
-        
+
     except Exception as e:
         print(f"WARNING: Fallback location detection failed: {e}")
         return ("A01", "Unknown Location", "AREA001", "Unknown Area")
+
+def _first_real_location_from_files(module_name: str) -> tuple:
+    """Scan a module's area files on disk and return the first REAL
+    (locationId, locationName, areaId, areaName), or None if none exists.
+
+    INT-H5 safety net: used when get_module_starting_location's primary path
+    fails, so the player is never written into party_tracker.json at a
+    placeholder location (A01/AREA001) that resolves to no area file.
+    """
+    try:
+        path_manager = ModulePathManager(module_name)
+        for area_id in sorted(path_manager.get_area_ids() or []):
+            try:
+                area_data = safe_json_load(path_manager.get_area_path(area_id))
+            except Exception:
+                continue
+            if not area_data:
+                continue
+            locations = area_data.get("locations") or []
+            if locations and isinstance(locations[0], dict) and locations[0].get("locationId"):
+                loc = locations[0]
+                return (
+                    loc["locationId"],
+                    loc.get("name", "Unknown Location"),
+                    area_data.get("areaId", area_id),
+                    area_data.get("areaName", "Unknown Area"),
+                )
+    except Exception:
+        pass
+    return None
 
 def get_travel_narration(target_module: str) -> str:
     """Get AI-generated travel narration for module transition"""
