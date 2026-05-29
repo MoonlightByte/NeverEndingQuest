@@ -511,6 +511,66 @@ def test_rollback_module_restores_from_real_backup(tmp_path):
     )
 
 
+def test_rollback_preserves_media_and_saved_games(tmp_path):
+    """INT-C3 regression: files that existed at backup time in non-JSON
+    locations (media/, saved_games/) and root .md files must SURVIVE a
+    rollback. The pre-fix backup only saved root *.json plus a fixed
+    subdir list, so rollback (which rmtree's the whole module dir)
+    permanently destroyed generated media and save files. The backup now
+    captures the full module tree, so rollback restores them.
+    """
+    stitcher = _bare_stitcher(tmp_path)
+    module_name = "MediaRollbackModule"
+    module_path = _seed_module_with_areas(stitcher.modules_dir, module_name,
+                                          marker="pre")
+
+    # Seed expensive/non-JSON artifacts that exist BEFORE the backup.
+    media_dir = os.path.join(module_path, "media", "monsters")
+    os.makedirs(media_dir, exist_ok=True)
+    media_file = os.path.join(media_dir, "goblin.jpg")
+    with open(media_file, "wb") as fh:
+        fh.write(b"\xff\xd8\xff\xe0JFIF-fake-image-bytes")
+
+    saves_dir = os.path.join(module_path, "saved_games")
+    os.makedirs(saves_dir, exist_ok=True)
+    save_file = os.path.join(saves_dir, "save_001.json")
+    with open(save_file, "w", encoding="utf-8") as fh:
+        fh.write('{"slot": 1, "marker": "pre"}')
+
+    summary_md = os.path.join(module_path, "MODULE_SUMMARY.md")
+    with open(summary_md, "w", encoding="utf-8") as fh:
+        fh.write("# Summary\nmarker: pre\n")
+
+    # Back up the full tree, then mutate/destroy the live copies.
+    backup_dir = _make_real_backup(stitcher, module_name)
+    os.remove(media_file)
+    os.remove(save_file)
+    with open(summary_md, "w", encoding="utf-8") as fh:
+        fh.write("# Summary\nmarker: post\n")
+
+    ok = stitcher._rollback_module(module_name, backup_dir)
+    assert ok is True, "Rollback helper must return True on success."
+
+    # All three artifact classes must be restored from the backup.
+    assert os.path.exists(media_file), (
+        "INT-C3: media/ file was not restored on rollback -- backup did "
+        "not capture the full module tree."
+    )
+    with open(media_file, "rb") as fh:
+        assert fh.read() == b"\xff\xd8\xff\xe0JFIF-fake-image-bytes"
+
+    assert os.path.exists(save_file), (
+        "INT-C3: saved_games/ file was not restored on rollback."
+    )
+    assert _read_marker(save_file) == "pre"
+
+    assert os.path.exists(summary_md), (
+        "INT-C3: root .md file was not restored on rollback."
+    )
+    with open(summary_md, "r", encoding="utf-8") as fh:
+        assert "marker: pre" in fh.read()
+
+
 def test_rollback_module_returns_false_when_backup_missing(tmp_path):
     """`_rollback_module` must return False (and not raise) when the
     backup path is missing or empty. This is what triggers the

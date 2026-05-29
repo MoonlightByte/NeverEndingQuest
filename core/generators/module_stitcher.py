@@ -493,44 +493,23 @@ Create atmospheric travel narration that leads into this adventure."""
             backup_dir = os.path.join(backups_root, f"{module_name}_{timestamp}")
             os.makedirs(backup_dir, exist_ok=True)
 
-            # List all files to backup
-            files_backed_up = 0
+            # INT-C3: back up the ENTIRE module tree (all files AND all
+            # subdirectories), not just root *.json + a fixed subdir list.
+            # _rollback_module rmtree's the live module dir and restores from
+            # THIS backup, so anything not copied here is permanently lost on
+            # rollback. The previous selective copy silently destroyed media/,
+            # npcs/, images/, saved_games/, and any .md/.bak files whenever a
+            # rollback fired (e.g. schema success-rate < 0.8 after mutation).
+            import shutil
+            try:
+                # backup_dir was pre-created above; merge the full tree into it.
+                shutil.copytree(module_path, backup_dir, dirs_exist_ok=True)
+            except Exception as e:
+                print(f"    - Warning: Could not fully back up {module_name}: {e}")
+                return None
 
-            # Backup all JSON files in module root
-            for filename in os.listdir(module_path):
-                file_path = os.path.join(module_path, filename)
-
-                # Skip directories and non-JSON files, but backup everything else for safety
-                if os.path.isfile(file_path) and filename.endswith('.json'):
-                    backup_path = os.path.join(backup_dir, filename)
-
-                    try:
-                        import shutil
-                        shutil.copy2(file_path, backup_path)
-                        files_backed_up += 1
-                    except Exception as e:
-                        print(f"    - Warning: Could not backup {filename}: {e}")
-
-            # Backup subdirectories (characters, monsters, etc.)
-            for subdir in ['characters', 'monsters', 'encounters', 'areas']:
-                subdir_path = os.path.join(module_path, subdir)
-                if os.path.exists(subdir_path) and os.path.isdir(subdir_path):
-                    backup_subdir = os.path.join(backup_dir, subdir)
-                    os.makedirs(backup_subdir, exist_ok=True)
-
-                    for filename in os.listdir(subdir_path):
-                        if filename.endswith('.json'):
-                            src_file = os.path.join(subdir_path, filename)
-                            dst_file = os.path.join(backup_subdir, filename)
-
-                            try:
-                                import shutil
-                                shutil.copy2(src_file, dst_file)
-                                files_backed_up += 1
-                            except Exception as e:
-                                print(f"    - Warning: Could not backup {subdir}/{filename}: {e}")
-
-            print(f"    - Backed up {files_backed_up} files to {backup_dir}")
+            files_backed_up = sum(len(files) for _, _, files in os.walk(backup_dir))
+            print(f"    - Backed up {files_backed_up} files (full module tree) to {backup_dir}")
             return backup_dir if files_backed_up > 0 else None
 
         except Exception as e:
