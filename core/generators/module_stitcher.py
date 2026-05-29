@@ -113,6 +113,23 @@ from utils.encoding_utils import safe_json_load
 from utils.file_operations import safe_write_json
 from utils.module_path_manager import ModulePathManager
 
+
+def _location_prefix_to_index(prefix: str) -> int:
+    """Inverse of ModuleBuilder.get_location_prefix's 0-indexed scheme:
+    0->A .. 25->Z, 26->AA, 27->AB, ...
+
+    Used by INT-H2 to find the next free location-prefix index from existing
+    location IDs. Reads the FULL alpha prefix (1-2 letters), so 'AA01' maps to
+    index 26 (not 0), preventing reuse of already-used two-letter prefixes.
+    """
+    prefix = (prefix or "").upper()
+    if len(prefix) == 1:
+        return ord(prefix[0]) - 65
+    if len(prefix) == 2:
+        return (ord(prefix[0]) - 65 + 1) * 26 + (ord(prefix[1]) - 65)
+    return 26 * 26  # 3+ letters: jump well past the 2-letter range
+
+
 class ModuleStitcher:
     """Manages automatic module integration and organic world building"""
     
@@ -1015,13 +1032,18 @@ Create atmospheric travel narration that leads into this adventure."""
         # 4. If conflict exists, re-prefix the ENTIRE new module
         print(f"DEBUG: [Module Stitcher] Conflict found. Re-prefixing all locations in {module_name} to ensure uniqueness.")
         
-        # Find the highest existing letter prefix to start from
-        last_prefix_char_code = 64 # Start before 'A'
+        # INT-H2: derive the next free prefix index from the FULL alpha prefix
+        # of every existing location ID (e.g. 'AA01' -> 'AA'), not just the
+        # first character. Reading only loc_id[0] treats 'AA01' as prefix 'A',
+        # so start_index lands inside the already-used range and the new module
+        # can be handed an already-used two-letter prefix.
+        max_prefix_index = -1
         for loc_id in all_existing_loc_ids:
-            if loc_id and loc_id[0].isalpha():
-                last_prefix_char_code = max(last_prefix_char_code, ord(loc_id[0].upper()))
-        
-        start_index = last_prefix_char_code - 64 
+            m = re.match(r'^([A-Za-z]+)\d', loc_id or '')
+            if m:
+                max_prefix_index = max(max_prefix_index, _location_prefix_to_index(m.group(1)))
+
+        start_index = max_prefix_index + 1
         
         # We need the helper functions from ModuleBuilder
         # Import here to avoid circular dependency
@@ -1108,15 +1130,22 @@ Create atmospheric travel narration that leads into this adventure."""
                         current_data = safe_json_load(current_file)
 
                         if backup_data and current_data:
-                            # Map old to new based on matching location names, which are assumed to be stable
-                            backup_locs = {loc.get('name'): loc.get('locationId') for loc in backup_data.get('locations', []) if loc.get('name') and loc.get('locationId')}
-                            current_locs = {loc.get('name'): loc.get('locationId') for loc in current_data.get('locations', []) if loc.get('name') and loc.get('locationId')}
-
-                            for name, old_id in backup_locs.items():
-                                if name in current_locs:
-                                    new_id = current_locs[name]
-                                    if old_id != new_id:
-                                        id_mapping[old_id] = new_id
+                            # INT-H3: map old->new locationId POSITIONALLY, not by
+                            # location name. update_area_with_prefix re-prefixes IDs
+                            # in place, preserving the locations array's order and
+                            # count, so backup[i] corresponds to current[i]. Two
+                            # locations can share a name (e.g. 'Corridor'); keying
+                            # the mapping by name silently drops one of them and
+                            # leaves its cross-file references pointing at the old ID.
+                            backup_locs = backup_data.get('locations', [])
+                            current_locs = current_data.get('locations', [])
+                            for b_loc, c_loc in zip(backup_locs, current_locs):
+                                if not isinstance(b_loc, dict) or not isinstance(c_loc, dict):
+                                    continue
+                                old_id = b_loc.get('locationId')
+                                new_id = c_loc.get('locationId')
+                                if old_id and new_id and old_id != new_id:
+                                    id_mapping[old_id] = new_id
             
             if not id_mapping:
                 print(f"DEBUG: [Module Stitcher] No location ID changes detected for {module_name}. Skipping reference update.")
