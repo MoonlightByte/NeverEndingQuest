@@ -255,9 +255,6 @@ class ModuleDebugger:
         # Collect all IDs
         area_ids = set()
         location_ids = defaultdict(set)  # area_id -> set of location_ids
-        # VAL-H1: connectivity is defined in loca_schema as "Names of other
-        # locations", so it must be validated against location names, not IDs.
-        location_names = defaultdict(set)  # area_id -> set of location names
         npc_names = set()
         plot_locations = defaultdict(set)  # area_id -> set of plot location_ids
 
@@ -271,9 +268,6 @@ class ModuleDebugger:
                 if "locations" in data:
                     for location in data["locations"]:
                         location_ids[area_id].add(location.get("locationId"))
-                        loc_name = location.get("name")
-                        if loc_name:
-                            location_names[area_id].add(loc_name)
 
                         # Collect NPCs
                         for npc in location.get("npcs", []):
@@ -313,13 +307,14 @@ class ModuleDebugger:
             if "locations" in data:
                 area_id = data.get("areaId")
                 for location in data["locations"]:
-                    # VAL-H1: connectivity holds location NAMES per
-                    # loca_schema:88-92, not locationId strings. Compare
-                    # against location_names (the area's set of names) so
-                    # legitimate name-based connections do not register
-                    # as false-positive broken references.
+                    # VAL-H1 (corrected): connectivity entries are location
+                    # IDs, not names. The generator (location_generator.py),
+                    # the ID remapper (module_generator.py) and the runtime
+                    # pathfinder (location_path_finder.py) all treat them as
+                    # IDs, and real module data is overwhelmingly ID-based.
+                    # Compare against the area's locationId set.
                     for conn in location.get("connectivity", []):
-                        if conn not in location_names.get(area_id, set()):
+                        if conn not in location_ids.get(area_id, set()):
                             self.log_error(f"Invalid connection {conn} in location {location.get('locationId')} of {area_id}")
                     
                     # Check area connectivity

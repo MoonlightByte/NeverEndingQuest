@@ -9,21 +9,22 @@ If location A lists B in its `connectivity`, but B does not list A,
 players can travel A -> B but get stranded -- no way back. This is the
 "one-way door" navigation bug.
 
-These tests exercise `ModuleValidator.validate_bidirectional_connectivity()`,
-which we are adding. It must:
+These tests exercise `ModuleValidator.validate_bidirectional_connectivity()`.
+It must:
 
   1. Return (True, []) when every connection has a matching reverse edge.
-  2. Return (False, [errors]) listing one-way connections by name.
+  2. Return (False, [errors]) listing one-way connections by ID.
   3. Return (True, []) (vacuous) when no locations declare connectivity.
 
-Per loca_schema, `connectivity` lists are by location NAME (not ID).
+`connectivity` lists are location IDs (the generator, ID remapper and
+runtime pathfinder all treat them as IDs; the schema description was
+corrected to match). Matching by name produced dozens of false positives
+on valid modules, so this validator compares IDs.
 """
 
 import json
 import sys
 from pathlib import Path
-
-import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -46,7 +47,8 @@ def _write_area_with_locations(path: Path, area_id: str, area_name: str, locatio
     """Write an area file with the given locations list.
 
     Each entry in `locations` is a dict of the form:
-        {"locationId": "A01", "name": "Foyer", "connectivity": ["Hallway"]}
+        {"locationId": "A01", "name": "Foyer", "connectivity": ["A02"]}
+    where connectivity entries are the locationIds of neighbours.
     """
     data = {
         "areaId": area_id,
@@ -65,11 +67,11 @@ def test_bidirectional_connectivity_all_valid(tmp_path):
     """When every location's connectivity has a matching reverse edge,
     the validator must return (True, []).
 
-    Layout:
-        Foyer <-> Hallway <-> Library
-        Foyer  lists [Hallway]
-        Hallway lists [Foyer, Library]
-        Library lists [Hallway]
+    Layout (connectivity uses location IDs):
+        A01 <-> A02 <-> A03
+        A01 lists [A02]
+        A02 lists [A01, A03]
+        A03 lists [A02]
     """
     module_dir = tmp_path / "test_module_valid"
     areas_dir = module_dir / "areas"
@@ -80,9 +82,9 @@ def test_bidirectional_connectivity_all_valid(tmp_path):
         "A",
         "Manor",
         [
-            {"locationId": "A01", "name": "Foyer", "connectivity": ["Hallway"]},
-            {"locationId": "A02", "name": "Hallway", "connectivity": ["Foyer", "Library"]},
-            {"locationId": "A03", "name": "Library", "connectivity": ["Hallway"]},
+            {"locationId": "A01", "name": "Foyer", "connectivity": ["A02"]},
+            {"locationId": "A02", "name": "Hallway", "connectivity": ["A01", "A03"]},
+            {"locationId": "A03", "name": "Library", "connectivity": ["A02"]},
         ],
     )
 
@@ -97,26 +99,26 @@ def test_bidirectional_connectivity_all_valid(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Test 2 (negative): A -> B but B has no A -> 1 error naming both
+# Test 2 (negative): A01 -> A02 but A02 has no A01 -> 1 error naming both
 # ---------------------------------------------------------------------------
 
 def test_bidirectional_connectivity_detects_one_way(tmp_path):
     """When a location lists a neighbor that does not list it back,
     the validator must return (False, [error]) with an error string
-    mentioning BOTH location names so a fixer can locate the bug."""
+    mentioning BOTH location IDs so a fixer can locate the bug."""
     module_dir = tmp_path / "test_module_one_way"
     areas_dir = module_dir / "areas"
     areas_dir.mkdir(parents=True)
 
-    # Foyer says it connects to Hallway. Hallway does NOT list Foyer.
-    # This is a one-way door: players in Foyer can travel to Hallway,
-    # but once in Hallway they cannot return to Foyer.
+    # A01 says it connects to A02. A02 does NOT list A01.
+    # This is a one-way door: players in A01 can travel to A02,
+    # but once in A02 they cannot return to A01.
     _write_area_with_locations(
         areas_dir / "A.json",
         "A",
         "Manor",
         [
-            {"locationId": "A01", "name": "Foyer", "connectivity": ["Hallway"]},
+            {"locationId": "A01", "name": "Foyer", "connectivity": ["A02"]},
             {"locationId": "A02", "name": "Hallway", "connectivity": []},
         ],
     )
@@ -125,15 +127,15 @@ def test_bidirectional_connectivity_detects_one_way(tmp_path):
     ok, errors = validator.validate_bidirectional_connectivity(module_dir)
 
     assert ok is False, (
-        f"Expected validation to FAIL because Foyer -> Hallway has no "
+        f"Expected validation to FAIL because A01 -> A02 has no "
         f"reverse edge. Got ok=True with errors={errors}."
     )
     assert len(errors) == 1, (
-        f"Expected exactly one error for the one-way Foyer -> Hallway "
+        f"Expected exactly one error for the one-way A01 -> A02 "
         f"link, got: {errors}"
     )
     err = errors[0]
-    assert "Foyer" in err and "Hallway" in err, (
+    assert "A01" in err and "A02" in err, (
         f"Error message must name BOTH endpoints so the bug can be "
         f"located. Got: {err!r}"
     )

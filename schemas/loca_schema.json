@@ -88,7 +88,7 @@
           "connectivity": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "Names of other locations directly connected to this one."
+            "description": "IDs of other locations directly connected to this one."
           },
           "areaConnectivity": {
             "type": "array",

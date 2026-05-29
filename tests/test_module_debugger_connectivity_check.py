@@ -1,28 +1,26 @@
 """
-Tests for VAL-H1: module_debugger.validate_references() must compare
-location `connectivity` entries against location NAMES, not location
-IDs.
+Tests for VAL-H1 (corrected): module_debugger.validate_references() must
+compare location `connectivity` entries against location IDs, not names.
 
-`loca_schema.json:88-92` defines `connectivity` as "Names of other
-locations directly connected to this one." -- free-text names, NOT
-locationId strings. The previous implementation in
-`module_debugger.py:271-273` compared each `connectivity` entry to the
-set of locationId strings, which meant every legitimate connection
-registered as a false-positive broken reference.
+`connectivity` holds locationId strings, NOT free-text names. The
+generator (location_generator.py), the ID remapper (module_generator.py)
+and the runtime pathfinder (location_path_finder.py) all treat connectivity
+entries as IDs, and real module data is overwhelmingly ID-based (the audit
+measured ~190 IDs vs 1 name across production area files). An earlier VAL-H1
+attempt switched the comparison to location *names* based on a stale schema
+description; that turned a correct check into a false-positive generator
+(191 spurious errors on real modules) and is reverted here. The schema
+description was corrected to "IDs of other locations".
 
 These tests cover:
-  1. Positive: connectivity uses real location names -> no error.
-  2. Negative: connectivity references an unknown name -> 1 error.
-  3. Regression: areaConnectivityId (which IS an ID) is still checked
-     against the area_ids set, and intra-area connectivity-by-name +
-     cross-area connectivity-by-ID can coexist with no false positives.
+  1. Positive: connectivity uses real location IDs -> no error.
+  2. Negative: connectivity references an unknown ID -> 1 error.
+  3. Regression: intra-area connectivity (IDs) and cross-area
+     areaConnectivityId (IDs) coexist with no false positives.
 """
 
-import json
 import sys
 from pathlib import Path
-
-import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -64,31 +62,28 @@ def _run_validate(module_data: dict) -> ModuleDebugger:
 
 
 def _connectivity_errors(dbg: ModuleDebugger) -> list:
-    """Return errors that came from the connectivity check (line 273:
-    'Invalid connection ... in location ... of ...')."""
+    """Return errors that came from the connectivity check
+    ('Invalid connection ... in location ... of ...')."""
     return [e for e in dbg.errors if "Invalid connection" in e]
 
 
 # ---------------------------------------------------------------------------
-# Test 1: positive case -- connectivity uses real location NAMES.
+# Test 1: positive case -- connectivity uses real location IDs.
 #
-# Pre-fix: comparison is against location_ids, so "B (Cave Entrance)"
-# (a name) is NOT in the id set and gets flagged as an Invalid
-# connection -- test fails.
-# Post-fix: comparison is against location_names; "B (Cave Entrance)"
-# matches and no error is recorded.
+# Correct behavior: comparison is against location_ids; "A02" / "A01"
+# (real IDs in the area) match and no error is recorded.
 # ---------------------------------------------------------------------------
 
-def test_connectivity_names_resolve_against_location_names():
+def test_connectivity_ids_resolve_against_location_ids():
     loc_a = _location(
         "A01",
-        "A (Forest Path)",
-        connectivity=["B (Cave Entrance)"],
+        "Forest Path",
+        connectivity=["A02"],
     )
     loc_b = _location(
         "A02",
-        "B (Cave Entrance)",
-        connectivity=["A (Forest Path)"],
+        "Cave Entrance",
+        connectivity=["A01"],
     )
     module_data = {
         "AA001.json": _make_area("AA001", [loc_a, loc_b]),
@@ -98,25 +93,27 @@ def test_connectivity_names_resolve_against_location_names():
 
     assert _connectivity_errors(dbg) == [], (
         "Expected no connectivity errors when connectivity references "
-        "valid location names, got: " + repr(_connectivity_errors(dbg))
+        "valid location IDs, got: " + repr(_connectivity_errors(dbg))
     )
 
 
 # ---------------------------------------------------------------------------
-# Test 2: negative case -- connectivity references an unknown name.
+# Test 2: negative case -- connectivity references an unknown ID.
 #
-# Exactly one Invalid-connection error must be recorded.
+# A name where an ID is expected (the real-data anomaly class, e.g.
+# "Black Lantern Hearth") must be flagged as exactly one Invalid
+# connection error.
 # ---------------------------------------------------------------------------
 
-def test_connectivity_unknown_name_is_flagged():
+def test_connectivity_unknown_id_is_flagged():
     loc_a = _location(
         "A01",
-        "A (Forest Path)",
-        connectivity=["Z (Ghost Town)"],
+        "Forest Path",
+        connectivity=["Black Lantern Hearth"],  # a name, not a valid ID
     )
     loc_b = _location(
         "A02",
-        "B (Cave Entrance)",
+        "Cave Entrance",
         connectivity=[],
     )
     module_data = {
@@ -127,35 +124,33 @@ def test_connectivity_unknown_name_is_flagged():
 
     errs = _connectivity_errors(dbg)
     assert len(errs) == 1, (
-        f"Expected exactly 1 connectivity error for unknown name, "
+        f"Expected exactly 1 connectivity error for unknown ID, "
         f"got {len(errs)}: {errs}"
     )
-    assert "Z (Ghost Town)" in errs[0], (
-        f"Error should mention the offending name 'Z (Ghost Town)', "
+    assert "Black Lantern Hearth" in errs[0], (
+        f"Error should mention the offending entry 'Black Lantern Hearth', "
         f"got: {errs[0]}"
     )
 
 
 # ---------------------------------------------------------------------------
-# Test 3: regression -- mixed intra-area connectivity (names) and
-# cross-area areaConnectivityId (IDs) must coexist with no false
-# positives. The areaConnectivityId check path (line 276-283) must
-# still operate against the area_ids set.
+# Test 3: regression -- intra-area connectivity (IDs) and cross-area
+# areaConnectivityId (IDs) must coexist with no false positives.
 # ---------------------------------------------------------------------------
 
-def test_mixed_name_connectivity_and_id_area_connectivity_no_errors():
-    # Area AA001: two locations, connected to each other by name and
-    # one exits into area BB001 via areaConnectivityId.
+def test_id_connectivity_and_area_connectivity_no_errors():
+    # Area AA001: two locations connected to each other by ID; one exits
+    # into area BB001 via areaConnectivityId.
     a01 = _location(
         "A01",
         "Town Square",
-        connectivity=["Marketplace"],
+        connectivity=["A02"],
         area_conn_ids=["BB001"],
     )
     a02 = _location(
         "A02",
         "Marketplace",
-        connectivity=["Town Square"],
+        connectivity=["A01"],
     )
     # Area BB001: one location connected back into AA001 by id.
     b01 = _location(
@@ -171,9 +166,9 @@ def test_mixed_name_connectivity_and_id_area_connectivity_no_errors():
 
     dbg = _run_validate(module_data)
 
-    # No connectivity errors (names resolve correctly).
+    # No connectivity errors (IDs resolve correctly).
     assert _connectivity_errors(dbg) == [], (
-        "Mixed valid name-based connectivity should not produce "
+        "Mixed valid ID-based connectivity should not produce "
         "errors, got: " + repr(_connectivity_errors(dbg))
     )
     # No area-connectivity errors either: AA001 and BB001 are both

@@ -400,9 +400,13 @@ class ModuleValidator:
         """Validate that location-to-location connections are bidirectional.
 
         For each location L with connection target T in its `connectivity`
-        array, verify that another location named T exists within the SAME
-        area and lists L in its own `connectivity`. Per loca_schema,
-        `connectivity` entries are location NAMES (not IDs).
+        array, verify that a location with ID T exists within the SAME area
+        and lists L's ID in its own `connectivity`. `connectivity` entries
+        are location IDs -- the generator, the ID remapper and the runtime
+        pathfinder all treat them as IDs, and real module data is
+        overwhelmingly ID-based (the schema description was corrected to
+        match). An earlier attempt matched by name and produced dozens of
+        false positives on valid modules; this is the ID-based version.
 
         This addresses VAL-H2 / MP-H4: one-way connections strand players,
         because navigation works A -> B but B does not list A so there is
@@ -420,11 +424,11 @@ class ModuleValidator:
         Returns:
             (passed, errors) tuple. `passed` is True iff `errors` is empty.
             Error format:
-                "Location '<name>' connects to '<target>' but '<target>'
+                "Location '<id>' connects to '<target_id>' but '<target_id>'
                  does not connect back"
-            When `<target>` does not exist as a location at all, the error
+            When `<target_id>` does not exist as a location at all, the error
             instead reads:
-                "Location '<name>' connects to '<target>' but '<target>'
+                "Location '<id>' connects to '<target_id>' but '<target_id>'
                  does not exist"
         """
         import json
@@ -454,33 +458,33 @@ class ModuleValidator:
 
             locations = data.get('locations', []) or []
 
-            # Build name -> connectivity-list map for THIS area only.
-            # Per loca_schema, connectivity is a list of location names
-            # within the same area (areaConnectivity handles cross-area).
-            name_to_conns = {}
+            # Build locationId -> connectivity-list map for THIS area only.
+            # connectivity entries are location IDs within the same area
+            # (areaConnectivity/areaConnectivityId handle cross-area links).
+            id_to_conns = {}
             for loc in locations:
                 if not isinstance(loc, dict):
                     continue
-                name = loc.get('name')
-                if not name:
+                loc_id = loc.get('locationId')
+                if not loc_id:
                     continue
                 conns = loc.get('connectivity', []) or []
-                name_to_conns[name] = list(conns)
+                id_to_conns[loc_id] = list(conns)
 
             # Check each declared connection has a matching reverse edge.
-            for src_name, conn_list in name_to_conns.items():
-                for target_name in conn_list:
-                    if target_name not in name_to_conns:
+            for src_id, conn_list in id_to_conns.items():
+                for target_id in conn_list:
+                    if target_id not in id_to_conns:
                         errors.append(
-                            f"Location '{src_name}' connects to "
-                            f"'{target_name}' but '{target_name}' does "
+                            f"Location '{src_id}' connects to "
+                            f"'{target_id}' but '{target_id}' does "
                             f"not exist"
                         )
                         continue
-                    if src_name not in name_to_conns[target_name]:
+                    if src_id not in id_to_conns[target_id]:
                         errors.append(
-                            f"Location '{src_name}' connects to "
-                            f"'{target_name}' but '{target_name}' does "
+                            f"Location '{src_id}' connects to "
+                            f"'{target_id}' but '{target_id}' does "
                             f"not connect back"
                         )
 
