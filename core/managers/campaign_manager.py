@@ -79,6 +79,7 @@ register_callsite("T038", "core/managers/campaign_manager.py", 552)
 register_callsite("T039", "core/managers/campaign_manager.py", 579)
 import config
 from utils.encoding_utils import safe_json_load, safe_json_dump
+from utils.file_operations import safe_write_json
 from utils.module_path_manager import ModulePathManager
 from utils.module_refresh_lock import module_refresh_lock
 from utils.commit_state import begin_refresh_commit, mark_commit_phase, complete_refresh_commit, recover_incomplete_refresh_commit
@@ -630,36 +631,194 @@ Focus on story outcomes, character development, and decisions that will matter i
             
             Format as JSON with keys: relationships, artifacts, hubs, worldState, unlockedModules"""
             
+            # T039: campaign export-data extraction (mini-tier JSON).
+            # MODEL_PROVIDER already imported above for the T038 branch.
+            if MODEL_PROVIDER == "openai":
+                summ_cfg = config.DM_SUMM_T039_GPT5MINI
+            elif MODEL_PROVIDER == "gemini":
+                summ_cfg = config.DM_SUMM_T039_GEMINI_FLASHLITE_MINIMAL
+            elif MODEL_PROVIDER == "lmstudio":
+                summ_cfg = config.DM_SUMM_T039_LMSTUDIO
+            else:  # legacy
+                summ_cfg = config.DM_SUMM_T039_LEGACY
+
             try:
-                export_response = capture_and_fanout("T039", self.client.chat.completions.create, messages=[
+                export_response = capture_and_fanout("T039", api_client.create_completion,
+                    messages=[
                         {"role": "system", "content": "Extract campaign-relevant data from module completion summary. Be concise and factual."},
                         {"role": "user", "content": export_prompt}
-                    ], model=config.DM_SUMMARY_MODEL, temperature=0.3)
-                
+                    ],
+                    model=summ_cfg["model"],
+                    temperature=0.3,
+                    **{k: v for k, v in summ_cfg.items() if k != "model"})
+
                 exported_data = json.loads(export_response.choices[0].message.content)
-            except:
+            except Exception as e:
+                debug(f"T039 fallback to local processor: {e}", category="campaign_management")
                 exported_data = self._process_module_summary_for_export(summary_text, party_tracker_data)
             
             return {
                 "moduleName": module_name,
                 "completionDate": datetime.now().isoformat(),
                 "summary": summary_text,
-                "exportedData": exported_data
+                "exportedData": exported_data,
+                "summary_failed": False
             }
-            
+
         except Exception as e:
             error(f"FAILURE: Error generating module summary", exception=e, category="summary_building")
-            # Fallback summary
+            # Fallback summary -- INT-H6: persist summary_failed sentinel so
+            # downstream callers (and operators) can detect the gap and
+            # trigger regeneration via regenerate_failed_summary(). Existing
+            # fallback keys (keyDecisions/consequences/unlockedModules/
+            # importantNPCs) are preserved for backward compatibility.
             return {
                 "moduleName": module_name,
                 "completionDate": datetime.now().isoformat(),
-                "summary": f"Module {module_name} was completed successfully.",
+                "summary": (
+                    f"Module {module_name} was completed successfully. "
+                    "(Summary generation failed - regenerate via "
+                    "campaign_manager.regenerate_failed_summary)"
+                ),
+                "exportedData": {},
+                "summary_failed": True,
+                "error": str(e),
                 "keyDecisions": [],
                 "consequences": {},
                 "unlockedModules": [],
                 "importantNPCs": {}
             }
-    
+
+    def regenerate_failed_summary(self, module_name: str) -> bool:
+        """Retry summary generation for a module whose previous summary
+        attempt failed (i.e. summary_failed=True on disk).
+
+        INT-H6: when _generate_module_summary's except branch fires, the
+        on-disk summary stores `summary_failed=True` + `exportedData={}`
+        but the module is otherwise marked complete. This helper lets an
+        operator (or a future automatic-retry hook) re-run summary
+        generation, atomically overwriting the failed summary file with
+        a fresh attempt.
+
+        Loads the most recent archived conversation history for the
+        module, re-runs _generate_module_summary with skip_archiving=True
+        (the original completion already archived), and on success
+        atomically overwrites the summary file.
+
+        Returns:
+            True if the summary was regenerated and overwritten.
+            False if no failed summary exists, or if regeneration also
+            failed (the on-disk file is left untouched on failure).
+        """
+        try:
+            summary_file = os.path.join(
+                self.summaries_dir, f"{module_name}_summary_001.json"
+            )
+            if not os.path.exists(summary_file):
+                info(
+                    f"STATE_CHANGE: No summary file to regenerate for {module_name}",
+                    category="summary_building",
+                )
+                return False
+
+            existing = safe_json_load(summary_file)
+            if not existing:
+                warning(
+                    f"FILE_OP: Could not load summary {summary_file} for regeneration",
+                    category="file_operations",
+                )
+                return False
+
+            if not existing.get("summary_failed"):
+                debug(
+                    f"Summary for {module_name} is not marked failed -- nothing to regenerate",
+                    category="summary_building",
+                )
+                return False
+
+            # Locate the latest archived conversation for this module.
+            import glob
+            archive_pattern = os.path.join(
+                self.archives_dir, f"{module_name}_conversation_*.json"
+            )
+            archive_files = sorted(glob.glob(archive_pattern))
+            if not archive_files:
+                error(
+                    f"FAILURE: No archived conversation found for {module_name}; "
+                    "cannot regenerate summary",
+                    category="summary_building",
+                )
+                return False
+
+            archive_data = safe_json_load(archive_files[-1])
+            if not archive_data:
+                error(
+                    f"FAILURE: Could not load archive {archive_files[-1]} "
+                    f"for {module_name}",
+                    category="summary_building",
+                )
+                return False
+            conversation_history = archive_data.get("conversationHistory", [])
+
+            # Best-effort party_tracker. The archive does not store it,
+            # so we fall back to the live root file if present.
+            party_tracker_data = {}
+            if os.path.exists("party_tracker.json"):
+                loaded = safe_json_load("party_tracker.json")
+                if loaded:
+                    party_tracker_data = loaded
+
+            # Retry generation. skip_archiving=True because the original
+            # completion already wrote the archive.
+            info(
+                f"STATE_CHANGE: Retrying summary generation for {module_name}",
+                category="summary_building",
+            )
+            new_summary = self._generate_module_summary(
+                module_name,
+                party_tracker_data,
+                conversation_history,
+                skip_archiving=True,
+            )
+
+            if new_summary.get("summary_failed"):
+                error(
+                    f"FAILURE: Regeneration also failed for {module_name}; "
+                    "leaving previous failed summary in place",
+                    category="summary_building",
+                )
+                return False
+
+            # Preserve visit-tracking fields from the original file so a
+            # regenerated summary does not lose visit history.
+            for key in (
+                "visitCount", "firstVisitDate", "lastVisitDate",
+                "sequenceNumber",
+            ):
+                if key in existing and key not in new_summary:
+                    new_summary[key] = existing[key]
+
+            # Atomically overwrite the failed summary.
+            if not safe_write_json(summary_file, new_summary):
+                error(
+                    f"FAILURE: Atomic write failed when overwriting "
+                    f"regenerated summary for {module_name}",
+                    category="file_operations",
+                )
+                return False
+
+            info(
+                f"SUCCESS: Regenerated summary for {module_name}",
+                category="summary_building",
+            )
+            return True
+        except Exception as e:
+            error(
+                f"FAILURE: regenerate_failed_summary error for {module_name}",
+                exception=e, category="summary_building",
+            )
+            return False
+
     def _handle_module_completion_export(self, module_name: str, summary: Dict[str, Any]):
         """Handle exporting data from completed module to campaign state"""
         exported_data = summary.get('exportedData', {})
@@ -989,28 +1148,28 @@ Focus on story outcomes, character development, and decisions that will matter i
         # Add all completed module summaries (multiple visits per module)
         debug(f"STATE_CHANGE: Completed modules: {self.campaign_data.get('completedModules', [])}", category="summary_building")
         if self.campaign_data['completedModules']:
-            context_parts.append("\\nPREVIOUS ADVENTURES:")
+            context_parts.append("\nPREVIOUS ADVENTURES:")
             for module in self.campaign_data['completedModules']:
                 debug(f"FILE_OP: Loading summaries for module: {module}", category="summary_building")
                 summaries = self._load_module_summaries(module)
                 debug(f"FILE_OP: Found {len(summaries)} summaries for {module}", category="summary_building")
                 if summaries:
-                    context_parts.append(f"\\n=== CHRONICLES OF {module.upper()} ===")
+                    context_parts.append(f"\n=== CHRONICLES OF {module.upper()} ===")
                     for i, summary in enumerate(summaries):
                         visit_num = i + 1
                         seq_num = summary.get('sequenceNumber', visit_num)
-                        context_parts.append(f"\\n--- Visit {visit_num} (Chronicle {seq_num:03d}) ---")
+                        context_parts.append(f"\n--- Visit {visit_num} (Chronicle {seq_num:03d}) ---")
                         summary_text = summary.get('summary', 'No summary available')
                         context_parts.append(summary_text)
                         debug(f"FILE_OP: Added summary {seq_num} ({len(summary_text)} chars)", category="summary_building")
-        
+
         # Add current world state
         if self.campaign_data.get('worldState'):
-            context_parts.append("\\nWORLD STATE:")
+            context_parts.append("\nWORLD STATE:")
             for key, value in self.campaign_data['worldState'].items():
                 context_parts.append(f"- {key}: {value}")
-        
-        final_context = "\\n".join(context_parts)
+
+        final_context = "\n".join(context_parts)
         debug(f"SUCCESS: Final context length: {len(final_context)} characters", category="summary_building")
         return final_context
 

@@ -47,6 +47,7 @@ except ImportError:
 from utils.module_context import ModuleContext
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.npc_reconciler import NpcReconciler
+from utils.file_operations import safe_write_json
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T028", "core/generators/module_builder.py", 685)
 register_callsite("T029", "core/generators/module_builder.py", 943)
@@ -92,12 +93,18 @@ class ModuleBuilder:
             timestamp = datetime.now().strftime("%H:%M:%S")
             print(f"DEBUG: [Module Generator] [{timestamp}] {message}")
     
-    def save_json(self, data: Dict[str, Any], filename: str):
-        """Save JSON data to the output directory"""
-        filepath = os.path.join(self.config.output_directory, filename)
-        with open(filepath, "w") as f:
-            json.dump(data, f, indent=2)
-        self.log(f"Saved: {filename}")
+    def _atomic_save_json(self, relative_filename: str, data: Dict[str, Any]) -> bool:
+        """Atomic JSON write to self.config.output_directory/<relative_filename>.
+
+        Argument order is intentionally (filename, data) to mirror the legacy
+        save_json(data, filename) signature swap and minimize per-callsite
+        cognitive load when migrating callers. The underlying
+        utils.file_operations.safe_write_json takes (filepath, data).
+        """
+        filepath = os.path.join(self.config.output_directory, relative_filename)
+        result = safe_write_json(filepath, data)
+        self.log(f"Saved: {relative_filename}")
+        return result
     
     def create_context_header(self, party_members: List[str]) -> str:
         """Create a context header to prepend to all generator prompts"""
@@ -244,7 +251,7 @@ MODULE INDEPENDENCE RULES:
             self.log(f"  - WARNING: module_plot.json not found. Cannot determine climactic location.")
             return
 
-        from utils.file_operations import safe_read_json, safe_write_json
+        from utils.file_operations import safe_read_json
         unified_plot = safe_read_json(plot_file_path)
         plot_points = unified_plot.get("plotPoints", [])
         if not plot_points:
@@ -296,7 +303,7 @@ MODULE INDEPENDENCE RULES:
         climactic_location.setdefault("npcs", []).append(antagonist_npc_entry)
         
         # 7. Save the updated area file
-        safe_write_json(area_data, area_file_path)
+        safe_write_json(area_file_path, area_data)
         self.log(f"  - SUCCESS: Mandated placement of '{antagonist_name}' in {climactic_area_id}:{climactic_location_id}.")
 
     def generate_areas(self):
@@ -351,11 +358,11 @@ MODULE INDEPENDENCE RULES:
             self.validate_area_consistency(area_data, self.module_data)
             
             self.areas_data[area_id] = area_data
-            self.save_json(area_data, f"areas/{area_id}.json")
-            
+            self._atomic_save_json(f"areas/{area_id}.json", area_data)
+
             # Save the map separately
             if "map" in area_data:
-                self.save_json(area_data["map"], f"map_{area_id}.json")
+                self._atomic_save_json(f"map_{area_id}.json", area_data["map"])
             
             # Context will be updated when locations are generated
             self.context.add_area(area_id, region['regionName'], area_data["areaType"])
@@ -439,14 +446,43 @@ MODULE INDEPENDENCE RULES:
         return character_names
     
     def create_module_directories(self):
-        """Create all required module directories"""
+        """Create all required module directories.
+
+        OW-H2 (T5-7): Detect collision with an existing built module BEFORE
+        creating any subdirectories. The marker for a previously completed
+        build is ``module_plot.json`` in ``output_directory``. If found,
+        pick the next free ``<base>_v2``, ``<base>_v3``, ... slot under
+        the same parent directory and update ``self.config.module_name``
+        plus ``self.config.output_directory`` to point at it. This avoids
+        overwriting the existing module's areas, plot, party tracker, and
+        _BU.json backups. Bare empty directories (e.g., the one created by
+        ``ModuleBuilder.__init__`` at line 88, or an aborted prior run) do
+        NOT trip collision detection -- only a completed build does.
+        """
+        existing_plot = os.path.join(self.config.output_directory, "module_plot.json")
+        if os.path.exists(existing_plot):
+            parent_dir = os.path.dirname(self.config.output_directory) or "."
+            base = self.config.module_name
+            suffix = 2
+            while os.path.exists(os.path.join(parent_dir, f"{base}_v{suffix}")):
+                suffix += 1
+            new_name = f"{base}_v{suffix}"
+            new_output = os.path.join(parent_dir, new_name)
+            warning(
+                f"Module name collision detected at {self.config.output_directory}; "
+                f"renamed in-progress build to {new_output} to protect the existing module",
+                category="module_generation",
+            )
+            self.config.module_name = new_name
+            self.config.output_directory = new_output
+
         required_dirs = ["characters", "monsters", "encounters", "areas"]
-        
+
         # Add media directories for module-specific assets
         media_dirs = ["media", "media/monsters", "media/npcs", "media/environment"]
-        
+
         all_dirs = required_dirs + media_dirs
-        
+
         for dir_name in all_dirs:
             dir_path = os.path.join(self.config.output_directory, dir_name)
             os.makedirs(dir_path, exist_ok=True)
@@ -517,8 +553,8 @@ MODULE INDEPENDENCE RULES:
             
             # Add locations to area data and save complete area file
             area_data["locations"] = location_data["locations"]
-            self.save_json(area_data, f"areas/{area_id}.json")
-            
+            self._atomic_save_json(f"areas/{area_id}.json", area_data)
+
             self.log(f"Generated {len(location_data['locations'])} locations for {area_id}")
     
     def generate_plots(self):
@@ -552,10 +588,26 @@ The plot title should reference this specific area, not other locations.
                 context=self.context,
                 context_header=area_specific_context
             )
-            
+
+            # MP-C2: Run validate_plot() against the just-generated plot so the
+            # production pipeline catches dangling location / nextPoints refs
+            # before they reach disk. Previously validate_plot was only called
+            # from plot_generator.main(), so bad refs slipped through silently.
+            # Raising ValueError here propagates up to
+            # ai_driven_module_creation()'s try/except cleanup wrapper (added
+            # in OW-H4 / T0-1), which removes the partial module directory.
+            errors = self.plot_gen.validate_plot(plot_data, location_data)
+            if errors:
+                error_msg = "; ".join(errors)
+                warning(
+                    f"Plot validation failed for {area_id}: {error_msg}",
+                    category="module_generation",
+                )
+                raise ValueError(f"Plot validation failed: {error_msg}")
+
             self.plots_data[area_id] = plot_data
             # Individual plot files removed - using centralized module_plot.json instead
-            
+
             # Update context with plot points
             for plot_point in plot_data.get("plotPoints", []):
                 self.context.add_plot_point(
@@ -563,7 +615,7 @@ The plot title should reference this specific area, not other locations.
                     area_id,
                     plot_point.get("location")
                 )
-            
+
             self.log(f"Generated plot for {area_id}")
     
     def unify_plots(self):
@@ -702,8 +754,8 @@ IMPORTANT:
             
             # Save the unified plot
             output_path = os.path.join(self.config.output_directory, "module_plot.json")
-            self.save_json(unified_plot, "module_plot.json")
-            
+            self._atomic_save_json("module_plot.json", unified_plot)
+
             self.log(f"Created unified module plot with {len(unified_plot.get('plotPoints', []))} plot points")
             
         except Exception as e:
@@ -757,7 +809,7 @@ IMPORTANT:
                 unified_plot["plotPoints"].append(new_pp)
                 plot_counter += 1
         
-        self.save_json(unified_plot, "module_plot.json")
+        self._atomic_save_json("module_plot.json", unified_plot)
         self.log(f"Created fallback unified plot with {len(unified_plot['plotPoints'])} plot points")
     
     def update_area_plot_hooks(self):
@@ -780,9 +832,8 @@ IMPORTANT:
 
     def _update_single_area_plot_hooks(self, area_id, unified_plot):
         """Atomically update plot hooks for a single area with deep merge and safety guards"""
-        # Import here to avoid circular imports
-        from utils.file_operations import safe_write_json, safe_read_json
-        
+        from utils.file_operations import safe_read_json
+
         area_file_path = os.path.join(self.config.output_directory, "areas", f"{area_id}.json")
         
         # STEP 1: Create backup before any changes
@@ -1067,7 +1118,7 @@ IMPORTANT:
             "activeQuests": []
         }
         
-        self.save_json(party_tracker, "party_tracker.json")
+        self._atomic_save_json("party_tracker.json", party_tracker)
         self.log("Created party tracker")
     
     def create_module_summary(self):
@@ -1084,7 +1135,7 @@ IMPORTANT:
             for conflict in self.module_data['moduleConflicts']:
                 summary += f"- **{conflict['conflictName']}** ({conflict['scope']}): {conflict['description']}\n"
         
-        summary += """
+        summary += f"""
 
 ## Main Plot
 **Objective**: {self.module_data['mainPlot']['mainObjective']}
@@ -1158,8 +1209,8 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 "plot_points": len(self.context.plot_scopes)
             }
         }
-        self.save_json(report, "validation_report.json")
-    
+        self._atomic_save_json("validation_report.json", report)
+
     def create_bu_backups(self):
         """Create _BU.json backup files for all generated module files"""
         import shutil
@@ -1323,8 +1374,8 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 self._create_bidirectional_connection(area_files_for_connection, from_area_id, to_area_id)
                 
                 # Save the updated files after adding connections
-                self.save_json(self.areas_data[from_area_id], f"areas/{from_area_id}.json")
-                self.save_json(self.areas_data[to_area_id], f"areas/{to_area_id}.json")
+                self._atomic_save_json(f"areas/{from_area_id}.json", self.areas_data[from_area_id])
+                self._atomic_save_json(f"areas/{to_area_id}.json", self.areas_data[to_area_id])
 
 def main():
     """Interactive module builder"""
@@ -1543,6 +1594,17 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
             - success_status: True if module was created successfully, False otherwise
             - module_name: Name of the created module if successful, None if failed
     """
+    # OW-H4: Track module_name and output_dir so the except branch can clean up
+    # any partial directory created before the failure (e.g., by ModuleBuilder
+    # __init__ at line 87 or create_module_directories() inside build_module).
+    # OW-H2: also track the builder (whose config.output_directory reflects any
+    # collision rename to <name>_v2) and whether a real module pre-existed at
+    # the target, so cleanup deletes the actual build dir and never a
+    # pre-existing module.
+    module_name = None
+    output_dir = None
+    builder = None
+    preexisting_module = False
     try:
         # Report progress if callback provided
         if progress_callback:
@@ -1552,7 +1614,7 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
         if not narrative:
             print(f"DEBUG: [Module Generator] ERROR: No narrative or concept provided")
             return False, None
-        
+
         # Parse narrative with AI to get module parameters
         if progress_callback:
             progress_callback({'stage': 1, 'total_stages': 9, 'stage_name': 'Parsing narrative', 'percentage': 11, 'message': 'Analyzing narrative to extract module parameters...'})
@@ -1606,7 +1668,17 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
             output_directory=f"./modules/{module_name}",
             verbose=True
         )
-        
+        # OW-H4: Record output_dir BEFORE any directory-creating work so the
+        # except branch can remove the partial dir even if ModuleBuilder's
+        # __init__ raises after creating it.
+        output_dir = config.output_directory
+        # OW-H2: note whether a real module already lives at the target path.
+        # If so, create_module_directories() will rename this build to
+        # <name>_v2; cleanup must then target _v2 and leave the original intact.
+        preexisting_module = os.path.exists(
+            os.path.join(output_dir, "module_plot.json")
+        )
+
         # Create and run the builder
         if progress_callback:
             progress_callback({'stage': 3, 'total_stages': 9, 'stage_name': 'Creating builder', 'percentage': 33, 'message': 'Initializing module builder...'})
@@ -1682,6 +1754,30 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
         print(f"DEBUG: [Module Generator] ERROR: AI-driven module creation failed: {str(e)}")
         import traceback
         traceback.print_exc()
+        error(f"Module creation failed for '{module_name}': {e}", exception=e, category="module_creation")
+        # OW-H4: Clean up the partial module directory to prevent orphan state
+        # (otherwise scan_and_integrate_new_modules later treats it as a new
+        # module). OW-H2 guard: create_module_directories() may have renamed the
+        # in-progress build to <name>_v2 (builder.config.output_directory
+        # reflects that), so clean up the ACTUAL build dir -- and NEVER delete a
+        # pre-existing module that a collision build was renamed away from.
+        build_dir = output_dir
+        if builder is not None:
+            build_dir = builder.config.output_directory
+        if preexisting_module and build_dir == output_dir:
+            # Collision build failed before it was renamed to _v2: the target is
+            # the pre-existing module, which must be left intact.
+            warning(
+                f"Module creation failed before collision rename; leaving "
+                f"pre-existing module at {output_dir} untouched.",
+                category="module_creation",
+            )
+        elif build_dir and os.path.exists(build_dir):
+            try:
+                shutil.rmtree(build_dir)
+                debug(f"Cleaned up partial module dir: {build_dir}", category="module_creation")
+            except Exception as cleanup_err:
+                warning(f"Failed to clean up partial module dir {build_dir}: {cleanup_err}", category="module_creation")
         return False, None
 
 if __name__ == "__main__":

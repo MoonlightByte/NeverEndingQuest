@@ -100,7 +100,6 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
-from openai import OpenAI
 from core.ai import api_client
 import config
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -110,7 +109,8 @@ register_callsite("T033", "core/generators/module_stitcher.py", 1095)
 
 # Set script name for logging
 set_script_name("module_stitcher")
-from utils.encoding_utils import safe_json_load, safe_json_dump
+from utils.encoding_utils import safe_json_load
+from utils.file_operations import safe_write_json
 from utils.module_path_manager import ModulePathManager
 
 class ModuleStitcher:
@@ -123,7 +123,6 @@ class ModuleStitcher:
         self.root_dir = os.path.dirname(self.modules_dir)
         self.world_registry_file = os.path.join(self.modules_dir, "world_registry.json")
         self.party_tracker_file = os.path.join(self.root_dir, "party_tracker.json")
-        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
 
         # Ensure directories exist
         os.makedirs(self.modules_dir, exist_ok=True)
@@ -136,7 +135,7 @@ class ModuleStitcher:
             print("Migrating to isolated module architecture - removing cross-module connections")
             del self.world_registry['connections']
             self.world_registry['isolatedModules'] = True
-            safe_json_dump(self.world_registry, self.world_registry_file)
+            safe_write_json(self.world_registry_file, self.world_registry)
     
     def _load_world_registry(self) -> Dict[str, Any]:
         """Load world registry or create default"""
@@ -153,7 +152,7 @@ class ModuleStitcher:
                 "themes": {},
                 "isolatedModules": True
             }
-            safe_json_dump(default_registry, self.world_registry_file)
+            safe_write_json(self.world_registry_file, default_registry)
             return default_registry
     
     def detect_new_modules(self) -> List[str]:
@@ -216,10 +215,11 @@ class ModuleStitcher:
                 # Check if it's an area file by loading and checking structure
                 try:
                     data = safe_json_load(file_path)
-                    if (data and 'areaId' in data and 'areaName' in data and 
+                    if (data and 'areaId' in data and 'areaName' in data and
                         'locations' in data):
                         area_files.append(filename)
-                except:
+                except Exception as e:
+                    warning(f"Skipped malformed area file {file_path}: {e}", category="module_integration")
                     continue
             
             return len(area_files) > 0
@@ -459,7 +459,22 @@ Create atmospheric travel narration that leads into this adventure."""
             }
     
     def _create_module_backup(self, module_name: str) -> str:
-        """Create backup of all module files before integration
+        """Create backup of all module files before integration.
+
+        Backups are stored OUTSIDE the module being backed up, under
+        modules/.integration_backups/<module_name>_<timestamp>/. This
+        prevents two failure modes (INT-C2):
+
+          1. A backup placed inside the module directory means a rollback
+             would restore from a path that may itself have been mutated
+             (or whose parent dir is the corruption target).
+          2. Module-discovery walks would see the backup directory as a
+             candidate module. (Discovery already skips dotted-name dirs
+             at line ~171, which is why the parent is `.integration_backups`.)
+
+        The backup is cleaned up by `_cleanup_backup` once the
+        integration commits successfully -- it is only useful during the
+        narrow integrate_module window.
 
         Returns:
             str: Path to backup directory if successful, None otherwise
@@ -469,57 +484,164 @@ Create atmospheric travel narration that leads into this adventure."""
             if not os.path.exists(module_path):
                 return None
 
-            # Create backup directory with timestamp
+            # Create backup directory with timestamp, OUTSIDE the module dir.
+            # The dotted parent name (`.integration_backups`) ensures the
+            # discovery filter at _detect_new_modules skips this tree.
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            backup_dir = os.path.join(module_path, f"backup_pre_integration_{timestamp}")
+            backups_root = os.path.join(self.modules_dir, ".integration_backups")
+            os.makedirs(backups_root, exist_ok=True)
+            backup_dir = os.path.join(backups_root, f"{module_name}_{timestamp}")
             os.makedirs(backup_dir, exist_ok=True)
 
-            # List all files to backup
-            files_backed_up = 0
+            # INT-C3: back up the ENTIRE module tree (all files AND all
+            # subdirectories), not just root *.json + a fixed subdir list.
+            # _rollback_module rmtree's the live module dir and restores from
+            # THIS backup, so anything not copied here is permanently lost on
+            # rollback. The previous selective copy silently destroyed media/,
+            # npcs/, images/, saved_games/, and any .md/.bak files whenever a
+            # rollback fired (e.g. schema success-rate < 0.8 after mutation).
+            import shutil
+            try:
+                # backup_dir was pre-created above; merge the full tree into it.
+                shutil.copytree(module_path, backup_dir, dirs_exist_ok=True)
+            except Exception as e:
+                print(f"    - Warning: Could not fully back up {module_name}: {e}")
+                return None
 
-            # Backup all JSON files in module root
-            for filename in os.listdir(module_path):
-                file_path = os.path.join(module_path, filename)
-
-                # Skip directories and non-JSON files, but backup everything else for safety
-                if os.path.isfile(file_path) and filename.endswith('.json'):
-                    backup_path = os.path.join(backup_dir, filename)
-
-                    try:
-                        import shutil
-                        shutil.copy2(file_path, backup_path)
-                        files_backed_up += 1
-                    except Exception as e:
-                        print(f"    - Warning: Could not backup {filename}: {e}")
-
-            # Backup subdirectories (characters, monsters, etc.)
-            for subdir in ['characters', 'monsters', 'encounters', 'areas']:
-                subdir_path = os.path.join(module_path, subdir)
-                if os.path.exists(subdir_path) and os.path.isdir(subdir_path):
-                    backup_subdir = os.path.join(backup_dir, subdir)
-                    os.makedirs(backup_subdir, exist_ok=True)
-
-                    for filename in os.listdir(subdir_path):
-                        if filename.endswith('.json'):
-                            src_file = os.path.join(subdir_path, filename)
-                            dst_file = os.path.join(backup_subdir, filename)
-
-                            try:
-                                import shutil
-                                shutil.copy2(src_file, dst_file)
-                                files_backed_up += 1
-                            except Exception as e:
-                                print(f"    - Warning: Could not backup {subdir}/{filename}: {e}")
-
-            print(f"    - Backed up {files_backed_up} files to {backup_dir}")
+            files_backed_up = sum(len(files) for _, _, files in os.walk(backup_dir))
+            print(f"    - Backed up {files_backed_up} files (full module tree) to {backup_dir}")
             return backup_dir if files_backed_up > 0 else None
 
         except Exception as e:
             print(f"Error creating module backup: {e}")
             return None
-    
+
+    def _cleanup_backup(self, backup_path: str):
+        """Remove an integration backup directory.
+
+        The integration backup is only useful during the narrow window of
+        integrate_module. Once the world_registry has been committed (or
+        once rollback has consumed the backup), the directory is dead
+        weight and must be removed so modules/.integration_backups/ does
+        not grow unbounded.
+
+        Idempotent and best-effort: safe to call with an empty/None path
+        or with a path that no longer exists. T3-5 wires this same
+        helper into the rollback path, which may legitimately call
+        cleanup after the backup has already been consumed.
+        """
+        if not backup_path:
+            return
+        if not os.path.exists(backup_path):
+            return
+        try:
+            import shutil
+            shutil.rmtree(backup_path, ignore_errors=True)
+        except Exception as e:
+            # Best-effort cleanup -- never let a stale backup dir crash
+            # the integration that just succeeded.
+            print(f"    - Warning: Could not clean up backup {backup_path}: {e}")
+
+    def _rollback_module(self, module_name: str, backup_path: str) -> bool:
+        """Restore a module directory from its integration backup.
+
+        Used by `integrate_module` when EITHER the safety-check fails
+        AFTER mutations have already been applied, OR a helper raises
+        mid-mutation and the outer `except Exception` catches it.
+        Without this, the module dir would be left in a half-mutated
+        Frankenstein state (some files renamed, others not).
+
+        Strategy: wipe the current module dir, then copy the backup
+        tree back into place. We do NOT attempt a per-file merge --
+        the backup is the canonical pre-integration snapshot, and a
+        bulk copy is the simplest safe restore.
+
+        Returns True on success. Returns False on any failure
+        (missing backup path, IOError during restore, etc.). When this
+        returns False, the caller is expected to write a `.corrupted`
+        sentinel and RETAIN the backup for forensics.
+        """
+        if not backup_path or not os.path.exists(backup_path):
+            error(
+                f"Rollback failed for {module_name}: backup path missing or "
+                f"empty (path={backup_path!r})",
+                category="module_integration",
+            )
+            return False
+        try:
+            import shutil
+            module_path = os.path.join(self.modules_dir, module_name)
+            # Wipe the (potentially mutated) live module dir before
+            # restoring. copytree() refuses to overwrite, so we must
+            # remove first. ignore_errors=False here so we surface a
+            # genuine permission failure rather than silently swallowing
+            # it and proceeding to copytree() over an inconsistent tree.
+            if os.path.exists(module_path):
+                shutil.rmtree(module_path)
+            shutil.copytree(backup_path, module_path)
+            info(
+                f"Successfully rolled back module {module_name} from backup",
+                category="module_integration",
+            )
+            return True
+        except Exception as e:
+            error(
+                f"Rollback failed for module {module_name}: {e}",
+                exception=e,
+                category="module_integration",
+            )
+            return False
+
+    def _write_corrupted_sentinel(self, module_name: str, reason: str) -> None:
+        """Write a `.corrupted` marker file into the module directory.
+
+        Called when rollback ITSELF fails -- the module is in an
+        unknown half-restored state. The sentinel:
+          - Signals operators / subsequent runs that this module is
+            broken and must not be loaded.
+          - Documents the reason for forensics.
+
+        Best-effort: writing the sentinel must never raise, since by
+        the time we're here something has already gone badly wrong.
+        """
+        try:
+            module_path = os.path.join(self.modules_dir, module_name)
+            if not os.path.isdir(module_path):
+                # If even the module dir is gone, write to the parent
+                # so the marker isn't lost entirely.
+                os.makedirs(module_path, exist_ok=True)
+            sentinel = os.path.join(module_path, ".corrupted")
+            with open(sentinel, "w", encoding="utf-8") as fh:
+                fh.write(reason + "\n")
+        except Exception:
+            # Never raise from the sentinel writer -- the caller is
+            # already on the failure path.
+            pass
+
     def integrate_module(self, module_name: str) -> bool:
-        """Integrate a new module into the world registry with conflict resolution"""
+        """Integrate a new module into the world registry with conflict resolution.
+
+        Rollback contract (T3-5 / INT-C3):
+          - `backup_dir` is created BEFORE any mutation.
+          - `mutations_applied` flips True the moment we call
+            `_resolve_id_conflicts` (which may rename files / rewrite
+            JSON). From that point on, any failure path -- whether
+            the safety check returns False OR the outer
+            `except Exception` fires -- MUST roll the module back
+            from the backup. Without this, partial mutations linger
+            on disk and the module is half-renamed.
+          - If rollback succeeds, the backup is cleaned up.
+          - If rollback FAILS, the backup is RETAINED and a
+            `.corrupted` sentinel is written into the module dir so
+            operators / subsequent runs see the breakage.
+          - Failures BEFORE the first mutation (e.g. analyze_module
+            returns None) do NOT trigger rollback -- nothing changed
+            so there's nothing to restore. The backup is still
+            cleaned up to avoid leaking entries in
+            modules/.integration_backups/.
+        """
+        backup_dir = None
+        mutations_applied = False
         try:
             print(f"Integrating module: {module_name}")
 
@@ -532,9 +654,16 @@ Create atmospheric travel narration that leads into this adventure."""
             module_data = self.analyze_module(module_name)
             if not module_data:
                 print(f"Failed to analyze module: {module_name}")
+                # Pre-mutation failure -- no rollback needed. Clean up
+                # the backup to avoid leaking entries.
+                self._cleanup_backup(backup_dir)
                 return False
 
-            # Check for conflicts and resolve them
+            # Check for conflicts and resolve them.
+            # NOTE: _resolve_id_conflicts may rename area files and
+            # rewrite location IDs in place. Once we enter this call,
+            # we are committed to the rollback contract.
+            mutations_applied = True
             conflicts_resolved = self._resolve_id_conflicts(module_name, module_data, backup_dir)
             if conflicts_resolved:
                 print(f"  - Resolved {conflicts_resolved} ID conflicts")
@@ -548,13 +677,25 @@ Create atmospheric travel narration that leads into this adventure."""
                 module_data = self.analyze_module(module_name)
                 if not module_data:
                     print(f"Failed to re-analyze module after conflict resolution: {module_name}")
+                    # Mutations have already been applied at this
+                    # point -- rollback.
+                    self._handle_integration_failure(
+                        module_name, backup_dir,
+                        reason="Failed to re-analyze module after conflict resolution",
+                    )
                     return False
-            
+
             # Validate module safety
             if not self._validate_module_safety(module_name, module_data):
                 print(f"Module {module_name} failed safety validation - skipping integration")
+                # PATH A: safety check rejected the module AFTER
+                # mutations were applied. Restore from backup.
+                self._handle_integration_failure(
+                    module_name, backup_dir,
+                    reason="Module failed safety validation",
+                )
                 return False
-            
+
             # Add module to registry
             self.world_registry['modules'][module_name] = {
                 "moduleName": module_name,
@@ -565,7 +706,7 @@ Create atmospheric travel narration that leads into this adventure."""
                 "areaCount": len(module_data.get('areas', {})),
                 "travelNarration": module_data.get('travelNarration', {})
             }
-            
+
             # Add areas to registry
             for area_id, area_data in module_data.get('areas', {}).items():
                 self.world_registry['areas'][area_id] = {
@@ -573,27 +714,67 @@ Create atmospheric travel narration that leads into this adventure."""
                     "module": module_name,
                     "addedDate": datetime.now().isoformat()
                 }
-            
+
             # Note: Cross-module connections disabled for clean module isolation
             # Each module is self-contained and transitions are handled by AI narration
-            
+
             # Update registry metadata
             self.world_registry['lastUpdated'] = datetime.now().isoformat()
-            
-            # Save registry
-            safe_json_dump(self.world_registry, self.world_registry_file)
-            
+
+            # Save registry (atomic write: world_registry is the single source
+            # of truth for inter-module world state; interruption mid-write
+            # would corrupt it).
+            safe_write_json(self.world_registry_file, self.world_registry)
+
             print(f"Successfully integrated module: {module_name}")
             print(f"  - Added {len(module_data.get('areas', {}))} areas")
             travel_text = module_data.get('travelNarration', {}).get('travelNarration', '')
             if travel_text:
                 print(f"  - Generated travel narration: {travel_text[:60]}...")
-            
+
+            # Integration committed -- rollback is no longer meaningful.
+            # Remove the backup so modules/.integration_backups/ does not
+            # accumulate one entry per successful integration.
+            self._cleanup_backup(backup_dir)
+
             return True
-            
+
         except Exception as e:
+            # PATH B: a helper raised mid-integration. If mutations
+            # were applied before the crash, restore the module from
+            # backup; otherwise it's safe to just leave things alone.
             print(f"Error integrating module {module_name}: {e}")
+            # Drop the partially-built registry entries so we don't
+            # write them on the next integrate call.
+            self.world_registry.get('modules', {}).pop(module_name, None)
+            if mutations_applied:
+                self._handle_integration_failure(
+                    module_name, backup_dir,
+                    reason=f"Integration error: {e}",
+                )
+            else:
+                # Nothing was mutated -- just clean up the backup.
+                self._cleanup_backup(backup_dir)
             return False
+
+    def _handle_integration_failure(self, module_name: str,
+                                     backup_dir: str, reason: str) -> None:
+        """Centralised rollback-and-cleanup for integration failures.
+
+        Tries to restore from `backup_dir`. On rollback success,
+        cleans up the backup. On rollback failure, RETAINS the
+        backup for forensics and writes a `.corrupted` sentinel
+        into the module directory so operators see the breakage.
+
+        Used by both the safety-check-fail path and the outer
+        `except Exception` path in `integrate_module`.
+        """
+        rollback_ok = self._rollback_module(module_name, backup_dir)
+        if rollback_ok:
+            self._cleanup_backup(backup_dir)
+        else:
+            self._write_corrupted_sentinel(module_name, reason)
+            # Backup deliberately NOT cleaned up -- needed for forensics.
     
     def _resolve_id_conflicts(self, module_name: str, module_data: Dict[str, Any], backup_dir: str) -> int:
         """Resolve area ID and location ID conflicts by modifying the new module"""
@@ -701,7 +882,7 @@ Create atmospheric travel narration that leads into this adventure."""
 
                     # Save updated area file
                     new_area_file = os.path.join(module_path, f"{new_id}.json")
-                    safe_json_dump(area_data, new_area_file)
+                    safe_write_json(new_area_file, area_data)
 
                     # Remove old file
                     os.remove(area_file)
@@ -766,7 +947,7 @@ Create atmospheric travel narration that leads into this adventure."""
                 party_tracker['worldConditions'] = world_conditions
 
                 # Save updated party tracker
-                safe_json_dump(party_tracker, party_tracker_path)
+                safe_write_json(party_tracker_path, party_tracker)
                 print(f"DEBUG: [Module Stitcher] Updated party_tracker.json: {current_location_id} -> {new_location_id} (area ID change)")
                 return True
 
@@ -865,7 +1046,7 @@ Create atmospheric travel narration that leads into this adventure."""
                 from core.generators.module_generator import ModuleGenerator
                 temp_generator = ModuleGenerator()
                 updated_area_data = temp_generator.update_area_with_prefix(area_data, new_prefix)
-                safe_json_dump(updated_area_data, area_file_path)
+                safe_write_json(area_file_path, updated_area_data)
                 conflicts_resolved += len(updated_area_data.get('locations', []))
 
         # After re-prefixing, we need to update all references to the old IDs
@@ -958,7 +1139,7 @@ Create atmospheric travel narration that leads into this adventure."""
                             
                             # Check if any changes were made before writing
                             if data != updated_data:
-                                safe_json_dump(updated_data, file_path)
+                                safe_write_json(file_path, updated_data)
                                 print(f"DEBUG: [Module Stitcher] Updated location ID references in {os.path.relpath(file_path, module_path)}")
                         
                         except Exception as e:
@@ -980,7 +1161,7 @@ Create atmospheric travel narration that leads into this adventure."""
                                 new_location_id = id_mapping[current_location_id]
                                 world_conditions['currentLocationId'] = new_location_id
                                 party_tracker['worldConditions'] = world_conditions
-                                safe_json_dump(party_tracker, party_tracker_path)
+                                safe_write_json(party_tracker_path, party_tracker)
                                 print(f"DEBUG: [Module Stitcher] Updated party_tracker.json: {current_location_id} -> {new_location_id}")
                 except Exception as tracker_error:
                     print(f"DEBUG: [Module Stitcher] WARNING: Could not update party_tracker.json: {tracker_error}")
@@ -1108,13 +1289,27 @@ Respond with JSON:
                     print(f"  - Content safety issue: {safety_result.get('reason', 'Unspecified')}")
                     return False
                 return True
-            except json.JSONDecodeError:
-                print(f"  - AI safety validation failed to parse response")
-                return True  # Default to safe if parsing fails
-                
+            except json.JSONDecodeError as e:
+                # INT-M4: Fail CLOSED. A submitter cannot bypass content
+                # safety by inducing a parse failure -- unparseable means
+                # the validation did not occur, so the content is rejected.
+                warning(
+                    f"Safety check returned invalid JSON ({e}); failing closed (unsafe)",
+                    category="module_integration",
+                )
+                print(f"  - AI safety validation failed to parse response (failing closed)")
+                return False
+
         except Exception as e:
-            print(f"Warning: AI content validation failed: {e}")
-            return True  # Default to safe if validation fails
+            # INT-M4: Fail CLOSED. An API/runtime failure during safety
+            # validation means the check did not occur. Reject rather than
+            # silently approve.
+            error(
+                f"Safety check API call failed: {e}; failing closed (unsafe)",
+                category="module_integration",
+            )
+            print(f"Warning: AI content validation failed: {e} (failing closed)")
+            return False
     
     def _validate_against_schemas(self, module_path: str) -> bool:
         """Validate module files against schemas"""
@@ -1123,17 +1318,21 @@ Respond with JSON:
             from core.validation.validate_module_files import ModuleValidator
             
             validator = ModuleValidator(module_path, "schemas")
-            validator.load_schemas()
-            
+
             # Run validation (suppress output)
             import sys
             from io import StringIO
-            
+
             old_stdout = sys.stdout
             sys.stdout = StringIO()
-            
+
             try:
-                results = validator.validate_all_files()
+                # VAL-C2: newly stitched modules must satisfy the full
+                # per-location contract from loca_schema (21 fields),
+                # not just the 3-field legacy locationfile_schema.
+                # validate_all_files(strict=True) loads
+                # locationfile_schema_strict.json for area validation.
+                results = validator.validate_all_files(strict=True)
                 success_rate = validator.get_success_rate()
             finally:
                 sys.stdout = old_stdout

@@ -55,7 +55,6 @@ import json
 import subprocess
 import os
 from datetime import datetime
-from openai import OpenAI
 from core.ai import api_client
 import model_config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
@@ -117,6 +116,33 @@ ACTION_DELETE_SAVE = "deleteSave"
 
 # Module conversation segmentation has been moved to conversation_utils.py
 # to work with the regular conversation update cycle
+
+
+def _cleanup_orphan_module(module_name):
+    """INT-H8: Remove a partially-created module directory after the
+    post-creation, pre-integration window fails.
+
+    ai_driven_module_creation() returned success and produced
+    ./modules/<module_name>/ on disk, but the subsequent stitcher
+    integration step raised. Without cleanup, the partial directory is
+    later picked up by scan_and_integrate_new_modules() as a "new module"
+    to integrate -- the exact orphan state we are trying to prevent.
+
+    This is intentionally narrow: it only handles the stitching-failure
+    window. The build-failure window is handled separately in
+    core/generators/module_builder.py (OW-H4).
+    """
+    import shutil
+    if not module_name:
+        return
+    module_dir = os.path.join("modules", module_name)
+    if not os.path.exists(module_dir):
+        return
+    try:
+        shutil.rmtree(module_dir)
+        debug(f"Cleaned up orphan module dir after stitching failure: {module_dir}", category="module_management")
+    except Exception as cleanup_err:
+        warning(f"Failed to clean up orphan module dir {module_dir}: {cleanup_err}", category="module_management")
 
 
 def pre_validate_transition(parameters, party_tracker_data, conversation_history, location_graph, path_manager):
@@ -522,8 +548,6 @@ def get_module_starting_location(module_name: str) -> tuple:
 def _ai_analyze_starting_location(module_data: dict) -> tuple:
     """Use AI to analyze module data and determine the best starting location"""
     try:
-        client = OpenAI(api_key=config.OPENAI_API_KEY)
-        
         system_prompt = """You are an expert 5th edition adventure module analyst. Analyze the provided module data to determine the most logical starting location for player characters entering this adventure module.
 
 ANALYSIS CRITERIA:
@@ -552,10 +576,27 @@ MODULE DATA:
 
 Determine the most logical starting location based on adventure flow, area types, NPCs, and narrative logic."""
 
-        response = capture_and_fanout("T012", client.chat.completions.create, messages=[
+        # T012: starting-location analysis helper (mini-tier JSON extraction).
+        # Route through the provider-aware router so MODEL_PROVIDER toggle
+        # actually drives which provider/model handles the call.
+        from model_config import MODEL_PROVIDER
+        if MODEL_PROVIDER == "openai":
+            locstart_cfg = config.DM_LOCSTART_T012_GPT5MINI
+        elif MODEL_PROVIDER == "gemini":
+            locstart_cfg = config.DM_LOCSTART_T012_GEMINI_FLASHLITE_MINIMAL
+        elif MODEL_PROVIDER == "lmstudio":
+            locstart_cfg = config.DM_LOCSTART_T012_LMSTUDIO
+        else:  # legacy
+            locstart_cfg = config.DM_LOCSTART_T012_LEGACY
+
+        response = capture_and_fanout("T012", api_client.create_completion,
+            messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
-            ], model=config.DM_MINI_MODEL, temperature=0.1)
+            ],
+            model=locstart_cfg["model"],
+            temperature=0.1,
+            **{k: v for k, v in locstart_cfg.items() if k != "model"})
         
         # Track token usage
         if USAGE_TRACKING_AVAILABLE:
@@ -1280,7 +1321,34 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     info(f"SUCCESS: Module '{module_name}' integrated into world registry", category="module_management")
                     debug(f"STATE_CHANGE: Integration summary: {integrated_modules}", category="module_management")
                 except Exception as e:
-                    print(f"WARNING: Module created but stitching failed: {e}")
+                    # INT-H8: Stitching failed. The module exists on disk but is
+                    # NOT integrated into the world registry. We must NOT pretend
+                    # it succeeded -- that would append a "module created" DM note
+                    # to history and leave an orphan dir for the next stitcher
+                    # scan to pick up. Surface the failure to the caller and
+                    # remove the partial module directory.
+                    error(
+                        f"FAILURE: Module '{module_name}' created but stitching failed",
+                        exception=e,
+                        category="module_management",
+                    )
+                    _cleanup_orphan_module(module_name)
+                    # Reset status so the UI is not stuck "processing".
+                    try:
+                        from core.managers.status_manager import status_ready
+                        status_ready()
+                        debug("STATE_CHANGE: Status reset after stitching failure", category="session_management")
+                    except Exception as status_e:
+                        error(
+                            f"FAILURE: Error resetting status after stitching failure",
+                            exception=status_e,
+                            category="session_management",
+                        )
+                    return {
+                        "success": False,
+                        "error": f"Module integration failed: {e}",
+                        "needs_dm_response": False,
+                    }
                 
                 # Reset processing status to ready
                 try:

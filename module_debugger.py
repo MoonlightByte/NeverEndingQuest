@@ -77,13 +77,18 @@ class ModuleDebugger:
     
     def load_schemas(self) -> bool:
         """Load all JSON schemas"""
+        # VAL-L1: npc_schema.json was previously listed here but no such
+        # file exists in schemas/ and nothing in this module ever reads
+        # self.schemas["npc_schema.json"] or self.schemas["npc"]. The
+        # entry produced a "Schema not found" warning on every debugger
+        # run with no effect on validation. Removing the dead lookup;
+        # creating a real NPC schema is a separate, deliberate task.
         schema_files = [
             "module_schema.json",
-            "loca_schema.json", 
+            "loca_schema.json",
             "plot_schema.json",
             "party_schema.json",
             "char_schema.json",
-            "npc_schema.json",
             "mon_schema.json",
             "map_schema.json",
             "encounter_schema.json",
@@ -104,23 +109,58 @@ class ModuleDebugger:
         return True
     
     def load_module_files(self) -> bool:
-        """Load all files from the module directory"""
+        """Load all JSON files from the module directory and its
+        `areas/` subdirectory.
+
+        VAL-H5: Area files live in `<module>/areas/*.json` per the
+        canonical module layout (see CLAUDE.md Module Structure). The
+        previous implementation globbed only the module root, which
+        meant validate_references() had an empty location_ids set and
+        every plot location reference was logged as a false-positive
+        "Plot references non-existent location" error. Files in the
+        areas/ subdir are stored under a path-aware key
+        (`"areas/<filename>"`) so a name collision with a root-level
+        file does not overwrite either entry.
+        """
         if not self.module_path:
             return False
-            
-        module_files = list(Path(self.module_path).glob("*.json"))
-        
-        for file_path in module_files:
+
+        module_root = Path(self.module_path)
+
+        # Root-level files: keyed by bare filename (preserves all
+        # existing behavior for plot_*, *_module.json, party_tracker,
+        # etc. which other validators look up by bare name).
+        root_files = list(module_root.glob("*.json"))
+        for file_path in root_files:
+            filename = file_path.name
             try:
                 with open(file_path, 'r') as f:
                     data = json.load(f)
-                    filename = file_path.name
                     self.module_data[filename] = data
                     self.log_success(f"Loaded: {filename}")
             except json.JSONDecodeError as e:
                 self.log_error(f"Invalid JSON in {filename}: {e}")
                 return False
-                
+
+        # areas/ subdirectory: keyed as "areas/<filename>" so a root
+        # file with the same bare name does not collide. Downstream
+        # validators that iterate self.module_data.items() look at the
+        # data shape (e.g. presence of `areaId` + `locations`), not at
+        # the key path, so the path-prefixed key is safe.
+        areas_dir = module_root / "areas"
+        if areas_dir.exists() and areas_dir.is_dir():
+            area_files = list(areas_dir.glob("*.json"))
+            for file_path in area_files:
+                key = f"areas/{file_path.name}"
+                try:
+                    with open(file_path, 'r') as f:
+                        data = json.load(f)
+                        self.module_data[key] = data
+                        self.log_success(f"Loaded: {key}")
+                except json.JSONDecodeError as e:
+                    self.log_error(f"Invalid JSON in {key}: {e}")
+                    return False
+
         return True
     
     def validate_schema_compliance(self):
@@ -155,9 +195,11 @@ class ModuleDebugger:
                 schema_name = schema_mappings[filename]
                 
             # Special handling for area files (locations)
-            # Area files have pattern like HH001.json, GV001.json, etc.
-            if (len(filename) <= 10 and filename.endswith(".json") and 
-                any(filename.startswith(prefix) for prefix in ["HH", "GV", "BH", "BV", "DS", "EM", "DG"])):
+            # Detect area files by STRUCTURE (areaId + locations), not by
+            # filename prefix. The previous hardcoded prefix allowlist
+            # (HH/GV/BH/BV/DS/EM/DG) silently skipped any module using a
+            # different prefix (e.g. VO, TOWN, ZZ).
+            if self._is_area_file(data):
                 self.validate_location_file(filename, data)
                 continue
                 
@@ -179,6 +221,16 @@ class ModuleDebugger:
             else:
                 self.log_warning(f"No schema mapping for: {filename}")
     
+    def _is_area_file(self, data: Any) -> bool:
+        """Detect area files by structure, not filename prefix.
+
+        Area files have both `areaId` and `locations` at the top level.
+        Module-level files (e.g. *_module.json), party_tracker, plot
+        files, and validation reports do not have this shape, so the
+        check is sufficient to disambiguate without false positives.
+        """
+        return isinstance(data, dict) and "areaId" in data and "locations" in data
+
     def validate_location_file(self, filename: str, data: Dict[str, Any]):
         """Special validation for location files"""
         # Area files should have these fields
@@ -205,18 +257,18 @@ class ModuleDebugger:
         location_ids = defaultdict(set)  # area_id -> set of location_ids
         npc_names = set()
         plot_locations = defaultdict(set)  # area_id -> set of plot location_ids
-        
+
         # Extract IDs from files
         for filename, data in self.module_data.items():
             if "areaId" in data:
                 area_id = data["areaId"]
                 area_ids.add(area_id)
-                
+
                 # Get locations in this area
                 if "locations" in data:
                     for location in data["locations"]:
                         location_ids[area_id].add(location.get("locationId"))
-                        
+
                         # Collect NPCs
                         for npc in location.get("npcs", []):
                             if isinstance(npc, dict):
@@ -255,7 +307,12 @@ class ModuleDebugger:
             if "locations" in data:
                 area_id = data.get("areaId")
                 for location in data["locations"]:
-                    # Check internal connectivity
+                    # VAL-H1 (corrected): connectivity entries are location
+                    # IDs, not names. The generator (location_generator.py),
+                    # the ID remapper (module_generator.py) and the runtime
+                    # pathfinder (location_path_finder.py) all treat them as
+                    # IDs, and real module data is overwhelmingly ID-based.
+                    # Compare against the area's locationId set.
                     for conn in location.get("connectivity", []):
                         if conn not in location_ids.get(area_id, set()):
                             self.log_error(f"Invalid connection {conn} in location {location.get('locationId')} of {area_id}")

@@ -44,6 +44,7 @@ from core.ai import api_client
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.character_sheet_contract import repair_required_ammunition_field
+from utils.file_operations import safe_write_json
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T035", "core/generators/npc_builder.py", 149)
 
@@ -87,14 +88,17 @@ def load_prompt(file_name):
         return None
 
 def save_json(file_name, data):
-    try:
-        with open(file_name, 'w') as file:
-            json.dump(data, file, indent=2)
+    """Atomically save JSON to file via safe_write_json.
+
+    Routes through utils.file_operations.safe_write_json so a crash
+    mid-write cannot corrupt the target file. Preserves the legacy
+    (file_name, data) call order used by existing callers.
+    """
+    if safe_write_json(file_name, data):
         info(f"SUCCESS: NPC save ({file_name}) - PASS", category="npc_creation")
         return True
-    except Exception as e:
-        print(f"{RED}Error saving to {file_name}: {str(e)}{RESET}")
-        return False
+    print(f"{RED}Error saving to {file_name}: atomic write failed{RESET}")
+    return False
 
 def generate_npc(npc_name, schema, npc_race=None, npc_class=None, npc_level=None, npc_background=None):
     system_prompt_text = load_prompt("prompts/generators/npc_builder_prompt.txt") # Renamed variable
@@ -146,34 +150,79 @@ Adhere strictly to 5e rules and the provided schema."""
     else:  # legacy
         npc_config = config.NPC_BUILD_LEGACY
 
+    # CH-H1: Retry on JSON parse / schema validation failures. The AI
+    # occasionally returns truncated or malformed JSON on the first try;
+    # retrying recovers without failing the whole combat/module build.
+    # Bound by model_config.MAX_VALIDATION_RETRIES (default 1 => 2 total
+    # attempts). Network/API exceptions are NOT retried -- only parse and
+    # validation errors. Defensive fallback to 1 if the constant is
+    # missing or model_config import fails.
     try:
-        response = capture_and_fanout("T035", api_client.create_completion,
-            messages=prompt_messages,
-            model=npc_config["model"],
-            temperature=0.7,
-            **{k: v for k, v in npc_config.items() if k != "model"})
+        import model_config as _mc
+        _max_retries = getattr(_mc, "MAX_VALIDATION_RETRIES", 1)
+    except Exception:
+        _max_retries = 1
 
-        ai_response = response.choices[0].message.content.strip()
-        #print(f"{YELLOW}AI Response:{RESET}\n{ai_response}")
+    last_json_err = None
+    last_validation_err = None
+    last_ai_response = None
+    last_parsed_data = None
 
-        # Remove markdown code block if present
-        ai_response = re.sub(r'^```json\s*|\s*```$', '', ai_response, flags=re.MULTILINE)
-
+    for attempt in range(_max_retries + 1):
         try:
-            npc_data = json.loads(ai_response)
-            # Remove nested 'value' fields if they exist
-            npc_data = remove_nested_values(npc_data)
-            npc_data, _ = repair_required_ammunition_field(npc_data)
-            validate(instance=npc_data, schema=schema)
-            return npc_data
-        except json.JSONDecodeError as e:
-            print(f"{RED}Error: Invalid JSON in AI response. {str(e)}{RESET}")
-            print(f"{YELLOW}Processed AI response:{RESET}\n{ai_response}")
-        except ValidationError as e:
-            print(f"{RED}Error: Generated NPC data does not match schema. {str(e)}{RESET}")
-            print(f"{YELLOW}Problematic NPC data:{RESET}\n{json.dumps(npc_data, indent=2)}") # Log problematic data
-    except Exception as e:
-        print(f"{RED}Error: Failed to generate NPC data. {str(e)}{RESET}")
+            response = capture_and_fanout("T035", api_client.create_completion,
+                messages=prompt_messages,
+                model=npc_config["model"],
+                temperature=0.7,
+                **{k: v for k, v in npc_config.items() if k != "model"})
+
+            ai_response = response.choices[0].message.content.strip()
+            #print(f"{YELLOW}AI Response:{RESET}\n{ai_response}")
+
+            # Remove markdown code block if present
+            ai_response = re.sub(r'^```json\s*|\s*```$', '', ai_response, flags=re.MULTILINE)
+            last_ai_response = ai_response
+
+            try:
+                npc_data = json.loads(ai_response)
+                # Remove nested 'value' fields if they exist
+                npc_data = remove_nested_values(npc_data)
+                npc_data, _ = repair_required_ammunition_field(npc_data)
+                last_parsed_data = npc_data
+                validate(instance=npc_data, schema=schema)
+                return npc_data
+            except json.JSONDecodeError as e:
+                last_json_err = e
+                last_validation_err = None
+                warning(
+                    f"NPC build attempt {attempt + 1}/{_max_retries + 1} "
+                    f"returned invalid JSON: {str(e)}",
+                    category="npc_creation",
+                )
+                continue
+            except ValidationError as e:
+                last_json_err = None
+                last_validation_err = e
+                warning(
+                    f"NPC build attempt {attempt + 1}/{_max_retries + 1} "
+                    f"failed schema validation: {str(e)}",
+                    category="npc_creation",
+                )
+                continue
+        except Exception as e:
+            # Network / API failures are not retried here -- preserve the
+            # original outer-Exception contract.
+            print(f"{RED}Error: Failed to generate NPC data. {str(e)}{RESET}")
+            return None
+
+    # All retries exhausted -- emit the original-style final error
+    # messages so log scrapers and operators see the familiar output.
+    if last_json_err is not None:
+        print(f"{RED}Error: Invalid JSON in AI response. {str(last_json_err)}{RESET}")
+        print(f"{YELLOW}Processed AI response:{RESET}\n{last_ai_response}")
+    elif last_validation_err is not None:
+        print(f"{RED}Error: Generated NPC data does not match schema. {str(last_validation_err)}{RESET}")
+        print(f"{YELLOW}Problematic NPC data:{RESET}\n{json.dumps(last_parsed_data, indent=2)}")
 
     return None
 
@@ -199,26 +248,51 @@ def remove_nested_values(data):
         return data
 
 def main():
-    if len(sys.argv) < 2:
-        print(f"{RED}Usage: python npc_builder.py <npc_name> [race] [class] [level] [background]{RESET}")
-        sys.exit(1)
+    # Use argparse so we can accept --party-level alongside the existing
+    # positional args. Positional args remain optional for backward
+    # compatibility with any legacy callers.
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Generate a 5e NPC JSON file.")
+    parser.add_argument("npc_name", help="Name of the NPC to generate.")
+    parser.add_argument("race", nargs="?", default=None,
+                        help="Optional race override.")
+    parser.add_argument("npc_class", nargs="?", default=None,
+                        help="Optional class override.")
+    parser.add_argument("level", nargs="?", default=None,
+                        help="Optional explicit NPC level (integer or "
+                             "empty string).")
+    parser.add_argument("background", nargs="?", default=None,
+                        help="Optional background override.")
+    parser.add_argument("--party-level", type=int, default=None,
+                        help="Average party level. When supplied, overrides "
+                             "the default 'level 1-3' guidance used for "
+                             "NPC creation if no explicit level is given.")
+    args = parser.parse_args()
 
-    npc_name_arg = sys.argv[1] # Renamed variable
-    npc_race_arg = sys.argv[2] if len(sys.argv) > 2 else None # Renamed variable
-    npc_class_arg = sys.argv[3] if len(sys.argv) > 3 else None # Renamed variable
-    npc_level_arg = None # Renamed variable
-    if len(sys.argv) > 4 and sys.argv[4].isdigit():
-        try:
-            npc_level_arg = int(sys.argv[4])
-        except ValueError:
-            print(f"{RED}Error: Level must be an integer.{RESET}")
+    npc_name_arg = args.npc_name
+    npc_race_arg = args.race
+    npc_class_arg = args.npc_class
+
+    # Parse explicit positional level (preserve legacy validation).
+    npc_level_arg = None
+    if args.level is not None and args.level != "":
+        if args.level.isdigit():
+            try:
+                npc_level_arg = int(args.level)
+            except ValueError:
+                print(f"{RED}Error: Level must be an integer.{RESET}")
+                sys.exit(1)
+        else:
+            print(f"{RED}Error: Level must be an integer or empty if not specified.{RESET}")
             sys.exit(1)
-    elif len(sys.argv) > 4 and not sys.argv[4].isdigit() and sys.argv[4] != '': # handle empty string for level
-        print(f"{RED}Error: Level must be an integer or empty if not specified.{RESET}")
-        sys.exit(1)
 
+    npc_background_arg = args.background
 
-    npc_background_arg = sys.argv[5] if len(sys.argv) > 5 else None # Renamed variable
+    # If no explicit positional level was supplied, use --party-level as
+    # the level guidance so the NPC is scaled to the party.
+    if npc_level_arg is None and args.party_level is not None:
+        npc_level_arg = args.party_level
 
     debug(f"INPUT_PROCESSING: Received arguments - Name: {npc_name_arg}, Race: {npc_race_arg}, Class: {npc_class_arg}, Level: {npc_level_arg}, Background: {npc_background_arg}", category="npc_creation")
 

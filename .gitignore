@@ -98,6 +98,7 @@ backup_*/
 old_files/
 legacy/
 modules/backups/
+modules/.integration_backups/
 
 # Game state files - ignore live files, keep BU files
 modules/**/areas/*.json
@@ -198,6 +199,41 @@ test_*.py
 !tests/test_startup_wizard_prompt_reliability.py
 !tests/test_startup_game_started_emission.py
 !tests/test_legacy_character_repair.py
+!tests/test_ai_driven_module_creation_cleanup.py
+!tests/test_module_builder_antagonist_injection.py
+!tests/test_module_builder_summary.py
+!tests/test_module_generator_validation_report_write.py
+!tests/test_validate_module_files_connectivity.py
+!tests/test_validate_bidirectional_connectivity.py
+!tests/test_validate_encounter_creatures.py
+!tests/test_module_debugger_area_detection.py
+!tests/test_module_debugger_connectivity_check.py
+!tests/test_module_debugger_areas_subdirectory.py
+!tests/test_t039_module_summary_export.py
+!tests/test_t012_starting_location_analyzer.py
+!tests/test_t049_storage_processor.py
+!tests/test_create_new_module_stitching_failure.py
+!tests/test_campaign_summary_failure.py
+!tests/test_module_stitcher_has_area_files_logging.py
+!tests/test_module_stitcher_safety_check_failclosed.py
+!tests/test_character_builders_party_level_cli.py
+!tests/test_monster_builder_failure_surfacing.py
+!tests/test_module_builder_atomic_writes.py
+!tests/test_character_builders_atomic_writes.py
+!tests/test_module_stitcher_atomic_registry_write.py
+!tests/test_module_stitcher_atomic_writes_all.py
+!tests/test_module_stitcher_backup_location.py
+!tests/test_module_stitcher_rollback.py
+!tests/test_schema_numeric_constraints.py
+!tests/test_validate_plot_nextpoints.py
+!tests/test_generate_plots_validation.py
+!tests/test_module_debugger_no_npc_schema_warning.py
+!tests/test_validate_module_files_strict.py
+!tests/test_location_generator_id_preservation.py
+!tests/test_combat_builder_npc_compendium_lookup.py
+!tests/test_character_builders_json_retry.py
+!tests/test_campaign_context_newlines.py
+!tests/test_module_builder_collision.py
 *_test.py
 
 # Reference documents (local working docs, do not commit)

@@ -384,6 +384,61 @@ DM_SUMM_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level":
 DM_SUMM_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 DM_SUMM_LMSTUDIO = {"model": "local-model"}
 
+# --- T039: Campaign export-data extraction (short JSON, mini tier) ---
+# Secondary call inside _generate_module_summary that extracts structured
+# campaign-relevant fields (relationships, artifacts, hubs, worldState,
+# unlockedModules) from the human-readable saga produced by T038.
+# JSON object output, temp=0.3 stays at callsite.
+#
+# Rationale for cheaper models than T038's sibling DM_SUMM_* group:
+# T039 is a JSON-extraction task (data extraction from completed module summary).
+# It runs AFTER T038 (saga generation) on T038's output, so the upstream summary
+# is already AI-polished. Mini-tier models are sufficient because the task is
+# structured-data extraction, not creative generation. These selections are
+# starting points; capture testing should validate them later.
+# TODO: Run capture comparison vs DM_SUMM_GPT54MINI_NONE / DM_SUMM_GEMINI_FLASH_LOW.
+# The _T039_ segment disambiguates from T038's DM_SUMM_* group (different model/effort).
+DM_SUMM_T039_GPT5MINI = {"model": "gpt-5-mini"}
+DM_SUMM_T039_GEMINI_FLASHLITE_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal"}
+DM_SUMM_T039_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+DM_SUMM_T039_LMSTUDIO = {"model": "local-model"}
+
+# --- T012: Starting-location analysis helper (short JSON, mini tier) ---
+# Called by _ai_analyze_starting_location in core/ai/action_handler.py when
+# module integration needs to identify the best starting location for player
+# arrival. Reads a structured module_data dict (areas, locations, NPCs, plot
+# points) and emits a 5-field JSON object: locationId, locationName, areaId,
+# areaName, reasoning. Temperature=0.1 stays at callsite (deterministic IDs).
+#
+# Rationale: structured extraction over already-structured data. The function
+# itself has a deterministic fallback (_get_fallback_starting_location) when
+# AI parsing fails, so this is a quality-of-life enhancer rather than a
+# correctness-critical generator. Mini-tier models are appropriate.
+# Initial selections mirror T039 (also a mini-tier JSON-extraction helper).
+# TODO: Run capture comparison vs DM_SUMM_GPT54MINI_NONE / DM_SUMM_GEMINI_FLASH_LOW.
+DM_LOCSTART_T012_GPT5MINI = {"model": "gpt-5-mini"}
+DM_LOCSTART_T012_GEMINI_FLASHLITE_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal"}
+DM_LOCSTART_T012_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+DM_LOCSTART_T012_LMSTUDIO = {"model": "local-model"}
+
+# --- T049: Storage action extraction (short JSON, mini tier) ---
+# Called when a player issues a storage-related action (deposit, withdraw,
+# transfer, view) on a container at a location. StorageProcessor uses an AI
+# pass to translate the natural-language description into a structured JSON
+# operation that the validator/schema layer then enforces. Temp=0.1 stays at
+# the callsite (deterministic JSON extraction).
+#
+# Rationale: this is a constrained JSON-extraction task over already-known
+# game state (character inventory, container contents). The downstream schema
+# validator + retry loop (max_attempts=3 in storage_processor.process_storage_description)
+# catches any malformed output, so a mini-tier model is correctness-safe.
+# Initial selections mirror T012/T039 (other mini-tier JSON-extraction helpers).
+# TODO: Run capture comparison once telemetry is collected on this callsite.
+STORAGE_PROCESSOR_T049_GPT5MINI = {"model": "gpt-5-mini"}
+STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal"}
+STORAGE_PROCESSOR_T049_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+STORAGE_PROCESSOR_T049_LMSTUDIO = {"model": "local-model"}
+
 # --- T015/T016/T018/T019: Adventure Summaries (location updates, chronicles, journals) ---
 # 12/12 synthetic tests passed (4 scenarios x 3 models). Mini-tier (ADVENTURE_SUMMARY_MODEL).
 # T015: location JSON update (temp=0.8). T016: adventure chronicle (temp=0.8, plain text).
@@ -702,6 +757,12 @@ TASK_CAPTURE_CONFIGS = {
     "T033": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
     "T038": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
     "T066": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
+
+    # Module-integration helper: starting location analysis
+    "T012": ("DM_LOCSTART_T012_GPT5MINI", "DM_LOCSTART_T012_GEMINI_FLASHLITE_MINIMAL"),
+
+    # Storage action extraction (natural-language -> JSON op)
+    "T049": ("STORAGE_PROCESSOR_T049_GPT5MINI", "STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_MINIMAL"),
 
     # Adventure summaries (T015, T016, T018, T019)
     "T015": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),
