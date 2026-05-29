@@ -234,8 +234,25 @@ def _get_party_level():
                 levels.append(character_data.get("level", 1))
         if levels:
             return round(sum(levels) / len(levels))
+        # CH-C1: party_tracker had members but NONE of their character files
+        # loaded -- a read failure, not a genuinely level-1 party. Make it
+        # loud so a level-8 party silently getting CR 1/8 monsters is visible.
+        error(
+            "CH-C1: party_tracker lists members but no character files loaded; "
+            "falling back to party_level=1 (encounter difficulty will be wrong). "
+            f"members={party_tracker.get('partyMembers')}",
+            category="combat_builder",
+        )
         return 1
-    except Exception:
+    except Exception as e:
+        # CH-C1: a genuine read/parse failure (file lock, malformed JSON) must
+        # not silently degrade the encounter to level 1. Surface it loudly.
+        error(
+            f"CH-C1: failed to compute party level ({e}); falling back to "
+            "party_level=1 -- encounter difficulty may be wrong.",
+            exception=e,
+            category="combat_builder",
+        )
         return 1
 
 
