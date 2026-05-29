@@ -1597,8 +1597,14 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
     # OW-H4: Track module_name and output_dir so the except branch can clean up
     # any partial directory created before the failure (e.g., by ModuleBuilder
     # __init__ at line 87 or create_module_directories() inside build_module).
+    # OW-H2: also track the builder (whose config.output_directory reflects any
+    # collision rename to <name>_v2) and whether a real module pre-existed at
+    # the target, so cleanup deletes the actual build dir and never a
+    # pre-existing module.
     module_name = None
     output_dir = None
+    builder = None
+    preexisting_module = False
     try:
         # Report progress if callback provided
         if progress_callback:
@@ -1666,7 +1672,13 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
         # except branch can remove the partial dir even if ModuleBuilder's
         # __init__ raises after creating it.
         output_dir = config.output_directory
-        
+        # OW-H2: note whether a real module already lives at the target path.
+        # If so, create_module_directories() will rename this build to
+        # <name>_v2; cleanup must then target _v2 and leave the original intact.
+        preexisting_module = os.path.exists(
+            os.path.join(output_dir, "module_plot.json")
+        )
+
         # Create and run the builder
         if progress_callback:
             progress_callback({'stage': 3, 'total_stages': 9, 'stage_name': 'Creating builder', 'percentage': 33, 'message': 'Initializing module builder...'})
@@ -1743,15 +1755,29 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
         import traceback
         traceback.print_exc()
         error(f"Module creation failed for '{module_name}': {e}", exception=e, category="module_creation")
-        # OW-H4: Clean up partial module directory to prevent orphan state.
-        # Without this, the partial dir is later picked up by
-        # scan_and_integrate_new_modules as a "new module" to integrate.
-        if output_dir and os.path.exists(output_dir):
+        # OW-H4: Clean up the partial module directory to prevent orphan state
+        # (otherwise scan_and_integrate_new_modules later treats it as a new
+        # module). OW-H2 guard: create_module_directories() may have renamed the
+        # in-progress build to <name>_v2 (builder.config.output_directory
+        # reflects that), so clean up the ACTUAL build dir -- and NEVER delete a
+        # pre-existing module that a collision build was renamed away from.
+        build_dir = output_dir
+        if builder is not None:
+            build_dir = builder.config.output_directory
+        if preexisting_module and build_dir == output_dir:
+            # Collision build failed before it was renamed to _v2: the target is
+            # the pre-existing module, which must be left intact.
+            warning(
+                f"Module creation failed before collision rename; leaving "
+                f"pre-existing module at {output_dir} untouched.",
+                category="module_creation",
+            )
+        elif build_dir and os.path.exists(build_dir):
             try:
-                shutil.rmtree(output_dir)
-                debug(f"Cleaned up partial module dir: {output_dir}", category="module_creation")
+                shutil.rmtree(build_dir)
+                debug(f"Cleaned up partial module dir: {build_dir}", category="module_creation")
             except Exception as cleanup_err:
-                warning(f"Failed to clean up partial module dir {output_dir}: {cleanup_err}", category="module_creation")
+                warning(f"Failed to clean up partial module dir {build_dir}: {cleanup_err}", category="module_creation")
         return False, None
 
 if __name__ == "__main__":

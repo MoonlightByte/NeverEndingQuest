@@ -158,3 +158,73 @@ def test_successful_module_dir_is_not_deleted(monkeypatch, temp_modules_root):
     assert expected_dir.exists(), (
         f"Successful build must NOT delete output directory: {expected_dir}"
     )
+
+
+def test_collision_rebuild_failure_preserves_original_and_cleans_v2(monkeypatch, temp_modules_root):
+    """OW-H2/OW-H4 interaction regression.
+
+    When a build collides with an existing module (create_module_directories
+    renames the in-progress build to <name>_v2) and then FAILS, cleanup must
+    delete the partial _v2 dir and leave the ORIGINAL module untouched.
+
+    Pre-fix, ai_driven_module_creation captured output_dir BEFORE the rename
+    and rmtree'd it on failure -- deleting the very module the collision
+    rename set out to protect.
+    """
+    module_name = "Collision_Rebuild_Module"
+
+    monkeypatch.setattr(
+        module_builder,
+        "parse_narrative_to_module_params",
+        lambda narrative: _stub_parsed_params(module_name),
+    )
+
+    # Seed a pre-existing, real module at ./modules/<name>. module_plot.json
+    # is what create_module_directories uses to detect a collision.
+    modules_root = temp_modules_root / "modules"
+    original_dir = modules_root / module_name
+    (original_dir / "areas").mkdir(parents=True)
+    original_plot = original_dir / "module_plot.json"
+    original_plot.write_text('{"plotTitle": "Original", "plotPoints": []}', encoding="utf-8")
+    original_area = original_dir / "areas" / "AA001.json"
+    original_area.write_text('{"areaId": "AA001"}', encoding="utf-8")
+
+    v2_dir = modules_root / f"{module_name}_v2"
+
+    def _rename_then_fail(builder_self, initial_concept):
+        # Simulate create_module_directories' collision rename to _v2, then
+        # fail partway through the build (after the rename).
+        builder_self.config.output_directory = str(v2_dir)
+        os.makedirs(v2_dir, exist_ok=True)
+        (v2_dir / "partial.json").write_text("{}", encoding="utf-8")
+        raise RuntimeError("Simulated failure after collision rename")
+
+    monkeypatch.setattr(
+        module_builder,
+        "ModuleBuilder",
+        _make_fake_builder(_rename_then_fail),
+    )
+
+    params = {
+        "concept": "A rebuild that collides with an existing module and then fails.",
+        "module_name": module_name,
+    }
+
+    success, returned_name = module_builder.ai_driven_module_creation(params)
+
+    assert success is False
+    assert returned_name is None
+
+    # The ORIGINAL module must be intact -- this is the regression guard.
+    assert original_dir.exists(), "OW-H2 regression: original module dir was deleted!"
+    assert original_plot.exists(), (
+        "OW-H2 regression: original module_plot.json was deleted on failed rebuild!"
+    )
+    assert original_area.exists(), (
+        "OW-H2 regression: original area file was deleted on failed rebuild!"
+    )
+
+    # The partial _v2 build must be cleaned up (OW-H4).
+    assert not v2_dir.exists(), (
+        f"Partial collision-rebuild dir was not cleaned up: {v2_dir}"
+    )
