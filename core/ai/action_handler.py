@@ -1005,7 +1005,11 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                     api_client.create_completion,
                     messages=transition_messages,
                     model=model_config.get_model_for_callsite("T013", "DM_MAIN_MODEL"),
-                    temperature=0.7
+                    temperature=0.7,
+                    # CRIT-2: transition narration is plain prose. Without this the router
+                    # defaults to JSON mode (api_client.py), which 400s on a prompt that
+                    # never mentions "json" and silently falls back to a generic line.
+                    response_format=None
                 )
 
                 transition_narration = transition_response.choices[0].message.content.strip()
