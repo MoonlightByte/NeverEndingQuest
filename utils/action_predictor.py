@@ -193,6 +193,13 @@ def predict_actions_required(user_input):
         }
         
     except Exception as e:
+        # HIGH-7: print the FULL traceback (not just str(e)) so a persistent
+        # predictor failure -- which silently routes every turn to the full
+        # model and can mask NameError-class bugs -- is actually visible.
+        # requires_actions=True stays the safe default (correct output, only
+        # cost suffers); no circuit breaker (rejected as needless global state).
+        print(f"DEBUG: [ACTION PREDICTOR] Prediction failed; defaulting to full model: {e}")
+        print(traceback.format_exc())
         # Fallback to conservative prediction (assume actions required)
         return {
             "requires_actions": True,
