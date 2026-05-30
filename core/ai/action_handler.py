@@ -1089,16 +1089,33 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                     {"role": "user", "content": transition_prompt}
                 ]
 
+                # T013: per-provider model selection via the shared DM_MAIN
+                # named-config dicts (same pattern/dicts as T031 et al). Legacy
+                # resolves to gpt-4.1-2025-04-14 -- identical to the prior
+                # get_model_for_callsite() path -- so existing games are unchanged.
+                # Named dicts also carry provider params (reasoning_effort /
+                # thinking_level) the bare-string helper could not.
+                from model_config import MODEL_PROVIDER
+                if MODEL_PROVIDER == "openai":
+                    transition_cfg = config.DM_MAIN_GPT52_NONE
+                elif MODEL_PROVIDER == "gemini":
+                    transition_cfg = config.DM_MAIN_GEMINI_PRO_LOW
+                elif MODEL_PROVIDER == "lmstudio":
+                    transition_cfg = config.DM_MAIN_LMSTUDIO
+                else:  # legacy
+                    transition_cfg = config.DM_MAIN_LEGACY
+
                 transition_response = capture_and_fanout(
                     "T013",
                     api_client.create_completion,
                     messages=transition_messages,
-                    model=model_config.get_model_for_callsite("T013", "DM_MAIN_MODEL"),
+                    model=transition_cfg["model"],
                     temperature=0.7,
                     # CRIT-2: transition narration is plain prose. Without this the router
                     # defaults to JSON mode (api_client.py), which 400s on a prompt that
                     # never mentions "json" and silently falls back to a generic line.
-                    response_format=None
+                    response_format=None,
+                    **{k: v for k, v in transition_cfg.items() if k != "model"}
                 )
 
                 transition_narration = transition_response.choices[0].message.content.strip()
