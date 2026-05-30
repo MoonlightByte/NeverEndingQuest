@@ -57,6 +57,12 @@ class _NormalizedResponse:
     __slots__ = ("choices", "usage", "model", "id")
 
     def __init__(self, content, usage_dict, model="", response_id=""):
+        # CRIT-3: google.genai response.text is None when the model returns no
+        # text part (safety block, finish_reason=MAX_TOKENS, function-call-only,
+        # empty candidate); an OpenAI refusal can also yield None. Coerce to ""
+        # so downstream .strip()/json.loads() get a string, not a crash.
+        if content is None:
+            content = ""
         self.choices = [_Choice(_Message(content))]
         self.usage = _Usage(
             prompt_tokens=usage_dict.get("prompt_tokens", 0),
