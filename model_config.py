@@ -254,7 +254,83 @@ COMBAT_VALID_LMSTUDIO = {"model": "local-model"}
 CHAR_VALIDATOR_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
 
 # Gemini (3-flash with minimal thinking -- 3/3 correct, 4.0s avg, fastest + cheapest)
-CHAR_VALIDATOR_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+# HIGH-3: the T053 combined-validator returns a 4-section JSON object whose shape
+# is defined inline in get_combined_validator_system_prompt() (no source schema
+# file). Without response_schema, Gemini-flash drifts to narration and the parser
+# silently applies zero corrections (the T079 failure mode). Declare the shape
+# (only the fields the parser reads) and attach it via convert_to_gemini_schema,
+# mirroring CHAR_UPDATE_GEMINI. OpenAI/legacy/lmstudio keep no schema. This
+# conforms Gemini to the EXISTING contract -- no prompt/output change.
+_T053_COMBINED_VALIDATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "ac_validation": {
+            "type": "object",
+            "properties": {
+                "current_ac": {"type": "integer"},
+                "calculated_ac": {"type": "integer"},
+                "correction_needed": {"type": "boolean"},
+                "breakdown": {"type": "string"},
+                "corrections": {"type": "array", "items": {"type": "string"}},
+            },
+        },
+        "inventory_corrections": {
+            "type": "object",
+            "properties": {
+                "corrections_made": {"type": "array", "items": {"type": "string"}},
+                "equipment": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "item_name": {"type": "string"},
+                            "item_type": {"type": "string"},
+                        },
+                    },
+                },
+            },
+        },
+        "currency_consolidation": {
+            "type": "object",
+            "properties": {
+                "corrections_made": {"type": "array", "items": {"type": "string"}},
+                "currency": {
+                    "type": "object",
+                    "properties": {
+                        "gold": {"type": "integer"},
+                        "silver": {"type": "integer"},
+                        "copper": {"type": "integer"},
+                    },
+                },
+                "items_to_remove": {"type": "array", "items": {"type": "string"}},
+                "ammunition": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "quantity": {"type": "integer"},
+                        },
+                    },
+                },
+                "ammo_items_to_remove": {"type": "array", "items": {"type": "string"}},
+            },
+        },
+        "class_feature_validation": {
+            "type": "object",
+            "properties": {
+                "duplicates_found": {"type": "array", "items": {"type": "string"}},
+                "corrections_made": {"type": "array", "items": {"type": "string"}},
+                "features_to_remove": {"type": "array", "items": {"type": "string"}},
+            },
+        },
+    },
+}
+CHAR_VALIDATOR_GEMINI_FLASH_MINIMAL = {
+    "model": "gemini-3-flash-preview",
+    "thinking_level": "minimal",
+    "response_schema": convert_to_gemini_schema(_T053_COMBINED_VALIDATION_SCHEMA),
+}
 
 # Legacy (no extra params)
 CHAR_VALIDATOR_LEGACY = {"model": "gpt-4.1-2025-04-14"}
