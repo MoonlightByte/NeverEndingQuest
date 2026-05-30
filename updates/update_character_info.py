@@ -1457,6 +1457,22 @@ Character Role: {character_role}
     else:  # legacy
         char_update_config = config.CHAR_UPDATE_LEGACY
 
+    # HIGH-6: fail loudly (not silently) if the Gemini char-update schema failed
+    # to load at import. Without response_schema, Gemini-flash-lite emits
+    # narration instead of a character delta, purge_invalid_fields strips
+    # everything, and the update silently no-ops (the False return is swallowed
+    # by the ThreadPoolExecutor consumer). This guard trips ONLY under the gemini
+    # provider, so openai/legacy/lmstudio are unaffected, and it lives at the
+    # callsite -- NOT a hard import raise, which would break every provider if the
+    # schema file were missing.
+    if MODEL_PROVIDER == "gemini" and char_update_config.get("response_schema") is None:
+        raise RuntimeError(
+            "T079 character update aborted: Gemini response_schema is None "
+            "(schemas/char_schema.json failed to load at import). Refusing to run "
+            "-- Gemini would emit narration and silently drop all character "
+            "updates. Restore the schema file or set MODEL_PROVIDER off gemini."
+        )
+
     while attempt <= max_attempts:
         try:
             debug(f"STATE_CHANGE: Attempt {attempt} of {max_attempts}", category="character_updates")
