@@ -224,12 +224,13 @@ Set affects_max to true for effects like Aid that modify both current and maximu
                 pass
         
         # Clean response and parse JSON
+        # MED-3: strip markdown code fences robustly. The old prefix check only
+        # matched a "```json" opening; Gemini-flash often emits a BARE "```"
+        # fence, which slipped through -> json.loads failed -> effects (Sneak
+        # Attack, Bless duration) were silently dropped. Handle both forms.
         response_text = response.choices[0].message.content.strip()
-        if response_text.startswith("```json"):
-            response_text = response_text[7:]
-        if response_text.endswith("```"):
-            response_text = response_text[:-3]
-        
+        response_text = re.sub(r'^```(?:json)?\s*|\s*```$', '', response_text.strip())
+
         result = json.loads(response_text.strip())
         debug(f"EFFECTS: AI effect analysis: {result}", category="effects_tracking")
         return result
