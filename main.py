@@ -2549,13 +2549,20 @@ def get_ai_response(conversation_history, validation_retry_count=0):
         # On validation retry, force full model and skip prediction
         prediction = {"requires_actions": True, "reason": "Validation retry - using full model"}
     
-    # Determine which model to use based on intelligent routing and validation retry
+    # Determine which model to use based on intelligent routing and validation retry.
+    # HIGH-1: carry the routing decision as a BOOLEAN (use_mini), not a model
+    # string. selected_model is a snapshot of config.DM_MINI/FULL_MODEL; if
+    # set_provider() rewrites those mid-session, an `== config.DM_MINI_MODEL`
+    # compare below would silently always pick the full model and defeat
+    # intelligent routing (a large cost regression on Gemini/GPT-5.x).
+    use_mini = False
     if config.ENABLE_INTELLIGENT_ROUTING and validation_retry_count == 0 and not has_module_creation_prompt:
         # Use prediction to determine model (Phase 2 of token optimization)
-        selected_model = config.DM_MINI_MODEL if not prediction["requires_actions"] else config.DM_FULL_MODEL
+        use_mini = not prediction["requires_actions"]
+        selected_model = config.DM_MINI_MODEL if use_mini else config.DM_FULL_MODEL
 
         # Log the routing decision
-        routing_info = "MINI MODEL" if not prediction["requires_actions"] else "FULL MODEL"
+        routing_info = "MINI MODEL" if use_mini else "FULL MODEL"
         print(f"DEBUG: MODEL ROUTING - Selected: {routing_info} (Prediction: {prediction['requires_actions']}, Reason: {prediction['reason']})")
     else:
         # Use full model (default behavior or validation retry)
@@ -2648,7 +2655,9 @@ def get_ai_response(conversation_history, validation_retry_count=0):
         full_config = config.DM_FULL_MODEL_LEGACY
         mini_config = config.DM_MINI_MODEL_LEGACY
 
-    if selected_model == config.DM_MINI_MODEL:
+    # HIGH-1: select by the boolean routing decision, not a snapshot string
+    # compare (which breaks when set_provider() rewrites config.DM_MINI_MODEL).
+    if use_mini:
         selected_config = mini_config
     else:
         selected_config = full_config
