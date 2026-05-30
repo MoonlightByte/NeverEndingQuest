@@ -39,8 +39,13 @@ class CaptureFileWriter:
 
     def _write(self, task_id, records):
         path = self._file_path(task_id)
-        with open(path, 'w', encoding='utf-8') as f:
+        # HIGH-13: atomic write -- serialize to a temp file then os.replace, so a
+        # crash mid-write can't leave a truncated/empty capture JSON. os.replace
+        # is atomic on the same filesystem.
+        tmp = path + ".tmp"
+        with open(tmp, 'w', encoding='utf-8') as f:
             json.dump(records, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, path)
 
     def write_primary(self, task_id, file_path, line, tier, input_data,
                       label, content, latency_s, timestamp=None,
