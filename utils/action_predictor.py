@@ -39,6 +39,7 @@
 # ============================================================================
 
 import json
+import traceback
 import config
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
