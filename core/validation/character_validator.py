@@ -1733,35 +1733,50 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
         else:  # legacy
             batch_config = config.CHAR_VALIDATOR_LEGACY
 
-        try:
-            response = capture_and_fanout("T053", api_client.create_completion,
-                messages=[
-                    {"role": "system", "content": self.get_combined_validator_system_prompt()},
-                    {"role": "user", "content": validation_prompt}
-                ],
-                model=batch_config["model"],
-                temperature=0.1,
-                **{k: v for k, v in batch_config.items() if k != "model"})
+        # HIGH-2: retry transient failures up to 3x, matching siblings T052
+        # (line ~1119) and T054 (line ~2123). Previously a single try/except
+        # skipped ALL four validations (AC + inventory + currency + class
+        # feature) on any blip with no retry. The final fail-open
+        # `return character_data` is preserved as the safety net: on exhausted
+        # retries the character is returned unchanged (a skipped correction,
+        # never corruption). The retry only re-attempts to obtain a good
+        # response; parse_combined_validation_response is unchanged, so no
+        # section applies corrections more aggressively.
+        max_attempts = 3
+        attempt = 1
+        while attempt <= max_attempts:
+            try:
+                response = capture_and_fanout("T053", api_client.create_completion,
+                    messages=[
+                        {"role": "system", "content": self.get_combined_validator_system_prompt()},
+                        {"role": "user", "content": validation_prompt}
+                    ],
+                    model=batch_config["model"],
+                    temperature=0.1,
+                    **{k: v for k, v in batch_config.items() if k != "model"})
 
-            # Track usage if available
-            if USAGE_TRACKING_AVAILABLE:
-                try:
-                    from utils.openai_usage_tracker import get_global_tracker
-                    tracker = get_global_tracker()
-                    tracker.track(response, context={'endpoint': 'character_validation', 'purpose': 'validate_character_data'})
-                except:
-                    pass
+                # Track usage if available
+                if USAGE_TRACKING_AVAILABLE:
+                    try:
+                        from utils.openai_usage_tracker import get_global_tracker
+                        tracker = get_global_tracker()
+                        tracker.track(response, context={'endpoint': 'character_validation', 'purpose': 'validate_character_data'})
+                    except:
+                        pass
 
-            ai_response = response.choices[0].message.content.strip()
+                ai_response = response.choices[0].message.content.strip()
 
-            # Parse AI response to get all corrections
-            corrected_data = self.parse_combined_validation_response(ai_response, character_data)
-            
-            return corrected_data
-            
-        except Exception as e:
-            self.logger.error(f"Batched AI validation failed: {str(e)}")
-            return character_data
+                # Parse AI response to get all corrections
+                corrected_data = self.parse_combined_validation_response(ai_response, character_data)
+
+                return corrected_data
+
+            except Exception as e:
+                self.logger.error(f"Batched AI validation failed (attempt {attempt}/{max_attempts}): {str(e)}")
+                attempt += 1
+
+        # All attempts exhausted: fail open -- return the character unchanged.
+        return character_data
     
     def get_combined_validator_system_prompt(self) -> str:
         """
