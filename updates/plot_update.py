@@ -3,6 +3,7 @@
 # License: See LICENSE file in the repository root
 # This software is subject to the terms of the Fair Source License.
 
+import copy
 import json
 from jsonschema import validate, ValidationError
 from core.ai import api_client
@@ -114,6 +115,10 @@ def update_plot(plot_point_id_param, new_status_param, plot_impact_param, plot_f
         if not plot_info_data:
             error("FAILURE: Could not read plot file", category="file_operations")
             return None
+
+        # MED-4 (#127): snapshot the on-disk plot state before mutating, so we can
+        # return a consistent (disk-matching) object if the write later fails.
+        _plot_pre_mutation = copy.deepcopy(plot_info_data)
     except FileNotFoundError:
         error(f"FAILURE: Plot file {plot_filename_param} not found", category="file_operations")
         return None # Or raise error
@@ -200,8 +205,13 @@ Examples:
             info(f"SUCCESS: Updated and validated plot info on attempt {attempt + 1}", category="plot_updates")
 
             if not safe_write_json(plot_file_path, plot_info_data):
-                error("FAILURE: Failed to save plot file", category="file_operations")
-                return plot_info_data
+                # MED-4 (#127): write failed -- discard the unsaved in-memory mutation
+                # and return the pre-mutation (disk-matching) state, so the returned
+                # object stays consistent with what is actually on disk. party_tracker
+                # is NOT updated (early return below the write), keeping them consistent.
+                error("FAILURE: Failed to save plot file; rolling back in-memory mutation",
+                      category="file_operations")
+                return _plot_pre_mutation
 
             update_party_tracker(plot_point_id_param, new_status_param, plot_impact_param, plot_filename_param)
 
