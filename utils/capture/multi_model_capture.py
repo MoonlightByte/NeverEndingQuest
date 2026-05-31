@@ -63,6 +63,18 @@ def _load_config():
         return _config
 
 
+def reload_config():
+    """Invalidate the cached capture config so the next _load_config() re-reads disk.
+
+    MED-14 (#127): _config is cached for the life of the process for hot-path speed
+    (capture runs on every API call). The web-UI settings handler (and tests) call
+    this to apply a capture on/off change without a restart.
+    """
+    global _config
+    with _config_lock:
+        _config = None
+
+
 def _determine_tier(model_string):
     """Determine if a model string is full or mini tier."""
     mini_models = {
