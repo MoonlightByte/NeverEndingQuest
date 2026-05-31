@@ -2166,7 +2166,7 @@ Remember: This is a background NPC management action, not party NPC management."
                 {"role": "user", "content": user_prompt}
             ],
             model=npc_config["model"],
-            temperature=0.7,
+            temperature=0.3,  # MED-9 (#127): lower temp reduces JSON parse failures on NPC movement
             **{k: v for k, v in npc_config.items() if k != "model"})
         
         # Track token usage
