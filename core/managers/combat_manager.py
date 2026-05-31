@@ -2223,7 +2223,14 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
            debug("RESUME: Resume prompt already exists, skipping", category="combat_events")
            print("DEBUG: [RESUME] Resume prompt already exists, skipping")
 
-       # Get the AI's re-engagement response
+       # Get the AI's re-engagement response.
+       # Error handling is split by failing stage so logs distinguish an API
+       # failure from a non-JSON response from generic post-processing errors.
+       # The user-facing fallback is identical in every stage.
+       resume_response = None
+       resume_stage_failed = False
+
+       # Stage 1: API call (model never responded -> API failure)
        try:
            print("[COMBAT_MANAGER] Getting re-engagement narration from AI...")
            debug("RESUME: Requesting AI re-engagement response", category="combat_events")
@@ -2245,7 +2252,7 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
            # Compress conversation history before sending to AI
            messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
 
-           response = capture_and_fanout("T043", api_client.create_completion,
+           resume_response = capture_and_fanout("T043", api_client.create_completion,
                messages=messages_to_send,
                model=combat_config["model"],
                temperature=temperature_used,
@@ -2254,7 +2261,7 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
            # Log API call to master log
            try:
                from utils.api_logger import log_api_call
-               log_api_call("combat", messages_to_send, response,
+               log_api_call("combat", messages_to_send, resume_response,
                            metadata={"temperature": temperature_used, "branch": MODEL_PROVIDER, "context": "re-engage"})
            except Exception as e:
                print(f"[API_LOG] Warning: Failed to log combat call: {e}")
@@ -2262,32 +2269,52 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
            # Track usage if available
            if USAGE_TRACKING_AVAILABLE:
                try:
-                   track_response(response)
+                   track_response(resume_response)
                except:
                    pass  # Silently ignore tracking errors
-           
-           resume_response_content = response.choices[0].message.content.strip()
-           debug(f"RESUME: Got AI response, length: {len(resume_response_content)}", category="combat_events")
-           print(f"DEBUG: [RESUME] Got AI response, length: {len(resume_response_content)}")
-           
-           conversation_history.append({"role": "assistant", "content": resume_response_content})
-           save_json_file(conversation_history_file, conversation_history)
-
-           parsed_response = json.loads(resume_response_content)
-           narration = parsed_response.get("narration", "The battle continues! What do you do?")
-           print(f"Dungeon Master: {narration}")
-           import sys
-           sys.stdout.flush()  # Ensure narration is displayed before waiting for input
-           debug("RESUME: Successfully displayed re-engagement narration", category="combat_events")
-           print("DEBUG: [RESUME] Successfully displayed re-engagement narration and flushed output")
 
        except Exception as e:
-           error("FAILURE: Could not get re-engagement narration.", exception=e, category="combat_events")
+           resume_stage_failed = True
+           error("FAILURE: T043 re-engagement API call failed.", exception=e, category="combat_events")
            print(f"DEBUG: [RESUME] Error getting re-engagement: {str(e)}")
            print("Dungeon Master: The battle continues! What will you do next?")
            import sys
            sys.stdout.flush()
            debug(f"RESUME: Using fallback narration due to error: {str(e)}", category="combat_events")
+
+       # Stage 2: Parse + display (model responded but content is bad)
+       if not resume_stage_failed:
+           try:
+               resume_response_content = resume_response.choices[0].message.content.strip()
+               debug(f"RESUME: Got AI response, length: {len(resume_response_content)}", category="combat_events")
+               print(f"DEBUG: [RESUME] Got AI response, length: {len(resume_response_content)}")
+
+               conversation_history.append({"role": "assistant", "content": resume_response_content})
+               save_json_file(conversation_history_file, conversation_history)
+
+               parsed_response = json.loads(resume_response_content)
+               narration = parsed_response.get("narration", "The battle continues! What do you do?")
+               print(f"Dungeon Master: {narration}")
+               import sys
+               sys.stdout.flush()  # Ensure narration is displayed before waiting for input
+               debug("RESUME: Successfully displayed re-engagement narration", category="combat_events")
+               print("DEBUG: [RESUME] Successfully displayed re-engagement narration and flushed output")
+
+           except json.JSONDecodeError as e:
+               error("FAILURE: T043 returned non-JSON re-engagement response.", exception=e, category="combat_events")
+               print(f"DEBUG: [RESUME] Error getting re-engagement: {str(e)}")
+               print("Dungeon Master: The battle continues! What will you do next?")
+               import sys
+               sys.stdout.flush()
+               debug(f"RESUME: Using fallback narration due to error: {str(e)}", category="combat_events")
+
+           except Exception as e:
+               error("FAILURE: T043 re-engagement post-processing failed.", exception=e, category="combat_events")
+               print(f"DEBUG: [RESUME] Error getting re-engagement: {str(e)}")
+               print("Dungeon Master: The battle continues! What will you do next?")
+               import sys
+               sys.stdout.flush()
+               debug(f"RESUME: Using fallback narration due to error: {str(e)}", category="combat_events")
    else:
        # This is a new combat. Use the original logic to get the initial scene.
        debug("AI_CALL: Getting initial scene description...", category="combat_events")
