@@ -1,5 +1,5 @@
 {
-  "capture_enabled": true,
+  "capture_enabled": false,
   "full_tier_variants": [
     {
       "label": "gpt-5.2|none",
