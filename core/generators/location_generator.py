@@ -19,8 +19,20 @@ import jsonschema
 import random
 from utils.module_path_manager import ModulePathManager
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+from model_config import convert_to_gemini_schema
 register_callsite("T025", "core/generators/location_generator.py", 431)
 register_callsite("T026", "core/generators/location_generator.py", 566)
+
+# MED-2 (#127): pre-load + convert the location schema for Gemini response_schema.
+# Loaded once at import. If it fails, _LOCA_SCHEMA_GEMINI stays None and the Gemini
+# branch in the T026 callsite raises rather than silently producing DM narration.
+_LOCA_SCHEMA_GEMINI = None
+try:
+    _loca_schema_path = os.path.join(os.path.dirname(__file__), "..", "..", "schemas", "loca_schema.json")
+    with open(_loca_schema_path, "r", encoding="utf-8") as _f:
+        _LOCA_SCHEMA_GEMINI = convert_to_gemini_schema(json.load(_f))
+except Exception:
+    _LOCA_SCHEMA_GEMINI = None
 
 
 @dataclass
@@ -570,6 +582,19 @@ CRITICAL: You MUST use the exact locationId values from the stubs provided. Do n
         # Retry once on a parse failure, then fail with a clear, logged error.
         last_err = None
         parsed = None
+        # MED-2 (#127): attach the converted location schema for Gemini so flash
+        # models emit the location object, not DM narration. DM_MAIN_* dicts are
+        # shared across callsites, so attach per-call via extra_params (not the dict).
+        extra_params = {k: v for k, v in main_cfg.items() if k != "model"}
+        if MODEL_PROVIDER == "gemini":
+            if _LOCA_SCHEMA_GEMINI is None:
+                raise RuntimeError(
+                    "MED-2: Gemini location schema is None (schemas/loca_schema.json "
+                    "failed to load at import). Refusing to call Gemini without "
+                    "response_schema -- it would silently produce DM narration."
+                )
+            extra_params["response_schema"] = _LOCA_SCHEMA_GEMINI
+
         for attempt in range(2):
             response = capture_and_fanout("T026", api_client.create_completion,
                 messages=[
@@ -579,7 +604,7 @@ CRITICAL: You MUST use the exact locationId values from the stubs provided. Do n
                 model=main_cfg["model"],
                 temperature=0.8,
                 response_format={"type": "json_object"},
-                **{k: v for k, v in main_cfg.items() if k != "model"})
+                **extra_params)
             raw = response.choices[0].message.content
             try:
                 parsed = json.loads(raw)
