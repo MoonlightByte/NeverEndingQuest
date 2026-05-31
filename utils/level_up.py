@@ -42,6 +42,26 @@ Once all decisions are made, use the updateCharacterInfo action to apply ALL cha
 
 Remember to explain each new feature they gain!"""
 
+def _dedup_class_features(existing, new):
+    """Merge two classFeatures lists without duplicating entries.
+
+    HIGH-5 (#127): the old raw `existing + new` concat duplicated features when a
+    partial level-up was retried. Dedup by (name, source) for dict features and by
+    value for plain-string features, preserving order (existing first).
+    """
+    merged = []
+    seen = set()
+    for feat in (existing or []) + (new or []):
+        if isinstance(feat, dict):
+            key = (feat.get("name"), feat.get("source"))
+        else:
+            key = ("__str__", feat)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(feat)
+    return merged
+
 def get_npc_level_up_changes(character_name, character_data, current_level, new_level):
     """Get automatic level up changes for an NPC"""
     
@@ -132,9 +152,7 @@ Example response format:
             # Combine existing features with new ones
             existing_features = character_data["classFeatures"]
             new_features = changes["classFeatures"]
-            # Create combined list
-            all_features = existing_features + new_features
-            changes["classFeatures"] = all_features
+            changes["classFeatures"] = _dedup_class_features(existing_features, new_features)
         
         return {
             "success": True,
@@ -143,9 +161,12 @@ Example response format:
         }
         
     except Exception as e:
+        # HIGH-5 (#127): include attempted_changes so a batch caller can decide
+        # whether to roll back partially-applied NPCs.
         return {
             "success": False,
-            "error": f"Failed to generate level up changes: {str(e)}"
+            "error": f"Failed to generate level up changes: {str(e)}",
+            "attempted_changes": locals().get("changes")
         }
 
 def run_level_up_process(character_name, current_level=None, new_level=None):
