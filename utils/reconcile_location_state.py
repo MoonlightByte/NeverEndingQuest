@@ -179,14 +179,36 @@ Based on the conversation, what is the final list of active, hostile monsters re
 
             # Save the entire area file back
             write_result = safe_write_json(area_file_path, all_area_data)
-            if write_result:
-                info(f"RECONCILER: Successfully wrote updated area file for location '{location_id}'.", category="reconciliation")
-            else:
-                error(f"RECONCILER: Failed to write area file for location '{location_id}'.", category="reconciliation")
-            
+            if not write_result:
+                # HIGH-4 (#127): write failed -- restore backup and fail loudly
+                # instead of falling through to a "success" return.
+                error(f"RECONCILER: Failed to write area file for location '{location_id}'. Restoring backup.", category="reconciliation")
+                if backup_path and os.path.exists(backup_path):
+                    try:
+                        shutil.copy2(backup_path, area_file_path)
+                        info(f"RECONCILER: Restored area file for '{location_id}' from backup.", category="reconciliation")
+                    except Exception as _restore_err:
+                        error(f"RECONCILER: Backup restore FAILED for '{location_id}': {_restore_err}", category="reconciliation")
+                return False
+
+            # Verify integrity: re-read what we wrote before declaring success.
+            try:
+                with open(area_file_path, "r", encoding="utf-8") as _vf:
+                    json.load(_vf)
+            except Exception as _verify_err:
+                error(f"RECONCILER: Post-write verify FAILED for '{location_id}': {_verify_err}. Restoring backup.", category="reconciliation")
+                if backup_path and os.path.exists(backup_path):
+                    try:
+                        shutil.copy2(backup_path, area_file_path)
+                        info(f"RECONCILER: Restored area file for '{location_id}' from backup.", category="reconciliation")
+                    except Exception as _restore_err:
+                        error(f"RECONCILER: Backup restore FAILED for '{location_id}': {_restore_err}", category="reconciliation")
+                return False
+
+            info(f"RECONCILER: Successfully wrote and verified area file for location '{location_id}'.", category="reconciliation")
             info(f"RECONCILER: Reconciliation complete for location '{location_id}'.", category="reconciliation")
             debug(f"[RECONCILER] Successfully reconciled {location_id} - {len(original_monsters)} → {len(updated_monsters)} monsters", category="reconciliation")
-            return # Success
+            return True  # Success
 
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             error(f"RECONCILER: AI response validation failed on attempt {attempt + 1}/{max_retries}. Error: {e}", category="reconciliation")
