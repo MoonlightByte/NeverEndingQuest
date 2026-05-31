@@ -21,6 +21,7 @@ Orchestrates the generation of a complete 5th edition module by calling generato
 
 import json
 import os
+import re
 import shutil
 import sys
 from typing import Dict, List, Any, Optional
@@ -55,6 +56,21 @@ register_callsite("T030", "core/generators/module_builder.py", 1449)
 
 # Set script name for logging
 set_script_name("module_builder")
+
+
+def _flag_unknown_plot_ids(plot_hooks, valid_ids):
+    """Return the set of PP###/SQ### IDs referenced in plot_hooks but not in valid_ids.
+
+    MED-5 (#127): T029 can bake hallucinated plot-point IDs into per-location
+    plotHooks. This scans the hook strings and reports unknown IDs so the builder
+    can warn (we do NOT silently drop the hook text -- it may be valid prose).
+    """
+    referenced = set()
+    for hook in (plot_hooks or []):
+        if isinstance(hook, str):
+            referenced.update(re.findall(r"\b(?:PP|SQ)\d{3}\b", hook))
+    return referenced - set(valid_ids or [])
+
 
 @dataclass
 class BuilderConfig:
@@ -861,7 +877,19 @@ IMPORTANT:
         # STEP 4: Extract relevant plot points for this area
         relevant_plot_points = []
         relevant_side_quests = []
-        
+
+        # MED-5 (#127): collect every known plot-point/side-quest ID across the
+        # whole unified plot so we can warn on hallucinated references later.
+        valid_plot_ids = set()
+        for pp in unified_plot.get("plotPoints", []):
+            pp_id = pp.get("id")
+            if pp_id:
+                valid_plot_ids.add(pp_id)
+            for sq in pp.get("sideQuests", []):
+                sq_id = sq.get("id")
+                if sq_id:
+                    valid_plot_ids.add(sq_id)
+
         for pp in unified_plot.get("plotPoints", []):
             if pp.get("location") == area_id:
                 relevant_plot_points.append({
@@ -901,7 +929,7 @@ IMPORTANT:
         
         # STEP 6: Deep merge updates with original data (ATOMIC OPERATION)
         try:
-            updated_area_data = self._deep_merge_area_updates(area_backup, updated_hooks)
+            updated_area_data = self._deep_merge_area_updates(area_backup, updated_hooks, valid_plot_ids)
             
             # STEP 7: Validate critical fields preserved
             if not self._validate_area_integrity(area_backup, updated_area_data, area_id):
@@ -1008,24 +1036,33 @@ IMPORTANT:
             self.log(f"Error in AI plot hook generation: {e}")
             return []
     
-    def _deep_merge_area_updates(self, original_data, hook_updates):
+    def _deep_merge_area_updates(self, original_data, hook_updates, valid_plot_ids=None):
         """Deep merge plot hook updates into area data, preserving all other data"""
         import copy
         result = copy.deepcopy(original_data)
-        
+
         # Create a lookup for location updates
         location_updates = {}
         for update in hook_updates:
             location_id = update.get("locationId")
             if location_id and "plotHooks" in update:
                 location_updates[location_id] = update["plotHooks"]
-        
+
         # Update only the plot hooks in matching locations
         for location in result.get("locations", []):
             location_id = location.get("locationId")
             if location_id in location_updates:
                 location["plotHooks"] = location_updates[location_id]
-        
+                # MED-5 (#127): warn on hallucinated plot IDs (non-destructive)
+                if valid_plot_ids is not None:
+                    try:
+                        unknown_ids = _flag_unknown_plot_ids(location["plotHooks"], valid_plot_ids)
+                        if unknown_ids:
+                            warning(f"T029: location {location_id} references unknown plot IDs: "
+                                    f"{sorted(unknown_ids)}", category="module_creation")
+                    except Exception:
+                        pass
+
         return result
     
     def _validate_area_integrity(self, original_data, updated_data, area_id):
