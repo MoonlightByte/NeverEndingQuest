@@ -194,6 +194,9 @@ COMBAT_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
 # Full-tier callsite, temperature=0.1, plain text output.
 # GPT-5.4 reviewer: gpt-5.2|none = 4/4 pass (4.2/5), gemini-flash|minimal = 4/4 pass (4.2/5)
 # gpt-5-mini DISQUALIFIED (contradictory tracker on E[1], scored 1-2/5)
+# MED-12 (#127): deliberately stays on gpt-5.2 (not gpt-5.4 like T040/T042/T043).
+# Capture data: gpt-5.2|none scored 4/4 here; no measured benefit from gpt-5.4 for
+# this analytical turn-order task. Do not "upgrade" to 5.4 without re-running capture.
 
 # OpenAI (gpt-5.2 with no reasoning -- 4/4 correct, 2.46s avg, temp=0.1 passes through)
 INIT_TRACKER_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none", "response_format": None}
