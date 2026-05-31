@@ -3,6 +3,7 @@
 Primary call runs synchronously and returns immediately.
 All other variants fire in background threads via ThreadPoolExecutor.
 """
+import atexit
 import json
 import logging
 import os
@@ -18,6 +19,12 @@ from utils.capture.gemini_caller import call_gemini_variant
 
 # Shared thread pool - initialized once
 _executor = ThreadPoolExecutor(max_workers=8)
+
+# HIGH-14 (#127): drain in-flight capture variant calls on process exit so they
+# cannot be abandoned mid-write (pairs with the atomic writer to prevent corrupt
+# capture JSON). wait=True lets background OpenAI/Gemini calls finish.
+atexit.register(_executor.shutdown, wait=True)
+
 _writer = None
 _config = None
 _config_lock = threading.Lock()
