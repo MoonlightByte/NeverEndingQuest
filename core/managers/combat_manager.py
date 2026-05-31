@@ -1049,14 +1049,19 @@ def summarize_dialogue(conversation_history_param, location_data, party_tracker_
 
     dialogue_summary = response.choices[0].message.content.strip()
     
-    # Extract just the narration if the AI returned JSON
+    # MED-7 (#127): the prompt requests prose, but if a model (esp. Gemini flash
+    # with no schema) wraps it in JSON, extract the prose from any common field
+    # name instead of archiving the raw JSON string.
     try:
         parsed_summary = json.loads(dialogue_summary)
-        if isinstance(parsed_summary, dict) and "narration" in parsed_summary:
-            dialogue_summary = parsed_summary["narration"]
-            debug("Extracted narration from JSON combat summary", category="combat_summary")
-    except (json.JSONDecodeError, KeyError):
-        # Not JSON or doesn't have narration field, use as-is
+        if isinstance(parsed_summary, dict):
+            for _field in ("narration", "summary", "text", "content", "message"):
+                if _field in parsed_summary and isinstance(parsed_summary[_field], str):
+                    dialogue_summary = parsed_summary[_field]
+                    debug(f"Extracted '{_field}' from JSON combat summary", category="combat_summary")
+                    break
+    except (json.JSONDecodeError, KeyError, TypeError):
+        # Not JSON, use as-is
         pass
 
     current_location_id = party_tracker_data["worldConditions"]["currentLocationId"]
