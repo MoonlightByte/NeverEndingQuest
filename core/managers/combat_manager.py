@@ -2258,21 +2258,6 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
                temperature=temperature_used,
                **{k: v for k, v in combat_config.items() if k != "model"})
 
-           # Log API call to master log
-           try:
-               from utils.api_logger import log_api_call
-               log_api_call("combat", messages_to_send, resume_response,
-                           metadata={"temperature": temperature_used, "branch": MODEL_PROVIDER, "context": "re-engage"})
-           except Exception as e:
-               print(f"[API_LOG] Warning: Failed to log combat call: {e}")
-
-           # Track usage if available
-           if USAGE_TRACKING_AVAILABLE:
-               try:
-                   track_response(resume_response)
-               except:
-                   pass  # Silently ignore tracking errors
-
        except Exception as e:
            resume_stage_failed = True
            error("FAILURE: T043 re-engagement API call failed.", exception=e, category="combat_events")
@@ -2282,9 +2267,28 @@ def run_combat_simulation(encounter_id, party_tracker_data, location_info):
            sys.stdout.flush()
            debug(f"RESUME: Using fallback narration due to error: {str(e)}", category="combat_events")
 
-       # Stage 2: Parse + display (model responded but content is bad)
+       # Stage 2: Parse + display (model responded but content is bad).
+       # Order preserved from the original: log, track, append to history, THEN
+       # json.loads -- so a non-JSON response is still recorded in history
+       # exactly as before. JSONDecodeError is caught distinctly from other
+       # post-processing errors.
        if not resume_stage_failed:
            try:
+               # Log API call to master log
+               try:
+                   from utils.api_logger import log_api_call
+                   log_api_call("combat", messages_to_send, resume_response,
+                               metadata={"temperature": temperature_used, "branch": MODEL_PROVIDER, "context": "re-engage"})
+               except Exception as e:
+                   print(f"[API_LOG] Warning: Failed to log combat call: {e}")
+
+               # Track usage if available
+               if USAGE_TRACKING_AVAILABLE:
+                   try:
+                       track_response(resume_response)
+                   except:
+                       pass  # Silently ignore tracking errors
+
                resume_response_content = resume_response.choices[0].message.content.strip()
                debug(f"RESUME: Got AI response, length: {len(resume_response_content)}", category="combat_events")
                print(f"DEBUG: [RESUME] Got AI response, length: {len(resume_response_content)}")
