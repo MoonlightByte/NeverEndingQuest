@@ -239,7 +239,29 @@ CHAR_EFFECTS_LMSTUDIO = {"model": "local-model"}
 COMBAT_VALID_GPT54_NONE = {"model": "gpt-5.4", "reasoning_effort": "none"}
 
 # Gemini (3-flash with low thinking -- 4/4 correct, 1.6s avg, cheapest)
-COMBAT_VALID_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
+# MED-1 (#127): inline schema for T040 combat validation (no schema file exists).
+# Shape mirrors what combat_manager.py reads: validation_json.get("valid") and
+# feedback_obj.get("positive"/"negative"/"recommendation"). Converted for Gemini
+# so flash returns this structure instead of mis-shaped JSON (avoids 5 retries).
+_T040_COMBAT_VALIDATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "valid": {"type": "boolean"},
+        "feedback": {
+            "type": "object",
+            "properties": {
+                "positive": {"type": "string"},
+                "negative": {"type": "string"},
+                "recommendation": {"type": "string"},
+            },
+        },
+    },
+}
+COMBAT_VALID_GEMINI_FLASH_LOW = {
+    "model": "gemini-3-flash-preview",
+    "thinking_level": "low",
+    "response_schema": convert_to_gemini_schema(_T040_COMBAT_VALIDATION_SCHEMA),
+}
 
 # Legacy (no extra params)
 COMBAT_VALID_LEGACY = {"model": "gpt-4.1-2025-04-14"}
