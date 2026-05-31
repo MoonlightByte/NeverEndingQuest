@@ -715,7 +715,14 @@ def set_provider(provider_name):
 
 
 def get_provider():
-    """Return the current MODEL_PROVIDER value."""
+    """Return the current MODEL_PROVIDER, read live.
+
+    HIGH-12 (#127): the sanctioned way to read the provider. All callsites use a
+    DEFERRED `from model_config import MODEL_PROVIDER` inside the function body
+    (executed per call), which reflects set_provider() live. Prefer this accessor
+    in new code; NEVER add a module-level `from model_config import MODEL_PROVIDER`
+    (it snapshots at import and goes stale on set_provider -- see the guard test).
+    """
     return MODEL_PROVIDER
 
 

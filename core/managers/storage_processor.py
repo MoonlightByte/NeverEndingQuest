@@ -38,7 +38,6 @@ from utils.capture.multi_model_capture import capture_and_fanout, register_calls
 register_callsite("T049", "core/managers/storage_processor.py", 286)
 import config
 from core.ai import api_client
-from model_config import MODEL_PROVIDER
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.module_path_manager import ModulePathManager
 import jsonschema
@@ -287,6 +286,9 @@ For "What's in our storage here?":
                 # T049: storage-action extraction (mini-tier JSON extraction).
                 # Route through the provider-aware router so MODEL_PROVIDER toggle
                 # actually drives which provider/model handles the call.
+                # HIGH-12 (#127): deferred import (read per call) so set_provider()
+                # changes propagate live -- never import MODEL_PROVIDER at module level.
+                from model_config import MODEL_PROVIDER
                 if MODEL_PROVIDER == "openai":
                     sp_cfg = config.STORAGE_PROCESSOR_T049_GPT5MINI
                 elif MODEL_PROVIDER == "gemini":
