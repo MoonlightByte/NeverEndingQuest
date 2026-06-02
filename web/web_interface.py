@@ -3198,6 +3198,51 @@ def handle_set_openai_key(data):
         error(f"Error setting openai key: {e}", exception=e, category="web_interface")
         emit('error', {'message': "Failed to set OpenAI API key"})  # generic: no key leak
 
+@socketio.on('test_local_endpoint')
+def handle_test_local_endpoint(data):
+    """Isolated liveness probe for the Local/Custom endpoint. Tests POSTED values
+    (not saved), cheapest-first (models.list, then a 1-token chat). Emits
+    {ok, detail}. Never echoes the key. Does NOT use capture_and_fanout/the 67
+    callsite paths.
+    """
+    data = data or {}
+    base_url = (data.get('base_url') or '').strip()
+    api_key = (data.get('api_key') or '').strip() or 'not-needed'
+    model = (data.get('model') or '').strip()
+
+    if not base_url:
+        emit('local_endpoint_test_result', {'ok': False, 'detail': 'Base URL is required.'})
+        return
+    try:
+        client = OpenAI(base_url=base_url, api_key=api_key, timeout=10.0)
+    except Exception as e:
+        emit('local_endpoint_test_result', {'ok': False, 'detail': f'Could not create client: {e}'})
+        return
+    try:
+        result = client.models.list()
+        names = [m.id for m in (getattr(result, 'data', None) or [])]
+        detail = (f'Connected. {len(names)} model(s) available.' if names
+                  else 'Connected. Server responded (no models listed).')
+        if model and names and model not in names:
+            detail += f' Warning: "{model}" not in the model list.'
+        emit('local_endpoint_test_result', {'ok': True, 'detail': detail})
+        return
+    except Exception as list_err:
+        last = str(list_err)
+        debug(f"test_local_endpoint: models.list failed: {last}", category="web_interface")
+    if not model:
+        emit('local_endpoint_test_result',
+             {'ok': False, 'detail': f'Could not list models and no model set. Last error: {last}'})
+        return
+    try:
+        client.chat.completions.create(
+            model=model, messages=[{"role": "user", "content": "ping"}],
+            max_tokens=1, temperature=0)
+        emit('local_endpoint_test_result',
+             {'ok': True, 'detail': f'Connected. Chat completion succeeded with "{model}".'})
+    except Exception as chat_err:
+        emit('local_endpoint_test_result', {'ok': False, 'detail': f'Connection failed: {chat_err}'})
+
 @socketio.on('test_module_progress')
 def handle_test_module_progress():
     """Test handler to simulate module creation progress"""
