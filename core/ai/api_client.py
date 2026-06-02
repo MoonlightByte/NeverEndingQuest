@@ -176,6 +176,16 @@ def _openai_completion(messages, model, temperature, provider, response_format=_
     """Execute a completion via the OpenAI-compatible API."""
     client = get_openai_client()
 
+    # Issue #120: honor a user-set custom model for the Local/Custom provider
+    # WITHOUT touching any of the 67 per-callsite model dicts. Empty => keep the
+    # callsite's own model string. Scoped to lmstudio only; no other provider or
+    # param is affected (create_completion remains a thin router).
+    if provider == "lmstudio":
+        import model_config
+        _local_model = model_config.get_local_endpoint().get("model")
+        if _local_model:
+            model = _local_model
+
     # Pop internal flags
     strip_temp = kwargs.pop("_strip_temperature", False)
 
