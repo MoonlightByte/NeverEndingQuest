@@ -3122,6 +3122,45 @@ def handle_set_provider(data):
         error(f"Error setting provider: {e}", exception=e, category="web_interface")
         emit('error', {'message': f"Failed to set provider: {str(e)}"})
 
+
+@socketio.on('get_local_endpoint')
+def handle_get_local_endpoint():
+    """Report the Local/Custom endpoint for UI sync. Never returns the raw key."""
+    try:
+        import model_config
+        ep = model_config.get_local_endpoint()
+        emit('local_endpoint_changed', {
+            'base_url': ep['base_url'],
+            'model': ep['model'],
+            'has_key': bool(ep['api_key']) and ep['api_key'] != 'not-needed',
+        })
+    except Exception as e:
+        error(f"Error getting local endpoint: {e}", exception=e, category="web_interface")
+        emit('local_endpoint_changed',
+             {'base_url': 'http://localhost:1234/v1', 'model': '', 'has_key': False})
+
+
+@socketio.on('set_local_endpoint')
+def handle_set_local_endpoint(data):
+    """Persist the Local/Custom endpoint. Applies live (openai_client reads it per call)."""
+    try:
+        import model_config
+        data = data or {}
+        model_config.persist_local_endpoint(
+            base_url=data.get('base_url', ''),
+            api_key=data.get('api_key', ''),
+            model=data.get('model', ''))
+        debug("Local endpoint updated via web UI", category="web_interface")
+        ep = model_config.get_local_endpoint()
+        emit('local_endpoint_changed', {
+            'base_url': ep['base_url'],
+            'model': ep['model'],
+            'has_key': bool(ep['api_key']) and ep['api_key'] != 'not-needed',
+        }, broadcast=True)
+    except Exception as e:
+        error(f"Error setting local endpoint: {e}", exception=e, category="web_interface")
+        emit('error', {'message': "Failed to save local endpoint"})
+
 @socketio.on('test_module_progress')
 def handle_test_module_progress():
     """Test handler to simulate module creation progress"""
