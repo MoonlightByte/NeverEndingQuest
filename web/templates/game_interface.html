@@ -5500,8 +5500,14 @@
             loadCharacterStats();
             requestPlotData(); // <--- ADD THIS
             requestPartyData(); // Load party display on connect
+            if (!gameStarted) {
+                addMessage('game-output', { type: 'system', content: 'Welcome to NeverEndingQuest. Press the button at the top right to begin. New here? Open Settings (gear icon) to pick your AI provider -- Legacy (GPT-4.1) is the recommended default.' });
+                if (!localStorage.getItem('neq_hasPlayed')) {
+                    document.getElementById('start-button').textContent = 'New Game';
+                }
+            }
         });
-        
+
         socket.on('disconnect', () => {
             connected = false;
             gameStarted = false;
@@ -5513,6 +5519,7 @@
         
         socket.on('game_started', (data) => {
             gameStarted = true;
+            localStorage.setItem('neq_hasPlayed', 'true');
             document.getElementById('start-button').textContent = 'Game Running';
             document.getElementById('start-button').disabled = true;
             document.getElementById('user-input').disabled = false;
@@ -5521,7 +5528,7 @@
             document.getElementById('load-button').disabled = false;
             document.getElementById('reset-button').disabled = false;
             document.getElementById('user-input').focus();
-            addMessage('game-output', { type: 'system', content: 'Game started! You can now enter commands.' });
+            addMessage('game-output', { type: 'system', content: 'Game started! You can now enter commands. Try things like: "look around", "talk to the innkeeper", "check my inventory", or "head north".' });
             loadCharacterStats();
             loadLocationData();
             requestInitiativeData(); // Check for combat on game start
