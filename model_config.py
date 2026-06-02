@@ -823,12 +823,20 @@ def get_local_endpoint():
     }
 
 
-def persist_local_endpoint(base_url="", api_key="", model=""):
-    """Persist the Local/Custom endpoint to user_settings.json (gitignored)."""
+def persist_local_endpoint(base_url="", api_key=None, model=""):
+    """Persist the Local/Custom endpoint to user_settings.json (gitignored).
+
+    api_key=None means KEEP the existing stored key -- the UI sends a blank key
+    to mean "leave blank to keep" (and the field auto-clears after save), so a
+    later URL/model save must NOT wipe a stored remote key. Pass a string to set
+    it. base_url/model are always written (blank base_url falls back to the
+    default; blank model means keep each callsite's own model).
+    """
     s = _load_user_settings()
     s["local_base_url"] = (base_url or "").strip()
-    s["local_api_key"] = (api_key or "").strip()
     s["local_model"] = (model or "").strip()
+    if api_key is not None:
+        s["local_api_key"] = api_key.strip()
     _save_user_settings(s)
 
 

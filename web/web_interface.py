@@ -3154,9 +3154,12 @@ def handle_set_local_endpoint(data):
     try:
         import model_config
         data = data or {}
+        # Blank api_key => keep the existing stored key (UI promises "leave blank
+        # to keep" and the field auto-clears after save); a value sets it.
+        raw_key = (data.get('api_key') or '').strip()
         model_config.persist_local_endpoint(
             base_url=data.get('base_url', ''),
-            api_key=data.get('api_key', ''),
+            api_key=(raw_key if raw_key else None),
             model=data.get('model', ''))
         debug("Local endpoint updated via web UI", category="web_interface")
         ep = model_config.get_local_endpoint()
@@ -3190,8 +3193,15 @@ def handle_set_openai_key(data):
     try:
         import model_config, config as _cfg
         api_key = ((data or {}).get('api_key') or '').strip()
+        if not api_key:
+            # Blank submit: do NOT wipe an existing key (prevents accidental erase
+            # from a double-click after the field auto-clears). Report status only.
+            live = bool(getattr(_cfg, "OPENAI_API_KEY", "")) and \
+                getattr(_cfg, "OPENAI_API_KEY", "") != "your_openai_api_key_here"
+            emit('openai_key_status', {'has_key': model_config.has_openai_key() or live})
+            return
         _cfg.OPENAI_API_KEY = api_key            # live: all config.OPENAI_API_KEY readers
-        model_config.persist_openai_key(api_key) # survive restart (empty clears)
+        model_config.persist_openai_key(api_key) # survive restart
         debug("OpenAI API key updated via web UI", category="web_interface")
         emit('openai_key_status', {'has_key': model_config.has_openai_key()}, broadcast=True)
     except Exception as e:
