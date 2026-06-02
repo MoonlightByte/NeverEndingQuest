@@ -1060,7 +1060,7 @@ CRITICAL: If validation fails due to wrong NPC for location, provide specific co
 def normalize_character_names_in_response(response_text, party_tracker_data):
     """
     Normalize NPC names in updateCharacterInfo actions before validation.
-    Handles name variations like "Kira" → "Scout Kira", "Ranger Kira" → "Scout Kira"
+    Handles name variations like "Kira" -> "Scout Kira", "Ranger Kira" -> "Scout Kira"
 
     Returns:
         (normalized_response, message) or (None, error_message) if unresolvable
@@ -1107,8 +1107,8 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
                 elif normalized_name != original_name:
                     # Name was normalized
                     params['characterName'] = normalized_name
-                    corrections.append(f"Action {i+1}: '{original_name}' → '{normalized_name}'")
-                    print(f"[NPC_NORM] CORRECTED: '{original_name}' → '{normalized_name}'")
+                    corrections.append(f"Action {i+1}: '{original_name}' -> '{normalized_name}'")
+                    print(f"[NPC_NORM] CORRECTED: '{original_name}' -> '{normalized_name}'")
 
                 else:
                     # Name was already correct
@@ -4089,7 +4089,7 @@ def main():
         try:
             # Copy config_template.py to config.py
             shutil.copy('config_template.py', 'config.py')
-            print("\n✓ Created config.py from template")
+            print("\n[OK] Created config.py from template")
             print("\n" + "="*60)
             print("IMPORTANT: OpenAI API Key Required")
             print("="*60)
@@ -4098,6 +4098,7 @@ def main():
             print("3. Replace \"your_openai_api_key_here\" with your actual OpenAI API key")
             print("4. Save the file and run the game again")
             print("\nGet your API key at: https://platform.openai.com/api-keys")
+            print("\nOr run fully local (no API key): install LM Studio/Ollama, then in Settings -> AI Provider pick Local and set your endpoint URL.")
             print("\n" + "="*60)
             input("\nPress Enter to exit...")
             return
