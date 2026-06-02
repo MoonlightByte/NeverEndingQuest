@@ -7053,6 +7053,8 @@
                         model: (document.getElementById('local-model') || {}).value || '',
                         api_key: (document.getElementById('local-api-key') || {}).value || ''
                     });
+                    var _lk = document.getElementById('local-api-key');
+                    if (_lk) { _lk.value = ''; }  // do not keep the secret in the DOM
                 });
                 var testBtn = document.getElementById('local-test-btn');
                 var statusEl = document.getElementById('local-endpoint-status');
