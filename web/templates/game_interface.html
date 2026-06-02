@@ -4215,6 +4215,11 @@
             line-height: 1.4;
         }
 
+        .settings-btn { background:#444; color:#eee; border:1px solid #666; border-radius:4px;
+            padding:5px 10px; font-size:12px; cursor:pointer; }
+        .settings-btn:hover { background:#555; }
+        .settings-btn:disabled { opacity:0.6; cursor:default; }
+
         /* Provider section needs a stacked layout so help text doesn't collapse */
         .settings-item-provider {
             display: block;
@@ -4452,6 +4457,43 @@
                                 Models are selected per-task based on quality testing.
                                 Legacy is recommended for stability.
                             </div>
+                        </div>
+                    </div>
+                    <div class="settings-section" id="local-endpoint-settings" style="display:none;">
+                        <div class="settings-section-title">Local / Custom Server</div>
+                        <div class="settings-help">
+                            Point at any OpenAI-compatible server (LM Studio, Ollama, vLLM, OpenRouter,
+                            or a remote host). Leave blank to use the default local server at localhost:1234.
+                        </div>
+                        <div class="settings-item" style="flex-direction:column; align-items:stretch; gap:6px;">
+                            <label for="local-base-url">Server URL</label>
+                            <input class="settings-select" type="text" id="local-base-url"
+                                   style="width:100%;" placeholder="http://localhost:1234/v1">
+                            <label for="local-model">Model name (optional)</label>
+                            <input class="settings-select" type="text" id="local-model"
+                                   style="width:100%;" placeholder="e.g. local-model or an OpenRouter model id">
+                            <label for="local-api-key">API key (optional)</label>
+                            <input class="settings-select" type="password" id="local-api-key"
+                                   style="width:100%;" placeholder="leave blank for local servers">
+                            <div class="settings-item" style="gap:8px;">
+                                <button class="settings-btn" id="local-save-btn">Save</button>
+                                <button class="settings-btn" id="local-test-btn">Test Connection</button>
+                            </div>
+                            <div class="settings-status" id="local-endpoint-status"
+                                 style="display:none; margin-top:6px; font-size:12px;"></div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section" id="openai-key-settings">
+                        <div class="settings-section-title">OpenAI API Key</div>
+                        <div class="settings-help">
+                            Needed for the Legacy and OpenAI providers. Stored locally on this machine.
+                            <span id="openai-key-status-text"></span>
+                        </div>
+                        <div class="settings-item" style="flex-direction:column; align-items:stretch; gap:6px;">
+                            <input class="settings-select" type="password" id="openai-key-input"
+                                   style="width:100%;" placeholder="sk-...">
+                            <button class="settings-btn" id="openai-key-save-btn">Save Key</button>
                         </div>
                     </div>
                 </div>
