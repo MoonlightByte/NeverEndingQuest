@@ -805,6 +805,33 @@ def load_persisted_provider():
         set_provider(provider)
 
 
+DEFAULT_LOCAL_BASE_URL = "http://localhost:1234/v1"
+DEFAULT_LOCAL_API_KEY = "not-needed"
+
+
+def get_local_endpoint():
+    """Return the Local/Custom (lmstudio) endpoint config from user_settings.json.
+
+    Backward compatible: missing keys fall back to today's hard-coded LM Studio
+    values. model == "" means 'keep each callsite's own model string'.
+    """
+    s = _load_user_settings()
+    return {
+        "base_url": s.get("local_base_url") or DEFAULT_LOCAL_BASE_URL,
+        "api_key": s.get("local_api_key") or DEFAULT_LOCAL_API_KEY,
+        "model": (s.get("local_model") or "").strip(),
+    }
+
+
+def persist_local_endpoint(base_url="", api_key="", model=""):
+    """Persist the Local/Custom endpoint to user_settings.json (gitignored)."""
+    s = _load_user_settings()
+    s["local_base_url"] = (base_url or "").strip()
+    s["local_api_key"] = (api_key or "").strip()
+    s["local_model"] = (model or "").strip()
+    _save_user_settings(s)
+
+
 # Load persisted provider on import
 load_persisted_provider()
 
