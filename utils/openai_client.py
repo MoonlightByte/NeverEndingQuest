@@ -26,11 +26,15 @@ def get_openai_client():
     from model_config import MODEL_PROVIDER
 
     if MODEL_PROVIDER == "lmstudio":
-        # Connect to local LM Studio server
-        # No API key needed for local server
+        # Local / OpenAI-compatible server (LM Studio, Ollama, vLLM, OpenRouter,
+        # remote host). Endpoint is read live from user_settings.json so a web-UI
+        # change applies on the next request with no restart. Defaults preserve
+        # the original LM Studio localhost:1234 behavior. (Issue #120)
+        import model_config
+        ep = model_config.get_local_endpoint()
         return OpenAI(
-            base_url="http://localhost:1234/v1",
-            api_key="not-needed"
+            base_url=ep["base_url"],
+            api_key=ep["api_key"] or "not-needed"
         )
     else:
         # Connect to OpenAI API (default)
