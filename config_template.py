@@ -56,6 +56,10 @@ OPENAI_API_KEY = "your_openai_api_key_here"
 # Get your key at: https://aistudio.google.com/apikey
 GEMINI_API_KEY = "your_gemini_api_key_here"
 
+# Local / OpenAI-compatible endpoint (optional): set it from the web UI instead --
+# Settings -> AI Provider -> Local / Custom Server. Stored in user_settings.json.
+# Defaults to http://localhost:1234/v1 when unset.
+
 # --- Module folder structure ---
 MODULES_DIR = "modules"
 DEFAULT_MODULE = "The_Thornwood_Watch"
@@ -64,5 +68,15 @@ DEFAULT_MODULE = "The_Thornwood_Watch"
 
 # --- Web Interface Configuration ---
 WEB_PORT = 8357                                         # Port for the web interface (changed from 5000 for security)
+
+
+# Apply a web-set OpenAI API key from user_settings.json (overrides the value above).
+# No-op when no key has been saved via the web UI. Keeps non-technical users from
+# ever having to edit this file.
+try:
+    import model_config as _mc
+    _mc.apply_persisted_openai_key()
+except Exception:
+    pass
 
 # --- END OF FILE config_template.py ---
