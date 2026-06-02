@@ -832,8 +832,48 @@ def persist_local_endpoint(base_url="", api_key="", model=""):
     _save_user_settings(s)
 
 
+_OPENAI_KEY_PLACEHOLDER = "your_openai_api_key_here"
+
+
+def persist_openai_key(api_key):
+    """Save the user's OpenAI API key to user_settings.json (gitignored).
+
+    Empty/None REMOVES the stored key so the next start falls back to config.py.
+    """
+    settings = _load_user_settings()
+    if api_key:
+        settings["openai_api_key"] = api_key
+    else:
+        settings.pop("openai_api_key", None)
+    _save_user_settings(settings)
+
+
+def has_openai_key():
+    """True if a real (non-placeholder) OpenAI key is stored. Never returns the key."""
+    key = _load_user_settings().get("openai_api_key")
+    return bool(key) and key != _OPENAI_KEY_PLACEHOLDER
+
+
+def apply_persisted_openai_key():
+    """Push a stored OpenAI key into the live config module so every existing
+    reader of config.OPENAI_API_KEY uses it with ZERO reader edits. No-op when
+    no key is stored (config.py value wins). Mirrors set_provider's cross-module
+    write via sys.modules['config'].
+    """
+    key = _load_user_settings().get("openai_api_key")
+    if not key or key == _OPENAI_KEY_PLACEHOLDER:
+        return
+    import sys
+    if "config" in sys.modules:
+        setattr(sys.modules["config"], "OPENAI_API_KEY", key)
+
+
 # Load persisted provider on import
 load_persisted_provider()
+# Best-effort: apply a stored OpenAI key if config is already loaded. The
+# authoritative cold-start apply happens in web_interface.py startup and
+# config_template.py (after config.py defines its default). No-op otherwise.
+apply_persisted_openai_key()
 
 
 # --- Capture System Per-Callsite Model Configs ---
