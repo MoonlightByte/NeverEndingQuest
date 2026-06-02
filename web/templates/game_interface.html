@@ -4450,10 +4450,10 @@
                                     <option value="legacy">Legacy (GPT-4.1) - Stable baseline</option>
                                     <option value="openai">OpenAI (GPT-5.x) - Next-gen, tested per task</option>
                                     <option value="gemini">Gemini 3.1 - Alternative provider, tested per task</option>
-                                    <option value="lmstudio">LM Studio (Local) - Zero API cost</option>
+                                    <option value="lmstudio">Local / Custom Server (LM Studio, Ollama, OpenRouter...)</option>
                                 </select>
                             </div>
-                            <div class="settings-help settings-provider-help">
+                            <div class="settings-help settings-provider-help" id="provider-help-text">
                                 Models are selected per-task based on quality testing.
                                 Legacy is recommended for stability.
                             </div>
@@ -7012,12 +7012,90 @@
             // Initialize provider dropdown
             const providerSelect = document.getElementById('model-provider-select');
 
+            const PROVIDER_HINTS = {
+                legacy:   'Legacy (GPT-4.1): stable baseline, recommended. Uses your OpenAI API key.',
+                openai:   'OpenAI (GPT-5.x): next-gen cloud, tested per task. Uses your OpenAI API key.',
+                gemini:   'Gemini 3.1: alternative cloud provider, tested per task. Requires a Google API key.',
+                lmstudio: 'Local / Custom Server: point at any OpenAI-compatible server below. Zero cost when local.'
+            };
+            function updateProviderHint(p) {
+                const el = document.getElementById('provider-help-text');
+                if (el && PROVIDER_HINTS[p]) { el.textContent = PROVIDER_HINTS[p]; }
+            }
+            function toggleLocalFields(p) {
+                const box = document.getElementById('local-endpoint-settings');
+                if (box) { box.style.display = (p === 'lmstudio') ? 'block' : 'none'; }
+            }
+
+            // Local/Custom endpoint load + save + test
+            socket.emit('get_local_endpoint');
+            socket.on('local_endpoint_changed', function (d) {
+                d = d || {};
+                var u = document.getElementById('local-base-url');
+                var m = document.getElementById('local-model');
+                var k = document.getElementById('local-api-key');
+                if (u) { u.value = d.base_url || ''; }
+                if (m) { m.value = d.model || ''; }
+                if (k) { k.placeholder = d.has_key ? '(saved - leave blank to keep)' : 'leave blank for local servers'; }
+            });
+            (function () {
+                var saveBtn = document.getElementById('local-save-btn');
+                if (saveBtn) saveBtn.addEventListener('click', function () {
+                    socket.emit('set_local_endpoint', {
+                        base_url: (document.getElementById('local-base-url') || {}).value || '',
+                        model: (document.getElementById('local-model') || {}).value || '',
+                        api_key: (document.getElementById('local-api-key') || {}).value || ''
+                    });
+                });
+                var testBtn = document.getElementById('local-test-btn');
+                var statusEl = document.getElementById('local-endpoint-status');
+                function setStatus(msg, ok, pending) {
+                    if (!statusEl) return;
+                    statusEl.style.display = 'block';
+                    statusEl.textContent = msg;
+                    statusEl.style.color = pending ? '#888' : (ok ? '#2e7d32' : '#c62828');
+                }
+                if (testBtn) testBtn.addEventListener('click', function () {
+                    var base = (document.getElementById('local-base-url') || {}).value || '';
+                    if (!base.trim()) { setStatus('Please enter a Server URL first.', false, false); return; }
+                    setStatus('Testing connection...', false, true);
+                    testBtn.disabled = true;
+                    socket.emit('test_local_endpoint', {
+                        base_url: base,
+                        model: (document.getElementById('local-model') || {}).value || '',
+                        api_key: (document.getElementById('local-api-key') || {}).value || ''
+                    });
+                });
+                socket.on('local_endpoint_test_result', function (res) {
+                    if (testBtn) testBtn.disabled = false;
+                    res = res || {};
+                    setStatus((res.ok ? 'PASS: ' : 'FAIL: ') + (res.detail || ''), !!res.ok, false);
+                });
+            })();
+
+            // OpenAI key save + status
+            socket.emit('get_openai_key');
+            socket.on('openai_key_status', function (d) {
+                var el = document.getElementById('openai-key-status-text');
+                if (el) { el.textContent = (d && d.has_key) ? ' (a key is set)' : ' (no key set)'; }
+            });
+            (function () {
+                var b = document.getElementById('openai-key-save-btn');
+                if (b) b.addEventListener('click', function () {
+                    var inp = document.getElementById('openai-key-input');
+                    socket.emit('set_openai_key', { api_key: inp ? inp.value : '' });
+                    if (inp) inp.value = '';  // do not keep the secret in the field
+                });
+            })();
+
             // Fetch current provider from server on page load
             socket.emit('get_model_provider');
 
             // Handle provider selection changes
             providerSelect.addEventListener('change', function() {
                 const provider = this.value;
+                updateProviderHint(provider);
+                toggleLocalFields(provider);
                 // Show loading state
                 this.disabled = true;
                 this.style.opacity = '0.6';
@@ -7029,6 +7107,8 @@
             socket.on('provider_changed', function(data) {
                 console.log('Provider change confirmed:', data);
                 providerSelect.value = data.provider;
+                updateProviderHint(data.provider);
+                toggleLocalFields(data.provider);
                 // Clear loading state
                 providerSelect.disabled = false;
                 providerSelect.style.opacity = '1';
