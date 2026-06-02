@@ -749,6 +749,11 @@
             margin-left: 10px;
         }
         
+        .first-run-banner { display: flex; align-items: center; gap: 12px; margin: 8px; padding: 10px 14px; background: #2b3a55; border: 1px solid #4a6da7; border-radius: 6px; color: #dde6f5; font-size: 13px; line-height: 1.4; }
+        .first-run-banner-text { flex: 1; }
+        .first-run-banner-dismiss { background: #4a6da7; color: #fff; border: none; border-radius: 4px; padding: 5px 12px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .first-run-banner-dismiss:hover { background: #5b80c0; }
+
         .panel-content {
             flex: 1;
             overflow-y: auto;
@@ -4566,6 +4571,10 @@
             <!-- Dice Results Area -->
             <div class="dice-results" id="dice-results" style="display: none;"></div>
             
+            <div class="first-run-banner" id="first-run-banner" style="display: none;">
+                <span class="first-run-banner-text">Welcome to NeverEndingQuest! Before you start, open <strong>Settings</strong> (gear icon, top right) to choose your AI provider. Want local/zero-cost or a custom server? Pick <strong>Local / Custom Server</strong>, paste your endpoint URL, then click <strong>Test Connection</strong>. You can also set your OpenAI API key there -- no file editing needed.</span>
+                <button class="first-run-banner-dismiss" id="first-run-banner-dismiss" type="button">Dismiss</button>
+            </div>
             <div class="panel-content" id="game-output"></div>
             <div class="input-container">
                 <input 
@@ -5506,6 +5515,10 @@
                     document.getElementById('start-button').textContent = 'New Game';
                 }
             }
+            if (!gameStarted && !localStorage.getItem('neq_bannerDismissed')) {
+                var _frb = document.getElementById('first-run-banner');
+                if (_frb) { _frb.style.display = 'flex'; }
+            }
         });
 
         socket.on('disconnect', () => {
@@ -5519,6 +5532,8 @@
         
         socket.on('game_started', (data) => {
             gameStarted = true;
+            var _frbHide = document.getElementById('first-run-banner');
+            if (_frbHide) { _frbHide.style.display = 'none'; }
             localStorage.setItem('neq_hasPlayed', 'true');
             document.getElementById('start-button').textContent = 'Game Running';
             document.getElementById('start-button').disabled = true;
@@ -7016,6 +7031,15 @@
                 };
             }
             
+            (function () {
+                var _d = document.getElementById('first-run-banner-dismiss');
+                if (_d) _d.addEventListener('click', function () {
+                    var _b = document.getElementById('first-run-banner');
+                    if (_b) { _b.style.display = 'none'; }
+                    localStorage.setItem('neq_bannerDismissed', 'true');
+                });
+            })();
+
             // Initialize provider dropdown
             const providerSelect = document.getElementById('model-provider-select');
 
