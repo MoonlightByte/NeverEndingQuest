@@ -98,6 +98,14 @@ except ImportError:
 # Set script name for logging
 set_script_name("web_interface")
 
+# Apply a web-set OpenAI key from user_settings.json at startup (no-op if none).
+# Runs AFTER config.py defined its default, so a persisted key wins for existing users.
+try:
+    import model_config as _mc
+    _mc.apply_persisted_openai_key()
+except Exception:
+    pass
+
 # Set up Flask with correct template and static paths
 # Templates are in both web/templates (for game) and root templates (for toolkit)
 # Get the directory where this file is located
@@ -3160,6 +3168,35 @@ def handle_set_local_endpoint(data):
     except Exception as e:
         error(f"Error setting local endpoint: {e}", exception=e, category="web_interface")
         emit('error', {'message': "Failed to save local endpoint"})
+
+
+@socketio.on('get_openai_key')
+def handle_get_openai_key():
+    """Report ONLY whether an OpenAI key is configured. Never sends the secret."""
+    try:
+        import model_config, config as _cfg
+        stored = model_config.has_openai_key()
+        live = bool(getattr(_cfg, "OPENAI_API_KEY", "")) and \
+            getattr(_cfg, "OPENAI_API_KEY", "") != "your_openai_api_key_here"
+        emit('openai_key_status', {'has_key': bool(stored or live)})
+    except Exception as e:
+        error(f"Error getting openai key status: {e}", exception=e, category="web_interface")
+        emit('openai_key_status', {'has_key': False})
+
+
+@socketio.on('set_openai_key')
+def handle_set_openai_key(data):
+    """Set the OpenAI key from the UI: update config live AND persist. No echo."""
+    try:
+        import model_config, config as _cfg
+        api_key = ((data or {}).get('api_key') or '').strip()
+        _cfg.OPENAI_API_KEY = api_key            # live: all config.OPENAI_API_KEY readers
+        model_config.persist_openai_key(api_key) # survive restart (empty clears)
+        debug("OpenAI API key updated via web UI", category="web_interface")
+        emit('openai_key_status', {'has_key': model_config.has_openai_key()}, broadcast=True)
+    except Exception as e:
+        error(f"Error setting openai key: {e}", exception=e, category="web_interface")
+        emit('error', {'message': "Failed to set OpenAI API key"})  # generic: no key leak
 
 @socketio.on('test_module_progress')
 def handle_test_module_progress():
