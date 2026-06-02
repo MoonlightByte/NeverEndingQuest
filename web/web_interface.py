@@ -99,8 +99,14 @@ except ImportError:
 set_script_name("web_interface")
 
 # Apply a web-set OpenAI key from user_settings.json at startup (no-op if none).
-# Runs AFTER config.py defined its default, so a persisted key wins for existing users.
+# Import config FIRST so apply_persisted_openai_key() has the canonical `config`
+# module in sys.modules to write into (it no-ops if 'config' isn't loaded). Doing
+# the import here means this does NOT depend on the transitive `import main`
+# side-effect above -- it stays correct even if these import lines are reordered.
+# config.py itself runs after `from model_config import *`, so its default
+# OPENAI_API_KEY is already set by the time we overwrite it with the persisted one.
 try:
+    import config as _cfg_boot  # noqa: F401  (ensure config is loaded before applying)
     import model_config as _mc
     _mc.apply_persisted_openai_key()
 except Exception:
@@ -3189,7 +3195,17 @@ def handle_get_openai_key():
 
 @socketio.on('set_openai_key')
 def handle_set_openai_key(data):
-    """Set the OpenAI key from the UI: update config live AND persist. No echo."""
+    """Set the OpenAI key from the UI: update config live AND persist. No echo.
+
+    Scope of the live update: writing config.OPENAI_API_KEY reaches every reader
+    that reads it at call time (utils/openai_client.get_openai_client and the
+    per-request toolkit generators). A few long-lived managers cache an OpenAI
+    client in __init__ (e.g. campaign_manager, storage_processor); those keep the
+    previous key until the next restart -- a pre-existing pattern, not specific to
+    this feature. The PERSISTED key is applied at startup for ALL readers (see the
+    boot-time apply_persisted_openai_key above), so a player who sets the key in
+    Settings before starting a game -- the intended flow -- is fully covered.
+    """
     try:
         import model_config, config as _cfg
         api_key = ((data or {}).get('api_key') or '').strip()
