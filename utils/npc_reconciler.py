@@ -172,8 +172,12 @@ Respond with JSON: {{"answer": true}} or {{"answer": false}}."""
                 location["npcs"] = reconciled_npcs
 
             if modified:
-                safe_write_json(area_data, area_path)
-                print(f"  -> Reconciled NPC names in {area_id}.json")
+                # safe_write_json signature is (filepath, data) -- args were reversed
+                # (issue #128), which silently failed reconciliation / wrote a garbage file.
+                if not safe_write_json(area_path, area_data):
+                    print(f"  -> ERROR: failed to write reconciled NPC names to {area_id}.json")
+                else:
+                    print(f"  -> Reconciled NPC names in {area_id}.json")
 
 def main():
     """For testing the reconciler directly."""
