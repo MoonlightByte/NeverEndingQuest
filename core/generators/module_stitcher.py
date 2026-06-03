@@ -858,8 +858,11 @@ Create atmospheric travel narration that leads into this adventure."""
             # Track location ID mappings for party tracker update
             location_id_mapping = {}
 
-            # Find and update the area file
-            area_file = os.path.join(module_path, f"{old_id}.json")
+            # Find and update the area file. New modules store areas under
+            # module_path/areas/; legacy modules used the module root. (issue #128)
+            area_file = os.path.join(module_path, "areas", f"{old_id}.json")
+            if not os.path.exists(area_file):
+                area_file = os.path.join(module_path, f"{old_id}.json")  # legacy fallback
             if os.path.exists(area_file):
                 # Load, update, and save area file
                 area_data = safe_json_load(area_file)
@@ -897,8 +900,9 @@ Create atmospheric travel narration that leads into this adventure."""
                                             updated_connections.append(conn)
                                     room['connections'] = updated_connections
 
-                    # Save updated area file
-                    new_area_file = os.path.join(module_path, f"{new_id}.json")
+                    # Save updated area file in the SAME directory the old one was
+                    # found in (areas/ for new modules, root for legacy). (issue #128)
+                    new_area_file = os.path.join(os.path.dirname(area_file), f"{new_id}.json")
                     safe_write_json(new_area_file, area_data)
 
                     # Remove old file
