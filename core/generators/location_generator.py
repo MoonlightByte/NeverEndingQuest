@@ -710,24 +710,39 @@ CRITICAL: You MUST use the exact locationId values from the stubs provided. Do n
         
         # Post-process to ensure consistency
         location_ids = set()
+        name_to_id = {}  # issue #128: map location NAME -> locationId for resolution
         for loc in locations:
             if isinstance(loc, dict) and "locationId" in loc:
                 location_ids.add(loc["locationId"])
-        
+                loc_name = loc.get("name")
+                if loc_name:
+                    name_to_id[loc_name] = loc["locationId"]
+
         for location in locations:
+            # issue #128: guard against a malformed AI batch returning a non-dict
+            # entry (e.g. a stray string) -- would otherwise crash on .get() below.
+            if not isinstance(location, dict):
+                print(f"WARNING: [Location Generator] Skipping non-dict location entry: {location}")
+                continue
             # Validate connections exist
             raw_connectivity = location.get("connectivity", [])
             validated_connectivity = []
-            
+
             for conn in raw_connectivity:
-                # Handle both string and dict formats
+                # connectivity MUST hold location IDs (source of truth: loca_schema.json).
+                # Handle both string and dict formats; resolve a known location NAME to
+                # its ID instead of silently dropping the connection (issue #128).
                 if isinstance(conn, str):
                     if conn in location_ids:
                         validated_connectivity.append(conn)
-                elif isinstance(conn, dict) and "locationId" in conn:
-                    if conn["locationId"] in location_ids:
+                    elif conn in name_to_id:
+                        validated_connectivity.append(name_to_id[conn])
+                elif isinstance(conn, dict):
+                    if conn.get("locationId") in location_ids:
                         validated_connectivity.append(conn["locationId"])
-            
+                    elif conn.get("name") in name_to_id:
+                        validated_connectivity.append(name_to_id[conn["name"]])
+
             location["connectivity"] = validated_connectivity
             
             # CRITICAL FIX: Update context with actual NPC placements
