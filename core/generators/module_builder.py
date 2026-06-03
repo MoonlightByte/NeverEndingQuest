@@ -269,6 +269,11 @@ MODULE INDEPENDENCE RULES:
 
         from utils.file_operations import safe_read_json
         unified_plot = safe_read_json(plot_file_path)
+        if not unified_plot:
+            # safe_read_json returns None on unreadable/corrupt JSON (issue #128) --
+            # guard before .get() so we degrade gracefully instead of crashing.
+            self.log("  - WARNING: module_plot.json unreadable. Cannot determine climactic location.")
+            return
         plot_points = unified_plot.get("plotPoints", [])
         if not plot_points:
             self.log("  - WARNING: No plot points found. Cannot determine climactic location.")
@@ -318,8 +323,11 @@ MODULE INDEPENDENCE RULES:
         
         climactic_location.setdefault("npcs", []).append(antagonist_npc_entry)
         
-        # 7. Save the updated area file
-        safe_write_json(area_file_path, area_data)
+        # 7. Save the updated area file (check the atomic-write result -- issue #128:
+        #    do not report SUCCESS if the write failed and the antagonist was not persisted)
+        if not safe_write_json(area_file_path, area_data):
+            self.log(f"  - ERROR: Failed to persist antagonist injection for {climactic_area_id}:{climactic_location_id}.")
+            return
         self.log(f"  - SUCCESS: Mandated placement of '{antagonist_name}' in {climactic_area_id}:{climactic_location_id}.")
 
     def generate_areas(self):
@@ -936,8 +944,11 @@ IMPORTANT:
                 self.log(f"Error: Area integrity check failed for {area_id}, rolling back")
                 return
             
-            # STEP 8: Atomic write with safety guards
-            safe_write_json(area_file_path, updated_area_data)
+            # STEP 8: Atomic write with safety guards (check result -- issue #128:
+            #         do not log success if the write failed)
+            if not safe_write_json(area_file_path, updated_area_data):
+                self.log(f"Error: Failed to persist plot hooks for {area_id}")
+                return
             self.log(f"Successfully updated plot hooks for {area_id}")
             
             # STEP 9: Cleanup old backups (keep only 3 most recent)
