@@ -775,7 +775,11 @@ IMPORTANT:
             for field in required_fields:
                 if field not in unified_plot:
                     unified_plot[field] = []
-            
+
+            # issue #128: per-area validate_plot cannot see cross-area references.
+            # Warn (non-destructively) about unified location refs unknown to ANY area.
+            self._warn_unified_plot_invalid_locations(unified_plot)
+
             # Save the unified plot
             output_path = os.path.join(self.config.output_directory, "module_plot.json")
             self._atomic_save_json("module_plot.json", unified_plot)
@@ -832,10 +836,39 @@ IMPORTANT:
                 
                 unified_plot["plotPoints"].append(new_pp)
                 plot_counter += 1
-        
+
+        # issue #128: surface (non-destructively) any cross-area location refs the
+        # unified plot can't resolve against the module's real location IDs.
+        self._warn_unified_plot_invalid_locations(unified_plot)
+
         self._atomic_save_json("module_plot.json", unified_plot)
         self.log(f"Created fallback unified plot with {len(unified_plot['plotPoints'])} plot points")
-    
+
+    def _warn_unified_plot_invalid_locations(self, unified_plot):
+        """issue #128: non-destructive cross-area validation of the unified plot.
+
+        Per-area validate_plot() only checks each area's own location IDs, so a
+        unified plot point or side quest that references a location belonging to a
+        different area (or no area at all) slips through. This logs a WARNING for
+        each such reference -- it does NOT modify the plot (behavior preserved).
+        """
+        valid_ids = set()
+        for area_id, loc_data in self.locations_data.items():
+            for loc in (loc_data or {}).get("locations", []):
+                lid = loc.get("locationId")
+                if lid:
+                    valid_ids.add(lid)
+        if not valid_ids:
+            return  # locations not available -- nothing to validate against
+        for pp in unified_plot.get("plotPoints", []):
+            loc = pp.get("location")
+            if loc and loc not in valid_ids:
+                self.log(f"  - WARNING: plot point {pp.get('id')} references location '{loc}' not found in any area")
+            for sq in pp.get("sideQuests", []):
+                for sloc in sq.get("involvedLocations", []):
+                    if sloc and sloc not in valid_ids:
+                        self.log(f"  - WARNING: side quest {sq.get('id')} references location '{sloc}' not found in any area")
+
     def update_area_plot_hooks(self):
         """Update area plot hooks to reference unified plot using atomic updates with safety guards"""
         # Load the unified plot we just created
