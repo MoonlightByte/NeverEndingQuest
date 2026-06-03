@@ -44,9 +44,26 @@ from core.ai import api_client
 import config as app_config
 from utils.module_path_manager import ModulePathManager
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+from model_config import convert_to_gemini_schema
 register_callsite("T022", "core/generators/area_generator.py", 139)
 register_callsite("T023", "core/generators/area_generator.py", 437)
 register_callsite("T024", "core/generators/area_generator.py", 593)
+
+# issue #128: small Gemini response_schema for the area name/description call (T023).
+# Source of truth for these fields is the code's own expected output
+# {refinedName, description}; converted once at import so Gemini flash models emit
+# the JSON object instead of DM narration. None -> Gemini branch raises.
+_AREA_NAMEDESC_SCHEMA_GEMINI = None
+try:
+    _AREA_NAMEDESC_SCHEMA_GEMINI = convert_to_gemini_schema({
+        "type": "object",
+        "properties": {
+            "refinedName": {"type": "string"},
+            "description": {"type": "string"},
+        },
+    })
+except Exception:
+    _AREA_NAMEDESC_SCHEMA_GEMINI = None
 
 
 @dataclass
@@ -434,6 +451,17 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
             else:  # legacy
                 main_cfg = app_config.DM_MAIN_LEGACY
 
+            # issue #128: attach the converted schema for Gemini so flash models
+            # emit {refinedName, description}, not narration. Per-call via extra_params.
+            extra_params = {k: v for k, v in main_cfg.items() if k != "model"}
+            if MODEL_PROVIDER == "gemini":
+                if _AREA_NAMEDESC_SCHEMA_GEMINI is None:
+                    raise RuntimeError(
+                        "issue #128: Gemini area name/description schema failed to build "
+                        "at import. Refusing to call Gemini without response_schema."
+                    )
+                extra_params["response_schema"] = _AREA_NAMEDESC_SCHEMA_GEMINI
+
             response = capture_and_fanout("T023", api_client.create_completion,
                 messages=[
                     {"role": "system", "content": "You are an expert fantasy world builder specializing in creating evocative names and descriptions for 5th edition of the world's most popular roleplaying game areas."},
@@ -442,7 +470,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 model=main_cfg["model"],
                 temperature=0.8,
                 response_format={"type": "json_object"},
-                **{k: v for k, v in main_cfg.items() if k != "model"})
+                **extra_params)
             
             result = json.loads(response.choices[0].message.content)
             refined_name = result.get("refinedName", initial_name)

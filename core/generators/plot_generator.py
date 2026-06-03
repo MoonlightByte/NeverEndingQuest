@@ -44,8 +44,21 @@ from core.ai import api_client
 import config
 import jsonschema
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+from model_config import convert_to_gemini_schema
 register_callsite("T036", "core/generators/plot_generator.py", 359)
 register_callsite("T037", "core/generators/plot_generator.py", 438)
+
+# issue #128: pre-load + convert plot_schema for Gemini response_schema so flash
+# models emit the plot structure JSON, not DM narration. Loaded once at import; if
+# it fails, _PLOT_SCHEMA_GEMINI stays None and the Gemini branch raises rather than
+# silently producing narration.
+_PLOT_SCHEMA_GEMINI = None
+try:
+    _plot_schema_path = os.path.join(os.path.dirname(__file__), "..", "..", "schemas", "plot_schema.json")
+    with open(_plot_schema_path, "r", encoding="utf-8") as _f:
+        _PLOT_SCHEMA_GEMINI = convert_to_gemini_schema(json.load(_f))
+except Exception:
+    _PLOT_SCHEMA_GEMINI = None
 
 
 @dataclass
@@ -435,6 +448,19 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
         else:  # legacy
             main_cfg = config.DM_MAIN_LEGACY
 
+        # issue #128: attach converted plot schema for Gemini so flash models emit
+        # the plot structure, not DM narration. DM_MAIN_* dicts are shared across
+        # callsites, so attach per-call via extra_params (not the dict).
+        extra_params = {k: v for k, v in main_cfg.items() if k != "model"}
+        if MODEL_PROVIDER == "gemini":
+            if _PLOT_SCHEMA_GEMINI is None:
+                raise RuntimeError(
+                    "issue #128: Gemini plot schema is None (schemas/plot_schema.json "
+                    "failed to load at import). Refusing to call Gemini without "
+                    "response_schema -- it would silently produce DM narration."
+                )
+            extra_params["response_schema"] = _PLOT_SCHEMA_GEMINI
+
         # MP-H1: a malformed AI response previously raised an uncaught
         # JSONDecodeError that crashed the entire module build. Retry once on
         # a parse failure, then fail with a clear, logged error instead.
@@ -448,7 +474,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 model=main_cfg["model"],
                 temperature=0.8,
                 response_format={"type": "json_object"},
-                **{k: v for k, v in main_cfg.items() if k != "model"})
+                **extra_params)
             raw = response.choices[0].message.content
             try:
                 return json.loads(raw)
