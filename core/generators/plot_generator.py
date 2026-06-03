@@ -520,9 +520,22 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
         print(f"Generated plot title: {plot_data['plotTitle']}")
         print(f"Generated main objective: {plot_data['mainObjective']}")
         
+        # issue #128: restore the area's real location IDs into the plot-structure
+        # context. Regression from commit 0f718e7 (which deleted _slim_context_for_plot):
+        # generate_plot_structure dumps `context` into its prompt, so without this the AI
+        # had no valid locationIds and guessed plotPoints[].location / involvedLocations.
+        field_context["availableLocations"] = [
+            {
+                "locationId": loc.get("locationId"),
+                "name": loc.get("name"),
+                "type": loc.get("type"),
+            }
+            for loc in location_data.get("locations", [])
+        ]
+
         # Generate complete plot structure
         num_plot_points = min(8, max(4, len(location_data.get("locations", [])) // 3))
-        
+
         plot_structure = self.generate_plot_structure(num_plot_points, field_context, context_header)
         
         plot_data["plotPoints"] = plot_structure["plotPoints"]
