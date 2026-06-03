@@ -745,12 +745,14 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
         map_data = area_data["map"]
         map_filename = path_manager.get_map_path(area_data['areaId'])
         
-        with open(filename, "w") as f:
-            json.dump(area_data, f, indent=2)
-        
-        with open(map_filename, "w") as f:
-            json.dump(map_data, f, indent=2)
-        
+        # issue #128: use atomic writes (project rule) so a mid-write crash cannot
+        # leave a corrupted/partial area or map JSON.
+        from utils.file_operations import safe_write_json
+        if not safe_write_json(filename, area_data):
+            print(f"DEBUG: [Area Generator] ERROR: failed to save area to {filename}")
+        if not safe_write_json(map_filename, map_data):
+            print(f"DEBUG: [Area Generator] ERROR: failed to save map to {map_filename}")
+
         print(f"DEBUG: [Area Generator] Area saved to {filename}")
         print(f"DEBUG: [Area Generator] Map saved to {map_filename}")
 
@@ -785,8 +787,8 @@ def main():
         "theme": "Classic fantasy adventure"
     }
     
-    # Generate area
-    area_data = generator.generate_area(area_name, area_id, module_context, config)
+    # Generate area (issue #128: generate_area requires a location prefix as 5th arg)
+    area_data = generator.generate_area(area_name, area_id, module_context, config, "A")
     
     # Save
     generator.save_area(area_data)

@@ -904,8 +904,10 @@ def main():
     """Main execution function"""
     # Set paths
     module_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "modules", "Keep_of_Doom")
-    schema_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    
+    # issue #128: schemas live in repo_root/schemas, not repo_root. Without the
+    # "schemas" segment the standalone validator can't load any schema file.
+    schema_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "schemas")
+
     # Create validator and run
     validator = ModuleValidator(module_path, schema_dir)
     validator.run_validation()

@@ -738,8 +738,9 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 num_locations=random.randint(5, 7)  # Explicitly set to 5-7 locations
             )
             
-            # Generate area data
-            area_data = area_gen.generate_area(area_name, area_id, context.to_dict(), config)
+            # Generate area data (issue #128: generate_area requires the location
+            # prefix as its 5th arg -- it was omitted here, which would TypeError)
+            area_data = area_gen.generate_area(area_name, area_id, context.to_dict(), config, location_prefix)
             
             # Add locations to context
             for location in area_data.get("locations", []):
