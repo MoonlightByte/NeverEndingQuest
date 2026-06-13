@@ -607,6 +607,16 @@ Determine the most logical starting location based on adventure flow, area types
         else:  # legacy
             locstart_cfg = config.DM_LOCSTART_T012_LEGACY
 
+        # T012: fail loud (gemini-only) if response_schema is missing. Without it,
+        # gemini-flash-lite emits narration instead of the location JSON, forcing a
+        # degraded first-area fallback.
+        if MODEL_PROVIDER == "gemini" and locstart_cfg.get("response_schema") is None:
+            raise RuntimeError(
+                "T012 starting-location analysis aborted: Gemini response_schema is "
+                "None. Refusing to run -- Gemini would emit narration and force a "
+                "degraded fallback location."
+            )
+
         response = capture_and_fanout("T012", api_client.create_completion,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -2154,11 +2164,25 @@ Remember: This is a background NPC management action, not party NPC management."
         if MODEL_PROVIDER == "openai":
             npc_config = config.NPC_INFO_GPT54MINI_NONE
         elif MODEL_PROVIDER == "gemini":
-            npc_config = config.NPC_INFO_GEMINI_FLASH_MINIMAL
+            # T014 uses its OWN gemini config (NPC_MOVEMENT_T014_*), NOT the shared
+            # NPC_INFO_GEMINI_FLASH_MINIMAL -- that one is shared with T091 whose
+            # output is a JSON ARRAY; attaching this object schema there would corrupt
+            # T091's monster reconciliation.
+            npc_config = config.NPC_MOVEMENT_T014_GEMINI_FLASH_MINIMAL
         elif MODEL_PROVIDER == "lmstudio":
             npc_config = config.NPC_INFO_LMSTUDIO
         else:  # legacy
             npc_config = config.NPC_INFO_LEGACY
+
+        # T014: fail loud (gemini-only) if response_schema is missing. Without it,
+        # gemini-flash emits narration instead of the action/reasoning decision JSON
+        # and the NPC update is silently dropped.
+        if MODEL_PROVIDER == "gemini" and npc_config.get("response_schema") is None:
+            raise RuntimeError(
+                "T014 NPC movement decision aborted: Gemini response_schema is None. "
+                "Refusing to run -- Gemini would emit narration and silently drop the "
+                "NPC update."
+            )
 
         response = capture_and_fanout("T014", api_client.create_completion,
             messages=[

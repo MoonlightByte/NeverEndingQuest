@@ -501,6 +501,14 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
                 party_data = safe_json_load(party_tracker_file)
                 if party_data:
                     current_module = party_data.get('module', 'Unknown')
+                    # #19: refresh party_tracker_data from disk so the area/location
+                    # IDs read further below reflect any module-integration updates
+                    # (module_stitcher rewrites location IDs during integration).
+                    # Restores the protection lost when CampaignManager's constructor
+                    # became side-effect-free (its party_tracker_data is now always
+                    # None). Disk is the authoritative post-integration source; this
+                    # only rebinds the local, not the caller's variable.
+                    party_tracker_data = party_data
         except:
             # Fallback to parameter if file reading fails
             current_module = party_tracker_data.get('module', 'Unknown') if party_tracker_data else 'Unknown'

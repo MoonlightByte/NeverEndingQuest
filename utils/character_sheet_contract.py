@@ -41,7 +41,11 @@ RUNTIME_ARRAY_DEFAULTS = {
     "ammunition": [],
     "attacksAndSpellcasting": [],
     "savingThrows": [],
-    "skills": [],
+    # NOTE: "skills" is deliberately NOT defaulted here. The live on-disk format
+    # is a dict ({skill: bonus}) for 800+ characters; routing it through
+    # _ensure_list would coerce that dict to [] and silently wipe every skill
+    # bonus on startup. Skills are repaired explicitly below (dict preserved,
+    # list left as-is, missing -> []). See repair_character_sheet().
     "languages": [],
     "damageVulnerabilities": [],
     "damageResistances": [],
@@ -403,11 +407,21 @@ def repair_character_sheet(
         for nested_field, nested_default in RUNTIME_OBJECT_DEFAULTS["abilities"].items():
             _ensure_scalar(repaired["abilities"], nested_field, nested_default, changes)
 
-        if isinstance(repaired.get("skills"), dict):
-            for skill, bonus in list(repaired["skills"].items()):
+        # Skills repair (intentionally not in RUNTIME_ARRAY_DEFAULTS -- see note there).
+        # Preserve the live dict format ({skill: bonus}); only coerce a bad bonus
+        # value to 0. Leave a legacy list (array of proficient skill names) untouched.
+        # Default a genuinely missing/None skills to [] (prior behavior, consumer-safe).
+        skills_value = repaired.get("skills")
+        if isinstance(skills_value, dict):
+            for skill, bonus in list(skills_value.items()):
                 if not isinstance(bonus, int) or isinstance(bonus, bool):
-                    repaired["skills"][skill] = 0
+                    skills_value[skill] = 0
                     changes.append(f"skills.{skill}=coerced_scalar")
+        elif isinstance(skills_value, list):
+            pass  # legacy proficient-name array; valid shape, leave as-is
+        else:
+            repaired["skills"] = []
+            changes.append("skills=default_list")
 
         _ensure_object(repaired, "spellcasting", RUNTIME_OBJECT_DEFAULTS["spellcasting"], changes)
         spells = repaired["spellcasting"].get("spells")

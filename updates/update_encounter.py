@@ -91,6 +91,16 @@ Remember to only update monster information and leave player and NPC data unchan
         else:  # legacy
             encounter_config = config.ENCOUNTER_UPD_LEGACY
 
+        # T081: fail loud (gemini-only) if response_schema is missing. Without it,
+        # gemini-flash drifts to narration instead of a creatures delta and the
+        # encounter update silently no-ops after retries.
+        if MODEL_PROVIDER == "gemini" and encounter_config.get("response_schema") is None:
+            raise RuntimeError(
+                "T081 encounter update aborted: Gemini response_schema is None. "
+                "Refusing to run -- Gemini-flash would emit narration and the "
+                "encounter update would silently no-op."
+            )
+
         # Get AI's response
         response = capture_and_fanout("T081", api_client.create_completion,
             messages=prompt,

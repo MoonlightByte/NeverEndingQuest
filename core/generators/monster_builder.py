@@ -196,6 +196,14 @@ Schema: {json.dumps(schema)}"""
     else:  # legacy
         monster_config = config.MONSTER_BUILD_LEGACY
 
+    # T034: force Gemini to emit the monster OBJECT, not DM narration. Reuse the
+    # mon_schema already passed in (the same one used for jsonschema.validate below)
+    # -- no second file load, no None risk. legacy/openai/lmstudio unaffected.
+    _extra = {k: v for k, v in monster_config.items() if k != "model"}
+    if MODEL_PROVIDER == "gemini":
+        from model_config import convert_to_gemini_schema
+        _extra["response_schema"] = convert_to_gemini_schema(schema)
+
     # CH-H1: Retry on JSON parse / schema validation failures. The AI
     # occasionally returns truncated or malformed JSON on the first try;
     # retrying recovers without failing the whole encounter build.
@@ -220,7 +228,7 @@ Schema: {json.dumps(schema)}"""
                 messages=prompt,
                 model=monster_config["model"],
                 temperature=0.7,
-                **{k: v for k, v in monster_config.items() if k != "model"})
+                **_extra)
 
             ai_response = response.choices[0].message.content.strip()
             print(f"{YELLOW}AI Response:{RESET}\n{ai_response}")

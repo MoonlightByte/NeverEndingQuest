@@ -140,7 +140,7 @@
             "items": {
               "type": "string",
               "description": "A string representing a DC check in the format: 'SkillName DC XX: Description of the check.'",
-              "pattern": "^[A-Z][a-z]+ DC [0-9]+: .+$"
+              "pattern": "^[A-Z][A-Za-z]+(?: [A-Za-z]+)* DC [0-9]+: .+$"
             },
             "examples": [
               "Perception DC 15: Notice signs of recent activity in the room.",

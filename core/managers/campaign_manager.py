@@ -72,7 +72,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from openai import OpenAI
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T038", "core/managers/campaign_manager.py", 552)
@@ -95,8 +94,10 @@ class CampaignManager:
         """Initialize campaign manager"""
         self.campaign_file = "modules/campaign.json"
         self.summaries_dir = "modules/campaign_summaries"
-        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
-        
+        # No raw OpenAI client: all API calls route through api_client.create_completion()
+        # per the multi-provider migration. A direct OpenAI(api_key=...) here crashed at
+        # construction for Gemini/LM Studio users with no OPENAI_API_KEY (it was never used).
+
         # Ensure directories exist
         os.makedirs(self.summaries_dir, exist_ok=True)
         self.archives_dir = "modules/campaign_archives"

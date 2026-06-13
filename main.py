@@ -2633,12 +2633,11 @@ def get_ai_response(conversation_history, validation_retry_count=0):
         json.dump(messages_to_send, f, indent=2, ensure_ascii=False)
     print(f"DEBUG: [MAIN CONVERSATION] Exported conversation messages to main_conversation_messages_to_api.json")
     
-    # Generate response with selected model (unified path -- provider-agnostic)
-    # Model tier escalation: switch to full model after 4 validation failures
-    if validation_retry_count >= 4:
-        selected_model = config.DM_FULL_MODEL
-        print(f"DEBUG: Switching to full model after {validation_retry_count} retries")
-
+    # Generate response with selected model (unified path -- provider-agnostic).
+    # NOTE: the actual model is selected_config["model"] below, chosen by the use_mini
+    # routing boolean. (The old "escalate to full model after 4 retries" reassignment
+    # of selected_model was removed: it only changed the LOGGED model name, never the
+    # real call, and contradicted the no-escalation-ladder rule.)
     from model_config import MODEL_PROVIDER
 
     # Select per-provider model config (model string + provider-specific params)
@@ -3968,10 +3967,22 @@ def main_game_loop():
 
                     # Get the first message from the session
                     dm_response = level_up_session.start()
-                
+
+                    # The level-up AI may wrap its opening message in JSON
+                    # ({"narration": ...}) depending on the prompt. Display/store the
+                    # narration text, not the raw JSON blob -- mirrors the per-turn
+                    # handling in the loop below. Plain-text greetings fall through
+                    # unchanged (json.loads raises -> use raw text).
+                    try:
+                        _first_parsed = json.loads(dm_response)
+                        first_display = (_first_parsed.get("narration", dm_response)
+                                         if isinstance(_first_parsed, dict) else dm_response)
+                    except (json.JSONDecodeError, TypeError):
+                        first_display = dm_response
+
                     # Display the first message and add to history
-                    print(colored("Dungeon Master:", "blue"), colored(dm_response, "blue"))
-                    conversation_history.append({"role": "assistant", "content": dm_response})
+                    print(colored("Dungeon Master:", "blue"), colored(first_display, "blue"))
+                    conversation_history.append({"role": "assistant", "content": first_display})
                     save_conversation_history(conversation_history)
 
                     # Loop until the session is complete

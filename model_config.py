@@ -62,6 +62,16 @@ else:
         "forcing disabled. Gemini may output narration instead of deltas."
     )
 
+# Load and convert storage_action_schema.json for Gemini response_schema (T049).
+# Without it, gemini-flash-lite emits narration instead of a storage operation and
+# the action silently fails. Same load-and-convert pattern as char_schema above.
+_storage_schema_path = os.path.join(os.path.dirname(__file__), "schemas", "storage_action_schema.json")
+if os.path.exists(_storage_schema_path):
+    with open(_storage_schema_path, "r") as _f:
+        _STORAGE_ACTION_SCHEMA_GEMINI = convert_to_gemini_schema(json.load(_f))
+else:
+    _STORAGE_ACTION_SCHEMA_GEMINI = None
+
 
 # --- Main Game Logic Models (used in main.py) ---
 DM_MAIN_MODEL = "gpt-4.1-2025-04-14"
@@ -407,8 +417,30 @@ NPC_BUILD_LMSTUDIO = {"model": "local-model"}
 # Updates encounter creature data after combat actions.
 # Mini-tier callsite, temperature=0.7, JSON output.
 # GPT-5.4 reviewer: all models 3/3 pass. gemini-flash|minimal = 5.0/5 avg.
+# T081: inline Gemini response_schema (no schema file fits a creatures-delta).
+# Without it, gemini-flash drifts to narration and the encounter update silently
+# no-ops. Covers only the fields update_encounter parses from each creature.
+_T081_ENCOUNTER_UPDATE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "creatures": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "type": {"type": "string"},
+                    "currentHitPoints": {"type": "integer"},
+                    "maxHitPoints": {"type": "integer"},
+                    "status": {"type": "string"},
+                    "conditions": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+        },
+    },
+}
 ENCOUNTER_UPD_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
-ENCOUNTER_UPD_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+ENCOUNTER_UPD_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal", "response_schema": convert_to_gemini_schema(_T081_ENCOUNTER_UPDATE_SCHEMA)}
 ENCOUNTER_UPD_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 ENCOUNTER_UPD_LMSTUDIO = {"model": "local-model"}
 
@@ -460,6 +492,23 @@ LEVELUP_CONV_LMSTUDIO = {"model": "local-model"}
 NPC_INFO_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
 NPC_INFO_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
 NPC_INFO_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
+
+# T014 (NPC movement decision) needs its OWN Gemini config with response_schema.
+# It must NOT reuse NPC_INFO_GEMINI_FLASH_MINIMAL above: that config is shared with
+# T091 (utils/reconcile_location_state.py), which outputs a top-level JSON ARRAY --
+# attaching this object schema there would corrupt T091's monster reconciliation.
+_T014_NPC_MOVEMENT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "action": {"type": "string"},
+        "reasoning": {"type": "string"},
+        "newDescription": {"type": "string"},
+        "newAttitude": {"type": "string"},
+        "newLocation": {"type": "string"},
+        "locationUpdate": {"type": "string"},
+    },
+}
+NPC_MOVEMENT_T014_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal", "response_schema": convert_to_gemini_schema(_T014_NPC_MOVEMENT_SCHEMA)}
 NPC_INFO_LMSTUDIO = {"model": "local-model"}
 
 # T091 uses response_format=None at the callsite (JSON array output, not object).
@@ -517,8 +566,21 @@ DM_SUMM_T039_LMSTUDIO = {"model": "local-model"}
 # correctness-critical generator. Mini-tier models are appropriate.
 # Initial selections mirror T039 (also a mini-tier JSON-extraction helper).
 # TODO: Run capture comparison vs DM_SUMM_GPT54MINI_NONE / DM_SUMM_GEMINI_FLASH_LOW.
+# T012: inline Gemini response_schema for starting-location analysis (no schema
+# file fits). Without it, gemini-flash-lite drifts to narration and the code falls
+# back to a degraded first-area location. Covers the fields action_handler reads.
+_T012_STARTING_LOCATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "locationId": {"type": "string"},
+        "locationName": {"type": "string"},
+        "areaId": {"type": "string"},
+        "areaName": {"type": "string"},
+        "reasoning": {"type": "string"},
+    },
+}
 DM_LOCSTART_T012_GPT5MINI = {"model": "gpt-5-mini"}
-DM_LOCSTART_T012_GEMINI_FLASHLITE_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal"}
+DM_LOCSTART_T012_GEMINI_FLASHLITE_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal", "response_schema": convert_to_gemini_schema(_T012_STARTING_LOCATION_SCHEMA)}
 DM_LOCSTART_T012_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 DM_LOCSTART_T012_LMSTUDIO = {"model": "local-model"}
 
@@ -536,7 +598,7 @@ DM_LOCSTART_T012_LMSTUDIO = {"model": "local-model"}
 # Initial selections mirror T012/T039 (other mini-tier JSON-extraction helpers).
 # TODO: Run capture comparison once telemetry is collected on this callsite.
 STORAGE_PROCESSOR_T049_GPT5MINI = {"model": "gpt-5-mini"}
-STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal"}
+STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal", "response_schema": _STORAGE_ACTION_SCHEMA_GEMINI}
 STORAGE_PROCESSOR_T049_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 STORAGE_PROCESSOR_T049_LMSTUDIO = {"model": "local-model"}
 
@@ -597,7 +659,13 @@ AGENTIC_COMPRESS_LMSTUDIO = {"model": "local-model"}
 MINI_UTIL_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
 MINI_UTIL_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
 MINI_UTIL_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
-MINI_UTIL_LMSTUDIO = {"model": "local-model"}
+# response_format:None -> do not force OpenAI json_object mode on LM Studio (local
+# models frequently error on / mishandle it). T042 was confirmed broken without this.
+# NOTE (systemic, follow-up): the same latent issue affects every other JSON-output
+# *_LMSTUDIO config that lacks response_format:None (DM_FULL/DM_MINI/DM_VALIDATION/
+# ACTION_PRED/CHAR_UPDATE/CHAR_EFFECTS/... ~25 configs). Validate against a real LM
+# Studio server before adding it broadly; LM Studio is not part of capture testing.
+MINI_UTIL_LMSTUDIO = {"model": "local-model", "response_format": None}
 
 # --- T031+: DM_MAIN_MODEL callsites (module generation, DM narration, transitions) ---
 # First DM_MAIN_MODEL migration (T031). These dicts will be reused by all 12 DM_MAIN_MODEL callsites.
@@ -647,8 +715,10 @@ TTS_MODEL = "tts-1"                                       # OpenAI TTS model (tt
 TTS_VOICE = "fable"                                       # Voice: alloy, echo, fable, onyx, nova, shimmer (fable is good for narration)
 TTS_SPEED = 1.0                                           # Speed: 0.25 to 4.0 (1.0 is normal)
 # --- Multi-Model Capture Settings ---
-MULTI_MODEL_CAPTURE = True  # Set True to enable parallel cloud model testing (gpt-4.1, gpt-5.2, Gemini 3)
-                             # Captures outputs to model_captures/ for comparison
+MULTI_MODEL_CAPTURE = False  # Set True to enable parallel cloud model testing (gpt-4.1, gpt-5.2, Gemini 3)
+                             # Captures outputs to model_captures/ for comparison.
+                             # MUST default False for production: when True it fans out 2 extra cloud
+                             # calls per turn (added latency + cost) whenever a capture_config.json exists.
                              # Note: Ignored when MODEL_PROVIDER = "lmstudio" (LM Studio is production runtime, not for testing)
 
 # --- Provider Selection ---

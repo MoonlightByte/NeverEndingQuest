@@ -33,7 +33,6 @@ import json
 import os
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
-from openai import OpenAI
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T049", "core/managers/storage_processor.py", 286)
 import config
@@ -51,7 +50,9 @@ class StorageProcessor:
     
     def __init__(self):
         """Initialize storage processor"""
-        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
+        # No raw OpenAI client: all API calls route through api_client.create_completion()
+        # per the multi-provider migration. A direct OpenAI(api_key=...) here crashed at
+        # construction for Gemini/LM Studio users with no OPENAI_API_KEY (it was never used).
         self.model = config.DM_MAIN_MODEL  # Use full model, not mini
         self.schema_file = "schemas/storage_action_schema.json"
         # Get current module from party tracker for consistent path resolution
@@ -297,6 +298,16 @@ For "What's in our storage here?":
                     sp_cfg = config.STORAGE_PROCESSOR_T049_LMSTUDIO
                 else:  # legacy
                     sp_cfg = config.STORAGE_PROCESSOR_T049_LEGACY
+
+                # T049: fail loud (gemini-only) if the schema failed to load at import.
+                # Without response_schema, gemini-flash-lite emits narration instead of
+                # a storage operation and the action silently fails after retries.
+                if MODEL_PROVIDER == "gemini" and sp_cfg.get("response_schema") is None:
+                    raise RuntimeError(
+                        "T049 storage action aborted: Gemini response_schema is None "
+                        "(schemas/storage_action_schema.json failed to load at import). "
+                        "Restore the schema file or switch MODEL_PROVIDER off gemini."
+                    )
 
                 # Call AI model
                 response = capture_and_fanout("T049", api_client.create_completion,

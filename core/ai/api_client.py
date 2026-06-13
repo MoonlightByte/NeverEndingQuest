@@ -298,8 +298,17 @@ def _gemini_completion(messages, model, temperature, response_format=_UNSET, **k
     }
 
     # --- Normalize to OpenAI shape ---
+    # google-genai's response.text can RAISE (not merely return None) when the
+    # candidate has no valid text part -- safety block, finish_reason=MAX_TOKENS,
+    # or a function-call-only candidate. Read it defensively so those cases degrade
+    # to "" via _NormalizedResponse's None-coercion instead of propagating an
+    # accessor error up to the callsite.
+    try:
+        _text = response.text
+    except Exception:
+        _text = None
     return _NormalizedResponse(
-        content=response.text,
+        content=_text,
         usage_dict=usage_dict,
         model=model,
     )

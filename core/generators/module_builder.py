@@ -229,7 +229,16 @@ MODULE INDEPENDENCE RULES:
         
         # Step 6: Create module summary
         self.log("Step 6: Creating module summary...")
-        self.create_module_summary()
+        # B6: the summary is a cosmetic human-readable doc and reads many nested
+        # fields (module_data/areas_data). A KeyError here -- after all areas, plots
+        # and the party tracker are already generated and saved -- would propagate to
+        # the cleanup wrapper and DELETE the finished module over a non-critical file.
+        # Never let summary generation abort the build.
+        try:
+            self.create_module_summary()
+        except Exception as e:
+            warning(f"Module summary generation failed (non-fatal): {e}",
+                    category="module_generation")
         
         # Step 6.5: Reconcile NPC names across all files
         self.log("Step 6.5: Reconciling NPC names for consistency...")
@@ -342,8 +351,17 @@ MODULE INDEPENDENCE RULES:
             self.log(f"No custom per_area_locations - using defaults")
         
         for i, region in enumerate(world_map[:self.config.num_areas]):
-            area_id = region["mapId"]
-            
+            # B6: guard against AI-omitted keys in a world_map region. Any missing
+            # key here would raise KeyError, propagate to ai_driven_module_creation()'s
+            # cleanup wrapper, and DELETE the entire build. The worker already uses
+            # this region.get() pattern (module_generator.py:719). Deterministic
+            # fallbacks let generation proceed; the stitcher schema gate still flags
+            # genuinely broken areas.
+            region_name = region.get("regionName") or f"Area {i+1}"
+            area_id = region.get("mapId") or f"AREA{i+1:02d}"
+            danger_level = region.get("dangerLevel", "Medium")
+            recommended_level = region.get("recommendedLevel", 1)
+
             # Determine area type based on region description
             area_type = self.determine_area_type(region)
             
@@ -358,20 +376,20 @@ MODULE INDEPENDENCE RULES:
                 area_type=area_type,
                 size="medium" if i == 0 else ["small", "medium", "large"][i % 3],
                 complexity="moderate",
-                danger_level=region["dangerLevel"],
-                recommended_level=region["recommendedLevel"],
+                danger_level=danger_level,
+                recommended_level=recommended_level,
                 num_locations=num_locations_for_area
             )
-            
+
             # Add area to context
-            self.context.add_area(area_id, region["regionName"], area_type)
+            self.context.add_area(area_id, region_name, area_type)
             
             # Determine the unique prefix for this area's locations
             prefix = self.get_location_prefix(i)
             
             # Generate area using AreaGenerator
             area_data = self.area_gen.generate_area(
-                region["regionName"],
+                region_name,
                 area_id,
                 self.module_data,
                 config,
@@ -389,9 +407,9 @@ MODULE INDEPENDENCE RULES:
                 self._atomic_save_json(f"map_{area_id}.json", area_data["map"])
             
             # Context will be updated when locations are generated
-            self.context.add_area(area_id, region['regionName'], area_data["areaType"])
-            
-            self.log(f"Generated area: {region['regionName']} ({area_id})")
+            self.context.add_area(area_id, region_name, area_data.get("areaType", area_type))
+
+            self.log(f"Generated area: {region_name} ({area_id})")
     
     def determine_area_type(self, region: Dict[str, Any]) -> str:
         """Determine area type based on region description with better pattern matching"""
@@ -623,11 +641,17 @@ The plot title should reference this specific area, not other locations.
             errors = self.plot_gen.validate_plot(plot_data, location_data)
             if errors:
                 error_msg = "; ".join(errors)
+                # NON-FATAL (was: raise ValueError, which propagated to
+                # ai_driven_module_creation()'s cleanup wrapper and DELETED the
+                # entire partially-generated module). Per-area dangling location /
+                # nextPoints refs are routinely resolved later in unify_plots()
+                # cross-area reconciliation, so a per-area failure must not destroy
+                # hours of generation. Surface as a warning; the final stitcher
+                # schema gate remains the real quality check.
                 warning(
-                    f"Plot validation failed for {area_id}: {error_msg}",
+                    f"Plot validation issues for {area_id} (non-fatal, resolved in unify_plots): {error_msg}",
                     category="module_generation",
                 )
-                raise ValueError(f"Plot validation failed: {error_msg}")
 
             self.plots_data[area_id] = plot_data
             # Individual plot files removed - using centralized module_plot.json instead
@@ -1576,6 +1600,24 @@ Return ONLY the JSON object, no explanations or additional text."""
     else:  # legacy
         summ_config = config.DM_SUMM_LEGACY
 
+    # T030: force Gemini to emit the module-spec OBJECT, not DM narration. Inline
+    # schema -- no schemas/*.json matches this narrative-parse output (module_schema
+    # is a different, larger structure). Built once; legacy/openai/lmstudio unaffected.
+    _extra = {k: v for k, v in summ_config.items() if k != "model"}
+    if MODEL_PROVIDER == "gemini":
+        from model_config import convert_to_gemini_schema
+        _extra["response_schema"] = convert_to_gemini_schema({
+            "properties": {
+                "module_name": {"type": "string"},
+                "num_areas": {"type": "integer"},
+                "locations_per_area": {"type": "integer"},
+                "level_range": {"type": "object", "properties": {
+                    "min": {"type": "integer"}, "max": {"type": "integer"}}},
+                "adventure_type": {"type": "string"},
+                "plot_themes": {"type": "string"},
+            }
+        })
+
     for attempt in range(max_retries):
         try:
             response = capture_and_fanout("T030", api_client.create_completion,
@@ -1585,7 +1627,7 @@ Return ONLY the JSON object, no explanations or additional text."""
                 ],
                 model=summ_config["model"],
                 temperature=0.3,
-                **{k: v for k, v in summ_config.items() if k != "model"})
+                **_extra)
             
             result = response.choices[0].message.content.strip()
             # Clean up potential code blocks

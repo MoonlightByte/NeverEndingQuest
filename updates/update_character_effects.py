@@ -10,6 +10,7 @@ Tracks temporary modifiers and automatically reverses them when expired.
 
 import json
 import os
+import re
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 import uuid
