@@ -20,7 +20,14 @@ docs/plans/
 docs/audit/
 docs/issues/
 reviews/
-scripts/
+# scripts/ is dev-only EXCEPT compress_memories.py, which is invoked at runtime
+# via subprocess (core/ai/cumulative_summary.py:658, core/memories/initialize_memories.py:101).
+# Use /* + targeted negation so that one runtime file stays tracked (it is tracked on main);
+# everything else under scripts/ remains ignored. Re-included without git add -f.
+scripts/*
+!scripts/memory_management/
+scripts/memory_management/*
+!scripts/memory_management/compress_memories.py
 tools/openai_callsite_inventory.py
 AGENTS.md
 combat_conversation_compressed_output.json
@@ -492,3 +499,16 @@ tests/capture/
 tests/synthetic_data/
 tests/test_legacy_character_repair.py
 tests/test_startup_game_started_emission.py
+
+# Pre-merge hygiene (#13): dev/test-only artifacts are local-only, never shipped to
+# main. The whole tests/, tools/, validators/, reports/ trees plus the capture-review
+# evidence/scripts are development tooling, not runtime game code. (docs/reference/ is
+# already ignored above; the model-doc templates there were force-added.)
+tests/
+tools/
+validators/
+reports/
+test_validation_system.py
+verify_models.py
+FOR_CODEX_FILES_AND_EVIDENCE.md
+docs/CODEX_HANDOFF_VALIDATION_SYSTEM.md

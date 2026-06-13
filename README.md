@@ -498,42 +498,27 @@ This integration is **experimental** and has known limitations:
 - **Llama 3.1 8B Instruct** - 128K context, excellent for long sessions
 - **Mistral Nemo 12B** - 128K context, strong storytelling
 
-**Quick Start** (Windows):
+**Quick Start**:
 
 1. **Install LM Studio** from [lmstudio.ai](https://lmstudio.ai/)
 2. **Load a model** (recommended: Mistral 7B Instruct or Llama 3.1 8B)
-3. **Start LM Studio server** (click "Start Server" in Local Server tab)
-4. **Verify configuration**:
-   - Server address: `http://127.0.0.1:1234`
-   - Model loaded and active
-   - Context length set to maximum (32K+)
-5. **Install proxy**: `pip install mitmproxy` (included in requirements.txt)
-6. **Launch**: Double-click `launch_lmstudio_mode.bat`
+3. **Start LM Studio server** (click "Start Server" in the Local Server tab; it
+   listens on `http://localhost:1234` with a maximum context length of 32K+)
+4. **Select the provider**: in `model_config.py`, set `MODEL_PROVIDER = "lmstudio"`
+5. **Run normally**: `python run_web.py` (or `python main.py`)
 
-**Configuration Verification**:
-
-Make sure your LM Studio settings match:
-```
-API Endpoint: http://127.0.0.1:1234/v1
-Model Identifier: <your-loaded-model>
-Context Length: 32768 or higher
-```
-
-The proxy system in `lmstudio_forwarder.py` will automatically redirect all OpenAI API calls to your local LM Studio instance on port 1234.
-
-**Temperature Settings Note**: The game controls temperature settings through the proxy. If you experience JSON formatting errors or poor prompt adherence, you can lower the temperature in LM Studio's server settings to improve accuracy, though this may reduce narrative creativity and storytelling immersion.
+The game connects **directly** to LM Studio's built-in OpenAI-compatible server at
+`http://localhost:1234/v1` -- no proxy or library patching required. To override the
+endpoint or pin a single model, add a `user_settings.json` (see `LMSTUDIO_SETUP.md`).
 
 **Known Issues**:
 - JSON parsing errors during complex combat
 - Inconsistent action detection compared to GPT-4
 - May require manual intervention for edge cases
 - Slower response times on CPU-only systems
-- Parallel requests may cause response delays or errors
 
 **Documentation**:
 - Complete setup guide: `LMSTUDIO_SETUP.md`
-- Quick reference: `LMSTUDIO_QUICKSTART.txt`
-- Configuration help: Edit `lmstudio_forwarder.py` lines 19-22
 
 **Support**: LM Studio mode is provided as-is for experimentation. For production gameplay, we recommend using OpenAI's API with the compression system for optimal experience.
 
