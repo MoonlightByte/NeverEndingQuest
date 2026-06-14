@@ -70,12 +70,13 @@ DEFAULT_MODULE = "The_Thornwood_Watch"
 WEB_PORT = 8357                                         # Port for the web interface (changed from 5000 for security)
 
 
-# Apply a web-set OpenAI API key from user_settings.json (overrides the value above).
+# Apply web-set API keys from user_settings.json (overrides the values above).
 # No-op when no key has been saved via the web UI. Keeps non-technical users from
 # ever having to edit this file.
 try:
     import model_config as _mc
     _mc.apply_persisted_openai_key()
+    _mc.apply_persisted_gemini_key()
 except Exception:
     pass
 

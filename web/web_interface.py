@@ -109,6 +109,7 @@ try:
     import config as _cfg_boot  # noqa: F401  (ensure config is loaded before applying)
     import model_config as _mc
     _mc.apply_persisted_openai_key()
+    _mc.apply_persisted_gemini_key()
 except Exception:
     pass
 
@@ -3223,6 +3224,47 @@ def handle_set_openai_key(data):
     except Exception as e:
         error(f"Error setting openai key: {e}", exception=e, category="web_interface")
         emit('error', {'message': "Failed to set OpenAI API key"})  # generic: no key leak
+
+@socketio.on('get_gemini_key')
+def handle_get_gemini_key():
+    """Report ONLY whether a Gemini key is configured. Never sends the secret."""
+    try:
+        import model_config, config as _cfg
+        stored = model_config.has_gemini_key()
+        live = bool(getattr(_cfg, "GEMINI_API_KEY", "")) and \
+            getattr(_cfg, "GEMINI_API_KEY", "") != "your_gemini_api_key_here"
+        emit('gemini_key_status', {'has_key': bool(stored or live)})
+    except Exception as e:
+        error(f"Error getting gemini key status: {e}", exception=e, category="web_interface")
+        emit('gemini_key_status', {'has_key': False})
+
+@socketio.on('set_gemini_key')
+def handle_set_gemini_key(data):
+    """Set the Gemini key from the UI: update config live AND persist. No echo.
+
+    The runtime Gemini client (utils/capture/gemini_caller._get_client) reads
+    config.GEMINI_API_KEY lazily on first use and caches the client. So a key set
+    in Settings BEFORE the first Gemini call -- the intended flow -- is fully
+    covered. If a Gemini client was already created earlier this session, the new
+    key applies after the next restart (the persisted key is re-applied at boot).
+    Mirrors handle_set_openai_key.
+    """
+    try:
+        import model_config, config as _cfg
+        api_key = ((data or {}).get('api_key') or '').strip()
+        if not api_key:
+            # Blank submit: do NOT wipe an existing key. Report status only.
+            live = bool(getattr(_cfg, "GEMINI_API_KEY", "")) and \
+                getattr(_cfg, "GEMINI_API_KEY", "") != "your_gemini_api_key_here"
+            emit('gemini_key_status', {'has_key': model_config.has_gemini_key() or live})
+            return
+        _cfg.GEMINI_API_KEY = api_key            # live: config.GEMINI_API_KEY readers
+        model_config.persist_gemini_key(api_key) # survive restart
+        debug("Gemini API key updated via web UI", category="web_interface")
+        emit('gemini_key_status', {'has_key': model_config.has_gemini_key()}, broadcast=True)
+    except Exception as e:
+        error(f"Error setting gemini key: {e}", exception=e, category="web_interface")
+        emit('error', {'message': "Failed to set Gemini API key"})  # generic: no key leak
 
 @socketio.on('test_local_endpoint')
 def handle_test_local_endpoint(data):

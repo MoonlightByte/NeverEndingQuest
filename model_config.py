@@ -946,12 +946,50 @@ def apply_persisted_openai_key():
         setattr(sys.modules["config"], "OPENAI_API_KEY", key)
 
 
+_GEMINI_KEY_PLACEHOLDER = "your_gemini_api_key_here"
+
+
+def persist_gemini_key(api_key):
+    """Save the user's Gemini API key to user_settings.json (gitignored).
+
+    Empty/None REMOVES the stored key so the next start falls back to config.py.
+    """
+    settings = _load_user_settings()
+    if api_key:
+        settings["gemini_api_key"] = api_key
+    else:
+        settings.pop("gemini_api_key", None)
+    _save_user_settings(settings)
+
+
+def has_gemini_key():
+    """True if a real (non-placeholder) Gemini key is stored. Never returns the key."""
+    key = _load_user_settings().get("gemini_api_key")
+    return bool(key) and key != _GEMINI_KEY_PLACEHOLDER
+
+
+def apply_persisted_gemini_key():
+    """Push a stored Gemini key into the live config module so every reader of
+    config.GEMINI_API_KEY (the runtime Gemini client in
+    utils/capture/gemini_caller._get_client) uses it with ZERO reader edits.
+    No-op when no key is stored (config.py value wins). Mirrors
+    apply_persisted_openai_key's cross-module write via sys.modules['config'].
+    """
+    key = _load_user_settings().get("gemini_api_key")
+    if not key or key == _GEMINI_KEY_PLACEHOLDER:
+        return
+    import sys
+    if "config" in sys.modules:
+        setattr(sys.modules["config"], "GEMINI_API_KEY", key)
+
+
 # Load persisted provider on import
 load_persisted_provider()
 # Best-effort: apply a stored OpenAI key if config is already loaded. The
 # authoritative cold-start apply happens in web_interface.py startup and
 # config_template.py (after config.py defines its default). No-op otherwise.
 apply_persisted_openai_key()
+apply_persisted_gemini_key()
 
 
 # --- Capture System Per-Callsite Model Configs ---
