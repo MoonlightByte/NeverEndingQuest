@@ -97,21 +97,81 @@ import json
 import os
 import glob
 import re
+from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from core.ai import api_client
 import config
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T032", "core/generators/module_stitcher.py", 427)
-register_callsite("T033", "core/generators/module_stitcher.py", 1095)
+register_callsite("T032", "core/generators/module_stitcher.py", 507)
+register_callsite("T033", "core/generators/module_stitcher.py", 1444)
 
 # Set script name for logging
 set_script_name("module_stitcher")
 from utils.encoding_utils import safe_json_load
 from utils.file_operations import safe_write_json
 from utils.module_path_manager import ModulePathManager
+
+
+class ModuleSafetyStatus(str, Enum):
+    """Outcome of the module safety-validation pipeline.
+
+    ``UNAVAILABLE`` deliberately differs from ``UNSAFE``: the former means no
+    policy verdict was produced (for example, malformed JSON or a provider
+    outage), while the latter is an actual rejection.  Only ``SAFE`` may pass
+    the integration gate.
+    """
+
+    SAFE = "safe"
+    UNSAFE = "unsafe"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True)
+class ModuleSafetyResult:
+    """Typed safety result used to prevent unavailable checks looking safe."""
+
+    status: ModuleSafetyStatus
+    reason: str = ""
+
+    @property
+    def allows_integration(self) -> bool:
+        return self.status is ModuleSafetyStatus.SAFE
+
+    def __bool__(self) -> bool:
+        raise TypeError(
+            "ModuleSafetyResult has no implicit truth value; inspect .status "
+            "or .allows_integration explicitly"
+        )
+
+
+def _coerce_module_safety_result(result: Any) -> ModuleSafetyResult:
+    """Normalize legacy/mock booleans without accepting arbitrary truthiness.
+
+    Production validators return ``ModuleSafetyResult``.  Exact booleans remain
+    supported for older internal callers and deterministic tests; any other
+    value is treated as validator unavailability and therefore cannot commit.
+    """
+
+    if isinstance(result, ModuleSafetyResult):
+        return result
+    if result is True:
+        return ModuleSafetyResult(
+            ModuleSafetyStatus.SAFE,
+            "Legacy validator returned an explicit safe result",
+        )
+    if result is False:
+        return ModuleSafetyResult(
+            ModuleSafetyStatus.UNSAFE,
+            "Legacy validator returned an explicit rejection",
+        )
+    return ModuleSafetyResult(
+        ModuleSafetyStatus.UNAVAILABLE,
+        f"Validator returned unsupported result type {type(result).__name__}",
+    )
 
 
 def _location_prefix_to_index(prefix: str) -> int:
@@ -245,8 +305,10 @@ class ModuleStitcher:
             print(f"Error checking area files in {module_path}: {e}")
             return False
     
-    def analyze_module(self, module_name: str) -> Optional[Dict[str, Any]]:
-        """Analyze a module's areas, themes, and connectivity"""
+    def analyze_module(
+        self, module_name: str, include_travel_narration: bool = True
+    ) -> Optional[Dict[str, Any]]:
+        """Analyze module data, optionally performing the T032 creative call."""
         try:
             module_path = os.path.join(self.modules_dir, module_name)
             if not os.path.exists(module_path):
@@ -287,9 +349,10 @@ class ModuleStitcher:
                 if "levelRange" in plot_data:
                     module_data["levelRange"] = plot_data["levelRange"]
             
-            # Generate travel narration for this module (instead of connections)
-            travel_narration = self._generate_travel_narration(module_data)
-            module_data["travelNarration"] = travel_narration
+            if include_travel_narration:
+                module_data["travelNarration"] = self._generate_travel_narration(
+                    module_data
+                )
             
             return module_data
             
@@ -442,6 +505,7 @@ Create atmospheric travel narration that leads into this adventure."""
                 summ_config = config.DM_SUMM_LEGACY
 
             response = capture_and_fanout("T032", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -454,12 +518,24 @@ Create atmospheric travel narration that leads into this adventure."""
             ai_response = response.choices[0].message.content
             try:
                 narration_data = json.loads(ai_response)
+                if (
+                    not isinstance(narration_data, dict)
+                    or set(narration_data) != {"travelNarration", "dmGuidance"}
+                    or not all(
+                        isinstance(narration_data[field], str)
+                        and narration_data[field].strip()
+                        for field in ("travelNarration", "dmGuidance")
+                    )
+                ):
+                    raise ValueError(
+                        "T032 requires exactly two useful narration fields"
+                    )
                 return {
-                    "travelNarration": narration_data.get('travelNarration', ''),
-                    "dmGuidance": narration_data.get('dmGuidance', ''),
+                    "travelNarration": narration_data['travelNarration'].strip(),
+                    "dmGuidance": narration_data['dmGuidance'].strip(),
                     "generatedDate": datetime.now().isoformat()
                 }
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 print(f"Warning: Could not parse AI travel narration: {ai_response[:200]}...")
                 return {
                     "travelNarration": f"The party travels to the {first_area_name} region, where new adventures await.",
@@ -668,7 +744,9 @@ Create atmospheric travel narration that leads into this adventure."""
                 print(f"  - Created backup for module {module_name}")
 
             # Analyze the module
-            module_data = self.analyze_module(module_name)
+            module_data = self.analyze_module(
+                module_name, include_travel_narration=False
+            )
             if not module_data:
                 print(f"Failed to analyze module: {module_name}")
                 # Pre-mutation failure -- no rollback needed. Clean up
@@ -691,7 +769,9 @@ Create atmospheric travel narration that leads into this adventure."""
                     print(f"  - Updated {bu_updated} BU files with corrected location IDs")
 
                 # Re-analyze module after ID changes
-                module_data = self.analyze_module(module_name)
+                module_data = self.analyze_module(
+                    module_name, include_travel_narration=False
+                )
                 if not module_data:
                     print(f"Failed to re-analyze module after conflict resolution: {module_name}")
                     # Mutations have already been applied at this
@@ -702,14 +782,41 @@ Create atmospheric travel narration that leads into this adventure."""
                     )
                     return False
 
-            # Validate module safety
-            if not self._validate_module_safety(module_name, module_data):
-                print(f"Module {module_name} failed safety validation - skipping integration")
-                # PATH A: safety check rejected the module AFTER
-                # mutations were applied. Restore from backup.
+            # Generate the creative transition text once, after all identity
+            # rewrites settle, so the committed registry and any retries share
+            # one final module snapshot.
+            module_data["travelNarration"] = self._generate_travel_narration(
+                module_data
+            )
+
+            # Validate module safety.  SAFE is the only commit-capable state.
+            # UNSAFE is a policy rejection; UNAVAILABLE means the validator did
+            # not produce a verdict and the module remains eligible for retry.
+            safety_result = _coerce_module_safety_result(
+                self._validate_module_safety(module_name, module_data)
+            )
+            if not safety_result.allows_integration:
+                if safety_result.status is ModuleSafetyStatus.UNAVAILABLE:
+                    print(
+                        f"Module {module_name} safety validation unavailable - "
+                        "deferring integration for a later retry"
+                    )
+                else:
+                    print(
+                        f"Module {module_name} failed safety validation - "
+                        "skipping integration"
+                    )
+
+                # PATH A: safety validation did not approve the module AFTER
+                # mutations were applied. Restore from backup.  An unavailable
+                # validator is not recorded as an unsafe verdict, and because no
+                # registry entry is committed, the next scan can retry it.
                 self._handle_integration_failure(
                     module_name, backup_dir,
-                    reason="Module failed safety validation",
+                    reason=(
+                        f"Module safety {safety_result.status.value}: "
+                        f"{safety_result.reason or 'No reason supplied'}"
+                    ),
                 )
                 return False
 
@@ -1202,32 +1309,52 @@ Create atmospheric travel narration that leads into this adventure."""
         except Exception as e:
             print(f"DEBUG: [Module Stitcher] ERROR: Failed to update location references for {module_name}: {e}")
     
-    def _validate_module_safety(self, module_name: str, module_data: Dict[str, Any]) -> bool:
-        """Validate module for safety issues using AI content filtering"""
+    def _validate_module_safety(
+        self, module_name: str, module_data: Dict[str, Any]
+    ) -> ModuleSafetyResult:
+        """Validate a module and return an explicit integration-gate result."""
         try:
             # Basic structural validation
             if not module_data.get('areas'):
                 print(f"  - Warning: Module {module_name} has no areas")
-                return False
+                return ModuleSafetyResult(
+                    ModuleSafetyStatus.UNSAFE,
+                    "Module has no areas",
+                )
             
             # Check for malicious file names or paths
             module_path = os.path.join(self.modules_dir, module_name)
             if not self._validate_file_structure(module_path):
-                return False
+                return ModuleSafetyResult(
+                    ModuleSafetyStatus.UNSAFE,
+                    "Module failed file-structure validation",
+                )
             
             # AI-powered content validation
-            if not self._ai_validate_content_safety(module_data):
-                return False
+            ai_result = _coerce_module_safety_result(
+                self._ai_validate_content_safety(module_data)
+            )
+            if not ai_result.allows_integration:
+                return ai_result
             
             # Schema validation using existing validator
             if not self._validate_against_schemas(module_path):
-                return False
+                return ModuleSafetyResult(
+                    ModuleSafetyStatus.UNSAFE,
+                    "Module failed schema validation",
+                )
             
-            return True
+            return ModuleSafetyResult(
+                ModuleSafetyStatus.SAFE,
+                "All module safety checks passed",
+            )
             
         except Exception as e:
             print(f"Error validating module safety: {e}")
-            return False
+            return ModuleSafetyResult(
+                ModuleSafetyStatus.UNAVAILABLE,
+                f"Module safety pipeline failed: {e}",
+            )
     
     def _validate_file_structure(self, module_path: str) -> bool:
         """Validate file structure for safety"""
@@ -1265,8 +1392,16 @@ Create atmospheric travel narration that leads into this adventure."""
             print(f"Error validating file structure: {e}")
             return False
     
-    def _ai_validate_content_safety(self, module_data: Dict[str, Any]) -> bool:
-        """Use AI to validate content for inappropriate material"""
+    def _ai_validate_content_safety(
+        self, module_data: Dict[str, Any]
+    ) -> ModuleSafetyResult:
+        """Return a typed T033 content-safety verdict.
+
+        Provider/runtime failures and malformed responses are
+        ``UNAVAILABLE``, never ``SAFE`` and never fabricated ``UNSAFE``
+        verdicts.  The integration caller blocks both non-safe states while
+        preserving unavailable modules for a later retry.
+        """
         try:
             # Prepare content summary for AI review
             content_summary = {
@@ -1307,6 +1442,7 @@ Respond with JSON:
                 summ_config = config.DM_SUMM_LEGACY
 
             response = capture_and_fanout("T033", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=[
                     {"role": "system", "content": "You are a content safety reviewer for family-friendly fantasy gaming content. Be strict but reasonable in your assessment."},
                     {"role": "user", "content": safety_prompt}
@@ -1318,35 +1454,66 @@ Respond with JSON:
             ai_response = response.choices[0].message.content
             try:
                 safety_result = json.loads(ai_response)
-                if not safety_result.get('safe', False):
-                    print(f"  - Content safety issue: {safety_result.get('reason', 'Unspecified')}")
-                    return False
-                return True
-            except json.JSONDecodeError as e:
-                # INT-M4 (revised): a parse failure is NOT a safety verdict -- the
-                # check could not RUN. The real threat model here is a SOLO creator
-                # integrating their OWN AI-generated module (there is no untrusted
-                # submission channel in the shipping product), so a transient/garbled
-                # safety response must not roll back and delete the user's work. Fail
-                # OPEN with a warning; a genuine safe=false verdict (above) still rejects.
+            except (json.JSONDecodeError, TypeError) as e:
                 warning(
-                    f"Safety check returned invalid JSON ({e}); allowing (transient, non-verdict)",
+                    f"Safety check returned invalid JSON ({e}); integration deferred",
                     category="module_integration",
                 )
-                print(f"  - AI safety validation response unparseable; allowing (transient error)")
-                return True
+                print(
+                    "  - AI safety validation response unparseable; "
+                    "integration deferred"
+                )
+                return ModuleSafetyResult(
+                    ModuleSafetyStatus.UNAVAILABLE,
+                    f"Safety validator returned malformed JSON: {e}",
+                )
+
+            if not isinstance(safety_result, dict):
+                warning(
+                    "Safety check returned a non-object JSON value; integration deferred",
+                    category="module_integration",
+                )
+                return ModuleSafetyResult(
+                    ModuleSafetyStatus.UNAVAILABLE,
+                    "Safety validator response was not a JSON object",
+                )
+
+            safe_value = safety_result.get('safe')
+            if not isinstance(safe_value, bool):
+                warning(
+                    "Safety check omitted a boolean 'safe' verdict; integration deferred",
+                    category="module_integration",
+                )
+                return ModuleSafetyResult(
+                    ModuleSafetyStatus.UNAVAILABLE,
+                    "Safety validator did not return a boolean 'safe' verdict",
+                )
+
+            reason_value = safety_result.get('reason')
+            reason = reason_value if isinstance(reason_value, str) else ""
+            if not safe_value:
+                reason = reason or "Unspecified content safety issue"
+                print(f"  - Content safety issue: {reason}")
+                return ModuleSafetyResult(ModuleSafetyStatus.UNSAFE, reason)
+
+            return ModuleSafetyResult(
+                ModuleSafetyStatus.SAFE,
+                reason or "Safety validator approved the module",
+            )
 
         except Exception as e:
-            # INT-M4 (revised): an API/runtime failure means the check could not RUN.
-            # For a solo creator integrating their own module, do not roll back over a
-            # transient infrastructure error. Fail OPEN with a warning; a genuine
-            # safe=false verdict (above) still rejects.
             error(
-                f"Safety check API call failed: {e}; allowing (transient, non-verdict)",
+                f"Safety check API/runtime call failed: {e}; integration deferred",
                 category="module_integration",
             )
-            print(f"Warning: AI content validation failed: {e} (allowing -- transient error)")
-            return True
+            print(
+                f"Warning: AI content validation failed: {e} "
+                "(integration deferred)"
+            )
+            return ModuleSafetyResult(
+                ModuleSafetyStatus.UNAVAILABLE,
+                f"Safety validator unavailable: {e}",
+            )
     
     def _validate_against_schemas(self, module_path: str) -> bool:
         """Validate module files against schemas"""

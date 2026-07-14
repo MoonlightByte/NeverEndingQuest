@@ -8,6 +8,7 @@ AI-powered narrative compressor using GPT-4.1-mini (Agentic approach)
 Converts fantasy narrative to ultra-compact EVT notation format
 """
 
+import hashlib
 import json
 import sys
 import re
@@ -16,7 +17,7 @@ from pathlib import Path
 from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T084", "utils/compression/ai_narrative_compressor_agentic.py", 235)
+register_callsite("T084", "utils/compression/ai_narrative_compressor_agentic.py", 267)
 
 # Import token tracking
 try:
@@ -143,6 +144,37 @@ Notes:
 
 If any check fails, **repair your block** and re-run the rubric. Return only the final JSON."""
 
+
+def resolve_agentic_compression_runtime(
+    mode: str = "agentic", provider: str = None
+) -> Dict[str, Any]:
+    """Snapshot the provider/config/prompt identity used by one T084 call.
+
+    The snapshot is shared with the outer cache so a provider switch cannot
+    cause a response from one provider to be stored under another provider's
+    cache key.
+    """
+    if provider is None:
+        from model_config import get_provider
+
+        provider = get_provider()
+
+    configs = {
+        "openai": config.AGENTIC_COMPRESS_GPT54MINI_NONE,
+        "gemini": config.AGENTIC_COMPRESS_GEMINI_PRO_LOW,
+        "lmstudio": config.AGENTIC_COMPRESS_LMSTUDIO,
+        "legacy": config.AGENTIC_COMPRESS_LEGACY,
+    }
+    provider_config = dict(configs.get(provider, configs["legacy"]))
+    return {
+        "callsite": "T084",
+        "provider": provider,
+        "config": provider_config,
+        "mode": mode,
+        "temperature": 0.1,
+        "prompt_sha256": hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest(),
+    }
+
 def validate_block_text_minimal(t: str) -> List[str]:
     """Minimal validation - relaxed for prose-enhanced beats"""
     errs = []
@@ -172,7 +204,14 @@ def validate_block_text_minimal(t: str) -> List[str]:
     
     return errs
 
-def compress_with_ai(narrative: str, canon: Dict[str, Any] = None, mode: str = "agentic") -> Dict[str, Any]:
+def compress_with_ai(
+    narrative: str,
+    canon: Dict[str, Any] = None,
+    mode: str = "agentic",
+    *,
+    provider_snapshot: str = None,
+    provider_config: Dict[str, Any] = None,
+) -> Dict[str, Any]:
     """
     Compress narrative text using GPT-4.1-mini with agentic approach
     
@@ -205,6 +244,10 @@ def compress_with_ai(narrative: str, canon: Dict[str, Any] = None, mode: str = "
         }
     }
     
+    runtime = resolve_agentic_compression_runtime(mode, provider_snapshot)
+    provider_snapshot = runtime["provider"]
+    compress_config = dict(provider_config or runtime["config"])
+
     max_retries = 1  # Keep retries minimal for agentic approach
     
     for attempt in range(max_retries + 1):
@@ -221,21 +264,11 @@ def compress_with_ai(narrative: str, canon: Dict[str, Any] = None, mode: str = "
                     "instruction": "Re-emit fixing the format issue. Ensure exactly one EVT block."
                 })})
             
-            # Select model config per provider
-            from model_config import MODEL_PROVIDER
-            if MODEL_PROVIDER == "openai":
-                compress_config = config.AGENTIC_COMPRESS_GPT54MINI_NONE
-            elif MODEL_PROVIDER == "gemini":
-                compress_config = config.AGENTIC_COMPRESS_GEMINI_PRO_LOW
-            elif MODEL_PROVIDER == "lmstudio":
-                compress_config = config.AGENTIC_COMPRESS_LMSTUDIO
-            else:  # legacy
-                compress_config = config.AGENTIC_COMPRESS_LEGACY
-
             response = capture_and_fanout("T084", api_client.create_completion,
+                _request_provider=provider_snapshot,
                 messages=messages,
                 model=compress_config["model"],
-                temperature=0.1,
+                temperature=runtime["temperature"],
                 **{k: v for k, v in compress_config.items() if k != "model"})
             
             # Track token usage
@@ -263,9 +296,12 @@ def compress_with_ai(narrative: str, canon: Dict[str, Any] = None, mode: str = "
                 block_text = result["blocks"][0].get("text", "")
                 violations = validate_block_text_minimal(block_text)
                 
-                if violations and attempt < max_retries:
-                    print(f"Format issue detected: {violations}, retrying...")
-                    continue
+                if violations:
+                    if attempt < max_retries:
+                        print(f"Format issue detected: {violations}, retrying...")
+                        continue
+                    print(f"ERROR: Compression remained invalid: {violations}")
+                    return None
             
             return result
             

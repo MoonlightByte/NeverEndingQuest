@@ -45,8 +45,12 @@ from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.character_sheet_contract import repair_required_ammunition_field
 from utils.file_operations import safe_write_json
+from utils.single_target_generation import (
+    load_valid_generated_target,
+    single_target_generation,
+)
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T035", "core/generators/npc_builder.py", 149)
+register_callsite("T035", "core/generators/npc_builder.py", 185)
 
 # Token tracking import
 try:
@@ -144,7 +148,7 @@ Adhere strictly to 5e rules and the provided schema."""
     if MODEL_PROVIDER == "openai":
         npc_config = config.NPC_BUILD_GPT52_NONE
     elif MODEL_PROVIDER == "gemini":
-        npc_config = config.NPC_BUILD_GEMINI_FLASH_MINIMAL
+        npc_config = config.NPC_BUILD_GEMINI_FLASH_LOW
     elif MODEL_PROVIDER == "lmstudio":
         npc_config = config.NPC_BUILD_LMSTUDIO
     else:  # legacy
@@ -179,6 +183,7 @@ Adhere strictly to 5e rules and the provided schema."""
     for attempt in range(_max_retries + 1):
         try:
             response = capture_and_fanout("T035", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=prompt_messages,
                 model=npc_config["model"],
                 temperature=0.7,
@@ -255,6 +260,86 @@ def remove_nested_values(data):
     else:
         return data
 
+
+_NPC_STATUS_WORDS = ("corrupted", "wounded", "elite", "enhanced")
+
+
+def _expected_npc_target_name(npc_name):
+    """Mirror the prompt's deterministic status-word cleanup for lock identity."""
+    value = str(npc_name or "").strip()
+    status_pattern = r"\b(?:" + "|".join(_NPC_STATUS_WORDS) + r")\b"
+    cleaned = re.sub(status_pattern, " ", value, flags=re.IGNORECASE)
+    cleaned = " ".join(cleaned.split()).strip(" _-")
+    return cleaned or value
+
+
+def _active_module_path_manager():
+    """Resolve the same active-module snapshot historically used by main()."""
+    try:
+        from utils.encoding_utils import safe_json_load
+
+        party_tracker = safe_json_load("party_tracker.json")
+        current_module = (
+            party_tracker.get("module", "").replace(" ", "_")
+            if party_tracker
+            else None
+        )
+        return ModulePathManager(current_module)
+    except Exception:
+        return ModulePathManager()
+
+
+def build_npc_file(
+    npc_name,
+    schema,
+    npc_race=None,
+    npc_class=None,
+    npc_level=None,
+    npc_background=None,
+    path_manager=None,
+):
+    """Generate and save one NPC as a deduplicated target transaction."""
+    path_manager = path_manager or _active_module_path_manager()
+    expected_name = _expected_npc_target_name(npc_name)
+    logical_target = path_manager.get_character_unified_path(expected_name)
+
+    with single_target_generation(logical_target) as transaction:
+        candidates = [transaction.resolved_target, logical_target]
+        for candidate in dict.fromkeys(path for path in candidates if path):
+            existing = load_valid_generated_target(candidate, schema)
+            if existing is not None:
+                transaction.remember_target(candidate)
+                info(
+                    f"SUCCESS: NPC creation ({existing.get('name', expected_name)}) "
+                    "- already exists",
+                    category="npc_creation",
+                )
+                return existing
+
+        generated = generate_npc(
+            npc_name,
+            schema,
+            npc_race,
+            npc_class,
+            npc_level,
+            npc_background,
+        )
+        if not generated:
+            return None
+
+        clean_name = generated.get("name", expected_name)
+        actual_target = path_manager.get_character_unified_path(clean_name)
+        existing = load_valid_generated_target(actual_target, schema)
+        if existing is not None:
+            transaction.remember_target(actual_target)
+            return existing
+        # Record the intended path before the atomic save. This closes the
+        # post-replace/pre-marker crash window for cleaned NPC filenames.
+        transaction.remember_target(actual_target)
+        if not save_json(actual_target, generated):
+            return None
+        return generated
+
 def main():
     # Use argparse so we can accept --party-level alongside the existing
     # positional args. Positional args remain optional for backward
@@ -308,33 +393,17 @@ def main():
     if not npc_schema_data:
         sys.exit(1)
 
-    generated_npc_data = generate_npc(npc_name_arg, npc_schema_data, npc_race_arg, npc_class_arg, npc_level_arg, npc_background_arg) # Renamed variable
+    generated_npc_data = build_npc_file(
+        npc_name_arg,
+        npc_schema_data,
+        npc_race_arg,
+        npc_class_arg,
+        npc_level_arg,
+        npc_background_arg,
+    )
     if generated_npc_data:
-        # Extract the clean name from the generated JSON data.
-        # This ensures the filename matches the character's actual name.
-        # It falls back to the original argument if the 'name' field is missing.
         clean_npc_name = generated_npc_data.get("name", npc_name_arg)
-        
-        # Get current module from party tracker for consistent path resolution
-        try:
-            from utils.encoding_utils import safe_json_load
-            party_tracker = safe_json_load("party_tracker.json")
-            current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
-            path_manager = ModulePathManager(current_module)
-        except:
-            path_manager = ModulePathManager()  # Fallback to reading from file
-        
-        # Use the 'clean_npc_name' to generate the file path
-        full_path = path_manager.get_character_unified_path(clean_npc_name)  # Force unified path
-        
-        # Ensure characters directory exists
-        characters_dir = os.path.dirname(full_path)
-        os.makedirs(characters_dir, exist_ok=True)
-        if save_json(full_path, generated_npc_data):
-            info(f"SUCCESS: NPC creation ({clean_npc_name}) - PASS", category="npc_creation")
-        else:
-            error(f"FAILURE: NPC save ({clean_npc_name}) - FAIL", category="npc_creation")
-            sys.exit(1)
+        info(f"SUCCESS: NPC creation ({clean_npc_name}) - PASS", category="npc_creation")
     else:
         error(f"FAILURE: NPC creation ({npc_name_arg}) - FAIL", category="npc_creation")
         sys.exit(1)

@@ -12,39 +12,72 @@ Examples:
 - "Elder Dorun Ironforge" -> "Dorun"
 """
 
+import hashlib
 import json
 import os
 from pathlib import Path
 from typing import Dict, Optional
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T087", "utils/npc_name_canonicalizer.py", 125)
+register_callsite("T087", "utils/npc_name_canonicalizer.py", 162)
 import config
-from utils.encoding_utils import safe_json_load, safe_json_dump
+from utils.atomic_json_cache import (
+    merge_json_mapping,
+    read_json_mapping,
+    replace_json_mapping,
+)
 from utils.enhanced_logger import debug, info, warning, error
 
 # Cache file location
 CACHE_FILE = Path("data/companion_memories/name_normalization_cache.json")
+_CACHE_CONTRACT_VERSION = "npc-name-v2"
+_PROMPT_CONTRACT_VERSION = "first-name-only-v1"
+
+
+def _mini_config_for_provider(provider):
+    if provider == "openai":
+        return config.MINI_UTIL_GPT54MINI_NONE
+    if provider == "gemini":
+        return config.MINI_UTIL_GEMINI_FLASH_LOW
+    if provider == "lmstudio":
+        return config.MINI_UTIL_LMSTUDIO
+    return config.MINI_UTIL_LEGACY
+
+
+def _name_cache_key(full_name, provider, model):
+    payload = json.dumps(
+        {
+            "version": _CACHE_CONTRACT_VERSION,
+            "prompt": _PROMPT_CONTRACT_VERSION,
+            "provider": provider,
+            "model": model,
+            "name": full_name,
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _is_valid_canonical_name(value):
+    return (
+        isinstance(value, str)
+        and 0 < len(value) <= 50
+        and not any(character.isspace() for character in value)
+        and any(character.isalpha() for character in value)
+        and all(character.isalpha() or character in "-'’" for character in value)
+    )
 
 
 def load_name_cache() -> Dict[str, str]:
     """Load the name normalization cache from disk"""
-    if not CACHE_FILE.exists():
-        return {}
-
-    cache = safe_json_load(CACHE_FILE)
-    if cache is None:
-        return {}
-
-    return cache
+    return read_json_mapping(CACHE_FILE)
 
 
 def save_name_cache(cache: Dict[str, str]) -> bool:
     """Save the name normalization cache to disk"""
-    # Ensure directory exists
-    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-
-    return safe_json_dump(cache, CACHE_FILE)
+    replace_json_mapping(CACHE_FILE, cache)
+    return True
 
 
 def simple_name_extraction(full_name: str) -> str:
@@ -87,7 +120,7 @@ def simple_name_extraction(full_name: str) -> str:
     return parts[0]
 
 
-def call_mini_model_for_name(full_name: str) -> str:
+def call_mini_model_for_name(full_name: str, request_provider=None) -> str:
     """Call the mini model to extract canonical name
 
     Args:
@@ -112,17 +145,22 @@ Examples:
 Return ONLY the first name, nothing else. No quotes, no explanation."""
 
     try:
-        from model_config import MODEL_PROVIDER
-        if MODEL_PROVIDER == "openai":
+        import model_config
+
+        provider = request_provider or model_config.get_provider()
+        # Keep provider-to-config assignments explicit here: the semantic
+        # callsite inventory audits the exact four configs feeding T087.
+        if provider == "openai":
             mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
-        elif MODEL_PROVIDER == "gemini":
-            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
-        elif MODEL_PROVIDER == "lmstudio":
+        elif provider == "gemini":
+            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_LOW
+        elif provider == "lmstudio":
             mini_cfg = config.MINI_UTIL_LMSTUDIO
-        else:  # legacy
+        else:
             mini_cfg = config.MINI_UTIL_LEGACY
 
         response = capture_and_fanout("T087", api_client.create_completion,
+            _request_provider=provider,
             messages=[
                 {"role": "system", "content": "You are a name extraction assistant. Extract only the person's actual first name from character names."},
                 {"role": "user", "content": prompt}
@@ -136,6 +174,9 @@ Return ONLY the first name, nothing else. No quotes, no explanation."""
 
         # Remove any quotes that might have been added
         canonical = canonical.strip('"\'')
+
+        if not _is_valid_canonical_name(canonical):
+            raise ValueError(f"T087 returned an invalid first-name token: {canonical!r}")
 
         debug(f"AI normalized '{full_name}' -> '{canonical}'", category="name_normalization")
 
@@ -172,30 +213,41 @@ def get_canonical_name(full_name: str, skip_cache: bool = False) -> str:
     # Normalize input (trim whitespace)
     full_name = full_name.strip()
 
+    import model_config
+
+    provider = model_config.get_provider()
+    mini_cfg = _mini_config_for_provider(provider)
+    cache_key = _name_cache_key(full_name, provider, mini_cfg["model"])
+
     # Load cache
     cache = load_name_cache()
 
     # Check cache first (unless explicitly skipping)
-    if not skip_cache and full_name in cache:
-        debug(f"Name cache hit: '{full_name}' -> '{cache[full_name]}'", category="name_normalization")
-        return cache[full_name]
+    if not skip_cache and cache_key in cache:
+        cached_name = cache[cache_key]
+        if _is_valid_canonical_name(cached_name):
+            debug(f"Name cache hit: '{full_name}' -> '{cached_name}'", category="name_normalization")
+            return cached_name
 
     # Not in cache - need to normalize
     info(f"Name not in cache, normalizing: '{full_name}'", category="name_normalization")
 
     try:
         # Call AI for normalization
-        canonical = call_mini_model_for_name(full_name)
+        canonical = call_mini_model_for_name(
+            full_name, request_provider=provider
+        )
 
-        # Validate result (must be non-empty and reasonable)
-        if not canonical or len(canonical) > 50:
-            warning(f"AI returned suspicious name '{canonical}' for '{full_name}', using fallback",
-                   category="name_normalization")
-            canonical = simple_name_extraction(full_name)
-
-        # Cache the result
-        cache[full_name] = canonical
-        save_name_cache(cache)
+        # Cache only a response that satisfied the AI contract. The atomic
+        # merge reloads the latest file under lock so parallel names cannot
+        # erase one another.
+        try:
+            merge_json_mapping(CACHE_FILE, {cache_key: canonical})
+        except Exception as cache_error:
+            warning(
+                f"Could not persist name normalization cache: {cache_error}",
+                category="name_normalization",
+            )
 
         info(f"Cached name normalization: '{full_name}' -> '{canonical}'", category="name_normalization")
 
@@ -208,10 +260,8 @@ def get_canonical_name(full_name: str, skip_cache: bool = False) -> str:
 
         canonical = simple_name_extraction(full_name)
 
-        # Cache the fallback result to avoid repeated failures
-        cache[full_name] = canonical
-        save_name_cache(cache)
-
+        # A heuristic is a recoverable fallback, not a successful model
+        # result. Do not cache it; a later healthy provider call can heal it.
         return canonical
 
 
@@ -239,7 +289,7 @@ def get_canonical_names_batch(full_names: list) -> Dict[str, str]:
 def clear_name_cache():
     """Clear the entire name normalization cache (for testing/reset)"""
     if CACHE_FILE.exists():
-        CACHE_FILE.unlink()
+        replace_json_mapping(CACHE_FILE, {})
         info("Name normalization cache cleared", category="name_normalization")
     else:
         info("Name normalization cache already empty", category="name_normalization")

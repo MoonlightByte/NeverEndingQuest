@@ -9,7 +9,7 @@ from jsonschema import validate, ValidationError
 from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T081", "updates/update_encounter.py", 95)
+register_callsite("T081", "updates/update_encounter.py", 116)
 import time
 import re
 import copy
@@ -40,6 +40,11 @@ def load_encounter_schema():
         return json.load(schema_file)
 
 def update_encounter(encounter_id, changes, max_retries=3):
+    """Apply an encounter update and return ``(success, encounter_data)``.
+
+    Failed updates return the original encounter snapshot so callers retain
+    usable data without mistaking that truthy dictionary for success.
+    """
     # Load the current encounter info and schema
     # Get current module from party tracker for consistent path resolution
     try:
@@ -56,6 +61,10 @@ def update_encounter(encounter_id, changes, max_retries=3):
     schema = load_encounter_schema()
 
     for attempt in range(max_retries):
+        # Each attempt starts from the persisted snapshot. A schema-rejected
+        # delta must not leak into the next attempt's prompt or return value.
+        encounter_info = copy.deepcopy(original_info)
+
         # Prepare the prompt for the AI
         prompt = [
             {"role": "system", "content": """You are an assistant that updates encounter information in a 5th Edition roleplaying game. Given the current encounter information and a description of changes, you must return only the updated sections as a JSON object. Do not include unchanged fields. Your response should be a valid JSON object representing only the modified parts of the encounter data. 
@@ -85,7 +94,7 @@ Remember to only update monster information and leave player and NPC data unchan
         if MODEL_PROVIDER == "openai":
             encounter_config = config.ENCOUNTER_UPD_GPT52_NONE
         elif MODEL_PROVIDER == "gemini":
-            encounter_config = config.ENCOUNTER_UPD_GEMINI_FLASH_MINIMAL
+            encounter_config = config.ENCOUNTER_UPD_GEMINI_FLASH_LOW
         elif MODEL_PROVIDER == "lmstudio":
             encounter_config = config.ENCOUNTER_UPD_LMSTUDIO
         else:  # legacy
@@ -101,12 +110,21 @@ Remember to only update monster information and leave player and NPC data unchan
                 "encounter update would silently no-op."
             )
 
-        # Get AI's response
-        response = capture_and_fanout("T081", api_client.create_completion,
-            messages=prompt,
-            model=encounter_config["model"],
-            temperature=TEMPERATURE,
-            **{k: v for k, v in encounter_config.items() if k != "model"})
+        # Get AI's response. Provider failures are an explicit failed update,
+        # not an exception path that callers can accidentally treat differently.
+        try:
+            response = capture_and_fanout("T081", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
+                messages=prompt,
+                model=encounter_config["model"],
+                temperature=TEMPERATURE,
+                **{k: v for k, v in encounter_config.items() if k != "model"})
+        except Exception as e:
+            error(
+                f"FAILURE: Encounter update provider call failed: {e}",
+                category="encounter_updates"
+            )
+            return False, original_info
         
         # Track usage
         if USAGE_TRACKING_AVAILABLE:
@@ -129,6 +147,28 @@ Remember to only update monster information and leave player and NPC data unchan
 
         try:
             updates = json.loads(ai_response)
+
+            # JSON syntax alone is not the T081 contract. The merge helper
+            # requires an object, and creature deltas require named object
+            # entries so they can be matched to the persisted encounter.
+            if not isinstance(updates, dict):
+                raise ValueError("Encounter update must be a JSON object")
+            if not updates:
+                raise ValueError("Encounter update must contain at least one change")
+
+            if "creatures" in updates:
+                creature_updates = updates["creatures"]
+                if not isinstance(creature_updates, list):
+                    raise ValueError("Encounter 'creatures' update must be a list")
+                if any(
+                    not isinstance(creature, dict)
+                    or not isinstance(creature.get("name"), str)
+                    or not creature["name"].strip()
+                    for creature in creature_updates
+                ):
+                    raise ValueError(
+                        "Each encounter creature update must be a named object"
+                    )
 
             # Apply updates to the encounter_info
             encounter_info = update_nested_dict(encounter_info, updates)
@@ -206,23 +246,29 @@ Remember to only update monster information and leave player and NPC data unchan
             with open(f"modules/encounters/encounter_{encounter_id}.json", "w") as file:
                 json.dump(encounter_info, file, indent=2)
 
-            return encounter_info
+            return True, encounter_info
 
         except json.JSONDecodeError as e:
             warning(f"VALIDATION: AI response is not valid JSON. Error: {e}. Retrying", category="encounter_updates")
         except ValidationError as e:
             print(f"ERROR: Updated info does not match the schema. Error: {e}. Retrying...")
+        except (AttributeError, KeyError, TypeError, ValueError) as e:
+            warning(
+                f"VALIDATION: AI response is not a valid encounter delta. "
+                f"Error: {e}. Retrying",
+                category="encounter_updates",
+            )
 
         # If we've reached the maximum number of retries, return the original encounter info
         if attempt == max_retries - 1:
             error(f"FAILURE: Encounter update - FAIL", category="encounter_updates")
-            return original_info
+            return False, original_info
 
         # Wait for a short time before retrying
         time.sleep(1)
 
     # This line should never be reached, but just in case:
-    return original_info
+    return False, original_info
 
 def update_nested_dict(d, u):
     for k, v in u.items():

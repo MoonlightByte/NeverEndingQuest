@@ -45,9 +45,9 @@ import config as app_config
 from utils.module_path_manager import ModulePathManager
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from model_config import convert_to_gemini_schema
-register_callsite("T022", "core/generators/area_generator.py", 139)
-register_callsite("T023", "core/generators/area_generator.py", 437)
-register_callsite("T024", "core/generators/area_generator.py", 593)
+register_callsite("T022", "core/generators/area_generator.py", 223)
+register_callsite("T023", "core/generators/area_generator.py", 527)
+register_callsite("T024", "core/generators/area_generator.py", 694)
 
 # issue #128: small Gemini response_schema for the area name/description call (T023).
 # Source of truth for these fields is the code's own expected output
@@ -61,9 +61,70 @@ try:
             "refinedName": {"type": "string"},
             "description": {"type": "string"},
         },
+        "required": ["refinedName", "description"],
     })
 except Exception:
     _AREA_NAMEDESC_SCHEMA_GEMINI = None
+
+
+def _useful_text(value: Any) -> str:
+    """Return a stripped, non-empty string or raise a contract error."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("expected a non-empty string")
+    return value.strip()
+
+
+def _validate_area_description(value: Any) -> str:
+    """Validate T024's standalone prose contract."""
+    text = _useful_text(value)
+    if len(text) <= 10:
+        raise ValueError("area description is too short")
+    if "```" in text or text.startswith(("{", "[")):
+        raise ValueError("area description must be plain prose")
+    if text.lower().startswith(("description:", "area description:")):
+        raise ValueError("area description must not include a label")
+    return text
+
+
+def _validate_thematic_names(value: Any, expected_count: int) -> List[str]:
+    """Validate the T022 positional name list before it reaches the map."""
+    if not isinstance(value, list):
+        raise ValueError("thematic names must be a JSON array")
+    if len(value) != expected_count:
+        raise ValueError(
+            f"thematic name count {len(value)} does not match {expected_count} rooms"
+        )
+
+    names = [_useful_text(name) for name in value]
+    normalized = [name.casefold() for name in names]
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("thematic names must be unique (case-insensitive)")
+    return names
+
+
+def _fallback_thematic_names(
+    room_data: List[Dict[str, Any]], area_type: str
+) -> List[str]:
+    """Build deterministic, useful, unique names in the room's original order."""
+    adjectives = {
+        "dungeon": ["Ancient", "Forgotten", "Dark", "Crumbling", "Hidden"],
+        "wilderness": ["Wild", "Misty", "Windswept", "Overgrown", "Sacred"],
+        "town": ["Bustling", "Old", "Grand", "Cobbled", "Central"],
+    }.get(area_type, ["Ancient", "Hidden", "Weathered", "Silent", "Lost"])
+
+    names: List[str] = []
+    used = set()
+    for index, room in enumerate(room_data):
+        room_type = str(room.get("type") or "Location").strip().title()
+        base = f"{adjectives[index % len(adjectives)]} {room_type}"
+        candidate = base
+        suffix = 2
+        while candidate.casefold() in used:
+            candidate = f"{base} {suffix}"
+            suffix += 1
+        used.add(candidate.casefold())
+        names.append(candidate)
+    return names
 
 
 @dataclass
@@ -97,6 +158,10 @@ class MapLayoutGenerator:
         Returns:
             List of thematic names matching the room order
         """
+        if not room_data:
+            return []
+        area_context = area_context or {}
+
         try:
             # Build context for AI
             module_name = area_context.get('module_name', 'Unknown Module')
@@ -153,53 +218,42 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
             else:  # legacy
                 main_cfg = app_config.DM_MAIN_LEGACY
 
-            response = capture_and_fanout("T022", api_client.create_completion,
-                messages=[
-                    {"role": "system", "content": "You are an expert at creating immersive 5th edition of the world's most popular roleplaying game location names that enhance storytelling and world-building."},
-                    {"role": "user", "content": prompt}
-                ],
-                model=main_cfg["model"],
-                temperature=0.8,
-                response_format=None,
-                **{k: v for k, v in main_cfg.items() if k != "model"})
-            
-            response_text = response.choices[0].message.content.strip()
-            
-            # Parse JSON response
-            import json
-            try:
-                names = json.loads(response_text)
-                if isinstance(names, list) and len(names) == len(room_data):
+            last_error = None
+            for attempt in range(2):
+                response = capture_and_fanout("T022", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
+                    messages=[
+                        {"role": "system", "content": "You are an expert at creating immersive 5th edition of the world's most popular roleplaying game location names that enhance storytelling and world-building."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    model=main_cfg["model"],
+                    temperature=0.8,
+                    response_format=None,
+                    **{k: v for k, v in main_cfg.items() if k != "model"})
+
+                response_text = response.choices[0].message.content.strip()
+                try:
+                    names = _validate_thematic_names(
+                        json.loads(response_text), len(room_data)
+                    )
                     print(f"DEBUG: [Area Generator] AI generated {len(names)} thematic location names for {area_name}")
                     return names
-                else:
-                    print(f"DEBUG: [Area Generator] Warning: AI returned {len(names) if isinstance(names, list) else 'invalid'} names, expected {len(room_data)}")
-                    raise ValueError("Invalid AI response format")
-            except (json.JSONDecodeError, ValueError) as e:
-                print(f"DEBUG: [Area Generator] Error parsing AI response: {e}")
-                print(f"DEBUG: [Area Generator] AI Response: {response_text}")
-                raise
+                except (json.JSONDecodeError, ValueError, TypeError) as exc:
+                    last_error = exc
+                    print(
+                        "DEBUG: [Area Generator] T022 response failed contract "
+                        f"(attempt {attempt + 1}/2): {exc}"
+                    )
+
+            raise ValueError(f"T022 response failed validation: {last_error}")
                 
         except Exception as e:
             print(f"DEBUG: [Area Generator] Error generating thematic names: {e}")
             print("DEBUG: [Area Generator] Falling back to enhanced generic names...")
             
-            # Enhanced fallback with better naming
-            fallback_names = []
-            for room in room_data:
-                room_type = room['type']
-                # Add atmospheric adjectives based on area type
-                if area_context.get('area_type') == 'dungeon':
-                    adjectives = ['Ancient', 'Forgotten', 'Dark', 'Crumbling', 'Hidden', 'Lost', 'Shadowed']
-                elif area_context.get('area_type') == 'wilderness':
-                    adjectives = ['Wild', 'Misty', 'Windswept', 'Overgrown', 'Sacred', 'Remote', 'Weathered']
-                else:  # town
-                    adjectives = ['Bustling', 'Old', 'Grand', 'Cobbled', 'Noble', 'Merchant', 'Central']
-                
-                adj = random.choice(adjectives)
-                fallback_names.append(f"{adj} {room_type.title()}")
-            
-            return fallback_names
+            return _fallback_thematic_names(
+                room_data, area_context.get("area_type", "dungeon")
+            )
     
     def generate_layout(self, num_locations: int, prefix: str, area_type: str = "dungeon", area_context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Generate a map layout with connected rooms and AI-generated thematic names"""
@@ -440,6 +494,12 @@ class AreaGenerator:
 Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
 """
 
+        fallback_name = initial_name.strip() if isinstance(initial_name, str) and initial_name.strip() else "Unnamed Area"
+        fallback_description = (
+            f"A {config.danger_level} {config.area_type} area known as "
+            f"{fallback_name}."
+        )
+
         try:
             from model_config import MODEL_PROVIDER
             if MODEL_PROVIDER == "openai":
@@ -462,26 +522,39 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                     )
                 extra_params["response_schema"] = _AREA_NAMEDESC_SCHEMA_GEMINI
 
-            response = capture_and_fanout("T023", api_client.create_completion,
-                messages=[
-                    {"role": "system", "content": "You are an expert fantasy world builder specializing in creating evocative names and descriptions for 5th edition of the world's most popular roleplaying game areas."},
-                    {"role": "user", "content": prompt}
-                ],
-                model=main_cfg["model"],
-                temperature=0.8,
-                response_format={"type": "json_object"},
-                **extra_params)
-            
-            result = json.loads(response.choices[0].message.content)
-            refined_name = result.get("refinedName", initial_name)
-            description = result.get("description", f"A mysterious area known as {initial_name}.")
-            
-            return refined_name, description
+            last_error = None
+            for attempt in range(2):
+                response = capture_and_fanout("T023", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
+                    messages=[
+                        {"role": "system", "content": "You are an expert fantasy world builder specializing in creating evocative names and descriptions for 5th edition of the world's most popular roleplaying game areas."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    model=main_cfg["model"],
+                    temperature=0.8,
+                    response_format={"type": "json_object"},
+                    **extra_params)
+
+                try:
+                    result = json.loads(response.choices[0].message.content)
+                    if not isinstance(result, dict):
+                        raise ValueError("T023 response must be a JSON object")
+                    refined_name = _useful_text(result.get("refinedName"))
+                    description = _useful_text(result.get("description"))
+                    return refined_name, description
+                except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                    last_error = exc
+                    print(
+                        "DEBUG: [Area Generator] T023 response failed contract "
+                        f"(attempt {attempt + 1}/2): {exc}"
+                    )
+
+            raise ValueError(f"T023 response failed validation: {last_error}")
                 
         except Exception as e:
             print(f"DEBUG: [Area Generator] Warning: AI name/description generation failed: {e}")
             # Fallback to a simple but functional name and description
-            return initial_name, f"A {config.danger_level} {config.area_type} area known as {initial_name}."
+            return fallback_name, fallback_description
 
     def generate_area(self, 
                      area_name: str,
@@ -619,6 +692,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 main_cfg = app_config.DM_MAIN_LEGACY
 
             response = capture_and_fanout("T024", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=[
                     {"role": "system", "content": "You are an expert fantasy world builder. Create unique, atmospheric descriptions for 5th edition of the world's most popular roleplaying game areas that avoid cliches and generic phrases."},
                     {"role": "user", "content": prompt}
@@ -628,14 +702,9 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 response_format=None,
                 **{k: v for k, v in main_cfg.items() if k != "model"})
             
-            description = response.choices[0].message.content.strip()
-            
-            # Ensure we have a description
-            if description and len(description) > 10:
-                return description
-            else:
-                # Fallback to a simple but unique description
-                return f"{area_name} presents unique challenges and opportunities for adventurers."
+            return _validate_area_description(
+                response.choices[0].message.content
+            )
                 
         except Exception as e:
             print(f"DEBUG: [Area Generator] Warning: Failed to generate area description via AI: {e}")
@@ -647,8 +716,9 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 "mixed": ["unique", "varied", "complex", "intriguing"]
             }
             
-            adjective = random.choice(area_adjectives.get(config.area_type, ["mysterious"]))
-            return f"{area_name} is a {adjective} {config.area_type} area with {config.complexity} challenges suitable for level {config.recommended_level} adventurers."
+            adjective = area_adjectives.get(config.area_type, ["mysterious"])[0]
+            article = "an" if adjective[:1].lower() in "aeiou" else "a"
+            return f"{area_name} is {article} {adjective} {config.area_type} area with {config.complexity} challenges suitable for level {config.recommended_level} adventurers."
     
     def determine_climate(self, area_type: str) -> str:
         """Determine appropriate climate for area type"""

@@ -30,16 +30,16 @@
       "use_caller_temp": false
     },
     {
-      "label": "gemini-3-pro|low",
+      "label": "gemini-3.1-pro|low",
       "provider": "gemini",
-      "model": "gemini-3-pro-preview",
+      "model": "gemini-3.1-pro-preview",
       "thinking_level": "low",
       "use_caller_temp": true
     },
     {
-      "label": "gemini-3-pro|high",
+      "label": "gemini-3.1-pro|high",
       "provider": "gemini",
-      "model": "gemini-3-pro-preview",
+      "model": "gemini-3.1-pro-preview",
       "thinking_level": "high",
       "use_caller_temp": true
     }
@@ -74,24 +74,10 @@
       "use_caller_temp": false
     },
     {
-      "label": "gemini-3-flash|minimal",
-      "provider": "gemini",
-      "model": "gemini-3-flash-preview",
-      "thinking_level": "minimal",
-      "use_caller_temp": true
-    },
-    {
       "label": "gemini-3-flash|low",
       "provider": "gemini",
       "model": "gemini-3-flash-preview",
       "thinking_level": "low",
-      "use_caller_temp": true
-    },
-    {
-      "label": "gemini-3-flash|medium",
-      "provider": "gemini",
-      "model": "gemini-3-flash-preview",
-      "thinking_level": "medium",
       "use_caller_temp": true
     },
     {

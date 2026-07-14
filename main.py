@@ -78,11 +78,11 @@ import glob
 import time
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T063", "main.py", 318)
-register_callsite("T064", "main.py", 406)
-register_callsite("T065", "main.py", 1253)
-register_callsite("T066", "main.py", 1745)
-register_callsite("T067", "main.py", 2366)
+register_callsite("T063", "main.py", 609)
+register_callsite("T064", "main.py", 711)
+register_callsite("T065", "main.py", 1628)
+register_callsite("T066", "main.py", 2132)
+register_callsite("T067", "main.py", 2824)
 from datetime import datetime, timedelta
 from termcolor import colored
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
@@ -600,13 +600,14 @@ def generate_arrival_narration(departure_narration, party_tracker_data, conversa
         if MODEL_PROVIDER == "openai":
             narr_cfg = config.MINI_UTIL_GPT54MINI_NONE
         elif MODEL_PROVIDER == "gemini":
-            narr_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
+            narr_cfg = config.MINI_UTIL_GEMINI_FLASH_LOW
         elif MODEL_PROVIDER == "lmstudio":
             narr_cfg = config.MINI_UTIL_LMSTUDIO
         else:  # legacy
             narr_cfg = config.MINI_UTIL_LEGACY
 
         response = capture_and_fanout("T063", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=narration_request_messages,
             model=narr_cfg["model"],
             temperature=TEMPERATURE,
@@ -631,17 +632,30 @@ def generate_arrival_narration(departure_narration, party_tracker_data, conversa
                 pass
         
         arrival_text = response.choices[0].message.content.strip()
-        
-        # Sometimes the AI will still wrap its response in a JSON object. We need to handle that.
+        if not arrival_text:
+            raise ValueError("T063 returned empty arrival narration")
+
+        # Sometimes the AI will still wrap its response in the one supported
+        # JSON object. Other JSON roots/shapes are malformed, not narration.
         try:
             parsed_json = json.loads(arrival_text)
-            arrival_text = parsed_json.get("narration", arrival_text)
+            if (
+                not isinstance(parsed_json, dict)
+                or set(parsed_json) != {"narration"}
+                or not isinstance(parsed_json["narration"], str)
+                or not parsed_json["narration"].strip()
+            ):
+                raise ValueError("T063 returned an unsupported JSON shape")
+            arrival_text = parsed_json["narration"].strip()
         except json.JSONDecodeError:
             # It's just plain text, which is what we want.
             pass
 
         debug("SUCCESS: Arrival narration generated successfully.", category="narrative_generation")
-        return sanitize_text(arrival_text)
+        sanitized_arrival = sanitize_text(arrival_text).strip()
+        if not sanitized_arrival:
+            raise ValueError("T063 narration was empty after sanitization")
+        return sanitized_arrival
     except Exception as e:
         error(f"FAILURE: Failed to generate arrival narration", exception=e, category="narrative_generation")
         return f"(The journey to {new_location_name} is uneventful.)" # Fallback text
@@ -688,13 +702,14 @@ Now, provide the rewritten, seamless narration.
         if MODEL_PROVIDER == "openai":
             narr_cfg = config.MINI_UTIL_GPT54MINI_NONE
         elif MODEL_PROVIDER == "gemini":
-            narr_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
+            narr_cfg = config.MINI_UTIL_GEMINI_FLASH_LOW
         elif MODEL_PROVIDER == "lmstudio":
             narr_cfg = config.MINI_UTIL_LMSTUDIO
         else:  # legacy
             narr_cfg = config.MINI_UTIL_LEGACY
 
         response = capture_and_fanout("T064", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=[
                 {"role": "system", "content": "You are a master storyteller and editor, skilled at weaving separate narrative fragments into a single, seamless, and immersive piece of prose."},
                 {"role": "user", "content": stitching_prompt}
@@ -731,6 +746,43 @@ Now, provide the rewritten, seamless narration.
         # Fallback to simple concatenation if the API call fails
         debug("STATE_CHANGE: Falling back to simple concatenation.", category="narrative_generation")
         return f"{departure_narration}\n\n{arrival_narration}"
+
+
+def replace_transition_narration(
+    conversation_history, narration, expected_placeholder=None
+):
+    """Replace the T013 placeholder belonging to the latest transition only.
+
+    Searching backward for an arbitrary assistant message can overwrite output
+    from another action that completed while T063/T064 were running.  The
+    transition marker narrows the search and the exact value returned by T013
+    identifies its placeholder even if a parallel completion lands first.
+    """
+    transition_index = None
+    for index in range(len(conversation_history) - 1, -1, -1):
+        message = conversation_history[index]
+        if (
+            message.get("role") == "user"
+            and "Location transition:" in message.get("content", "")
+        ):
+            transition_index = index
+            break
+
+    if transition_index is None:
+        return False
+
+    for index in range(transition_index + 1, len(conversation_history)):
+        message = conversation_history[index]
+        if (
+            message.get("role") == "assistant"
+            and (
+                expected_placeholder is None
+                or message.get("content") == expected_placeholder
+            )
+        ):
+            conversation_history[index]["content"] = narration
+            return True
+    return False
 
 # Message combination system helper functions
 def detect_create_encounter(parsed_data):
@@ -840,6 +892,22 @@ def parse_json_safely(text):
 
     # If we still can't parse it, raise an exception
     raise json.JSONDecodeError("Unable to parse JSON from the given text", text, 0)
+
+
+def _parse_dm_validation_verdict(response_text):
+    """Parse T065's exact semantic-validation response contract."""
+    verdict = parse_json_safely(response_text)
+    if (
+        not isinstance(verdict, dict)
+        or set(verdict) != {"valid", "reason"}
+        or type(verdict["valid"]) is not bool
+        or not isinstance(verdict["reason"], str)
+        or not verdict["reason"].strip()
+    ):
+        raise ValueError(
+            "T065 requires exactly a boolean valid field and nonempty reason"
+        )
+    return verdict["valid"], verdict["reason"].strip()
 
 def create_module_validation_context(party_tracker_data, path_manager):
     """Create module data context for validation system to check location/NPC references"""
@@ -1492,32 +1560,47 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
     # Apply compression to validation messages if enabled
     from model_config import COMPRESSION_ENABLED
     if COMPRESSION_ENABLED:
+        temp_file = None
         try:
             # Use the ParallelConversationCompressor to compress validation messages
             # This will automatically detect and compress location summaries, module contexts, etc.
             # The cache will prevent double-compression of already compressed content
             from utils.compression.conversation_compressor_parallel import ParallelConversationCompressor
             from pathlib import Path
-            
-            # Save validation conversation to temp file
-            temp_file = Path("/tmp/temp_validation_for_api.json")
-            with open(temp_file, 'w', encoding='utf-8') as f:
+            from tempfile import NamedTemporaryFile
+
+            # Each validation owns its own closed temporary file. A fixed path
+            # allowed parallel turns to overwrite or delete one another's
+            # validation context before compression consumed it.
+            with NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                prefix="neq-main-validation-",
+                suffix=".json",
+                delete=False,
+            ) as f:
                 json.dump(validation_conversation, f, indent=2, ensure_ascii=False)
+                temp_file = Path(f.name)
             
             # Compress using the parallel compressor with caching
             # Module creation flag is not available in validation context
             compressor = ParallelConversationCompressor(inject_module_creation=False)
             validation_messages_to_send = compressor.process_conversation_history(str(temp_file))
             
-            # Clean up temp file
-            if temp_file.exists():
-                temp_file.unlink()
-            
             debug("VALIDATION: Applied parallel compression to validation messages", category="ai_validation")
         except Exception as e:
             # If compression fails, use original messages
             warning(f"VALIDATION: Compression failed, using original messages: {e}", category="ai_validation")
             validation_messages_to_send = validation_conversation
+        finally:
+            if temp_file is not None and temp_file.exists():
+                try:
+                    temp_file.unlink()
+                except OSError as cleanup_error:
+                    warning(
+                        f"VALIDATION: Could not remove temporary context: {cleanup_error}",
+                        category="ai_validation",
+                    )
     else:
         validation_messages_to_send = validation_conversation
     
@@ -1534,18 +1617,27 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
     if _val_provider == "openai":
         validation_config = config.DM_VALIDATION_GPT52_LOW
     elif _val_provider == "gemini":
-        validation_config = config.DM_VALIDATION_GEMINI_FLASH_MEDIUM
+        validation_config = config.DM_VALIDATION_GEMINI_FLASH_LOW
     elif _val_provider == "lmstudio":
         validation_config = config.DM_VALIDATION_LMSTUDIO
     else:  # legacy
         validation_config = config.DM_VALIDATION_LEGACY
 
     for attempt in range(max_validation_retries):
-        validation_result = capture_and_fanout("T065", api_client.create_completion,
-            messages=validation_messages_to_send,
-            model=validation_config["model"],
-            temperature=0.1,
-            **{k: v for k, v in validation_config.items() if k != "model"})
+        try:
+            validation_result = capture_and_fanout("T065", api_client.create_completion,
+                _request_provider=_val_provider,
+                messages=validation_messages_to_send,
+                model=validation_config["model"],
+                temperature=0.1,
+                **{k: v for k, v in validation_config.items() if k != "model"})
+        except Exception as provider_error:
+            warning(
+                f"VALIDATION: T065 provider attempt {attempt + 1}/"
+                f"{max_validation_retries} failed: {provider_error}",
+                category="ai_validation",
+            )
+            continue
 
         # Log API call to master log
         try:
@@ -1567,9 +1659,7 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         validation_response = validation_result.choices[0].message.content.strip()
 
         try:
-            validation_json = parse_json_safely(validation_response)
-            is_valid = validation_json.get("valid", False)
-            reason = validation_json.get("reason", "No reason provided")
+            is_valid, reason = _parse_dm_validation_verdict(validation_response)
             
             # Track validation pairs for quality control
             try:
@@ -1621,15 +1711,21 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
                 # Return the fixed/validated response content
                 return (True, response_to_validate)  # Return tuple with validation status and content
 
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, ValueError, TypeError):
             debug(f"VALIDATION: Invalid JSON from validation model (Attempt {attempt + 1}/{max_validation_retries})", category="ai_validation")
             debug(f"VALIDATION: Problematic response: {validation_response}", category="ai_validation")
             continue  # Retry the validation
 
     # If we've exhausted all retries and still don't have a valid JSON response
-    warning("VALIDATION: Validation model consistently produced invalid JSON. Assuming primary response is valid.", category="ai_validation")
-    # Return the (potentially fixed) response
-    return (True, response_to_validate)
+    warning(
+        "VALIDATION: T065 was unavailable or malformed after all retries; "
+        "rejecting the candidate so the main response loop can recover.",
+        category="ai_validation",
+    )
+    return (
+        False,
+        "Response validation was unavailable after three attempts; regenerate safely.",
+    )
 
 def load_validation_prompt():
     from model_config import COMPRESSION_ENABLED
@@ -2034,6 +2130,7 @@ Write a compelling chronicle of these actual events:"""
                     summ_config = config.DM_SUMM_LEGACY
 
                 response = capture_and_fanout("T066", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
                     messages=[
                         {"role": "system", "content": "You are an expert at creating beautiful adventure chronicles from 5th edition gameplay, focusing only on events that actually occurred. Do NOT use markdown formatting (no **, no ###, no bullet points). Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode."},
                         {"role": "user", "content": summary_prompt}
@@ -2063,6 +2160,11 @@ Write a compelling chronicle of these actual events:"""
                         pass
                 
                 ai_summary = response.choices[0].message.content.strip()
+                if not ai_summary:
+                    raise ValueError("T066 returned an empty module chronicle")
+                ai_summary = sanitize_text(ai_summary).strip()
+                if not ai_summary:
+                    raise ValueError("T066 chronicle was empty after sanitization")
                 formatted_summary = f"=== MODULE SUMMARY ===\n\n{module_name}:\n------------------------------\n{ai_summary}"
                 debug(f"SUCCESS: Generated AI summary from actual conversation for {module_name}", category="summary_building")
                 return formatted_summary
@@ -2183,6 +2285,7 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
         # If it's a transition, handle it with the special two-step process
         if is_transition:
             debug("STATE_CHANGE: Transition action detected. Holding departure narration.", category="location_transitions")
+            transition_placeholder = None
 
             # SURGICAL FIX: Save pre-transition response to history before processing action
             conversation_history.append({"role": "assistant", "content": response})
@@ -2195,6 +2298,11 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                 result = action_handler.process_action(action, party_tracker_data, location_data, conversation_history)
                 actions_processed = True
                 if isinstance(result, dict):
+                    response_data = result.get("response_data", {})
+                    if isinstance(response_data, dict):
+                        placeholder = response_data.get("transition_narration")
+                        if isinstance(placeholder, str) and placeholder:
+                            transition_placeholder = placeholder
                     if result.get("needs_update"):
                         needs_conversation_history_update = True
                     # Check if we need to generate a DM response (e.g., after module creation)
@@ -2231,11 +2339,23 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
             # Step 6: Replace the raw transition narration with the seamless version in history
             # This ensures conversation history matches what the player saw
             fresh_conversation_history = load_json_file(json_file) or []
-            for i in range(len(fresh_conversation_history) - 1, -1, -1):
-                if fresh_conversation_history[i].get("role") == "assistant":
-                    fresh_conversation_history[i]['content'] = full_narration
-                    debug("SUCCESS: Replaced raw transition narration with seamless version in history", category="location_transitions")
-                    break
+            if replace_transition_narration(
+                fresh_conversation_history,
+                full_narration,
+                expected_placeholder=transition_placeholder,
+            ):
+                debug("SUCCESS: Replaced raw transition narration with seamless version in history", category="location_transitions")
+            else:
+                # Do not clobber an unrelated assistant message when the
+                # placeholder is missing; append the narration as a recoverable
+                # record associated with the completed transition.
+                fresh_conversation_history.append(
+                    {"role": "assistant", "content": full_narration}
+                )
+                warning(
+                    "Transition placeholder missing; appended seamless narration",
+                    category="location_transitions",
+                )
 
             save_conversation_history(fresh_conversation_history)
 
@@ -2499,26 +2619,54 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
 
 
 def save_conversation_history(history):
+    history_to_save = history
     try:
-        # Check if we should compress before saving
-        compressor = IncrementalLocationCompressor()
-        
-        # Check compression conditions (15+ valid pairs at current location)
-        if compressor.should_compress(history):
-            debug("Compression conditions met - applying incremental compression", category="compression")
-            
-            # Apply compression (returns new list if successful)
-            compressed_history = compressor.apply_compression_to_list(history)
-            if compressed_history:
-                history = compressed_history
-                info("Conversation history compressed successfully", category="compression")
-            else:
-                debug("Compression not applied - conditions not fully met", category="compression")
-        
-        # Save the (possibly compressed) history
-        safe_json_dump(history, json_file)
+        # Compression is an optional optimization.  Its constructor, local
+        # context lookup, or provider call must never prevent the authoritative
+        # conversation from being persisted.
+        try:
+            compressor = IncrementalLocationCompressor()
+
+            # Check compression conditions (15+ valid pairs at current location)
+            if compressor.should_compress(history):
+                debug("Compression conditions met - applying incremental compression", category="compression")
+
+                # Apply compression (returns new list if successful)
+                compressed_history = compressor.apply_compression_to_list(history)
+                if compressed_history:
+                    history_to_save = compressed_history
+                    info("Conversation history compressed successfully", category="compression")
+                else:
+                    debug("Compression not applied - conditions not fully met", category="compression")
+        except Exception as compression_error:
+            warning(
+                "Conversation compression failed; saving uncompressed history: "
+                f"{compression_error}",
+                category="compression",
+            )
+
+        safe_json_dump(history_to_save, json_file)
     except Exception as e:
         error(f"FAILURE: Failed to save conversation history", exception=e, category="file_operations")
+
+def _finalize_main_response_validation(
+    conversation_history,
+    validation_prefix_length,
+    candidate_response,
+    candidate_valid,
+):
+    """Remove retry-only messages and block rejected T067 state actions."""
+    cleaned_history = conversation_history[:validation_prefix_length]
+    if candidate_valid and candidate_response:
+        return cleaned_history, candidate_response
+
+    fallback_message = (
+        "I could not safely resolve that action after several attempts. "
+        "No game state was changed; please rephrase or try a simpler action."
+    )
+    cleaned_history.append({"role": "assistant", "content": fallback_message})
+    return cleaned_history, None
+
 
 def get_ai_response(conversation_history, validation_retry_count=0):
     global should_inject_creation_prompt
@@ -2598,6 +2746,7 @@ def get_ai_response(conversation_history, validation_retry_count=0):
         debug(f"Failed to log model selection: {e}", category="ai_routing")
     
     # Check if compression is enabled and apply if needed
+    temp_file = None
     try:
         from model_config import COMPRESSION_ENABLED
         if COMPRESSION_ENABLED:
@@ -2605,21 +2754,25 @@ def get_ai_response(conversation_history, validation_retry_count=0):
             from utils.compression.conversation_compressor_parallel import ParallelConversationCompressor
             import json
             from pathlib import Path
-            
-            # Save conversation to temp file
-            temp_file = Path("/tmp/temp_conversation_for_api.json")
-            with open(temp_file, 'w', encoding='utf-8') as f:
+            from tempfile import NamedTemporaryFile
+
+            # A request-unique closed file prevents parallel turns from
+            # overwriting or deleting one another's compression input.
+            with NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                prefix="neq-main-conversation-",
+                suffix=".json",
+                delete=False,
+            ) as f:
                 json.dump(conversation_history, f, indent=2, ensure_ascii=False)
+                temp_file = Path(f.name)
             
             # Compress using our working compressor with settings from config
             # Pass the module creation flag to the compressor (now a global variable)
             compressor = ParallelConversationCompressor(inject_module_creation=should_inject_creation_prompt)
             messages_to_send = compressor.process_conversation_history(str(temp_file))
             
-            # Clean up temp file
-            if temp_file.exists():
-                temp_file.unlink()
-                
             print(f"DEBUG: Parallel compression applied successfully")
         else:
             messages_to_send = conversation_history
@@ -2627,6 +2780,12 @@ def get_ai_response(conversation_history, validation_retry_count=0):
         # If compression fails, use original history
         print(f"WARNING: Compression failed: {e}")
         messages_to_send = conversation_history
+    finally:
+        if temp_file is not None and temp_file.exists():
+            try:
+                temp_file.unlink()
+            except OSError as cleanup_error:
+                print(f"WARNING: Could not remove compression input: {cleanup_error}")
     
     # Export main conversation messages for debugging
     with open("main_conversation_messages_to_api.json", "w", encoding="utf-8") as f:
@@ -2646,7 +2805,7 @@ def get_ai_response(conversation_history, validation_retry_count=0):
         mini_config = config.DM_MINI_MODEL_GPT5MINI_LOW
     elif MODEL_PROVIDER == "gemini":
         full_config = config.DM_FULL_MODEL_GEMINI_PRO_LOW
-        mini_config = config.DM_MINI_MODEL_GEMINI_FLASH_MINIMAL
+        mini_config = config.DM_MINI_MODEL_GEMINI_FLASH_LOW
     elif MODEL_PROVIDER == "lmstudio":
         full_config = config.DM_FULL_MODEL_LMSTUDIO
         mini_config = config.DM_MINI_MODEL_LMSTUDIO
@@ -2663,6 +2822,7 @@ def get_ai_response(conversation_history, validation_retry_count=0):
 
     print(f"DEBUG: [MAIN.PY] Using model: {selected_config['model']} (provider: {MODEL_PROVIDER})")
     response = capture_and_fanout("T067", api_client.create_completion,
+        _request_provider=MODEL_PROVIDER,
         messages=messages_to_send,
         model=selected_config["model"],
         temperature=TEMPERATURE,
@@ -3796,13 +3956,36 @@ def main_game_loop():
         conversation_history.append({"role": "user", "content": user_input_with_note})
         save_conversation_history(conversation_history)
 
+        validation_prefix_length = len(conversation_history)
         retry_count = 0
         valid_response_received = False 
         ai_response_content = None
     
         while retry_count < 5 and not valid_response_received:
             # Pass validation retry count for intelligent model escalation
-            ai_response_content = get_ai_response(conversation_history, validation_retry_count=retry_count)
+            try:
+                ai_response_content = get_ai_response(
+                    conversation_history,
+                    validation_retry_count=retry_count,
+                )
+            except Exception as response_error:
+                error(
+                    f"FAILURE: T067 provider call failed on attempt "
+                    f"{retry_count + 1}/5",
+                    exception=response_error,
+                    category="ai_validation",
+                )
+                status_retrying(retry_count + 1, 5)
+                conversation_history.append({
+                    "role": "user",
+                    "content": (
+                        "Error Note: The previous response attempt was unavailable. "
+                        "Please generate the requested response again."
+                    ),
+                })
+                save_conversation_history(conversation_history)
+                retry_count += 1
+                continue
 
             # PRE-PROCESSING: Fix incorrect updatePartyTracker usage for within-module travel
             # This must happen BEFORE any validation to prevent wrong action from being checked
@@ -3941,6 +4124,19 @@ def main_game_loop():
             if is_valid:
                 valid_response_received = True
                 debug(f"SUCCESS: Valid response generated on attempt {retry_count + 1}", category="ai_validation")
+
+                # Failed candidates and validator feedback are retry context,
+                # not durable game history. Only the accepted candidate may
+                # cross into process_ai_response and its state handlers.
+                conversation_history, ai_response_content = (
+                    _finalize_main_response_validation(
+                        conversation_history,
+                        validation_prefix_length,
+                        ai_response_content,
+                        candidate_valid=True,
+                    )
+                )
+                save_conversation_history(conversation_history)
             
                 # SIMPLIFIED ARCHITECTURE: process_ai_response now handles ALL complexity internally.
                 # This includes:
@@ -3963,7 +4159,6 @@ def main_game_loop():
                 elif isinstance(final_result, dict) and final_result.get("status") == "enter_levelup_mode":
                     # Enter the level up sub-loop
                     level_up_session = final_result["session"]
-                    final_narration = ""
 
                     # Get the first message from the session
                     dm_response = level_up_session.start()
@@ -3979,6 +4174,13 @@ def main_game_loop():
                                          if isinstance(_first_parsed, dict) else dm_response)
                     except (json.JSONDecodeError, TypeError):
                         first_display = dm_response
+
+                    # Autonomous/NPC sessions may complete in start().  In that
+                    # branch there is no input-loop response to populate the
+                    # final narration, so the opening response is also the
+                    # definitive completion narration.
+                    completed_on_start = level_up_session.is_complete
+                    final_narration = first_display
 
                     # Display the first message and add to history
                     print(colored("Dungeon Master:", "blue"), colored(first_display, "blue"))
@@ -4013,7 +4215,18 @@ def main_game_loop():
                         debug("SUCCESS: Level up successful. Using final narration for context.", category="level_up")
                         # Add the final, high-quality narration to the history as the definitive AI response.
                         # This provides perfect context for the next turn without an extra AI call.
-                        conversation_history.append({"role": "assistant", "content": json.dumps({"narration": final_narration, "actions": []})})
+                        final_history_message = {
+                            "role": "assistant",
+                            "content": json.dumps(
+                                {"narration": final_narration, "actions": []}
+                            ),
+                        }
+                        if completed_on_start and conversation_history:
+                            # The start response was already displayed/persisted;
+                            # canonicalize that record instead of duplicating it.
+                            conversation_history[-1] = final_history_message
+                        else:
+                            conversation_history.append(final_history_message)
                         save_conversation_history(conversation_history)
                     else:
                         # If the level up failed, inform the player and log it.
@@ -4047,18 +4260,20 @@ def main_game_loop():
                 retry_count += 1
     
         if not valid_response_received:
-            error("FAILURE: Failed to generate a valid response after 5 attempts. Proceeding with the last generated response.", category="ai_validation")
-            if ai_response_content: 
-                result = process_ai_response(ai_response_content, party_tracker_data, location_data, conversation_history) 
-                if result == "exit": return
-                if result == "restart":
-                    print("\n[SYSTEM] Restarting game with restored save...\n")
-                    main_game_loop()
-                    return
-            else:
-                error("FAILURE: No AI response was generated after retries.", category="ai_validation")
-                conversation_history.append({"role": "assistant", "content": "I seem to be having trouble formulating a response. Could you try rephrasing your action or query?"})
-                save_conversation_history(conversation_history)
+            error(
+                "FAILURE: Failed to generate a valid response after 5 attempts. "
+                "Rejected responses will not be processed.",
+                category="ai_validation",
+            )
+            conversation_history, _ = _finalize_main_response_validation(
+                conversation_history,
+                validation_prefix_length,
+                ai_response_content,
+                candidate_valid=False,
+            )
+            save_conversation_history(conversation_history)
+            fallback_text = conversation_history[-1]["content"]
+            print(colored("Dungeon Master:", "blue"), colored(fallback_text, "blue"))
     
         status_ready()
 

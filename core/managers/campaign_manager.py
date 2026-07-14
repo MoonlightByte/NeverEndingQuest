@@ -66,16 +66,19 @@ See LICENSE file for full terms.
 # builds upon previous experiences while maintaining the modular architecture.
 # ============================================================================
 
+import copy
 import json
 import os
+import threading
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T038", "core/managers/campaign_manager.py", 552)
-register_callsite("T039", "core/managers/campaign_manager.py", 579)
+register_callsite("T038", "core/managers/campaign_manager.py", 829)
+register_callsite("T039", "core/managers/campaign_manager.py", 874)
 import config
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.file_operations import safe_write_json
@@ -86,6 +89,95 @@ from utils.enhanced_logger import debug, info, warning, error, game_event, set_s
 
 # Set script name for logging
 set_script_name(__name__)
+
+
+def _is_valid_campaign_export_data(exported_data: Any) -> bool:
+    """Check the structural contract consumed by campaign-state importers."""
+    if not isinstance(exported_data, dict):
+        return False
+
+    required_types = {
+        "relationships": dict,
+        "artifacts": dict,
+        "hubs": dict,
+        "worldState": dict,
+        "unlockedModules": list,
+    }
+    if set(exported_data) != set(required_types):
+        return False
+    for field, expected_type in required_types.items():
+        if field not in exported_data or not isinstance(
+            exported_data[field], expected_type
+        ):
+            return False
+
+    if not all(
+        isinstance(key, str) and key.strip()
+        for field in ("relationships", "artifacts", "hubs", "worldState")
+        for key in exported_data[field]
+    ):
+        return False
+
+    return all(
+        isinstance(module_name, str) and module_name.strip()
+        for module_name in exported_data["unlockedModules"]
+    )
+
+
+_CAMPAIGN_TRANSACTION_LOCKS = {}
+_CAMPAIGN_TRANSACTION_LOCKS_GUARD = threading.Lock()
+_MODULE_COMPLETION_FLIGHTS = {}
+_MODULE_COMPLETION_FLIGHTS_GUARD = threading.Lock()
+
+
+def _campaign_transaction_thread_lock(campaign_file: str) -> threading.RLock:
+    canonical_path = os.path.abspath(os.path.normpath(campaign_file))
+    with _CAMPAIGN_TRANSACTION_LOCKS_GUARD:
+        return _CAMPAIGN_TRANSACTION_LOCKS.setdefault(
+            canonical_path, threading.RLock()
+        )
+
+
+@contextmanager
+def _campaign_transaction_lock(campaign_file: str):
+    """Serialize campaign read/merge/write transactions across workers."""
+    canonical_path = os.path.abspath(os.path.normpath(campaign_file))
+    lock_path = f"{canonical_path}.completion.lock"
+    parent = os.path.dirname(lock_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+    with _campaign_transaction_thread_lock(canonical_path):
+        with open(lock_path, "a+b") as lock_file:
+            if os.name == "nt":
+                import msvcrt
+
+                lock_file.seek(0, os.SEEK_END)
+                if lock_file.tell() == 0:
+                    lock_file.write(b"\0")
+                    lock_file.flush()
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                if os.name == "nt":
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _module_completion_key(campaign_file: str, module_name: str):
+    return (
+        os.path.abspath(os.path.normpath(campaign_file)),
+        str(module_name).strip(),
+    )
+
 
 class CampaignManager:
     """Manages campaign state and inter-module continuity"""
@@ -134,7 +226,10 @@ class CampaignManager:
                 "lastUpdated": datetime.now().isoformat(),
                 "version": "1.0.0"
             }
-            safe_json_dump(default_campaign, self.campaign_file)
+            if not safe_write_json(self.campaign_file, default_campaign):
+                raise OSError(
+                    f"Could not atomically initialize campaign file {self.campaign_file}"
+                )
             return default_campaign
     
     def refresh_modules(self):
@@ -404,49 +499,174 @@ class CampaignManager:
     
     def complete_module(self, module_name: str, party_tracker_data: Dict[str, Any], 
                        conversation_history: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Complete a module and generate its summary"""
-        info(f"STATE_CHANGE: Completing module: {module_name}", category="module_loading")
-        
-        # Generate module summary
-        summary = self._generate_module_summary(module_name, party_tracker_data, conversation_history)
-        
-        # Get existing visit info
-        visit_info = self._get_module_visit_info(module_name)
-        
-        # Update visit tracking
-        summary["visitCount"] = visit_info["visitCount"] + 1
-        summary["firstVisitDate"] = visit_info["firstVisitDate"] or datetime.now().isoformat()
-        summary["lastVisitDate"] = datetime.now().isoformat()
-        
-        # Save summary as living document (always _001)
-        summary_file = os.path.join(self.summaries_dir, f"{module_name}_summary_001.json")
-        
-        # Add sequence number to summary data (always 1 for living summaries)
-        summary["sequenceNumber"] = 1
-        safe_json_dump(summary, summary_file)
-        
-        # Update campaign state
-        if module_name not in self.campaign_data['completedModules']:
-            self.campaign_data['completedModules'].append(module_name)
-        
-        # Import exported data from module
-        self._handle_module_completion_export(module_name, summary)
-        
-        # Update available modules based on completion
-        self._update_available_modules(module_name, summary)
-        
-        # Save campaign state
-        self.campaign_data['lastUpdated'] = datetime.now().isoformat()
-        safe_json_dump(self.campaign_data, self.campaign_file)
-        
+        """Complete one module once, even when callers arrive concurrently."""
+        key = _module_completion_key(self.campaign_file, module_name)
+        with _MODULE_COMPLETION_FLIGHTS_GUARD:
+            completion = _MODULE_COMPLETION_FLIGHTS.get(key)
+            if completion is None:
+                completion = Future()
+                _MODULE_COMPLETION_FLIGHTS[key] = completion
+                is_leader = True
+            else:
+                is_leader = False
+
+        if not is_leader:
+            result = copy.deepcopy(completion.result())
+            persisted_campaign = safe_json_load(self.campaign_file)
+            if isinstance(persisted_campaign, dict):
+                self.campaign_data = persisted_campaign
+            return result
+
+        try:
+            result = self._complete_module_once(
+                module_name,
+                party_tracker_data,
+                conversation_history,
+            )
+        except BaseException as exc:
+            completion.set_exception(exc)
+            raise
+        else:
+            completion.set_result(copy.deepcopy(result))
+            return result
+        finally:
+            with _MODULE_COMPLETION_FLIGHTS_GUARD:
+                if _MODULE_COMPLETION_FLIGHTS.get(key) is completion:
+                    del _MODULE_COMPLETION_FLIGHTS[key]
+
+    def _complete_module_once(
+        self,
+        module_name: str,
+        party_tracker_data: Dict[str, Any],
+        conversation_history: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        info(
+            f"STATE_CHANGE: Completing module: {module_name}",
+            category="module_loading",
+        )
+        summary = self._generate_module_summary(
+            module_name,
+            party_tracker_data,
+            conversation_history,
+        )
+
+        with _campaign_transaction_lock(self.campaign_file):
+            visit_info = self._get_module_visit_info(module_name)
+            now = datetime.now().isoformat()
+            summary["visitCount"] = visit_info["visitCount"] + 1
+            summary["firstVisitDate"] = visit_info["firstVisitDate"] or now
+            summary["lastVisitDate"] = now
+            summary["sequenceNumber"] = 1
+            self._commit_module_summary_locked(module_name, summary)
         return summary
+
+    def _commit_module_summary_locked(
+        self,
+        module_name: str,
+        summary: Dict[str, Any],
+    ) -> None:
+        """Atomically commit a summary plus its campaign-state projection."""
+        summary_file = os.path.join(
+            self.summaries_dir, f"{module_name}_summary_001.json"
+        )
+        summary_existed = os.path.exists(summary_file)
+        previous_summary = (
+            safe_json_load(summary_file) if summary_existed else None
+        )
+
+        persisted_campaign = None
+        if os.path.exists(self.campaign_file):
+            persisted_campaign = safe_json_load(self.campaign_file)
+        if not isinstance(persisted_campaign, dict):
+            persisted_campaign = copy.deepcopy(self.campaign_data)
+        updated_campaign = copy.deepcopy(persisted_campaign)
+
+        for field, default in (
+            ("completedModules", []),
+            ("availableModules", []),
+            ("relationships", {}),
+            ("artifacts", {}),
+            ("hubs", {}),
+            ("worldState", {}),
+        ):
+            if not isinstance(updated_campaign.get(field), type(default)):
+                updated_campaign[field] = copy.deepcopy(default)
+
+        if module_name not in updated_campaign["completedModules"]:
+            updated_campaign["completedModules"].append(module_name)
+        self._handle_module_completion_export(
+            module_name,
+            summary,
+            campaign_data=updated_campaign,
+        )
+        self._update_available_modules(
+            module_name,
+            summary,
+            campaign_data=updated_campaign,
+        )
+        updated_campaign["lastUpdated"] = datetime.now().isoformat()
+
+        if not safe_write_json(summary_file, summary):
+            raise OSError(
+                f"Could not atomically persist module summary {summary_file}"
+            )
+
+        try:
+            campaign_written = safe_write_json(
+                self.campaign_file,
+                updated_campaign,
+            )
+        except Exception:
+            self._restore_summary_after_failed_commit(
+                summary_file,
+                summary_existed,
+                previous_summary,
+            )
+            raise
+        if not campaign_written:
+            self._restore_summary_after_failed_commit(
+                summary_file,
+                summary_existed,
+                previous_summary,
+            )
+            raise OSError(
+                f"Could not atomically persist campaign file {self.campaign_file}"
+            )
+
+        self.campaign_data = updated_campaign
+
+    @staticmethod
+    def _restore_summary_after_failed_commit(
+        summary_file: str,
+        summary_existed: bool,
+        previous_summary: Any,
+    ) -> None:
+        try:
+            if summary_existed:
+                if not isinstance(previous_summary, dict) or not safe_write_json(
+                    summary_file, previous_summary
+                ):
+                    raise OSError("summary rollback write failed")
+            elif os.path.exists(summary_file):
+                os.remove(summary_file)
+        except Exception as exc:
+            error(
+                f"FAILURE: Could not roll back summary {summary_file}",
+                exception=exc,
+                category="file_operations",
+            )
     
     def _generate_module_summary(self, module_name: str, party_tracker_data: Dict[str, Any],
                                 conversation_history: List[Dict[str, Any]], skip_archiving: bool = False) -> Dict[str, Any]:
         """Generate AI-powered module summary"""
         # Archive full conversation history before summarization (unless skipped for delayed archiving)
         if not skip_archiving:
-            self._archive_conversation_history(module_name, conversation_history)
+            if not self._archive_conversation_history(
+                module_name, conversation_history
+            ):
+                raise OSError(
+                    f"Could not durably archive conversation for {module_name}"
+                )
         
         # Load module plot data for structured information
         plot_data = self._load_module_plot_data(module_name)
@@ -607,6 +827,7 @@ Focus on story outcomes, character development, and decisions that will matter i
                 summ_config = config.DM_SUMM_LEGACY
 
             response = capture_and_fanout("T038", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -617,6 +838,9 @@ Focus on story outcomes, character development, and decisions that will matter i
                 **{k: v for k, v in summ_config.items() if k != "model"})
             
             summary_text = response.choices[0].message.content
+            if not isinstance(summary_text, str) or not summary_text.strip():
+                raise ValueError("T038 returned an empty campaign summary")
+            summary_text = summary_text.strip()
             
             # Have AI also extract exportable data
             export_prompt = f"""From this module summary, extract key data to export to the campaign:
@@ -637,14 +861,18 @@ Focus on story outcomes, character development, and decisions that will matter i
             if MODEL_PROVIDER == "openai":
                 summ_cfg = config.DM_SUMM_T039_GPT5MINI
             elif MODEL_PROVIDER == "gemini":
-                summ_cfg = config.DM_SUMM_T039_GEMINI_FLASHLITE_MINIMAL
+                summ_cfg = config.DM_SUMM_T039_GEMINI_FLASHLITE_LOW
             elif MODEL_PROVIDER == "lmstudio":
                 summ_cfg = config.DM_SUMM_T039_LMSTUDIO
             else:  # legacy
                 summ_cfg = config.DM_SUMM_T039_LEGACY
 
+            export_failed = False
+            export_error = None
+            export_source = "provider"
             try:
                 export_response = capture_and_fanout("T039", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
                     messages=[
                         {"role": "system", "content": "Extract campaign-relevant data from module completion summary. Be concise and factual."},
                         {"role": "user", "content": export_prompt}
@@ -654,16 +882,42 @@ Focus on story outcomes, character development, and decisions that will matter i
                     **{k: v for k, v in summ_cfg.items() if k != "model"})
 
                 exported_data = json.loads(export_response.choices[0].message.content)
+                if not _is_valid_campaign_export_data(exported_data):
+                    raise ValueError("T039 returned invalid campaign export data")
             except Exception as e:
                 debug(f"T039 fallback to local processor: {e}", category="campaign_management")
                 exported_data = self._process_module_summary_for_export(summary_text, party_tracker_data)
+                export_failed = True
+                export_error = str(e)
+                export_source = "local_fallback"
+
+            if not _is_valid_campaign_export_data(exported_data):
+                fallback_error = "Local T039 fallback returned invalid campaign export data"
+                if export_error:
+                    fallback_error = f"{export_error}; {fallback_error}"
+                exported_data = {
+                    "relationships": {},
+                    "artifacts": {},
+                    "hubs": {},
+                    "worldState": {},
+                    "unlockedModules": [],
+                }
+                export_failed = True
+                export_error = fallback_error
+                export_source = "empty_fallback"
             
             return {
                 "moduleName": module_name,
                 "completionDate": datetime.now().isoformat(),
                 "summary": summary_text,
                 "exportedData": exported_data,
-                "summary_failed": False
+                # _update_available_modules consumes this legacy top-level
+                # projection rather than reading inside exportedData.
+                "unlockedModules": list(exported_data["unlockedModules"]),
+                "summary_failed": False,
+                "export_failed": export_failed,
+                "export_source": export_source,
+                **({"export_error": export_error} if export_error else {}),
             }
 
         except Exception as e:
@@ -683,6 +937,8 @@ Focus on story outcomes, character development, and decisions that will matter i
                 ),
                 "exportedData": {},
                 "summary_failed": True,
+                "export_failed": True,
+                "export_source": "not_attempted",
                 "error": str(e),
                 "keyDecisions": [],
                 "consequences": {},
@@ -691,8 +947,7 @@ Focus on story outcomes, character development, and decisions that will matter i
             }
 
     def regenerate_failed_summary(self, module_name: str) -> bool:
-        """Retry summary generation for a module whose previous summary
-        attempt failed (i.e. summary_failed=True on disk).
+        """Retry a failed T038 summary or a partial T039 export.
 
         INT-H6: when _generate_module_summary's except branch fires, the
         on-disk summary stores `summary_failed=True` + `exportedData={}`
@@ -730,9 +985,12 @@ Focus on story outcomes, character development, and decisions that will matter i
                 )
                 return False
 
-            if not existing.get("summary_failed"):
+            if not (
+                existing.get("summary_failed")
+                or existing.get("export_failed")
+            ):
                 debug(
-                    f"Summary for {module_name} is not marked failed -- nothing to regenerate",
+                    f"Summary/export for {module_name} is not marked failed -- nothing to regenerate",
                     category="summary_building",
                 )
                 return False
@@ -799,14 +1057,32 @@ Focus on story outcomes, character development, and decisions that will matter i
                 if key in existing and key not in new_summary:
                     new_summary[key] = existing[key]
 
-            # Atomically overwrite the failed summary.
-            if not safe_write_json(summary_file, new_summary):
-                error(
-                    f"FAILURE: Atomic write failed when overwriting "
-                    f"regenerated summary for {module_name}",
-                    category="file_operations",
-                )
-                return False
+            # Re-check and commit both files under one transaction. Another
+            # worker may have repaired the same summary while this provider
+            # request was in flight. Lightweight manually-constructed manager
+            # instances retain the legacy summary-only behavior.
+            campaign_file = getattr(self, "campaign_file", None)
+            if not campaign_file or not hasattr(self, "campaign_data"):
+                if not safe_write_json(summary_file, new_summary):
+                    return False
+            else:
+                with _campaign_transaction_lock(campaign_file):
+                    latest = safe_json_load(summary_file)
+                    if not isinstance(latest, dict):
+                        return False
+                    if not (
+                        latest.get("summary_failed")
+                        or latest.get("export_failed")
+                    ):
+                        return False
+
+                    for key in (
+                        "visitCount", "firstVisitDate", "lastVisitDate",
+                        "sequenceNumber",
+                    ):
+                        if key in latest and key not in new_summary:
+                            new_summary[key] = latest[key]
+                    self._commit_module_summary_locked(module_name, new_summary)
 
             info(
                 f"SUCCESS: Regenerated summary for {module_name}",
@@ -820,80 +1096,133 @@ Focus on story outcomes, character development, and decisions that will matter i
             )
             return False
 
-    def _handle_module_completion_export(self, module_name: str, summary: Dict[str, Any]):
+    def _handle_module_completion_export(
+        self,
+        module_name: str,
+        summary: Dict[str, Any],
+        campaign_data: Optional[Dict[str, Any]] = None,
+    ):
         """Handle exporting data from completed module to campaign state"""
+        target = self.campaign_data if campaign_data is None else campaign_data
         exported_data = summary.get('exportedData', {})
         
         # Import relationships
         for entity, status in exported_data.get('relationships', {}).items():
-            self.campaign_data['relationships'][entity] = status
+            target['relationships'][entity] = status
         
         # Import artifacts
         for artifact, data in exported_data.get('artifacts', {}).items():
-            self.campaign_data['artifacts'][artifact] = data
+            target['artifacts'][artifact] = data
         
         # Import hubs
         for hub, data in exported_data.get('hubs', {}).items():
-            self.campaign_data['hubs'][hub] = data
+            target['hubs'][hub] = data
         
         # Import world state changes
         for key, value in exported_data.get('worldState', {}).items():
-            self.campaign_data['worldState'][key] = value
+            target['worldState'][key] = value
     
-    def _update_available_modules(self, completed_module: str, summary: Dict[str, Any]):
+    def _update_available_modules(
+        self,
+        completed_module: str,
+        summary: Dict[str, Any],
+        campaign_data: Optional[Dict[str, Any]] = None,
+    ):
         """Update available modules based on completion"""
+        target = self.campaign_data if campaign_data is None else campaign_data
         # Remove completed module
-        if completed_module in self.campaign_data['availableModules']:
-            self.campaign_data['availableModules'].remove(completed_module)
+        if completed_module in target['availableModules']:
+            target['availableModules'].remove(completed_module)
         
         # Add newly unlocked modules
         unlocked = summary.get('unlockedModules', [])
         for module in unlocked:
-            if module not in self.campaign_data['availableModules']:
-                self.campaign_data['availableModules'].append(module)
+            if module not in target['availableModules']:
+                target['availableModules'].append(module)
     
-    def _archive_conversation_history(self, module_name: str, conversation_history: List[Dict[str, Any]]) -> bool:
-        """Archive the full conversation history for a module before summarization"""
+    def _archive_conversation_history(
+        self,
+        module_name: str,
+        conversation_history: List[Dict[str, Any]],
+    ) -> bool:
+        """Atomically archive history with a collision-free sequence number."""
         try:
-            # Find next available sequence number
-            sequence_num = self._get_next_sequence_number(self.archives_dir, f"{module_name}_conversation", ".json")
-            archive_file = os.path.join(self.archives_dir, f"{module_name}_conversation_{sequence_num:03d}.json")
-            
-            # Neutralize any module transition markers before archiving to prevent false detection on reload
-            # Make a deep copy to avoid modifying the original
-            import copy
-            archived_history = copy.deepcopy(conversation_history)
-            
-            # Filter out campaign context system messages and neutralize transition markers
-            filtered_history = []
-            for msg in archived_history:
-                # Skip campaign context system messages
-                if msg.get("role") == "system" and "=== CAMPAIGN CONTEXT ===" in msg.get("content", ""):
-                    print(f"DEBUG: [Module Archive] Filtered out campaign context system message")
-                    continue
-                    
-                # Neutralize transition markers
-                if msg.get("role") == "user" and "Module transition:" in msg.get("content", ""):
-                    # Modify the marker so it won't be detected as active
-                    original_content = msg["content"]
-                    msg["content"] = msg["content"].replace("Module transition:", "[Archived] Module transition:", 1)
-                    print(f"DEBUG: [Module Archive] Neutralized transition marker: '{original_content}' -> '{msg['content']}'")
-                
-                filtered_history.append(msg)
-            
-            archive_data = {
-                "moduleName": module_name,
-                "sequenceNumber": sequence_num,
-                "archiveDate": datetime.now().isoformat(),
-                "conversationHistory": filtered_history,
-                "totalMessages": len(filtered_history)
-            }
-            safe_json_dump(archive_data, archive_file)
-            print(f"DEBUG: [Module Archive] Archived {len(filtered_history)} messages to: {archive_file}")
-            info(f"SUCCESS: Archived {len(filtered_history)} conversation messages for {module_name} (sequence {sequence_num:03d})", category="summary_building")
+            archive_lock_target = getattr(
+                self,
+                "campaign_file",
+                os.path.join(self.archives_dir, "campaign_archive"),
+            )
+            with _campaign_transaction_lock(f"{archive_lock_target}.archive"):
+                sequence_num = self._get_next_sequence_number(
+                    self.archives_dir,
+                    f"{module_name}_conversation",
+                    ".json",
+                )
+                archive_file = os.path.join(
+                    self.archives_dir,
+                    f"{module_name}_conversation_{sequence_num:03d}.json",
+                )
+
+                archived_history = copy.deepcopy(conversation_history)
+                filtered_history = []
+                for msg in archived_history:
+                    if (
+                        msg.get("role") == "system"
+                        and "=== CAMPAIGN CONTEXT ==="
+                        in msg.get("content", "")
+                    ):
+                        print(
+                            "DEBUG: [Module Archive] Filtered out campaign "
+                            "context system message"
+                        )
+                        continue
+
+                    if (
+                        msg.get("role") == "user"
+                        and "Module transition:" in msg.get("content", "")
+                    ):
+                        original_content = msg["content"]
+                        msg["content"] = msg["content"].replace(
+                            "Module transition:",
+                            "[Archived] Module transition:",
+                            1,
+                        )
+                        print(
+                            "DEBUG: [Module Archive] Neutralized transition "
+                            f"marker: '{original_content}' -> "
+                            f"'{msg['content']}'"
+                        )
+
+                    filtered_history.append(msg)
+
+                archive_data = {
+                    "moduleName": module_name,
+                    "sequenceNumber": sequence_num,
+                    "archiveDate": datetime.now().isoformat(),
+                    "conversationHistory": filtered_history,
+                    "totalMessages": len(filtered_history),
+                }
+                if not safe_write_json(archive_file, archive_data):
+                    raise OSError(
+                        "Could not atomically persist conversation archive "
+                        f"{archive_file}"
+                    )
+            print(
+                f"DEBUG: [Module Archive] Archived {len(filtered_history)} "
+                f"messages to: {archive_file}"
+            )
+            info(
+                f"SUCCESS: Archived {len(filtered_history)} conversation "
+                f"messages for {module_name} (sequence {sequence_num:03d})",
+                category="summary_building",
+            )
             return True
         except Exception as e:
-            warning(f"FAILURE: Failed to archive conversation history for {module_name}: {e}", category="summary_building")
+            warning(
+                f"FAILURE: Failed to archive conversation history for "
+                f"{module_name}: {e}",
+                category="summary_building",
+            )
             return False
     
     def _load_module_plot_data(self, module_name: str) -> Optional[Dict[str, Any]]:
@@ -955,16 +1284,61 @@ Focus on story outcomes, character development, and decisions that will matter i
         }
     
     def _process_module_summary_for_export(self, summary_text: str, party_tracker_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Let AI extract exportable data from module completion"""
-        # This method would use AI to extract key data agnostically
-        # For now, return empty export data - would be filled by AI analysis
-        return {
+        """Build a conservative local export when T039 is unavailable.
+
+        The prose summary remains the durable T038 record.  This fallback
+        does not attempt speculative NLP over that prose; it preserves only
+        authoritative structured facts already present in the party tracker.
+        """
+        import copy
+
+        exported_data = {
             "relationships": {},
             "artifacts": {},
             "hubs": {},
             "worldState": {},
             "unlockedModules": []
         }
+
+        if not isinstance(party_tracker_data, dict):
+            return exported_data
+
+        for field in ("relationships", "artifacts", "hubs"):
+            value = party_tracker_data.get(field)
+            if isinstance(value, dict):
+                exported_data[field].update(copy.deepcopy(value))
+
+        world_conditions = party_tracker_data.get("worldConditions")
+        if isinstance(world_conditions, dict):
+            exported_data["worldState"].update(copy.deepcopy(world_conditions))
+
+        explicit_world_state = party_tracker_data.get("worldState")
+        if isinstance(explicit_world_state, dict):
+            exported_data["worldState"].update(copy.deepcopy(explicit_world_state))
+
+        party_npcs = party_tracker_data.get("partyNPCs", [])
+        if isinstance(party_npcs, list):
+            for npc in party_npcs:
+                if not isinstance(npc, dict):
+                    continue
+                name = npc.get("name")
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                role = npc.get("role")
+                if not isinstance(role, str) or not role.strip():
+                    role = "party companion"
+                exported_data["relationships"].setdefault(name.strip(), role.strip())
+
+        unlocked_modules = party_tracker_data.get("unlockedModules", [])
+        if isinstance(unlocked_modules, list):
+            for module_name in unlocked_modules:
+                if not isinstance(module_name, str) or not module_name.strip():
+                    continue
+                clean_name = module_name.strip()
+                if clean_name not in exported_data["unlockedModules"]:
+                    exported_data["unlockedModules"].append(clean_name)
+
+        return exported_data
     
     
     def establish_hub(self, hub_name: str, hub_data: Dict[str, Any]):

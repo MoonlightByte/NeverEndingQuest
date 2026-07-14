@@ -67,8 +67,12 @@ import config
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.file_operations import safe_write_json
+from utils.single_target_generation import (
+    load_valid_generated_target,
+    single_target_generation,
+)
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T034", "core/generators/monster_builder.py", 190)
+register_callsite("T034", "core/generators/monster_builder.py", 231)
 
 # Set script name for logging
 set_script_name("monster_builder")
@@ -190,7 +194,7 @@ Schema: {json.dumps(schema)}"""
     if MODEL_PROVIDER == "openai":
         monster_config = config.MONSTER_BUILD_GPT52_NONE
     elif MODEL_PROVIDER == "gemini":
-        monster_config = config.MONSTER_BUILD_GEMINI_FLASH_MINIMAL
+        monster_config = config.MONSTER_BUILD_GEMINI_FLASH_LOW
     elif MODEL_PROVIDER == "lmstudio":
         monster_config = config.MONSTER_BUILD_LMSTUDIO
     else:  # legacy
@@ -225,6 +229,7 @@ Schema: {json.dumps(schema)}"""
     for attempt in range(_max_retries + 1):
         try:
             response = capture_and_fanout("T034", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=prompt,
                 model=monster_config["model"],
                 temperature=0.7,
@@ -290,6 +295,50 @@ def remove_nested_values(data):
     else:
         return data
 
+
+def _active_module_path_manager():
+    """Resolve the same active-module snapshot historically used by main()."""
+    try:
+        from utils.encoding_utils import safe_json_load
+
+        party_tracker = safe_json_load("party_tracker.json")
+        current_module = (
+            party_tracker.get("module", "").replace(" ", "_")
+            if party_tracker
+            else None
+        )
+        return ModulePathManager(current_module)
+    except Exception:
+        return ModulePathManager()
+
+
+def build_monster_file(monster_name, schema, party_level=1, path_manager=None):
+    """Generate and save one monster as a deduplicated target transaction."""
+    path_manager = path_manager or _active_module_path_manager()
+    target_path = path_manager.get_monster_path(monster_name)
+
+    with single_target_generation(target_path) as transaction:
+        candidates = [transaction.resolved_target, target_path]
+        for candidate in dict.fromkeys(path for path in candidates if path):
+            existing = load_valid_generated_target(candidate, schema)
+            if existing is not None:
+                transaction.remember_target(candidate)
+                info(
+                    f"SUCCESS: Monster creation ({monster_name}) - already exists",
+                    category="monster_creation",
+                )
+                return existing
+
+        generated = generate_monster(monster_name, schema, party_level)
+        if not generated:
+            return None
+        # Record the intended path before the atomic save. If this process dies
+        # after os.replace but before returning, the next waiter still finds it.
+        transaction.remember_target(target_path)
+        if not save_json(target_path, generated):
+            return None
+        return generated
+
 def main():
     # Parse args. --party-level is optional for backward compatibility:
     # legacy callers that supply only the monster name still work and
@@ -343,22 +392,11 @@ def main():
     if not schema_data:
         return
 
-    generated_monster_data = generate_monster(monster_name_arg, schema_data, party_level)
+    generated_monster_data = build_monster_file(
+        monster_name_arg, schema_data, party_level
+    )
     if generated_monster_data:
-        # Get current module from party tracker for consistent path resolution
-        try:
-            from utils.encoding_utils import safe_json_load
-            party_tracker = safe_json_load("party_tracker.json")
-            current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
-            path_manager = ModulePathManager(current_module)
-        except:
-            path_manager = ModulePathManager()  # Fallback to reading from file
-        full_path = path_manager.get_monster_path(monster_name_arg)
-        if save_json(full_path, generated_monster_data):
-            info(f"SUCCESS: Monster creation ({monster_name_arg}) - PASS", category="monster_creation")
-        else:
-            error(f"FAILURE: Monster save ({monster_name_arg}) - FAIL", category="monster_creation")
-            sys.exit(1) # Ensure exit with error code
+        info(f"SUCCESS: Monster creation ({monster_name_arg}) - PASS", category="monster_creation")
     else:
         error(f"FAILURE: Monster creation ({monster_name_arg}) - FAIL", category="monster_creation")
         sys.exit(1)  # Exit with an error code

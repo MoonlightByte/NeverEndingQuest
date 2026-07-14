@@ -9,7 +9,7 @@ import json
 from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T086", "utils/level_up.py", 110)
+register_callsite("T086", "utils/level_up.py", 162)
 from .file_operations import safe_read_json
 
 def load_leveling_info():
@@ -61,6 +61,38 @@ def _dedup_class_features(existing, new):
         seen.add(key)
         merged.append(feat)
     return merged
+
+
+def _validate_npc_level_up_changes(changes, new_level):
+    """Validate T086's required state delta before reporting success."""
+    required = {
+        "level",
+        "hitPoints",
+        "maxHitPoints",
+        "experience_points",
+        "exp_required_for_next_level",
+        "classFeatures",
+    }
+    if not isinstance(changes, dict) or not required.issubset(changes):
+        raise ValueError("T086 response is missing required level-up fields")
+    if type(changes["level"]) is not int or changes["level"] != new_level:
+        raise ValueError("T086 level must exactly match the requested new level")
+    for field in ("hitPoints", "maxHitPoints", "experience_points", "exp_required_for_next_level"):
+        if type(changes[field]) is not int:
+            raise ValueError(f"T086 {field} must be an integer")
+    if changes["maxHitPoints"] < 1:
+        raise ValueError("T086 maxHitPoints must be positive")
+    if not 0 <= changes["hitPoints"] <= changes["maxHitPoints"]:
+        raise ValueError("T086 hitPoints must be within the new maximum")
+    if changes["experience_points"] != 0:
+        raise ValueError("T086 experience_points must reset to zero")
+    if changes["exp_required_for_next_level"] < 0:
+        raise ValueError("T086 next-level experience cannot be negative")
+    if not isinstance(changes["classFeatures"], list) or not all(
+        isinstance(feature, (dict, str)) for feature in changes["classFeatures"]
+    ):
+        raise ValueError("T086 classFeatures must be an array of features")
+    return changes
 
 def get_npc_level_up_changes(character_name, character_data, current_level, new_level):
     """Get automatic level up changes for an NPC"""
@@ -128,6 +160,7 @@ Example response format:
 
         # Get AI response
         response = capture_and_fanout("T086", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=[
                 {"role": "system", "content": "You are a 5th edition of the world's most popular roleplaying game rules expert. Provide only valid JSON responses."},
                 {"role": "user", "content": prompt}
@@ -145,7 +178,7 @@ Example response format:
             ai_response = ai_response.split("```")[1].split("```")[0].strip()
         
         # Parse the changes
-        changes = json.loads(ai_response)
+        changes = _validate_npc_level_up_changes(json.loads(ai_response), new_level)
         
         # Handle classFeatures properly - we need to merge with existing
         if "classFeatures" in changes and character_data.get("classFeatures"):

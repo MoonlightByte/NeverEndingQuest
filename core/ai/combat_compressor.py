@@ -18,6 +18,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 from datetime import datetime
+from utils.atomic_json_cache import merge_json_mapping, read_json_mapping
 
 # Import the combat compression engine from same directory
 from core.ai.combat_compression_engine import CombatCompressor
@@ -30,6 +31,8 @@ class CombatUserMessageCompressor:
         self.cache_file = cache_file
         self.cache = self.load_cache()
         self.cache_lock = threading.Lock()  # Thread safety for cache
+        self.cache_updates = {}
+        self.cache_removals = set()
         self.max_workers = max_workers
         self.progress_lock = threading.Lock()  # Thread safety for progress tracking
         self.completed_count = 0
@@ -39,28 +42,26 @@ class CombatUserMessageCompressor:
         
     def load_cache(self) -> Dict[str, str]:
         """Load existing cache from file."""
-        cache_path = Path(self.cache_file)
-        if cache_path.exists():
-            try:
-                with open(cache_path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except:
-                return {}
-        return {}
+        return read_json_mapping(self.cache_file)
     
     def save_cache(self):
         """Save cache to file (thread-safe)."""
         with self.cache_lock:
-            # Ensure directory exists
-            cache_path = Path(self.cache_file)
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            with open(self.cache_file, 'w', encoding='utf-8') as f:
-                json.dump(self.cache, f, indent=2, ensure_ascii=False)
+            updates = dict(self.cache_updates)
+            removals = set(self.cache_removals)
+            if not updates and not removals:
+                return
+            self.cache = merge_json_mapping(
+                self.cache_file,
+                updates=updates,
+                remove_keys=removals,
+            )
+            self.cache_updates.clear()
+            self.cache_removals.clear()
     
     def get_content_hash(self, content: str) -> str:
-        """Generate MD5 hash of content for caching."""
-        return hashlib.md5(content.encode('utf-8')).hexdigest()
+        """Use the engine's provider/model/prompt-aware cache identity."""
+        return self.combat_compressor._get_content_hash(content)
     
     def should_compress_user_message(self, message: Dict, index: int, total_messages: int) -> bool:
         """
@@ -131,17 +132,34 @@ class CombatUserMessageCompressor:
         
         # Check cache first (thread-safe)
         with self.cache_lock:
-            if content_hash in self.cache:
+            cached = self.cache.get(content_hash)
+            cache_valid, cache_reason = self.combat_compressor.validate_compression(
+                content, cached
+            )
+            if cache_valid:
                 self._update_progress(from_cache=True)
-                return (idx, self.cache[content_hash], True)
+                return (idx, cached, True)
+            if cached is not None:
+                print(f"  [WARNING] Evicting invalid combat cache entry: {cache_reason}")
+                self.cache.pop(content_hash, None)
+                self.cache_updates.pop(content_hash, None)
+                self.cache_removals.add(content_hash)
         
         # Compress using combat compressor
         try:
             compressed = self.combat_compressor.compress(content)
             
-            # Cache the result (thread-safe)
-            with self.cache_lock:
-                self.cache[content_hash] = compressed
+            valid, reason = self.combat_compressor.validate_compression(
+                content, compressed
+            )
+            if valid:
+                with self.cache_lock:
+                    self.cache[content_hash] = compressed
+                    self.cache_updates[content_hash] = compressed
+                    self.cache_removals.discard(content_hash)
+            else:
+                print(f"  [WARNING] Preserving original after invalid compression: {reason}")
+                compressed = content
             
             self._update_progress(from_cache=False)
             
@@ -290,18 +308,17 @@ class CombatUserMessageCompressor:
                 original_len = len(messages_to_send[idx]["content"])
                 compressed_len = len(compressed_content)
                 
-                # Replace if we have valid compressed format (starts with @T=CS/v2)
-                # Even if size didn't reduce much, the structured format is better for AI
-                if compressed_content.startswith("@T=CS/v2"):
+                original_content = messages_to_send[idx].get("content", "")
+                valid, reason = self.combat_compressor.validate_compression(
+                    original_content, compressed_content
+                )
+                if valid:
                     messages_to_send[idx]["content"] = compressed_content
                     replacements += 1
                     if compressed_len >= original_len:
                         print(f"  [INFO] Message {idx}: Using compressed format despite size ({original_len} -> {compressed_len})")
-                elif compressed_len < original_len:
-                    # Fallback: If not proper format but smaller, still use it
-                    messages_to_send[idx]["content"] = compressed_content
-                    replacements += 1
-                    print(f"  [WARNING] Message {idx}: Non-standard compression used")
+                else:
+                    print(f"  [WARNING] Message {idx}: Preserving original after invalid compression: {reason}")
         
         # Save cache after all processing
         self.save_cache()

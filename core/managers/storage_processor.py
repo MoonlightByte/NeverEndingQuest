@@ -34,7 +34,7 @@ import os
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T049", "core/managers/storage_processor.py", 286)
+register_callsite("T049", "core/managers/storage_processor.py", 313)
 import config
 from core.ai import api_client
 from utils.encoding_utils import safe_json_load, safe_json_dump
@@ -293,7 +293,7 @@ For "What's in our storage here?":
                 if MODEL_PROVIDER == "openai":
                     sp_cfg = config.STORAGE_PROCESSOR_T049_GPT5MINI
                 elif MODEL_PROVIDER == "gemini":
-                    sp_cfg = config.STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_MINIMAL
+                    sp_cfg = config.STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_LOW
                 elif MODEL_PROVIDER == "lmstudio":
                     sp_cfg = config.STORAGE_PROCESSOR_T049_LMSTUDIO
                 else:  # legacy
@@ -311,6 +311,7 @@ For "What's in our storage here?":
 
                 # Call AI model
                 response = capture_and_fanout("T049", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
                     messages=messages,
                     model=sp_cfg["model"],
                     temperature=0.1,    # callsite owns temperature

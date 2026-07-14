@@ -56,7 +56,7 @@ from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T018", "core/ai/cumulative_summary.py", 293)
-register_callsite("T019", "core/ai/cumulative_summary.py", 578)
+register_callsite("T019", "core/ai/cumulative_summary.py", 579)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:
@@ -291,6 +291,7 @@ Use past tense and third person. Be vivid, specific, and emotional where appropr
             adv_config = config.ADV_SUMM_LEGACY
 
         response = capture_and_fanout("T018", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=messages,
             model=adv_config["model"],
             temperature=TEMPERATURE,
@@ -576,6 +577,7 @@ Keep the narrative engaging but factual. Use only standard ASCII characters -- n
                 adv_config = config.ADV_SUMM_LEGACY
 
             response = capture_and_fanout("T019", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=messages,
                 model=adv_config["model"],
                 temperature=TEMPERATURE,

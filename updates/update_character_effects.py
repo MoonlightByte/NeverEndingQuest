@@ -8,15 +8,19 @@ AI-driven temporary effects tracking system that runs parallel to character upda
 Tracks temporary modifiers and automatically reverses them when expired.
 """
 
+import copy
 import json
 import os
 import re
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Dict, Any, Optional, List
 import uuid
 from utils.enhanced_logger import debug, info, warning, error
 from utils.encoding_utils import safe_json_load, safe_json_dump
-from utils.file_operations import safe_read_json, safe_write_json
+from utils.file_operations import atomic_writer, safe_read_json, safe_write_json
 from utils.module_path_manager import ModulePathManager
 from updates.update_character_info import normalize_character_name
 import config
@@ -35,9 +39,73 @@ from utils.enhanced_logger import set_script_name
 set_script_name(os.path.basename(__file__))
 
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T078", "updates/update_character_effects.py", 210)
+register_callsite("T078", "updates/update_character_effects.py", 335)
 
 EFFECTS_TRACKER_FILE = "modules/effects_tracker.json"
+_EFFECTS_TRANSACTION_LOCK = threading.RLock()
+_COMPLETED_REVERSAL_LIMIT = 200
+
+
+_TRACKED_EFFECT_FIELDS = {
+    "stat",
+    "value",
+    "source",
+    "duration_type",
+    "duration_value",
+    "description",
+    "affects_max",
+}
+_TRACKED_STATS = {
+    "hitPoints",
+    "maxHitPoints",
+    "strength",
+    "dexterity",
+    "constitution",
+    "intelligence",
+    "wisdom",
+    "charisma",
+    "armorClass",
+    "other",
+}
+
+
+def _validate_effect_analysis(result: Any) -> Dict[str, Any]:
+    """Validate T078 before its output can mutate the effects tracker."""
+    if not isinstance(result, dict) or set(result) != {"should_track", "effect"}:
+        raise ValueError("T078 requires exactly should_track and effect")
+    if type(result["should_track"]) is not bool or not isinstance(result["effect"], dict):
+        raise ValueError("T078 returned invalid should_track/effect types")
+    if result["should_track"] is False:
+        return result
+
+    effect = result["effect"]
+    if set(effect) != _TRACKED_EFFECT_FIELDS:
+        raise ValueError("T078 tracked effect has missing or extra fields")
+    if effect["stat"] not in _TRACKED_STATS:
+        raise ValueError("T078 tracked effect has an unsupported stat")
+    if type(effect["value"]) is not int:
+        raise ValueError("T078 tracked effect value must be an integer")
+    if not isinstance(effect["source"], str) or not effect["source"].strip():
+        raise ValueError("T078 tracked effect source must be useful text")
+    if not isinstance(effect["description"], str) or not effect["description"].strip():
+        raise ValueError("T078 tracked effect description must be useful text")
+    if type(effect["affects_max"]) is not bool:
+        raise ValueError("T078 affects_max must be a boolean")
+
+    duration_type = effect["duration_type"]
+    duration_value = effect["duration_value"]
+    if duration_type in {"hours", "days"}:
+        if type(duration_value) not in {int, float} or duration_value <= 0:
+            raise ValueError("T078 timed duration must be a positive number")
+    elif duration_type == "until_rest":
+        if duration_value not in {"long_rest", "short_rest"}:
+            raise ValueError("T078 rest duration must name a valid rest")
+    elif duration_type == "special":
+        if not isinstance(duration_value, str) or not duration_value.strip():
+            raise ValueError("T078 special duration must be useful text")
+    else:
+        raise ValueError("T078 returned an unsupported duration_type")
+    return result
 
 def get_current_game_time() -> datetime:
     """Get current game time from party tracker as datetime."""
@@ -84,43 +152,99 @@ def get_effects_file_path() -> str:
     # Effects are tracked globally across all modules in the modules directory
     return EFFECTS_TRACKER_FILE
 
+
+def _initial_effects_tracker() -> Dict[str, Any]:
+    return {
+        "version": "1.0",
+        "lastUpdated": datetime.now().isoformat(),
+        "characters": {},
+        "metadata": {
+            "description": "Tracks temporary effects and modifiers for characters"
+        },
+    }
+
+
+def _load_effects_tracker_locked(file_path: str) -> Dict[str, Any]:
+    if not os.path.exists(file_path):
+        return _initial_effects_tracker()
+    try:
+        with open(file_path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Cannot safely read effects tracker {file_path}: {exc}") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("characters"), dict):
+        raise RuntimeError("Effects tracker must contain a characters object")
+    return data
+
+
+@contextmanager
+def _effects_tracker_transaction():
+    """Hold the complete cross-thread/process read-modify-write boundary."""
+    file_path = os.path.abspath(os.path.normpath(get_effects_file_path()))
+    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+    with _EFFECTS_TRANSACTION_LOCK:
+        lock_acquired = False
+        try:
+            atomic_writer.acquire_lock(file_path)
+            lock_acquired = True
+            tracker = _load_effects_tracker_locked(file_path)
+            yield tracker
+            tracker["lastUpdated"] = datetime.now().isoformat()
+            if not safe_write_json(
+                file_path,
+                tracker,
+                create_backup=True,
+                acquire_lock=False,
+            ):
+                raise RuntimeError(f"Failed to commit effects tracker {file_path}")
+        finally:
+            if lock_acquired:
+                atomic_writer.release_lock(file_path)
+
 def load_effects_tracker() -> Dict[str, Any]:
     """Load the effects tracker file, creating it if it doesn't exist."""
-    file_path = get_effects_file_path()
-    
-    if not os.path.exists(file_path):
-        # Create initial structure
-        initial_data = {
-            "version": "1.0",
-            "lastUpdated": datetime.now().isoformat(),
-            "characters": {},
-            "metadata": {
-                "description": "Tracks temporary effects and modifiers for characters"
-            }
-        }
-        safe_write_json(file_path, initial_data)
-        debug(f"EFFECTS: Created new effects tracker at {file_path}", category="effects_tracking")
-        return initial_data
-    
-    data = safe_read_json(file_path)
-    if data is None:
-        error(f"Failed to load effects tracker from {file_path}")
-        return {"characters": {}}
-    
-    return data
+    file_path = os.path.abspath(os.path.normpath(get_effects_file_path()))
+    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+    with _EFFECTS_TRANSACTION_LOCK:
+        lock_acquired = False
+        try:
+            atomic_writer.acquire_lock(file_path)
+            lock_acquired = True
+            data = _load_effects_tracker_locked(file_path)
+            if not os.path.exists(file_path):
+                if not safe_write_json(
+                    file_path,
+                    data,
+                    create_backup=False,
+                    acquire_lock=False,
+                ):
+                    raise RuntimeError(f"Failed to create effects tracker {file_path}")
+                debug(
+                    f"EFFECTS: Created new effects tracker at {file_path}",
+                    category="effects_tracking",
+                )
+            return data
+        finally:
+            if lock_acquired:
+                atomic_writer.release_lock(file_path)
 
 def save_effects_tracker(data: Dict[str, Any]) -> bool:
     """Save the effects tracker file."""
-    file_path = get_effects_file_path()
-    data["lastUpdated"] = datetime.now().isoformat()
-    
-    success = safe_write_json(file_path, data)
-    if success:
-        debug(f"EFFECTS: Saved effects tracker to {file_path}", category="effects_tracking")
-    else:
-        error(f"EFFECTS: Failed to save effects tracker to {file_path}", category="effects_tracking")
-    
-    return success
+    try:
+        with _effects_tracker_transaction() as tracker:
+            tracker.clear()
+            tracker.update(data)
+        debug(
+            f"EFFECTS: Saved effects tracker to {get_effects_file_path()}",
+            category="effects_tracking",
+        )
+        return True
+    except Exception as exc:
+        error(
+            f"EFFECTS: Failed to save effects tracker to {get_effects_file_path()}: {exc}",
+            category="effects_tracking",
+        )
+        return False
 
 def analyze_effect_with_ai(character_name: str, change_description: str) -> Optional[Dict[str, Any]]:
     """Use AI to analyze if a change is a trackable temporary effect."""
@@ -209,6 +333,7 @@ Set affects_max to true for effects like Aid that modify both current and maximu
 
     try:
         response = capture_and_fanout("T078", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": f"Analyze this update: {change_description}"}
@@ -232,7 +357,7 @@ Set affects_max to true for effects like Aid that modify both current and maximu
         response_text = response.choices[0].message.content.strip()
         response_text = re.sub(r'^```(?:json)?\s*|\s*```$', '', response_text.strip())
 
-        result = json.loads(response_text.strip())
+        result = _validate_effect_analysis(json.loads(response_text.strip()))
         debug(f"EFFECTS: AI effect analysis: {result}", category="effects_tracking")
         return result
         
@@ -273,166 +398,310 @@ def calculate_expiration(duration_type: str, duration_value: Any) -> Optional[st
 
 def add_effect(character_name: str, effect_info: Dict[str, Any]) -> bool:
     """Add a new effect to the tracker."""
-    tracker = load_effects_tracker()
-    
-    # Normalize character name to match file naming convention
-    normalized_name = normalize_character_name(character_name)
-    debug(f"EFFECTS: Normalized '{character_name}' to '{normalized_name}'", category="effects_tracking")
-    
-    # Ensure character exists
-    if normalized_name not in tracker["characters"]:
-        tracker["characters"][normalized_name] = {
-            "modifiers": []
-        }
-    
-    # Create effect entry
-    effect_id = str(uuid.uuid4())[:8]  # Short ID for readability
-    
-    # Use game time instead of real time
-    game_time = get_current_game_time()
-    
-    effect_entry = {
-        "id": effect_id,
-        "stat": effect_info["stat"],
-        "value": effect_info["value"],
-        "source": effect_info["source"],
-        "description": effect_info["description"],
-        "applied_at": game_time.isoformat(),
-        "duration_type": effect_info["duration_type"],
-        "duration_value": effect_info["duration_value"]
+    try:
+        with _effects_tracker_transaction() as tracker:
+            normalized_name = normalize_character_name(character_name)
+            debug(
+                f"EFFECTS: Normalized '{character_name}' to '{normalized_name}'",
+                category="effects_tracking",
+            )
+            tracker["characters"].setdefault(normalized_name, {"modifiers": []})
+
+            effect_entry = {
+                "id": str(uuid.uuid4())[:8],
+                "stat": effect_info["stat"],
+                "value": effect_info["value"],
+                "source": effect_info["source"],
+                "description": effect_info["description"],
+                "applied_at": get_current_game_time().isoformat(),
+                "duration_type": effect_info["duration_type"],
+                "duration_value": effect_info["duration_value"],
+            }
+            if "affects_max" in effect_info:
+                effect_entry["affects_max"] = effect_info["affects_max"]
+            expiration = calculate_expiration(
+                effect_info["duration_type"], effect_info["duration_value"]
+            )
+            if expiration:
+                effect_entry["expires_at"] = expiration
+            tracker["characters"][normalized_name]["modifiers"].append(effect_entry)
+
+        info(
+            f"EFFECTS: Added effect for {normalized_name}: {effect_info['source']} "
+            f"({effect_info['stat']} {effect_info['value']:+d})",
+            category="effects_tracking",
+        )
+        return True
+    except Exception as exc:
+        error(f"EFFECTS: Failed to add effect transactionally: {exc}")
+        return False
+
+
+def _claim_effect_reversal(modifier: Dict[str, Any], reason: str) -> Optional[str]:
+    """Claim one durable reversal; an interrupted claim is never applied twice."""
+    if modifier.get("reversal_state") == "in_progress":
+        warning(
+            "EFFECTS: Reversal remains in progress and requires reconciliation: "
+            f"{modifier.get('id', 'unknown')} ({modifier.get('source', 'unknown')})",
+            category="effects_tracking",
+        )
+        return None
+
+    claim_id = uuid.uuid4().hex
+    modifier["reversal_state"] = "in_progress"
+    modifier["reversal_reason"] = reason
+    modifier["reversal_claim_id"] = claim_id
+    modifier["reversal_claimed_at"] = datetime.now().isoformat()
+    return claim_id
+
+
+def _reversal_record(
+    character_name: str,
+    modifier: Dict[str, Any],
+    claim_id: str,
+    description: str,
+) -> Dict[str, Any]:
+    return {
+        "character": character_name,
+        "description": description,
+        "modifier": copy.deepcopy(modifier),
+        "claim_id": claim_id,
     }
-    
-    # Include affects_max flag if present
-    if "affects_max" in effect_info:
-        effect_entry["affects_max"] = effect_info["affects_max"]
-    
-    # Calculate expiration
-    expiration = calculate_expiration(effect_info["duration_type"], effect_info["duration_value"])
-    if expiration:
-        effect_entry["expires_at"] = expiration
-    
-    # Add to character's modifiers
-    tracker["characters"][normalized_name]["modifiers"].append(effect_entry)
-    
-    info(f"EFFECTS: Added effect for {normalized_name}: {effect_info['source']} "
-         f"({effect_info['stat']} {effect_info['value']:+d})", category="effects_tracking")
-    
-    return save_effects_tracker(tracker)
+
+
+def complete_effect_reversal(
+    character_name: str,
+    modifier_id: str,
+    claim_id: str,
+    *,
+    success: bool,
+) -> bool:
+    """Acknowledge a claimed reversal without losing failed work.
+
+    Known failures return the modifier to ``pending`` so the next scan heals it.
+    A process crash leaves ``in_progress`` durably visible and will not be
+    applied a second time automatically. Successful acknowledgements are kept
+    in a bounded ledger, making duplicate completion calls idempotent.
+    """
+    normalized_name = normalize_character_name(character_name)
+    completion_key = f"{normalized_name}:{modifier_id}"
+    try:
+        with _effects_tracker_transaction() as tracker:
+            metadata = tracker.setdefault("metadata", {})
+            completed = metadata.setdefault("completed_reversals", [])
+            if not isinstance(completed, list):
+                raise RuntimeError("effects completion ledger must be a list")
+
+            modifiers = (
+                tracker.get("characters", {})
+                .get(normalized_name, {})
+                .get("modifiers", [])
+            )
+            target = next(
+                (
+                    modifier
+                    for modifier in modifiers
+                    if modifier.get("id") == modifier_id
+                ),
+                None,
+            )
+            if target is None:
+                return bool(success and completion_key in completed)
+            if (
+                target.get("reversal_state") != "in_progress"
+                or target.get("reversal_claim_id") != claim_id
+            ):
+                warning(
+                    f"EFFECTS: Reversal claim mismatch for {completion_key}",
+                    category="effects_tracking",
+                )
+                return False
+
+            if success:
+                modifiers.remove(target)
+                if completion_key not in completed:
+                    completed.append(completion_key)
+                    del completed[:-_COMPLETED_REVERSAL_LIMIT]
+            else:
+                target["reversal_state"] = "pending"
+                target.pop("reversal_claim_id", None)
+                target.pop("reversal_claimed_at", None)
+        return True
+    except Exception as exc:
+        error(f"EFFECTS: Failed to acknowledge reversal {completion_key}: {exc}")
+        return False
+
+
+def apply_claimed_effect_reversal(reversal, update_function) -> bool:
+    """Apply one claimed reversal and durably acknowledge its outcome."""
+    character_name = reversal["character"]
+    modifier = reversal["modifier"]
+    claim_id = reversal["claim_id"]
+    try:
+        applied = update_function(character_name, reversal["description"])
+    except Exception as exc:
+        error(
+            f"EFFECTS: Character reversal failed for {character_name}: {exc}",
+            category="effects_tracking",
+        )
+        applied = False
+
+    if applied is not True:
+        released = complete_effect_reversal(
+            character_name,
+            modifier["id"],
+            claim_id,
+            success=False,
+        )
+        if not released:
+            error(
+                "EFFECTS: Failed reversal could not be released for retry; "
+                f"claim remains explicit: {modifier['id']}",
+                category="effects_tracking",
+            )
+        return False
+
+    completed = complete_effect_reversal(
+        character_name,
+        modifier["id"],
+        claim_id,
+        success=True,
+    )
+    if not completed:
+        error(
+            "EFFECTS: Character was reversed but its durable claim could not "
+            f"be completed: {modifier['id']}",
+            category="effects_tracking",
+        )
+        return False
+    return True
 
 def check_and_apply_expirations() -> List[Dict[str, Any]]:
-    """Check for expired effects and generate reversal actions."""
-    tracker = load_effects_tracker()
-    # Use game time instead of real time
-    now = get_current_game_time()
+    """Claim expired effects and generate durable reversal actions."""
     reversals = []
-    
-    for character_name, char_data in tracker["characters"].items():
-        if "modifiers" not in char_data:
-            continue
-        
-        active_modifiers = []
-        
-        for modifier in char_data["modifiers"]:
-            expired = False
-            
-            # Check time-based expiration
-            if "expires_at" in modifier and modifier["expires_at"] not in ["long_rest", "short_rest", "special"]:
-                try:
-                    expiration_time = datetime.fromisoformat(modifier["expires_at"])
-                    if now >= expiration_time:
-                        expired = True
-                        info(f"EFFECTS: Effect expired for {character_name}: {modifier['source']}", category="effects_tracking")
-                except:
-                    warning(f"Invalid expiration time for effect {modifier['id']}")
-            
-            if expired:
-                # Generate reversal
-                reversal_value = -modifier["value"]  # Reverse the effect
-                
-                # Generate proper description based on whether we're adding or removing
-                if modifier["value"] > 0:
-                    # Positive effect expiring - character loses the bonus
-                    action_word = "loses"
-                else:
-                    # Negative effect expiring - character regains what was lost
-                    action_word = "regains"
-                
-                # Check if this effect affects both current and max values
-                if modifier.get("affects_max", False) and modifier["stat"] == "hitPoints":
-                    reversal_desc = f"{action_word} {abs(modifier['value'])} maximum hit points and {abs(modifier['value'])} current hit points as {modifier['source']} expires. Remove '{modifier['source']}' from temporaryEffects."
-                else:
-                    reversal_desc = f"{action_word} {abs(modifier['value'])} {modifier['stat']} as {modifier['source']} expires. Remove effect from temporaryEffects."
-                
-                reversals.append({
-                    "character": character_name,
-                    "description": reversal_desc,
-                    "modifier": modifier
-                })
-            else:
+    with _effects_tracker_transaction() as tracker:
+        now = get_current_game_time()
+        for character_name, char_data in tracker["characters"].items():
+            if "modifiers" not in char_data:
+                continue
+
+            active_modifiers = []
+
+            for modifier in char_data["modifiers"]:
+                expired = False
+
+                # Check time-based expiration.
+                if (
+                    "expires_at" in modifier
+                    and modifier["expires_at"]
+                    not in ["long_rest", "short_rest", "special"]
+                ):
+                    try:
+                        expiration_time = datetime.fromisoformat(modifier["expires_at"])
+                        if now >= expiration_time:
+                            expired = True
+                            info(
+                                f"EFFECTS: Effect expired for {character_name}: "
+                                f"{modifier['source']}",
+                                category="effects_tracking",
+                            )
+                    except (TypeError, ValueError):
+                        warning(f"Invalid expiration time for effect {modifier['id']}")
+
+                if expired:
+                    action_word = "loses" if modifier["value"] > 0 else "regains"
+                    if (
+                        modifier.get("affects_max", False)
+                        and modifier["stat"] == "hitPoints"
+                    ):
+                        reversal_desc = (
+                            f"{action_word} {abs(modifier['value'])} maximum hit "
+                            f"points and {abs(modifier['value'])} current hit points "
+                            f"as {modifier['source']} expires. Remove "
+                            f"'{modifier['source']}' from temporaryEffects."
+                        )
+                    else:
+                        reversal_desc = (
+                            f"{action_word} {abs(modifier['value'])} "
+                            f"{modifier['stat']} as {modifier['source']} expires. "
+                            "Remove effect from temporaryEffects."
+                        )
+
+                    claim_id = _claim_effect_reversal(modifier, "expired")
+                    if claim_id:
+                        reversals.append(
+                            _reversal_record(
+                                character_name,
+                                modifier,
+                                claim_id,
+                                reversal_desc,
+                            )
+                        )
                 active_modifiers.append(modifier)
-        
-        char_data["modifiers"] = active_modifiers
-    
-    # Save updated tracker
-    if reversals:
-        save_effects_tracker(tracker)
+
+            char_data["modifiers"] = active_modifiers
     
     return reversals
 
 def clear_rest_effects(character_name: str, rest_type: str) -> List[Dict[str, Any]]:
-    """Clear effects that expire on rest."""
-    tracker = load_effects_tracker()
+    """Claim effects that expire on rest without deleting them prematurely."""
     reversals = []
-    
-    # Normalize character name
-    normalized_name = normalize_character_name(character_name)
-    
-    if normalized_name not in tracker["characters"]:
-        return reversals
-    
-    char_data = tracker["characters"][normalized_name]
-    if "modifiers" not in char_data:
-        return reversals
-    
-    active_modifiers = []
-    
-    for modifier in char_data["modifiers"]:
-        should_clear = False
-        
-        # Check if this effect expires on this type of rest
-        if "expires_at" in modifier:
-            if rest_type == "long_rest" and modifier["expires_at"] in ["long_rest", "short_rest"]:
-                should_clear = True
-            elif rest_type == "short_rest" and modifier["expires_at"] == "short_rest":
-                should_clear = True
-        
-        if should_clear:
-            # Generate reversal with specific value information
-            reversal_value = -modifier["value"]
-            
-            # Generate proper description based on whether we're adding or removing
-            if modifier["value"] > 0:
-                # Positive effect expiring - character loses the bonus
-                action_word = "loses"
-            else:
-                # Negative effect expiring - character regains what was lost
-                action_word = "regains"
-            
-            # Include the specific stat and value in the description
-            reversal_desc = f"{action_word} {abs(modifier['value'])} {modifier['stat']} as {modifier['source']} expires after {rest_type.replace('_', ' ')}"
-            
-            reversals.append({
-                "character": character_name,
-                "description": reversal_desc,
-                "modifier": modifier
-            })
-            
-            info(f"EFFECTS: Cleared rest effect for {character_name}: {modifier['source']}", category="effects_tracking")
-        else:
+    with _effects_tracker_transaction() as tracker:
+        normalized_name = normalize_character_name(character_name)
+
+        if normalized_name not in tracker["characters"]:
+            return reversals
+
+        char_data = tracker["characters"][normalized_name]
+        if "modifiers" not in char_data:
+            return reversals
+
+        active_modifiers = []
+
+        for modifier in char_data["modifiers"]:
+            should_clear = False
+
+            # Check if this effect expires on this type of rest.
+            if "expires_at" in modifier:
+                if rest_type == "long_rest" and modifier["expires_at"] in [
+                    "long_rest",
+                    "short_rest",
+                ]:
+                    should_clear = True
+                elif (
+                    rest_type == "short_rest"
+                    and modifier["expires_at"] == "short_rest"
+                ):
+                    should_clear = True
+
+            if should_clear:
+                action_word = "loses" if modifier["value"] > 0 else "regains"
+                reversal_desc = (
+                    f"{action_word} {abs(modifier['value'])} {modifier['stat']} "
+                    f"as {modifier['source']} expires after "
+                    f"{rest_type.replace('_', ' ')}"
+                )
+
+                claim_id = _claim_effect_reversal(
+                    modifier, f"rest:{rest_type}"
+                )
+                if claim_id:
+                    reversals.append(
+                        _reversal_record(
+                            character_name,
+                            modifier,
+                            claim_id,
+                            reversal_desc,
+                        )
+                    )
+                    info(
+                        f"EFFECTS: Claimed rest effect for {character_name}: "
+                        f"{modifier['source']}",
+                        category="effects_tracking",
+                    )
             active_modifiers.append(modifier)
-    
-    char_data["modifiers"] = active_modifiers
-    save_effects_tracker(tracker)
+
+        char_data["modifiers"] = active_modifiers
     
     return reversals
 
@@ -444,6 +713,8 @@ def update_character_effects(character_name: str, change_description: str) -> bo
     """
     debug(f"EFFECTS: Analyzing potential effect for {character_name}: {change_description}", category="effects_tracking")
     
+    rest_reversals_succeeded = True
+
     # First check if this is a rest action that should clear effects
     change_lower = change_description.lower()
     if any(phrase in change_lower for phrase in ["short rest", "long rest", "takes a rest", "take a rest"]):
@@ -465,7 +736,10 @@ def update_character_effects(character_name: str, change_description: str) -> bo
             from updates.update_character_info import update_character_info
             for reversal in rest_reversals:
                 debug(f"EFFECTS: Applying rest reversal: {reversal['description']}")
-                update_character_info(reversal["character"], reversal["description"])
+                if not apply_claimed_effect_reversal(
+                    reversal, update_character_info
+                ):
+                    rest_reversals_succeeded = False
         
         # Continue to check if there are also new effects to track
     
@@ -486,10 +760,10 @@ def update_character_effects(character_name: str, change_description: str) -> bo
         else:
             error(f"EFFECTS: Failed to track effect: {effect_info['source']}", category="effects_tracking")
         
-        return success
+        return success and rest_reversals_succeeded
     else:
         debug(f"EFFECTS: Effect not trackable: {change_description}", category="effects_tracking")
-        return True
+        return rest_reversals_succeeded
 
 def get_character_modifiers(character_name: str) -> Dict[str, int]:
     """Get current active modifiers for a character."""

@@ -13,7 +13,7 @@ from typing import Dict, Any, List, Optional
 from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T085", "utils/compression/location_compressor.py", 198)
+register_callsite("T085", "utils/compression/location_compressor.py", 297)
 
 # Import token tracking
 try:
@@ -154,6 +154,105 @@ FORMAT NOTES:
 - EVT must have at MINIMUM one beat per room in @L. Each beat should reference the room's key mechanic.
 """
 
+
+_REQUIRED_LOCATION_TABLES = (
+    "C", "L", "S", "I", "R", "F", "TRANS", "DOORS", "DC", "LOOT",
+    "HOOKS", "HAZ", "AREA", "NPCROLES",
+)
+_SOURCE_TABLE_RULES = {
+    "npcs": ("C", "NPCROLES"),
+    "features": ("F",),
+    "doors": ("DOORS",),
+    "dcChecks": ("DC",),
+    "lootTable": ("LOOT",),
+    "plotHooks": ("HOOKS",),
+    "rooms": ("L", "AREA"),
+    "connections": ("TRANS",),
+}
+
+
+def _source_array_counts(value: Any) -> Dict[str, int]:
+    """Count explicit source arrays recursively without inferring narrative data."""
+    counts = {key: 0 for key in _SOURCE_TABLE_RULES}
+
+    def visit(node: Any) -> None:
+        if isinstance(node, dict):
+            for key, child in node.items():
+                if key in counts and isinstance(child, list):
+                    counts[key] += len(child)
+                visit(child)
+        elif isinstance(node, list):
+            for child in node:
+                visit(child)
+
+    visit(value)
+    return counts
+
+
+def validate_location_compression_output(
+    location_json_str: str, response_text: str
+) -> str:
+    """Validate T085's exact block contract and explicit-array fidelity rules."""
+    if not isinstance(response_text, str) or not response_text.strip():
+        raise ValueError("T085 returned an empty compression")
+
+    text = response_text.strip()
+    if "```" in text:
+        raise ValueError("T085 returned a code fence after normalization")
+
+    evt_match = re.search(r"(?m)^EVT\[\s*$", text)
+    if not evt_match or not text.endswith("]"):
+        raise ValueError("T085 response is missing a terminal EVT block")
+
+    table_text = text[:evt_match.start()]
+    table_lines = [line.strip() for line in table_text.splitlines() if line.strip()]
+    if len(table_lines) != len(_REQUIRED_LOCATION_TABLES):
+        raise ValueError("T085 response has missing or extra table lines")
+
+    table_values: Dict[str, str] = {}
+    for expected, line in zip(_REQUIRED_LOCATION_TABLES, table_lines):
+        match = re.fullmatch(r"@([A-Z]+)=(.+)", line)
+        if not match or match.group(1) != expected:
+            raise ValueError(f"T085 expected @{expected} in canonical table order")
+        value = match.group(2).strip()
+        if not value.startswith("{") or not value.endswith("}"):
+            raise ValueError(f"T085 @{expected} must be a brace-delimited table")
+        table_values[expected] = value
+
+    evt_body = text[evt_match.end():-1].strip()
+    beats = [line.strip() for line in evt_body.splitlines() if line.strip()]
+    if not beats or any(not re.match(r"^\d+\)\s+", beat) for beat in beats):
+        raise ValueError("T085 EVT must contain only numbered beats")
+
+    try:
+        source = json.loads(location_json_str)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ValueError(f"T085 source is not valid JSON: {exc}") from exc
+    counts = _source_array_counts(source)
+
+    for source_key, tables in _SOURCE_TABLE_RULES.items():
+        has_entries = counts[source_key] > 0
+        for table in tables:
+            is_empty = table_values[table] == "{}"
+            if has_entries and is_empty:
+                raise ValueError(
+                    f"T085 @{table} omitted explicit {source_key} entries"
+                )
+            if (
+                source_key in {"doors", "dcChecks", "lootTable", "plotHooks"}
+                and not has_entries
+                and not is_empty
+            ):
+                raise ValueError(
+                    f"T085 @{table} fabricated data absent from {source_key}"
+                )
+
+    room_count = counts["rooms"]
+    if room_count and len(beats) < room_count:
+        raise ValueError("T085 EVT has fewer beats than explicit rooms")
+
+    return text
+
 def compress_location(location_json_str: str, max_retries: int = 2) -> Optional[str]:
     """
     Compress location JSON using GPT model with validation and retries
@@ -199,6 +298,7 @@ Remove ALL role prefixes: "Kira" not "Scout_Kira", "Dorun" not "Elder_Dorun", "T
                     {"role": "system", "content": LOCATION_SYSTEM_PROMPT},
                     {"role": "user", "content": user_message}
                 ],
+                _request_provider=MODEL_PROVIDER,
                 model=compress_config["model"],
                 temperature=0.1,
                 **{k: v for k, v in compress_config.items() if k != "model"})
@@ -218,16 +318,27 @@ Remove ALL role prefixes: "Kira" not "Scout_Kira", "Dorun" not "Elder_Dorun", "T
                 response_text = re.sub(r'^```[a-z]*\n', '', response_text)
                 response_text = re.sub(r'\n```$', '', response_text)
             
-            # Try to parse as JSON first to see if it's wrapped
+            # Parse the one supported JSON wrapper, then validate the exact
+            # custom-block contract before allowing the result downstream.
             try:
                 result = json.loads(response_text)
-                if "blocks" in result and result["blocks"]:
-                    return result["blocks"][0]["text"]
-                else:
-                    return response_text
+                if (
+                    not isinstance(result, dict)
+                    or set(result) != {"blocks"}
+                    or not isinstance(result["blocks"], list)
+                    or len(result["blocks"]) != 1
+                    or not isinstance(result["blocks"][0], dict)
+                    or set(result["blocks"][0]) != {"text"}
+                    or not isinstance(result["blocks"][0]["text"], str)
+                ):
+                    raise ValueError("T085 returned an unsupported JSON wrapper")
+                response_text = result["blocks"][0]["text"]
             except json.JSONDecodeError:
-                # If not JSON, return the text directly
-                return response_text
+                pass
+
+            return validate_location_compression_output(
+                location_json_str, response_text
+            )
                 
         except Exception as e:
             print(f"Error calling OpenAI: {e}")

@@ -11,26 +11,98 @@ Compresses specific sections (campaign context, location summaries) in parallel
 import json
 import re
 import hashlib
+import os
 from typing import Dict, Any, List, Tuple
 from pathlib import Path
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+from contextlib import contextmanager
 from datetime import datetime
+from uuid import uuid4
 
 # Import compression functions
 sys.path.append('/mnt/c/dungeon_master_v1')
-from utils.compression.ai_narrative_compressor_agentic import compress_with_ai
-from utils.compression.location_compressor import compress_location
+from utils.compression.ai_narrative_compressor_agentic import (
+    compress_with_ai,
+    resolve_agentic_compression_runtime,
+)
+from utils.compression.location_compressor import LOCATION_SYSTEM_PROMPT, compress_location
 from utils.compression.character_sheet_conversation_compressor import CharacterSheetConversationCompressor
 from model_config import COMPRESSION_MAX_WORKERS
+import config
+
+
+_PROCESS_CACHE_LOCKS = {}
+_PROCESS_CACHE_LOCKS_GUARD = threading.Lock()
+_PROCESS_KEY_LOCKS = {}
+_PROCESS_KEY_LOCKS_GUARD = threading.Lock()
+
+# T027 prose has no separate metadata channel once it enters conversation
+# history.  These are the stable factual anchors that can be checked without
+# trying to judge prose semantics: explicit IDs, numbers, quoted terms, and
+# proper names that occur away from a sentence boundary.  If T084 drops one,
+# retaining the source section is safer than committing a lossy compression.
+_FACTUAL_ID_PATTERN = re.compile(
+    r"\b(?=[A-Z0-9_-]*[A-Z])(?=[A-Z0-9_-]*\d)[A-Z][A-Z0-9_-]{1,31}\b"
+)
+_FACTUAL_NUMBER_PATTERN = re.compile(r"(?<![\w])\d+(?:\.\d+)?%?(?![\w])")
+_FACTUAL_QUOTED_PATTERN = re.compile(r'["\u201c]([^"\u201d]{2,})["\u201d]')
+_FACTUAL_PROPER_PATTERN = re.compile(r"\b[A-Z][A-Za-z'\u2019-]{2,}\b")
+_FACTUAL_PROPER_STOPWORDS = {
+    "After",
+    "And",
+    "Before",
+    "Both",
+    "But",
+    "During",
+    "Finally",
+    "For",
+    "From",
+    "Here",
+    "Into",
+    "Later",
+    "Meanwhile",
+    "Once",
+    "That",
+    "The",
+    "Their",
+    "Then",
+    "There",
+    "These",
+    "They",
+    "This",
+    "Those",
+    "Through",
+    "Together",
+    "Upon",
+    "When",
+    "While",
+    "With",
+    "Without",
+}
+
+
+def _process_cache_lock(path: str) -> threading.RLock:
+    """Return one re-entrant lock shared by all instances for a cache path."""
+    with _PROCESS_CACHE_LOCKS_GUARD:
+        return _PROCESS_CACHE_LOCKS.setdefault(path, threading.RLock())
+
+
+def _process_key_lock(path: str, cache_key: str) -> threading.Lock:
+    """Deduplicate an in-flight cache key across compressor instances."""
+    identity = (path, cache_key)
+    with _PROCESS_KEY_LOCKS_GUARD:
+        return _PROCESS_KEY_LOCKS.setdefault(identity, threading.Lock())
 
 class ParallelConversationCompressor:
     def __init__(self, cache_file: str = "modules/conversation_history/compression_cache.json", max_workers: int = None, inject_module_creation: bool = False):
         """Initialize with a cache file for storing compressed sections"""
-        self.cache_file = cache_file
+        self.cache_file = os.path.abspath(os.fspath(cache_file))
+        self.cache_lock = threading.RLock()
+        self._request_lock = threading.Lock()
+        self._pending_cache = {}
         self.cache = self.load_cache()
-        self.cache_lock = threading.Lock()  # Thread safety for cache
         self.max_workers = max_workers if max_workers is not None else COMPRESSION_MAX_WORKERS
         self.progress_lock = threading.Lock()  # Thread safety for progress tracking
         self.completed_count = 0
@@ -38,26 +110,235 @@ class ParallelConversationCompressor:
         self.cache_hits = []  # Track cache hits for batch reporting
         self.inject_module_creation = inject_module_creation  # Flag for module transition injection
         
-    def load_cache(self) -> Dict[str, Any]:
-        """Load existing cache from file"""
+    @contextmanager
+    def _locked_cache_file(self):
+        """Serialize cache read/merge/write across threads and processes."""
         cache_path = Path(self.cache_file)
-        if cache_path.exists():
-            try:
-                with open(cache_path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except:
-                return {}
-        return {}
-    
-    def save_cache(self):
-        """Save cache to file (thread-safe)"""
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        process_lock = _process_cache_lock(self.cache_file)
+        lock_path = f"{self.cache_file}.lock"
+        with process_lock:
+            with open(lock_path, "a+b") as lock_file:
+                if os.name == "nt":
+                    import msvcrt
+
+                    lock_file.seek(0, os.SEEK_END)
+                    if lock_file.tell() == 0:
+                        lock_file.write(b"\0")
+                        lock_file.flush()
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    if os.name == "nt":
+                        lock_file.seek(0)
+                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                    else:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+    def _read_cache_unlocked(self) -> Dict[str, Any]:
+        cache_path = Path(self.cache_file)
+        if not cache_path.exists():
+            return {}
+        try:
+            with open(cache_path, "r", encoding="utf-8") as cache_handle:
+                value = json.load(cache_handle)
+            return value if isinstance(value, dict) else {}
+        except (OSError, json.JSONDecodeError, ValueError):
+            # Do not let a damaged cache block compression or get silently
+            # overwritten. Preserve it for diagnosis and start a healing cache.
+            if cache_path.exists():
+                quarantine = cache_path.with_name(
+                    f"{cache_path.name}.corrupt-{uuid4().hex}.json"
+                )
+                try:
+                    os.replace(cache_path, quarantine)
+                except OSError:
+                    pass
+            return {}
+
+    def _write_cache_unlocked(self, entries: Dict[str, Any]) -> None:
+        """Durably replace the cache using a request-unique temporary file."""
+        temporary = (
+            f"{self.cache_file}.{os.getpid()}.{threading.get_ident()}."
+            f"{uuid4().hex}.tmp"
+        )
+        try:
+            with open(temporary, "w", encoding="utf-8") as cache_handle:
+                json.dump(entries, cache_handle, indent=2, ensure_ascii=False)
+                cache_handle.flush()
+                os.fsync(cache_handle.fileno())
+            os.replace(temporary, self.cache_file)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+
+    def load_cache(self) -> Dict[str, Any]:
+        """Load one consistent cache snapshot."""
+        with self._locked_cache_file():
+            return self._read_cache_unlocked()
+
+    def _refresh_cache(self) -> None:
+        with self._locked_cache_file():
+            disk_cache = self._read_cache_unlocked()
         with self.cache_lock:
-            with open(self.cache_file, 'w', encoding='utf-8') as f:
-                json.dump(self.cache, f, indent=2, ensure_ascii=False)
+            self.cache = {**disk_cache, **self._pending_cache}
+
+    def _stage_cache_entry(self, cache_key: str, entry: Dict[str, Any]) -> None:
+        with self.cache_lock:
+            self.cache[cache_key] = entry
+            self._pending_cache[cache_key] = entry
+
+    def _get_cache_entry(self, cache_key: str, refresh: bool = False):
+        with self.cache_lock:
+            cached = self.cache.get(cache_key)
+        if cached is not None or not refresh:
+            return cached
+        self._refresh_cache()
+        with self.cache_lock:
+            return self.cache.get(cache_key)
+
+    def save_cache(self) -> bool:
+        """Merge pending successes into the shared cache without lost updates."""
+        with self.cache_lock:
+            pending = dict(self._pending_cache)
+        if not pending:
+            return True
+
+        try:
+            with self._locked_cache_file():
+                merged = self._read_cache_unlocked()
+                merged.update(pending)
+                self._write_cache_unlocked(merged)
+        except OSError as exc:
+            print(f"Warning: unable to persist compression cache: {exc}")
+            return False
+
+        with self.cache_lock:
+            for key, value in pending.items():
+                if self._pending_cache.get(key) == value:
+                    self._pending_cache.pop(key, None)
+            self.cache = {**merged, **self._pending_cache}
+        return True
     
     def get_section_hash(self, content: str) -> str:
         """Generate hash for content to use as cache key"""
         return hashlib.md5(content.encode('utf-8')).hexdigest()
+
+    def _resolve_location_compression_runtime(self) -> Dict[str, Any]:
+        """Build the cache identity for the T085 branch of this orchestrator."""
+        from model_config import get_provider
+
+        provider = get_provider()
+        configs = {
+            "openai": config.LOC_COMPRESS_GPT52_NONE,
+            "gemini": config.LOC_COMPRESS_GEMINI_PRO_LOW,
+            "lmstudio": config.LOC_COMPRESS_LMSTUDIO,
+            "legacy": config.LOC_COMPRESS_LEGACY,
+        }
+        return {
+            "callsite": "T085",
+            "provider": provider,
+            "config": dict(configs.get(provider, configs["legacy"])),
+            "temperature": 0.1,
+            "prompt_sha256": hashlib.sha256(
+                LOCATION_SYSTEM_PROMPT.encode("utf-8")
+            ).hexdigest(),
+        }
+
+    def _resolve_section_runtime(self, section_type: str) -> Dict[str, Any]:
+        if section_type == "location":
+            return self._resolve_location_compression_runtime()
+        return resolve_agentic_compression_runtime(mode="agentic")
+
+    def _get_cache_key(
+        self,
+        section_type: str,
+        section_id: str,
+        narrative: str,
+        runtime: Dict[str, Any],
+    ) -> str:
+        """Hash every input capable of changing a compressed response."""
+        identity = {
+            "cache_schema": 2,
+            "section_type": section_type,
+            "section_id": section_id,
+            "narrative_sha256": hashlib.sha256(
+                narrative.encode("utf-8")
+            ).hexdigest(),
+            "runtime": runtime,
+        }
+        canonical = json.dumps(
+            identity,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            default=repr,
+        )
+        return "v2:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _factual_markers(narrative: str) -> List[str]:
+        """Return deterministic anchors whose omission makes prose unsafe."""
+        markers = set(_FACTUAL_ID_PATTERN.findall(narrative))
+        markers.update(_FACTUAL_NUMBER_PATTERN.findall(narrative))
+        markers.update(
+            match.strip() for match in _FACTUAL_QUOTED_PATTERN.findall(narrative)
+        )
+
+        for match in _FACTUAL_PROPER_PATTERN.finditer(narrative):
+            marker = match.group(0)
+            if marker in _FACTUAL_PROPER_STOPWORDS:
+                continue
+            prefix = narrative[: match.start()].rstrip()
+            # A lone capitalized word at the start of a sentence is ambiguous.
+            # Names elsewhere in a sentence are stable enough to require.
+            if not prefix or prefix[-1] in ".!?":
+                continue
+            markers.add(marker)
+
+        return sorted(markers, key=lambda marker: (marker.casefold(), marker))
+
+    @classmethod
+    def _valid_compressed_text(
+        cls,
+        compressed_text: Any,
+        narrative: str,
+        section_type: str = None,
+    ) -> bool:
+        if not (
+            isinstance(compressed_text, str)
+            and bool(compressed_text.strip())
+            and compressed_text.strip() != narrative.strip()
+        ):
+            return False
+
+        # The raw-location T085 branch has its own schema validator. T084 owns
+        # campaign contexts and summary/chronicle prose.
+        if section_type == "location":
+            return True
+
+        normalized = " ".join(compressed_text.split()).casefold()
+        return all(
+            " ".join(marker.split()).casefold() in normalized
+            for marker in cls._factual_markers(narrative)
+        )
+
+    def _valid_cache_entry(
+        self, entry: Any, narrative: str, section_type: str = None
+    ) -> bool:
+        return (
+            isinstance(entry, dict)
+            and entry.get("original") == narrative
+            and self._valid_compressed_text(
+                entry.get("compressed"), narrative, section_type
+            )
+        )
     
     def _update_progress(self, from_cache: bool):
         """Update progress and emit event via status_manager"""
@@ -81,62 +362,91 @@ class ParallelConversationCompressor:
         Returns: (index, section_id, full_match, compression_result)
         """
         idx, section_type, section_id, full_match, narrative = section_data
-        
-        content_hash = self.get_section_hash(narrative)
-        cache_key = f"{section_id}_{content_hash}"
-        
-        # Check cache first (thread-safe)
-        with self.cache_lock:
-            if cache_key in self.cache:
-                self.cache_hits.append(section_id)
-                # Update progress for cached item
+
+        runtime = self._resolve_section_runtime(section_type)
+        cache_key = self._get_cache_key(
+            section_type, section_id, narrative, runtime
+        )
+        fallback = {"original": narrative, "compressed": narrative}
+
+        # The key lock prevents duplicate provider calls from parallel sections
+        # or concurrent compressor instances in this process. A disk refresh
+        # inside the lock observes a result persisted by the first waiter.
+        with _process_key_lock(self.cache_file, cache_key):
+            cached = self._get_cache_entry(cache_key, refresh=True)
+            if self._valid_cache_entry(cached, narrative, section_type):
+                with self.cache_lock:
+                    self.cache_hits.append(section_id)
                 self._update_progress(from_cache=True)
-                return (idx, section_id, full_match, self.cache[cache_key], True)  # Added from_cache flag
-        
-        # Compress using appropriate method based on type
-        print(f"  [{idx:3d}] [COMPRESS] {section_id} ({len(narrative)} chars)...")
-        try:
-            if section_type == "location":
-                # Use location-specific compression
-                compressed_text = compress_location(narrative)
-                if compressed_text:
-                    result = {"blocks": [{"text": compressed_text}]}
+                return (idx, section_id, full_match, cached, True)
+
+            print(
+                f"  [{idx:3d}] [COMPRESS] {section_id} "
+                f"({len(narrative)} chars)..."
+            )
+            try:
+                if section_type == "location":
+                    compressed_text = compress_location(narrative)
+                    result = (
+                        {"blocks": [{"text": compressed_text}]}
+                        if compressed_text
+                        else None
+                    )
+                    # T085 does not yet accept a provider snapshot. If a switch
+                    # raced the call, use the response but do not cache it under
+                    # an identity that may no longer describe that response.
+                    runtime_still_matches = (
+                        self._resolve_location_compression_runtime() == runtime
+                    )
                 else:
-                    print(f"  [{idx:3d}] [ERROR] Failed to compress location {section_id}")
+                    result = compress_with_ai(
+                        narrative,
+                        mode="agentic",
+                        provider_snapshot=runtime["provider"],
+                        provider_config=dict(runtime["config"]),
+                    )
+                    runtime_still_matches = True
+
+                blocks = result.get("blocks") if isinstance(result, dict) else None
+                compressed_text = (
+                    blocks[0].get("text")
+                    if isinstance(blocks, list)
+                    and blocks
+                    and isinstance(blocks[0], dict)
+                    else None
+                )
+                if not self._valid_compressed_text(
+                    compressed_text, narrative, section_type
+                ):
+                    print(f"  [{idx:3d}] [ERROR] Failed to compress {section_id}")
                     self._update_progress(from_cache=False)
-                    return (idx, section_id, full_match, {"original": narrative, "compressed": narrative}, False)
-            else:
-                # Use narrative compression for other types
-                result = compress_with_ai(narrative, mode="agentic")
-            
-            if result and "blocks" in result and len(result["blocks"]) > 0:
-                compressed_text = result["blocks"][0]["text"]
-                
+                    return (idx, section_id, full_match, fallback, False)
+
                 cache_entry = {
                     "original": narrative,
                     "compressed": compressed_text,
                     "original_length": len(narrative),
                     "compressed_length": len(compressed_text),
-                    "reduction": f"{(1 - len(compressed_text)/len(narrative))*100:.1f}%" if len(narrative) > 0 else "0.0%"
+                    "reduction": (
+                        f"{(1 - len(compressed_text) / len(narrative)) * 100:.1f}%"
+                        if narrative
+                        else "0.0%"
+                    ),
                 }
-                
-                # Update cache (thread-safe)
-                with self.cache_lock:
-                    self.cache[cache_key] = cache_entry
-                
-                print(f"  [{idx:3d}] [DONE] {section_id} - Reduced by {cache_entry['reduction']}")
-                # Update progress for compressed item
+                if runtime_still_matches:
+                    self._stage_cache_entry(cache_key, cache_entry)
+                    self.save_cache()
+
+                print(
+                    f"  [{idx:3d}] [DONE] {section_id} - "
+                    f"Reduced by {cache_entry['reduction']}"
+                )
                 self._update_progress(from_cache=False)
                 return (idx, section_id, full_match, cache_entry, False)
-            else:
-                print(f"  [{idx:3d}] [ERROR] Failed to compress {section_id}")
+            except Exception as e:
+                print(f"  [{idx:3d}] [ERROR] Exception compressing {section_id}: {e}")
                 self._update_progress(from_cache=False)
-                return (idx, section_id, full_match, {"original": narrative, "compressed": narrative}, False)
-                
-        except Exception as e:
-            print(f"  [{idx:3d}] [ERROR] Exception compressing {section_id}: {e}")
-            self._update_progress(from_cache=False)
-            return (idx, section_id, full_match, {"original": narrative, "compressed": narrative}, False)
+                return (idx, section_id, full_match, fallback, False)
     
     def extract_all_sections(self, conversation: List[Dict[str, Any]]) -> Dict[int, List[Tuple]]:
         """
@@ -247,6 +557,16 @@ class ParallelConversationCompressor:
         return message
     
     def process_conversation_history(self, conversation_file: str) -> List[Dict[str, Any]]:
+        """Safely run one request on this compressor instance.
+
+        A request owns the instance's progress counters and cache-hit report, so
+        simultaneous callers on the same instance are serialized. Parallel
+        section work and calls on different instances remain concurrent.
+        """
+        with self._request_lock:
+            return self._process_conversation_history(conversation_file)
+
+    def _process_conversation_history(self, conversation_file: str) -> List[Dict[str, Any]]:
         """Process a conversation history file and compress relevant sections in parallel"""
         
         start_time = datetime.now()
@@ -289,11 +609,15 @@ class ParallelConversationCompressor:
         # Check if any work item is a cache miss before showing UI
         self.needs_active_compression = False  # Store as instance variable for later use
         if len(work_items) > 0:
+            self._refresh_cache()
             for item in work_items:
-                _, _, section_id, _, narrative = item
-                content_hash = self.get_section_hash(narrative)
-                cache_key = f"{section_id}_{content_hash}"
-                if cache_key not in self.cache:
+                _, section_type, section_id, _, narrative = item
+                runtime = self._resolve_section_runtime(section_type)
+                cache_key = self._get_cache_key(
+                    section_type, section_id, narrative, runtime
+                )
+                cached = self._get_cache_entry(cache_key)
+                if not self._valid_cache_entry(cached, narrative, section_type):
                     self.needs_active_compression = True
                     print("Cache miss detected. Active compression is required.")
                     break
@@ -363,6 +687,16 @@ class ParallelConversationCompressor:
                     if (i, full_match) in result_lookup:
                         _, _, compressed_data = result_lookup[(i, full_match)]
                         compressed_text = compressed_data.get('compressed', narrative)
+
+                        # A fallback carries the original narrative. Preserve
+                        # the entire source section, including its header and
+                        # markers, instead of making a cosmetic rewrite look
+                        # like successful compression.
+                        if (
+                            not isinstance(compressed_text, str)
+                            or compressed_text.strip() == narrative.strip()
+                        ):
+                            continue
                         
                         # Create appropriate header based on type, preserving identifying info
                         if "context" in section_type.lower():

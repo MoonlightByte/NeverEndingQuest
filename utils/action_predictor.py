@@ -43,7 +43,7 @@ import traceback
 import config
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T082", "utils/action_predictor.py", 152)
+register_callsite("T082", "utils/action_predictor.py", 167)
 
 # Action prediction system prompt (condensed from full system analysis)
 ACTION_PREDICTION_PROMPT = """You are an action prediction agent for the world's most popular 5th edition roleplaying game AI system. Analyze user input to determine if it requires JSON actions in the AI response.
@@ -156,7 +156,7 @@ def predict_actions_required(user_input):
     if MODEL_PROVIDER == "openai":
         pred_config = config.ACTION_PRED_GPT5MINI_LOW
     elif MODEL_PROVIDER == "gemini":
-        pred_config = config.ACTION_PRED_GEMINI_FLASH_MINIMAL
+        pred_config = config.ACTION_PRED_GEMINI_FLASH_LOW
     elif MODEL_PROVIDER == "lmstudio":
         pred_config = config.ACTION_PRED_LMSTUDIO
     else:  # legacy
@@ -165,6 +165,7 @@ def predict_actions_required(user_input):
     try:
         # Call action prediction model
         response = capture_and_fanout("T082", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=[
                 {"role": "system", "content": ACTION_PREDICTION_PROMPT},
                 {"role": "user", "content": f"Analyze this user input: '{user_input}'"}
@@ -176,15 +177,31 @@ def predict_actions_required(user_input):
         # Parse the prediction response
         prediction_text = response.choices[0].message.content.strip()
         
-        # Try to parse as JSON
+        # Treat routing as a strict boolean contract. Any malformed or
+        # ambiguous predictor output must choose the full model; routing a turn
+        # to the full model is safe, while a false mini-model decision can
+        # omit required state actions.
         try:
             prediction = json.loads(prediction_text)
-            requires_actions = prediction.get("requires_actions", False)
-            reason = prediction.get("reason", "No reason provided")
-        except json.JSONDecodeError:
-            # Fallback parsing if JSON format is malformed
-            requires_actions = "true" in prediction_text.lower()
-            reason = "Fallback parsing due to JSON error"
+            if (
+                not isinstance(prediction, dict)
+                or set(prediction) != {"requires_actions", "reason"}
+                or type(prediction["requires_actions"]) is not bool
+                or not isinstance(prediction["reason"], str)
+                or not prediction["reason"].strip()
+            ):
+                raise ValueError(
+                    "T082 requires exactly a boolean requires_actions and nonempty reason"
+                )
+            requires_actions = prediction["requires_actions"]
+            reason = prediction["reason"].strip()
+        except (json.JSONDecodeError, ValueError, TypeError) as parse_error:
+            print(
+                "DEBUG: [ACTION PREDICTOR] Invalid prediction; "
+                f"defaulting to full model: {parse_error}"
+            )
+            requires_actions = True
+            reason = "Invalid prediction response; using full model"
         
         return {
             "requires_actions": requires_actions,

@@ -54,13 +54,14 @@ See LICENSE file for full terms.
 import json
 import subprocess
 import os
+import threading
 from datetime import datetime
 from core.ai import api_client
 import model_config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T013", "core/ai/action_handler.py", 1005)
-register_callsite("T012", "core/ai/action_handler.py", 553)
-register_callsite("T014", "core/ai/action_handler.py", 2026)
+register_callsite("T013", "core/ai/action_handler.py", 1130)
+register_callsite("T012", "core/ai/action_handler.py", 631)
+register_callsite("T014", "core/ai/action_handler.py", 2208)
 import config
 from core.managers.location_manager import get_location_data
 from utils.module_path_manager import ModulePathManager
@@ -113,6 +114,16 @@ ACTION_SAVE_GAME = "saveGame"
 ACTION_RESTORE_GAME = "restoreGame"
 ACTION_LIST_SAVES = "listSaves"
 ACTION_DELETE_SAVE = "deleteSave"
+
+
+_NPC_MOVEMENT_LOCKS = {}
+_NPC_MOVEMENT_LOCKS_GUARD = threading.Lock()
+
+
+def _npc_movement_lock(module_name):
+    """Return the shared transaction lock for one module's area files."""
+    with _NPC_MOVEMENT_LOCKS_GUARD:
+        return _NPC_MOVEMENT_LOCKS.setdefault(module_name, threading.RLock())
 
 # Module conversation segmentation has been moved to conversation_utils.py
 # to work with the regular conversation update cycle
@@ -601,7 +612,7 @@ Determine the most logical starting location based on adventure flow, area types
         if MODEL_PROVIDER == "openai":
             locstart_cfg = config.DM_LOCSTART_T012_GPT5MINI
         elif MODEL_PROVIDER == "gemini":
-            locstart_cfg = config.DM_LOCSTART_T012_GEMINI_FLASHLITE_MINIMAL
+            locstart_cfg = config.DM_LOCSTART_T012_GEMINI_FLASHLITE_LOW
         elif MODEL_PROVIDER == "lmstudio":
             locstart_cfg = config.DM_LOCSTART_T012_LMSTUDIO
         else:  # legacy
@@ -618,6 +629,7 @@ Determine the most logical starting location based on adventure flow, area types
             )
 
         response = capture_and_fanout("T012", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -1118,6 +1130,7 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                 transition_response = capture_and_fanout(
                     "T013",
                     api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
                     messages=transition_messages,
                     model=transition_cfg["model"],
                     temperature=0.7,
@@ -1176,6 +1189,14 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
             
             info("SUCCESS: Location transition complete", category="location_transitions")
             needs_conversation_history_update = True  # Trigger conversation history reload
+            # Return the exact T013 history value to the transition orchestrator.
+            # A different assistant completion can finish while T063/T064 are
+            # running, so the final narration must correlate by placeholder
+            # identity instead of replacing an arbitrary nearby assistant.
+            return create_return(
+                needs_update=True,
+                response_data={"transition_narration": transition_narration},
+            )
              # After transition, the current_location_data in the main loop might be stale.
             # We need to ensure the AI response processing uses the *new* location data.
             # This might require process_ai_response to reload location data or for main_game_loop to handle it.
@@ -1331,9 +1352,11 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 from updates.update_encounter import update_encounter
                 
                 # Update the encounter
-                updated_encounter = update_encounter(encounter_id, changes)
+                encounter_updated, updated_encounter = update_encounter(
+                    encounter_id, changes
+                )
                 
-                if updated_encounter:
+                if encounter_updated:
                     info(f"SUCCESS: Encounter {encounter_id} updated successfully", category="combat_processing")
                     needs_conversation_history_update = True
                 else:
@@ -1877,30 +1900,28 @@ def move_background_npc(npc_name, context, current_location_hint=None, party_tra
     import shutil
     import os
     import time
-    import threading
     from datetime import datetime
     from utils.file_operations import safe_write_json, safe_read_json
     
     debug(f"STATE_CHANGE: moveBackgroundNPC called for {npc_name}", category="npc_management")
     debug(f"AI_CALL: Context: {context}", category="npc_management")
     
-    # File locking for atomic operations (similar to updateCharacterInfo)
-    lock = threading.Lock()
-    
-    with lock:
+    if not party_tracker_data:
+        party_tracker_data = safe_read_json("party_tracker.json")
+        if not party_tracker_data:
+            print("ERROR: Could not load party tracker data")
+            return False
+
+    module_name = party_tracker_data.get("module", "").replace(" ", "_")
+    if not module_name:
+        print("ERROR: No current module found in party tracker")
+        return False
+
+    # The complete read -> AI decision -> mutate -> write sequence is one
+    # transaction.  A lock created inside this function cannot protect two
+    # invocations, so share a re-entrant lock by module instead.
+    with _npc_movement_lock(module_name):
         try:
-            # Get module context
-            if not party_tracker_data:
-                party_tracker_data = safe_read_json("party_tracker.json")
-                if not party_tracker_data:
-                    print("ERROR: Could not load party tracker data")
-                    return False
-            
-            module_name = party_tracker_data.get("module", "").replace(" ", "_")
-            if not module_name:
-                print("ERROR: No current module found in party tracker")
-                return False
-                
             path_manager = ModulePathManager(module_name)
             
             # Find the NPC in area files
@@ -2165,10 +2186,10 @@ Remember: This is a background NPC management action, not party NPC management."
             npc_config = config.NPC_INFO_GPT54MINI_NONE
         elif MODEL_PROVIDER == "gemini":
             # T014 uses its OWN gemini config (NPC_MOVEMENT_T014_*), NOT the shared
-            # NPC_INFO_GEMINI_FLASH_MINIMAL -- that one is shared with T091 whose
+            # NPC_INFO_GEMINI_FLASH_LOW -- that one is shared with T091 whose
             # output is a JSON ARRAY; attaching this object schema there would corrupt
             # T091's monster reconciliation.
-            npc_config = config.NPC_MOVEMENT_T014_GEMINI_FLASH_MINIMAL
+            npc_config = config.NPC_MOVEMENT_T014_GEMINI_FLASH_LOW
         elif MODEL_PROVIDER == "lmstudio":
             npc_config = config.NPC_INFO_LMSTUDIO
         else:  # legacy
@@ -2185,6 +2206,7 @@ Remember: This is a background NPC management action, not party NPC management."
             )
 
         response = capture_and_fanout("T014", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}

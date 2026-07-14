@@ -189,13 +189,14 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
             if MODEL_PROVIDER == "openai":
                 compress_config = config.NARR_COMPRESS_GPT54MINI_NONE
             elif MODEL_PROVIDER == "gemini":
-                compress_config = config.NARR_COMPRESS_GEMINI_FLASH_MINIMAL
+                compress_config = config.NARR_COMPRESS_GEMINI_FLASH_LOW
             elif MODEL_PROVIDER == "lmstudio":
                 compress_config = config.NARR_COMPRESS_LMSTUDIO
             else:  # legacy
                 compress_config = config.NARR_COMPRESS_LEGACY
 
             api_response = capture_and_fanout("T020", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=[{"role": "user", "content": compression_prompt}],
                 model=compress_config["model"],
                 temperature=self.COMPRESSION_TEMP,

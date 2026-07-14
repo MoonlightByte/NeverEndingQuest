@@ -11,10 +11,59 @@ from typing import Dict, List, Any, Optional
 from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T021", "core/ai/transition_validator.py", 162)
+register_callsite("T021", "core/ai/transition_validator.py", 203)
 from model_config import TRANSITION_VALIDATOR_TEMPERATURE
 from utils.enhanced_logger import debug, info, warning, error
 from utils.file_operations import safe_read_json
+
+
+def _approval_fallback(reason: str) -> Dict[str, Any]:
+    """Return the explicit fail-open policy result for an unavailable verdict."""
+    return {
+        "approved": True,
+        "stop_location": None,
+        "stop_location_name": None,
+        "reason": reason,
+        "narrative_guidance": "",
+        "requires_encounter": False,
+        "plot_guidance": None,
+    }
+
+
+def _normalize_transition_verdict(result: Any) -> Dict[str, Any]:
+    """Accept only verdicts whose fields cannot be misread through truthiness."""
+    if not isinstance(result, dict) or type(result.get("approved")) is not bool:
+        return _approval_fallback("Invalid transition validator contract")
+
+    if result["approved"] is False:
+        stop_location = result.get("stop_location")
+        reason = result.get("reason")
+        if not isinstance(stop_location, str) or not stop_location.strip():
+            return _approval_fallback("Invalid blocked transition verdict")
+        if not isinstance(reason, str) or not reason.strip():
+            return _approval_fallback("Invalid blocked transition verdict")
+
+    normalized = dict(result)
+    defaults = {
+        "stop_location": None,
+        "stop_location_name": None,
+        "reason": "",
+        "narrative_guidance": "",
+        "requires_encounter": False,
+        "plot_guidance": None,
+    }
+    for key, default in defaults.items():
+        normalized.setdefault(key, default)
+
+    if type(normalized["requires_encounter"]) is not bool:
+        return _approval_fallback("Invalid transition validator contract")
+    for key in ("reason", "narrative_guidance"):
+        if not isinstance(normalized[key], str):
+            return _approval_fallback("Invalid transition validator contract")
+    for key in ("stop_location", "stop_location_name", "plot_guidance"):
+        if normalized[key] is not None and not isinstance(normalized[key], str):
+            return _approval_fallback("Invalid transition validator contract")
+    return normalized
 
 
 
@@ -78,15 +127,7 @@ def validate_transition_request(
     if not system_prompt:
         # Fallback: approve if prompt loading fails
         warning("Transition validation prompt missing, approving by default", category="transition_validation")
-        return {
-            "approved": True,
-            "stop_location": None,
-            "stop_location_name": None,
-            "reason": "Validation prompt unavailable",
-            "narrative_guidance": "",
-            "requires_encounter": False,
-            "plot_guidance": None
-        }
+        return _approval_fallback("Validation prompt unavailable")
 
     # Get target location details from path analysis
     target_segment = None
@@ -153,7 +194,7 @@ at an intermediate location due to unexplored encounters. Respond with JSON only
         if MODEL_PROVIDER == "openai":
             transition_config = config.TRANSITION_VAL_GPT52_NONE
         elif MODEL_PROVIDER == "gemini":
-            transition_config = config.TRANSITION_VAL_GEMINI_FLASH_MINIMAL
+            transition_config = config.TRANSITION_VAL_GEMINI_FLASH_LOW
         elif MODEL_PROVIDER == "lmstudio":
             transition_config = config.TRANSITION_VAL_LMSTUDIO
         else:  # legacy
@@ -163,6 +204,7 @@ at an intermediate location due to unexplored encounters. Respond with JSON only
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
+            _request_provider=MODEL_PROVIDER,
             model=transition_config["model"],
             temperature=TRANSITION_VALIDATOR_TEMPERATURE,
             **{k: v for k, v in transition_config.items() if k != "model"})
@@ -191,20 +233,7 @@ at an intermediate location due to unexplored encounters. Respond with JSON only
         debug(f"Transition validator response: {response_text[:200]}...", category="transition_validation")
 
         # Parse JSON response
-        result = json.loads(response_text)
-
-        # Validate response structure
-        if "approved" not in result:
-            warning("Transition validator returned invalid JSON (missing 'approved')", category="transition_validation")
-            result["approved"] = True  # Default to approve on error
-
-        # Ensure all required fields exist
-        result.setdefault("stop_location", None)
-        result.setdefault("stop_location_name", None)
-        result.setdefault("reason", "")
-        result.setdefault("narrative_guidance", "")
-        result.setdefault("requires_encounter", False)
-        result.setdefault("plot_guidance", None)
+        result = _normalize_transition_verdict(json.loads(response_text))
 
         # Log decision
         if result["approved"]:
@@ -219,28 +248,12 @@ at an intermediate location due to unexplored encounters. Respond with JSON only
         error(f"Failed to parse transition validator JSON: {e}", category="transition_validation")
         error(f"Response was: {response_text}", category="transition_validation")
         # Fallback: approve on parse error
-        return {
-            "approved": True,
-            "stop_location": None,
-            "stop_location_name": None,
-            "reason": "JSON parse error in validator",
-            "narrative_guidance": "",
-            "requires_encounter": False,
-            "plot_guidance": None
-        }
+        return _approval_fallback("JSON parse error in validator")
 
     except Exception as e:
         error(f"Transition validator failed: {e}", category="transition_validation")
         # Fallback: approve on error
-        return {
-            "approved": True,
-            "stop_location": None,
-            "stop_location_name": None,
-            "reason": f"Validator error: {str(e)}",
-            "narrative_guidance": "",
-            "requires_encounter": False,
-            "plot_guidance": None
-        }
+        return _approval_fallback(f"Validator error: {str(e)}")
 
 
 def _build_plot_summary(plot_data: Dict) -> str:

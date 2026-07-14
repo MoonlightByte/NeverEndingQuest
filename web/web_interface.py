@@ -60,12 +60,22 @@ from datetime import datetime
 from collections import deque
 import io
 import zipfile
+from uuid import uuid4
 from contextlib import redirect_stdout, redirect_stderr
 from openai import OpenAI
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T094", "web/web_interface.py", 1605)
-register_callsite("T095", "web/web_interface.py", 3735)
+register_callsite("T094", "web/web_interface.py", 1816)
+register_callsite("T095", "web/web_interface.py", 4258)
+from utils.compendium_store import (
+    MONSTER_COMPENDIUM_PATH,
+    NPC_COMPENDIUM_PATH,
+    compendium_entry_exists,
+    merge_compendium_entries,
+    merge_npc_description_pair,
+    validate_generated_prose,
+)
+from utils.encoding_utils import sanitize_text
 from PIL import Image
 
 # Token tracking import
@@ -1397,85 +1407,174 @@ def process_video():
         error(f"TOOLKIT: Failed to process video: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+def _job_identity(data, prefix):
+    """Return a client-known job ID and its optional Socket.IO target room."""
+    supplied = data.get('job_id')
+    if isinstance(supplied, str) and supplied.strip() and len(supplied) <= 128:
+        job_id = supplied.strip()
+    else:
+        job_id = f"{prefix}-{uuid4().hex}"
+    target_room = (
+        data.get('socket_sid') or data.get('socket_id') or data.get('room')
+    )
+    if not isinstance(target_room, str) or not target_room.strip():
+        target_room = None
+    else:
+        target_room = target_room.strip()
+    return job_id, target_room
+
+
+def _emit_job_event(event_name, payload, *, job_id, target_room=None):
+    """Attach correlation data to every event and target its initiating client."""
+    correlated = dict(payload)
+    correlated['job_id'] = job_id
+    if target_room:
+        socketio.emit(event_name, correlated, to=target_room)
+    else:
+        socketio.emit(event_name, correlated)
+    return correlated
+
+
+def _run_bestiary_update_job(
+    module_name,
+    monster_ids,
+    job_id,
+    *,
+    target_room=None,
+    updater_factory=None,
+):
+    """Run T083 and emit a single result whose counts come from the updater."""
+    requested = len(monster_ids)
+    try:
+        if updater_factory is None:
+            from utils.bestiary_updater import BestiaryUpdater
+            updater_factory = BestiaryUpdater
+        updater = updater_factory()
+        monster_names = [
+            monster_id.replace('_', ' ').title()
+            for monster_id in monster_ids
+        ]
+        _emit_job_event(
+            'bestiary_update_progress',
+            {
+                'status': 'started',
+                'requested': requested,
+                'message': f'Starting to process {requested} monsters...',
+            },
+            job_id=job_id,
+            target_room=target_room,
+        )
+        import asyncio
+        result = asyncio.run(
+            updater.process_missing_monsters(
+                module_name=module_name,
+                monster_names=monster_names,
+                test_mode=False,
+            )
+        )
+        required = {
+            'requested', 'added', 'skipped', 'failed', 'error', 'success'
+        }
+        if not isinstance(result, dict) or set(result) != required:
+            raise RuntimeError('Bestiary updater returned an invalid result')
+        count_fields = ('requested', 'added', 'skipped', 'failed')
+        if any(
+            type(result[field]) is not int or result[field] < 0
+            for field in count_fields
+        ):
+            raise RuntimeError('Bestiary updater returned invalid counts')
+        if result['requested'] != (
+            result['added'] + result['skipped'] + result['failed']
+        ):
+            raise RuntimeError('Bestiary updater counts do not balance')
+        expected_success = result['failed'] == 0 and result['error'] is None
+        if (
+            not isinstance(result['success'], bool)
+            or result['success'] != expected_success
+        ):
+            raise RuntimeError('Bestiary updater returned inconsistent success status')
+
+        if result['success']:
+            message = (
+                f"Added {result['added']} of {result['requested']} requested "
+                f"monsters; {result['skipped']} skipped."
+            )
+        else:
+            message = (
+                f"Added {result['added']} of {result['requested']} requested "
+                f"monsters; {result['failed']} failed."
+            )
+        _emit_job_event(
+            'bestiary_update_complete',
+            {
+                **result,
+                'status': 'complete' if result['success'] else 'failed',
+                'message': message,
+            },
+            job_id=job_id,
+            target_room=target_room,
+        )
+        return result
+    except Exception as exc:
+        error(f"TOOLKIT: Bestiary update failed: {exc}")
+        failure = {
+            'requested': requested,
+            'added': 0,
+            'skipped': 0,
+            'failed': requested,
+            'error': str(exc),
+            'success': False,
+        }
+        _emit_job_event(
+            'bestiary_update_error',
+            {**failure, 'status': 'failed'},
+            job_id=job_id,
+            target_room=target_room,
+        )
+        return failure
+
+
 @app.route('/api/toolkit/add-to-bestiary', methods=['POST'])
 def add_to_bestiary():
-    """Adds monsters to the bestiary using their ID. Skips any that already exist."""
+    """Adds monsters to the bestiary using a correlated background job."""
     try:
-        data = request.json
-        module_name = data.get('module_name')  # Used for context
-        monster_ids = data.get('monster_ids', [])  # We now use IDs
-        
-        if not module_name or not monster_ids:
+        data = request.json or {}
+        module_name = data.get('module_name')
+        monster_ids = data.get('monster_ids', [])
+
+        if not module_name or not isinstance(monster_ids, list) or not monster_ids:
             return jsonify({'success': False, 'error': 'Missing module_name or monster_ids'})
-        
-        info(f"TOOLKIT: Request to add {len(monster_ids)} monsters to bestiary from module: {module_name}")
-        
-        # Start processing in background thread
-        import threading
-        import asyncio
-        
-        def run_bestiary_update():
-            try:
-                from utils.bestiary_updater import BestiaryUpdater
-                updater = BestiaryUpdater()
-                
-                # Convert IDs to names for the updater, but FIRST filter out existing ones
-                compendium_path = 'data/bestiary/monster_compendium.json'
-                with open(compendium_path, 'r', encoding='utf-8') as f:
-                    compendium = json.load(f)
-                existing_monsters = compendium.get("monsters", {}).keys()
+        if any(
+            not isinstance(monster_id, str) or not monster_id.strip()
+            for monster_id in monster_ids
+        ):
+            return jsonify({'success': False, 'error': 'Monster IDs must be non-empty strings'})
 
-                monsters_to_add_ids = [mid for mid in monster_ids if mid not in existing_monsters]
-                
-                if not monsters_to_add_ids:
-                    socketio.emit('bestiary_update_complete', {
-                        'success': True,
-                        'message': 'All selected monsters already exist in the bestiary. No action taken.',
-                        'monsters': []
-                    })
-                    return
-
-                # Convert the filtered IDs to names for the existing updater logic
-                monsters_to_add_names = [mid.replace('_', ' ').title() for mid in monsters_to_add_ids]
-
-                socketio.emit('bestiary_update_progress', {
-                    'status': 'started',
-                    'message': f'Starting to process {len(monsters_to_add_names)} new monsters...'
-                })
-                
-                # Create new event loop for thread
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                
-                loop.run_until_complete(
-                    updater.process_missing_monsters(
-                        module_name=module_name,
-                        monster_names=monsters_to_add_names,  # Pass names to the existing function
-                        test_mode=False
-                    )
-                )
-                
-                socketio.emit('bestiary_update_complete', {
-                    'success': True,
-                    'message': f'Successfully added {len(monsters_to_add_names)} monsters to bestiary.',
-                    'monsters': monsters_to_add_names
-                })
-                info(f"TOOLKIT: Successfully added {len(monsters_to_add_names)} monsters to bestiary.")
-
-            except Exception as e:
-                error(f"TOOLKIT: Bestiary update failed: {e}")
-                socketio.emit('bestiary_update_error', {'success': False, 'error': str(e)})
-        
-        # Start in background thread
-        thread = threading.Thread(target=run_bestiary_update)
-        thread.daemon = True
+        job_id, target_room = _job_identity(data, 'bestiary')
+        monster_snapshot = [monster_id.strip() for monster_id in monster_ids]
+        info(
+            f"TOOLKIT: Request to add {len(monster_snapshot)} monsters "
+            f"to bestiary from module: {module_name}"
+        )
+        thread = threading.Thread(
+            target=_run_bestiary_update_job,
+            kwargs={
+                'module_name': module_name,
+                'monster_ids': monster_snapshot,
+                'job_id': job_id,
+                'target_room': target_room,
+            },
+            daemon=True,
+        )
         thread.start()
-        
-        return jsonify({'success': True, 'message': f'Started processing {len(monster_ids)} monsters.'})
-        
-    except Exception as e:
-        error(f"TOOLKIT: Failed to start bestiary update: {e}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({
+            'success': True,
+            'job_id': job_id,
+            'message': f'Started processing {len(monster_snapshot)} monsters.',
+        })
+    except Exception as exc:
+        error(f"TOOLKIT: Failed to start bestiary update: {exc}")
+        return jsonify({'success': False, 'error': str(exc)})
 
 @app.route('/toolkit/get_style_prompt/<style_id>')
 def get_style_prompt(style_id):
@@ -1610,42 +1709,72 @@ def update_monster_description():
         if not monster_id or not description:
             return jsonify({'success': False, 'error': 'Monster ID and description are required'})
         
-        # Load and update monster compendium
-        import json
-        compendium_path = 'data/bestiary/monster_compendium.json'
-        with open(compendium_path, 'r', encoding='utf-8') as f:
-            compendium = json.load(f)
-        
+        compendium_path = MONSTER_COMPENDIUM_PATH
+        compendium = {}
+        if os.path.exists(compendium_path):
+            from utils.file_operations import safe_read_json
+            compendium = safe_read_json(compendium_path) or {}
         monsters = compendium.get('monsters', {})
-        if monster_id in monsters:
-            monsters[monster_id]['description'] = description
-        else:
-            # Try to find by alternative ID
+        resolved_id = monster_id
+        existing_entry = monsters.get(monster_id)
+        if existing_entry is None:
             monster_id_alt = monster_id.replace('_', ' ').lower()
-            found = False
-            for mid, mdata in monsters.items():
-                if mid.lower() == monster_id_alt or mdata.get('name', '').lower() == monster_id_alt:
-                    monsters[mid]['description'] = description
-                    found = True
+            for candidate_id, candidate in monsters.items():
+                if (
+                    candidate_id.lower() == monster_id_alt
+                    or (
+                        isinstance(candidate, dict)
+                        and candidate.get('name', '').lower() == monster_id_alt
+                    )
+                ):
+                    resolved_id = candidate_id
+                    existing_entry = candidate
                     break
-            
-            if not found:
-                # Add new monster entry
-                monsters[monster_id] = {
-                    'name': monster_id.replace('_', ' ').title(),
-                    'description': description,
-                    'type': 'unknown',
-                    'tags': []
-                }
-        
-        # Save updated compendium
-        with open(compendium_path, 'w', encoding='utf-8') as f:
-            json.dump(compendium, f, indent=2, ensure_ascii=False)
+
+        entry = dict(existing_entry) if isinstance(existing_entry, dict) else {}
+        entry.update({
+            'name': entry.get('name') or monster_id.replace('_', ' ').title(),
+            'description': sanitize_text(description),
+        })
+        entry.setdefault('type', 'unknown')
+        entry.setdefault('tags', [])
+        merge_compendium_entries(
+            compendium_path,
+            'monsters',
+            {resolved_id: entry},
+            overwrite=True,
+        )
         
         return jsonify({'success': True, 'message': 'Monster description updated'})
     except Exception as e:
         error(f"TOOLKIT: Failed to update monster description: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
+
+def _provider_credentials_available(provider):
+    """Check only credentials required by the selected provider."""
+    import config
+
+    if provider == "lmstudio":
+        return True
+    if provider in ("legacy", "openai"):
+        key = getattr(config, "OPENAI_API_KEY", "")
+        placeholder = "your_openai_api_key_here"
+    elif provider == "gemini":
+        key = getattr(config, "GEMINI_API_KEY", "")
+        placeholder = "your_gemini_api_key_here"
+    else:
+        return False
+    return isinstance(key, str) and bool(key.strip()) and key.strip() != placeholder
+
+
+def _persist_promoted_monster(monster_id, entry, compendium_path):
+    return merge_compendium_entries(
+        compendium_path,
+        "monsters",
+        {monster_id: entry},
+        overwrite=False,
+    )
 
 @app.route('/api/toolkit/promote-to-bestiary', methods=['POST'])
 def promote_to_bestiary():
@@ -1660,33 +1789,32 @@ def promote_to_bestiary():
         if not monster_id:
             return jsonify({'success': False, 'error': 'Monster ID is required'})
 
-        # 1. Load the compendium to check for existence
-        compendium_path = 'data/bestiary/monster_compendium.json'
-        with open(compendium_path, 'r', encoding='utf-8') as f:
-            compendium = json.load(f)
-        
-        if monster_id in compendium.get('monsters', {}):
+        compendium_path = MONSTER_COMPENDIUM_PATH
+        if compendium_entry_exists(compendium_path, "monsters", monster_id):
             return jsonify({'success': False, 'error': f'Monster "{monster_id}" already exists in the bestiary.'})
 
-        # 2. Use AI to generate a description
         monster_name = monster_id.replace('_', ' ').title()
         prompt = f"""Generate a compelling 5th edition of the world's most popular roleplaying game style bestiary description for a monster named "{monster_name}".
         The description should be concise (around 100-150 words) and focus on its appearance, typical behavior, and combat tactics.
         Make it sound like an entry from an official monster manual. Do not include stat blocks.
         Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."""
         
+        from model_config import get_provider
+        provider_snapshot = get_provider()
         import config
-        from model_config import MODEL_PROVIDER
-        if MODEL_PROVIDER == "openai":
+        if provider_snapshot == "openai":
             mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
-        elif MODEL_PROVIDER == "gemini":
-            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
-        elif MODEL_PROVIDER == "lmstudio":
+        elif provider_snapshot == "gemini":
+            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_LOW
+        elif provider_snapshot == "lmstudio":
             mini_cfg = config.MINI_UTIL_LMSTUDIO
-        else:  # legacy
+        elif provider_snapshot == "legacy":
             mini_cfg = config.MINI_UTIL_LEGACY
+        else:
+            raise ValueError(f"Unsupported model provider: {provider_snapshot}")
 
         response = capture_and_fanout("T094", api_client.create_completion,
+            _request_provider=provider_snapshot,
             messages=[
                 {"role": "system", "content": "You are a creative writer for a fantasy role-playing game, specializing in monster lore."},
                 {"role": "user", "content": prompt}
@@ -1705,20 +1833,27 @@ def promote_to_bestiary():
             except:
                 pass
         
-        description = response.choices[0].message.content.strip()
+        description = validate_generated_prose(
+            sanitize_text(response.choices[0].message.content),
+            minimum_words=20,
+        )
 
-        # 3. Create and add the new monster entry
         new_entry = {
             "name": monster_name,
             "description": description,
             "type": "unknown",
             "tags": ["custom", "pack-promoted"]
         }
-        compendium["monsters"][monster_id] = new_entry
-        
-        # 4. Save the updated compendium
-        with open(compendium_path, 'w', encoding='utf-8') as f:
-            json.dump(compendium, f, indent=2)
+        merge_result = _persist_promoted_monster(
+            monster_id,
+            new_entry,
+            compendium_path,
+        )
+        if monster_id in merge_result.skipped:
+            return jsonify({
+                'success': False,
+                'error': f'Monster "{monster_id}" already exists in the bestiary.'
+            })
         
         info(f"TOOLKIT: Promoted pack monster '{monster_id}' to the bestiary.")
         return jsonify({'success': True, 'message': f'Successfully added {monster_name} to the bestiary.'})
@@ -3304,8 +3439,9 @@ def handle_test_local_endpoint(data):
         return
     try:
         client.chat.completions.create(
-            model=model, messages=[{"role": "user", "content": "ping"}],
-            max_tokens=1, temperature=0)
+            model=model,
+            messages=[{"role": "user", "content": "Reply with OK only."}],
+        )
         emit('local_endpoint_test_result',
              {'ok': True, 'detail': f'Connected. Chat completion succeeded with "{model}".'})
     except Exception as chat_err:
@@ -4052,59 +4188,56 @@ def get_module_npcs(module_name):
         error(f"TOOLKIT: Failed to get NPCs for module {module_name}: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/toolkit/npcs/fetch-descriptions', methods=['POST'])
-def fetch_npc_descriptions():
-    """
-    Receives a list of NPC names and starts a background task to generate descriptions.
-    """
-    if not TOOLKIT_AVAILABLE:
-        return jsonify({'success': False, 'error': 'Toolkit not available'}), 503
-    
-    data = request.json
-    module_name = data.get('module_name')
-    npcs = data.get('npcs', [])
+def _run_npc_description_job(
+    module_name,
+    npcs,
+    provider_snapshot,
+    *,
+    job_id=None,
+    target_room=None,
+    compendium_path,
+    descriptions_file,
+    request_delay=2,
+):
+    """Run T095 with per-item isolation and one terminal event on every path."""
+    if not job_id:
+        job_id = f"npc-description-{uuid4().hex}"
+    total = len(npcs)
+    completed = 0
+    failures = []
+    job_error = None
 
-    if not module_name or not npcs:
-        return jsonify({'success': False, 'error': 'Missing module name or NPC list'}), 400
+    try:
+        if not _provider_credentials_available(provider_snapshot):
+            raise RuntimeError(
+                f"{provider_snapshot} provider credentials are not configured"
+            )
 
-    # Start background thread for description generation
-    def generate_descriptions():
-        try:
-            import time
-            from utils.file_operations import safe_read_json, safe_write_json
-            from utils.encoding_utils import sanitize_text
+        import config
+        if provider_snapshot == "openai":
+            mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
+        elif provider_snapshot == "gemini":
+            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_LOW
+        elif provider_snapshot == "lmstudio":
+            mini_cfg = config.MINI_UTIL_LMSTUDIO
+        elif provider_snapshot == "legacy":
+            mini_cfg = config.MINI_UTIL_LEGACY
+        else:
+            raise ValueError(f"Unsupported model provider: {provider_snapshot}")
+        module_context = extract_module_context_for_npcs(module_name)
 
-            import config
-            if not config.OPENAI_API_KEY:
-                error("TOOLKIT: OpenAI API key not configured")
-                return
-            
-            # Load NPC compendium
-            npc_compendium_path = 'data/bestiary/npc_compendium.json'
-            npc_compendium = safe_read_json(npc_compendium_path) or {}
-            
-            # Ensure proper structure
-            if 'npcs' not in npc_compendium:
-                npc_compendium['npcs'] = {}
-            
-            # Also maintain temp file for backward compatibility
-            descriptions_file = f'temp/npc_descriptions_{module_name}.json'
-            os.makedirs('temp', exist_ok=True)
-            existing_descriptions = safe_read_json(descriptions_file) or {}
-            
-            # Extract module context
-            module_context = extract_module_context_for_npcs(module_name)
-            
-            # Generate description for each NPC
-            for i, npc_data in enumerate(npcs):
-                npc_name = npc_data['name']
-                npc_id = npc_data['id']
-                
-                # In toolkit mode, always regenerate descriptions
-                if npc_id in existing_descriptions:
-                    info(f"TOOLKIT: Overwriting existing description for {npc_name}")
-                
-                # Prepare a new, more directive prompt
+        for index, npc_data in enumerate(npcs):
+            npc_name = "Unknown NPC"
+            try:
+                if not isinstance(npc_data, dict):
+                    raise ValueError("NPC request item must be an object")
+                npc_name = npc_data.get("name")
+                npc_id = npc_data.get("id")
+                if not isinstance(npc_name, str) or not npc_name.strip():
+                    raise ValueError("NPC request item has no usable name")
+                if not isinstance(npc_id, str) or not npc_id.strip():
+                    raise ValueError("NPC request item has no usable ID")
+
                 prompt = f"""Generate a rich, descriptive prompt for an AI image generator to create a fantasy character portrait.
 
 NPC Name: {npc_name}
@@ -4119,100 +4252,168 @@ The output should be a single paragraph (150-200 words) that is itself a high-qu
 The character must appear friendly, capable, and trustworthy, like a potential party ally. Do NOT use words like 'photorealistic', 'photo', 'cosplay', '3D render'. Focus on descriptive language for a digital painting.
 Use only standard ASCII characters in the prompt -- no smart quotes, no em-dashes, no Unicode symbols.
 
-Example Output Format:
-"A stunning digital painting of Elara, a female wood elf ranger with emerald green eyes and long braided auburn hair. She wears masterfully crafted green leather armor with leaf-like patterns. A longbow is slung over her shoulder and a sheathed shortsword hangs at her hip. She stands in a misty, ancient forest at dawn, with golden morning light filtering through the canopy, creating a magical and serene atmosphere."
+Return only the image prompt as prose, without JSON, headings, or commentary.
 """
 
-                try:
-                    import config
-                    from model_config import MODEL_PROVIDER
-                    if MODEL_PROVIDER == "openai":
-                        mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
-                    elif MODEL_PROVIDER == "gemini":
-                        mini_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
-                    elif MODEL_PROVIDER == "lmstudio":
-                        mini_cfg = config.MINI_UTIL_LMSTUDIO
-                    else:  # legacy
-                        mini_cfg = config.MINI_UTIL_LEGACY
+                response = capture_and_fanout(
+                    "T095",
+                    api_client.create_completion,
+                    _request_provider=provider_snapshot,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are an expert AI prompt engineer specializing in fantasy character art. Your task is to write image generation prompts, not narrative descriptions. The prompts you write will be used to create digital paintings.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    model=mini_cfg["model"],
+                    temperature=0.8,
+                    response_format=None,
+                    **{k: v for k, v in mini_cfg.items() if k != "model"},
+                )
 
-                    response = capture_and_fanout("T095", api_client.create_completion,
-                        messages=[
-                            {"role": "system", "content": "You are an expert AI prompt engineer specializing in fantasy character art. Your task is to write image generation prompts, not narrative descriptions. The prompts you write will be used to create digital paintings."},
-                            {"role": "user", "content": prompt}
-                        ],
-                        model=mini_cfg["model"],
-                        temperature=0.8,
-                        response_format=None,
-                        **{k: v for k, v in mini_cfg.items() if k != "model"})
-                    
-                    # Track token usage
-                    if USAGE_TRACKING_AVAILABLE:
-                        try:
-                            from utils.openai_usage_tracker import get_global_tracker
-                            tracker = get_global_tracker()
-                            tracker.track(response, context={'endpoint': 'web_validation', 'purpose': 'validate_web_response', 'interface': 'web'})
-                        except:
-                            pass
-                    
-                    description = response.choices[0].message.content
-                    description = sanitize_text(description)
-                    
-                    # Save to NPC compendium
-                    npc_compendium['npcs'][npc_id] = {
-                        'name': npc_name,
-                        'description': description,
-                        'module': module_name,
-                        'generated_at': datetime.now().isoformat()
-                    }
-                    
-                    # Also save to temp file for backward compatibility
-                    existing_descriptions[npc_id] = {
-                        'name': npc_name,
-                        'description': description,
-                        'generated_at': datetime.now().isoformat()
-                    }
-                    
-                    # Write both files
-                    npc_compendium['total_npcs'] = len(npc_compendium.get('npcs', {}))
-                    npc_compendium['last_updated'] = datetime.now().isoformat()
-                    safe_write_json(npc_compendium_path, npc_compendium)
-                    safe_write_json(descriptions_file, existing_descriptions)
-                    
-                    info(f"TOOLKIT: Generated description for {npc_name} ({i+1}/{len(npcs)})")
-                    
-                    # Emit progress via SocketIO
-                    socketio.emit('npc_description_progress', {
-                        'current': i + 1,
-                        'total': len(npcs),
+                if USAGE_TRACKING_AVAILABLE:
+                    try:
+                        from utils.openai_usage_tracker import get_global_tracker
+                        tracker = get_global_tracker()
+                        tracker.track(
+                            response,
+                            context={
+                                'endpoint': 'web_validation',
+                                'purpose': 'validate_web_response',
+                                'interface': 'web',
+                            },
+                        )
+                    except Exception:
+                        pass
+
+                description = validate_generated_prose(
+                    sanitize_text(response.choices[0].message.content),
+                    minimum_words=30,
+                )
+                generated_at = datetime.now().isoformat()
+                entry = {
+                    'name': npc_name.strip(),
+                    'description': description,
+                    'module': module_name,
+                    'generated_at': generated_at,
+                }
+                legacy_entry = {
+                    'name': npc_name.strip(),
+                    'description': description,
+                    'generated_at': generated_at,
+                }
+                merge_npc_description_pair(
+                    compendium_path,
+                    descriptions_file,
+                    {npc_id: entry},
+                    {npc_id: legacy_entry},
+                )
+
+                completed += 1
+                info(
+                    f"TOOLKIT: Generated description for {npc_name} "
+                    f"({index + 1}/{total})"
+                )
+                _emit_job_event(
+                    'npc_description_progress',
+                    {
+                        'current': index + 1,
+                        'total': total,
                         'npc_name': npc_name,
-                        'status': 'success'
-                    })
-                    
-                    # Rate limiting
-                    time.sleep(2)  # Wait 2 seconds between requests
-                    
-                except Exception as e:
-                    error(f"TOOLKIT: Failed to generate description for {npc_name}: {e}")
-                    socketio.emit('npc_description_progress', {
-                        'current': i + 1,
-                        'total': len(npcs),
+                        'status': 'success',
+                    },
+                    job_id=job_id,
+                    target_room=target_room,
+                )
+            except Exception as exc:
+                failure = {'npc_name': npc_name, 'error': str(exc)}
+                failures.append(failure)
+                error(f"TOOLKIT: Failed to generate description for {npc_name}: {exc}")
+                _emit_job_event(
+                    'npc_description_progress',
+                    {
+                        'current': index + 1,
+                        'total': total,
                         'npc_name': npc_name,
                         'status': 'error',
-                        'error': str(e)
-                    })
-            
-            info(f"TOOLKIT: Completed description generation for module {module_name}")
-            
-        except Exception as e:
-            error(f"TOOLKIT: Description generation failed: {e}")
-    
-    # Start background thread
-    thread = threading.Thread(target=generate_descriptions)
-    thread.daemon = True
+                        'error': str(exc),
+                    },
+                    job_id=job_id,
+                    target_room=target_room,
+                )
+
+            if request_delay and index < total - 1:
+                time.sleep(request_delay)
+
+        info(f"TOOLKIT: Completed description generation for module {module_name}")
+    except Exception as exc:
+        job_error = str(exc)
+        error(f"TOOLKIT: Description generation failed: {exc}")
+    finally:
+        success = job_error is None and not failures and completed == total
+        terminal_payload = {
+            'job_id': job_id,
+            'success': success,
+            'status': 'complete' if success else 'failed',
+            'module_name': module_name,
+            'provider': provider_snapshot,
+            'completed': completed,
+            'failed': total - completed,
+            'total': total,
+        }
+        if job_error is not None:
+            terminal_payload['error'] = job_error
+        elif failures:
+            terminal_payload['errors'] = failures
+        _emit_job_event(
+            'npc_description_complete',
+            terminal_payload,
+            job_id=job_id,
+            target_room=target_room,
+        )
+
+    return terminal_payload
+
+
+@app.route('/api/toolkit/npcs/fetch-descriptions', methods=['POST'])
+def fetch_npc_descriptions():
+    """Start a background T095 NPC description generation job."""
+    if not TOOLKIT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Toolkit not available'}), 503
+
+    data = request.json or {}
+    module_name = data.get('module_name')
+    npcs = data.get('npcs', [])
+    if not module_name or not isinstance(npcs, list) or not npcs:
+        return jsonify({'success': False, 'error': 'Missing module name or NPC list'}), 400
+
+    from model_config import get_provider
+    provider_snapshot = get_provider()
+    job_id, target_room = _job_identity(data, 'npc-description')
+    npc_snapshot = [dict(item) if isinstance(item, dict) else item for item in npcs]
+    descriptions_file = f'temp/npc_descriptions_{module_name}.json'
+    thread = threading.Thread(
+        target=_run_npc_description_job,
+        kwargs={
+            'module_name': module_name,
+            'npcs': npc_snapshot,
+            'provider_snapshot': provider_snapshot,
+            'job_id': job_id,
+            'target_room': target_room,
+            'compendium_path': NPC_COMPENDIUM_PATH,
+            'descriptions_file': descriptions_file,
+        },
+        daemon=True,
+    )
     thread.start()
-    
+
     info(f"TOOLKIT: Started description generation for {len(npcs)} NPCs in {module_name}")
-    return jsonify({'success': True, 'message': 'Description generation started.'})
+    return jsonify({
+        'success': True,
+        'job_id': job_id,
+        'message': 'Description generation started.',
+    })
 
 def extract_module_context_for_npcs(module_name):
     """
@@ -4313,43 +4514,31 @@ def handle_npc_description():
             return jsonify({'success': False, 'error': 'Missing required fields'}), 400
         
         try:
-            from utils.file_operations import safe_read_json, safe_write_json
             from utils.encoding_utils import sanitize_text
             
             sanitized_description = sanitize_text(description)
-            
-            # Save to NPC compendium
-            npc_compendium_path = 'data/bestiary/npc_compendium.json'
-            npc_compendium = safe_read_json(npc_compendium_path) or {}
-            
-            if 'npcs' not in npc_compendium:
-                npc_compendium['npcs'] = {}
-            
-            npc_compendium['npcs'][npc_id] = {
-                'name': npc_name,
+            clean_name = npc_name or npc_id.replace('_', ' ').title()
+            updated_at = datetime.now().isoformat()
+            primary_entry = {
+                'name': clean_name,
                 'description': sanitized_description,
                 'module': module_name,
-                'updated_at': datetime.now().isoformat()
+                'updated_at': updated_at,
             }
-            
-            npc_compendium['total_npcs'] = len(npc_compendium.get('npcs', {}))
-            npc_compendium['last_updated'] = datetime.now().isoformat()
-            safe_write_json(npc_compendium_path, npc_compendium)
-            
-            # Also save to temp file for backward compatibility
             descriptions_file = f'temp/npc_descriptions_{module_name}.json'
-            os.makedirs('temp', exist_ok=True)
-            
-            descriptions = safe_read_json(descriptions_file) or {}
-            descriptions[npc_id] = {
-                'name': npc_name,
+            legacy_entry = {
+                'name': clean_name,
                 'description': sanitized_description,
-                'updated_at': datetime.now().isoformat()
+                'updated_at': updated_at,
             }
+            merge_npc_description_pair(
+                NPC_COMPENDIUM_PATH,
+                descriptions_file,
+                {npc_id: primary_entry},
+                {npc_id: legacy_entry},
+            )
             
-            safe_write_json(descriptions_file, descriptions)
-            
-            info(f"TOOLKIT: Description for NPC '{npc_name}' (ID: {npc_id}) was updated")
+            info(f"TOOLKIT: Description for NPC '{clean_name}' (ID: {npc_id}) was updated")
             return jsonify({'success': True})
             
         except Exception as e:
@@ -5093,14 +5282,18 @@ def handle_generate_unified_assets(data):
                             try:
                                 description_found = False
                                 description_text = ""
+                                monster_data = None
+                                bestiary_entry = {}
                                 
                                 # First check if description exists in bestiary
-                                bestiary_path = 'data/bestiary/monster_compendium.json'
+                                bestiary_path = MONSTER_COMPENDIUM_PATH
                                 if os.path.exists(bestiary_path):
                                     bestiary_data = safe_read_json(bestiary_path) or {}
                                     monsters_dict = bestiary_data.get('monsters', {})
                                     if asset['id'] in monsters_dict:
                                         monster_entry = monsters_dict[asset['id']]
+                                        if isinstance(monster_entry, dict):
+                                            bestiary_entry.update(monster_entry)
                                         if monster_entry.get('description'):
                                             description_found = True
                                             description_text = monster_entry['description']
@@ -5126,21 +5319,21 @@ def handle_generate_unified_assets(data):
                                             existing_data['description'] = description_text
                                             safe_write_json(str(monster_file), existing_data)
                                     
-                                    # Also save to bestiary so MonsterGenerator can find it
-                                    bestiary_path = 'data/bestiary/monster_compendium.json'
-                                    bestiary_data = safe_read_json(bestiary_path) or {}
-                                    
-                                    if 'monsters' not in bestiary_data:
-                                        bestiary_data['monsters'] = {}
-                                    
-                                    # Add or update the monster in bestiary
-                                    if asset['id'] not in bestiary_data['monsters']:
-                                        bestiary_data['monsters'][asset['id']] = {}
-                                    
-                                    bestiary_data['monsters'][asset['id']]['name'] = asset['name']
-                                    bestiary_data['monsters'][asset['id']]['description'] = description_text
-                                    
-                                    safe_write_json(bestiary_path, bestiary_data)
+                                    # Also save transactionally so concurrent jobs
+                                    # cannot replace the complete compendium document.
+                                    bestiary_path = MONSTER_COMPENDIUM_PATH
+                                    if isinstance(monster_data, dict):
+                                        bestiary_entry.update(monster_data)
+                                    bestiary_entry.update({
+                                        'name': asset['name'],
+                                        'description': description_text,
+                                    })
+                                    merge_compendium_entries(
+                                        bestiary_path,
+                                        'monsters',
+                                        {asset['id']: bestiary_entry},
+                                        overwrite=True,
+                                    )
                                     info(f"Saved {asset['name']} description to both module and bestiary")
                                     
                                     completed += 1
@@ -5167,6 +5360,7 @@ def handle_generate_unified_assets(data):
                             try:
                                 description_found = False
                                 description_text = ""
+                                existing_npc_entry = {}
 
                                 # First check if description exists in NPC compendium
                                 npc_compendium_path = 'data/bestiary/npc_compendium.json'
@@ -5175,6 +5369,8 @@ def handle_generate_unified_assets(data):
                                     npcs_dict = compendium_data.get('npcs', {})
                                     if asset['id'] in npcs_dict:
                                         npc_entry = npcs_dict[asset['id']]
+                                        if isinstance(npc_entry, dict):
+                                            existing_npc_entry.update(npc_entry)
                                         if npc_entry.get('description'):
                                             description_found = True
                                             description_text = npc_entry['description']
@@ -5224,20 +5420,26 @@ def handle_generate_unified_assets(data):
 
                                 # Save to NPC compendium
                                 if description_text:
-                                    npc_compendium_path = 'data/bestiary/npc_compendium.json'
-                                    compendium_data = safe_read_json(npc_compendium_path) or {}
-
-                                    if 'npcs' not in compendium_data:
-                                        compendium_data['npcs'] = {}
-
-                                    # Add or update the NPC in compendium
-                                    if asset['id'] not in compendium_data['npcs']:
-                                        compendium_data['npcs'][asset['id']] = {}
-
-                                    compendium_data['npcs'][asset['id']]['name'] = asset['name']
-                                    compendium_data['npcs'][asset['id']]['description'] = description_text
-
-                                    safe_write_json(npc_compendium_path, compendium_data)
+                                    npc_compendium_path = NPC_COMPENDIUM_PATH
+                                    generated_at = datetime.now().isoformat()
+                                    primary_entry = dict(existing_npc_entry)
+                                    primary_entry.update({
+                                        'name': asset['name'],
+                                        'description': description_text,
+                                        'module': module_name,
+                                        'generated_at': generated_at,
+                                    })
+                                    legacy_entry = {
+                                        'name': asset['name'],
+                                        'description': description_text,
+                                        'generated_at': generated_at,
+                                    }
+                                    merge_npc_description_pair(
+                                        npc_compendium_path,
+                                        f'temp/npc_descriptions_{module_name}.json',
+                                        {asset['id']: primary_entry},
+                                        {asset['id']: legacy_entry},
+                                    )
                                     info(f"Saved {asset['name']} description to NPC compendium")
 
                                     completed += 1

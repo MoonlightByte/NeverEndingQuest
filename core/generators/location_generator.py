@@ -20,8 +20,8 @@ import random
 from utils.module_path_manager import ModulePathManager
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from model_config import convert_to_gemini_schema
-register_callsite("T025", "core/generators/location_generator.py", 431)
-register_callsite("T026", "core/generators/location_generator.py", 566)
+register_callsite("T025", "core/generators/location_generator.py", 489)
+register_callsite("T026", "core/generators/location_generator.py", 667)
 
 # MED-2 (#127): pre-load + convert the location schema for Gemini response_schema.
 # Loaded once at import. If it fails, _LOCA_SCHEMA_GEMINI stays None and the Gemini
@@ -33,6 +33,52 @@ try:
         _LOCA_SCHEMA_GEMINI = convert_to_gemini_schema(json.load(_f))
 except Exception:
     _LOCA_SCHEMA_GEMINI = None
+
+
+def _location_stub_ids(location_stubs: List[Dict[str, Any]]) -> List[str]:
+    """Return a unique, ordered stub-ID list or reject the input contract."""
+    ids = []
+    for index, stub in enumerate(location_stubs):
+        if not isinstance(stub, dict):
+            raise ValueError(f"location stub {index} must be an object")
+        location_id = stub.get("locationId")
+        if not isinstance(location_id, str) or not location_id.strip():
+            raise ValueError(f"location stub {index} has no useful locationId")
+        ids.append(location_id)
+    if len(ids) != len(set(ids)):
+        raise ValueError("location stub IDs must be unique")
+    return ids
+
+
+def _validate_location_batch_contract(
+    parsed: Any,
+    location_stubs: List[Dict[str, Any]],
+    schema: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Validate T026 schema plus exact positional alignment with its stubs."""
+    if not isinstance(parsed, dict):
+        raise ValueError("location batch must be a JSON object")
+    jsonschema.validate(parsed, schema)
+
+    expected_ids = _location_stub_ids(location_stubs)
+    locations = parsed.get("locations")
+    if not isinstance(locations, list):
+        raise ValueError("location batch must contain a locations array")
+    if len(locations) != len(expected_ids):
+        raise ValueError(
+            f"location batch cardinality {len(locations)} does not match "
+            f"{len(expected_ids)} stubs"
+        )
+    if any(not isinstance(location, dict) for location in locations):
+        raise ValueError("every generated location must be an object")
+
+    returned_ids = [location.get("locationId") for location in locations]
+    if returned_ids != expected_ids:
+        raise ValueError(
+            "locationId order must exactly match the input stubs: "
+            f"expected {expected_ids}, got {returned_ids}"
+        )
+    return parsed
 
 
 @dataclass
@@ -441,6 +487,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
             main_cfg = config.DM_MAIN_LEGACY
 
         response = capture_and_fanout("T025", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=[
                 {"role": "system", "content": "You are an expert 5e location designer. Return only the requested data in the exact format needed."},
                 {"role": "user", "content": prompt}
@@ -451,15 +498,27 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
             **{k: v for k, v in main_cfg.items() if k != "model"})
 
         content = response.choices[0].message.content.strip()
+        if content.startswith("```") and content.endswith("```"):
+            content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
 
-        # Try to parse as JSON if it looks like JSON
-        if content.startswith(('[', '{')):
+        expected_type = schema_info.get("type") if isinstance(schema_info, dict) else None
+        if expected_type == "string":
+            value = content
+        else:
             try:
-                return json.loads(content)
-            except json.JSONDecodeError:
-                pass
+                value = json.loads(content)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"T025 returned invalid JSON for {field_path}"
+                ) from exc
 
-        return content
+        try:
+            jsonschema.validate(value, schema_info)
+        except jsonschema.ValidationError as exc:
+            raise ValueError(
+                f"T025 response violates the schema for {field_path}: {exc.message}"
+            ) from exc
+        return value
 
     def generate_location_batch(self, 
                                area_data: Dict[str, Any],
@@ -577,11 +636,10 @@ CRITICAL: You MUST use the exact locationId values from the stubs provided. Do n
         else:  # legacy
             main_cfg = config.DM_MAIN_LEGACY
 
-        # MP-H2: a malformed AI response previously raised an uncaught
-        # JSONDecodeError that crashed the entire build for the whole area.
-        # Retry once on a parse failure, then fail with a clear, logged error.
+        # T026 is a single all-or-nothing transaction. Parse, schema, cardinality,
+        # and positional-ID checks all happen before returning anything to the
+        # caller, so an invalid attempt cannot partially update area/context state.
         last_err = None
-        parsed = None
         # MED-2 (#127): attach the converted location schema for Gemini so flash
         # models emit the location object, not DM narration. DM_MAIN_* dicts are
         # shared across callsites, so attach per-call via extra_params (not the dict).
@@ -595,11 +653,22 @@ CRITICAL: You MUST use the exact locationId values from the stubs provided. Do n
                 )
             extra_params["response_schema"] = _LOCA_SCHEMA_GEMINI
 
+        # Reject ambiguous stub input before spending a model request.
+        _location_stub_ids(location_stubs)
+
         for attempt in range(2):
+            retry_prompt = batch_prompt
+            if last_err is not None:
+                retry_prompt += (
+                    "\nPREVIOUS RESPONSE ERROR: "
+                    f"{last_err}\nRegenerate the complete batch. Preserve the exact "
+                    "stub count, locationId values, order, and location schema."
+                )
             response = capture_and_fanout("T026", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=[
                     {"role": "system", "content": "You are an expert 5e dungeon designer creating cohesive, interconnected locations."},
-                    {"role": "user", "content": batch_prompt}
+                    {"role": "user", "content": retry_prompt}
                 ],
                 model=main_cfg["model"],
                 temperature=0.8,
@@ -608,67 +677,22 @@ CRITICAL: You MUST use the exact locationId values from the stubs provided. Do n
             raw = response.choices[0].message.content
             try:
                 parsed = json.loads(raw)
-                break
-            except (json.JSONDecodeError, TypeError) as e:
+                return _validate_location_batch_contract(
+                    parsed, location_stubs, self.schema
+                )
+            except (json.JSONDecodeError, TypeError, ValueError,
+                    jsonschema.ValidationError) as e:
                 last_err = e
-                print(f"WARNING: T026 location batch returned invalid JSON "
-                      f"(attempt {attempt + 1}/2): {e}. Raw (truncated): {str(raw)[:300]}")
-        if parsed is None:
-            raise ValueError(
-                f"Location batch generation returned invalid JSON after 2 attempts: {last_err}"
-            )
-
-        # MP-C1: validate that the AI preserved the locationId values from
-        # the stubs. The map grid and all downstream wiring depend on these
-        # exact IDs. If the AI invented new ones (e.g. R-prefixed instead of
-        # the area's actual prefix), the map is effectively orphaned. We
-        # log warnings for minor drift and reject the batch on significant
-        # drift so the caller can retry or fail the build cleanly.
-        returned_locations = parsed.get("locations", []) if isinstance(parsed, dict) else []
-        expected_ids = {
-            stub["locationId"] for stub in location_stubs
-            if isinstance(stub, dict) and "locationId" in stub
-        }
-        if expected_ids and returned_locations:
-            drifted_ids = []
-            for loc in returned_locations:
-                if not isinstance(loc, dict):
-                    continue
-                lid = loc.get("locationId")
-                if lid is not None and lid not in expected_ids:
-                    drifted_ids.append(lid)
-            total_returned = len([l for l in returned_locations if isinstance(l, dict)])
-            if drifted_ids:
-                drift_ratio = len(drifted_ids) / total_returned if total_returned else 0.0
-                # Significant drift -> reject the batch.
-                if drift_ratio > 0.30:
-                    msg = (
-                        "[Location Generator] AI returned wrong locationId values "
-                        "for {drifted}/{total} locations (drift={ratio:.0%}). "
-                        "Expected one of {expected}, got drifted IDs {got}. "
-                        "Rejecting batch -- the AI did not preserve the stub "
-                        "locationIds (MP-C1).".format(
-                            drifted=len(drifted_ids),
-                            total=total_returned,
-                            ratio=drift_ratio,
-                            expected=sorted(expected_ids),
-                            got=drifted_ids,
-                        )
-                    )
-                    print("DEBUG: " + msg)
-                    raise ValueError(msg)
-                # Minor drift -> warn but proceed (best-effort).
                 print(
-                    "DEBUG: [Location Generator] WARNING: AI changed {n} locationId "
-                    "value(s) {drifted} (expected from stubs: {expected}). "
-                    "Proceeding with AI output (drift under threshold).".format(
-                        n=len(drifted_ids),
-                        drifted=drifted_ids,
-                        expected=sorted(expected_ids),
-                    )
+                    "WARNING: T026 location batch failed JSON/schema/semantic "
+                    f"validation (attempt {attempt + 1}/2): {e}. "
+                    f"Raw (truncated): {str(raw)[:300]}"
                 )
 
-        return parsed
+        raise ValueError(
+            "Location batch generation returned invalid JSON or contract data "
+            f"after 2 attempts: {last_err}"
+        )
     
     def generate_locations(self,
                           area_data: Dict[str, Any],

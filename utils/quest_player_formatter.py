@@ -11,11 +11,12 @@ Uses AI to convert DM-oriented quest descriptions into immersive player-friendly
 
 import json
 import os
+import threading
 from datetime import datetime
 from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T090", "utils/quest_player_formatter.py", 92)
+register_callsite("T090", "utils/quest_player_formatter.py", 108)
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -27,6 +28,21 @@ set_script_name("quest_player_formatter")
 # Constants
 TEMPERATURE = 0.3
 MAX_RETRIES = 3
+
+# Formatting is a whole-file derivation from module_plot.json.  Serialize the
+# complete read -> format -> write transaction per destination so two workers
+# cannot publish an older snapshot after a newer one.  Different modules keep
+# independent locks and can still be formatted in parallel.
+_QUEST_FILE_LOCKS = {}
+_QUEST_FILE_LOCKS_GUARD = threading.Lock()
+
+
+def _quest_file_lock(player_quests_path):
+    """Return the process-local transaction lock for one derived quest file."""
+    lock_key = os.path.abspath(os.path.normpath(os.fspath(player_quests_path)))
+    with _QUEST_FILE_LOCKS_GUARD:
+        return _QUEST_FILE_LOCKS.setdefault(lock_key, threading.RLock())
+
 
 SYSTEM_PROMPT = """You are a quest journal formatter for a fantasy RPG. Your task is to convert DM-oriented quest descriptions into immersive, player-friendly journal entries.
 
@@ -83,20 +99,26 @@ def format_quest_batch(quests_to_format):
         if MODEL_PROVIDER == "openai":
             mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
         elif MODEL_PROVIDER == "gemini":
-            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
+            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_LOW
         elif MODEL_PROVIDER == "lmstudio":
             mini_cfg = config.MINI_UTIL_LMSTUDIO
         else:  # legacy
             mini_cfg = config.MINI_UTIL_LEGACY
 
         response = capture_and_fanout("T090", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
             ],
             model=mini_cfg["model"],
             temperature=TEMPERATURE,
-            **{k: v for k, v in mini_cfg.items() if k != "model"})
+            response_format={"type": "json_object"},
+            **{
+                k: v
+                for k, v in mini_cfg.items()
+                if k not in {"model", "response_format"}
+            })
         
         ai_response = response.choices[0].message.content.strip()
         
@@ -107,18 +129,46 @@ def format_quest_batch(quests_to_format):
                 ai_response = ai_response.split("```")[1]
                 if ai_response.startswith("json"):
                     ai_response = ai_response[4:]
-            
+
             reformatted = json.loads(ai_response)
-            info(f"SUCCESS: Reformatted {len(reformatted)} quest descriptions", category="quest_formatting")
-            return reformatted
+
+            if type(reformatted) is not dict:
+                raise ValueError("T090 response must be a JSON object")
+
+            expected_ids = set(quest_input)
+            returned_ids = set(reformatted)
+            if returned_ids != expected_ids:
+                missing_ids = sorted(expected_ids - returned_ids, key=str)
+                extra_ids = sorted(returned_ids - expected_ids, key=str)
+                raise ValueError(
+                    "T090 response IDs must exactly match the requested batch "
+                    f"(missing={missing_ids}, extra={extra_ids})"
+                )
+
+            normalized = {}
+            for quest_id in quest_input:
+                description = reformatted[quest_id]
+                if not isinstance(description, str):
+                    raise ValueError(
+                        f"T090 description for {quest_id!r} must be a string"
+                    )
+                description = sanitize_text(description).strip()
+                if not description:
+                    raise ValueError(
+                        f"T090 description for {quest_id!r} must not be empty"
+                    )
+                normalized[quest_id] = description
+
+            info(f"SUCCESS: Reformatted {len(normalized)} quest descriptions", category="quest_formatting")
+            return normalized
             
-        except json.JSONDecodeError as e:
-            error(f"FAILURE: AI response was not valid JSON: {e}", category="quest_formatting")
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            error(f"FAILURE: AI response failed validation: {e}", category="quest_formatting")
             debug(f"AI_RESPONSE: {ai_response}", category="quest_formatting")
             return None
             
     except Exception as e:
-        error(f"FAILURE: Error calling AI for quest formatting", exception=e, category="quest_formatting")
+        error("FAILURE: Error calling AI for quest formatting", exception=e, category="quest_formatting")
         return None
 
 
@@ -133,10 +183,32 @@ def format_quests_for_player(module_name):
         bool: Success or failure
     """
     try:
+        path_manager = ModulePathManager(module_name)
+        player_quests_path = os.path.join(
+            path_manager.module_dir,
+            f"player_quests_{module_name}.json",
+        )
+        with _quest_file_lock(player_quests_path):
+            return _format_quests_for_player_unlocked(
+                module_name,
+                path_manager,
+                player_quests_path,
+            )
+    except Exception as e:
+        error("FAILURE: Unexpected error in format_quests_for_player", exception=e, category="quest_formatting")
+        return False
+
+
+def _format_quests_for_player_unlocked(
+    module_name,
+    path_manager,
+    player_quests_path,
+):
+    """Build and atomically publish one module's complete derived quest file."""
+    try:
         info(f"STATE_CHANGE: Starting quest formatting for module {module_name}", category="quest_formatting")
         
-        # Load the module plot data
-        path_manager = ModulePathManager(module_name)
+        # Read the source only after acquiring the destination transaction lock.
         plot_path = path_manager.get_plot_path()
         
         plot_data = safe_read_json(plot_path)
@@ -169,7 +241,6 @@ def format_quests_for_player(module_name):
         if not quests_to_format:
             debug("No active or completed quests to format", category="quest_formatting")
             # Still save an empty player quests file
-            player_quests_path = os.path.join(path_manager.module_dir, f"player_quests_{module_name}.json")
             return safe_write_json(player_quests_path, player_quests)
         
         debug(f"Found {len(quests_to_format)} quests to format", category="quest_formatting")
@@ -227,18 +298,16 @@ def format_quests_for_player(module_name):
         # Ensure the module directory exists (for non-standard game folders)
         os.makedirs(path_manager.module_dir, exist_ok=True)
         
-        # Save the player quests file
-        player_quests_path = os.path.join(path_manager.module_dir, f"player_quests_{module_name}.json")
-        
+        # Publish only after every batch has either validated or fallen back.
         if safe_write_json(player_quests_path, player_quests):
             info(f"SUCCESS: Saved player-friendly quests to {player_quests_path}", category="quest_formatting")
             return True
         else:
-            error(f"FAILURE: Could not save player quests file", category="quest_formatting")
+            error("FAILURE: Could not save player quests file", category="quest_formatting")
             return False
             
     except Exception as e:
-        error(f"FAILURE: Unexpected error in format_quests_for_player", exception=e, category="quest_formatting")
+        error("FAILURE: Unexpected error in format_quests_for_player", exception=e, category="quest_formatting")
         return False
 
 

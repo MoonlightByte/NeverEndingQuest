@@ -10,7 +10,10 @@ This should be called periodically (e.g., in the main game loop).
 
 import os
 from typing import List, Dict, Any
-from updates.update_character_effects import check_and_apply_expirations
+from updates.update_character_effects import (
+    apply_claimed_effect_reversal,
+    check_and_apply_expirations,
+)
 from updates.update_character_info import update_character_info
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
@@ -29,11 +32,18 @@ def process_all_effect_expirations():
     
     if not reversals:
         debug("EFFECTS: No expired effects found", category="effects_tracking")
-        return
+        return {"claimed": 0, "completed": 0, "failed": 0, "blocked": 0}
     
     info(f"EFFECTS: Processing {len(reversals)} expired effects", category="effects_tracking")
     
-    # Apply each reversal through the character update system
+    result = {
+        "claimed": len(reversals),
+        "completed": 0,
+        "failed": 0,
+        "blocked": 0,
+    }
+
+    # Apply each reversal through the character update system.
     for reversal in reversals:
         character_name = reversal['character']
         description = reversal['description']
@@ -41,12 +51,17 @@ def process_all_effect_expirations():
         
         info(f"EFFECTS: Reversing effect for {character_name}: {description}", category="effects_tracking")
         
-        try:
-            # Call update_character_info to apply the reversal
-            update_character_info(character_name, description)
+        if apply_claimed_effect_reversal(reversal, update_character_info):
+            result["completed"] += 1
             info(f"EFFECTS: Successfully reversed effect: {modifier['source']}", category="effects_tracking")
-        except Exception as e:
-            error(f"EFFECTS: Failed to reverse effect for {character_name}: {str(e)}", category="effects_tracking")
+        else:
+            result["failed"] += 1
+            error(
+                f"EFFECTS: Failed to reverse effect for {character_name}; "
+                "the durable reversal record was retained",
+                category="effects_tracking",
+            )
+    return result
 
 def process_rest_effects(character_name: str, rest_type: str):
     """
@@ -65,23 +80,35 @@ def process_rest_effects(character_name: str, rest_type: str):
     
     if not reversals:
         debug(f"EFFECTS: No {rest_type} effects to clear for {character_name}", category="effects_tracking")
-        return
+        return {"claimed": 0, "completed": 0, "failed": 0, "blocked": 0}
     
     info(f"EFFECTS: Clearing {len(reversals)} effects due to {rest_type}", category="effects_tracking")
     
-    # Apply each reversal
+    result = {
+        "claimed": len(reversals),
+        "completed": 0,
+        "failed": 0,
+        "blocked": 0,
+    }
+
+    # Apply each reversal.
     for reversal in reversals:
         description = reversal['description']
         modifier = reversal['modifier']
         
         info(f"EFFECTS: Clearing effect: {modifier['source']}", category="effects_tracking")
         
-        try:
-            # Call update_character_info to apply the reversal
-            update_character_info(character_name, description)
+        if apply_claimed_effect_reversal(reversal, update_character_info):
+            result["completed"] += 1
             info(f"EFFECTS: Successfully cleared rest effect: {modifier['source']}", category="effects_tracking")
-        except Exception as e:
-            error(f"EFFECTS: Failed to clear rest effect: {str(e)}", category="effects_tracking")
+        else:
+            result["failed"] += 1
+            error(
+                f"EFFECTS: Failed to clear rest effect: {modifier['source']}; "
+                "the durable reversal record was retained",
+                category="effects_tracking",
+            )
+    return result
 
 # Test function
 if __name__ == "__main__":

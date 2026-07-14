@@ -50,11 +50,50 @@ import shutil
 from datetime import datetime
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T059", "core/validation/npc_codex_generator.py", 266)
+register_callsite("T059", "core/validation/npc_codex_generator.py", 306)
 import config
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import safe_json_load, safe_json_dump, sanitize_text
 from utils.file_operations import safe_write_json, safe_read_json
+
+
+VALID_NPC_SOURCES = {
+    "plot_character",
+    "location_character",
+    "character_file",
+}
+
+
+def _is_valid_npc_entry(npc):
+    """Return whether an extracted NPC satisfies T059's output contract."""
+    return (
+        isinstance(npc, dict)
+        and isinstance(npc.get("name"), str)
+        and bool(npc["name"].strip())
+        and npc.get("source") in VALID_NPC_SOURCES
+    )
+
+
+def _is_cacheable_codex(codex, module_name):
+    """Reject failed or empty extraction results at every cache boundary.
+
+    An empty codex cannot be distinguished from T059's historical silent
+    failure result, so it remains retryable instead of becoming durable
+    anti-hallucination context.
+    """
+    if not isinstance(codex, dict) or "error" in codex:
+        return False
+    if codex.get("module_name") != module_name:
+        return False
+
+    npcs = codex.get("npcs")
+    if not isinstance(npcs, list) or not npcs:
+        return False
+    if not all(_is_valid_npc_entry(npc) for npc in npcs):
+        return False
+
+    total_npcs = codex.get("total_npcs", len(npcs))
+    return type(total_npcs) is int and total_npcs == len(npcs)
 
 
 def generate_npc_codex(module_name):
@@ -154,8 +193,8 @@ def generate_npc_codex(module_name):
         print("Extracting NPCs using AI analysis...")
         npc_list = extract_npcs_with_ai(module_content, module_name)
         
-        if not npc_list:
-            print("Warning: No NPCs extracted, this might indicate an issue with the module content")
+        if npc_list is None:
+            raise ValueError("T059 returned unusable NPC extraction output")
         
         # 5. Create codex structure with validation
         current_time = datetime.now().isoformat()
@@ -201,7 +240,8 @@ def extract_npcs_with_ai(module_content, module_name):
         module_name (str): Name of the module being analyzed
         
     Returns:
-        list: List of dictionaries with NPC name and source information
+        list | None: Valid non-empty NPC dictionaries, or None when the model
+            response does not satisfy T059's output contract
     """
     try:
         # Create extraction prompt - avoid f-string issues with JSON content
@@ -264,6 +304,7 @@ Extract all legitimate NPC names now:"""
             main_cfg = config.DM_MAIN_LEGACY
 
         response = capture_and_fanout("T059", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=[
                 {"role": "system", "content": "You are an expert at analyzing 5th edition of the world's most popular roleplaying game module content and extracting NPC names. You understand the difference between NPCs, locations, and monsters."},
                 {"role": "user", "content": extraction_prompt}
@@ -282,32 +323,37 @@ Extract all legitimate NPC names now:"""
             start_idx = response_text.find('[')
             end_idx = response_text.rfind(']') + 1
             
-            if start_idx != -1 and end_idx != -1:
+            if start_idx != -1 and end_idx > start_idx:
                 json_text = response_text[start_idx:end_idx]
                 npc_list = json.loads(json_text)
+
+                if not isinstance(npc_list, list) or not npc_list:
+                    print("Warning: AI response contained no usable NPC entries")
+                    return None
                 
                 # Validate structure
                 validated_npcs = []
                 for npc in npc_list:
-                    if isinstance(npc, dict) and "name" in npc and "source" in npc:
+                    if _is_valid_npc_entry(npc):
                         validated_npcs.append(npc)
                     else:
                         print(f"Warning: Invalid NPC entry format: {npc}")
+                        return None
                 
                 print(f"Successfully extracted {len(validated_npcs)} NPCs from {module_name}")
                 return validated_npcs
             else:
                 print(f"Warning: Could not find JSON array in AI response")
-                return []
+                return None
                 
         except json.JSONDecodeError as e:
             print(f"Warning: Could not parse AI response as JSON: {e}")
             print(f"Raw response: {response_text[:500]}...")
-            return []
+            return None
         
     except Exception as e:
         print(f"Error extracting NPCs with AI: {e}")
-        return []
+        return None
 
 
 def get_or_create_npc_codex(module_name):
@@ -364,11 +410,9 @@ def get_or_create_npc_codex(module_name):
                     print(f"Loading existing NPC codex from: {codex_file}")
                     codex = safe_read_json(codex_file)
                     
-                    # Validate codex structure
-                    if (isinstance(codex, dict) and 
-                        "module_name" in codex and 
-                        "npcs" in codex and 
-                        isinstance(codex["npcs"], list)):
+                    # Validate codex structure and reject historical failed or
+                    # empty results so a later T059 call can heal the cache.
+                    if _is_cacheable_codex(codex, module_name):
                         
                         npc_count = codex.get('total_npcs', len(codex.get('npcs', [])))
                         print(f"Loaded existing NPC codex for {module_name}: {npc_count} NPCs")
@@ -384,7 +428,7 @@ def get_or_create_npc_codex(module_name):
             codex = generate_npc_codex(module_name)
             
             # Validate generated codex
-            if not isinstance(codex, dict) or "npcs" not in codex:
+            if not _is_cacheable_codex(codex, module_name):
                 raise ValueError("Generated codex has invalid structure")
             
             # Save codex using atomic write operations
@@ -400,7 +444,7 @@ def get_or_create_npc_codex(module_name):
                 if verification is None:
                     raise ValueError("Could not read back saved codex file")
                     
-                if verification.get("total_npcs") != codex.get("total_npcs"):
+                if not _is_cacheable_codex(verification, module_name):
                     raise ValueError("Codex verification failed after save")
                 
                 print(f"Successfully saved NPC codex for {module_name} with {codex.get('total_npcs', 0)} NPCs")

@@ -45,8 +45,8 @@ import config
 import jsonschema
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from model_config import convert_to_gemini_schema
-register_callsite("T036", "core/generators/plot_generator.py", 359)
-register_callsite("T037", "core/generators/plot_generator.py", 438)
+register_callsite("T036", "core/generators/plot_generator.py", 404)
+register_callsite("T037", "core/generators/plot_generator.py", 504)
 
 # issue #128: pre-load + convert plot_schema for Gemini response_schema so flash
 # models emit the plot structure JSON, not DM narration. Loaded once at import; if
@@ -59,6 +59,28 @@ try:
         _PLOT_SCHEMA_GEMINI = convert_to_gemini_schema(json.load(_f))
 except Exception:
     _PLOT_SCHEMA_GEMINI = None
+
+
+def _parse_plot_text_field(content: Any, field_path: str) -> str:
+    """Validate T036's title/objective text boundary."""
+    if not isinstance(content, str):
+        raise ValueError(f"{field_path} response content must be a string")
+    value = content.strip()
+    if value.startswith("```"):
+        lines = value.splitlines()
+        if len(lines) < 3 or lines[-1].strip() != "```":
+            raise ValueError(f"{field_path} returned an incomplete code fence")
+        value = "\n".join(lines[1:-1]).strip()
+    if value.startswith('"'):
+        value = json.loads(value)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field_path} must be a useful non-empty string")
+    if value.lstrip().startswith(("{", "[")):
+        raise ValueError(f"{field_path} must be text, not structured JSON")
+    value = value.strip()
+    if value.casefold() in {"null", "none", "n/a"}:
+        raise ValueError(f"{field_path} must be useful text")
+    return value
 
 
 @dataclass
@@ -332,6 +354,8 @@ class PlotGenerator:
     def generate_field(self, field_path: str, schema_info: Dict[str, Any], 
                       context: Dict[str, Any]) -> Any:
         """Generate content for a specific field"""
+        if schema_info.get("type") != "string":
+            raise ValueError(f"T036 {field_path} requires a string field schema")
         field_name = field_path.split(".")[-1]
         guide_attr = field_name
         
@@ -369,26 +393,37 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
         else:  # legacy
             main_cfg = config.DM_MAIN_LEGACY
 
-        response = capture_and_fanout("T036", api_client.create_completion,
-            messages=[
-                {"role": "system", "content": "You are an expert 5e adventure designer. Return only the requested data in the exact format needed."},
-                {"role": "user", "content": prompt}
-            ],
-            model=main_cfg["model"],
-            temperature=0.7,
-            response_format=None,
-            **{k: v for k, v in main_cfg.items() if k != "model"})
-
-        content = response.choices[0].message.content.strip()
-
-        # Try to parse as JSON if it looks like JSON
-        if content.startswith(('[', '{')):
+        last_error = None
+        for attempt in range(2):
+            retry_prompt = prompt
+            if last_error is not None:
+                retry_prompt += (
+                    "\nPREVIOUS RESPONSE ERROR: "
+                    f"{last_error}\nReturn one useful plain-text string only."
+                )
+            response = capture_and_fanout("T036", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
+                messages=[
+                    {"role": "system", "content": "You are an expert 5e adventure designer. Return only the requested data in the exact format needed."},
+                    {"role": "user", "content": retry_prompt}
+                ],
+                model=main_cfg["model"],
+                temperature=0.7,
+                response_format=None,
+                **{k: v for k, v in main_cfg.items() if k != "model"})
             try:
-                return json.loads(content)
-            except json.JSONDecodeError:
-                pass
-
-        return content
+                return _parse_plot_text_field(
+                    response.choices[0].message.content, field_path
+                )
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                last_error = exc
+                print(
+                    f"WARNING: T036 {field_path} failed validation "
+                    f"(attempt {attempt + 1}/2): {exc}"
+                )
+        raise ValueError(
+            f"T036 {field_path} failed validation after 2 attempts: {last_error}"
+        )
 
     def generate_plot_structure(self, num_plot_points: int, 
                                 context: Dict[str, Any],
@@ -467,6 +502,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
         last_err = None
         for attempt in range(2):
             response = capture_and_fanout("T037", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=[
                     {"role": "system", "content": "You are an expert 5e adventure designer."},
                     {"role": "user", "content": prompt}

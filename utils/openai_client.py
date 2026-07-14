@@ -7,7 +7,7 @@ from openai import OpenAI
 import config
 
 
-def get_openai_client():
+def get_openai_client(provider=None):
     """
     Create and return an OpenAI client configured for the active provider.
 
@@ -23,9 +23,11 @@ def get_openai_client():
         client = get_openai_client()
         response = client.chat.completions.create(...)
     """
-    from model_config import MODEL_PROVIDER
+    if provider is None:
+        import model_config
+        provider = model_config.get_provider()
 
-    if MODEL_PROVIDER == "lmstudio":
+    if provider == "lmstudio":
         # Local / OpenAI-compatible server (LM Studio, Ollama, vLLM, OpenRouter,
         # remote host). Endpoint is read live from user_settings.json so a web-UI
         # change applies on the next request with no restart. Defaults preserve

@@ -50,9 +50,9 @@ from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.npc_reconciler import NpcReconciler
 from utils.file_operations import safe_write_json
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T028", "core/generators/module_builder.py", 685)
-register_callsite("T029", "core/generators/module_builder.py", 943)
-register_callsite("T030", "core/generators/module_builder.py", 1449)
+register_callsite("T028", "core/generators/module_builder.py", 904)
+register_callsite("T029", "core/generators/module_builder.py", 1202)
+register_callsite("T030", "core/generators/module_builder.py", 1820)
 
 # Set script name for logging
 set_script_name("module_builder")
@@ -70,6 +70,120 @@ def _flag_unknown_plot_ids(plot_hooks, valid_ids):
         if isinstance(hook, str):
             referenced.update(re.findall(r"\b(?:PP|SQ)\d{3}\b", hook))
     return referenced - set(valid_ids or [])
+
+
+def _useful_string(value, field):
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be useful text")
+    return value.strip()
+
+
+def _validate_unified_plot_contract(
+    value: Any,
+    area_ids: List[str],
+    expected_plot_points: int,
+    expected_side_quests: int,
+) -> Dict[str, Any]:
+    """Validate T028 identities/references before the unified plot is saved."""
+    root_fields = {
+        "plotTitle", "mainObjective", "plotPoints", "activeQuests",
+        "completedQuests", "failedQuests", "worldEvents", "dmNotes",
+    }
+    if not isinstance(value, dict) or set(value) != root_fields:
+        raise ValueError("T028 requires the exact unified-plot root fields")
+    _useful_string(value["plotTitle"], "plotTitle")
+    _useful_string(value["mainObjective"], "mainObjective")
+    for field in root_fields - {"plotTitle", "mainObjective", "plotPoints"}:
+        if not isinstance(value[field], list):
+            raise ValueError(f"T028 {field} must be an array")
+
+    plot_points = value["plotPoints"]
+    if not isinstance(plot_points, list) or len(plot_points) != expected_plot_points:
+        raise ValueError("T028 must preserve the exact plot-point cardinality")
+    expected_pp_ids = [f"PP{index:03d}" for index in range(1, len(plot_points) + 1)]
+    actual_pp_ids = [pp.get("id") if isinstance(pp, dict) else None for pp in plot_points]
+    if actual_pp_ids != expected_pp_ids:
+        raise ValueError("T028 plot IDs must be globally sequential")
+
+    valid_areas = set(area_ids)
+    side_quest_ids = []
+    for pp in plot_points:
+        required = {
+            "id", "title", "description", "location", "nextPoints", "status",
+            "plotImpact", "sideQuests",
+        }
+        if set(pp) != required:
+            raise ValueError(f"T028 {pp.get('id')} has missing or extra fields")
+        _useful_string(pp["title"], f"{pp['id']}.title")
+        _useful_string(pp["description"], f"{pp['id']}.description")
+        if pp["location"] not in valid_areas:
+            raise ValueError(f"T028 {pp['id']} references an unknown area")
+        if not isinstance(pp["nextPoints"], list) or not all(
+            isinstance(item, str) for item in pp["nextPoints"]
+        ):
+            raise ValueError(f"T028 {pp['id']}.nextPoints must be an ID array")
+        if any(item not in expected_pp_ids or item == pp["id"] for item in pp["nextPoints"]):
+            raise ValueError(f"T028 {pp['id']} has an invalid nextPoints reference")
+        if not isinstance(pp["status"], str) or not isinstance(pp["plotImpact"], str):
+            raise ValueError(f"T028 {pp['id']} status/plotImpact types are invalid")
+        if not isinstance(pp["sideQuests"], list):
+            raise ValueError(f"T028 {pp['id']}.sideQuests must be an array")
+
+        for sq in pp["sideQuests"]:
+            sq_fields = {
+                "id", "title", "description", "involvedLocations", "status",
+                "plotImpact",
+            }
+            if not isinstance(sq, dict) or set(sq) != sq_fields:
+                raise ValueError("T028 side quest has missing or extra fields")
+            side_quest_ids.append(sq["id"])
+            _useful_string(sq["title"], f"{sq['id']}.title")
+            _useful_string(sq["description"], f"{sq['id']}.description")
+            locations = sq["involvedLocations"]
+            if not isinstance(locations, list) or not locations or any(
+                location not in valid_areas for location in locations
+            ):
+                raise ValueError(f"T028 {sq['id']} references an unknown area")
+            if not isinstance(sq["status"], str) or not isinstance(sq["plotImpact"], str):
+                raise ValueError(f"T028 {sq['id']} status/plotImpact types are invalid")
+
+    expected_sq_ids = [
+        f"SQ{index:03d}" for index in range(1, expected_side_quests + 1)
+    ]
+    if side_quest_ids != expected_sq_ids:
+        raise ValueError("T028 side-quest IDs/cardinality must be globally sequential")
+    return value
+
+
+def _validate_plot_hook_updates(value, area_data, valid_plot_ids):
+    """Validate T029's exact location and plot references before merging."""
+    if not isinstance(value, dict) or set(value) != {"plotHookUpdates"}:
+        raise ValueError("T029 requires exactly plotHookUpdates")
+    updates = value["plotHookUpdates"]
+    if not isinstance(updates, list):
+        raise ValueError("T029 plotHookUpdates must be an array")
+    valid_locations = {
+        location.get("locationId")
+        for location in area_data.get("locations", [])
+        if isinstance(location, dict) and location.get("locationId")
+    }
+    seen = set()
+    for update in updates:
+        if not isinstance(update, dict) or set(update) != {"locationId", "plotHooks"}:
+            raise ValueError("T029 update requires exactly locationId and plotHooks")
+        location_id = update["locationId"]
+        if location_id not in valid_locations or location_id in seen:
+            raise ValueError("T029 update has an unknown or duplicate locationId")
+        seen.add(location_id)
+        hooks = update["plotHooks"]
+        if not isinstance(hooks, list) or not hooks or not all(
+            isinstance(hook, str) and hook.strip() for hook in hooks
+        ):
+            raise ValueError("T029 plotHooks must contain useful strings")
+        unknown = _flag_unknown_plot_ids(hooks, valid_plot_ids)
+        if unknown:
+            raise ValueError(f"T029 references unknown plot IDs: {sorted(unknown)}")
+    return updates
 
 
 @dataclass
@@ -638,19 +752,21 @@ The plot title should reference this specific area, not other locations.
             # Raising ValueError here propagates up to
             # ai_driven_module_creation()'s try/except cleanup wrapper (added
             # in OW-H4 / T0-1), which removes the partial module directory.
-            errors = self.plot_gen.validate_plot(plot_data, location_data)
+            # Validate against every generated location in the module. T037 is
+            # area-scoped, but legitimate side-quest links may cross areas;
+            # unknown IDs must still fail before they reach the unified plot.
+            module_location_data = {
+                "locations": [
+                    location
+                    for generated_area in self.locations_data.values()
+                    for location in (generated_area or {}).get("locations", [])
+                ]
+            }
+            errors = self.plot_gen.validate_plot(plot_data, module_location_data)
             if errors:
                 error_msg = "; ".join(errors)
-                # NON-FATAL (was: raise ValueError, which propagated to
-                # ai_driven_module_creation()'s cleanup wrapper and DELETED the
-                # entire partially-generated module). Per-area dangling location /
-                # nextPoints refs are routinely resolved later in unify_plots()
-                # cross-area reconciliation, so a per-area failure must not destroy
-                # hours of generation. Surface as a warning; the final stitcher
-                # schema gate remains the real quality check.
-                warning(
-                    f"Plot validation issues for {area_id} (non-fatal, resolved in unify_plots): {error_msg}",
-                    category="module_generation",
+                raise ValueError(
+                    f"Plot validation failed for {area_id}: {error_msg}"
                 )
 
             self.plots_data[area_id] = plot_data
@@ -782,27 +898,34 @@ IMPORTANT:
             else:  # legacy
                 main_cfg = config.DM_MAIN_LEGACY
 
-            response = capture_and_fanout("T028", api_client.create_completion,
-                messages=[
-                    {"role": "system", "content": "You are an expert 5th edition module designer specializing in creating coherent, engaging adventure narratives."},
-                    {"role": "user", "content": prompt}
-                ],
-                model=main_cfg["model"],
-                temperature=0.7,
-                response_format={"type": "json_object"},
-                **{k: v for k, v in main_cfg.items() if k != "model"})
-
-            unified_plot = json.loads(response.choices[0].message.content)
-            
-            # Add missing required fields if not present
-            required_fields = ["activeQuests", "completedQuests", "failedQuests", "worldEvents", "dmNotes"]
-            for field in required_fields:
-                if field not in unified_plot:
-                    unified_plot[field] = []
-
-            # issue #128: per-area validate_plot cannot see cross-area references.
-            # Warn (non-destructively) about unified location refs unknown to ANY area.
-            self._warn_unified_plot_invalid_locations(unified_plot)
+            last_error = None
+            unified_plot = None
+            for attempt in range(2):
+                response = capture_and_fanout("T028", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
+                    messages=[
+                        {"role": "system", "content": "You are an expert 5th edition module designer specializing in creating coherent, engaging adventure narratives."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    model=main_cfg["model"],
+                    temperature=0.7,
+                    response_format={"type": "json_object"},
+                    **{k: v for k, v in main_cfg.items() if k != "model"})
+                try:
+                    unified_plot = _validate_unified_plot_contract(
+                        json.loads(response.choices[0].message.content),
+                        list(self.areas_data),
+                        len(all_plot_points),
+                        len(all_side_quests),
+                    )
+                    break
+                except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                    last_error = exc
+                    self.log(
+                        f"T028 response failed contract (attempt {attempt + 1}/2): {exc}"
+                    )
+            if unified_plot is None:
+                raise ValueError(f"T028 validation exhausted: {last_error}")
 
             # Save the unified plot
             output_path = os.path.join(self.config.output_directory, "module_plot.json")
@@ -869,29 +992,18 @@ IMPORTANT:
         self.log(f"Created fallback unified plot with {len(unified_plot['plotPoints'])} plot points")
 
     def _warn_unified_plot_invalid_locations(self, unified_plot):
-        """issue #128: non-destructive cross-area validation of the unified plot.
-
-        Per-area validate_plot() only checks each area's own location IDs, so a
-        unified plot point or side quest that references a location belonging to a
-        different area (or no area at all) slips through. This logs a WARNING for
-        each such reference -- it does NOT modify the plot (behavior preserved).
-        """
-        valid_ids = set()
-        for area_id, loc_data in self.locations_data.items():
-            for loc in (loc_data or {}).get("locations", []):
-                lid = loc.get("locationId")
-                if lid:
-                    valid_ids.add(lid)
+        """Warn when the unified plot violates its area-ID reference contract."""
+        valid_ids = set(self.areas_data)
         if not valid_ids:
-            return  # locations not available -- nothing to validate against
+            return
         for pp in unified_plot.get("plotPoints", []):
             loc = pp.get("location")
             if loc and loc not in valid_ids:
-                self.log(f"  - WARNING: plot point {pp.get('id')} references location '{loc}' not found in any area")
+                self.log(f"  - WARNING: plot point {pp.get('id')} references unknown area '{loc}'")
             for sq in pp.get("sideQuests", []):
                 for sloc in sq.get("involvedLocations", []):
                     if sloc and sloc not in valid_ids:
-                        self.log(f"  - WARNING: side quest {sq.get('id')} references location '{sloc}' not found in any area")
+                        self.log(f"  - WARNING: side quest {sq.get('id')} references unknown area '{sloc}'")
 
     def update_area_plot_hooks(self):
         """Update area plot hooks to reference unified plot using atomic updates with safety guards"""
@@ -1088,6 +1200,7 @@ IMPORTANT:
                 main_cfg = config.DM_MAIN_LEGACY
 
             response = capture_and_fanout("T029", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=[
                     {"role": "system", "content": "You are an expert 5th edition module designer specializing in creating actionable plot hooks that reference specific plot elements."},
                     {"role": "user", "content": prompt}
@@ -1098,7 +1211,14 @@ IMPORTANT:
                 **{k: v for k, v in main_cfg.items() if k != "model"})
 
             result = json.loads(response.choices[0].message.content)
-            return result.get("plotHookUpdates", [])
+            valid_plot_ids = {
+                item.get("id")
+                for item in [*plot_points, *side_quests]
+                if isinstance(item, dict) and item.get("id")
+            }
+            return _validate_plot_hook_updates(
+                result, area_data, valid_plot_ids
+            )
             
         except Exception as e:
             self.log(f"Error in AI plot hook generation: {e}")
@@ -1525,6 +1645,79 @@ def main():
     print("2. Edit any generated files as needed")
     print("3. Start your adventure with main.py")
 
+_MODULE_PARAM_FIELDS = {
+    "module_name",
+    "num_areas",
+    "locations_per_area",
+    "level_range",
+    "adventure_type",
+    "plot_themes",
+}
+_MODULE_ADVENTURE_TYPES = {"dungeon", "wilderness", "urban", "nautical", "mixed"}
+
+
+def _validate_parsed_module_params(parsed: Any) -> Dict[str, Any]:
+    """Enforce the exact T030 module-parameter object contract."""
+    if not isinstance(parsed, dict):
+        raise ValueError("module parameters must be a JSON object")
+
+    actual_fields = set(parsed)
+    if actual_fields != _MODULE_PARAM_FIELDS:
+        missing = sorted(_MODULE_PARAM_FIELDS - actual_fields)
+        extra = sorted(actual_fields - _MODULE_PARAM_FIELDS)
+        raise ValueError(
+            f"module parameters require exactly six fields; missing={missing}, extra={extra}"
+        )
+
+    module_name = parsed["module_name"]
+    if not isinstance(module_name, str) or not module_name.strip():
+        raise ValueError("module_name must be a non-empty string")
+    if not re.fullmatch(r"[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*", module_name):
+        raise ValueError(
+            "module_name must contain only letters, numbers, and underscore separators"
+        )
+
+    num_areas = parsed["num_areas"]
+    if type(num_areas) is not int or not 1 <= num_areas <= 10:
+        raise ValueError("num_areas must be an integer from 1 to 10")
+
+    locations_per_area = parsed["locations_per_area"]
+    if type(locations_per_area) is not int or not 5 <= locations_per_area <= 7:
+        raise ValueError("locations_per_area must be an integer from 5 to 7")
+
+    level_range = parsed["level_range"]
+    if not isinstance(level_range, dict) or set(level_range) != {"min", "max"}:
+        raise ValueError("level_range must contain exactly min and max")
+    min_level = level_range["min"]
+    max_level = level_range["max"]
+    if type(min_level) is not int or type(max_level) is not int:
+        raise ValueError("level_range min and max must be integers")
+    if not (1 <= min_level <= max_level <= 20):
+        raise ValueError("level_range must satisfy 1 <= min <= max <= 20")
+
+    adventure_type = parsed["adventure_type"]
+    if type(adventure_type) is not str or adventure_type not in _MODULE_ADVENTURE_TYPES:
+        raise ValueError(
+            "adventure_type must be one of: "
+            + ", ".join(sorted(_MODULE_ADVENTURE_TYPES))
+        )
+
+    plot_themes = parsed["plot_themes"]
+    if not isinstance(plot_themes, str) or not plot_themes.strip():
+        raise ValueError("plot_themes must be a non-empty string")
+    word_count = len(re.findall(r"[A-Za-z0-9']+", plot_themes))
+    if not 3 <= word_count <= 10:
+        raise ValueError("plot_themes must contain 3 to 10 words")
+
+    # Return a new object so no caller can observe mutations to the decoded value.
+    return {
+        **parsed,
+        "module_name": module_name.strip(),
+        "plot_themes": plot_themes.strip(),
+        "level_range": {"min": min_level, "max": max_level},
+    }
+
+
 def parse_narrative_to_module_params(narrative: str) -> Dict[str, Any]:
     """Use AI to parse a narrative description into module parameters
     
@@ -1607,20 +1800,25 @@ Return ONLY the JSON object, no explanations or additional text."""
     if MODEL_PROVIDER == "gemini":
         from model_config import convert_to_gemini_schema
         _extra["response_schema"] = convert_to_gemini_schema({
+            "type": "object",
             "properties": {
-                "module_name": {"type": "string"},
-                "num_areas": {"type": "integer"},
-                "locations_per_area": {"type": "integer"},
+                "module_name": {"type": "string", "minLength": 1},
+                "num_areas": {"type": "integer", "minimum": 1, "maximum": 10},
+                "locations_per_area": {"type": "integer", "minimum": 5, "maximum": 7},
                 "level_range": {"type": "object", "properties": {
-                    "min": {"type": "integer"}, "max": {"type": "integer"}}},
-                "adventure_type": {"type": "string"},
-                "plot_themes": {"type": "string"},
-            }
+                    "min": {"type": "integer", "minimum": 1, "maximum": 20},
+                    "max": {"type": "integer", "minimum": 1, "maximum": 20}},
+                    "required": ["min", "max"]},
+                "adventure_type": {"type": "string", "enum": sorted(_MODULE_ADVENTURE_TYPES)},
+                "plot_themes": {"type": "string", "minLength": 1},
+            },
+            "required": sorted(_MODULE_PARAM_FIELDS),
         })
 
     for attempt in range(max_retries):
         try:
             response = capture_and_fanout("T030", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=[
                     {"role": "system", "content": current_prompt},
                     {"role": "user", "content": f"Parse this module narrative:\n\n{narrative}"}
@@ -1636,40 +1834,7 @@ Return ONLY the JSON object, no explanations or additional text."""
             elif "```" in result:
                 result = result.split("```")[1].split("```")[0].strip()
                 
-            parsed = json.loads(result)
-            
-            # Validate the required fields exist and have correct types
-            required_fields = {
-                "module_name": str,
-                "num_areas": int,
-                "locations_per_area": int,
-                "level_range": dict,
-                "adventure_type": str,
-                "plot_themes": str
-            }
-            
-            # Check all required fields
-            validation_errors = []
-            for field, expected_type in required_fields.items():
-                if field not in parsed:
-                    validation_errors.append(f"Missing required field: {field}")
-                elif not isinstance(parsed[field], expected_type):
-                    validation_errors.append(f"Field {field} should be {expected_type.__name__}, got {type(parsed[field]).__name__}")
-            
-            # Validate level_range structure
-            if "level_range" in parsed and isinstance(parsed["level_range"], dict):
-                if "min" not in parsed["level_range"] or "max" not in parsed["level_range"]:
-                    validation_errors.append("level_range must have 'min' and 'max' fields")
-                elif not isinstance(parsed["level_range"]["min"], int) or not isinstance(parsed["level_range"]["max"], int):
-                    validation_errors.append("level_range min and max must be integers")
-            
-            # Validate adventure_type is valid
-            valid_types = ["dungeon", "wilderness", "urban", "nautical", "mixed"]
-            if "adventure_type" in parsed and parsed["adventure_type"] not in valid_types:
-                validation_errors.append(f"adventure_type must be one of: {', '.join(valid_types)}")
-            
-            if validation_errors:
-                raise ValueError("; ".join(validation_errors))
+            parsed = _validate_parsed_module_params(json.loads(result))
             
             debug(f"AI_PROCESSING: AI parsed narrative into: {json.dumps(parsed, indent=2)}", category="module_creation")
             return parsed
@@ -1694,7 +1859,7 @@ Return ONLY the JSON object, no explanations or additional text."""
         "locations_per_area": 6,
         "level_range": {"min": 3, "max": 5},
         "adventure_type": "mixed",
-        "plot_themes": "adventure,mystery"
+        "plot_themes": "explore an ancient mystery"
     }
 
 def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) -> tuple[bool, Optional[str]]:

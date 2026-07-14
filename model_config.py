@@ -4,10 +4,13 @@ import json
 import os
 
 
-def convert_to_gemini_schema(json_schema):
+def convert_to_gemini_schema(json_schema, preserve_required=False):
     """Convert JSON Schema Draft-07 to Gemini API response_schema format.
 
-    Strips $schema, required, oneOf (takes first option), uppercases types.
+    Strips $schema, normally strips required, takes the first oneOf option,
+    and uppercases types. ``preserve_required`` is reserved for contracts such
+    as T040 that require a complete verdict; character-delta schemas must stay
+    partial and therefore keep the historical default.
     Handles union types like ["integer", "null"] by taking the non-null type.
     Reusable for any callsite that needs Gemini response_schema forcing.
     """
@@ -39,14 +42,19 @@ def convert_to_gemini_schema(json_schema):
         if "items" in prop:
             result["type"] = "ARRAY"
             result["items"] = _convert_prop(prop["items"])
+        if preserve_required and isinstance(prop.get("required"), list):
+            result["required"] = list(prop["required"])
         return result
 
-    return {
+    result = {
         "type": "OBJECT",
         "properties": {
             k: _convert_prop(v) for k, v in json_schema.get("properties", {}).items()
         },
     }
+    if preserve_required and isinstance(json_schema.get("required"), list):
+        result["required"] = list(json_schema["required"])
+    return result
 
 
 # Load and convert char_schema.json for Gemini response_schema
@@ -118,7 +126,7 @@ DM_MINI_MODEL_GPT5MINI_LOW = {"model": "gpt-5-mini", "reasoning_effort": "low"}
 
 # Gemini (3.1 models - conservative params until capture data collected)
 DM_FULL_MODEL_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low"}
-DM_MINI_MODEL_GEMINI_FLASH_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal"}
+DM_MINI_MODEL_GEMINI_FLASH_LOW = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "low"}
 
 # Legacy (no extra params)
 DM_FULL_MODEL_LEGACY = {"model": "gpt-4.1-2025-04-14"}
@@ -135,8 +143,8 @@ DM_MINI_MODEL_LMSTUDIO = {"model": "local-model"}
 # OpenAI (reasoning=low required for validation accuracy)
 DM_VALIDATION_GPT52_LOW = {"model": "gpt-5.2", "reasoning_effort": "low"}
 
-# Gemini (3-flash with medium thinking -- capture tested: 4.93 quality, 5/5 correct)
-DM_VALIDATION_GEMINI_FLASH_MEDIUM = {"model": "gemini-3-flash-preview", "thinking_level": "medium"}
+# Gemini (3-flash with low thinking -- live replay: 2/2 correct)
+DM_VALIDATION_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 
 # Legacy (no extra params)
 DM_VALIDATION_LEGACY = {"model": "gpt-4.1-2025-04-14"}
@@ -151,8 +159,8 @@ DM_VALIDATION_LMSTUDIO = {"model": "local-model"}
 # OpenAI (mini model with low reasoning -- 14/14 correct, $0.0007, 2.8s)
 ACTION_PRED_GPT5MINI_LOW = {"model": "gpt-5-mini", "reasoning_effort": "low"}
 
-# Gemini (3-flash with minimal thinking -- 13/14 correct, $0.0011, 1.4s fastest)
-ACTION_PRED_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+# Gemini (3-flash with low thinking -- 13/14 correct, $0.0011, 1.4s fastest)
+ACTION_PRED_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 
 # Legacy (full model, no extra params -- matches current ACTION_PREDICTION_MODEL)
 ACTION_PRED_LEGACY = {"model": "gpt-4.1-2025-04-14"}
@@ -169,10 +177,10 @@ ACTION_PRED_LMSTUDIO = {"model": "local-model"}
 # OpenAI (mini model with low reasoning)
 CHAR_UPDATE_GPT5MINI_LOW = {"model": "gpt-5-mini", "reasoning_effort": "low"}
 
-# Gemini (3.1 flash-lite with minimal thinking + auto-converted schema)
-CHAR_UPDATE_GEMINI_FLASHLITE_MINIMAL = {
+# Gemini (3.1 flash-lite with low thinking + request-scoped schema)
+CHAR_UPDATE_GEMINI_FLASHLITE_LOW = {
     "model": "gemini-3.1-flash-lite-preview",
-    "thinking_level": "minimal",
+    "thinking_level": "low",
     "response_schema": _CHAR_SCHEMA_GEMINI,
 }
 
@@ -202,7 +210,7 @@ COMBAT_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
 # ----- T046 Initiative Tracker -----
 # Analytical combat utility: tracks turn order, determines who acts next.
 # Full-tier callsite, temperature=0.1, plain text output.
-# GPT-5.4 reviewer: gpt-5.2|none = 4/4 pass (4.2/5), gemini-flash|minimal = 4/4 pass (4.2/5)
+# GPT-5.4 reviewer: gpt-5.2|none = 4/4 pass (4.2/5), gemini-flash|low = 4/4 pass (4.2/5)
 # gpt-5-mini DISQUALIFIED (contradictory tracker on E[1], scored 1-2/5)
 # MED-12 (#127): deliberately stays on gpt-5.2 (not gpt-5.4 like T040/T042/T043).
 # Capture data: gpt-5.2|none scored 4/4 here; no measured benefit from gpt-5.4 for
@@ -211,8 +219,8 @@ COMBAT_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
 # OpenAI (gpt-5.2 with no reasoning -- 4/4 correct, 2.46s avg, temp=0.1 passes through)
 INIT_TRACKER_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none", "response_format": None}
 
-# Gemini (3-flash with minimal thinking -- 4/4 correct, 1.71s avg, fastest + cheapest)
-INIT_TRACKER_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal", "response_format": None}
+# Gemini (3-flash with low thinking -- 4/4 correct, 1.71s avg, fastest + cheapest)
+INIT_TRACKER_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low", "response_format": None}
 
 # Legacy (no extra params -- response_format=None opts out of default JSON mode)
 INIT_TRACKER_LEGACY = {"model": "gpt-4.1-2025-04-14", "response_format": None}
@@ -224,7 +232,7 @@ INIT_TRACKER_LMSTUDIO = {"model": "local-model", "response_format": None}
 # Analyzes character updates for trackable temporary effects (buffs/debuffs).
 # Full-tier callsite, temperature=0.3, JSON output.
 # GPT-5.4 reviewer: gpt-5.2|none = 5/5 pass (4.4/5), gemini-flash|high = 5/5 pass (4.4/5)
-# gemini-flash|minimal scored 3/5 on Sneak Attack entry (contradictory duration metadata)
+# gemini-flash|low scored 3/5 on Sneak Attack entry (contradictory duration metadata)
 
 # OpenAI (gpt-5.2 with no reasoning -- 5/5 pass, 4.4/5 avg, 1.31s, temp=0.3 passes through)
 CHAR_EFFECTS_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
@@ -255,10 +263,12 @@ COMBAT_VALID_GPT54_NONE = {"model": "gpt-5.4", "reasoning_effort": "none"}
 # so flash returns this structure instead of mis-shaped JSON (avoids 5 retries).
 _T040_COMBAT_VALIDATION_SCHEMA = {
     "type": "object",
+    "required": ["valid", "feedback"],
     "properties": {
         "valid": {"type": "boolean"},
         "feedback": {
             "type": "object",
+            "required": ["positive", "negative", "recommendation"],
             "properties": {
                 "positive": {"type": "string"},
                 "negative": {"type": "string"},
@@ -270,7 +280,10 @@ _T040_COMBAT_VALIDATION_SCHEMA = {
 COMBAT_VALID_GEMINI_FLASH_LOW = {
     "model": "gemini-3-flash-preview",
     "thinking_level": "low",
-    "response_schema": convert_to_gemini_schema(_T040_COMBAT_VALIDATION_SCHEMA),
+    "response_schema": convert_to_gemini_schema(
+        _T040_COMBAT_VALIDATION_SCHEMA,
+        preserve_required=True,
+    ),
 }
 
 # Legacy (no extra params)
@@ -282,20 +295,72 @@ COMBAT_VALID_LMSTUDIO = {"model": "local-model"}
 # ----- T051 Character Validator -----
 # Validates character AC calculations per 5e rules.
 # Full-tier callsite, temperature=0.1, JSON output.
-# GPT-5.4 reviewer: gpt-5.2|none = 3/3 pass (4.0/5), gemini-flash|minimal = 3/3 pass (4.3/5)
+# GPT-5.4 reviewer: gpt-5.2|none = 3/3 pass (4.0/5), gemini-flash|low = 3/3 pass (4.3/5)
 # Easy callsite -- all next-gen models pass. gpt-5.4-mini DISQUALIFIED (miscalculated Dex modifier)
 
 # OpenAI (gpt-5.2 with no reasoning -- 3/3 correct, 6.0s avg, temp=0.1 passes through)
 CHAR_VALIDATOR_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
 
-# Gemini (3-flash with minimal thinking -- 3/3 correct, 4.0s avg, fastest + cheapest)
-# HIGH-3: the T053 combined-validator returns a 4-section JSON object whose shape
-# is defined inline in get_combined_validator_system_prompt() (no source schema
-# file). Without response_schema, Gemini-flash drifts to narration and the parser
-# silently applies zero corrections (the T079 failure mode). Declare the shape
-# (only the fields the parser reads) and attach it via convert_to_gemini_schema,
-# mirroring CHAR_UPDATE_GEMINI. OpenAI/legacy/lmstudio keep no schema. This
-# conforms Gemini to the EXISTING contract -- no prompt/output change.
+# Gemini (3-flash with low thinking -- 3/3 correct, 4.0s avg, fastest + cheapest)
+# T051, T052, and T053 have different parsers and therefore need different
+# structured-output contracts. Sharing T053's combined shape with the two
+# single-purpose validators produces valid JSON that their parsers ignore.
+_T051_AC_VALIDATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "validated_character_data": {
+            "type": "object",
+            "properties": {
+                "armorClass": {"type": "integer"},
+                "equipment": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "item_name": {"type": "string"},
+                            "item_type": {"type": "string"},
+                            "equipped": {"type": "boolean"},
+                            "ac_base": {"type": "number"},
+                            "ac_bonus": {"type": "number"},
+                            "dex_limit": {"type": "number"},
+                            "armor_category": {"type": "string"},
+                            "stealth_disadvantage": {"type": "boolean"},
+                        },
+                    },
+                },
+            },
+        },
+        "corrections_made": {"type": "array", "items": {"type": "string"}},
+        "ac_calculation_breakdown": {
+            "type": "object",
+            "properties": {
+                "base_armor": {"type": "string"},
+                "dex_modifier": {"type": "string"},
+                "shield_bonus": {"type": "string"},
+                "fighting_style_bonus": {"type": "string"},
+                "total_ac": {"type": "integer"},
+            },
+        },
+    },
+}
+
+_T052_INVENTORY_VALIDATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "corrections_made": {"type": "array", "items": {"type": "string"}},
+        "equipment": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "item_name": {"type": "string"},
+                    "item_type": {"type": "string"},
+                },
+            },
+        },
+    },
+}
+
 _T053_COMBINED_VALIDATION_SCHEMA = {
     "type": "object",
     "properties": {
@@ -361,9 +426,19 @@ _T053_COMBINED_VALIDATION_SCHEMA = {
         },
     },
 }
-CHAR_VALIDATOR_GEMINI_FLASH_MINIMAL = {
+CHAR_VALIDATOR_T051_GEMINI_FLASH_LOW = {
     "model": "gemini-3-flash-preview",
-    "thinking_level": "minimal",
+    "thinking_level": "low",
+    "response_schema": convert_to_gemini_schema(_T051_AC_VALIDATION_SCHEMA),
+}
+CHAR_VALIDATOR_T052_GEMINI_FLASH_LOW = {
+    "model": "gemini-3-flash-preview",
+    "thinking_level": "low",
+    "response_schema": convert_to_gemini_schema(_T052_INVENTORY_VALIDATION_SCHEMA),
+}
+CHAR_VALIDATOR_T053_GEMINI_FLASH_LOW = {
+    "model": "gemini-3-flash-preview",
+    "thinking_level": "low",
     "response_schema": convert_to_gemini_schema(_T053_COMBINED_VALIDATION_SCHEMA),
 }
 
@@ -375,19 +450,19 @@ CHAR_VALIDATOR_LMSTUDIO = {"model": "local-model"}
 
 # ----- T050 Effects / T054 Currency Gemini Config -----
 # T050 effects categorization and T054 currency consolidation need gemini-flash|low
-# (minimal fails on complex categorization and currency edge cases)
+# (low fails on complex categorization and currency edge cases)
 CHAR_VALIDATOR_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 
 # ----- T034 Monster Builder -----
 # Creates monster stat blocks from name + party level.
 # Full-tier callsite, temperature=0.7, JSON output.
-# GPT-5.4 reviewer: gemini-flash|minimal = 3/3 pass (4.3/5), gpt-5.2|none = 3/3 pass (3.7/5)
+# GPT-5.4 reviewer: gemini-flash|low = 3/3 pass (4.3/5), gpt-5.2|none = 3/3 pass (3.7/5)
 
 # OpenAI (gpt-5.2 with no reasoning -- 3/3 correct, 5.1s avg, temp=0.7 passes through)
 MONSTER_BUILD_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
 
-# Gemini (3-flash with minimal thinking -- 3/3 correct, 2.7s avg, highest quality + cheapest)
-MONSTER_BUILD_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+# Gemini (3-flash with low thinking -- 3/3 correct, 2.7s avg, highest quality + cheapest)
+MONSTER_BUILD_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 
 # Legacy (no extra params)
 MONSTER_BUILD_LEGACY = {"model": "gpt-4.1-2025-04-14"}
@@ -398,14 +473,14 @@ MONSTER_BUILD_LMSTUDIO = {"model": "local-model"}
 # ----- T035 NPC Builder -----
 # Creates full NPC character sheets from name + race/class/level.
 # Full-tier callsite, temperature=0.7, JSON output.
-# GPT-5.4 reviewer: gpt-5.2|none = 3/3 pass (4.0/5), gemini-flash|minimal = 3/3 pass (4.0/5)
+# GPT-5.4 reviewer: gpt-5.2|none = 3/3 pass (4.0/5), gemini-flash|low = 3/3 pass (4.0/5)
 # REQUIRES v4 prompt changes in npc_builder.py (name handling, equipment, racial traits)
 
 # OpenAI (gpt-5.2 with no reasoning -- 3/3 correct, 34s avg, temp=0.7 passes through)
 NPC_BUILD_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
 
-# Gemini (3-flash with minimal thinking -- 3/3 correct, 10s avg, 3x faster + cheaper)
-NPC_BUILD_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+# Gemini (3-flash with low thinking -- 3/3 correct, 10s avg, 3x faster + cheaper)
+NPC_BUILD_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 
 # Legacy (no extra params)
 NPC_BUILD_LEGACY = {"model": "gpt-4.1-2025-04-14"}
@@ -416,7 +491,7 @@ NPC_BUILD_LMSTUDIO = {"model": "local-model"}
 # ----- T081 Encounter Update -----
 # Updates encounter creature data after combat actions.
 # Mini-tier callsite, temperature=0.7, JSON output.
-# GPT-5.4 reviewer: all models 3/3 pass. gemini-flash|minimal = 5.0/5 avg.
+# GPT-5.4 reviewer: all models 3/3 pass. gemini-flash|low = 5.0/5 avg.
 # T081: inline Gemini response_schema (no schema file fits a creatures-delta).
 # Without it, gemini-flash drifts to narration and the encounter update silently
 # no-ops. Covers only the fields update_encounter parses from each creature.
@@ -440,7 +515,7 @@ _T081_ENCOUNTER_UPDATE_SCHEMA = {
     },
 }
 ENCOUNTER_UPD_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
-ENCOUNTER_UPD_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal", "response_schema": convert_to_gemini_schema(_T081_ENCOUNTER_UPDATE_SCHEMA)}
+ENCOUNTER_UPD_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low", "response_schema": convert_to_gemini_schema(_T081_ENCOUNTER_UPDATE_SCHEMA)}
 ENCOUNTER_UPD_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 ENCOUNTER_UPD_LMSTUDIO = {"model": "local-model"}
 
@@ -449,7 +524,7 @@ ENCOUNTER_UPD_LMSTUDIO = {"model": "local-model"}
 # Mini-tier callsite, temperature=0.7, JSON output.
 # GPT-5.4 reviewer: all models 2/2 pass. gpt-5.2|none = 5.0/5 avg.
 PLOT_UPD_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
-PLOT_UPD_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+PLOT_UPD_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 PLOT_UPD_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 PLOT_UPD_LMSTUDIO = {"model": "local-model"}
 
@@ -458,7 +533,7 @@ PLOT_UPD_LMSTUDIO = {"model": "local-model"}
 # Mini-tier callsite, temperature from TRANSITION_VALIDATOR_TEMPERATURE (0.3), JSON output.
 # GPT-5.4 reviewer: all models 2/2 pass. gpt-5.2|none = 5.0/5 avg.
 TRANSITION_VAL_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
-TRANSITION_VAL_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+TRANSITION_VAL_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 TRANSITION_VAL_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 TRANSITION_VAL_LMSTUDIO = {"model": "local-model"}
 
@@ -468,7 +543,7 @@ TRANSITION_VAL_LMSTUDIO = {"model": "local-model"}
 # 8/8 perfect on expanded synthetic tests (v4 prompt + leveling_info.txt).
 # Uses gemini-3-PRO (not flash -- flash missed Barbarian wrong-die edge case)
 LEVELUP_VAL_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
-LEVELUP_VAL_GEMINI_PRO_LOW = {"model": "gemini-3-pro-preview", "thinking_level": "low"}
+LEVELUP_VAL_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low"}
 LEVELUP_VAL_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 LEVELUP_VAL_LMSTUDIO = {"model": "local-model"}
 
@@ -490,11 +565,11 @@ LEVELUP_CONV_LMSTUDIO = {"model": "local-model"}
 # T014: NPC movement decision, temp=0.7, JSON object output.
 # T091: Monster reconciliation, temp=0.2, JSON ARRAY output (response_format=None).
 NPC_INFO_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
-NPC_INFO_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+NPC_INFO_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 NPC_INFO_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 
 # T014 (NPC movement decision) needs its OWN Gemini config with response_schema.
-# It must NOT reuse NPC_INFO_GEMINI_FLASH_MINIMAL above: that config is shared with
+# It must NOT reuse NPC_INFO_GEMINI_FLASH_LOW above: that config is shared with
 # T091 (utils/reconcile_location_state.py), which outputs a top-level JSON ARRAY --
 # attaching this object schema there would corrupt T091's monster reconciliation.
 _T014_NPC_MOVEMENT_SCHEMA = {
@@ -508,7 +583,7 @@ _T014_NPC_MOVEMENT_SCHEMA = {
         "locationUpdate": {"type": "string"},
     },
 }
-NPC_MOVEMENT_T014_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal", "response_schema": convert_to_gemini_schema(_T014_NPC_MOVEMENT_SCHEMA)}
+NPC_MOVEMENT_T014_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low", "response_schema": convert_to_gemini_schema(_T014_NPC_MOVEMENT_SCHEMA)}
 NPC_INFO_LMSTUDIO = {"model": "local-model"}
 
 # T091 uses response_format=None at the callsite (JSON array output, not object).
@@ -549,7 +624,7 @@ DM_SUMM_LMSTUDIO = {"model": "local-model"}
 # TODO: Run capture comparison vs DM_SUMM_GPT54MINI_NONE / DM_SUMM_GEMINI_FLASH_LOW.
 # The _T039_ segment disambiguates from T038's DM_SUMM_* group (different model/effort).
 DM_SUMM_T039_GPT5MINI = {"model": "gpt-5-mini"}
-DM_SUMM_T039_GEMINI_FLASHLITE_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal"}
+DM_SUMM_T039_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "low"}
 DM_SUMM_T039_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 DM_SUMM_T039_LMSTUDIO = {"model": "local-model"}
 
@@ -580,7 +655,7 @@ _T012_STARTING_LOCATION_SCHEMA = {
     },
 }
 DM_LOCSTART_T012_GPT5MINI = {"model": "gpt-5-mini"}
-DM_LOCSTART_T012_GEMINI_FLASHLITE_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal", "response_schema": convert_to_gemini_schema(_T012_STARTING_LOCATION_SCHEMA)}
+DM_LOCSTART_T012_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "low", "response_schema": convert_to_gemini_schema(_T012_STARTING_LOCATION_SCHEMA)}
 DM_LOCSTART_T012_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 DM_LOCSTART_T012_LMSTUDIO = {"model": "local-model"}
 
@@ -598,7 +673,7 @@ DM_LOCSTART_T012_LMSTUDIO = {"model": "local-model"}
 # Initial selections mirror T012/T039 (other mini-tier JSON-extraction helpers).
 # TODO: Run capture comparison once telemetry is collected on this callsite.
 STORAGE_PROCESSOR_T049_GPT5MINI = {"model": "gpt-5-mini"}
-STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_MINIMAL = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "minimal", "response_schema": _STORAGE_ACTION_SCHEMA_GEMINI}
+STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_LOW = {"model": "gemini-3.1-flash-lite-preview", "thinking_level": "low", "response_schema": _STORAGE_ACTION_SCHEMA_GEMINI}
 STORAGE_PROCESSOR_T049_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 STORAGE_PROCESSOR_T049_LMSTUDIO = {"model": "local-model"}
 
@@ -619,7 +694,7 @@ ADV_SUMM_LMSTUDIO = {"model": "local-model"}
 # gpt-5.2 DISQUALIFIED (hallucinated initiative orders).
 # gemini-flash DISQUALIFIED (turn boundary violations, drops out-of-turn actions).
 COMBAT_MAIN_GPT54_NONE = {"model": "gpt-5.4", "reasoning_effort": "none"}
-COMBAT_MAIN_GEMINI_PRO_LOW = {"model": "gemini-3-pro-preview", "thinking_level": "low"}
+COMBAT_MAIN_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low"}
 COMBAT_MAIN_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 COMBAT_MAIN_LMSTUDIO = {"model": "local-model"}
 
@@ -629,16 +704,16 @@ COMBAT_MAIN_LMSTUDIO = {"model": "local-model"}
 # Gemini-pro outputs JSON format instead of @-tags -- both work for downstream DM model.
 # Gemini-flash NOT viable (too shallow on extraction).
 LOC_COMPRESS_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none", "response_format": None}
-LOC_COMPRESS_GEMINI_PRO_LOW = {"model": "gemini-3-pro-preview", "thinking_level": "low", "response_format": None}
+LOC_COMPRESS_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low", "response_format": None}
 LOC_COMPRESS_LEGACY = {"model": "gpt-4.1-2025-04-14", "response_format": None}
 LOC_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
 
 # ----- T020 Narrative Compression -----
 # Compresses game conversation into 2-3 paragraph narrative summary.
 # Mini-tier callsite, temperature=0.3, PLAIN TEXT output (response_format=None).
-# gpt-5.4-mini|none = 5.0/5 avg, 2.7s. gemini-flash|minimal = 4.0/5, 3.1s.
+# gpt-5.4-mini|none = 5.0/5 avg, 2.7s. gemini-flash|low = 4.0/5, 3.1s.
 NARR_COMPRESS_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none", "response_format": None}
-NARR_COMPRESS_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal", "response_format": None}
+NARR_COMPRESS_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low", "response_format": None}
 NARR_COMPRESS_LEGACY = {"model": "gpt-4.1-mini-2025-04-14", "response_format": None}
 NARR_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
 
@@ -648,16 +723,16 @@ NARR_COMPRESS_LMSTUDIO = {"model": "local-model", "response_format": None}
 # gpt-5.4-mini|none = 4.0/5 avg, 2.1s. gemini-pro|low = 3.7/5, 10.9s.
 # Gemini-flash NOT viable (too shallow on detail retention).
 AGENTIC_COMPRESS_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
-AGENTIC_COMPRESS_GEMINI_PRO_LOW = {"model": "gemini-3-pro-preview", "thinking_level": "low"}
+AGENTIC_COMPRESS_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low"}
 AGENTIC_COMPRESS_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 AGENTIC_COMPRESS_LMSTUDIO = {"model": "local-model"}
 
 # --- T087/T088/T089/T090: DM_MINI_MODEL utility callsites ---
 # NPC name canon (T087), NPC merge confirm (T088), prompt sanitizer (T089), quest formatter (T090).
 # All mini-tier utility calls. Synthetic test: 12/12, 11/12, 5/5, 3/3 respectively.
-# gpt-5.4-mini|none: best overall accuracy. gemini-flash|minimal: best on sanitization.
+# gpt-5.4-mini|none: best overall accuracy. gemini-flash|low: best on sanitization.
 MINI_UTIL_GPT54MINI_NONE = {"model": "gpt-5.4-mini", "reasoning_effort": "none"}
-MINI_UTIL_GEMINI_FLASH_MINIMAL = {"model": "gemini-3-flash-preview", "thinking_level": "minimal"}
+MINI_UTIL_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 MINI_UTIL_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 # response_format:None -> do not force OpenAI json_object mode on LM Studio (local
 # models frequently error on / mishandle it). T042 was confirmed broken without this.
@@ -665,14 +740,17 @@ MINI_UTIL_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 # *_LMSTUDIO config that lacks response_format:None (DM_FULL/DM_MINI/DM_VALIDATION/
 # ACTION_PRED/CHAR_UPDATE/CHAR_EFFECTS/... ~25 configs). Validate against a real LM
 # Studio server before adding it broadly; LM Studio is not part of capture testing.
-MINI_UTIL_LMSTUDIO = {"model": "local-model", "response_format": None}
+# MINI_UTIL callsites include both structured and prose responses. Each callsite
+# owns response_format explicitly (or intentionally uses the router's JSON
+# default), so the shared Local config must not inject a second value.
+MINI_UTIL_LMSTUDIO = {"model": "local-model"}
 
 # --- T031+: DM_MAIN_MODEL callsites (module generation, DM narration, transitions) ---
 # First DM_MAIN_MODEL migration (T031). These dicts will be reused by all 12 DM_MAIN_MODEL callsites.
 # Full-tier. gpt-5.2|none: best creative generation. gemini-pro|low: highest quality at higher cost.
 # Synthetic test: 5/5 all models on module field generation.
 DM_MAIN_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
-DM_MAIN_GEMINI_PRO_LOW = {"model": "gemini-3-pro-preview", "thinking_level": "low"}
+DM_MAIN_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low"}
 DM_MAIN_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 DM_MAIN_LMSTUDIO = {"model": "local-model"}
 
@@ -999,13 +1077,15 @@ apply_persisted_gemini_key()
 TASK_CAPTURE_CONFIGS = {
     # Full-tier callsites
     "T067": ("DM_FULL_MODEL_GPT52_NONE", "DM_FULL_MODEL_GEMINI_PRO_LOW"),
-    "T065": ("DM_VALIDATION_GPT52_LOW", "DM_VALIDATION_GEMINI_FLASH_MEDIUM"),
-    "T046": ("INIT_TRACKER_GPT52_NONE", "INIT_TRACKER_GEMINI_FLASH_MINIMAL"),
+    "T065": ("DM_VALIDATION_GPT52_LOW", "DM_VALIDATION_GEMINI_FLASH_LOW"),
+    "T046": ("INIT_TRACKER_GPT52_NONE", "INIT_TRACKER_GEMINI_FLASH_LOW"),
     "T078": ("CHAR_EFFECTS_GPT52_NONE", "CHAR_EFFECTS_GEMINI_FLASH_HIGH"),
     "T040": ("COMBAT_VALID_GPT54_NONE", "COMBAT_VALID_GEMINI_FLASH_LOW"),
-    "T051": ("CHAR_VALIDATOR_GPT52_NONE", "CHAR_VALIDATOR_GEMINI_FLASH_MINIMAL"),
-    "T034": ("MONSTER_BUILD_GPT52_NONE", "MONSTER_BUILD_GEMINI_FLASH_MINIMAL"),
-    "T035": ("NPC_BUILD_GPT52_NONE", "NPC_BUILD_GEMINI_FLASH_MINIMAL"),
+    "T051": ("CHAR_VALIDATOR_GPT52_NONE", "CHAR_VALIDATOR_T051_GEMINI_FLASH_LOW"),
+    "T052": ("CHAR_VALIDATOR_GPT52_NONE", "CHAR_VALIDATOR_T052_GEMINI_FLASH_LOW"),
+    "T053": ("CHAR_VALIDATOR_GPT52_NONE", "CHAR_VALIDATOR_T053_GEMINI_FLASH_LOW"),
+    "T034": ("MONSTER_BUILD_GPT52_NONE", "MONSTER_BUILD_GEMINI_FLASH_LOW"),
+    "T035": ("NPC_BUILD_GPT52_NONE", "NPC_BUILD_GEMINI_FLASH_LOW"),
     "T048": ("LEVELUP_VAL_GPT52_NONE", "LEVELUP_VAL_GEMINI_PRO_LOW"),
     "T047": ("LEVELUP_CONV_GPT52_NONE", "LEVELUP_CONV_GEMINI_FLASH_LOW"),
     "T086": ("LEVELUP_CONV_GPT52_NONE", "LEVELUP_CONV_GEMINI_FLASH_LOW"),
@@ -1030,15 +1110,15 @@ TASK_CAPTURE_CONFIGS = {
 
     # Mini-tier callsites
     "T017": ("COMBAT_COMPRESS_GPT5MINI_LOW", "COMBAT_COMPRESS_GEMINI_FLASH_LOW"),
-    "T079": ("CHAR_UPDATE_GPT5MINI_LOW", "CHAR_UPDATE_GEMINI_FLASHLITE_MINIMAL"),
-    "T082": ("ACTION_PRED_GPT5MINI_LOW", "ACTION_PRED_GEMINI_FLASH_MINIMAL"),
-    "T081": ("ENCOUNTER_UPD_GPT52_NONE", "ENCOUNTER_UPD_GEMINI_FLASH_MINIMAL"),
-    "T077": ("PLOT_UPD_GPT52_NONE", "PLOT_UPD_GEMINI_FLASH_MINIMAL"),
-    "T021": ("TRANSITION_VAL_GPT52_NONE", "TRANSITION_VAL_GEMINI_FLASH_MINIMAL"),
-    "T014": ("NPC_INFO_GPT54MINI_NONE", "NPC_INFO_GEMINI_FLASH_MINIMAL"),
-    "T091": ("NPC_INFO_GPT54MINI_NONE", "NPC_INFO_GEMINI_FLASH_MINIMAL"),
+    "T079": ("CHAR_UPDATE_GPT5MINI_LOW", "CHAR_UPDATE_GEMINI_FLASHLITE_LOW"),
+    "T082": ("ACTION_PRED_GPT5MINI_LOW", "ACTION_PRED_GEMINI_FLASH_LOW"),
+    "T081": ("ENCOUNTER_UPD_GPT52_NONE", "ENCOUNTER_UPD_GEMINI_FLASH_LOW"),
+    "T077": ("PLOT_UPD_GPT52_NONE", "PLOT_UPD_GEMINI_FLASH_LOW"),
+    "T021": ("TRANSITION_VAL_GPT52_NONE", "TRANSITION_VAL_GEMINI_FLASH_LOW"),
+    "T014": ("NPC_INFO_GPT54MINI_NONE", "NPC_INFO_GEMINI_FLASH_LOW"),
+    "T091": ("NPC_INFO_GPT54MINI_NONE", "NPC_INFO_GEMINI_FLASH_LOW"),
     "T041": ("COMBAT_SUMMARY_GPT54MINI_NONE", "COMBAT_SUMMARY_GEMINI_FLASH_LOW"),
-    "T020": ("NARR_COMPRESS_GPT54MINI_NONE", "NARR_COMPRESS_GEMINI_FLASH_MINIMAL"),
+    "T020": ("NARR_COMPRESS_GPT54MINI_NONE", "NARR_COMPRESS_GEMINI_FLASH_LOW"),
     "T084": ("AGENTIC_COMPRESS_GPT54MINI_NONE", "AGENTIC_COMPRESS_GEMINI_PRO_LOW"),
     "T027": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
 
@@ -1050,10 +1130,10 @@ TASK_CAPTURE_CONFIGS = {
     "T066": ("DM_SUMM_GPT54MINI_NONE", "DM_SUMM_GEMINI_FLASH_LOW"),
 
     # Module-integration helper: starting location analysis
-    "T012": ("DM_LOCSTART_T012_GPT5MINI", "DM_LOCSTART_T012_GEMINI_FLASHLITE_MINIMAL"),
+    "T012": ("DM_LOCSTART_T012_GPT5MINI", "DM_LOCSTART_T012_GEMINI_FLASHLITE_LOW"),
 
     # Storage action extraction (natural-language -> JSON op)
-    "T049": ("STORAGE_PROCESSOR_T049_GPT5MINI", "STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_MINIMAL"),
+    "T049": ("STORAGE_PROCESSOR_T049_GPT5MINI", "STORAGE_PROCESSOR_T049_GEMINI_FLASHLITE_LOW"),
 
     # Adventure summaries (T015, T016, T018, T019)
     "T015": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),
@@ -1062,16 +1142,16 @@ TASK_CAPTURE_CONFIGS = {
     "T019": ("ADV_SUMM_GPT54MINI_NONE", "ADV_SUMM_GEMINI_FLASH_LOW"),
 
     # Mini utilities (T042, T063, T064, T087-T090, T093-T095)
-    "T042": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
-    "T063": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
-    "T064": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
-    "T087": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
-    "T088": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
-    "T089": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
-    "T090": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
-    "T093": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
-    "T094": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
-    "T095": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_MINIMAL"),
+    "T042": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
+    "T063": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
+    "T064": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
+    "T087": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
+    "T088": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
+    "T089": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
+    "T090": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
+    "T093": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
+    "T094": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
+    "T095": ("MINI_UTIL_GPT54MINI_NONE", "MINI_UTIL_GEMINI_FLASH_LOW"),
 }
 
 
@@ -1089,6 +1169,17 @@ def get_capture_variants_for_task(task_id):
     openai_dict_name, gemini_dict_name = config_names
     variants = []
 
+    def openai_uses_caller_temperature(provider_config):
+        model_name = str(provider_config.get("model", "")).lower()
+        reasoning = str(provider_config.get("reasoning_effort", "")).lower()
+        if "5-mini" in model_name:
+            return False
+        if "5.4-mini" in model_name:
+            return not reasoning or reasoning == "none"
+        if reasoning and reasoning != "none":
+            return False
+        return True
+
     # Get OpenAI variant
     openai_cfg = globals().get(openai_dict_name)
     if openai_cfg:
@@ -1096,9 +1187,12 @@ def get_capture_variants_for_task(task_id):
             "provider": "openai",
             "model": openai_cfg.get("model"),
             "label": f"{openai_cfg.get('model')}|effort={openai_cfg.get('reasoning_effort', 'none')}",
+            "use_caller_temp": openai_uses_caller_temperature(openai_cfg),
         }
         if "reasoning_effort" in openai_cfg:
             variant["reasoning_effort"] = openai_cfg["reasoning_effort"]
+        if "response_format" in openai_cfg:
+            variant["response_format"] = openai_cfg["response_format"]
         variants.append(variant)
 
     # Get Gemini variant
@@ -1108,9 +1202,15 @@ def get_capture_variants_for_task(task_id):
             "provider": "gemini",
             "model": gemini_cfg.get("model"),
             "label": f"{gemini_cfg.get('model')}|thinking={gemini_cfg.get('thinking_level', 'none')}",
+            # Runtime intentionally leaves Gemini temperature unset.
+            "use_caller_temp": False,
         }
         if "thinking_level" in gemini_cfg:
             variant["thinking_level"] = gemini_cfg["thinking_level"]
+        if "response_schema" in gemini_cfg:
+            variant["response_schema"] = gemini_cfg["response_schema"]
+        if "response_format" in gemini_cfg:
+            variant["response_format"] = gemini_cfg["response_format"]
         variants.append(variant)
 
     return variants if variants else None

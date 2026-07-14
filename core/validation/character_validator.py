@@ -68,10 +68,10 @@ from typing import Dict, List, Any, Optional, Union
 from core.ai import api_client
 from utils.character_sheet_contract import repair_required_ammunition_field
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T051", "core/validation/character_validator.py", 1036)
-register_callsite("T052", "core/validation/character_validator.py", 1137)
-register_callsite("T053", "core/validation/character_validator.py", 1733)
-register_callsite("T054", "core/validation/character_validator.py", 2138)
+register_callsite("T051", "core/validation/character_validator.py", 1065)
+register_callsite("T052", "core/validation/character_validator.py", 1167)
+register_callsite("T053", "core/validation/character_validator.py", 1761)
+register_callsite("T054", "core/validation/character_validator.py", 2146)
 
 CHARACTER_VALIDATOR_SCHEMA = {
     "required": [
@@ -101,6 +101,34 @@ CHARACTER_VALIDATOR_SCHEMA = {
         },
     },
 }
+
+
+class CharacterValidationResponseError(ValueError):
+    """A provider response was readable text but violated a validator contract."""
+
+
+def _load_response_object(ai_response: str, contract_name: str) -> Dict[str, Any]:
+    if not isinstance(ai_response, str) or not ai_response.strip():
+        raise CharacterValidationResponseError(
+            f"{contract_name}: response is empty or non-text"
+        )
+    start_idx = ai_response.find('{')
+    end_idx = ai_response.rfind('}')
+    if start_idx < 0 or end_idx < start_idx:
+        raise CharacterValidationResponseError(
+            f"{contract_name}: no JSON object found"
+        )
+    try:
+        parsed = json.loads(ai_response[start_idx:end_idx + 1])
+    except json.JSONDecodeError as exc:
+        raise CharacterValidationResponseError(
+            f"{contract_name}: invalid JSON: {exc}"
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise CharacterValidationResponseError(
+            f"{contract_name}: root must be a JSON object"
+        )
+    return parsed
 
 
 def _is_valid_type(value: Any, expected_type: Union[str, list]) -> bool:
@@ -1027,7 +1055,7 @@ class AICharacterValidator:
         if MODEL_PROVIDER == "openai":
             validator_config = config.CHAR_VALIDATOR_GPT52_NONE
         elif MODEL_PROVIDER == "gemini":
-            validator_config = config.CHAR_VALIDATOR_GEMINI_FLASH_MINIMAL
+            validator_config = config.CHAR_VALIDATOR_T051_GEMINI_FLASH_LOW
         elif MODEL_PROVIDER == "lmstudio":
             validator_config = config.CHAR_VALIDATOR_LMSTUDIO
         else:  # legacy
@@ -1035,6 +1063,7 @@ class AICharacterValidator:
 
         try:
             response = capture_and_fanout("T051", api_client.create_completion,
+                _request_provider=MODEL_PROVIDER,
                 messages=[
                     {"role": "system", "content": self.get_validator_system_prompt()},
                     {"role": "user", "content": validation_prompt}
@@ -1129,13 +1158,14 @@ class AICharacterValidator:
                 if MODEL_PROVIDER == "openai":
                     inv_config = config.CHAR_VALIDATOR_GPT52_NONE
                 elif MODEL_PROVIDER == "gemini":
-                    inv_config = config.CHAR_VALIDATOR_GEMINI_FLASH_MINIMAL
+                    inv_config = config.CHAR_VALIDATOR_T052_GEMINI_FLASH_LOW
                 elif MODEL_PROVIDER == "lmstudio":
                     inv_config = config.CHAR_VALIDATOR_LMSTUDIO
                 else:  # legacy
                     inv_config = config.CHAR_VALIDATOR_LEGACY
 
                 response = capture_and_fanout("T052", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
                     messages=[
                         {"role": "system", "content": self.get_inventory_validator_system_prompt()},
                         {"role": "user", "content": validation_prompt}
@@ -1359,44 +1389,24 @@ Provide the corrected character data with proper AC calculation."""
         Returns:
             Corrected character data
         """
-        try:
-            # Try to extract JSON from AI response
-            start_idx = ai_response.find('{')
-            end_idx = ai_response.rfind('}') + 1
-            
-            if start_idx != -1 and end_idx != -1:
-                json_str = ai_response[start_idx:end_idx]
-                parsed_response = json.loads(json_str)
+        parsed_response = _load_response_object(ai_response, "T051")
+        schema_errors = validate_schema(
+            parsed_response, CHARACTER_VALIDATOR_SCHEMA, path="response"
+        )
+        if schema_errors:
+            raise CharacterValidationResponseError(
+                "T051 schema violation: " + "; ".join(schema_errors)
+            )
 
-                schema_errors = validate_schema(parsed_response, CHARACTER_VALIDATOR_SCHEMA, path="response")
-                if schema_errors:
-                    self.logger.error("Character validator response schema violation: %s", schema_errors)
-                    return original_data
+        corrected_data = parsed_response['validated_character_data']
+        self.corrections_made = parsed_response['corrections_made']
+        for correction in self.corrections_made:
+            debug(f"[AC Correction] {correction}", category="character_validation")
+            self.logger.info(f"AI Correction: {correction}")
 
-                # Extract corrected character data
-                if 'validated_character_data' in parsed_response:
-                    corrected_data = parsed_response['validated_character_data']
-                    
-                    # Log corrections made
-                    if 'corrections_made' in parsed_response:
-                        self.corrections_made = parsed_response['corrections_made']
-                        for correction in self.corrections_made:
-                            debug(f"[AC Correction] {correction}", category="character_validation")
-                            self.logger.info(f"AI Correction: {correction}")
-                    
-                    # Log AC breakdown
-                    if 'ac_calculation_breakdown' in parsed_response:
-                        breakdown = parsed_response['ac_calculation_breakdown']
-                        self.logger.info(f"AC Breakdown: {breakdown}")
-                    
-                    return corrected_data
-                
-        except (json.JSONDecodeError, KeyError) as e:
-            self.logger.error(f"Failed to parse AI response: {str(e)}")
-            self.logger.debug(f"AI Response was: {ai_response}")
-        
-        # Return original data if parsing fails
-        return original_data
+        breakdown = parsed_response['ac_calculation_breakdown']
+        self.logger.info(f"AC Breakdown: {breakdown}")
+        return corrected_data
     
     def get_inventory_validator_system_prompt(self) -> str:
         """
@@ -1624,37 +1634,39 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
         Returns:
             Dictionary with only the changes to apply (or empty dict if no changes)
         """
-        try:
-            # Try to extract JSON from AI response
-            start_idx = ai_response.find('{')
-            end_idx = ai_response.rfind('}') + 1
-            
-            if start_idx != -1 and end_idx != -1:
-                json_str = ai_response[start_idx:end_idx]
-                parsed_response = json.loads(json_str)
-                
-                # Check if there are any equipment updates
-                if 'equipment' in parsed_response and parsed_response['equipment']:
-                    # Log corrections made
-                    if 'corrections_made' in parsed_response:
-                        inventory_corrections = parsed_response['corrections_made']
-                        for correction in inventory_corrections:
-                            debug(f"[Inventory Correction] {correction}", category="character_validation")
-                            self.logger.info(f"AI Inventory Correction: {correction}")
-                            self.corrections_made.append(f"Inventory: {correction}")
-                    
-                    # Return only the equipment updates
-                    return {"equipment": parsed_response['equipment']}
-                else:
-                    # No corrections needed
-                    self.logger.debug("No inventory corrections needed")
-                    return {}
-                
-        except (json.JSONDecodeError, KeyError) as e:
-            self.logger.error(f"Failed to parse AI inventory response: {str(e)}")
-            self.logger.debug(f"AI Response was: {ai_response}")
-        
-        # Return empty dict if parsing fails (no changes)
+        parsed_response = _load_response_object(ai_response, "T052")
+        equipment = parsed_response.get('equipment')
+        corrections = parsed_response.get('corrections_made', [])
+        if not isinstance(equipment, list):
+            raise CharacterValidationResponseError(
+                "T052: 'equipment' must be an array"
+            )
+        if not isinstance(corrections, list) or not all(
+            isinstance(item, str) for item in corrections
+        ):
+            raise CharacterValidationResponseError(
+                "T052: 'corrections_made' must be an array of strings"
+            )
+        for index, item in enumerate(equipment):
+            if not isinstance(item, dict):
+                raise CharacterValidationResponseError(
+                    f"T052: equipment[{index}] must be an object"
+                )
+            if not isinstance(item.get('item_name'), str) or not isinstance(
+                item.get('item_type'), str
+            ):
+                raise CharacterValidationResponseError(
+                    f"T052: equipment[{index}] requires string item_name/item_type"
+                )
+
+        for correction in corrections:
+            debug(f"[Inventory Correction] {correction}", category="character_validation")
+            self.logger.info(f"AI Inventory Correction: {correction}")
+            self.corrections_made.append(f"Inventory: {correction}")
+
+        if equipment:
+            return {"equipment": equipment}
+        self.logger.debug("No inventory corrections needed")
         return {}
     
     def validate_character_file_safe(self, file_path: str) -> tuple[Dict[str, Any], bool]:
@@ -1727,7 +1739,7 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
         if MODEL_PROVIDER == "openai":
             batch_config = config.CHAR_VALIDATOR_GPT52_NONE
         elif MODEL_PROVIDER == "gemini":
-            batch_config = config.CHAR_VALIDATOR_GEMINI_FLASH_MINIMAL
+            batch_config = config.CHAR_VALIDATOR_T053_GEMINI_FLASH_LOW
         elif MODEL_PROVIDER == "lmstudio":
             batch_config = config.CHAR_VALIDATOR_LMSTUDIO
         else:  # legacy
@@ -1747,6 +1759,7 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
         while attempt <= max_attempts:
             try:
                 response = capture_and_fanout("T053", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
                     messages=[
                         {"role": "system", "content": self.get_combined_validator_system_prompt()},
                         {"role": "user", "content": validation_prompt}
@@ -1911,108 +1924,84 @@ Remember to return a single JSON response with all four validation results."""
         """
         Parse the combined AI validation response
         """
-        try:
-            # Try to extract JSON from AI response
-            start_idx = ai_response.find('{')
-            end_idx = ai_response.rfind('}') + 1
-            
-            if start_idx != -1 and end_idx != -1:
-                json_str = ai_response[start_idx:end_idx]
-                parsed_response = json.loads(json_str)
-                
-                result_data = copy.deepcopy(original_data)
-                
-                # Process AC validation
-                if 'ac_validation' in parsed_response:
-                    ac_result = parsed_response['ac_validation']
-                    if ac_result.get('correction_needed') and 'calculated_ac' in ac_result:
-                        result_data['armorClass'] = ac_result['calculated_ac']
-                        if 'corrections' in ac_result:
-                            self.corrections_made.extend(ac_result['corrections'])
-                    
-                    # Add equipment effects if needed
-                    if 'equipment_effects' in ac_result:
-                        result_data['equipment_effects'] = ac_result['equipment_effects']
-                
-                # Process inventory corrections
-                if 'inventory_corrections' in parsed_response:
-                    inv_result = parsed_response['inventory_corrections']
-                    if 'corrections_made' in inv_result:
-                        self.corrections_made.extend(inv_result['corrections_made'])
-                    
-                    if 'equipment' in inv_result and inv_result['equipment']:
-                        # Apply inventory updates using deep merge
-                        from updates.update_character_info import deep_merge_dict
-                        inventory_updates = {'equipment': inv_result['equipment']}
-                        result_data = deep_merge_dict(result_data, inventory_updates)
-                
-                # Process currency consolidation
-                if 'currency_consolidation' in parsed_response:
-                    curr_result = parsed_response['currency_consolidation']
-                    if 'corrections_made' in curr_result:
-                        self.corrections_made.extend(curr_result['corrections_made'])
-                    
-                    # Update currency (only if not empty) - MERGE don't replace!
-                    if 'currency' in curr_result and curr_result['currency']:
-                        # Ensure we have a currency dict with all fields
-                        if 'currency' not in result_data:
-                            result_data['currency'] = {}
-                        
-                        # Preserve existing currency fields and update only what AI returns
-                        # This prevents erasure of gold/silver when only copper is updated
-                        current_currency = result_data.get('currency', {})
-                        result_data['currency'] = {
-                            'gold': current_currency.get('gold', 0),
-                            'silver': current_currency.get('silver', 0),
-                            'copper': current_currency.get('copper', 0)
-                        }
-                        # Now apply AI updates
-                        result_data['currency'].update(curr_result['currency'])
-                    
-                    # Remove consolidated items
-                    if 'items_to_remove' in curr_result and 'equipment' in result_data:
-                        items_to_remove = set(curr_result['items_to_remove'])
-                        result_data['equipment'] = [
-                            item for item in result_data['equipment']
-                            if item.get('item_name') not in items_to_remove
-                        ]
-                    
-                    # Update ammunition (only if not empty)
-                    if 'ammunition' in curr_result and curr_result['ammunition']:
-                        result_data['ammunition'] = curr_result['ammunition']
-                    
-                    # Remove ammo items from equipment
-                    if 'ammo_items_to_remove' in curr_result and 'equipment' in result_data:
-                        ammo_to_remove = set(curr_result['ammo_items_to_remove'])
-                        result_data['equipment'] = [
-                            item for item in result_data['equipment']
-                            if item.get('item_name') not in ammo_to_remove
-                        ]
-                
-                # Process class feature validation
-                if 'class_feature_validation' in parsed_response:
-                    feat_result = parsed_response['class_feature_validation']
-                    if 'corrections_made' in feat_result:
-                        self.corrections_made.extend(feat_result['corrections_made'])
-                    
-                    # Remove duplicate features
-                    if 'features_to_remove' in feat_result and feat_result['features_to_remove']:
-                        features_to_remove = feat_result['features_to_remove']
-                        if 'classFeatures' in result_data and isinstance(result_data['classFeatures'], list):
-                            # Remove features by name
-                            result_data['classFeatures'] = [
-                                feature for feature in result_data['classFeatures']
-                                if feature.get('name') not in features_to_remove
-                            ]
-                
-                return result_data
-                
-        except (json.JSONDecodeError, KeyError) as e:
-            self.logger.error(f"Failed to parse combined AI response: {str(e)}")
-            self.logger.debug(f"AI Response was: {ai_response}")
-        
-        # Return original data if parsing fails
-        return original_data
+        parsed_response = _load_response_object(ai_response, "T053")
+        required_sections = {
+            'ac_validation',
+            'inventory_corrections',
+            'currency_consolidation',
+            'class_feature_validation',
+        }
+        missing_sections = required_sections.difference(parsed_response)
+        if missing_sections:
+            raise CharacterValidationResponseError(
+                "T053: missing section(s): " + ", ".join(sorted(missing_sections))
+            )
+        for section in required_sections:
+            if not isinstance(parsed_response[section], dict):
+                raise CharacterValidationResponseError(
+                    f"T053: '{section}' must be an object"
+                )
+
+        result_data = copy.deepcopy(original_data)
+
+        # Process AC validation
+        ac_result = parsed_response['ac_validation']
+        if ac_result.get('correction_needed') and 'calculated_ac' in ac_result:
+            result_data['armorClass'] = ac_result['calculated_ac']
+            if 'corrections' in ac_result:
+                self.corrections_made.extend(ac_result['corrections'])
+        if 'equipment_effects' in ac_result:
+            result_data['equipment_effects'] = ac_result['equipment_effects']
+
+        # Process inventory corrections
+        inv_result = parsed_response['inventory_corrections']
+        if 'corrections_made' in inv_result:
+            self.corrections_made.extend(inv_result['corrections_made'])
+        if 'equipment' in inv_result and inv_result['equipment']:
+            from updates.update_character_info import deep_merge_dict
+            inventory_updates = {'equipment': inv_result['equipment']}
+            result_data = deep_merge_dict(result_data, inventory_updates)
+
+        # Process currency consolidation
+        curr_result = parsed_response['currency_consolidation']
+        if 'corrections_made' in curr_result:
+            self.corrections_made.extend(curr_result['corrections_made'])
+        if 'currency' in curr_result and curr_result['currency']:
+            current_currency = result_data.get('currency', {})
+            result_data['currency'] = {
+                'gold': current_currency.get('gold', 0),
+                'silver': current_currency.get('silver', 0),
+                'copper': current_currency.get('copper', 0)
+            }
+            result_data['currency'].update(curr_result['currency'])
+        if 'items_to_remove' in curr_result and 'equipment' in result_data:
+            items_to_remove = set(curr_result['items_to_remove'])
+            result_data['equipment'] = [
+                item for item in result_data['equipment']
+                if item.get('item_name') not in items_to_remove
+            ]
+        if 'ammunition' in curr_result and curr_result['ammunition']:
+            result_data['ammunition'] = curr_result['ammunition']
+        if 'ammo_items_to_remove' in curr_result and 'equipment' in result_data:
+            ammo_to_remove = set(curr_result['ammo_items_to_remove'])
+            result_data['equipment'] = [
+                item for item in result_data['equipment']
+                if item.get('item_name') not in ammo_to_remove
+            ]
+
+        # Process class feature validation
+        feat_result = parsed_response['class_feature_validation']
+        if 'corrections_made' in feat_result:
+            self.corrections_made.extend(feat_result['corrections_made'])
+        if 'features_to_remove' in feat_result and feat_result['features_to_remove']:
+            features_to_remove = feat_result['features_to_remove']
+            if 'classFeatures' in result_data and isinstance(result_data['classFeatures'], list):
+                result_data['classFeatures'] = [
+                    feature for feature in result_data['classFeatures']
+                    if feature.get('name') not in features_to_remove
+                ]
+
+        return result_data
     
     def validate_status_condition_consistency(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -2155,6 +2144,7 @@ Remember to return a single JSON response with all four validation results."""
                     consol_config = config.CHAR_VALIDATOR_LEGACY
 
                 response = capture_and_fanout("T054", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
                     messages=[
                         {"role": "system", "content": self.get_inventory_consolidation_system_prompt()},
                         {"role": "user", "content": consolidation_prompt}
@@ -2282,7 +2272,7 @@ Return a JSON object with ONLY the changes needed:
   "ammunition": [
     {
       "name": "Arrows",
-      "quantity": 20,     // Added from "full quiver"
+      "quantity": 20,     // New total after consolidation
       "description": "Standard arrows for use with a longbow or shortbow"
     },
     {
@@ -2311,6 +2301,7 @@ CRITICAL:
 - Only return ammunition entries that changed
 - Only list items that should be removed
 - Calculate new totals by adding consolidated amounts to existing currency/ammunition
+- Every ammunition quantity is the absolute new total, never an amount-to-add delta
 - For ammunition, maintain the same name format (e.g., "Crossbow bolt" not "crossbow bolts")
 - Preserve player agency - when in doubt, don't consolidate
 - Trade goods with gold values (silk worth 100gp, rare spices) are NOT currency -- keep in inventory
@@ -2327,7 +2318,11 @@ CRITICAL:
             Formatted prompt for AI consolidation
         """
         equipment = character_data.get('equipment', [])
-        current_currency = character_data.get('inventory', {}).get('currency', {})
+        # Character sheets store currency at the top level. Keep a fallback for
+        # older callers that may still provide the former nested shape.
+        current_currency = character_data.get('currency')
+        if not isinstance(current_currency, dict):
+            current_currency = character_data.get('inventory', {}).get('currency', {})
         current_ammunition = character_data.get('ammunition', [])
         
         prompt = f"""Please consolidate loose currency and ammunition for this character:
@@ -2391,47 +2386,91 @@ Identify loose currency items AND ammunition that should be consolidated. Rememb
         Returns:
             Dictionary with only the changes to apply (or empty dict if no changes)
         """
-        try:
-            # Try to extract JSON from AI response
-            start_idx = ai_response.find('{')
-            end_idx = ai_response.rfind('}') + 1
-            
-            if start_idx != -1 and end_idx != -1:
-                json_str = ai_response[start_idx:end_idx]
-                parsed_response = json.loads(json_str)
-                
-                # Build update dictionary with only changes
-                updates = {}
-                
-                # Check for currency updates
-                if 'inventory' in parsed_response and 'currency' in parsed_response['inventory']:
-                    updates['inventory'] = {'currency': parsed_response['inventory']['currency']}
-                
-                # Check for ammunition updates
-                if 'ammunition' in parsed_response and parsed_response['ammunition']:
-                    updates['ammunition'] = parsed_response['ammunition']
-                
-                # Check for equipment removals
-                if 'equipment' in parsed_response and parsed_response['equipment']:
-                    updates['equipment'] = parsed_response['equipment']
-                
-                # Log consolidations made
-                if 'consolidations_made' in parsed_response:
-                    consolidations = parsed_response['consolidations_made']
-                    for consolidation in consolidations:
-                        print(f"DEBUG: [Consolidation] {consolidation}")
-                        info(f"[Consolidation] {consolidation}", category="character_validation")
-                        self.logger.info(f"AI Currency Consolidation: {consolidation}")
-                        self.corrections_made.append(consolidation)
-                
-                return updates if updates else {}
-                
-        except (json.JSONDecodeError, KeyError) as e:
-            self.logger.error(f"Failed to parse AI currency consolidation response: {str(e)}")
-            self.logger.debug(f"AI Response was: {ai_response}")
-        
-        # Return empty dict if parsing fails (no changes)
-        return {}
+        parsed_response = _load_response_object(ai_response, "T054")
+        recognized_fields = {
+            'inventory', 'currency', 'ammunition', 'equipment',
+            'consolidations_made',
+        }
+        if not recognized_fields.intersection(parsed_response):
+            raise CharacterValidationResponseError(
+                "T054: response contains no recognized consolidation fields"
+            )
+        for field in ('ammunition', 'equipment', 'consolidations_made'):
+            if field in parsed_response and not isinstance(parsed_response[field], list):
+                raise CharacterValidationResponseError(
+                    f"T054: '{field}' must be an array"
+                )
+        if 'inventory' in parsed_response and not isinstance(
+            parsed_response['inventory'], dict
+        ):
+            raise CharacterValidationResponseError(
+                "T054: 'inventory' must be an object"
+            )
+        if 'currency' in parsed_response and not isinstance(
+            parsed_response['currency'], dict
+        ):
+            raise CharacterValidationResponseError(
+                "T054: 'currency' must be an object"
+            )
+
+        # Build update dictionary with only changes.
+        updates = {}
+
+        # Normalize legacy nested currency output to canonical top-level state.
+        currency_updates = parsed_response.get('currency')
+        if not isinstance(currency_updates, dict):
+            inventory_updates = parsed_response.get('inventory', {})
+            if isinstance(inventory_updates, dict):
+                currency_updates = inventory_updates.get('currency')
+        if isinstance(currency_updates, dict) and currency_updates:
+            updates['currency'] = currency_updates
+
+        # The prompt defines ammunition quantities as absolute new totals,
+        # while deep_merge_dict applies quantities as deltas.
+        if 'ammunition' in parsed_response and parsed_response['ammunition']:
+            current_ammunition = {
+                ammo.get('name', '').lower().strip(): ammo.get('quantity', 0)
+                for ammo in original_data.get('ammunition', [])
+                if isinstance(ammo, dict) and ammo.get('name')
+            }
+            ammunition_updates = []
+            for index, ammo in enumerate(parsed_response['ammunition']):
+                if not isinstance(ammo, dict):
+                    raise CharacterValidationResponseError(
+                        f"T054: ammunition[{index}] must be an object"
+                    )
+                normalized_ammo = copy.deepcopy(ammo)
+                ammo_name = normalized_ammo.get('name', '').lower().strip()
+                new_total = normalized_ammo.get('quantity')
+                if not ammo_name or type(new_total) is not int:
+                    raise CharacterValidationResponseError(
+                        f"T054: ammunition[{index}] requires name and integer quantity"
+                    )
+                normalized_ammo['quantity'] = (
+                    new_total - current_ammunition.get(ammo_name, 0)
+                )
+                ammunition_updates.append(normalized_ammo)
+            updates['ammunition'] = ammunition_updates
+
+        if 'equipment' in parsed_response and parsed_response['equipment']:
+            if not all(isinstance(item, dict) for item in parsed_response['equipment']):
+                raise CharacterValidationResponseError(
+                    "T054: every equipment update must be an object"
+                )
+            updates['equipment'] = parsed_response['equipment']
+
+        consolidations = parsed_response.get('consolidations_made', [])
+        if not all(isinstance(item, str) for item in consolidations):
+            raise CharacterValidationResponseError(
+                "T054: consolidations_made must contain only strings"
+            )
+        for consolidation in consolidations:
+            print(f"DEBUG: [Consolidation] {consolidation}")
+            info(f"[Consolidation] {consolidation}", category="character_validation")
+            self.logger.info(f"AI Currency Consolidation: {consolidation}")
+            self.corrections_made.append(consolidation)
+
+        return updates if updates else {}
     
     def ensure_currency_integrity(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
         """

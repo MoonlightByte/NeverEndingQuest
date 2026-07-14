@@ -4,6 +4,8 @@ Primary call runs synchronously and returns immediately.
 All other variants fire in background threads via ThreadPoolExecutor.
 """
 import atexit
+import copy
+import inspect
 import json
 import logging
 import os
@@ -11,6 +13,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from uuid import uuid4
 
 import model_config
 from utils.capture.file_writer import CaptureFileWriter
@@ -100,6 +103,48 @@ def _determine_tier(model_string):
     return "full"
 
 
+def _runtime_uses_temperature(provider, model, kwargs):
+    if provider == "gemini":
+        return False
+    if provider != "openai":
+        return True
+
+    model_lower = str(model or "").lower()
+    reasoning = str(kwargs.get("reasoning_effort", "")).lower()
+    if "5-mini" in model_lower:
+        return False
+    if "5.4-mini" in model_lower:
+        return not reasoning or reasoning == "none"
+    return not reasoning or reasoning == "none"
+
+
+def _variant_matches_primary(variant, provider, model, primary_kwargs):
+    """True when a capture variant would duplicate the selected request."""
+    if variant.get("provider") != provider or variant.get("model") != model:
+        return False
+    for key in ("reasoning_effort", "thinking_level"):
+        if variant.get(key) != primary_kwargs.get(key):
+            return False
+
+    primary_temperature = (
+        primary_kwargs.get("temperature")
+        if _runtime_uses_temperature(provider, model, primary_kwargs)
+        else None
+    )
+    variant_temperature = (
+        primary_kwargs.get("temperature")
+        if variant.get("use_caller_temp")
+        else None
+    )
+    if variant_temperature != primary_temperature:
+        return False
+
+    if provider == "gemini":
+        if variant.get("response_schema") != primary_kwargs.get("response_schema"):
+            return False
+    return True
+
+
 def _calculate_cost(model_name, token_usage, cfg):
     """Calculate USD cost based on model pricing and token usage.
 
@@ -120,7 +165,7 @@ def _calculate_cost(model_name, token_usage, cfg):
     return round(input_cost + output_cost, 6)
 
 
-def _fire_background_variant(variant, task_id, messages, timestamp,
+def _fire_background_variant(variant, task_id, messages, invocation_id,
                               caller_temperature, caller_kwargs):
     """Execute one variant call and write result. Runs in thread pool."""
     label = variant["label"]
@@ -138,12 +183,12 @@ def _fire_background_variant(variant, task_id, messages, timestamp,
             )
         cost_usd = _calculate_cost(model_name, token_usage, cfg)
         writer.merge_background_output(
-            task_id, timestamp, label, content, latency_s,
+            task_id, invocation_id, label, content, latency_s,
             token_usage=token_usage, cost_usd=cost_usd
         )
     except Exception as e:
         error_str = f"{type(e).__name__}: {e}"
-        writer.merge_background_error(task_id, timestamp, label, error_str)
+        writer.merge_background_error(task_id, invocation_id, label, error_str)
         try:
             _get_error_logger().error(f"[{task_id}][{label}] {error_str}")
         except Exception:
@@ -164,16 +209,36 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         response = capture_and_fanout("T013", client.chat.completions.create,
                                       messages=messages, model=..., temperature=0.7)
     """
-    # If using LM Studio, bypass capture entirely - LM Studio is a production runtime, not for testing
-    if model_config.get_provider() == "lmstudio":
-        return primary_fn(messages=messages, **kwargs)
+    # Freeze capture inputs before the primary callable or its caller can mutate
+    # shared message/config objects. The primary still receives the originals.
+    capture_messages = copy.deepcopy(messages)
+    capture_kwargs = copy.deepcopy(kwargs)
+    current_frame = inspect.currentframe()
+    caller_frame = current_frame.f_back if current_frame is not None else None
+    runtime_line = caller_frame.f_lineno if caller_frame is not None else 0
+    del caller_frame
+    del current_frame
+
+    # Keep the provider used for config selection attached to this request. A UI
+    # provider switch while the request is in flight must not redirect it.
+    request_provider = (
+        capture_kwargs.get("_request_provider") or model_config.get_provider()
+    )
 
     # Gated task_id injection: only inject when callable is create_completion
     # (unmigrated callsites using raw client.chat.completions.create would
     # reject unknown 'task_id' kwarg)
     from core.ai import api_client as _api_client
     if primary_fn is _api_client.create_completion:
+        kwargs["_request_provider"] = request_provider
         kwargs["task_id"] = task_id
+    else:
+        # Private router metadata must never leak into a raw SDK-compatible call.
+        kwargs.pop("_request_provider", None)
+
+    # Local/Custom is a production runtime, not a capture-test source.
+    if request_provider == "lmstudio":
+        return primary_fn(messages=messages, **kwargs)
 
     # Always fire primary call synchronously
     start = time.time()
@@ -191,19 +256,32 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
             return response
 
         # Gather call metadata
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        model = kwargs.get("model", "unknown")
+        timestamp = datetime.now(timezone.utc).isoformat()
+        invocation_id = str(uuid4())
+        model = capture_kwargs.get("model", "unknown")
         tier = _determine_tier(model)
-        caller_temperature = kwargs.get("temperature")
-        caller_kwargs = {k: v for k, v in kwargs.items()
-                         if k not in ("model", "messages", "task_id", "retry_attempt")}
+        caller_temperature = capture_kwargs.get("temperature")
+        caller_kwargs = {k: v for k, v in capture_kwargs.items()
+                         if k not in (
+                             "model", "messages", "task_id", "retry_attempt",
+                             "_request_provider",
+                         )}
 
         # Build input record
-        input_data = {"messages": messages}
+        input_data = {
+            "messages": capture_messages,
+            "provider": request_provider,
+        }
         if caller_temperature is not None:
             input_data["temperature"] = caller_temperature
-        if "reasoning_effort" in kwargs:
-            input_data["reasoning_effort"] = kwargs["reasoning_effort"]
+        if "reasoning_effort" in capture_kwargs:
+            input_data["reasoning_effort"] = capture_kwargs["reasoning_effort"]
+        if "thinking_level" in capture_kwargs:
+            input_data["thinking_level"] = capture_kwargs["thinking_level"]
+        if "response_format" in capture_kwargs:
+            input_data["response_format"] = capture_kwargs["response_format"]
+        if "response_schema" in capture_kwargs:
+            input_data["response_schema"] = capture_kwargs["response_schema"]
 
         primary_content = response.choices[0].message.content
         primary_label = f"{model}|baseline"
@@ -235,13 +313,14 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         writer.write_primary(
             task_id=task_id,
             file_path=meta.get("file", "unknown"),
-            line=meta.get("line", 0),
+            line=runtime_line or meta.get("line", 0),
             tier=tier,
             input_data=input_data,
             label=primary_label,
             content=primary_content,
             latency_s=primary_latency,
             timestamp=timestamp,
+            invocation_id=invocation_id,
             token_usage=primary_token_usage,
             cost_usd=primary_cost,
         )
@@ -251,14 +330,19 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
             # Skip disabled variants (enabled defaults to True if not specified)
             if not variant.get("enabled", True):
                 continue
-            # Skip re-firing the exact same model as the primary baseline
-            if (variant.get("model") == model
-                    and variant.get("reasoning_effort") is None
-                    and not variant.get("thinking_level")):
+            # Skip an exact effective duplicate of the selected primary call.
+            if _variant_matches_primary(
+                variant, request_provider, model, capture_kwargs
+            ):
                 continue
             _executor.submit(
                 _fire_background_variant,
-                variant, task_id, messages, timestamp, caller_temperature, caller_kwargs
+                copy.deepcopy(variant),
+                task_id,
+                copy.deepcopy(capture_messages),
+                invocation_id,
+                caller_temperature,
+                copy.deepcopy(caller_kwargs),
             )
 
     except Exception as e:

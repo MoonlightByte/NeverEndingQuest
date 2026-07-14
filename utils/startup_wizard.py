@@ -14,6 +14,7 @@ Uses module-centric architecture for self-contained adventures.
 Portions derived from SRD 5.2.1, licensed under CC BY 4.0.
 """
 
+import copy
 import json
 import os
 import re
@@ -22,8 +23,8 @@ from datetime import datetime
 from pathlib import Path
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T092", "utils/startup_wizard.py", 1634)
-register_callsite("T093", "utils/startup_wizard.py", 1744)
+register_callsite("T092", "utils/startup_wizard.py", 1525)
+register_callsite("T093", "utils/startup_wizard.py", 1651)
 from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
 from utils.startup_prompt_builder import build_character_creation_system_prompt as _build_character_creation_system_prompt
@@ -103,6 +104,20 @@ if not web_mode:
 
 # Conversation file for character creation (separate from main game)
 STARTUP_CONVERSATION_FILE = "modules/conversation_history/startup_conversation.json"
+
+STARTUP_AI_MAX_ATTEMPTS = 3
+STARTING_LOCATION_FIELDS = (
+    "areaId",
+    "areaName",
+    "locationId",
+    "locationName",
+    "weather",
+    "politicalClimate",
+)
+
+
+class StartupAIResponseError(RuntimeError):
+    """Raised when a startup interview turn has no usable provider response."""
 
 # ===== MAIN ORCHESTRATION =====
 
@@ -581,7 +596,7 @@ def ai_character_interview(conversation, module):
 
         # Continue on the active startup conversation so retries and confirmations
         # are preserved in the same history object the rest of startup uses.
-        creation_conversation = list(conversation or [])
+        creation_conversation = conversation if isinstance(conversation, list) else []
         creation_conversation.append({"role": "system", "content": enhanced_system_prompt})
         creation_conversation.append({
             "role": "user",
@@ -1427,6 +1442,10 @@ def update_party_tracker(module_name, character_name):
         if "worldConditions" not in party_data:
             # Get AI-determined starting location for the selected module
             starting_location = get_ai_starting_location({'moduleName': module_name})
+            starting_location = (
+                _validate_starting_location(starting_location)
+                or get_fallback_starting_location()
+            )
             
             party_data["worldConditions"] = {
                 "year": 1492,
@@ -1480,9 +1499,14 @@ def initialize_startup_conversation():
     return conversation
 
 def get_ai_response(conversation, response_format=None):
-    """Get AI response for character creation"""
+    """Return one persisted assistant turn, retrying provider failures safely.
+
+    Provider failures never become assistant prose. Each retry receives the same
+    message snapshot, and the live conversation is mutated only after a usable
+    response has been received.
+    """
+    status_processing_ai()
     try:
-        status_processing_ai()
         from model_config import MODEL_PROVIDER
         if MODEL_PROVIDER == "openai":
             main_cfg = config.DM_MAIN_GPT52_NONE
@@ -1493,56 +1517,59 @@ def get_ai_response(conversation, response_format=None):
         else:  # legacy
             main_cfg = config.DM_MAIN_LEGACY
 
-        response = capture_and_fanout("T092", api_client.create_completion,
-            messages=conversation,
-            model=main_cfg["model"],
-            temperature=0.7,
-            response_format=response_format,
-            **{k: v for k, v in main_cfg.items() if k != "model"})
-        
-        content = response.choices[0].message.content.strip()
+        request_messages = copy.deepcopy(conversation)
+        last_error = None
+        content = None
+        for attempt in range(1, STARTUP_AI_MAX_ATTEMPTS + 1):
+            try:
+                response = capture_and_fanout("T092", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
+                    messages=copy.deepcopy(request_messages),
+                    model=main_cfg["model"],
+                    temperature=0.7,
+                    response_format=response_format,
+                    **{k: v for k, v in main_cfg.items() if k != "model"})
+
+                raw_content = response.choices[0].message.content
+                if not isinstance(raw_content, str) or not raw_content.strip():
+                    raise ValueError("provider returned no usable text")
+                content = raw_content.strip()
+                break
+            except Exception as exc:
+                last_error = exc
+                warning(
+                    f"Startup AI turn failed for provider {MODEL_PROVIDER} "
+                    f"(attempt {attempt}/{STARTUP_AI_MAX_ATTEMPTS}): {exc}",
+                    category="startup",
+                )
+
+        if content is None:
+            raise StartupAIResponseError(
+                f"Startup AI turn failed for provider {MODEL_PROVIDER} after "
+                f"{STARTUP_AI_MAX_ATTEMPTS} attempts"
+            ) from last_error
+
         conversation.append({"role": "assistant", "content": content})
-        
+
         # Save conversation
         status_saving()
-        safe_write_json(STARTUP_CONVERSATION_FILE, conversation)
-        
-        status_ready()
+        history_error = None
+        try:
+            history_saved = safe_write_json(STARTUP_CONVERSATION_FILE, conversation)
+        except Exception as exc:
+            history_saved = False
+            history_error = exc
+        if not history_saved:
+            detail = f": {history_error}" if history_error is not None else ""
+            warning(
+                "Could not persist startup conversation; continuing with in-memory history"
+                f"{detail}",
+                category="startup",
+            )
+
         return content
-        
-    except Exception as e:
-        error_str = str(e)
-        print(f"Error: Error getting AI response: {e}")
-        
-        # Check if it's an API key authentication error
-        if "401" in error_str or "Incorrect API key" in error_str or "didn't provide an API key" in error_str or "your_openai_api_key_here" in error_str:
-            return ("*The magical energies fail to respond...*\n\n"
-                    "Adventurer, it seems the arcane connection to my consciousness has been severed! "
-                    "The mystical key that binds us - your OpenAI API key - appears to be missing or incorrect.\n\n"
-                    "To restore our link and begin your adventure:\n"
-                    "1. Open the 'config.py' scroll in your realm\n"
-                    "2. Replace 'your_openai_api_key_here' with your actual OpenAI API key\n"
-                    "3. Save the scroll and return to try again\n\n"
-                    "You can obtain a key from the Council of OpenAI at: https://platform.openai.com/api-keys\n\n"
-                    "Until then, I remain trapped in the void, unable to guide your journey...")
-        else:
-            # Check if API key might be the issue even for other errors
-            from config import OPENAI_API_KEY
-            if not OPENAI_API_KEY or OPENAI_API_KEY == '' or OPENAI_API_KEY == 'your_openai_api_key_here':
-                return ("*The crystal ball flickers and dims...*\n\n"
-                        "My apologies, brave adventurer. The mystical connection seems unstable.\n\n"
-                        "It appears your OpenAI API key has not been configured:\n"
-                        "1. Open the 'config.py' scroll in your realm\n"
-                        "2. Find the line: OPENAI_API_KEY = ''\n"
-                        "3. Replace the empty string with your actual OpenAI API key:\n"
-                        "   OPENAI_API_KEY = 'sk-your-actual-key-here'\n"
-                        "4. Save the scroll and return to try again\n\n"
-                        "You can obtain a key from the Council of OpenAI at: https://platform.openai.com/api-keys")
-            else:
-                # Generic error for other issues when API key is set
-                return ("*The crystal ball flickers and dims...*\n\n"
-                        "My apologies, brave adventurer. The mystical connection seems unstable at the moment. "
-                        "Please try again shortly, or check that your internet connection to the ethereal plane remains strong.")
+    finally:
+        status_ready()
 
 def save_startup_conversation(conversation):
     """Save startup conversation to file"""
@@ -1560,6 +1587,24 @@ def cleanup_startup_conversation():
         pass  # Don't fail startup if cleanup fails
 
 # ===== AI STARTING LOCATION DETECTION =====
+
+def _validate_starting_location(candidate):
+    """Return a clean, complete starting location or ``None``.
+
+    This is intentionally all-or-nothing: model fields are never merged into the
+    deterministic fallback that can be persisted to ``party_tracker.json``.
+    """
+    if type(candidate) is not dict or set(candidate) != set(STARTING_LOCATION_FIELDS):
+        return None
+
+    validated = {}
+    for field in STARTING_LOCATION_FIELDS:
+        value = candidate[field]
+        if type(value) is not str or not value.strip():
+            return None
+        validated[field] = value.strip()
+    return validated
+
 
 def get_ai_starting_location(module):
     """Use AI to determine the best starting location for a module"""
@@ -1597,13 +1642,14 @@ Respond with ONLY a JSON object in this exact format:
         if MODEL_PROVIDER == "openai":
             mini_cfg = config.MINI_UTIL_GPT54MINI_NONE
         elif MODEL_PROVIDER == "gemini":
-            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_MINIMAL
+            mini_cfg = config.MINI_UTIL_GEMINI_FLASH_LOW
         elif MODEL_PROVIDER == "lmstudio":
             mini_cfg = config.MINI_UTIL_LMSTUDIO
         else:  # legacy
             mini_cfg = config.MINI_UTIL_LEGACY
 
         response = capture_and_fanout("T093", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
             messages=[{"role": "user", "content": prompt}],
             model=mini_cfg["model"],
             temperature=0.7,
@@ -1614,20 +1660,15 @@ Respond with ONLY a JSON object in this exact format:
         ai_response = response.choices[0].message.content.strip()
         debug(f"AI_RESPONSE: Raw AI response: {ai_response}", category="startup_wizard")
         
-        # Extract JSON from response
-        import re
-        json_match = re.search(r'\{.*\}', ai_response, re.DOTALL)
-        if json_match:
-            json_text = json_match.group()
-            debug(f"JSON_PROCESSING: Extracted JSON: {json_text}", category="startup_wizard")
-            starting_location = json.loads(json_text)
-            debug(f"JSON_PROCESSING: Parsed object: {starting_location}", category="startup_wizard")
-            print(f"AI selected starting location: {starting_location.get('areaName')} - {starting_location.get('locationName')}")
-            return starting_location
-        else:
-            print("Warning: Could not parse AI response, using fallback")
+        starting_location = _validate_starting_location(json.loads(ai_response))
+        if starting_location is None:
+            print("Warning: AI starting location was incomplete, using fallback")
             debug(f"AI_RESPONSE: Full AI response: {ai_response}", category="startup_wizard")
             return get_fallback_starting_location()
+
+        debug(f"JSON_PROCESSING: Parsed object: {starting_location}", category="startup_wizard")
+        print(f"AI selected starting location: {starting_location['areaName']} - {starting_location['locationName']}")
+        return starting_location
             
     except Exception as e:
         print(f"Warning: AI starting location failed ({e}), using fallback")
@@ -1662,7 +1703,7 @@ def load_module_for_ai_analysis(module_name):
         return None
 
 def get_fallback_starting_location():
-    """Fallback starting location if AI analysis fails"""
+    """Return the complete deterministic location persisted when T093 fails."""
     return {
         "areaId": "UNKNOWN", 
         "areaName": "Starting Area",
