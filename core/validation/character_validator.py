@@ -71,10 +71,10 @@ from typing import Dict, List, Any, Optional, Union
 from core.ai import api_client
 from utils.character_sheet_contract import repair_required_ammunition_field
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T051", "core/validation/character_validator.py", 1938)
-register_callsite("T052", "core/validation/character_validator.py", 2064)
-register_callsite("T053", "core/validation/character_validator.py", 2915)
-register_callsite("T054", "core/validation/character_validator.py", 3725)
+register_callsite("T051", "core/validation/character_validator.py", 1946)
+register_callsite("T052", "core/validation/character_validator.py", 2085)
+register_callsite("T053", "core/validation/character_validator.py", 2936)
+register_callsite("T054", "core/validation/character_validator.py", 3746)
 
 CHARACTER_VALIDATOR_SCHEMA = {
     "required": [
@@ -1934,54 +1934,75 @@ class AICharacterValidator:
             validator_config = config.CHAR_VALIDATOR_LEGACY
 
         corrections_before = copy.deepcopy(self.corrections_made)
-        try:
-            response = capture_and_fanout("T051", api_client.create_completion,
-                _request_provider=MODEL_PROVIDER,
-                messages=[
-                    {"role": "system", "content": self.get_validator_system_prompt()},
-                    {"role": "user", "content": validation_prompt}
-                ],
-                model=validator_config["model"],
-                temperature=0.1,
-                **{k: v for k, v in validator_config.items() if k != "model"})
+        messages = [
+            {"role": "system", "content": self.get_validator_system_prompt()},
+            {"role": "user", "content": validation_prompt},
+        ]
+        max_attempts = 3
+        last_error: BaseException = RuntimeError("T051 validation attempts exhausted")
+        for attempt in range(1, max_attempts + 1):
+            ai_response = None
+            try:
+                response = capture_and_fanout("T051", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
+                    messages=messages,
+                    model=validator_config["model"],
+                    temperature=0.1,
+                    **{k: v for k, v in validator_config.items() if k != "model"})
 
-            # Track usage if available
-            if USAGE_TRACKING_AVAILABLE:
-                try:
-                    from utils.openai_usage_tracker import get_global_tracker
-                    tracker = get_global_tracker()
-                    tracker.track(response, context={'endpoint': 'character_validation', 'purpose': 'validate_character_data'})
-                except:
-                    pass
+                # Track usage if available
+                if USAGE_TRACKING_AVAILABLE:
+                    try:
+                        from utils.openai_usage_tracker import get_global_tracker
+                        tracker = get_global_tracker()
+                        tracker.track(response, context={'endpoint': 'character_validation', 'purpose': 'validate_character_data'})
+                    except:
+                        pass
 
-            ai_response = response.choices[0].message.content.strip()
+                ai_response = response.choices[0].message.content.strip()
 
-            # Parse AI response to get corrected character data
-            corrected_data = self.parse_ai_validation_response(
-                ai_response,
-                provider_ac_data,
-            )
+                # Parse AI response to get corrected character data
+                corrected_data = self.parse_ai_validation_response(
+                    ai_response,
+                    provider_ac_data,
+                )
 
-            # CRITICAL FIX: Merge the corrections into original data, don't replace!
-            # The AI only returns the extracted subset with corrections
-            # We need to merge those corrections back into the full character data
-            from updates.update_character_info import deep_merge_dict
-            merged_data = deep_merge_dict(character_data, corrected_data)
+                # CRITICAL FIX: Merge the corrections into original data, don't replace!
+                # The AI only returns the extracted subset with corrections
+                # We need to merge those corrections back into the full character data
+                from updates.update_character_info import deep_merge_dict
+                merged_data = deep_merge_dict(character_data, corrected_data)
 
-            # Cache the fully merged output, never the pre-correction input. If a
-            # later persistence step fails, the unchanged disk data will not hit
-            # this entry and validation will self-heal on the next pass.
-            final_ac_hash = self._compute_ac_hash(
-                self.extract_ac_relevant_data(merged_data)
-            )
-            self._update_ac_cache(character_name, final_ac_hash, merged_data)
+                # Cache the fully merged output, never the pre-correction input. If a
+                # later persistence step fails, the unchanged disk data will not hit
+                # this entry and validation will self-heal on the next pass.
+                final_ac_hash = self._compute_ac_hash(
+                    self.extract_ac_relevant_data(merged_data)
+                )
+                self._update_ac_cache(character_name, final_ac_hash, merged_data)
 
-            return _validation_result(character_data, merged_data)
-            
-        except Exception as e:
-            self.corrections_made = corrections_before
-            self.logger.error(f"AI validation failed: {str(e)}")
-            return _failed_validation_result(character_data, e)
+                return _validation_result(character_data, merged_data)
+            except Exception as e:
+                last_error = e
+                self.corrections_made = copy.deepcopy(corrections_before)
+                self.logger.error(
+                    f"AI validation failed (attempt {attempt}/{max_attempts}): {e}"
+                )
+                if attempt < max_attempts and ai_response is not None:
+                    messages.extend([
+                        {"role": "assistant", "content": ai_response},
+                        {
+                            "role": "user",
+                            "content": (
+                                f"VALIDATION ERROR: {e}. Return the complete JSON "
+                                "object again. Ensure validated_character_data.armorClass "
+                                "exactly equals ac_calculation_breakdown.total_ac and that "
+                                "corrections_made accurately describes any changed value."
+                            ),
+                        },
+                    ])
+
+        return _failed_validation_result(character_data, last_error)
 
     def ai_validate_armor_class(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
         """Backward-compatible data-only facade for T051."""

@@ -15,7 +15,7 @@ import threading
 import config
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T017", "core/ai/combat_compression_engine.py", 1323)
+register_callsite("T017", "core/ai/combat_compression_engine.py", 1337)
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 import sys
@@ -952,6 +952,20 @@ def build_compression_source_hints(source: str) -> str:
     try:
         source_player = _parse_source_player(source)
         tracker = _parse_tracker(source)
+        roster_types = [
+            f"{actor}={actor_type}"
+            for actor in tracker
+            if actor != source_player
+            for actor_type in [_infer_obvious_actor_type(actor)]
+            if actor_type is not None
+        ]
+        if roster_types:
+            hints.append(
+                "@ROSTER must use these source-derived canonical actor types "
+                "exactly (descriptive NAME HINTS do not override them): "
+                + ", ".join(roster_types)
+                + "."
+            )
         process = _parse_source_process(source, source_player, tracker)
         source_attacks = _parse_source_attacks(source)
         source_dice = _parse_source_dice(source)
