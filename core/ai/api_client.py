@@ -395,6 +395,19 @@ def _openai_completion(messages, model, temperature, provider, response_format=_
         if _local_model:
             model = _local_model
 
+        # LM Studio/OpenAI-compatible servers do not agree on support for the
+        # OpenAI ``json_object`` response mode. Older LM Studio versions reject
+        # it before inference (HTTP 400, accepting only ``json_schema`` or
+        # ``text``). Local callsites already carry explicit JSON instructions
+        # and production parsers/retries, so omit only this unsupported mode at
+        # the provider adapter. Preserve an explicit json_schema for endpoints
+        # that support it, and leave OpenAI/legacy behavior unchanged.
+        if response_format is _UNSET or (
+            isinstance(response_format, dict)
+            and response_format.get("type") == "json_object"
+        ):
+            response_format = None
+
     # Pop internal flags
     strip_temp = kwargs.pop("_strip_temperature", False)
 
