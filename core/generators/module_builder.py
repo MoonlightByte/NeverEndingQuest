@@ -49,10 +49,11 @@ from utils.module_context import ModuleContext
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.npc_reconciler import NpcReconciler
 from utils.file_operations import safe_write_json
+from utils.path_transaction_lock import path_transaction_lock
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T028", "core/generators/module_builder.py", 904)
-register_callsite("T029", "core/generators/module_builder.py", 1202)
-register_callsite("T030", "core/generators/module_builder.py", 1820)
+register_callsite("T028", "core/generators/module_builder.py", 901)
+register_callsite("T029", "core/generators/module_builder.py", 1199)
+register_callsite("T030", "core/generators/module_builder.py", 1863)
 
 # Set script name for logging
 set_script_name("module_builder")
@@ -354,15 +355,11 @@ MODULE INDEPENDENCE RULES:
             warning(f"Module summary generation failed (non-fatal): {e}",
                     category="module_generation")
         
-        # Step 6.5: Reconcile NPC names across all files
-        self.log("Step 6.5: Reconciling NPC names for consistency...")
-        reconciler = NpcReconciler(self.config.module_name)
-        if reconciler.load_context():
-            reconciler.reconcile_all_areas()
-        
-        # Step 7: Validate and save context
-        self.log("Step 7: Validating module consistency...")
-        self.validate_module()
+        # Steps 6.5-7 share one context transaction. This publishes the
+        # builder's in-memory context before T088, reloads T088's committed
+        # result, and prevents the later validation save from restoring the
+        # stale pre-reconciliation object.
+        self._reconcile_and_validate_context()
         
         # Step 8: Create _BU.json backup files for reset functionality
         self.log("Step 8: Creating _BU.json backup files...")
@@ -1408,7 +1405,47 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 self.context.add_reference("npc", npc_name, "module:plotStages")
         
         # Note: Faction NPCs removed - location-generated NPCs are sufficient
-    
+
+    def _reconcile_and_validate_context(self):
+        """Publish, reconcile, reload, and validate one coherent context."""
+        context_path = os.path.join(
+            self.config.output_directory,
+            "module_context.json",
+        )
+        reconciler = NpcReconciler(self.config.module_name)
+        # ModuleBuilder can use an absolute/custom output directory. Keep the
+        # reconciler on that exact directory rather than reconstructing it from
+        # the process working directory.
+        reconciler.path_manager.module_dir = self.config.output_directory
+        reconciler.context_path = context_path
+
+        with path_transaction_lock(context_path):
+            # Resolve a prior interrupted T088 before considering the builder's
+            # in-memory snapshot. Overwriting a staged target first would turn
+            # recoverable before/after state into an unsafe third state.
+            recovery = reconciler._recover_pending_transaction()
+            if recovery:
+                self.log(
+                    "Step 6.5: Recovered interrupted NPC reconciliation "
+                    f"({recovery})."
+                )
+                self.context = ModuleContext.load(context_path)
+            else:
+                if not safe_write_json(context_path, self.context.to_dict()):
+                    raise OSError(
+                        "Could not publish module context before NPC reconciliation"
+                    )
+
+            self.log("Step 6.5: Reconciling NPC names for consistency...")
+            if not reconciler.reconcile_all_areas():
+                raise OSError("NPC identity reconciliation did not commit")
+
+            # T088 owns a separate ModuleContext instance. Refresh the builder
+            # before validation so Step 7 cannot overwrite its identity merge.
+            self.context = ModuleContext.load(context_path)
+            self.log("Step 7: Validating module consistency...")
+            self.validate_module()
+
     def validate_module(self):
         """Validate module consistency and save results"""
         issues = self.context.validate_all()
@@ -1420,8 +1457,14 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         else:
             self.log("All validation checks passed!")
         
-        # Save context and validation report
-        self.context.save(os.path.join(self.config.output_directory, "module_context.json"))
+        # Save context and validation report. The caller holds the same T088
+        # path lock, and atomic replacement prevents a torn context document.
+        context_path = os.path.join(
+            self.config.output_directory,
+            "module_context.json",
+        )
+        if not safe_write_json(context_path, self.context.to_dict()):
+            raise OSError("Could not save validated module context")
         
         # Create validation report
         report = {

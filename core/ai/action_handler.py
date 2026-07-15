@@ -52,6 +52,7 @@ See LICENSE file for full terms.
 # ============================================================================
 
 import json
+import hashlib
 import subprocess
 import os
 import threading
@@ -59,9 +60,9 @@ from datetime import datetime
 from core.ai import api_client
 import model_config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T013", "core/ai/action_handler.py", 1130)
-register_callsite("T012", "core/ai/action_handler.py", 631)
-register_callsite("T014", "core/ai/action_handler.py", 2208)
+register_callsite("T013", "core/ai/action_handler.py", 1248)
+register_callsite("T012", "core/ai/action_handler.py", 669)
+register_callsite("T014", "core/ai/action_handler.py", 2427)
 import config
 from core.managers.location_manager import get_location_data
 from utils.module_path_manager import ModulePathManager
@@ -94,6 +95,43 @@ except ImportError:
 
 # Set script name for logging
 set_script_name("action_handler")
+
+
+def _module_transition_completion_id(
+    from_module: str,
+    to_module: str,
+    conversation_history,
+) -> str:
+    """Derive one stable identity for the same persisted transition event."""
+    canonical_event = {
+        "from_module": from_module,
+        "to_module": to_module,
+        "conversation_history": conversation_history,
+    }
+    encoded = json.dumps(
+        canonical_event,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _completion_publication_state(campaign_manager, pending_archive):
+    """Classify whether failed publication left durable recovery work."""
+    try:
+        return campaign_manager.get_module_completion_publication_state(
+            pending_archive["from_module"],
+            pending_archive["completion_id"],
+        )
+    except Exception as state_exc:
+        warning(
+            "FAILURE: Could not classify module-transition publication "
+            f"state: {state_exc}",
+            category="module_management",
+        )
+        return "unknown"
 
 # Action type constants
 ACTION_CREATE_ENCOUNTER = "createEncounter"
@@ -1068,15 +1106,91 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
         info(f"STATE_CHANGE: Transitioning from '{current_location_name}' to '{new_location_name_or_id}'", category="location_transitions")
         debug(f"VALIDATION: Current location string (hex): {current_location_name.encode('utf-8').hex()}", category="location_transitions")
         debug(f"VALIDATION: New location string (hex): {new_location_name_or_id.encode('utf-8').hex()}", category="location_transitions")
+
+        # Detect and prepare a cross-module completion before the location
+        # manager can persist the target location. This closes the earlier
+        # crash window where location moved but no completion intent existed.
+        pending_archive = None
+        campaign_manager = None
+        try:
+            from core.managers.campaign_manager import CampaignManager
+
+            campaign_manager = CampaignManager()
+            is_cross_module, from_module, to_module = (
+                campaign_manager.detect_module_transition(
+                    current_location_id,
+                    new_location_name_or_id,
+                )
+            )
+            if is_cross_module:
+                completion_id = _module_transition_completion_id(
+                    from_module,
+                    to_module,
+                    conversation_history,
+                )
+                pending_archive = {
+                    "from_module": from_module,
+                    "to_module": to_module,
+                    "party_tracker_data": party_tracker_data.copy(),
+                    "completion_id": completion_id,
+                }
+        except Exception as e:
+            error(
+                "FAILURE: Could not prepare cross-module transition",
+                exception=e,
+                category="module_management",
+            )
+            return create_return(
+                status="error",
+                needs_update=False,
+                response_data={"error_message": str(e)},
+            )
         
         # Use enhanced location manager with auto-generated area connectivity ID
-        transition_prompt = location_manager.handle_location_transition(
-            current_location_name, 
-            new_location_name_or_id, 
-            current_area_name, 
-            current_area_id, 
-            auto_area_connectivity_id
-        )
+        def run_location_transition():
+            return location_manager.handle_location_transition(
+                current_location_name,
+                new_location_name_or_id,
+                current_area_name,
+                current_area_id,
+                auto_area_connectivity_id,
+            )
+
+        if pending_archive is not None:
+            try:
+                transition_prompt, _transitioned_party = (
+                    campaign_manager.publish_location_module_transition(
+                        pending_archive["from_module"],
+                        pending_archive["to_module"],
+                        conversation_history,
+                        pending_archive["completion_id"],
+                        run_location_transition,
+                    )
+                )
+            except Exception as e:
+                error(
+                    "FAILURE: Could not publish cross-module location transition",
+                    exception=e,
+                    category="module_management",
+                )
+                publication_state = _completion_publication_state(
+                    campaign_manager,
+                    pending_archive,
+                )
+                return create_return(
+                    status="error",
+                    needs_update=False,
+                    response_data={
+                        "error_message": str(e),
+                        "pending_archive": pending_archive,
+                        "completion_publication_state": publication_state,
+                        "transition_recovery_required": (
+                            publication_state != "absent"
+                        ),
+                    },
+                )
+        else:
+            transition_prompt = run_location_transition()
 
         if transition_prompt:
             # Get the new location ID from party tracker after transition
@@ -1100,7 +1214,11 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
             from main import save_conversation_history
-            save_conversation_history(conversation_history)
+            save_conversation_history(
+                conversation_history,
+                strict=True,
+                allow_compression=False,
+            )
 
             # GENERATE TRANSITION NARRATION using the transition_prompt
             info("STATE_CHANGE: Generating transition narration using AI", category="location_transitions")
@@ -1146,7 +1264,11 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
 
                 # Save transition narration to conversation history as assistant message
                 conversation_history.append({"role": "assistant", "content": transition_narration})
-                save_conversation_history(conversation_history)
+                save_conversation_history(
+                    conversation_history,
+                    strict=True,
+                    allow_compression=False,
+                )
                 debug("SUCCESS: Transition narration saved to conversation history", category="location_transitions")
 
             except Exception as e:
@@ -1154,38 +1276,61 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
                 transition_narration = f"The party travels to {new_location_name}."
                 # Save fallback narration too
                 conversation_history.append({"role": "assistant", "content": transition_narration})
-                save_conversation_history(conversation_history)
-            
-            # CAMPAIGN INTEGRATION: Check for cross-module transitions
-            try:
-                from core.managers.campaign_manager import CampaignManager
-                campaign_manager = CampaignManager()
-                
-                # Detect if this is a cross-module transition
-                is_cross_module, from_module, to_module = campaign_manager.detect_module_transition(
-                    current_location_id, new_location_id
+                save_conversation_history(
+                    conversation_history,
+                    strict=True,
+                    allow_compression=False,
                 )
-                
-                if is_cross_module:
-                    info(f"STATE_CHANGE: Cross-module transition detected during location change: {from_module} -> {to_module}", category="module_management")
-                    
-                    # DON'T generate summary here - it will be handled by updatePartyTracker
-                    # This prevents duplicate summaries for the same module transition
-                    debug("STATE_CHANGE: Deferring module summary generation to updatePartyTracker action", category="module_management")
-                    
-                    # Just update the module field in party tracker
-                    updated_party_tracker["module"] = to_module
-                    safe_json_dump(updated_party_tracker, "party_tracker.json")
-                    debug(f"STATE_CHANGE: Updated party tracker module to {to_module}", category="module_management")
-                    
-                    # Note: Campaign context injection will happen when updatePartyTracker is called
-                    # This ensures summaries are generated only once per transition
+            
+            # CAMPAIGN INTEGRATION: refresh the ready intent with T013 history.
+            try:
+                if pending_archive is not None:
+                    info(
+                        "STATE_CHANGE: Cross-module transition detected "
+                        f"during location change: {pending_archive['from_module']} "
+                        f"-> {pending_archive['to_module']}",
+                        category="module_management",
+                    )
+                    campaign_manager.mark_module_completion_intent_ready(
+                        pending_archive["from_module"],
+                        pending_archive["completion_id"],
+                        conversation_history=conversation_history,
+                    )
+                    debug(
+                        "STATE_CHANGE: Updated party tracker module to "
+                        f"{pending_archive['to_module']}",
+                        category="module_management",
+                    )
                 else:
                     debug(f"STATE_CHANGE: Within-module transition: {current_location_id} -> {new_location_id}", category="location_transitions")
                     
             except Exception as e:
-                print(f"Warning: Campaign transition check failed: {e}")
-                # Don't let campaign system errors break location transitions
+                error(
+                    "FAILURE: Campaign transition could not be durably staged",
+                    exception=e,
+                    category="module_management",
+                )
+                response_data = {
+                    "transition_narration": transition_narration,
+                    "error_message": str(e),
+                }
+                if pending_archive is not None:
+                    publication_state = _completion_publication_state(
+                        campaign_manager,
+                        pending_archive,
+                    )
+                    response_data["pending_archive"] = pending_archive
+                    response_data["completion_publication_state"] = (
+                        publication_state
+                    )
+                    response_data["transition_recovery_required"] = (
+                        publication_state != "absent"
+                    )
+                return create_return(
+                    status="error",
+                    needs_update=True,
+                    response_data=response_data,
+                )
             
             info("SUCCESS: Location transition complete", category="location_transitions")
             needs_conversation_history_update = True  # Trigger conversation history reload
@@ -1193,10 +1338,10 @@ def process_action(action, party_tracker_data, location_data, conversation_histo
             # A different assistant completion can finish while T063/T064 are
             # running, so the final narration must correlate by placeholder
             # identity instead of replacing an arbitrary nearby assistant.
-            return create_return(
-                needs_update=True,
-                response_data={"transition_narration": transition_narration},
-            )
+            response_data = {"transition_narration": transition_narration}
+            if pending_archive is not None:
+                response_data["pending_archive"] = pending_archive
+            return create_return(needs_update=True, response_data=response_data)
              # After transition, the current_location_data in the main loop might be stale.
             # We need to ensure the AI response processing uses the *new* location data.
             # This might require process_ai_response to reload location data or for main_game_loop to handle it.
@@ -1402,52 +1547,74 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 narrative = list(parameters.values())[0]
                 parameters = {"narrative": narrative}
             
-            # Let the module builder handle ALL parameter validation
-            # This makes the system fully agentic - AI decides everything
-            success, module_name = ai_driven_module_creation(parameters, progress_callback=module_progress_callback)
-            
-            if success:
-                # Module name is now returned from the AI parser
-                info(f"SUCCESS: Module '{module_name}' created successfully", category="module_management")
-                
-                # Auto-integrate with module stitcher
-                try:
-                    from core.generators.module_stitcher import get_module_stitcher
-                    stitcher = get_module_stitcher()
-                    # Run stitcher in fully autonomous mode
-                    integrated_modules = stitcher.scan_and_integrate_new_modules()
-                    info(f"SUCCESS: Module '{module_name}' integrated into world registry", category="module_management")
-                    debug(f"STATE_CHANGE: Integration summary: {integrated_modules}", category="module_management")
-                except Exception as e:
-                    # INT-H8: Stitching failed. The module exists on disk but is
-                    # NOT integrated into the world registry. We must NOT pretend
-                    # it succeeded -- that would append a "module created" DM note
-                    # to history and leave an orphan dir for the next stitcher
-                    # scan to pick up. Surface the failure to the caller and
-                    # remove the partial module directory.
-                    error(
-                        f"FAILURE: Module '{module_name}' created but stitching failed",
-                        exception=e,
-                        category="module_management",
-                    )
-                    _cleanup_orphan_module(module_name)
-                    # Reset status so the UI is not stuck "processing".
-                    try:
-                        from core.managers.status_manager import status_ready
-                        status_ready()
-                        debug("STATE_CHANGE: Status reset after stitching failure", category="session_management")
-                    except Exception as status_e:
-                        error(
-                            f"FAILURE: Error resetting status after stitching failure",
-                            exception=status_e,
-                            category="session_management",
-                        )
+            # Creation and registration are one publication unit. Reconcile
+            # must never discover a half-built action-created module.
+            from utils.module_refresh_lock import module_refresh_lock
+
+            with module_refresh_lock() as publication_acquired:
+                if not publication_acquired:
                     return {
                         "success": False,
-                        "error": f"Module integration failed: {e}",
+                        "error": "Module creation is busy; retry shortly",
                         "needs_dm_response": False,
                     }
-                
+
+                # Let the module builder handle ALL parameter validation.
+                success, module_name = ai_driven_module_creation(
+                    parameters,
+                    progress_callback=module_progress_callback,
+                )
+
+                if success:
+                    info(
+                        f"SUCCESS: Module '{module_name}' created successfully",
+                        category="module_management",
+                    )
+
+                    try:
+                        from core.generators.module_stitcher import get_module_stitcher
+
+                        stitcher = get_module_stitcher()
+                        integrated_modules = (
+                            stitcher.scan_and_integrate_new_modules()
+                        )
+                        info(
+                            f"SUCCESS: Module '{module_name}' integrated into world registry",
+                            category="module_management",
+                        )
+                        debug(
+                            f"STATE_CHANGE: Integration summary: {integrated_modules}",
+                            category="module_management",
+                        )
+                    except Exception as e:
+                        # Keep cleanup inside the same publication boundary.
+                        error(
+                            f"FAILURE: Module '{module_name}' created but stitching failed",
+                            exception=e,
+                            category="module_management",
+                        )
+                        _cleanup_orphan_module(module_name)
+                        try:
+                            from core.managers.status_manager import status_ready
+
+                            status_ready()
+                            debug(
+                                "STATE_CHANGE: Status reset after stitching failure",
+                                category="session_management",
+                            )
+                        except Exception as status_e:
+                            error(
+                                "FAILURE: Error resetting status after stitching failure",
+                                exception=status_e,
+                                category="session_management",
+                            )
+                        return {
+                            "success": False,
+                            "error": f"Module integration failed: {e}",
+                            "needs_dm_response": False,
+                        }
+
+            if success:
                 # Reset processing status to ready
                 try:
                     from core.managers.status_manager import status_ready
@@ -1630,7 +1797,8 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     "role": "user",
                     "content": transition_text
                 }
-                conversation_history.append(transition_message)
+                transition_history = list(conversation_history)
+                transition_history.append(transition_message)
                 print(f"DEBUG: [Module Transition] Inserted transition marker: '{transition_text}'")
                 debug(f"STATE_CHANGE: Inserted module transition marker: '{transition_text}'", category="module_management")
                 
@@ -1649,20 +1817,26 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     pending_archive = {
                         "from_module": current_module,
                         "to_module": new_module,
-                        "party_tracker_data": current_party_data.copy()
+                        "party_tracker_data": current_party_data.copy(),
+                        # The appended transition marker makes this stable for
+                        # duplicate workers while later visits naturally hash
+                        # a longer/different history.
+                        "completion_id": _module_transition_completion_id(
+                            current_module,
+                            new_module,
+                            transition_history,
+                        ),
                     }
-                    
                     # Inject accumulated campaign context for the new module
                     debug(f"AI_CALL: Requesting campaign context for module: {new_module}", category="module_management")
                     campaign_context = campaign_manager.get_accumulated_summaries_context(new_module)
                     debug(f"AI_CALL: Campaign context received - Length: {len(campaign_context) if campaign_context else 0} characters", category="module_management")
                     if campaign_context:
-                        conversation_history.append({
+                        transition_history.append({
                             "role": "system", 
                             "content": f"=== CAMPAIGN CONTEXT ===\n{campaign_context}"
                         })
-                        save_conversation_history(conversation_history)
-                        info(f"SUCCESS: Campaign context injected for {new_module}", category="module_management")
+                        info(f"SUCCESS: Campaign context prepared for {new_module}", category="module_management")
                     else:
                         warning(f"STATE_CHANGE: No campaign context to inject for {new_module} - context was empty", category="module_management")
                 
@@ -1693,8 +1867,32 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     # Handle any other party tracker fields
                     current_party_data[key] = value
             
-            # Save updated party tracker
-            safe_json_dump(current_party_data, "party_tracker.json")
+            # Publish cross-module state under one fresh party transaction so
+            # competing stale workers cannot both ready different intents.
+            if (
+                new_module
+                and new_module != current_module
+                and current_module != "Unknown"
+            ):
+                original_party, current_party_data = (
+                    campaign_manager.publish_party_module_transition(
+                        current_module,
+                        new_module,
+                        parameters,
+                        transition_history,
+                        pending_archive["completion_id"],
+                    )
+                )
+                pending_archive["party_tracker_data"] = original_party
+            else:
+                safe_json_dump(current_party_data, "party_tracker.json")
+            if new_module and new_module != current_module:
+                conversation_history[:] = transition_history
+                save_conversation_history(
+                    conversation_history,
+                    strict=True,
+                    allow_compression=False,
+                )
             print(f"DEBUG: [Party Tracker After Update] Module: {current_party_data.get('module', 'Unknown')}")
             info("SUCCESS: Party tracker updated successfully", category="party_management")
             # Always reload conversation history to pick up changes
@@ -1712,6 +1910,27 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             print(f"ERROR: Exception while updating party tracker: {str(e)}")
             import traceback
             traceback.print_exc()
+            response_data = {"error_message": str(e)}
+            if (
+                "pending_archive" in locals()
+                and "campaign_manager" in locals()
+            ):
+                publication_state = _completion_publication_state(
+                    campaign_manager,
+                    pending_archive,
+                )
+                response_data["pending_archive"] = pending_archive
+                response_data["completion_publication_state"] = (
+                    publication_state
+                )
+                response_data["transition_recovery_required"] = (
+                    publication_state != "absent"
+                )
+            return create_return(
+                status="error",
+                needs_update=True,
+                response_data=response_data,
+            )
 
     elif action_type == ACTION_MOVE_BACKGROUND_NPC:
         debug("STATE_CHANGE: Processing moveBackgroundNPC action", category="npc_management")

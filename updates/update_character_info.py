@@ -2094,18 +2094,38 @@ Please provide the CORRECT currency values:
                     char_data = safe_read_json(character_path)
                     if char_data:
                         # Use smart validation that checks cache first
-                        validated_data = validator.validate_and_correct_character_smart(char_data)
+                        validation_result = (
+                            validator.validate_and_correct_character_smart_with_result(
+                                char_data
+                            )
+                        )
+                        validated_data = validation_result.data
 
                         # Save the validated data back with better error handling
-                        if validated_data != char_data:
+                        if validation_result.changed:
                             # Ensure write completes successfully
                             write_success = safe_write_json(character_path, validated_data)
                             if write_success:
-                                debug("VALIDATION: Character auto-validated with corrections (using cache where possible)...", category="character_validation")
-                                validation_success = True
+                                if validation_result.success:
+                                    debug("VALIDATION: Character auto-validated with corrections (using cache where possible)...", category="character_validation")
+                                else:
+                                    warning(
+                                        f"VALIDATION: Provider validation failed for "
+                                        f"{character_name}, but deterministic repairs "
+                                        f"were saved: {validation_result.error}",
+                                        category="character_validation",
+                                    )
+                                validation_success = validation_result.success
                             else:
                                 error(f"VALIDATION: Failed to write validated data for {character_name}", category="character_validation")
                                 validation_success = False
+                        elif not validation_result.success:
+                            warning(
+                                f"VALIDATION: Character validation failed for "
+                                f"{character_name}: {validation_result.error}",
+                                category="character_validation",
+                            )
+                            validation_success = False
                         else:
                             debug("VALIDATION: Character validated - no corrections needed (cache hits used)", category="character_validation")
                             validation_success = True

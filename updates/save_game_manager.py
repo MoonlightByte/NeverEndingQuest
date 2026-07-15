@@ -67,6 +67,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
+from uuid import uuid4
 # Import our existing utilities
 from utils.file_operations import safe_write_json, safe_read_json
 from utils.module_path_manager import ModulePathManager
@@ -96,6 +97,55 @@ class SaveGameManager:
         except Exception as e:
             warning(f"INITIALIZATION: Could not initialize module context", category="save_game")
             self.path_manager = ModulePathManager()
+
+    @staticmethod
+    def _clear_campaign_completion_metadata() -> None:
+        """Discard runtime WAL/receipts after restoring older campaign state."""
+        campaign_file = os.path.abspath(
+            os.path.normpath(os.path.join("modules", "campaign.json"))
+        )
+        metadata_dir = os.path.join(
+            os.path.dirname(campaign_file),
+            f".{os.path.basename(campaign_file)}.completion",
+        )
+        if os.path.isdir(metadata_dir):
+            shutil.rmtree(metadata_dir)
+
+    def _restore_essential_backup(self, backup_dir: str) -> None:
+        """Restore the complete pre-restore projection after any copy failure."""
+        import glob
+
+        for essential in self.get_essential_files():
+            if essential.endswith("/"):
+                live_path = essential.rstrip("/")
+                backup_path = os.path.join(backup_dir, live_path)
+                if os.path.isdir(live_path):
+                    shutil.rmtree(live_path)
+                if os.path.isdir(backup_path):
+                    parent = os.path.dirname(live_path)
+                    if parent:
+                        os.makedirs(parent, exist_ok=True)
+                    shutil.copytree(backup_path, live_path)
+            elif essential.endswith("*"):
+                for live_match in glob.glob(essential):
+                    if os.path.isfile(live_match):
+                        os.remove(live_match)
+                backup_pattern = os.path.join(backup_dir, essential)
+                for backup_match in glob.glob(backup_pattern):
+                    relative = os.path.relpath(backup_match, backup_dir)
+                    parent = os.path.dirname(relative)
+                    if parent:
+                        os.makedirs(parent, exist_ok=True)
+                    shutil.copy2(backup_match, relative)
+            else:
+                backup_path = os.path.join(backup_dir, essential)
+                if os.path.isfile(backup_path):
+                    parent = os.path.dirname(essential)
+                    if parent:
+                        os.makedirs(parent, exist_ok=True)
+                    shutil.copy2(backup_path, essential)
+                elif os.path.isfile(essential):
+                    os.remove(essential)
     
     def get_essential_files(self) -> List[str]:
         """Get list of essential files that must be saved for game state"""
@@ -345,6 +395,46 @@ class SaveGameManager:
         return metadata
     
     def create_save_game(self, description: str = "", save_mode: str = "essential") -> Tuple[bool, str]:
+        """Drain committed transition intents, then snapshot under campaign lock."""
+        try:
+            from core.managers.campaign_manager import (
+                CampaignManager,
+                _assert_no_active_campaign_completion,
+                _campaign_transaction_lock,
+                _party_module_transition_lock,
+            )
+
+            # Global lock order: party transition -> module (when needed) ->
+            # campaign. Hold the party lock while draining so no ready intent
+            # can appear between the drain and the snapshot.
+            with _party_module_transition_lock():
+                drain_outcome = (
+                    CampaignManager().drain_module_completion_intents()
+                )
+                if drain_outcome["failed"] or drain_outcome["blocked"]:
+                    return (
+                        False,
+                        "Cannot save while a module completion remains queued",
+                    )
+                # The manager may have been constructed before waiting for
+                # this lock. A transition can commit in that interval, so
+                # derive the save directory and metadata from the fresh party
+                # projection inside the same serialized snapshot boundary.
+                self._initialize_module_context()
+                with _campaign_transaction_lock("modules/campaign.json"):
+                    _assert_no_active_campaign_completion(
+                        "modules/campaign.json"
+                    )
+                    return self._create_save_game_locked(description, save_mode)
+        except Exception as exc:
+            error(
+                "FAILURE: Could not establish consistent save boundary",
+                exception=exc,
+                category="save_game",
+            )
+            return False, f"Failed to create save game: {exc}"
+
+    def _create_save_game_locked(self, description: str = "", save_mode: str = "essential") -> Tuple[bool, str]:
         """
         Create a save game with the specified mode.
         
@@ -473,6 +563,45 @@ class SaveGameManager:
         return save_games
     
     def restore_save_game(self, save_folder: str) -> Tuple[bool, str]:
+        """Replace one save timeline under the shared campaign boundary."""
+        try:
+            from core.managers.campaign_manager import (
+                _assert_no_active_campaign_completion,
+                _bump_campaign_lifecycle_epoch,
+                _campaign_transaction_lock,
+                _party_module_transition_lock,
+            )
+            from utils.module_refresh_lock import module_refresh_lock
+
+            with _party_module_transition_lock():
+                with module_refresh_lock() as refresh_acquired:
+                    if not refresh_acquired:
+                        return False, "Module refresh is active; retry restore"
+                    with _campaign_transaction_lock("modules/campaign.json"):
+                        save_path = os.path.join(
+                            self.get_save_directory(),
+                            save_folder,
+                        )
+                        if not os.path.isdir(save_path):
+                            return False, f"Save game not found: {save_path}"
+                        if not safe_read_json(
+                            os.path.join(save_path, "save_metadata.json")
+                        ):
+                            return False, "Could not read save game metadata"
+                        _assert_no_active_campaign_completion(
+                            "modules/campaign.json"
+                        )
+                        _bump_campaign_lifecycle_epoch("modules/campaign.json")
+                        return self._restore_save_game_locked(save_folder)
+        except Exception as exc:
+            error(
+                "FAILURE: Could not establish consistent restore boundary",
+                exception=exc,
+                category="save_game",
+            )
+            return False, f"Failed to restore save game: {exc}"
+
+    def _restore_save_game_locked(self, save_folder: str) -> Tuple[bool, str]:
         """
         Restore a save game by copying files back to the main game directory.
         
@@ -482,6 +611,8 @@ class SaveGameManager:
         Returns:
             Tuple of (success: bool, message: str)
         """
+        backup_complete = False
+        restore_mutation_started = False
         try:
             save_dir = self.get_save_directory()
             save_path = f"{save_dir}/{save_folder}"
@@ -496,8 +627,11 @@ class SaveGameManager:
                 return False, "Could not read save game metadata"
             
             # Create backup of current state before restoring
-            backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_dir = f"modules/backups/restore_backup_{backup_timestamp}"
+            backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            backup_dir = (
+                "modules/backups/restore_backup_"
+                f"{backup_timestamp}_{uuid4().hex}"
+            )
             
             info(f"FILE_OP: Creating backup before restore: {backup_dir}", category="save_game")
             
@@ -529,9 +663,20 @@ class SaveGameManager:
                         os.makedirs(os.path.dirname(backup_dest), exist_ok=True)
                         shutil.copy2(essential, backup_dest)
                         backed_up_files.append(essential)
+
+            backup_complete = True
+            restore_mutation_started = True
             
             # IMPORTANT: Clean directories that need to be fully replaced
             # This prevents orphaned files from remaining after restore
+            for campaign_directory in (
+                "modules/campaign_archives",
+                "modules/campaign_summaries",
+            ):
+                if os.path.isdir(campaign_directory):
+                    shutil.rmtree(campaign_directory)
+                os.makedirs(campaign_directory, exist_ok=True)
+
             directories_to_clean = [
                 "modules/encounters/",  # Global encounters directory
                 "characters/",  # Player/NPC characters
@@ -593,6 +738,23 @@ class SaveGameManager:
                     except Exception as e:
                         error(f"FAILURE: Failed to restore {dest_file}", exception=e, category="save_game")
                         failed_files.append(dest_file)
+
+            if failed_files:
+                # Restore the pre-restore continuity projection before
+                # releasing the lifecycle locks. Existing WAL/intents/
+                # receipts were retained, so they still describe this fully
+                # rolled-back timeline.
+                self._restore_essential_backup(backup_dir)
+                return (
+                    False,
+                    "Save restore failed; previous game state was restored",
+                )
+
+            # Completion receipts describe the state that existed before this
+            # restore.  Keeping them could suppress a valid transition from the
+            # restored timeline, while a pending WAL could resurrect newer
+            # campaign data on the next CampaignManager construction.
+            self._clear_campaign_completion_metadata()
             
             success_msg = f"Save game restored successfully from: {save_folder}"
             success_msg += f"\nRestored {len(restored_files)} files"
@@ -605,6 +767,21 @@ class SaveGameManager:
             return True, success_msg
             
         except Exception as e:
+            backup_path = locals().get("backup_dir")
+            if (
+                backup_complete
+                and restore_mutation_started
+                and isinstance(backup_path, str)
+                and os.path.isdir(backup_path)
+            ):
+                try:
+                    self._restore_essential_backup(backup_path)
+                except Exception as rollback_exc:
+                    error(
+                        "FAILURE: Could not roll back campaign continuity after restore error",
+                        exception=rollback_exc,
+                        category="save_game",
+                    )
             error_msg = f"Failed to restore save game: {str(e)}"
             error(f"FAILURE: {error_msg}", category="save_game")
             return False, error_msg

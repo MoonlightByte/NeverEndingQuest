@@ -4,13 +4,96 @@ import copy
 import json
 import os
 import re
+import shutil
+from uuid import uuid4
 from utils.module_path_manager import ModulePathManager
-from utils.file_operations import safe_read_json, safe_write_json
+from utils.file_operations import safe_read_json
 from utils.module_context import ModuleContext
+from utils.path_transaction_lock import path_transaction_lock
 from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T088", "utils/npc_reconciler.py", 101)
+register_callsite("T088", "utils/npc_reconciler.py", 184)
+
+
+_T088_TRANSACTION_VERSION = 1
+
+
+def _durable_copy(source, destination):
+    """Atomically preserve a byte-for-byte backup without writer sentinels."""
+    canonical_source = os.path.abspath(os.path.normpath(os.fspath(source)))
+    canonical_destination = os.path.abspath(
+        os.path.normpath(os.fspath(destination))
+    )
+    parent = os.path.dirname(canonical_destination)
+    temp_path = (
+        f"{canonical_destination}.{os.getpid()}.{uuid4().hex}.tmp"
+    )
+    try:
+        with open(canonical_source, "rb") as source_handle, open(
+            temp_path, "wb"
+        ) as destination_handle:
+            shutil.copyfileobj(source_handle, destination_handle)
+            destination_handle.flush()
+            os.fsync(destination_handle.fileno())
+        shutil.copystat(canonical_source, temp_path)
+        with open(temp_path, "rb") as destination_handle:
+            os.fsync(destination_handle.fileno())
+        os.replace(temp_path, canonical_destination)
+        _fsync_parent(parent)
+    finally:
+        try:
+            os.remove(temp_path)
+        except FileNotFoundError:
+            pass
+
+
+def _durable_write_json(path, payload, *, create_backup=False):
+    """Atomically persist JSON and its directory without sentinel locks."""
+    canonical = os.path.abspath(os.path.normpath(os.fspath(path)))
+    parent = os.path.dirname(canonical)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    if create_backup and os.path.exists(canonical):
+        _durable_copy(canonical, f"{canonical}.bak")
+    temp_path = f"{canonical}.{os.getpid()}.{uuid4().hex}.tmp"
+    try:
+        with open(temp_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, canonical)
+        _fsync_parent(parent)
+    finally:
+        try:
+            os.remove(temp_path)
+        except FileNotFoundError:
+            pass
+
+
+def _durable_remove(path):
+    """Remove a transaction marker durably when the platform supports it."""
+    canonical = os.path.abspath(os.path.normpath(os.fspath(path)))
+    try:
+        os.remove(canonical)
+    except FileNotFoundError:
+        return
+    _fsync_parent(os.path.dirname(canonical))
+
+
+def _fsync_parent(parent):
+    if not parent or not hasattr(os, "O_DIRECTORY"):
+        return
+    try:
+        directory_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except OSError:
+        # Windows and some filesystems do not permit directory fsync.
+        pass
 
 
 def build_npc_merge_confirmation_prompt(npc1_name: str, npc2_name: str) -> str:
@@ -226,22 +309,210 @@ class NpcReconciler:
 
         return staged_area, modified
 
-    def _rollback_attempted_writes(self, snapshots, attempted_paths):
-        """Best-effort restoration of every file touched by this transaction."""
-        rollback_ok = True
-        for path in reversed(attempted_paths):
-            try:
-                restored = safe_write_json(path, snapshots[path])
-            except Exception as exc:
-                restored = False
-                print(f"ERROR: [NpcReconciler] Rollback raised for {path}: {exc}")
-            if not restored:
-                rollback_ok = False
-                print(f"ERROR: [NpcReconciler] Failed to roll back {path}")
-        return rollback_ok
+    def _transaction_path(self):
+        canonical_context = os.path.abspath(os.path.normpath(self.context_path))
+        return f"{canonical_context}.t088.pending"
+
+    @staticmethod
+    def _snapshot_matches(path, existed, payload):
+        current_exists = os.path.exists(path)
+        if current_exists != existed:
+            return False
+        if not existed:
+            return True
+        current = safe_read_json(path)
+        return isinstance(current, dict) and current == payload
+
+    def _validate_transaction_record(self, record):
+        if not isinstance(record, dict):
+            raise OSError("T088 recovery marker must be a JSON object")
+        if record.get("version") != _T088_TRANSACTION_VERSION:
+            raise OSError("Unsupported T088 recovery marker version")
+        if record.get("status") not in {"staged", "rollback_required"}:
+            raise OSError("Invalid T088 recovery marker status")
+        if not isinstance(record.get("transaction_id"), str) or not record[
+            "transaction_id"
+        ]:
+            raise OSError("T088 recovery marker has no transaction id")
+
+        expected_context = os.path.abspath(os.path.normpath(self.context_path))
+        expected_context_identity = os.path.normcase(expected_context)
+        recorded_context = record.get("context_path")
+        if (
+            not isinstance(recorded_context, str)
+            or os.path.abspath(os.path.normpath(recorded_context))
+            != recorded_context
+            or os.path.normcase(recorded_context) != expected_context_identity
+        ):
+            raise OSError("T088 recovery marker targets another module context")
+
+        targets = record.get("targets")
+        if not isinstance(targets, list) or not targets:
+            raise OSError("T088 recovery marker has no transaction targets")
+
+        allowed_targets = {expected_context_identity}
+        for area_id in self.path_manager.get_area_ids():
+            area_path = os.path.abspath(
+                os.path.normpath(self.path_manager.get_area_path(area_id))
+            )
+            allowed_targets.add(os.path.normcase(area_path))
+
+        seen = set()
+        for target in targets:
+            if not isinstance(target, dict):
+                raise OSError("T088 recovery target must be an object")
+            path = target.get("path")
+            if not isinstance(path, str) or not os.path.isabs(path):
+                raise OSError("T088 recovery target path must be absolute")
+            canonical = os.path.abspath(os.path.normpath(path))
+            identity = os.path.normcase(canonical)
+            if canonical != path or identity in seen:
+                raise OSError("T088 recovery target path is invalid or duplicated")
+            if identity not in allowed_targets:
+                raise OSError("T088 recovery target is not a context or area file")
+            if not isinstance(target.get("existed"), bool):
+                raise OSError("T088 recovery target has no existence snapshot")
+            if target["existed"] and not isinstance(target.get("before"), dict):
+                raise OSError("T088 recovery target has an invalid before snapshot")
+            if not isinstance(target.get("after"), dict):
+                raise OSError("T088 recovery target has an invalid after snapshot")
+            seen.add(identity)
+        return targets
+
+    def _load_transaction_record(self):
+        transaction_path = self._transaction_path()
+        if not os.path.exists(transaction_path):
+            return None
+        try:
+            with open(transaction_path, "r", encoding="utf-8") as handle:
+                record = json.load(handle)
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise OSError(
+                f"Could not read T088 recovery marker {transaction_path}"
+            ) from exc
+        self._validate_transaction_record(record)
+        return record
+
+    @staticmethod
+    def _write_transaction_target(path, payload):
+        _durable_write_json(path, payload, create_backup=True)
+
+    @classmethod
+    def _restore_transaction_target(cls, target, use_after):
+        path = target["path"]
+        existed = True if use_after else target["existed"]
+        payload = target["after"] if use_after else target.get("before")
+        if existed:
+            cls._write_transaction_target(path, payload)
+        else:
+            _durable_remove(path)
+
+    def _recover_pending_transaction(self):
+        """Roll a durable T088 marker forward or back without clobbering drift."""
+        record = self._load_transaction_record()
+        if record is None:
+            return None
+        targets = record["targets"]
+        use_after = record["status"] == "staged"
+
+        # Validate the complete recovery set before the first recovery write.
+        # A third state means an unrelated writer changed the file, and neither
+        # roll-forward nor rollback is safe to apply automatically.
+        for target in targets:
+            matches_before = self._snapshot_matches(
+                target["path"],
+                target["existed"],
+                target.get("before"),
+            )
+            matches_after = self._snapshot_matches(
+                target["path"],
+                True,
+                target["after"],
+            )
+            if not (matches_before or matches_after):
+                raise OSError(
+                    "T088 recovery stopped because a transaction target "
+                    f"changed independently: {target['path']}"
+                )
+
+        for target in targets:
+            expected_exists = True if use_after else target["existed"]
+            expected_payload = (
+                target["after"] if use_after else target.get("before")
+            )
+            if not self._snapshot_matches(
+                target["path"], expected_exists, expected_payload
+            ):
+                self._restore_transaction_target(target, use_after)
+
+        for target in targets:
+            expected_exists = True if use_after else target["existed"]
+            expected_payload = (
+                target["after"] if use_after else target.get("before")
+            )
+            if not self._snapshot_matches(
+                target["path"], expected_exists, expected_payload
+            ):
+                raise OSError(
+                    f"T088 recovery verification failed for {target['path']}"
+                )
+
+        _durable_remove(self._transaction_path())
+        return "rolled_forward" if use_after else "rolled_back"
+
+    def _build_transaction_record(self, snapshots, staged_writes):
+        targets = []
+        for path, payload in staged_writes.items():
+            canonical = os.path.abspath(os.path.normpath(path))
+            before = snapshots[path]
+            targets.append(
+                {
+                    "path": canonical,
+                    "existed": True,
+                    "before": copy.deepcopy(before),
+                    "after": copy.deepcopy(payload),
+                }
+            )
+        record = {
+            "version": _T088_TRANSACTION_VERSION,
+            "transaction_id": uuid4().hex,
+            "status": "staged",
+            "context_path": os.path.abspath(os.path.normpath(self.context_path)),
+            "targets": targets,
+        }
+        self._validate_transaction_record(record)
+        return record
 
     def reconcile_all_areas(self):
-        """Reconcile context and area identities as one rollback-capable unit."""
+        """Reconcile one module under a cross-thread/process transaction lock."""
+        # Do not create a phantom module directory merely to place a lock file.
+        # The context is required for both normal work and pending recovery.
+        if not os.path.isfile(self.context_path):
+            print(
+                "ERROR: [NpcReconciler] Context file not found at "
+                f"{self.context_path}"
+            )
+            return False
+        try:
+            with path_transaction_lock(self.context_path):
+                recovery = self._recover_pending_transaction()
+                if recovery:
+                    print(
+                        "INFO: [NpcReconciler] Recovered interrupted "
+                        f"T088 transaction ({recovery})."
+                    )
+                # A caller may have loaded the context before waiting for this
+                # lock.  Reload it now so staging never starts from a snapshot
+                # committed before another worker's completed reconciliation.
+                if not self.load_context():
+                    return False
+                return self._reconcile_all_areas_unlocked()
+        except Exception as exc:
+            print(f"ERROR: [NpcReconciler] Reconciliation lock failed: {exc}")
+            return False
+
+    def _reconcile_all_areas_unlocked(self):
+        """Reconcile context and areas as one rollback-capable unit."""
         if not self.context:
             print("ERROR: [NpcReconciler] Context not loaded. Cannot reconcile.")
             return False
@@ -284,24 +555,59 @@ class NpcReconciler:
             print(f"ERROR: [NpcReconciler] Failed to stage reconciliation: {exc}")
             return False
 
-        attempted_paths = []
-        for path, payload in staged_writes.items():
-            attempted_paths.append(path)
-            try:
-                written = safe_write_json(path, payload)
-            except Exception as exc:
-                written = False
-                print(f"ERROR: [NpcReconciler] Write raised for {path}: {exc}")
+        if not staged_writes:
+            return True
 
-            if not written:
-                print(f"ERROR: [NpcReconciler] Transaction write failed for {path}")
-                self._rollback_attempted_writes(snapshots, attempted_paths)
-                self.context = original_context
-                self._rebuild_canonical_map()
-                return False
+        record = None
+        try:
+            record = self._build_transaction_record(snapshots, staged_writes)
 
-            if path != self.context_path:
-                print(f"  -> Reconciled NPC names in {os.path.basename(path)}")
+            # Refuse to stage from stale snapshots. Recovery uses this same
+            # before/after restriction to avoid overwriting unrelated work.
+            for target in record["targets"]:
+                if not self._snapshot_matches(
+                    target["path"], target["existed"], target["before"]
+                ):
+                    raise OSError(
+                        "T088 transaction target changed while reconciliation "
+                        f"was staged: {target['path']}"
+                    )
+
+            _durable_write_json(self._transaction_path(), record)
+
+            for target in record["targets"]:
+                self._write_transaction_target(target["path"], target["after"])
+                if os.path.normcase(target["path"]) != os.path.normcase(
+                    os.path.abspath(os.path.normpath(self.context_path))
+                ):
+                    print(
+                        "  -> Reconciled NPC names in "
+                        f"{os.path.basename(target['path'])}"
+                    )
+
+            for target in record["targets"]:
+                if not self._snapshot_matches(
+                    target["path"], True, target["after"]
+                ):
+                    raise OSError(
+                        f"T088 commit verification failed for {target['path']}"
+                    )
+            _durable_remove(self._transaction_path())
+        except Exception as exc:
+            print(f"ERROR: [NpcReconciler] Transaction commit failed: {exc}")
+            if record is not None and os.path.exists(self._transaction_path()):
+                try:
+                    record["status"] = "rollback_required"
+                    _durable_write_json(self._transaction_path(), record)
+                    self._recover_pending_transaction()
+                except Exception as rollback_exc:
+                    print(
+                        "ERROR: [NpcReconciler] Durable rollback failed; "
+                        f"recovery marker retained: {rollback_exc}"
+                    )
+            self.context = original_context
+            self._rebuild_canonical_map()
+            return False
 
         return True
 

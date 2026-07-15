@@ -401,8 +401,16 @@ def handle_location_transition(current_location, new_location, current_area, cur
             try:
                 safe_json_dump(party_tracker, "party_tracker.json")
                 info("SUCCESS: Updated party_tracker.json with new location", category="file_operations")
-                
-                # Log successful location transition as a game event
+            except Exception as e:
+                error(f"FAILURE: Failed to update party_tracker.json", exception=e, category="file_operations")
+                # The campaign publisher treats a truthy prompt as proof that
+                # the location write committed. Never report success after a
+                # persistence failure; its prepared intent must remain
+                # recoverable or be cancelled as a proven no-op.
+                raise
+
+            # Observability is best-effort after the authoritative write.
+            try:
                 game_event("location_transition", {
                     "from": current_location,
                     "to": new_location_info.get("location_name", new_location_info.get("name", "Unknown Location")),
@@ -411,7 +419,11 @@ def handle_location_transition(current_location, new_location, current_area, cur
                     "area_change": new_area_id_for_conditions != current_area_id
                 })
             except Exception as e:
-                error(f"FAILURE: Failed to update party_tracker.json", exception=e, category="file_operations")
+                error(
+                    "FILE_OP: Failed to log location transition event",
+                    exception=e,
+                    category="file_operations",
+                )
 
         # Get storage information for the new location
         storage_containers = get_storage_at_location(new_location)

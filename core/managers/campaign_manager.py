@@ -67,23 +67,26 @@ See LICENSE file for full terms.
 # ============================================================================
 
 import copy
+import hashlib
 import json
 import os
+import re
 import threading
-from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Callable, Dict, List, Any, Optional, Tuple
+from uuid import uuid4
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T038", "core/managers/campaign_manager.py", 829)
-register_callsite("T039", "core/managers/campaign_manager.py", 874)
+register_callsite("T038", "core/managers/campaign_manager.py", 3192)
+register_callsite("T039", "core/managers/campaign_manager.py", 3245)
 import config
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.file_operations import safe_write_json
 from utils.module_path_manager import ModulePathManager
 from utils.module_refresh_lock import module_refresh_lock
+from utils.path_transaction_lock import path_transaction_lock
 from utils.commit_state import begin_refresh_commit, mark_commit_phase, complete_refresh_commit, recover_incomplete_refresh_commit
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
 
@@ -124,59 +127,1200 @@ def _is_valid_campaign_export_data(exported_data: Any) -> bool:
     )
 
 
-_CAMPAIGN_TRANSACTION_LOCKS = {}
-_CAMPAIGN_TRANSACTION_LOCKS_GUARD = threading.Lock()
 _MODULE_COMPLETION_FLIGHTS = {}
 _MODULE_COMPLETION_FLIGHTS_GUARD = threading.Lock()
+_CAMPAIGN_COMPLETION_TRANSACTION_VERSION = 1
+_LIFECYCLE_EPOCH_UNSET = object()
 
 
-def _campaign_transaction_thread_lock(campaign_file: str) -> threading.RLock:
-    canonical_path = os.path.abspath(os.path.normpath(campaign_file))
-    with _CAMPAIGN_TRANSACTION_LOCKS_GUARD:
-        return _CAMPAIGN_TRANSACTION_LOCKS.setdefault(
-            canonical_path, threading.RLock()
-        )
+class _ModuleCompletionCheckpointError(OSError):
+    """A local durability failure that must not become an AI fallback."""
 
 
-@contextmanager
+def _reset_module_completion_flights_after_fork() -> None:
+    """Discard Futures/locks that cannot be completed in a forked child."""
+    global _MODULE_COMPLETION_FLIGHTS, _MODULE_COMPLETION_FLIGHTS_GUARD
+    _MODULE_COMPLETION_FLIGHTS = {}
+    _MODULE_COMPLETION_FLIGHTS_GUARD = threading.Lock()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_module_completion_flights_after_fork)
+
+
+def _normalize_module_name(module_name: str) -> str:
+    """Validate one module identity before interpolating it into a path."""
+    if not isinstance(module_name, str) or not module_name.strip():
+        raise ValueError("module_name must be a non-empty string")
+    normalized = module_name.strip()
+    if (
+        normalized in {".", ".."}
+        or "\0" in normalized
+        or "/" in normalized
+        or "\\" in normalized
+        or ":" in normalized
+    ):
+        raise ValueError("module_name may not contain path separators")
+    return normalized
+
+
+def _campaign_completion_metadata_dir(campaign_file: str) -> str:
+    canonical_campaign = os.path.abspath(os.path.normpath(campaign_file))
+    return os.path.join(
+        os.path.dirname(canonical_campaign),
+        f".{os.path.basename(canonical_campaign)}.completion",
+    )
+
+
+def _campaign_lifecycle_epoch_path(campaign_file: str) -> str:
+    canonical = os.path.abspath(os.path.normpath(campaign_file))
+    return os.path.join(
+        os.path.dirname(canonical),
+        f".{os.path.basename(canonical)}.completion-epoch.json",
+    )
+
+
+def _load_campaign_lifecycle_epoch(campaign_file: str) -> Optional[str]:
+    path = _campaign_lifecycle_epoch_path(campaign_file)
+    payload = _load_json_dict(path)
+    if payload is None:
+        if os.path.exists(path):
+            raise OSError(f"Unreadable campaign lifecycle epoch {path}")
+        return None
+    epoch = payload.get("epoch")
+    if (
+        payload.get("version") != _CAMPAIGN_COMPLETION_TRANSACTION_VERSION
+        or not isinstance(epoch, str)
+        or not epoch
+    ):
+        raise OSError(f"Invalid campaign lifecycle epoch {path}")
+    return epoch
+
+
+def _bump_campaign_lifecycle_epoch(campaign_file: str) -> str:
+    epoch = uuid4().hex
+    _durable_write_json(
+        _campaign_lifecycle_epoch_path(campaign_file),
+        {
+            "version": _CAMPAIGN_COMPLETION_TRANSACTION_VERSION,
+            "epoch": epoch,
+            "updated_at": datetime.now().isoformat(),
+        },
+    )
+    return epoch
+
+
+def _assert_no_active_campaign_completion(campaign_file: str) -> None:
+    metadata_dir = _campaign_completion_metadata_dir(campaign_file)
+    pending = os.path.join(metadata_dir, "pending.json")
+    if os.path.exists(pending):
+        raise OSError("Campaign completion recovery is active; retry restore")
+    if os.path.isdir(metadata_dir):
+        active_work = [
+            name
+            for name in os.listdir(metadata_dir)
+            if name.endswith(".work.json")
+        ]
+        if active_work:
+            raise OSError("Campaign completion work is active; retry restore")
+        intents_dir = os.path.join(metadata_dir, "intents")
+        if os.path.isdir(intents_dir) and any(
+            name.endswith(".json") for name in os.listdir(intents_dir)
+        ):
+            raise OSError(
+                "Campaign transition completion is queued; retry restore"
+            )
+
+
 def _campaign_transaction_lock(campaign_file: str):
     """Serialize campaign read/merge/write transactions across workers."""
-    canonical_path = os.path.abspath(os.path.normpath(campaign_file))
-    lock_path = f"{canonical_path}.completion.lock"
-    parent = os.path.dirname(lock_path)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-
-    with _campaign_transaction_thread_lock(canonical_path):
-        with open(lock_path, "a+b") as lock_file:
-            if os.name == "nt":
-                import msvcrt
-
-                lock_file.seek(0, os.SEEK_END)
-                if lock_file.tell() == 0:
-                    lock_file.write(b"\0")
-                    lock_file.flush()
-                lock_file.seek(0)
-                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
-            else:
-                import fcntl
-
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                if os.name == "nt":
-                    lock_file.seek(0)
-                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
-                else:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+    # Keep the lifecycle lock outside the metadata directory. Restore/reset
+    # intentionally replace that directory and must not invalidate a lock
+    # another worker is currently holding.
+    lock_target = os.path.abspath(os.path.normpath(campaign_file))
+    return path_transaction_lock(
+        lock_target,
+        suffix=".completion.transaction.lock",
+    )
 
 
-def _module_completion_key(campaign_file: str, module_name: str):
+def _party_module_transition_lock(party_tracker_file: str = "party_tracker.json"):
+    """Serialize fresh-check + party module publication across workers."""
+    return path_transaction_lock(
+        party_tracker_file,
+        suffix=".module-transition.lock",
+    )
+
+
+def _module_completion_key(
+    campaign_file: str,
+    module_name: str,
+    completion_id: Optional[str] = None,
+):
     return (
         os.path.abspath(os.path.normpath(campaign_file)),
-        str(module_name).strip(),
+        _normalize_module_name(module_name),
+        _normalize_completion_id(completion_id) or "__legacy_module_flight__",
     )
+
+
+def _module_completion_paths(
+    campaign_file: str,
+    summaries_dir: str,
+    module_name: str,
+) -> Dict[str, str]:
+    """Return stable transaction paths for one campaign/module identity."""
+    module_name = _normalize_module_name(module_name)
+    canonical_campaign = os.path.abspath(os.path.normpath(campaign_file))
+    canonical_summaries = os.path.abspath(os.path.normpath(summaries_dir))
+    canonical_summary = os.path.abspath(
+        os.path.normpath(
+            os.path.join(
+                canonical_summaries,
+                f"{module_name}_summary_001.json",
+            )
+        )
+    )
+    try:
+        if os.path.commonpath(
+            (canonical_summary, canonical_summaries)
+        ) != canonical_summaries:
+            raise ValueError("module summary escapes summaries directory")
+    except ValueError as exc:
+        raise ValueError("Invalid module summary path") from exc
+    identity = f"{canonical_campaign}\0{module_name}"
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
+    metadata_dir = _campaign_completion_metadata_dir(canonical_campaign)
+    base = os.path.join(metadata_dir, digest)
+    locks_dir = os.path.join(
+        os.path.dirname(canonical_campaign),
+        f".{os.path.basename(canonical_campaign)}.completion-locks",
+    )
+    return {
+        # Coordination files must live outside replaceable metadata. A
+        # restore/reset may atomically replace metadata while another process
+        # is waiting, but it must never split the advisory-lock inode.
+        "lock_target": os.path.join(locks_dir, digest),
+        "work": f"{base}.work.json",
+        "receipts_dir": f"{base}.receipts",
+        "intents_dir": os.path.join(metadata_dir, "intents"),
+        "summary": canonical_summary,
+        "campaign_pending": os.path.join(metadata_dir, "pending.json"),
+    }
+
+
+def _normalize_completion_id(completion_id: Optional[str]) -> Optional[str]:
+    if completion_id is None:
+        return None
+    if not isinstance(completion_id, str) or not completion_id.strip():
+        raise ValueError("completion_id must be a non-empty string")
+    return completion_id.strip()
+
+
+def _completion_receipt_path(
+    paths: Dict[str, str],
+    completion_id: Optional[str],
+) -> Optional[str]:
+    normalized = _normalize_completion_id(completion_id)
+    if normalized is None:
+        return None
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return os.path.join(paths["receipts_dir"], f"{digest}.json")
+
+
+def _completion_intent_path(
+    paths: Dict[str, str],
+    module_name: str,
+    completion_id: str,
+) -> str:
+    module_name = _normalize_module_name(module_name)
+    normalized = _normalize_completion_id(completion_id)
+    if normalized is None:
+        raise ValueError("completion intents require a completion_id")
+    identity = f"{module_name}\0{normalized}"
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return os.path.join(paths["intents_dir"], f"{digest}.json")
+
+
+_COMPLETION_INTENT_TEMP_PATTERN = re.compile(
+    r"[0-9a-f]{64}\.json\.[0-9]+\.[0-9a-f]{32}\.tmp"
+)
+
+
+def _completion_intent_sequence_path(campaign_file: str) -> str:
+    return os.path.join(
+        _campaign_completion_metadata_dir(campaign_file),
+        "intent-sequence.json",
+    )
+
+
+def _next_completion_intent_sequence_locked(campaign_file: str) -> int:
+    """Allocate one durable total order while the campaign lock is held."""
+    sequence_path = _completion_intent_sequence_path(campaign_file)
+    existed = os.path.exists(sequence_path)
+    record = _load_json_dict(sequence_path) if existed else None
+    if existed and record is None:
+        raise OSError("Unreadable module-completion intent sequence")
+    if record is None:
+        last_sequence = 0
+    else:
+        last_sequence = record.get("last_sequence")
+        if (
+            record.get("version")
+            != _CAMPAIGN_COMPLETION_TRANSACTION_VERSION
+            or not isinstance(last_sequence, int)
+            or isinstance(last_sequence, bool)
+            or last_sequence < 0
+        ):
+            raise OSError("Invalid module-completion intent sequence")
+    next_sequence = last_sequence + 1
+    _durable_write_json(
+        sequence_path,
+        {
+            "version": _CAMPAIGN_COMPLETION_TRANSACTION_VERSION,
+            "last_sequence": next_sequence,
+        },
+    )
+    return next_sequence
+
+
+def _load_completion_receipt(
+    paths: Dict[str, str],
+    module_name: str,
+    completion_id: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    module_name = _normalize_module_name(module_name)
+    completion_id = _normalize_completion_id(completion_id)
+    receipt_path = _completion_receipt_path(paths, completion_id)
+    if receipt_path is None:
+        return None
+    receipt = _load_json_dict(receipt_path)
+    if receipt is None:
+        if os.path.exists(receipt_path):
+            raise OSError(f"Unreadable module-completion receipt {receipt_path}")
+        return None
+    transaction_id = receipt.get("transaction_id")
+    summary_fingerprint = receipt.get("summary_fingerprint")
+    result = receipt.get("result")
+    if (
+        receipt.get("version") != _CAMPAIGN_COMPLETION_TRANSACTION_VERSION
+        or receipt.get("operation") != "completion"
+        or receipt.get("module_name") != module_name
+        or receipt.get("completion_id") != completion_id
+        or not isinstance(transaction_id, str)
+        or not transaction_id
+        or not isinstance(summary_fingerprint, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", summary_fingerprint)
+        or not isinstance(result, dict)
+        or _json_fingerprint(result) != summary_fingerprint
+    ):
+        raise OSError(f"Invalid module-completion receipt {receipt_path}")
+    return receipt
+
+
+def _validate_receipt_committed_projection(
+    paths: Dict[str, str],
+    module_name: str,
+    campaign_file: str,
+    receipt: Dict[str, Any],
+) -> None:
+    """Tie a receipt to the living committed campaign without rejecting history."""
+    module_name = _normalize_module_name(module_name)
+    summary = _load_json_dict(paths["summary"])
+    campaign = _load_json_dict(campaign_file)
+    if (
+        not isinstance(summary, dict)
+        or not isinstance(campaign, dict)
+        or summary.get("moduleName") != module_name
+        or receipt["result"].get("moduleName") != module_name
+        or summary.get("sequenceNumber") != 1
+        or receipt["result"].get("sequenceNumber") != 1
+        or not isinstance(campaign.get("completedModules"), list)
+        or module_name not in campaign.get("completedModules", [])
+    ):
+        raise OSError("Completion receipt has no committed campaign projection")
+    receipt_result = receipt["result"]
+    receipt_visit = receipt_result.get("visitCount")
+    current_visit = summary.get("visitCount")
+    if (
+        not isinstance(receipt_visit, int)
+        or receipt_visit < 1
+        or not isinstance(current_visit, int)
+        or current_visit < receipt_visit
+    ):
+        raise OSError("Completion receipt visit is not committed")
+    # Earlier receipts remain replayable after later legitimate visits replace
+    # _summary_001. The receipt for the current visit must match byte-for-byte.
+    if current_visit == receipt_visit and summary != receipt_result:
+        repaired_same_visit = (
+            bool(
+                receipt_result.get("summary_failed")
+                or receipt_result.get("export_failed")
+            )
+            and not summary.get("summary_failed")
+            and not summary.get("export_failed")
+            and summary.get("firstVisitDate")
+            == receipt_result.get("firstVisitDate")
+            and summary.get("lastVisitDate")
+            == receipt_result.get("lastVisitDate")
+            and summary.get("regeneratedFromFingerprint")
+            == receipt.get("summary_fingerprint")
+        )
+        if not repaired_same_visit:
+            raise OSError("Completion receipt conflicts with current summary")
+
+
+def _durable_write_json(path: str, payload: Dict[str, Any]) -> None:
+    """Write transaction metadata durably without a stale sentinel lock."""
+    canonical = os.path.abspath(os.path.normpath(path))
+    parent = os.path.dirname(canonical)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    temp_path = f"{canonical}.{os.getpid()}.{uuid4().hex}.tmp"
+    try:
+        with open(temp_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, canonical)
+        if parent and hasattr(os, "O_DIRECTORY"):
+            try:
+                directory_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+            except OSError:
+                pass
+    finally:
+        try:
+            os.remove(temp_path)
+        except FileNotFoundError:
+            pass
+
+
+def _durable_remove(path: str) -> None:
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        return
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent and hasattr(os, "O_DIRECTORY"):
+        try:
+            directory_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        except OSError:
+            pass
+
+
+def _json_fingerprint(payload: Dict[str, Any]) -> str:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _validate_module_archive_path(
+    archive_path: str,
+    archives_dir: str,
+    module_name: str,
+) -> str:
+    """Require an archive to be an exact file for this module/root."""
+    module_name = _normalize_module_name(module_name)
+    if not isinstance(archive_path, str) or not archive_path:
+        raise OSError("Module completion has no archive path")
+    canonical_archive = os.path.abspath(os.path.normpath(archive_path))
+    canonical_directory = os.path.abspath(os.path.normpath(archives_dir))
+    if os.path.dirname(canonical_archive) != canonical_directory:
+        raise OSError("Module completion archive escapes archive directory")
+    pattern = rf"{re.escape(module_name)}_conversation_[0-9]+\.json"
+    if not re.fullmatch(pattern, os.path.basename(canonical_archive)):
+        raise OSError("Module completion archive has invalid identity")
+    return canonical_archive
+
+
+def _validate_module_archive(
+    archive_path: str,
+    archives_dir: str,
+    module_name: str,
+    archive_fingerprint: str,
+    transaction_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    canonical_archive = _validate_module_archive_path(
+        archive_path,
+        archives_dir,
+        module_name,
+    )
+    if not isinstance(archive_fingerprint, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", archive_fingerprint
+    ):
+        raise OSError("Module completion archive has invalid fingerprint")
+    archive = _load_json_dict(canonical_archive)
+    if (
+        not isinstance(archive, dict)
+        or archive.get("moduleName") != _normalize_module_name(module_name)
+        or not isinstance(archive.get("conversationHistory"), list)
+        or _json_fingerprint(archive) != archive_fingerprint
+        or (
+            transaction_id is not None
+            and archive.get("completionTransactionId") != transaction_id
+        )
+    ):
+        raise OSError("Module completion archive is missing or changed")
+    return archive
+
+
+def _load_json_dict(path: str) -> Optional[Dict[str, Any]]:
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _completion_snapshot(
+    paths: Dict[str, str],
+    module_name: str,
+):
+    """Fingerprint persisted state plus in-flight transaction identities."""
+    summary = _load_json_dict(paths["summary"])
+    summary_fingerprint = _json_fingerprint(summary) if summary else None
+    summary_visit_count = None
+    if isinstance(summary, dict):
+        candidate = summary.get("visitCount")
+        if isinstance(candidate, int) and candidate >= 0:
+            summary_visit_count = candidate
+    pending = _load_json_dict(paths["campaign_pending"])
+    pending_transaction = None
+    if isinstance(pending, dict) and pending.get("module_name") == module_name:
+        candidate = pending.get("transaction_id")
+        if isinstance(candidate, str) and candidate:
+            pending_transaction = candidate
+    work = _load_json_dict(paths["work"])
+    work_transaction = None
+    work_status = None
+    work_summary_fingerprint = None
+    if isinstance(work, dict) and work.get("module_name") == module_name:
+        candidate = work.get("transaction_id")
+        if isinstance(candidate, str) and candidate:
+            work_transaction = candidate
+        candidate = work.get("status")
+        if candidate in {"generating", "committed"}:
+            work_status = candidate
+        candidate = work.get("summary_fingerprint")
+        if isinstance(candidate, str):
+            work_summary_fingerprint = candidate
+    return (
+        summary_fingerprint,
+        pending_transaction,
+        work_transaction,
+        work_status,
+        work_summary_fingerprint,
+        summary_visit_count,
+    )
+
+
+def _write_completion_target(path: str, payload: Dict[str, Any]) -> None:
+    # Callers already hold the path/campaign OS lock.  A unique same-directory
+    # temporary file avoids stale PID sentinels and PID-reuse/TOCTOU hazards.
+    _durable_write_json(path, payload)
+
+
+def _restore_completion_target(
+    path: str,
+    existed: bool,
+    payload: Any,
+) -> None:
+    if existed:
+        if not isinstance(payload, dict):
+            raise OSError(f"Invalid rollback snapshot for {path}")
+        if _load_json_dict(path) == payload:
+            return
+        _write_completion_target(path, payload)
+    else:
+        if not os.path.exists(path):
+            return
+        _durable_remove(path)
+
+
+def _validate_completion_pending_record(
+    pending: Dict[str, Any],
+    campaign_file: str,
+    summaries_dir: str,
+    archives_dir: str,
+) -> None:
+    if pending.get("version") != _CAMPAIGN_COMPLETION_TRANSACTION_VERSION:
+        raise OSError("Unsupported campaign-completion recovery marker version")
+    if pending.get("status") not in {"staged", "rollback_required"}:
+        raise OSError("Invalid campaign-completion recovery marker status")
+    if pending.get("operation", "completion") not in {
+        "completion",
+        "regeneration",
+    }:
+        raise OSError("Invalid campaign-completion operation")
+    transaction_id = pending.get("transaction_id")
+    module_name = pending.get("module_name")
+    if not isinstance(transaction_id, str) or not transaction_id:
+        raise OSError("Campaign-completion marker has no transaction id")
+    try:
+        module_name = _normalize_module_name(module_name)
+    except ValueError as exc:
+        raise OSError("Campaign-completion marker has invalid module name") from exc
+
+    expected_campaign = os.path.abspath(os.path.normpath(campaign_file))
+    if pending.get("campaign_path") != expected_campaign:
+        raise OSError("Campaign-completion marker targets another campaign")
+    expected_paths = _module_completion_paths(
+        expected_campaign,
+        summaries_dir,
+        module_name,
+    )
+    if pending.get("summary_path") != expected_paths["summary"]:
+        raise OSError("Campaign-completion marker targets another summary")
+    expected_archives = os.path.abspath(os.path.normpath(archives_dir))
+    if pending.get("archives_dir") != expected_archives:
+        raise OSError("Campaign-completion marker targets another archive root")
+
+    work_path = pending.get("work_path")
+    if work_path is not None and work_path != expected_paths["work"]:
+        raise OSError("Campaign-completion marker has invalid work_path")
+
+    completion_id = pending.get("completion_id")
+    receipt_path = pending.get("receipt_path")
+    expected_receipt = _completion_receipt_path(expected_paths, completion_id)
+    if receipt_path != expected_receipt:
+        raise OSError("Campaign-completion marker has invalid receipt_path")
+    if expected_receipt is not None and pending.get("operation") != "completion":
+        raise OSError("Only completions may publish completion receipts")
+
+    archive_path = pending.get("archive_path")
+    archive_fingerprint = pending.get("archive_fingerprint")
+    if pending.get("operation") == "completion":
+        canonical_archive = _validate_module_archive_path(
+            archive_path,
+            expected_archives,
+            module_name,
+        )
+        if pending.get("status") == "rollback_required" and not os.path.exists(
+            canonical_archive
+        ):
+            if not isinstance(archive_fingerprint, str) or not re.fullmatch(
+                r"[0-9a-f]{64}", archive_fingerprint
+            ):
+                raise OSError(
+                    "Campaign-completion marker has invalid archive proof"
+                )
+        else:
+            _validate_module_archive(
+                canonical_archive,
+                expected_archives,
+                module_name,
+                archive_fingerprint,
+                transaction_id,
+            )
+    elif archive_path is not None or archive_fingerprint is not None:
+        raise OSError("Regeneration marker may not publish an archive")
+
+    for field in ("summary_after", "campaign_after"):
+        if not isinstance(pending.get(field), dict):
+            raise OSError(
+                f"Campaign-completion marker has invalid {field}"
+            )
+    prefixes = ["summary", "campaign"]
+    if expected_receipt is not None:
+        receipt_after = pending.get("receipt_after")
+        if not isinstance(receipt_after, dict):
+            raise OSError("Campaign-completion marker has invalid receipt_after")
+        if (
+            receipt_after.get("version")
+            != _CAMPAIGN_COMPLETION_TRANSACTION_VERSION
+            or receipt_after.get("operation") != "completion"
+            or receipt_after.get("transaction_id") != transaction_id
+            or receipt_after.get("module_name") != module_name
+            or receipt_after.get("completion_id") != completion_id
+            or receipt_after.get("result") != pending.get("summary_after")
+            or receipt_after.get("summary_fingerprint")
+            != _json_fingerprint(pending["summary_after"])
+        ):
+            raise OSError(
+                "Campaign-completion marker receipt does not match summary"
+            )
+        prefixes.append("receipt")
+    for prefix in prefixes:
+        if not isinstance(pending.get(f"{prefix}_existed"), bool):
+            raise OSError(
+                f"Campaign-completion marker has invalid {prefix} snapshot"
+            )
+        if pending[f"{prefix}_existed"] and not isinstance(
+            pending.get(f"{prefix}_before"), dict
+        ):
+            raise OSError(
+                f"Campaign-completion marker has invalid {prefix} rollback"
+            )
+
+
+def _completion_target_specs(
+    pending: Dict[str, Any],
+) -> List[Tuple[str, str]]:
+    specs = [
+        ("summary", "summary_path"),
+        ("campaign", "campaign_path"),
+    ]
+    if pending.get("receipt_path") is not None:
+        specs.append(("receipt", "receipt_path"))
+    return specs
+
+
+def _completion_target_matches(
+    path: str,
+    existed: bool,
+    payload: Any,
+) -> bool:
+    if os.path.exists(path) != existed:
+        return False
+    if not existed:
+        return True
+    return isinstance(payload, dict) and _load_json_dict(path) == payload
+
+
+def _completion_targets_are_known(pending: Dict[str, Any]) -> bool:
+    """Reject recovery if another writer produced an unjournaled third state."""
+    for prefix, path_field in _completion_target_specs(pending):
+        path = pending[path_field]
+        matches_before = _completion_target_matches(
+            path,
+            pending[f"{prefix}_existed"],
+            pending.get(f"{prefix}_before"),
+        )
+        matches_after = _completion_target_matches(
+            path,
+            True,
+            pending[f"{prefix}_after"],
+        )
+        if not (matches_before or matches_after):
+            return False
+    return True
+
+
+def _completion_targets_match(pending: Dict[str, Any], after: bool) -> bool:
+    suffix = "after" if after else "before"
+    for prefix, path_field in _completion_target_specs(pending):
+        path = pending[path_field]
+        expected_exists = True if after else pending[f"{prefix}_existed"]
+        expected = pending[f"{prefix}_{suffix}"]
+        if not _completion_target_matches(path, expected_exists, expected):
+            return False
+    return True
+
+
+def _finish_completion_marker_cleanup(pending: Dict[str, Any]) -> None:
+    work_path = pending.get("work_path")
+    if isinstance(work_path, str) and work_path:
+        _durable_remove(work_path)
+
+
+def _mark_completion_work_committed(pending: Dict[str, Any]) -> None:
+    """Publish a durable outcome before removing transaction markers."""
+    work_path = pending.get("work_path")
+    if not isinstance(work_path, str) or not work_path:
+        return
+    work = _load_json_dict(work_path)
+    if work is None:
+        if os.path.exists(work_path):
+            raise OSError(f"Unreadable module-completion work marker {work_path}")
+        return
+    if (
+        work.get("version") != _CAMPAIGN_COMPLETION_TRANSACTION_VERSION
+        or work.get("operation") != "completion"
+        or work.get("transaction_id") != pending.get("transaction_id")
+        or work.get("module_name") != pending.get("module_name")
+        or work.get("completion_id") != pending.get("completion_id")
+    ):
+        raise OSError("Module-completion work marker conflicts with commit")
+    work["status"] = "committed"
+    work["summary_fingerprint"] = _json_fingerprint(
+        pending["summary_after"]
+    )
+    work["committed_at"] = datetime.now().isoformat()
+    _durable_write_json(work_path, work)
+
+
+def _recover_campaign_completion_transaction_locked(
+    campaign_file: str,
+    summaries_dir: str,
+    archives_dir: str,
+) -> Optional[Dict[str, Any]]:
+    """Resolve a worker crash while summary and campaign were committed."""
+    canonical_campaign = os.path.abspath(os.path.normpath(campaign_file))
+    metadata_dir = _campaign_completion_metadata_dir(canonical_campaign)
+    pending_path = os.path.join(metadata_dir, "pending.json")
+    if not os.path.exists(pending_path):
+        return None
+    pending = _load_json_dict(pending_path)
+    if pending is None:
+        raise OSError(
+            f"Unreadable campaign-completion recovery marker {pending_path}"
+        )
+    _validate_completion_pending_record(
+        pending,
+        canonical_campaign,
+        summaries_dir,
+        archives_dir,
+    )
+    if not _completion_targets_are_known(pending):
+        raise OSError(
+            "Campaign-completion recovery found an unjournaled target state"
+        )
+
+    if pending["status"] == "staged":
+        for prefix, path_field in _completion_target_specs(pending):
+            _write_completion_target(
+                pending[path_field],
+                pending[f"{prefix}_after"],
+            )
+        if not _completion_targets_match(pending, after=True):
+            raise OSError("Campaign-completion roll-forward verification failed")
+        _mark_completion_work_committed(pending)
+        recovered_status = "rolled_forward"
+    else:
+        for prefix, path_field in _completion_target_specs(pending):
+            _restore_completion_target(
+                pending[path_field],
+                pending[f"{prefix}_existed"],
+                pending.get(f"{prefix}_before"),
+            )
+        if not _completion_targets_match(pending, after=False):
+            raise OSError("Campaign-completion rollback verification failed")
+        archive_path = pending.get("archive_path")
+        _remove_scoped_archive(
+            archive_path,
+            pending["archives_dir"],
+            pending["module_name"],
+            pending["transaction_id"],
+        )
+        recovered_status = "rolled_back"
+
+    if recovered_status == "rolled_back":
+        # Rollback proof must outlive all transaction-owned cleanup.  If the
+        # process dies after deleting the archive but before deleting work,
+        # the retained pending marker makes the absent archive an explicitly
+        # recoverable state instead of an unprovable orphan.
+        _finish_completion_marker_cleanup(pending)
+        _durable_remove(pending_path)
+    else:
+        # A rolled-forward committed work marker is independently verifiable,
+        # so the legacy pending-then-work cleanup window is safe here.
+        _durable_remove(pending_path)
+        _finish_completion_marker_cleanup(pending)
+    return {
+        "status": recovered_status,
+        "operation": pending.get("operation"),
+        "module_name": pending.get("module_name"),
+        "transaction_id": pending.get("transaction_id"),
+        "completion_id": pending.get("completion_id"),
+    }
+
+
+def _load_committed_module_completion(
+    paths: Dict[str, str],
+    module_name: str,
+    campaign_file: str,
+) -> Optional[Dict[str, Any]]:
+    summary = _load_json_dict(paths["summary"])
+    campaign = _load_json_dict(campaign_file)
+    if not summary or not campaign:
+        return None
+    completed_modules = campaign.get("completedModules")
+    if not isinstance(completed_modules, list) or module_name not in completed_modules:
+        return None
+    return summary
+
+
+def _remove_scoped_archive(
+    archive_path: Any,
+    archives_dir: str,
+    module_name: str,
+    transaction_id: Optional[str] = None,
+) -> None:
+    if not isinstance(archive_path, str) or not archive_path:
+        return
+    canonical_archive = _validate_module_archive_path(
+        archive_path,
+        archives_dir,
+        module_name,
+    )
+    if os.path.exists(canonical_archive) and transaction_id is not None:
+        archive = _load_json_dict(canonical_archive)
+        if (
+            not isinstance(archive, dict)
+            or archive.get("completionTransactionId") != transaction_id
+        ):
+            raise OSError("Refusing to remove archive owned by another transaction")
+    _durable_remove(canonical_archive)
+
+
+def _recover_module_work_locked(
+    paths: Dict[str, str],
+    module_name: str,
+    archives_dir: str,
+    campaign_file: str,
+    resume_completion_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Remove an orphan archive, or finish cleanup for a committed worker."""
+    work = _load_json_dict(paths["work"])
+    if work is None:
+        if os.path.exists(paths["work"]):
+            raise OSError(
+                f"Unreadable module-completion work marker {paths['work']}"
+            )
+        return None
+    if work.get("version") != _CAMPAIGN_COMPLETION_TRANSACTION_VERSION:
+        raise OSError("Unsupported module-completion work marker version")
+    module_name = _normalize_module_name(module_name)
+    if work.get("module_name") != module_name:
+        raise OSError("Module-completion work marker identity mismatch")
+    if work.get("operation") != "completion":
+        raise OSError("Module-completion work marker has invalid operation")
+    if work.get("status") not in {"generating", "committed"}:
+        raise OSError("Module-completion work marker has invalid status")
+    transaction_id = work.get("transaction_id")
+    if not isinstance(transaction_id, str) or not transaction_id:
+        raise OSError("Module-completion work marker has no transaction id")
+
+    completion_id = work.get("completion_id")
+    try:
+        completion_id = _normalize_completion_id(completion_id)
+    except ValueError as exc:
+        raise OSError(
+            "Module-completion work marker has invalid completion_id"
+        ) from exc
+    archive_path = work.get("archive_path")
+    archive_fingerprint = work.get("archive_fingerprint")
+    if archive_path is not None:
+        _validate_module_archive_path(
+            archive_path,
+            archives_dir,
+            module_name,
+        )
+        if archive_fingerprint is not None:
+            _validate_module_archive(
+                archive_path,
+                archives_dir,
+                module_name,
+                archive_fingerprint,
+                transaction_id,
+            )
+        elif os.path.exists(archive_path):
+            unproven_archive = _load_json_dict(archive_path)
+            if (
+                not isinstance(unproven_archive, dict)
+                or unproven_archive.get("completionTransactionId")
+                != transaction_id
+            ):
+                raise OSError(
+                    "Module-completion work does not own unproven archive"
+                )
+    elif archive_fingerprint is not None:
+        raise OSError("Module-completion work marker has orphan fingerprint")
+    if work.get("status") == "committed" and archive_fingerprint is None:
+        raise OSError("Committed module-completion work has no archive proof")
+
+    summary = _load_json_dict(paths["summary"])
+    expected_fingerprint = work.get("summary_fingerprint")
+    if expected_fingerprint is not None and (
+        not isinstance(expected_fingerprint, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", expected_fingerprint)
+    ):
+        raise OSError("Module-completion work marker has invalid fingerprint")
+    generated_summary = work.get("generated_summary")
+    generated_fingerprint = work.get("generated_summary_fingerprint")
+    if (generated_summary is None) != (generated_fingerprint is None):
+        raise OSError("Module-completion work has partial generated output")
+    if generated_summary is not None and (
+        not isinstance(generated_summary, dict)
+        or not isinstance(generated_fingerprint, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", generated_fingerprint)
+        or _json_fingerprint(generated_summary) != generated_fingerprint
+    ):
+        raise OSError("Module-completion generated output is invalid")
+    t038_summary_text = work.get("t038_summary_text")
+    t038_summary_fingerprint = work.get("t038_summary_fingerprint")
+    if (t038_summary_text is None) != (t038_summary_fingerprint is None):
+        raise OSError("Module-completion work has partial T038 output")
+    if t038_summary_text is not None and (
+        not isinstance(t038_summary_text, str)
+        or not t038_summary_text.strip()
+        or t038_summary_text != t038_summary_text.strip()
+        or not isinstance(t038_summary_fingerprint, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", t038_summary_fingerprint)
+        or _json_fingerprint(t038_summary_text) != t038_summary_fingerprint
+    ):
+        raise OSError("Module-completion T038 output is invalid")
+    if (
+        generated_summary is not None
+        and t038_summary_text is not None
+        and generated_summary.get("summary") != t038_summary_text
+    ):
+        raise OSError("Module-completion generated output conflicts with T038")
+    summary_matches = (
+        isinstance(expected_fingerprint, str)
+        and isinstance(summary, dict)
+        and _json_fingerprint(summary) == expected_fingerprint
+        and _load_committed_module_completion(
+            paths,
+            module_name,
+            campaign_file,
+        )
+        is not None
+    )
+    receipt = None
+    if completion_id is not None:
+        receipt = _load_completion_receipt(
+            paths,
+            module_name,
+            completion_id,
+        )
+    receipt_matches = (
+        receipt is not None
+        and receipt.get("transaction_id") == transaction_id
+        and receipt.get("summary_fingerprint") == expected_fingerprint
+    )
+    if receipt is not None and not (summary_matches and receipt_matches):
+        raise OSError(
+            "Module-completion work marker conflicts with committed receipt"
+        )
+    committed = summary_matches and (
+        receipt_matches
+        if completion_id is not None
+        else work.get("status") == "committed"
+    )
+    if not committed:
+        if work.get("status") == "committed":
+            raise OSError(
+                "Committed module-completion work marker conflicts with state"
+            )
+        normalized_resume_id = _normalize_completion_id(resume_completion_id)
+        if (
+            normalized_resume_id is not None
+            and completion_id == normalized_resume_id
+            and (
+                generated_summary is not None
+                or t038_summary_text is not None
+            )
+            and archive_path is not None
+            and archive_fingerprint is not None
+        ):
+            return {
+                "status": "resumable",
+                "transaction_id": transaction_id,
+                "completion_id": completion_id,
+                "work": copy.deepcopy(work),
+            }
+        _remove_scoped_archive(
+            archive_path,
+            archives_dir,
+            module_name,
+        )
+    _durable_remove(paths["work"])
+    return {
+        "status": "committed_cleanup" if committed else "orphan_cleanup",
+        "transaction_id": transaction_id,
+        "completion_id": completion_id,
+        "summary_fingerprint": expected_fingerprint,
+    }
+
+
+def _campaign_state_directories(
+    campaign_file: str,
+    summaries_dir: Optional[str] = None,
+    archives_dir: Optional[str] = None,
+) -> Tuple[str, str]:
+    campaign_parent = os.path.dirname(
+        os.path.abspath(os.path.normpath(campaign_file))
+    )
+    resolved_summaries = summaries_dir or os.path.join(
+        campaign_parent,
+        "campaign_summaries",
+    )
+    resolved_archives = archives_dir or os.path.join(
+        campaign_parent,
+        "campaign_archives",
+    )
+    return (
+        os.path.abspath(os.path.normpath(resolved_summaries)),
+        os.path.abspath(os.path.normpath(resolved_archives)),
+    )
+
+
+def mutate_campaign_state(
+    campaign_file: str,
+    mutator: Callable[[Dict[str, Any]], bool],
+    *,
+    summaries_dir: Optional[str] = None,
+    archives_dir: Optional[str] = None,
+    fallback: Optional[Dict[str, Any]] = None,
+    write_if_missing: bool = False,
+) -> Tuple[Dict[str, Any], bool]:
+    """Recover, fresh-load, mutate, and atomically persist campaign state."""
+    canonical_campaign = os.path.abspath(os.path.normpath(campaign_file))
+    resolved_summaries, resolved_archives = _campaign_state_directories(
+        canonical_campaign,
+        summaries_dir,
+        archives_dir,
+    )
+    with _campaign_transaction_lock(canonical_campaign):
+        _recover_campaign_completion_transaction_locked(
+            canonical_campaign,
+            resolved_summaries,
+            resolved_archives,
+        )
+        existed = os.path.exists(canonical_campaign)
+        persisted = _load_json_dict(canonical_campaign) if existed else None
+        if existed and persisted is None:
+            raise OSError(f"Could not load campaign file {canonical_campaign}")
+        if persisted is None:
+            persisted = copy.deepcopy(fallback) if isinstance(fallback, dict) else {}
+        updated = copy.deepcopy(persisted)
+        changed = bool(mutator(updated))
+        if changed or (write_if_missing and not existed):
+            _write_completion_target(canonical_campaign, updated)
+        return updated, changed
+
+
+def _default_campaign_data() -> Dict[str, Any]:
+    """Return a new campaign timeline without borrowing manager cache state."""
+    return {
+        "campaignName": "Fantasy Adventure Campaign",
+        "currentModule": None,
+        "hubModule": None,
+        "completedModules": [],
+        "availableModules": [],
+        "hubs": {},
+        "relationships": {},
+        "artifacts": {},
+        "worldState": {
+            "keepOwnership": False,
+            "majorDecisions": [],
+            "crossModuleRelationships": {},
+            "unlockedAreas": [],
+            "hubEstablished": False,
+        },
+        "lastUpdated": datetime.now().isoformat(),
+        "version": "1.0.0",
+    }
+
+
+def _validate_completion_intent(
+    intent: Dict[str, Any],
+    intent_path: str,
+    campaign_file: str,
+    summaries_dir: str,
+) -> None:
+    """Fail closed on malformed or mis-scoped transition intent metadata."""
+    if not isinstance(intent, dict):
+        raise OSError("Invalid module-completion intent")
+    try:
+        module_name = _normalize_module_name(intent.get("module_name"))
+        to_module = _normalize_module_name(intent.get("to_module"))
+        completion_id = _normalize_completion_id(intent.get("completion_id"))
+    except ValueError as exc:
+        raise OSError("Invalid module-completion intent identity") from exc
+    if completion_id is None:
+        raise OSError("Module-completion intent has no completion_id")
+    transition_sequence = intent.get("transition_sequence")
+    if (
+        not isinstance(transition_sequence, int)
+        or isinstance(transition_sequence, bool)
+        or transition_sequence < 1
+    ):
+        raise OSError("Module-completion intent has invalid transition sequence")
+    canonical_campaign = os.path.abspath(os.path.normpath(campaign_file))
+    paths = _module_completion_paths(
+        canonical_campaign,
+        summaries_dir,
+        module_name,
+    )
+    expected_path = _completion_intent_path(
+        paths,
+        module_name,
+        completion_id,
+    )
+    if (
+        intent.get("version") != _CAMPAIGN_COMPLETION_TRANSACTION_VERSION
+        or intent.get("operation") != "module_transition_completion"
+        or intent.get("status") not in {"prepared", "ready"}
+        or intent.get("campaign_path") != canonical_campaign
+        or os.path.abspath(os.path.normpath(intent_path)) != expected_path
+        or module_name == to_module
+        or intent.get("publication_kind") not in {"party", "location"}
+        or not isinstance(intent.get("party_tracker_data"), dict)
+        or not isinstance(intent.get("conversation_history"), list)
+    ):
+        raise OSError("Invalid module-completion intent metadata")
+
+
+def _load_completion_intent(
+    intent_path: str,
+    campaign_file: str,
+    summaries_dir: str,
+) -> Optional[Dict[str, Any]]:
+    intent = _load_json_dict(intent_path)
+    if intent is None:
+        if os.path.exists(intent_path):
+            raise OSError(f"Unreadable module-completion intent {intent_path}")
+        return None
+    _validate_completion_intent(
+        intent,
+        intent_path,
+        campaign_file,
+        summaries_dir,
+    )
+    return intent
+
+
+def _ordered_completion_intents(
+    campaign_file: str,
+    summaries_dir: str,
+) -> List[Tuple[str, Dict[str, Any]]]:
+    """Load the transition queue in its durable publication order."""
+    intents_dir = os.path.join(
+        _campaign_completion_metadata_dir(campaign_file),
+        "intents",
+    )
+    if not os.path.isdir(intents_dir):
+        return []
+    ordered = []
+    for filename in os.listdir(intents_dir):
+        if _COMPLETION_INTENT_TEMP_PATTERN.fullmatch(filename):
+            continue
+        intent_path = os.path.join(intents_dir, filename)
+        if not filename.endswith(".json"):
+            raise OSError("invalid intent filename")
+        intent = _load_completion_intent(
+            intent_path,
+            campaign_file,
+            summaries_dir,
+        )
+        if intent is not None:
+            ordered.append((intent_path, intent))
+    ordered.sort(
+        key=lambda item: (
+            item[1]["transition_sequence"],
+            item[0],
+        )
+    )
+    sequences = [item[1]["transition_sequence"] for item in ordered]
+    if len(sequences) != len(set(sequences)):
+        raise OSError("Duplicate module-completion transition sequence")
+    return ordered
 
 
 class CampaignManager:
@@ -198,39 +1342,21 @@ class CampaignManager:
         # Load or create campaign state
         self.campaign_data = self._load_campaign_data()
 
-        # Callers may opt-in to refresh; constructor remains side-effect free.
+        # Callers may opt in to module refresh; construction only loads state
+        # and resolves an interrupted campaign-completion journal when present.
         self.party_tracker_data = None
     
     def _load_campaign_data(self) -> Dict[str, Any]:
-        """Load campaign data or create default"""
-        if os.path.exists(self.campaign_file):
-            return safe_json_load(self.campaign_file)
-        else:
-            # Create default campaign
-            default_campaign = {
-                "campaignName": "Fantasy Adventure Campaign",
-                "currentModule": None,
-                "hubModule": None,
-                "completedModules": [],
-                "availableModules": [],
-                "hubs": {},
-                "relationships": {},
-                "artifacts": {},
-                "worldState": {
-                    "keepOwnership": False,
-                    "majorDecisions": [],
-                    "crossModuleRelationships": {},
-                    "unlockedAreas": [],
-                    "hubEstablished": False
-                },
-                "lastUpdated": datetime.now().isoformat(),
-                "version": "1.0.0"
-            }
-            if not safe_write_json(self.campaign_file, default_campaign):
-                raise OSError(
-                    f"Could not atomically initialize campaign file {self.campaign_file}"
-                )
-            return default_campaign
+        """Recover an interrupted completion, then load or initialize state."""
+        campaign, _changed = mutate_campaign_state(
+            self.campaign_file,
+            lambda _campaign: False,
+            summaries_dir=self.summaries_dir,
+            archives_dir=self.archives_dir,
+            fallback=_default_campaign_data(),
+            write_if_missing=True,
+        )
+        return campaign
     
     def refresh_modules(self):
         """Scan and integrate modules explicitly, then sync campaign availability."""
@@ -245,6 +1371,9 @@ class CampaignManager:
             commit_state = None
             refresh_ok = False
             try:
+                expected_lifecycle_epoch = _load_campaign_lifecycle_epoch(
+                    self.campaign_file
+                )
                 recover_incomplete_refresh_commit()
                 commit_state = begin_refresh_commit()
                 mark_commit_phase("commit")
@@ -261,29 +1390,69 @@ class CampaignManager:
                         category="module_loading",
                     )
 
+                # Module files/registry are now a complete refresh unit.
+                # Campaign availability is merged afterward through its own
+                # fresh locked transaction and must never be part of broad
+                # module-file rollback.
+                complete_refresh_commit()
+                commit_state = None
+
                 world_registry = stitcher.world_registry
                 if world_registry and "modules" in world_registry:
                     world_modules = set(world_registry["modules"].keys())
-                    current_available = set(self.campaign_data.get("availableModules", []))
-                    missing_modules = world_modules - current_available
+                    merge_result = {
+                        "missing_modules": set(),
+                        "lifecycle_changed": False,
+                    }
 
-                    if newly_integrated or missing_modules:
+                    def merge_modules(campaign):
+                        if _load_campaign_lifecycle_epoch(
+                            self.campaign_file
+                        ) != expected_lifecycle_epoch:
+                            merge_result["lifecycle_changed"] = True
+                            return False
+                        available = campaign.get("availableModules")
+                        if not isinstance(available, list):
+                            available = []
+                        current_available = set(available)
+                        missing_modules = world_modules - current_available
+                        merge_result["missing_modules"] = missing_modules
                         all_updates = set(newly_integrated) | missing_modules
+                        if not all_updates:
+                            return False
                         current_available.update(all_updates)
-                        self.campaign_data["availableModules"] = list(current_available)
-                        self.campaign_data["lastUpdated"] = datetime.now().isoformat()
-                        safe_json_dump(self.campaign_data, self.campaign_file)
+                        campaign["availableModules"] = list(current_available)
+                        campaign["lastUpdated"] = datetime.now().isoformat()
+                        return True
 
-                        if newly_integrated:
-                            info(
-                                f"INITIALIZATION: Integrated {len(newly_integrated)} new modules: {', '.join(newly_integrated)}",
-                                category="module_loading",
-                            )
-                        if missing_modules:
-                            info(
-                                f"INITIALIZATION: Synced {len(missing_modules)} existing modules: {', '.join(missing_modules)}",
-                                category="module_loading",
-                            )
+                    self.campaign_data, _changed = mutate_campaign_state(
+                        self.campaign_file,
+                        merge_modules,
+                        summaries_dir=self.summaries_dir,
+                        archives_dir=self.archives_dir,
+                        # A reset may delete the file while an older manager
+                        # instance still carries the prior timeline in memory.
+                        fallback=_default_campaign_data(),
+                    )
+                    missing_modules = merge_result["missing_modules"]
+
+                    if merge_result["lifecycle_changed"]:
+                        warning(
+                            "Campaign lifecycle changed during module refresh; "
+                            "availability sync deferred",
+                            category="module_loading",
+                        )
+
+                    if newly_integrated:
+                        info(
+                            f"INITIALIZATION: Integrated {len(newly_integrated)} new modules: {', '.join(newly_integrated)}",
+                            category="module_loading",
+                        )
+                    if missing_modules:
+                        info(
+                            f"INITIALIZATION: Synced {len(missing_modules)} existing modules: {', '.join(missing_modules)}",
+                            category="module_loading",
+                        )
 
                 refresh_ok = True
                 return {
@@ -497,10 +1666,751 @@ class CampaignManager:
             error(f"FAILURE: Error syncing party tracker with plot for {module_name}", exception=e, category="plot_updates")
             return False
     
-    def complete_module(self, module_name: str, party_tracker_data: Dict[str, Any], 
-                       conversation_history: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Complete one module once, even when callers arrive concurrently."""
-        key = _module_completion_key(self.campaign_file, module_name)
+    @staticmethod
+    def _apply_party_tracker_updates(
+        party_tracker_data: Dict[str, Any],
+        updates: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        updated = copy.deepcopy(party_tracker_data)
+        for key, value in updates.items():
+            if key in {
+                "currentLocationId",
+                "currentLocation",
+                "currentAreaId",
+                "currentArea",
+            }:
+                world = updated.setdefault("worldConditions", {})
+                if not isinstance(world, dict):
+                    raise OSError("party_tracker worldConditions is invalid")
+                world[key] = copy.deepcopy(value)
+            else:
+                updated[key] = copy.deepcopy(value)
+        return updated
+
+    def publish_party_module_transition(
+        self,
+        module_name: str,
+        to_module: str,
+        updates: Dict[str, Any],
+        conversation_history: List[Dict[str, Any]],
+        completion_id: str,
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """Atomically order intent preparation before a fresh party switch."""
+        module_name = _normalize_module_name(module_name)
+        to_module = _normalize_module_name(to_module)
+        completion_id = _normalize_completion_id(completion_id)
+        if completion_id is None:
+            raise ValueError("completion transitions require a completion_id")
+        with _party_module_transition_lock():
+            persisted = safe_json_load("party_tracker.json")
+            if not isinstance(persisted, dict):
+                raise OSError("Cannot load party tracker for module transition")
+            persisted_module = persisted.get("module")
+            if persisted_module != module_name:
+                if persisted_module == to_module:
+                    paths = _module_completion_paths(
+                        self.campaign_file,
+                        self.summaries_dir,
+                        module_name,
+                    )
+                    intent_path = _completion_intent_path(
+                        paths,
+                        module_name,
+                        completion_id,
+                    )
+                    with path_transaction_lock(
+                        paths["lock_target"],
+                        suffix=".completion.lock",
+                    ), _campaign_transaction_lock(self.campaign_file):
+                        intent = _load_completion_intent(
+                            intent_path,
+                            self.campaign_file,
+                            self.summaries_dir,
+                        )
+                        receipt = _load_completion_receipt(
+                            paths,
+                            module_name,
+                            completion_id,
+                        )
+                        if receipt is not None:
+                            _validate_receipt_committed_projection(
+                                paths,
+                                module_name,
+                                self.campaign_file,
+                                receipt,
+                            )
+                    if intent is not None or receipt is not None:
+                        original = (
+                            copy.deepcopy(intent["party_tracker_data"])
+                            if intent is not None
+                            else copy.deepcopy(persisted)
+                        )
+                        return original, copy.deepcopy(persisted)
+                raise OSError(
+                    "Party module changed before transition publication"
+                )
+            original = copy.deepcopy(persisted)
+            self.stage_module_completion_intent(
+                module_name,
+                to_module,
+                original,
+                conversation_history,
+                completion_id,
+            )
+            updated = self._apply_party_tracker_updates(persisted, updates)
+            if updated.get("module") != to_module:
+                raise OSError("Party transition update has wrong destination")
+            safe_json_dump(updated, "party_tracker.json")
+            self.mark_module_completion_intent_ready(
+                module_name,
+                completion_id,
+                conversation_history=conversation_history,
+            )
+            return original, updated
+
+    def publish_location_module_transition(
+        self,
+        module_name: str,
+        to_module: str,
+        conversation_history: List[Dict[str, Any]],
+        completion_id: str,
+        transition_callable: Callable[[], Any],
+    ) -> Tuple[Any, Optional[Dict[str, Any]]]:
+        """Run the location write between prepared and ready intent states."""
+        module_name = _normalize_module_name(module_name)
+        to_module = _normalize_module_name(to_module)
+        completion_id = _normalize_completion_id(completion_id)
+        if completion_id is None:
+            raise ValueError("completion transitions require a completion_id")
+        with _party_module_transition_lock():
+            persisted = safe_json_load("party_tracker.json")
+            if (
+                not isinstance(persisted, dict)
+                or persisted.get("module") != module_name
+            ):
+                raise OSError(
+                    "Party module changed before location transition"
+                )
+            self.stage_module_completion_intent(
+                module_name,
+                to_module,
+                persisted,
+                conversation_history,
+                completion_id,
+                publication_kind="location",
+            )
+            try:
+                transition_result = transition_callable()
+            except BaseException as transition_exc:
+                current = safe_json_load("party_tracker.json")
+                if current == persisted:
+                    self._cancel_prepared_module_completion_intent(
+                        module_name,
+                        completion_id,
+                    )
+                    raise
+                raise OSError(
+                    "Location transition failed after partially changing party state"
+                ) from transition_exc
+            if not transition_result:
+                current = safe_json_load("party_tracker.json")
+                if current != persisted:
+                    raise OSError(
+                        "Location transition returned false after changing party state"
+                    )
+                self._cancel_prepared_module_completion_intent(
+                    module_name,
+                    completion_id,
+                )
+                return transition_result, None
+            updated = safe_json_load("party_tracker.json")
+            if (
+                not isinstance(updated, dict)
+                or updated.get("module") != module_name
+            ):
+                raise OSError(
+                    "Location transition produced an unexpected party module"
+                )
+            prior_location = persisted.get("worldConditions", {}).get(
+                "currentLocationId"
+            )
+            updated_location = updated.get("worldConditions", {}).get(
+                "currentLocationId"
+            )
+            if (
+                not isinstance(updated_location, str)
+                or not updated_location
+                or updated_location == prior_location
+            ):
+                if updated == persisted:
+                    self._cancel_prepared_module_completion_intent(
+                        module_name,
+                        completion_id,
+                    )
+                raise OSError(
+                    "Location transition reported success without changing location"
+                )
+            resolved_destination = self.get_module_from_location(
+                updated_location
+            )
+            if resolved_destination != to_module:
+                raise OSError(
+                    "Location transition did not persist a destination-module location"
+                )
+            updated["module"] = to_module
+            safe_json_dump(updated, "party_tracker.json")
+            self.mark_module_completion_intent_ready(
+                module_name,
+                completion_id,
+                conversation_history=conversation_history,
+            )
+            return transition_result, updated
+
+    def _cancel_prepared_module_completion_intent(
+        self,
+        module_name: str,
+        completion_id: str,
+    ) -> None:
+        """Cancel only a proven no-op transition before party publication."""
+        module_name = _normalize_module_name(module_name)
+        completion_id = _normalize_completion_id(completion_id)
+        paths = _module_completion_paths(
+            self.campaign_file,
+            self.summaries_dir,
+            module_name,
+        )
+        intent_path = _completion_intent_path(
+            paths,
+            module_name,
+            completion_id,
+        )
+        with path_transaction_lock(
+            paths["lock_target"], suffix=".completion.lock"
+        ), _campaign_transaction_lock(self.campaign_file):
+            intent = _load_completion_intent(
+                intent_path,
+                self.campaign_file,
+                self.summaries_dir,
+            )
+            if intent is None:
+                return
+            if intent.get("status") != "prepared":
+                raise OSError("Refusing to cancel a ready completion intent")
+            if _load_completion_receipt(
+                paths,
+                module_name,
+                completion_id,
+            ) is not None:
+                raise OSError("Refusing to cancel a receipt-backed intent")
+            _durable_remove(intent_path)
+
+    def get_module_completion_publication_state(
+        self,
+        module_name: str,
+        completion_id: str,
+    ) -> str:
+        """Return prepared, ready, committed, or absent for a transition."""
+        module_name = _normalize_module_name(module_name)
+        completion_id = _normalize_completion_id(completion_id)
+        if completion_id is None:
+            raise ValueError("completion transitions require a completion_id")
+        paths = _module_completion_paths(
+            self.campaign_file,
+            self.summaries_dir,
+            module_name,
+        )
+        intent_path = _completion_intent_path(
+            paths,
+            module_name,
+            completion_id,
+        )
+        with _party_module_transition_lock(), path_transaction_lock(
+            paths["lock_target"], suffix=".completion.lock"
+        ), _campaign_transaction_lock(self.campaign_file):
+            intent = _load_completion_intent(
+                intent_path,
+                self.campaign_file,
+                self.summaries_dir,
+            )
+            if intent is not None:
+                return intent["status"]
+            receipt = _load_completion_receipt(
+                paths,
+                module_name,
+                completion_id,
+            )
+            if receipt is not None:
+                _validate_receipt_committed_projection(
+                    paths,
+                    module_name,
+                    self.campaign_file,
+                    receipt,
+                )
+                return "committed"
+            return "absent"
+
+    def stage_module_completion_intent(
+        self,
+        module_name: str,
+        to_module: str,
+        party_tracker_data: Dict[str, Any],
+        conversation_history: List[Dict[str, Any]],
+        completion_id: str,
+        publication_kind: str = "party",
+    ) -> Dict[str, Any]:
+        """Durably prepare completion before the party module can switch."""
+        module_name = _normalize_module_name(module_name)
+        to_module = _normalize_module_name(to_module)
+        completion_id = _normalize_completion_id(completion_id)
+        if completion_id is None:
+            raise ValueError("completion intents require a completion_id")
+        if module_name == to_module:
+            raise ValueError("completion intent requires distinct modules")
+        if not isinstance(party_tracker_data, dict):
+            raise ValueError("party_tracker_data must be an object")
+        if not isinstance(conversation_history, list):
+            raise ValueError("conversation_history must be a list")
+        if publication_kind not in {"party", "location"}:
+            raise ValueError("Unsupported completion intent publication kind")
+        paths = _module_completion_paths(
+            self.campaign_file,
+            self.summaries_dir,
+            module_name,
+        )
+        intent_path = _completion_intent_path(
+            paths,
+            module_name,
+            completion_id,
+        )
+        with _party_module_transition_lock(), path_transaction_lock(
+            paths["lock_target"],
+            suffix=".completion.lock",
+        ), _campaign_transaction_lock(self.campaign_file):
+            existing = _load_completion_intent(
+                intent_path,
+                self.campaign_file,
+                self.summaries_dir,
+            )
+            if existing is not None:
+                if (
+                    existing.get("to_module") != to_module
+                    or existing.get("publication_kind") != publication_kind
+                ):
+                    raise OSError(
+                        "Completion intent ID was reused for another transition"
+                    )
+                return copy.deepcopy(existing)
+            receipt = _load_completion_receipt(
+                paths,
+                module_name,
+                completion_id,
+            )
+            if receipt is not None:
+                _validate_receipt_committed_projection(
+                    paths,
+                    module_name,
+                    self.campaign_file,
+                    receipt,
+                )
+                return {
+                    "status": "committed",
+                    "module_name": module_name,
+                    "to_module": to_module,
+                    "completion_id": completion_id,
+                }
+            intent = {
+                "version": _CAMPAIGN_COMPLETION_TRANSACTION_VERSION,
+                "operation": "module_transition_completion",
+                "status": "prepared",
+                "campaign_path": os.path.abspath(
+                    os.path.normpath(self.campaign_file)
+                ),
+                "module_name": module_name,
+                "to_module": to_module,
+                "completion_id": completion_id,
+                "publication_kind": publication_kind,
+                "transition_sequence": (
+                    _next_completion_intent_sequence_locked(
+                        self.campaign_file
+                    )
+                ),
+                "party_tracker_data": copy.deepcopy(party_tracker_data),
+                "conversation_history": copy.deepcopy(conversation_history),
+                "created_at": datetime.now().isoformat(),
+            }
+            _durable_write_json(intent_path, intent)
+            return copy.deepcopy(intent)
+
+    def mark_module_completion_intent_ready(
+        self,
+        module_name: str,
+        completion_id: str,
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Publish that the corresponding party-module switch committed."""
+        module_name = _normalize_module_name(module_name)
+        completion_id = _normalize_completion_id(completion_id)
+        if completion_id is None:
+            raise ValueError("completion intents require a completion_id")
+        if conversation_history is not None and not isinstance(
+            conversation_history, list
+        ):
+            raise ValueError("conversation_history must be a list")
+        paths = _module_completion_paths(
+            self.campaign_file,
+            self.summaries_dir,
+            module_name,
+        )
+        intent_path = _completion_intent_path(
+            paths,
+            module_name,
+            completion_id,
+        )
+        with _party_module_transition_lock(), path_transaction_lock(
+            paths["lock_target"], suffix=".completion.lock"
+        ), _campaign_transaction_lock(self.campaign_file):
+            intent = _load_completion_intent(
+                intent_path,
+                self.campaign_file,
+                self.summaries_dir,
+            )
+            if intent is None:
+                receipt = _load_completion_receipt(
+                    paths,
+                    module_name,
+                    completion_id,
+                )
+                if receipt is None:
+                    raise OSError("Module-completion intent disappeared")
+                _validate_receipt_committed_projection(
+                    paths,
+                    module_name,
+                    self.campaign_file,
+                    receipt,
+                )
+                return {
+                    "status": "committed",
+                    "module_name": module_name,
+                    "completion_id": completion_id,
+                }
+            persisted_party = safe_json_load("party_tracker.json")
+            if (
+                not isinstance(persisted_party, dict)
+                or persisted_party.get("module") != intent["to_module"]
+            ):
+                raise OSError(
+                    "Cannot ready completion intent before party module switch"
+                )
+            intent["status"] = "ready"
+            intent["ready_at"] = datetime.now().isoformat()
+            if conversation_history is not None:
+                intent["conversation_history"] = copy.deepcopy(
+                    conversation_history
+                )
+            _durable_write_json(intent_path, intent)
+            return copy.deepcopy(intent)
+
+    def complete_staged_module_completion(
+        self,
+        module_name: str,
+        completion_id: str,
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Drain one transition while holding the global publication order."""
+        with _party_module_transition_lock():
+            return self._complete_staged_module_completion_locked(
+                module_name,
+                completion_id,
+                conversation_history=conversation_history,
+            )
+
+    def _complete_staged_module_completion_locked(
+        self,
+        module_name: str,
+        completion_id: str,
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Drain one durable intent; retain it until receipt-backed success."""
+        module_name = _normalize_module_name(module_name)
+        completion_id = _normalize_completion_id(completion_id)
+        if completion_id is None:
+            raise ValueError("completion intents require a completion_id")
+        if conversation_history is not None and not isinstance(
+            conversation_history, list
+        ):
+            raise ValueError("conversation_history must be a list")
+        paths = _module_completion_paths(
+            self.campaign_file,
+            self.summaries_dir,
+            module_name,
+        )
+        intent_path = _completion_intent_path(
+            paths,
+            module_name,
+            completion_id,
+        )
+        with _party_module_transition_lock(), path_transaction_lock(
+            paths["lock_target"], suffix=".completion.lock"
+        ), _campaign_transaction_lock(self.campaign_file):
+            intent = _load_completion_intent(
+                intent_path,
+                self.campaign_file,
+                self.summaries_dir,
+            )
+            if intent is None:
+                receipt = _load_completion_receipt(
+                    paths,
+                    module_name,
+                    completion_id,
+                )
+                if receipt is not None:
+                    _validate_receipt_committed_projection(
+                        paths,
+                        module_name,
+                        self.campaign_file,
+                        receipt,
+                    )
+                return (
+                    copy.deepcopy(receipt["result"])
+                    if receipt is not None
+                    else None
+                )
+            ordered_intents = _ordered_completion_intents(
+                self.campaign_file,
+                self.summaries_dir,
+            )
+            if not ordered_intents:
+                raise OSError("Module-completion intent queue disappeared")
+            oldest_path = ordered_intents[0][0]
+            if os.path.abspath(os.path.normpath(oldest_path)) != os.path.abspath(
+                os.path.normpath(intent_path)
+            ):
+                # A later targeted worker must not overtake an earlier
+                # transition. Preserve its freshest bounded history now; the
+                # oldest-first drain will use it when this intent reaches the
+                # head of the queue.
+                if conversation_history is not None:
+                    intent["conversation_history"] = copy.deepcopy(
+                        conversation_history
+                    )
+                    _durable_write_json(intent_path, intent)
+                return None
+            if intent["status"] == "prepared":
+                persisted_party = safe_json_load("party_tracker.json")
+                if not isinstance(persisted_party, dict):
+                    raise OSError(
+                        "Cannot reconcile prepared completion intent without party state"
+                    )
+                persisted_module = persisted_party.get("module")
+                if persisted_module == intent["module_name"]:
+                    if intent["publication_kind"] == "party":
+                        # updatePartyTracker publishes all requested fields,
+                        # including module, in one atomic file replacement.
+                        # If module is still the source, that publication did
+                        # not land; unrelated party/effect writes may safely
+                        # have advanced other fields meanwhile.
+                        _durable_remove(intent_path)
+                        return None
+                    source_location_id = intent["party_tracker_data"].get(
+                        "worldConditions", {}
+                    ).get("currentLocationId")
+                    location_id = persisted_party.get(
+                        "worldConditions", {}
+                    ).get("currentLocationId")
+                    if location_id == source_location_id:
+                        _durable_remove(intent_path)
+                        return None
+                    detected_module = self.get_module_from_location(location_id)
+                    if detected_module != intent["to_module"]:
+                        raise OSError(
+                            "Prepared completion intent found mixed source state"
+                        )
+                    repaired_party = copy.deepcopy(persisted_party)
+                    repaired_party["module"] = intent["to_module"]
+                    safe_json_dump(repaired_party, "party_tracker.json")
+                    persisted_module = intent["to_module"]
+                if persisted_module != intent["to_module"]:
+                    next_intent = (
+                        ordered_intents[1][1]
+                        if len(ordered_intents) > 1
+                        else None
+                    )
+                    superseded = (
+                        isinstance(next_intent, dict)
+                        and next_intent.get("status") == "ready"
+                        and next_intent.get("module_name")
+                        == intent["module_name"]
+                        and (
+                            intent["publication_kind"] == "party"
+                            or next_intent.get(
+                                "party_tracker_data", {}
+                            ).get("worldConditions", {}).get(
+                                "currentLocationId"
+                            )
+                            == intent["party_tracker_data"].get(
+                                "worldConditions", {}
+                            ).get("currentLocationId")
+                        )
+                    )
+                    continued_chain = (
+                        isinstance(next_intent, dict)
+                        and next_intent.get("status") == "ready"
+                        and next_intent.get("module_name")
+                        == intent["to_module"]
+                        and next_intent.get("party_tracker_data", {}).get(
+                            "module"
+                        )
+                        == intent["to_module"]
+                    )
+                    if superseded:
+                        # The earlier publisher died after prepare but before
+                        # changing party state. A later ready transition from
+                        # the byte-identical source snapshot is durable proof
+                        # that this prepare was superseded without taking
+                        # effect, even if a longer ready chain has since moved
+                        # the living party again.
+                        _durable_remove(intent_path)
+                        return None
+                    if not continued_chain:
+                        raise OSError(
+                            "Prepared completion intent found a third party module state"
+                        )
+                intent["status"] = "ready"
+                intent["ready_at"] = datetime.now().isoformat()
+            if conversation_history is not None:
+                intent["conversation_history"] = copy.deepcopy(
+                    conversation_history
+                )
+            _durable_write_json(intent_path, intent)
+            party_snapshot = copy.deepcopy(intent["party_tracker_data"])
+            intent_history = copy.deepcopy(intent["conversation_history"])
+            lifecycle_epoch = _load_campaign_lifecycle_epoch(
+                self.campaign_file
+            )
+
+        result = self.complete_module(
+            module_name,
+            party_snapshot,
+            intent_history,
+            completion_id=completion_id,
+            _expected_lifecycle_epoch=lifecycle_epoch,
+        )
+
+        with path_transaction_lock(
+            paths["lock_target"],
+            suffix=".completion.lock",
+        ), _campaign_transaction_lock(self.campaign_file):
+            receipt = _load_completion_receipt(
+                paths,
+                module_name,
+                completion_id,
+            )
+            if receipt is None or receipt["result"] != result:
+                raise OSError(
+                    "Module completion returned without its durable receipt"
+                )
+            _validate_receipt_committed_projection(
+                paths,
+                module_name,
+                self.campaign_file,
+                receipt,
+            )
+            _durable_remove(intent_path)
+        return result
+
+    def drain_module_completion_intents(self) -> Dict[str, Any]:
+        """Drain transitions oldest-first; stop before any failed boundary."""
+        outcome = {
+            "completed": [],
+            "cancelled": [],
+            "blocked": [],
+            "failed": [],
+        }
+        with _party_module_transition_lock():
+            try:
+                ordered_intents = _ordered_completion_intents(
+                    self.campaign_file,
+                    self.summaries_dir,
+                )
+            except Exception as exc:
+                outcome["failed"].append(
+                    {
+                        "path": os.path.join(
+                            _campaign_completion_metadata_dir(
+                                self.campaign_file
+                            ),
+                            "intents",
+                        ),
+                        "error": str(exc),
+                    }
+                )
+                error(
+                    "FAILURE: Could not load ordered module-completion queue",
+                    exception=exc,
+                    category="module_management",
+                )
+                return outcome
+
+            for intent_path, intent in ordered_intents:
+                try:
+                    result = self.complete_staged_module_completion(
+                        intent["module_name"],
+                        intent["completion_id"],
+                    )
+                    if result is None:
+                        if os.path.exists(intent_path):
+                            outcome["blocked"].append(
+                                intent["completion_id"]
+                            )
+                            break
+                        outcome["cancelled"].append(intent["completion_id"])
+                    else:
+                        outcome["completed"].append(intent["completion_id"])
+                except Exception as exc:
+                    outcome["failed"].append(
+                        {"path": intent_path, "error": str(exc)}
+                    )
+                    error(
+                        "FAILURE: Could not drain module completion intent "
+                        f"{intent_path}",
+                        exception=exc,
+                        category="module_management",
+                    )
+                    break
+            return outcome
+
+    def complete_module(
+        self,
+        module_name: str,
+        party_tracker_data: Dict[str, Any],
+        conversation_history: List[Dict[str, Any]],
+        completion_id: Optional[str] = None,
+        _expected_lifecycle_epoch: Any = _LIFECYCLE_EPOCH_UNSET,
+    ) -> Dict[str, Any]:
+        """Complete one module once, even across concurrent worker processes."""
+        module_name = _normalize_module_name(module_name)
+        completion_id = _normalize_completion_id(completion_id)
+        if _expected_lifecycle_epoch is _LIFECYCLE_EPOCH_UNSET:
+            with _campaign_transaction_lock(self.campaign_file):
+                expected_lifecycle_epoch = _load_campaign_lifecycle_epoch(
+                    self.campaign_file
+                )
+        else:
+            expected_lifecycle_epoch = _expected_lifecycle_epoch
+        key = _module_completion_key(
+            self.campaign_file,
+            module_name,
+            completion_id,
+        )
+        completion_paths = _module_completion_paths(
+            self.campaign_file,
+            self.summaries_dir,
+            module_name,
+        )
+        pre_lock_snapshot = _completion_snapshot(
+            completion_paths,
+            module_name,
+        )
         with _MODULE_COMPLETION_FLIGHTS_GUARD:
             completion = _MODULE_COMPLETION_FLIGHTS.get(key)
             if completion is None:
@@ -512,16 +2422,53 @@ class CampaignManager:
 
         if not is_leader:
             result = copy.deepcopy(completion.result())
-            persisted_campaign = safe_json_load(self.campaign_file)
-            if isinstance(persisted_campaign, dict):
-                self.campaign_data = persisted_campaign
-            return result
+            # The leader can finish immediately before a restore/reset wins
+            # the lifecycle boundary. A joined caller must re-linearize its
+            # own return rather than blindly returning the Future payload from
+            # an earlier timeline.
+            with _campaign_transaction_lock(self.campaign_file):
+                if _load_campaign_lifecycle_epoch(
+                    self.campaign_file
+                ) != expected_lifecycle_epoch:
+                    raise OSError(
+                        "Campaign timeline changed during module completion"
+                    )
+                receipt = _load_completion_receipt(
+                    completion_paths,
+                    module_name,
+                    completion_id,
+                )
+                if completion_id is not None:
+                    if receipt is None or receipt.get("result") != result:
+                        raise OSError(
+                            "Joined completion lost its durable receipt"
+                        )
+                    projection_receipt = receipt
+                else:
+                    projection_receipt = {
+                        "result": result,
+                        "summary_fingerprint": _json_fingerprint(result),
+                    }
+                _validate_receipt_committed_projection(
+                    completion_paths,
+                    module_name,
+                    self.campaign_file,
+                    projection_receipt,
+                )
+                persisted_campaign = _load_json_dict(self.campaign_file)
+                if persisted_campaign is not None:
+                    self.campaign_data = persisted_campaign
+                return result
 
         try:
             result = self._complete_module_once(
                 module_name,
                 party_tracker_data,
                 conversation_history,
+                completion_paths=completion_paths,
+                pre_lock_snapshot=pre_lock_snapshot,
+                completion_id=completion_id,
+                expected_lifecycle_epoch=expected_lifecycle_epoch,
             )
         except BaseException as exc:
             completion.set_exception(exc)
@@ -539,44 +2486,352 @@ class CampaignManager:
         module_name: str,
         party_tracker_data: Dict[str, Any],
         conversation_history: List[Dict[str, Any]],
+        completion_paths: Optional[Dict[str, str]] = None,
+        pre_lock_snapshot=None,
+        completion_id: Optional[str] = None,
+        expected_lifecycle_epoch: Optional[str] = None,
     ) -> Dict[str, Any]:
-        info(
-            f"STATE_CHANGE: Completing module: {module_name}",
-            category="module_loading",
-        )
-        summary = self._generate_module_summary(
+        module_name = _normalize_module_name(module_name)
+        completion_id = _normalize_completion_id(completion_id)
+        paths = completion_paths or _module_completion_paths(
+            self.campaign_file,
+            self.summaries_dir,
             module_name,
-            party_tracker_data,
-            conversation_history,
         )
+        if pre_lock_snapshot is None:
+            pre_lock_snapshot = _completion_snapshot(paths, module_name)
+        with path_transaction_lock(
+            paths["lock_target"],
+            suffix=".completion.lock",
+        ):
+            # A worker for any module can recover a process that died while
+            # holding the campaign-wide commit lock.  The per-module work
+            # marker then distinguishes an orphan archive from a completed
+            # transaction whose final cleanup was interrupted.
+            with _campaign_transaction_lock(self.campaign_file):
+                recovery = _recover_campaign_completion_transaction_locked(
+                    self.campaign_file,
+                    self.summaries_dir,
+                    self.archives_dir,
+                )
+                persisted_campaign = _load_json_dict(self.campaign_file)
+                if persisted_campaign is not None:
+                    self.campaign_data = persisted_campaign
+            work_recovery = _recover_module_work_locked(
+                paths,
+                module_name,
+                self.archives_dir,
+                self.campaign_file,
+                resume_completion_id=completion_id,
+            )
 
-        with _campaign_transaction_lock(self.campaign_file):
-            visit_info = self._get_module_visit_info(module_name)
-            now = datetime.now().isoformat()
-            summary["visitCount"] = visit_info["visitCount"] + 1
-            summary["firstVisitDate"] = visit_info["firstVisitDate"] or now
-            summary["lastVisitDate"] = now
-            summary["sequenceNumber"] = 1
-            self._commit_module_summary_locked(module_name, summary)
-        return summary
+            # Receipt replay and legacy-overlap reuse are completion fast
+            # paths, but they still cross the restore/reset lifecycle
+            # boundary. Linearize their validation, snapshot, epoch check,
+            # and return under the same campaign lock used by lifecycle work.
+            with _campaign_transaction_lock(self.campaign_file):
+                if _load_campaign_lifecycle_epoch(
+                    self.campaign_file
+                ) != expected_lifecycle_epoch:
+                    raise OSError(
+                        "Campaign timeline changed during module completion"
+                    )
+                receipt = _load_completion_receipt(
+                    paths,
+                    module_name,
+                    completion_id,
+                )
+                if receipt is not None:
+                    _validate_receipt_committed_projection(
+                        paths,
+                        module_name,
+                        self.campaign_file,
+                        receipt,
+                    )
+                    persisted_campaign = _load_json_dict(self.campaign_file)
+                    if persisted_campaign is not None:
+                        self.campaign_data = persisted_campaign
+                    return copy.deepcopy(receipt["result"])
+
+                post_lock_snapshot = _completion_snapshot(paths, module_name)
+                (
+                    pre_summary,
+                    pre_pending,
+                    pre_work,
+                    pre_work_status,
+                    pre_work_fp,
+                    pre_visit_count,
+                ) = pre_lock_snapshot
+                post_summary = post_lock_snapshot[0]
+                post_visit_count = post_lock_snapshot[5]
+                observed_transaction_ids = {
+                    value for value in (pre_pending, pre_work) if value
+                }
+                recovered_commit = (
+                    isinstance(recovery, dict)
+                    and recovery.get("status") == "rolled_forward"
+                    and recovery.get("operation") == "completion"
+                    and recovery.get("transaction_id")
+                    in observed_transaction_ids
+                ) or (
+                    isinstance(work_recovery, dict)
+                    and work_recovery.get("status") == "committed_cleanup"
+                    and work_recovery.get("transaction_id")
+                    in observed_transaction_ids
+                )
+                observed_committed_cleanup = (
+                    pre_work_status == "committed"
+                    and pre_work_fp is not None
+                    and pre_work_fp == pre_summary == post_summary
+                )
+                visit_advanced = (
+                    isinstance(post_visit_count, int)
+                    and post_visit_count > (pre_visit_count or 0)
+                )
+                overlapping_commit = (
+                    visit_advanced
+                    or recovered_commit
+                    or observed_committed_cleanup
+                )
+                if (
+                    completion_id is None
+                    and overlapping_commit
+                    and not (
+                        isinstance(recovery, dict)
+                        and recovery.get("status") == "rolled_back"
+                    )
+                ):
+                    committed = _load_committed_module_completion(
+                        paths,
+                        module_name,
+                        self.campaign_file,
+                    )
+                    if committed is not None:
+                        persisted_campaign = _load_json_dict(
+                            self.campaign_file
+                        )
+                        if persisted_campaign is not None:
+                            self.campaign_data = persisted_campaign
+                        return copy.deepcopy(committed)
+
+            info(
+                f"STATE_CHANGE: Completing module: {module_name}",
+                category="module_loading",
+            )
+            resumed_work = (
+                work_recovery.get("work")
+                if isinstance(work_recovery, dict)
+                and work_recovery.get("status") == "resumable"
+                else None
+            )
+            if isinstance(resumed_work, dict):
+                work = resumed_work
+                transaction_id = work["transaction_id"]
+                archive_path = work["archive_path"]
+                summary = copy.deepcopy(work.get("generated_summary"))
+            else:
+                transaction_id = uuid4().hex
+                summary = None
+                work = {
+                    "version": _CAMPAIGN_COMPLETION_TRANSACTION_VERSION,
+                    "transaction_id": transaction_id,
+                    "module_name": module_name,
+                    "operation": "completion",
+                    "status": "generating",
+                    "completion_id": completion_id,
+                    "archive_path": None,
+                    "archive_fingerprint": None,
+                    "started_at": datetime.now().isoformat(),
+                }
+                with _campaign_transaction_lock(self.campaign_file):
+                    current_lifecycle_epoch = _load_campaign_lifecycle_epoch(
+                        self.campaign_file
+                    )
+                    if current_lifecycle_epoch != expected_lifecycle_epoch:
+                        raise OSError(
+                            "Campaign timeline changed before module completion began"
+                        )
+                    _durable_write_json(paths["work"], work)
+                archive_path = None
+            try:
+                if not isinstance(resumed_work, dict):
+                    archive_result = self._archive_conversation_history(
+                        module_name,
+                        conversation_history,
+                        completion_work_path=paths["work"],
+                        completion_work=work,
+                    )
+                    if not archive_result:
+                        raise OSError(
+                            f"Could not durably archive conversation for {module_name}"
+                        )
+                    if isinstance(archive_result, str):
+                        archive_path = os.path.abspath(
+                            os.path.normpath(archive_result)
+                        )
+                        work["archive_path"] = archive_path
+                        _durable_write_json(paths["work"], work)
+
+                if not isinstance(summary, dict):
+                    resume_t038_summary_text = work.get("t038_summary_text")
+
+                    def checkpoint_t038(summary_text: str) -> None:
+                        work["t038_summary_text"] = summary_text
+                        work["t038_summary_fingerprint"] = _json_fingerprint(
+                            summary_text
+                        )
+                        _durable_write_json(paths["work"], work)
+
+                    summary = self._generate_module_summary(
+                        module_name,
+                        party_tracker_data,
+                        conversation_history,
+                        skip_archiving=True,
+                        _resume_t038_summary_text=resume_t038_summary_text,
+                        _t038_checkpoint=checkpoint_t038,
+                    )
+                    # Persist the combined T038/T039 output immediately. A
+                    # same-ID retry can resume locally after a crash; the
+                    # irreducible gap between provider return and this write
+                    # remains at-least-once external-call uncertainty.
+                    work["generated_summary"] = copy.deepcopy(summary)
+                    work["generated_summary_fingerprint"] = _json_fingerprint(
+                        summary
+                    )
+                    _durable_write_json(paths["work"], work)
+
+                with _campaign_transaction_lock(self.campaign_file):
+                    if _load_campaign_lifecycle_epoch(
+                        self.campaign_file
+                    ) != expected_lifecycle_epoch:
+                        raise OSError(
+                            "Campaign timeline changed during module completion"
+                        )
+                    _recover_campaign_completion_transaction_locked(
+                        self.campaign_file,
+                        self.summaries_dir,
+                        self.archives_dir,
+                    )
+                    visit_info = self._get_module_visit_info(module_name)
+                    now = datetime.now().isoformat()
+                    summary["visitCount"] = visit_info["visitCount"] + 1
+                    summary["firstVisitDate"] = (
+                        visit_info["firstVisitDate"] or now
+                    )
+                    summary["lastVisitDate"] = now
+                    summary["sequenceNumber"] = 1
+                    work["summary_fingerprint"] = _json_fingerprint(summary)
+                    _durable_write_json(paths["work"], work)
+                    self._commit_module_summary_locked(
+                        module_name,
+                        summary,
+                        transaction_id=transaction_id,
+                        archive_path=archive_path,
+                        archive_fingerprint=work.get("archive_fingerprint"),
+                        work_path=paths["work"],
+                        completion_id=completion_id,
+                        operation="completion",
+                    )
+            except BaseException:
+                pending = _load_json_dict(paths["campaign_pending"])
+                pending_owns_work = (
+                    isinstance(pending, dict)
+                    and pending.get("transaction_id") == transaction_id
+                )
+                if not pending_owns_work:
+                    latest_work = _load_json_dict(paths["work"])
+                    if isinstance(latest_work, dict):
+                        _remove_scoped_archive(
+                            latest_work.get("archive_path"),
+                            self.archives_dir,
+                            module_name,
+                            transaction_id,
+                        )
+                    _durable_remove(paths["work"])
+                raise
+
+            # The summary, campaign projection, and optional receipt are now
+            # committed.  Work-marker cleanup is best effort: if it fails,
+            # the marker lets the next locked entry verify the receipt and
+            # finish cleanup without deleting the committed archive.
+            try:
+                _durable_remove(paths["work"])
+            except Exception as cleanup_exc:
+                warning(
+                    "FILE_OP: Module completion committed but work-marker "
+                    f"cleanup was deferred for {module_name}: {cleanup_exc}",
+                    category="file_operations",
+                )
+            return summary
 
     def _commit_module_summary_locked(
         self,
         module_name: str,
         summary: Dict[str, Any],
+        transaction_id: Optional[str] = None,
+        archive_path: Optional[str] = None,
+        archive_fingerprint: Optional[str] = None,
+        work_path: Optional[str] = None,
+        completion_id: Optional[str] = None,
+        operation: str = "completion",
     ) -> None:
-        """Atomically commit a summary plus its campaign-state projection."""
-        summary_file = os.path.join(
-            self.summaries_dir, f"{module_name}_summary_001.json"
+        """Crash-recoverably commit summary and campaign projection."""
+        module_name = _normalize_module_name(module_name)
+        _recover_campaign_completion_transaction_locked(
+            self.campaign_file,
+            self.summaries_dir,
+            self.archives_dir,
         )
+        paths = _module_completion_paths(
+            self.campaign_file,
+            self.summaries_dir,
+            module_name,
+        )
+        summary_file = paths["summary"]
+        campaign_file = os.path.abspath(os.path.normpath(self.campaign_file))
+        pending_path = paths["campaign_pending"]
+        transaction_id = transaction_id or uuid4().hex
+        completion_id = _normalize_completion_id(completion_id)
+        if operation not in {"completion", "regeneration"}:
+            raise ValueError(f"Unsupported campaign completion operation {operation}")
+        if completion_id is not None and operation != "completion":
+            raise ValueError("Only completions may publish completion receipts")
+        if operation == "completion":
+            _validate_module_archive(
+                archive_path,
+                self.archives_dir,
+                module_name,
+                archive_fingerprint,
+                transaction_id,
+            )
+        elif archive_path is not None or archive_fingerprint is not None:
+            raise ValueError("Regeneration may not publish a new archive")
+
         summary_existed = os.path.exists(summary_file)
         previous_summary = (
-            safe_json_load(summary_file) if summary_existed else None
+            _load_json_dict(summary_file) if summary_existed else None
         )
+        campaign_existed = os.path.exists(campaign_file)
+        previous_campaign = (
+            _load_json_dict(campaign_file) if campaign_existed else None
+        )
+        if summary_existed and previous_summary is None:
+            raise OSError(f"Could not snapshot module summary {summary_file}")
+        if campaign_existed and previous_campaign is None:
+            raise OSError(f"Could not snapshot campaign file {campaign_file}")
 
-        persisted_campaign = None
-        if os.path.exists(self.campaign_file):
-            persisted_campaign = safe_json_load(self.campaign_file)
+        receipt_path = _completion_receipt_path(paths, completion_id)
+        receipt_existed = bool(receipt_path and os.path.exists(receipt_path))
+        previous_receipt = (
+            _load_json_dict(receipt_path) if receipt_existed and receipt_path else None
+        )
+        if receipt_existed and previous_receipt is None:
+            raise OSError(f"Could not snapshot completion receipt {receipt_path}")
+        if receipt_existed:
+            raise OSError(
+                f"Completion receipt already exists for {module_name}:{completion_id}"
+            )
+        persisted_campaign = previous_campaign
         if not isinstance(persisted_campaign, dict):
             persisted_campaign = copy.deepcopy(self.campaign_data)
         updated_campaign = copy.deepcopy(persisted_campaign)
@@ -605,34 +2860,134 @@ class CampaignManager:
             campaign_data=updated_campaign,
         )
         updated_campaign["lastUpdated"] = datetime.now().isoformat()
-
-        if not safe_write_json(summary_file, summary):
-            raise OSError(
-                f"Could not atomically persist module summary {summary_file}"
-            )
-
+        receipt_after = None
+        if receipt_path is not None:
+            receipt_after = {
+                "version": _CAMPAIGN_COMPLETION_TRANSACTION_VERSION,
+                "operation": "completion",
+                "transaction_id": transaction_id,
+                "module_name": module_name,
+                "completion_id": completion_id,
+                "summary_fingerprint": _json_fingerprint(summary),
+                "result": copy.deepcopy(summary),
+                "committed_at": datetime.now().isoformat(),
+            }
+        pending = {
+            "version": _CAMPAIGN_COMPLETION_TRANSACTION_VERSION,
+            "status": "staged",
+            "operation": operation,
+            "transaction_id": transaction_id,
+            "module_name": module_name,
+            "completion_id": completion_id,
+            "summary_path": summary_file,
+            "campaign_path": campaign_file,
+            "archive_path": archive_path,
+            "archive_fingerprint": archive_fingerprint,
+            "archives_dir": os.path.abspath(os.path.normpath(self.archives_dir)),
+            "work_path": work_path,
+            "receipt_path": receipt_path,
+            "summary_existed": summary_existed,
+            "campaign_existed": campaign_existed,
+            "receipt_existed": receipt_existed,
+            "summary_before": previous_summary,
+            "campaign_before": previous_campaign,
+            "receipt_before": previous_receipt,
+            "summary_after": copy.deepcopy(summary),
+            "campaign_after": copy.deepcopy(updated_campaign),
+            "receipt_after": receipt_after,
+        }
+        _durable_write_json(pending_path, pending)
         try:
-            campaign_written = safe_write_json(
-                self.campaign_file,
-                updated_campaign,
-            )
-        except Exception:
-            self._restore_summary_after_failed_commit(
-                summary_file,
-                summary_existed,
-                previous_summary,
-            )
-            raise
-        if not campaign_written:
-            self._restore_summary_after_failed_commit(
-                summary_file,
-                summary_existed,
-                previous_summary,
-            )
-            raise OSError(
-                f"Could not atomically persist campaign file {self.campaign_file}"
-            )
+            for prefix, path_field in _completion_target_specs(pending):
+                _write_completion_target(
+                    pending[path_field],
+                    pending[f"{prefix}_after"],
+                )
+            if not _completion_targets_match(pending, after=True):
+                raise OSError(
+                    "Campaign-completion commit verification failed"
+                )
+        except BaseException as commit_exc:
+            pending["status"] = "rollback_required"
+            pending["commit_error"] = str(commit_exc)
+            try:
+                _durable_write_json(pending_path, pending)
+            except Exception as marker_exc:
+                raise OSError(
+                    "Campaign completion failed and its recovery marker "
+                    f"could not be updated: {marker_exc}"
+                ) from commit_exc
 
+            rollback_errors = []
+            for prefix, path_field in _completion_target_specs(pending):
+                path = pending[path_field]
+                try:
+                    _restore_completion_target(
+                        path,
+                        pending[f"{prefix}_existed"],
+                        pending.get(f"{prefix}_before"),
+                    )
+                except Exception as rollback_exc:
+                    rollback_errors.append(f"{path}: {rollback_exc}")
+            if rollback_errors or not _completion_targets_match(
+                pending, after=False
+            ):
+                if not rollback_errors:
+                    rollback_errors.append("rollback verification failed")
+                pending["rollback_errors"] = rollback_errors
+                try:
+                    _durable_write_json(pending_path, pending)
+                except Exception:
+                    pass
+                raise OSError(
+                    "Campaign completion failed; recovery marker retained: "
+                    + "; ".join(rollback_errors)
+                ) from commit_exc
+            try:
+                _remove_scoped_archive(
+                    archive_path,
+                    self.archives_dir,
+                    module_name,
+                    transaction_id,
+                )
+                _finish_completion_marker_cleanup(pending)
+            except Exception as cleanup_exc:
+                pending["rollback_errors"] = [
+                    f"transaction cleanup: {cleanup_exc}"
+                ]
+                try:
+                    _durable_write_json(pending_path, pending)
+                except Exception:
+                    pass
+                raise OSError(
+                    "Campaign completion rolled back; recovery marker retained "
+                    f"for cleanup: {cleanup_exc}"
+                ) from commit_exc
+            _durable_remove(pending_path)
+            raise OSError(
+                "Campaign completion commit failed; prior state restored: "
+                f"{commit_exc}"
+            ) from commit_exc
+
+        work_marked = False
+        try:
+            _mark_completion_work_committed(pending)
+            work_marked = True
+        except Exception as cleanup_exc:
+            warning(
+                "FILE_OP: Campaign completion committed but outcome-marker "
+                f"publication was deferred for {module_name}: {cleanup_exc}",
+                category="file_operations",
+            )
+        if work_marked:
+            try:
+                _durable_remove(pending_path)
+            except Exception as cleanup_exc:
+                warning(
+                    "FILE_OP: Campaign completion committed but pending-marker "
+                    f"cleanup was deferred for {module_name}: {cleanup_exc}",
+                    category="file_operations",
+                )
         self.campaign_data = updated_campaign
 
     @staticmethod
@@ -656,8 +3011,15 @@ class CampaignManager:
                 category="file_operations",
             )
     
-    def _generate_module_summary(self, module_name: str, party_tracker_data: Dict[str, Any],
-                                conversation_history: List[Dict[str, Any]], skip_archiving: bool = False) -> Dict[str, Any]:
+    def _generate_module_summary(
+        self,
+        module_name: str,
+        party_tracker_data: Dict[str, Any],
+        conversation_history: List[Dict[str, Any]],
+        skip_archiving: bool = False,
+        _resume_t038_summary_text: Optional[str] = None,
+        _t038_checkpoint: Optional[Callable[[str], None]] = None,
+    ) -> Dict[str, Any]:
         """Generate AI-powered module summary"""
         # Archive full conversation history before summarization (unless skipped for delayed archiving)
         if not skip_archiving:
@@ -826,21 +3188,30 @@ Focus on story outcomes, character development, and decisions that will matter i
             else:  # legacy
                 summ_config = config.DM_SUMM_LEGACY
 
-            response = capture_and_fanout("T038", api_client.create_completion,
-                _request_provider=MODEL_PROVIDER,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                model=summ_config["model"],
-                temperature=0.6,
-                response_format=None,
-                **{k: v for k, v in summ_config.items() if k != "model"})
-            
-            summary_text = response.choices[0].message.content
+            if _resume_t038_summary_text is None:
+                response = capture_and_fanout("T038", api_client.create_completion,
+                    _request_provider=MODEL_PROVIDER,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    model=summ_config["model"],
+                    temperature=0.6,
+                    response_format=None,
+                    **{k: v for k, v in summ_config.items() if k != "model"})
+                summary_text = response.choices[0].message.content
+            else:
+                summary_text = _resume_t038_summary_text
             if not isinstance(summary_text, str) or not summary_text.strip():
                 raise ValueError("T038 returned an empty campaign summary")
             summary_text = summary_text.strip()
+            if _t038_checkpoint is not None:
+                try:
+                    _t038_checkpoint(summary_text)
+                except Exception as checkpoint_exc:
+                    raise _ModuleCompletionCheckpointError(
+                        "Could not durably checkpoint T038 output"
+                    ) from checkpoint_exc
             
             # Have AI also extract exportable data
             export_prompt = f"""From this module summary, extract key data to export to the campaign:
@@ -920,6 +3291,8 @@ Focus on story outcomes, character development, and decisions that will matter i
                 **({"export_error": export_error} if export_error else {}),
             }
 
+        except _ModuleCompletionCheckpointError:
+            raise
         except Exception as e:
             error(f"FAILURE: Error generating module summary", exception=e, category="summary_building")
             # Fallback summary -- INT-H6: persist summary_failed sentinel so
@@ -947,6 +3320,56 @@ Focus on story outcomes, character development, and decisions that will matter i
             }
 
     def regenerate_failed_summary(self, module_name: str) -> bool:
+        """Serialize one regeneration with completions for the same module."""
+        campaign_file = getattr(self, "campaign_file", None)
+        if not campaign_file or not hasattr(self, "campaign_data"):
+            return self._regenerate_failed_summary_locked(module_name)
+
+        paths = _module_completion_paths(
+            campaign_file,
+            self.summaries_dir,
+            module_name,
+        )
+        try:
+            with path_transaction_lock(
+                paths["lock_target"],
+                suffix=".completion.lock",
+            ):
+                with _campaign_transaction_lock(campaign_file):
+                    _recover_campaign_completion_transaction_locked(
+                        campaign_file,
+                        self.summaries_dir,
+                        self.archives_dir,
+                    )
+                    persisted_campaign = _load_json_dict(campaign_file)
+                    if persisted_campaign is not None:
+                        self.campaign_data = persisted_campaign
+                    expected_lifecycle_epoch = _load_campaign_lifecycle_epoch(
+                        campaign_file
+                    )
+                _recover_module_work_locked(
+                    paths,
+                    module_name,
+                    self.archives_dir,
+                    campaign_file,
+                )
+                return self._regenerate_failed_summary_locked(
+                    module_name,
+                    expected_lifecycle_epoch=expected_lifecycle_epoch,
+                )
+        except Exception as exc:
+            error(
+                f"FAILURE: regenerate_failed_summary error for {module_name}",
+                exception=exc,
+                category="summary_building",
+            )
+            return False
+
+    def _regenerate_failed_summary_locked(
+        self,
+        module_name: str,
+        expected_lifecycle_epoch: Any = _LIFECYCLE_EPOCH_UNSET,
+    ) -> bool:
         """Retry a failed T038 summary or a partial T039 export.
 
         INT-H6: when _generate_module_summary's except branch fires, the
@@ -1040,9 +3463,11 @@ Focus on story outcomes, character development, and decisions that will matter i
                 skip_archiving=True,
             )
 
-            if new_summary.get("summary_failed"):
+            if new_summary.get("summary_failed") or new_summary.get(
+                "export_failed"
+            ):
                 error(
-                    f"FAILURE: Regeneration also failed for {module_name}; "
+                    f"FAILURE: Regeneration remained partial for {module_name}; "
                     "leaving previous failed summary in place",
                     category="summary_building",
                 )
@@ -1067,6 +3492,17 @@ Focus on story outcomes, character development, and decisions that will matter i
                     return False
             else:
                 with _campaign_transaction_lock(campaign_file):
+                    if (
+                        expected_lifecycle_epoch
+                        is not _LIFECYCLE_EPOCH_UNSET
+                        and _load_campaign_lifecycle_epoch(campaign_file)
+                        != expected_lifecycle_epoch
+                    ):
+                        warning(
+                            "Campaign timeline changed during summary regeneration",
+                            category="summary_building",
+                        )
+                        return False
                     latest = safe_json_load(summary_file)
                     if not isinstance(latest, dict):
                         return False
@@ -1082,7 +3518,14 @@ Focus on story outcomes, character development, and decisions that will matter i
                     ):
                         if key in latest and key not in new_summary:
                             new_summary[key] = latest[key]
-                    self._commit_module_summary_locked(module_name, new_summary)
+                    new_summary["regeneratedFromFingerprint"] = (
+                        _json_fingerprint(latest)
+                    )
+                    self._commit_module_summary_locked(
+                        module_name,
+                        new_summary,
+                        operation="regeneration",
+                    )
 
             info(
                 f"SUCCESS: Regenerated summary for {module_name}",
@@ -1144,9 +3587,12 @@ Focus on story outcomes, character development, and decisions that will matter i
         self,
         module_name: str,
         conversation_history: List[Dict[str, Any]],
-    ) -> bool:
+        completion_work_path: Optional[str] = None,
+        completion_work: Optional[Dict[str, Any]] = None,
+    ) -> Any:
         """Atomically archive history with a collision-free sequence number."""
         try:
+            module_name = _normalize_module_name(module_name)
             archive_lock_target = getattr(
                 self,
                 "campaign_file",
@@ -1162,6 +3608,19 @@ Focus on story outcomes, character development, and decisions that will matter i
                     self.archives_dir,
                     f"{module_name}_conversation_{sequence_num:03d}.json",
                 )
+                archive_file = os.path.abspath(os.path.normpath(archive_file))
+                archive_file = _validate_module_archive_path(
+                    archive_file,
+                    self.archives_dir,
+                    module_name,
+                )
+
+                # Persist the intended path before creating it.  If this
+                # process is killed during the write, the next same-module
+                # worker can remove both the orphan and its stale writer lock.
+                if completion_work_path and isinstance(completion_work, dict):
+                    completion_work["archive_path"] = archive_file
+                    _durable_write_json(completion_work_path, completion_work)
 
                 archived_history = copy.deepcopy(conversation_history)
                 filtered_history = []
@@ -1202,10 +3661,18 @@ Focus on story outcomes, character development, and decisions that will matter i
                     "conversationHistory": filtered_history,
                     "totalMessages": len(filtered_history),
                 }
-                if not safe_write_json(archive_file, archive_data):
-                    raise OSError(
-                        "Could not atomically persist conversation archive "
-                        f"{archive_file}"
+                if completion_work_path and isinstance(completion_work, dict):
+                    archive_data["completionTransactionId"] = completion_work[
+                        "transaction_id"
+                    ]
+                _durable_write_json(archive_file, archive_data)
+                if completion_work_path and isinstance(completion_work, dict):
+                    completion_work["archive_fingerprint"] = _json_fingerprint(
+                        archive_data
+                    )
+                    _durable_write_json(
+                        completion_work_path,
+                        completion_work,
                     )
             print(
                 f"DEBUG: [Module Archive] Archived {len(filtered_history)} "
@@ -1216,6 +3683,8 @@ Focus on story outcomes, character development, and decisions that will matter i
                 f"messages for {module_name} (sequence {sequence_num:03d})",
                 category="summary_building",
             )
+            if completion_work_path and isinstance(completion_work, dict):
+                return archive_file
             return True
         except Exception as e:
             warning(
@@ -1343,25 +3812,34 @@ Focus on story outcomes, character development, and decisions that will matter i
     
     def establish_hub(self, hub_name: str, hub_data: Dict[str, Any]):
         """Establish a new hub location"""
-        self.campaign_data['hubs'][hub_name] = {
+        hub_record = {
             "establishedDate": datetime.now().isoformat(),
             "hubType": hub_data.get("hubType", "settlement"),
             "description": hub_data.get("description", ""),
             "services": hub_data.get("services", []),
             "connectedModules": hub_data.get("connectedModules", []),
-            "ownership": hub_data.get("ownership", "party")
+            "ownership": hub_data.get("ownership", "party"),
         }
-        
-        # Mark hub as established
-        self.campaign_data['worldState']['hubEstablished'] = True
-        
-        # Set as primary hub if it's the first one
-        if not self.campaign_data['hubModule']:
-            self.campaign_data['hubModule'] = hub_name
-        
-        # Save state
-        self.campaign_data['lastUpdated'] = datetime.now().isoformat()
-        safe_json_dump(self.campaign_data, self.campaign_file)
+
+        def add_hub(campaign):
+            if not isinstance(campaign.get("hubs"), dict):
+                campaign["hubs"] = {}
+            if not isinstance(campaign.get("worldState"), dict):
+                campaign["worldState"] = {}
+            campaign["hubs"][hub_name] = copy.deepcopy(hub_record)
+            campaign["worldState"]["hubEstablished"] = True
+            if not campaign.get("hubModule"):
+                campaign["hubModule"] = hub_name
+            campaign["lastUpdated"] = datetime.now().isoformat()
+            return True
+
+        self.campaign_data, _changed = mutate_campaign_state(
+            self.campaign_file,
+            add_hub,
+            summaries_dir=self.summaries_dir,
+            archives_dir=self.archives_dir,
+            fallback=_default_campaign_data(),
+        )
         
         info(f"STATE_CHANGE: Hub established: {hub_name}", category="module_loading")
     
@@ -1378,12 +3856,18 @@ Focus on story outcomes, character development, and decisions that will matter i
         info(f"STATE_CHANGE: Transitioning from {from_module} to {to_module}", category="module_loading")
         game_event("module_transition", {"from": from_module, "to": to_module})
         
-        # Update current module
-        self.campaign_data['currentModule'] = to_module
-        
-        # Save state
-        self.campaign_data['lastUpdated'] = datetime.now().isoformat()
-        safe_json_dump(self.campaign_data, self.campaign_file)
+        def set_current_module(campaign):
+            campaign["currentModule"] = to_module
+            campaign["lastUpdated"] = datetime.now().isoformat()
+            return True
+
+        self.campaign_data, _changed = mutate_campaign_state(
+            self.campaign_file,
+            set_current_module,
+            summaries_dir=self.summaries_dir,
+            archives_dir=self.archives_dir,
+            fallback=_default_campaign_data(),
+        )
     
     def can_start_module(self, module_name: str) -> bool:
         """Check if a module can be started"""
@@ -1465,9 +3949,14 @@ Focus on story outcomes, character development, and decisions that will matter i
             return (True, from_module, to_module)
         return (False, from_module, to_module)
     
-    def handle_cross_module_transition(self, from_module: str, to_module: str, 
-                                     party_tracker_data: Dict[str, Any], 
-                                     conversation_history: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def handle_cross_module_transition(
+        self,
+        from_module: str,
+        to_module: str,
+        party_tracker_data: Dict[str, Any],
+        conversation_history: List[Dict[str, Any]],
+        completion_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Handle automatic summarization when crossing module boundaries"""
         debug(f"STATE_CHANGE: Cross-module transition detected: {from_module} -> {to_module}", category="module_loading")
         
@@ -1475,36 +3964,12 @@ Focus on story outcomes, character development, and decisions that will matter i
         if from_module:
             print(f"DEBUG: [Module Summary] Generating AI summary for module: {from_module}")
             debug(f"STATE_CHANGE: Auto-generating summary for {from_module}...", category="summary_building")
-            
-            summary = self._generate_module_summary(from_module, party_tracker_data, conversation_history, skip_archiving=True)
-            
-            # Get existing visit info
-            visit_info = self._get_module_visit_info(from_module)
-            
-            # Update visit tracking
-            summary["visitCount"] = visit_info["visitCount"] + 1
-            summary["firstVisitDate"] = visit_info["firstVisitDate"] or datetime.now().isoformat()
-            summary["lastVisitDate"] = datetime.now().isoformat()
-            
-            # Save summary as living document (always _001)
-            summary_file = os.path.join(self.summaries_dir, f"{from_module}_summary_001.json")
-            
-            # Add sequence number to summary data (always 1 for living summaries)
-            summary["sequenceNumber"] = 1
-            safe_json_dump(summary, summary_file)
-            print(f"DEBUG: [Module Summary] Summary saved to: {summary_file}")
-            
-            # Update campaign state (track completion but allow revisits)
-            if from_module not in self.campaign_data['completedModules']:
-                self.campaign_data['completedModules'].append(from_module)
-            
-            # Handle module completion export
-            self._handle_module_completion_export(from_module, summary)
-            
-            # Save campaign state
-            self.campaign_data['lastUpdated'] = datetime.now().isoformat()
-            safe_json_dump(self.campaign_data, self.campaign_file)
-            
+            summary = self.complete_module(
+                from_module,
+                party_tracker_data,
+                conversation_history,
+                completion_id=completion_id,
+            )
             info(f"SUCCESS: {from_module} summarized and archived (visit #{summary.get('visitCount', 1)})", category="summary_building")
             return summary
         

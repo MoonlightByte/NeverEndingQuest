@@ -1557,7 +1557,20 @@ Respond with JSON:
             return True  # Default to valid if validation fails
     
     def scan_and_integrate_new_modules(self) -> List[str]:
-        """Scan for new modules and integrate them automatically"""
+        """Scan/integrate under the shared module-publication boundary."""
+        from utils.module_refresh_lock import module_refresh_lock
+
+        with module_refresh_lock() as acquired:
+            if not acquired:
+                warning(
+                    "Module integration skipped: refresh lock timeout",
+                    category="module_integration",
+                )
+                return []
+            return self._scan_and_integrate_new_modules_locked()
+
+    def _scan_and_integrate_new_modules_locked(self) -> List[str]:
+        """Perform the scan while the caller owns module refresh."""
         integrated_modules = []
         
         try:

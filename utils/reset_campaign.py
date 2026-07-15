@@ -158,8 +158,36 @@ def reset_module(module_name):
         os.remove(npc_codex)
 
 def reset_global_state():
+    """Reset global files without interleaving a party module publication."""
+    from core.managers.campaign_manager import (
+        _campaign_transaction_lock,
+        _party_module_transition_lock,
+    )
+    from utils.module_refresh_lock import module_refresh_lock
+
+    # Global lock order: party transition -> module (when needed) -> campaign.
+    with _party_module_transition_lock():
+        with module_refresh_lock() as refresh_acquired:
+            if not refresh_acquired:
+                raise TimeoutError("Module refresh is active; retry reset")
+            with _campaign_transaction_lock("modules/campaign.json"):
+                return _reset_global_state_locked()
+
+
+def _reset_global_state_locked():
     """Phase 3: Create fresh game state"""
     print(f"\n{CYAN}PHASE 3: Creating fresh game state...{RESET}")
+
+    campaign_file = os.path.join("modules", "campaign.json")
+    from core.managers.campaign_manager import (
+        _assert_no_active_campaign_completion,
+        _bump_campaign_lifecycle_epoch,
+    )
+
+    # The wrapper already holds party then campaign. Refuse before mutating
+    # any global file, then invalidate in-memory pre-reset workers.
+    _assert_no_active_campaign_completion(campaign_file)
+    _bump_campaign_lifecycle_epoch(campaign_file)
     
     # Reset party tracker to empty object (matches installer behavior)
     with open("party_tracker.json", 'w') as f:
@@ -171,11 +199,18 @@ def reset_global_state():
         os.remove("player_storage.json")
         print("  [OK] Removed player_storage.json (will be created fresh)")
     
-    # Delete campaign.json - let game create fresh one
-    campaign_file = os.path.join("modules", "campaign.json")
+    # Delete campaign state and its transactional metadata under the same
+    # lifecycle boundary used by completion/save/restore.
     if os.path.exists(campaign_file):
         os.remove(campaign_file)
         print("  [OK] Removed modules/campaign.json (will be created fresh)")
+    completion_metadata = os.path.join(
+        os.path.dirname(campaign_file),
+        f".{os.path.basename(campaign_file)}.completion",
+    )
+    if os.path.isdir(completion_metadata):
+        shutil.rmtree(completion_metadata)
+        print("  [OK] Removed campaign completion recovery metadata")
     
     # Delete world_registry.json - let module stitcher create fresh one
     world_registry_file = os.path.join("modules", "world_registry.json")
@@ -294,6 +329,26 @@ def clear_all_files():
         print("  ✓ Cleared campaign_summaries")
 
 def perform_reset_logic():
+    """Run the full reset under the shared campaign lifecycle boundary."""
+    from core.managers.campaign_manager import (
+        _assert_no_active_campaign_completion,
+        _bump_campaign_lifecycle_epoch,
+        _campaign_transaction_lock,
+        _party_module_transition_lock,
+    )
+    from utils.module_refresh_lock import module_refresh_lock
+
+    with _party_module_transition_lock():
+        with module_refresh_lock() as refresh_acquired:
+            if not refresh_acquired:
+                raise TimeoutError("Module refresh is active; retry reset")
+            with _campaign_transaction_lock("modules/campaign.json"):
+                _assert_no_active_campaign_completion("modules/campaign.json")
+                _bump_campaign_lifecycle_epoch("modules/campaign.json")
+                return _perform_reset_logic_locked()
+
+
+def _perform_reset_logic_locked():
     """The core logic of the reset, without prompts or top-level error handling."""
     # Phase 1: Backup everything
     backup_dir = create_backup()

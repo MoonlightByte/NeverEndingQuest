@@ -78,11 +78,11 @@ import glob
 import time
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T063", "main.py", 609)
-register_callsite("T064", "main.py", 711)
-register_callsite("T065", "main.py", 1628)
-register_callsite("T066", "main.py", 2132)
-register_callsite("T067", "main.py", 2824)
+register_callsite("T063", "main.py", 636)
+register_callsite("T064", "main.py", 738)
+register_callsite("T065", "main.py", 1681)
+register_callsite("T066", "main.py", 2185)
+register_callsite("T067", "main.py", 3493)
 from datetime import datetime, timedelta
 from termcolor import colored
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
@@ -335,7 +335,34 @@ def _run_startup_kickoff_once(
             )
             return "stale_discarded"
 
-        process_ai_response(initial_ai_response, party_tracker_data, location_data, conversation_history)
+        process_result = process_ai_response(
+            initial_ai_response,
+            party_tracker_data,
+            location_data,
+            conversation_history,
+        )
+        (
+            process_result,
+            party_tracker_data,
+            location_data,
+            conversation_history,
+        ) = resolve_retryable_ai_result(
+            process_result,
+            party_tracker_data,
+            location_data,
+            conversation_history,
+        )
+        if (
+            isinstance(process_result, dict)
+            and (
+                process_result.get("retryable") is True
+                or process_result.get("status") == "error"
+            )
+        ):
+            raise RuntimeError(
+                "startup response processing pending: "
+                f"{process_result.get('status', 'unknown')}"
+            )
         update_result = mark_kickoff_done(startup_attempt_id, lease_owner)
         if update_result.get("status") != "updated":
             emit_startup_marker(
@@ -781,6 +808,32 @@ def replace_transition_narration(
             )
         ):
             conversation_history[index]["content"] = narration
+            return True
+    return False
+
+
+def remove_transition_placeholder(conversation_history, expected_placeholder):
+    """Remove only the exact unseen T013 output for the latest transition."""
+    if not isinstance(expected_placeholder, str) or not expected_placeholder:
+        return False
+    transition_index = None
+    for index in range(len(conversation_history) - 1, -1, -1):
+        message = conversation_history[index]
+        if (
+            message.get("role") == "user"
+            and "Location transition:" in message.get("content", "")
+        ):
+            transition_index = index
+            break
+    if transition_index is None:
+        return False
+    for index in range(transition_index + 1, len(conversation_history)):
+        message = conversation_history[index]
+        if (
+            message.get("role") == "assistant"
+            and message.get("content") == expected_placeholder
+        ):
+            del conversation_history[index]
             return True
     return False
 
@@ -2249,10 +2302,169 @@ def extract_json_from_codeblock(text):
         return match.group(1)
     return text
 
+
+def retry_staged_module_completions(
+    pending_archive_info=None,
+    conversation_history=None,
+):
+    """Drain durable transition intents; failures remain queued for retry."""
+    from core.managers.campaign_manager import CampaignManager
+
+    manager = CampaignManager()
+    targeted_result = None
+    if pending_archive_info:
+        targeted_result = manager.complete_staged_module_completion(
+            pending_archive_info["from_module"],
+            pending_archive_info["completion_id"],
+            conversation_history=conversation_history,
+        )
+    outcome = manager.drain_module_completion_intents()
+    return targeted_result, outcome
+
+
+def require_staged_module_completions_drained():
+    """Fail closed before building context or requesting new narration."""
+    _targeted, outcome = retry_staged_module_completions()
+    if outcome["failed"] or outcome["blocked"]:
+        raise RuntimeError(
+            "Module completion recovery remains active: "
+            f"failed={len(outcome['failed'])}, "
+            f"blocked={len(outcome['blocked'])}"
+        )
+    return outcome
+
+
+def rebuild_conversation_for_current_party(
+    conversation_history,
+    *,
+    return_party=False,
+):
+    """Force system/campaign context to match the authoritative party state."""
+    from core.managers.campaign_manager import _party_module_transition_lock
+
+    # Keep module identity stable across the initial path selection, the
+    # updater's authoritative disk reload, and the strict raw persistence.
+    with _party_module_transition_lock():
+        history, party = _rebuild_conversation_for_current_party_locked(
+            conversation_history
+        )
+    return (history, party) if return_party else history
+
+
+def _rebuild_conversation_for_current_party_locked(conversation_history):
+    party_tracker_data = load_json_file("party_tracker.json")
+    if not isinstance(party_tracker_data, dict):
+        raise RuntimeError(
+            "Cannot rebuild AI context after module completion without party state"
+        )
+    module_name = party_tracker_data.get("module", "").replace(" ", "_")
+    path_manager = ModulePathManager(module_name)
+    plot_data = load_json_file(path_manager.get_plot_path())
+    module_data = load_json_file(path_manager.get_module_file_path())
+    refreshed = update_conversation_history(
+        conversation_history,
+        party_tracker_data,
+        plot_data,
+        module_data,
+    )
+    conversation_history[:] = refreshed
+    save_conversation_history(
+        conversation_history,
+        strict=True,
+        allow_compression=False,
+    )
+    return conversation_history, party_tracker_data
+
+
+def _party_transition_projection(party_tracker_data):
+    """Small identity used to reject narration for a superseded location."""
+    if not isinstance(party_tracker_data, dict):
+        return None
+    world = party_tracker_data.get("worldConditions")
+    if not isinstance(world, dict):
+        world = {}
+    return (
+        party_tracker_data.get("module"),
+        world.get("currentAreaId"),
+        world.get("currentLocationId"),
+    )
+
+
+def prepare_conversation_for_ai_request(conversation_history):
+    """Close queued transitions and rebuild context before any DM request."""
+    outcome = require_staged_module_completions_drained()
+    if not (outcome["completed"] or outcome["cancelled"]):
+        return outcome
+    rebuild_conversation_for_current_party(conversation_history)
+    return outcome
+
 def process_ai_response(response, party_tracker_data, location_data, conversation_history):
     global needs_conversation_history_update
-    
+    from contextlib import ExitStack
+
+    response_fences = ExitStack()
+
     try:
+        from core.managers.campaign_manager import (
+            _party_module_transition_lock,
+        )
+
+        # One accepted response is a party-state transaction. This is the
+        # linearization fence for the request snapshot, recovery drain,
+        # display, state actions, and any ordered follow-up.
+        response_fences.enter_context(_party_module_transition_lock())
+        caller_projection = _party_transition_projection(party_tracker_data)
+        if (
+            caller_projection is not None
+            and caller_projection[0]
+            and caller_projection[2]
+        ):
+            authoritative_projection = _party_transition_projection(
+                load_json_file("party_tracker.json")
+            )
+            if authoritative_projection != caller_projection:
+                return {
+                    "status": "stale_response_context",
+                    "retryable": True,
+                }
+
+        # Finish transitions left ready by an earlier return/process crash.
+        # Intents carry their own bounded history snapshot, so this cannot mix
+        # later-module conversation into the archived visit.
+        try:
+            _targeted, drain_outcome = retry_staged_module_completions()
+            if drain_outcome["failed"] or drain_outcome["blocked"]:
+                error(
+                    "FAILURE: Refusing to process a new response while an "
+                    "older module completion remains unresolved",
+                    category="module_management",
+                )
+                return {
+                    "status": "module_completion_pending",
+                    "retryable": True,
+                    "completion_outcome": drain_outcome,
+                }
+            if drain_outcome["completed"] or drain_outcome["cancelled"]:
+                # The provider response was assembled before this recovery
+                # changed the authoritative timeline. Never execute its stale
+                # actions or display its stale narration.
+                return {
+                    "status": "stale_response_context",
+                    "retryable": True,
+                    "completion_outcome": drain_outcome,
+                }
+        except Exception as drain_exc:
+            error(
+                "FAILURE: Could not retry staged module completions",
+                exception=drain_exc,
+                category="module_management",
+            )
+            return {
+                "status": "module_completion_pending",
+                "retryable": True,
+                "error": str(drain_exc),
+            }
+
         json_content = extract_json_from_codeblock(response)
         parsed_response = json.loads(json_content)
         actions = parsed_response.get("actions", [])
@@ -2274,48 +2486,167 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
 
         # --- NEW TRANSITION LOGIC ---
         is_transition = False
+        transition_action_index = None
         departure_narration = ""
         # Check if the response contains a transition action
-        for action in parsed_response.get("actions", []):
+        for action_index, action in enumerate(parsed_response.get("actions", [])):
             if action.get("action") == "transitionLocation":
+                if transition_action_index is not None:
+                    return {
+                        "status": "invalid_transition_actions",
+                        "retryable": True,
+                        "error": "Only one transitionLocation may be processed per response",
+                    }
                 is_transition = True
+                transition_action_index = action_index
                 departure_narration = parsed_response.get("narration", "")
-                break
+
+        if is_transition:
+            mixed_pre_transition_update = any(
+                action.get("action") == "updatePartyTracker"
+                for action in actions[:transition_action_index]
+            )
+            if mixed_pre_transition_update:
+                return {
+                    "status": "invalid_transition_actions",
+                    "retryable": True,
+                    "error": (
+                        "updatePartyTracker may not precede transitionLocation "
+                        "in the same response"
+                    ),
+                }
         
         # If it's a transition, handle it with the special two-step process
         if is_transition:
             debug("STATE_CHANGE: Transition action detected. Holding departure narration.", category="location_transitions")
             transition_placeholder = None
-
-            # SURGICAL FIX: Save pre-transition response to history before processing action
-            conversation_history.append({"role": "assistant", "content": response})
-            save_conversation_history(conversation_history)
-            debug("SUCCESS: Pre-transition assistant message saved to history", category="location_transitions")
+            pending_archive_info = None
 
             # Step 1: Process actions to update state (summary, party_tracker, etc.)
             actions_processed = False
-            for action in parsed_response.get("actions", []):
+            needs_transition_dm_response = False
+            pre_transition_message = None
+            transition_actions = actions[: transition_action_index + 1]
+            deferred_actions = actions[transition_action_index + 1 :]
+            for action in transition_actions:
+                if action.get("action") == "transitionLocation":
+                    # Make the accepted command available to the transition
+                    # publisher only when it is about to run. Earlier control
+                    # signals must not persist an unseen future transition.
+                    pre_transition_message = {
+                        "role": "assistant",
+                        "content": response,
+                    }
+                    conversation_history.append(pre_transition_message)
                 result = action_handler.process_action(action, party_tracker_data, location_data, conversation_history)
                 actions_processed = True
                 if isinstance(result, dict):
                     response_data = result.get("response_data", {})
                     if isinstance(response_data, dict):
+                        pending = response_data.get("pending_archive")
+                        if isinstance(pending, dict):
+                            pending_archive_info = pending
                         placeholder = response_data.get("transition_narration")
                         if isinstance(placeholder, str) and placeholder:
                             transition_placeholder = placeholder
                     if result.get("needs_update"):
                         needs_conversation_history_update = True
+                    result_status = result.get("status")
+                    if result_status == "error":
+                        # A pending_archive on an error is recovery metadata,
+                        # not proof that the party/location transition
+                        # committed. Do not render arrival narration, cancel a
+                        # clean prepare as if successful, or run later actions.
+                        recovery_required = response_data.get(
+                            "transition_recovery_required"
+                        )
+                        if recovery_required is None:
+                            # Older/non-transition result producers remain
+                            # conservative unless they explicitly prove the
+                            # durable publication state is absent.
+                            recovery_required = pending_archive_info is not None
+                        if pending_archive_info is not None and recovery_required:
+                            # Movement may already be published. Preserve the
+                            # correlated raw/marker/T013 suffix for recovery,
+                            # but block later actions and surface the pending
+                            # state explicitly to the outer loop.
+                            return {
+                                "status": "module_completion_pending",
+                                "retryable": True,
+                                "response_data": response_data,
+                            }
+                        if pre_transition_message is not None:
+                            for index in range(
+                                len(conversation_history) - 1,
+                                -1,
+                                -1,
+                            ):
+                                if (
+                                    conversation_history[index]
+                                    is pre_transition_message
+                                ):
+                                    del conversation_history[index]
+                                    break
+                        return result
+                    if result_status == "exit":
+                        return "exit"
+                    if result_status == "restart":
+                        return "restart"
+                    if result_status == "enter_levelup_mode":
+                        return result
+                    if result_status in {
+                        "needs_response",
+                        "needs_post_combat_narration",
+                    }:
+                        followup_history = (
+                            load_json_file(json_file)
+                            or conversation_history
+                        )
+                        (
+                            followup_history,
+                            party_tracker_data,
+                        ) = rebuild_conversation_for_current_party(
+                            followup_history,
+                            return_party=True,
+                        )
+                        location_data = get_location_data_from_party_tracker(
+                            party_tracker_data
+                        )
+                        ai_response = get_ai_response(followup_history)
+                        if result_status == "needs_post_combat_narration":
+                            process_ai_response._just_finished_combat = True
+                        return process_ai_response(
+                            ai_response,
+                            party_tracker_data,
+                            location_data,
+                            followup_history,
+                        )
                     # Check if we need to generate a DM response (e.g., after module creation)
                     if result.get("needs_dm_response"):
-                        # Save current assistant response first
-                        current_response = {"role": "assistant", "content": response}
-                        conversation_history.append(current_response)
-                        save_conversation_history(conversation_history)
-                        
-                        # Reload and generate new AI response
-                        conversation_history = load_json_file("modules/conversation_history/conversation_history.json") or []
-                        ai_response = get_ai_response(conversation_history)
-                        return process_ai_response(ai_response, party_tracker_data, location_data, conversation_history)
+                        if action.get("action") == "transitionLocation":
+                            needs_transition_dm_response = True
+                            continue
+                        followup_history = (
+                            load_json_file(json_file)
+                            or conversation_history
+                        )
+                        (
+                            followup_history,
+                            party_tracker_data,
+                        ) = rebuild_conversation_for_current_party(
+                            followup_history,
+                            return_party=True,
+                        )
+                        location_data = get_location_data_from_party_tracker(
+                            party_tracker_data
+                        )
+                        ai_response = get_ai_response(followup_history)
+                        return process_ai_response(
+                            ai_response,
+                            party_tracker_data,
+                            location_data,
+                            followup_history,
+                        )
                 elif isinstance(result, bool) and result:
                     needs_conversation_history_update = True
             if actions_processed:
@@ -2331,12 +2662,35 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
             # <--- MODIFIED SECTION: Use the new seamless narration generator --->
             # Step 4: Blend the departure and arrival narrations into a single, cohesive story.
             full_narration = generate_seamless_transition_narration(departure_narration, arrival_narration)
-            
-            # Step 5: Display the final, polished narration
-            print(colored("Dungeon Master:", "blue"), colored(full_narration, "blue"))
-            # <--- END OF MODIFIED SECTION --->
 
-            # Step 6: Replace the raw transition narration with the seamless version in history
+            # T063/T064 may overlap another worker's transition. Do not save
+            # or display narration for a destination that was superseded while
+            # those provider calls were running.
+            from core.managers.campaign_manager import (
+                _party_module_transition_lock,
+            )
+
+            with _party_module_transition_lock():
+                authoritative_party = load_json_file("party_tracker.json")
+                if _party_transition_projection(
+                    authoritative_party
+                ) != _party_transition_projection(fresh_party_data):
+                    superseded_history = load_json_file(json_file) or []
+                    if remove_transition_placeholder(
+                        superseded_history,
+                        transition_placeholder,
+                    ):
+                        save_conversation_history(
+                            superseded_history,
+                            strict=True,
+                            allow_compression=False,
+                        )
+                    return {
+                        "status": "transition_state_changed",
+                        "retryable": True,
+                    }
+
+            # Step 5: Replace the raw transition narration with the seamless version in history
             # This ensures conversation history matches what the player saw
             fresh_conversation_history = load_json_file(json_file) or []
             if replace_transition_narration(
@@ -2357,7 +2711,257 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                     category="location_transitions",
                 )
 
-            save_conversation_history(fresh_conversation_history)
+            save_conversation_history(
+                fresh_conversation_history,
+                strict=True,
+                allow_compression=False,
+            )
+
+            # Party movement and the exact narration the player is about to
+            # but it must not create a history/display mismatch.
+            print(
+                colored("Dungeon Master:", "blue"),
+                colored(full_narration, "blue"),
+            )
+
+            if pending_archive_info:
+                try:
+                    _targeted, completion_outcome = retry_staged_module_completions(
+                        pending_archive_info,
+                        fresh_conversation_history,
+                    )
+                    if (
+                        completion_outcome["failed"]
+                        or completion_outcome["blocked"]
+                    ):
+                        return {
+                            "status": "module_completion_pending",
+                            "retryable": True,
+                            "completion_outcome": completion_outcome,
+                            "role": "assistant",
+                            "content": json.dumps(
+                                {
+                                    "narration": full_narration,
+                                    "actions": [],
+                                }
+                            ),
+                        }
+                    completion_confirmed = (
+                        _targeted is not None
+                        or pending_archive_info["completion_id"]
+                        in completion_outcome["completed"]
+                    )
+                    if not completion_confirmed:
+                        return {
+                            "status": "module_completion_pending",
+                            "retryable": True,
+                            "error": (
+                                "Transition completion was not receipt-backed"
+                            ),
+                            "completion_outcome": completion_outcome,
+                        }
+                except Exception as completion_exc:
+                    error(
+                        "FAILURE: Cross-module completion remains queued",
+                        exception=completion_exc,
+                        category="module_management",
+                    )
+                    return {
+                        "status": "module_completion_pending",
+                        "retryable": True,
+                        "error": str(completion_exc),
+                        "role": "assistant",
+                        "content": json.dumps(
+                            {"narration": full_narration, "actions": []}
+                        ),
+                    }
+
+            # The transition's final displayed history and any ordered
+            # completion are now durable. Force a rebuild even for a
+            # within-module move: the targeted drain happened earlier, so the
+            # normal pre-request hook cannot infer that its context is stale.
+            try:
+                (
+                    fresh_conversation_history,
+                    party_tracker_data,
+                ) = (
+                    rebuild_conversation_for_current_party(
+                        fresh_conversation_history,
+                        return_party=True,
+                    )
+                )
+                deferred_location_data = (
+                    get_location_data_from_party_tracker(
+                        party_tracker_data
+                    )
+                )
+            except Exception as context_exc:
+                return {
+                    "status": "transition_context_pending",
+                    "retryable": True,
+                    "error": str(context_exc),
+                }
+
+            # Only now may later actions (especially saveGame) observe and
+            # snapshot the destination timeline.
+            for action in deferred_actions:
+                result = action_handler.process_action(
+                    action,
+                    party_tracker_data,
+                    deferred_location_data,
+                    fresh_conversation_history,
+                )
+                if isinstance(result, dict):
+                    if result.get("needs_update"):
+                        needs_conversation_history_update = True
+                    result_status = result.get("status")
+                    if result_status == "error":
+                        return result
+                    response_data = result.get("response_data")
+                    deferred_pending = (
+                        response_data.get("pending_archive")
+                        if isinstance(response_data, dict)
+                        else None
+                    )
+                    if isinstance(deferred_pending, dict):
+                        latest_history = (
+                            load_json_file(json_file)
+                            or fresh_conversation_history
+                        )
+                        try:
+                            deferred_targeted, deferred_outcome = (
+                                retry_staged_module_completions(
+                                    deferred_pending,
+                                    latest_history,
+                                )
+                            )
+                        except Exception as deferred_completion_exc:
+                            return {
+                                "status": "module_completion_pending",
+                                "retryable": True,
+                                "error": str(deferred_completion_exc),
+                            }
+                        deferred_confirmed = (
+                            deferred_targeted is not None
+                            or deferred_pending["completion_id"]
+                            in deferred_outcome["completed"]
+                        )
+                        if (
+                            deferred_outcome["failed"]
+                            or deferred_outcome["blocked"]
+                            or not deferred_confirmed
+                        ):
+                            return {
+                                "status": "module_completion_pending",
+                                "retryable": True,
+                                "completion_outcome": deferred_outcome,
+                            }
+                        (
+                            fresh_conversation_history,
+                            party_tracker_data,
+                        ) = (
+                            rebuild_conversation_for_current_party(
+                                latest_history,
+                                return_party=True,
+                            )
+                        )
+                        deferred_location_data = (
+                            get_location_data_from_party_tracker(
+                                party_tracker_data
+                            )
+                        )
+                    elif result.get("needs_update"):
+                        fresh_conversation_history = (
+                            load_json_file(json_file)
+                            or fresh_conversation_history
+                        )
+                        refreshed_party = load_json_file(
+                            "party_tracker.json"
+                        )
+                        if isinstance(refreshed_party, dict):
+                            party_tracker_data = refreshed_party
+                            deferred_location_data = (
+                                get_location_data_from_party_tracker(
+                                    party_tracker_data
+                                )
+                            )
+                    if result_status == "exit":
+                        return "exit"
+                    if result_status == "restart":
+                        return "restart"
+                    if result_status == "enter_levelup_mode":
+                        return result
+                    if (
+                        result.get("needs_dm_response")
+                        or result_status
+                        in {
+                            "needs_post_combat_narration",
+                            "needs_response",
+                        }
+                    ):
+                        followup_history = (
+                            load_json_file(json_file)
+                            or fresh_conversation_history
+                        )
+                        (
+                            followup_history,
+                            party_tracker_data,
+                        ) = (
+                            rebuild_conversation_for_current_party(
+                                followup_history,
+                                return_party=True,
+                            )
+                        )
+                        deferred_location_data = (
+                            get_location_data_from_party_tracker(
+                                party_tracker_data
+                            )
+                        )
+                        ai_response = get_ai_response(followup_history)
+                        if result_status == "needs_post_combat_narration":
+                            process_ai_response._just_finished_combat = True
+                        return process_ai_response(
+                            ai_response,
+                            party_tracker_data,
+                            deferred_location_data,
+                            followup_history,
+                        )
+                elif isinstance(result, str) and result in {"exit", "restart"}:
+                    return result
+                elif isinstance(result, bool) and result:
+                    needs_conversation_history_update = True
+                    fresh_conversation_history = (
+                        load_json_file(json_file)
+                        or fresh_conversation_history
+                    )
+                    refreshed_party = load_json_file("party_tracker.json")
+                    if isinstance(refreshed_party, dict):
+                        party_tracker_data = refreshed_party
+                        deferred_location_data = (
+                            get_location_data_from_party_tracker(
+                                party_tracker_data
+                            )
+                        )
+
+            if needs_transition_dm_response:
+                followup_history = load_json_file(json_file) or fresh_conversation_history
+                (
+                    followup_history,
+                    party_tracker_data,
+                ) = rebuild_conversation_for_current_party(
+                    followup_history,
+                    return_party=True,
+                )
+                deferred_location_data = get_location_data_from_party_tracker(
+                    party_tracker_data
+                )
+                ai_response = get_ai_response(followup_history)
+                return process_ai_response(
+                    ai_response,
+                    party_tracker_data,
+                    deferred_location_data,
+                    followup_history,
+                )
 
             return {"role": "assistant", "content": json.dumps({"narration": full_narration, "actions": []})}
         
@@ -2397,7 +3001,11 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
         if len(char_update_actions) > 1:
             debug(f"STATE_CHANGE: Processing {len(char_update_actions)} character updates concurrently", category="character_updates")
             print(f"DEBUG: STATE_CHANGE: Processing {len(char_update_actions)} character updates concurrently")
-            
+
+            # Invariant: worker-dispatched updateCharacterInfo handlers must
+            # never acquire the party/module transition lock. Party-changing
+            # actions remain sequential on this owning thread, which already
+            # holds the whole-response fence while waiting for these workers.
             concurrent_start = time.time()
             with ThreadPoolExecutor(max_workers=min(4, len(char_update_actions))) as executor:
                 # Submit all character updates
@@ -2447,6 +3055,52 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
             if isinstance(result, dict) and result.get("response_data", {}).get("pending_archive"):
                 pending_archive_info = result["response_data"]["pending_archive"]
                 print(f"DEBUG: [Module Transition] Captured pending archive info: from {pending_archive_info['from_module']} to {pending_archive_info['to_module']}")
+                # Drain before any later action (especially saveGame) or
+                # signal-driven early return can leave the switch behind.
+                completion_history = list(conversation_history)
+                completion_history.append(
+                    {"role": "assistant", "content": response}
+                )
+                try:
+                    _targeted, completion_outcome = retry_staged_module_completions(
+                        pending_archive_info,
+                        completion_history,
+                    )
+                    if (
+                        completion_outcome["failed"]
+                        or completion_outcome["blocked"]
+                    ):
+                        return {
+                            "status": "module_completion_pending",
+                            "retryable": True,
+                            "completion_outcome": completion_outcome,
+                        }
+                    completion_confirmed = (
+                        _targeted is not None
+                        or pending_archive_info["completion_id"]
+                        in completion_outcome["completed"]
+                    )
+                    if not completion_confirmed:
+                        return {
+                            "status": "module_completion_pending",
+                            "retryable": True,
+                            "error": (
+                                "Transition completion was not receipt-backed"
+                            ),
+                            "completion_outcome": completion_outcome,
+                        }
+                except Exception as completion_exc:
+                    error(
+                        "FAILURE: Module completion remains queued before "
+                        "subsequent actions",
+                        exception=completion_exc,
+                        category="module_management",
+                    )
+                    return {
+                        "status": "module_completion_pending",
+                        "retryable": True,
+                        "error": str(completion_exc),
+                    }
             
             # --- SIGNAL-BASED SUB-SYSTEM CONTROL ---
             # Check for special signals from the action handler that indicate a sub-system has completed.
@@ -2522,79 +3176,21 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
         if pending_archive_info:
             print(f"DEBUG: [Module Transition] Processing delayed archive for module: {pending_archive_info['from_module']}")
             try:
-                from core.managers.campaign_manager import CampaignManager
-                campaign_manager = CampaignManager()
-                
                 # Reload conversation history to ensure we have the travel narrative
                 fresh_conversation_history = load_json_file("modules/conversation_history/conversation_history.json") or []
                 
-                # Archive the conversation history
-                archive_success = campaign_manager._archive_conversation_history(
-                    pending_archive_info['from_module'],
-                    fresh_conversation_history
+                # The durable intent owns archive creation, T038/T039, visit
+                # tracking, campaign merge, and crash recovery.
+                summary, _outcome = retry_staged_module_completions(
+                    pending_archive_info,
+                    fresh_conversation_history,
                 )
-                
-                if archive_success:
-                    print(f"DEBUG: [Module Transition] Successfully archived conversation history for {pending_archive_info['from_module']}")
-                    info(f"SUCCESS: Archived conversation history for module: {pending_archive_info['from_module']}", category="module_management")
-                    
-                    # Regenerate the summary with the complete conversation history (including travel narrative)
-                    print(f"DEBUG: [Module Transition] Regenerating summary with complete conversation history")
-                    print(f"DEBUG: [Module Transition] Module name: {pending_archive_info['from_module']}")
-                    print(f"DEBUG: [Module Transition] Conversation history length: {len(fresh_conversation_history)}")
-                    
-                    # Get existing visit info before regenerating
-                    existing_visit_info = campaign_manager._get_module_visit_info(pending_archive_info['from_module'])
-                    print(f"DEBUG: [Module Transition] Existing visit info: {existing_visit_info}")
-                    
-                    try:
-                        summary = campaign_manager._generate_module_summary(
-                            pending_archive_info['from_module'],
-                            pending_archive_info.get('party_tracker_data', {}),
-                            fresh_conversation_history,
-                            skip_archiving=True  # Skip archiving since we just did it
-                        )
-                        print(f"DEBUG: [Module Transition] Summary generated successfully")
-                        print(f"DEBUG: [Module Transition] Summary keys: {list(summary.keys()) if summary else 'None'}")
-                    except Exception as e:
-                        print(f"ERROR: [Module Transition] Failed to generate summary: {str(e)}")
-                        import traceback
-                        traceback.print_exc()
-                        raise
-                    
-                    # Update the summary file with the regenerated summary
-                    summary_file = os.path.join(campaign_manager.summaries_dir, f"{pending_archive_info['from_module']}_summary_001.json")
-                    summary["sequenceNumber"] = 1
-                    # Preserve first visit date and increment visit count properly
-                    summary["visitCount"] = existing_visit_info.get("visitCount", 0) + 1
-                    summary["firstVisitDate"] = existing_visit_info.get("firstVisitDate") or datetime.now().isoformat()
-                    summary["lastVisitDate"] = datetime.now().isoformat()
-                    
-                    print(f"DEBUG: [Module Transition] Saving regenerated summary to: {summary_file}")
-                    print(f"DEBUG: [Module Transition] Visit count: {summary['visitCount']}, Last visit: {summary['lastVisitDate']}")
-                    
-                    try:
-                        safe_json_dump(summary, summary_file)
-                        print(f"DEBUG: [Module Transition] Summary saved successfully")
-                        
-                        # Verify the file was written
-                        if os.path.exists(summary_file):
-                            file_stat = os.stat(summary_file)
-                            print(f"DEBUG: [Module Transition] Summary file size: {file_stat.st_size} bytes")
-                            print(f"DEBUG: [Module Transition] Summary file modified time: {datetime.fromtimestamp(file_stat.st_mtime)}")
-                        else:
-                            print(f"ERROR: [Module Transition] Summary file doesn't exist after save!")
-                    except Exception as e:
-                        print(f"ERROR: [Module Transition] Failed to save summary: {str(e)}")
-                        import traceback
-                        traceback.print_exc()
-                        raise
-                    
-                    print(f"DEBUG: [Module Transition] Summary regenerated and saved for {pending_archive_info['from_module']}")
-                    info(f"SUCCESS: Regenerated summary with travel narrative for module: {pending_archive_info['from_module']}", category="module_management")
-                else:
-                    print(f"DEBUG: [Module Transition] Failed to archive conversation history for {pending_archive_info['from_module']}")
-                    warning(f"FAILURE: Could not archive conversation history for module: {pending_archive_info['from_module']}", category="module_management")
+                print(f"DEBUG: [Module Transition] Summary generated and committed successfully")
+                print(f"DEBUG: [Module Transition] Summary keys: {list(summary.keys()) if summary else 'None'}")
+                info(
+                    f"SUCCESS: Archived and summarized module: {pending_archive_info['from_module']}",
+                    category="module_management",
+                )
                     
             except Exception as e:
                 print(f"ERROR: Failed to process delayed archive: {str(e)}")
@@ -2616,28 +3212,92 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
         conversation_history.append(assistant_message)
         save_conversation_history(conversation_history)
         return assistant_message
+    finally:
+        response_fences.close()
 
 
-def save_conversation_history(history):
+def resolve_retryable_ai_result(
+    final_result,
+    party_tracker_data,
+    location_data,
+    conversation_history,
+    *,
+    max_state_retries=2,
+):
+    """Regenerate responses invalidated by a concurrent timeline change."""
+    retry_statuses = {
+        "invalid_transition_actions",
+        "stale_response_context",
+        "transition_state_changed",
+    }
+    retries = 0
+    while (
+        isinstance(final_result, dict)
+        and final_result.get("retryable") is True
+        and final_result.get("status") in retry_statuses
+        and retries < max_state_retries
+    ):
+        retries += 1
+        conversation_history = load_json_file(json_file) or conversation_history
+        try:
+            (
+                conversation_history,
+                party_tracker_data,
+            ) = rebuild_conversation_for_current_party(
+                conversation_history,
+                return_party=True,
+            )
+        except Exception as context_exc:
+            final_result = {
+                "status": "transition_context_pending",
+                "retryable": True,
+                "error": str(context_exc),
+            }
+            break
+        location_data = get_location_data_from_party_tracker(
+            party_tracker_data
+        )
+        regenerated_response = get_ai_response(conversation_history)
+        final_result = process_ai_response(
+            regenerated_response,
+            party_tracker_data,
+            location_data,
+            conversation_history,
+        )
+    return (
+        final_result,
+        party_tracker_data,
+        location_data,
+        conversation_history,
+    )
+
+
+def save_conversation_history(
+    history,
+    *,
+    strict=False,
+    allow_compression=True,
+):
     history_to_save = history
     try:
         # Compression is an optional optimization.  Its constructor, local
         # context lookup, or provider call must never prevent the authoritative
         # conversation from being persisted.
         try:
-            compressor = IncrementalLocationCompressor()
+            if allow_compression:
+                compressor = IncrementalLocationCompressor()
 
-            # Check compression conditions (15+ valid pairs at current location)
-            if compressor.should_compress(history):
-                debug("Compression conditions met - applying incremental compression", category="compression")
+                # Check compression conditions (15+ valid pairs at current location)
+                if compressor.should_compress(history):
+                    debug("Compression conditions met - applying incremental compression", category="compression")
 
-                # Apply compression (returns new list if successful)
-                compressed_history = compressor.apply_compression_to_list(history)
-                if compressed_history:
-                    history_to_save = compressed_history
-                    info("Conversation history compressed successfully", category="compression")
-                else:
-                    debug("Compression not applied - conditions not fully met", category="compression")
+                    # Apply compression (returns new list if successful)
+                    compressed_history = compressor.apply_compression_to_list(history)
+                    if compressed_history:
+                        history_to_save = compressed_history
+                        info("Conversation history compressed successfully", category="compression")
+                    else:
+                        debug("Compression not applied - conditions not fully met", category="compression")
         except Exception as compression_error:
             warning(
                 "Conversation compression failed; saving uncompressed history: "
@@ -2646,8 +3306,12 @@ def save_conversation_history(history):
             )
 
         safe_json_dump(history_to_save, json_file)
+        return True
     except Exception as e:
         error(f"FAILURE: Failed to save conversation history", exception=e, category="file_operations")
+        if strict:
+            raise
+        return False
 
 def _finalize_main_response_validation(
     conversation_history,
@@ -2670,6 +3334,11 @@ def _finalize_main_response_validation(
 
 def get_ai_response(conversation_history, validation_retry_count=0):
     global should_inject_creation_prompt
+    # This is the centralized terminal/web provider boundary. A transition
+    # published by another worker between turns must finish (in durable order)
+    # before model selection or request construction. If the drain changed
+    # campaign state, rebuild the already-assembled system context in place.
+    prepare_conversation_for_ai_request(conversation_history)
     status_processing_ai()
     
     # Import action predictor and config
@@ -3182,6 +3851,27 @@ def main_game_loop():
         error(f"FAILURE: Startup wizard failed", exception=e, category="startup")
         return
 
+    # A cross-module party/location transition can be durable before its
+    # T038/T039 completion finishes. Resolve that intent before *any* startup
+    # narration or campaign-context construction (normal terminal and web both
+    # enter through this loop). If recovery cannot finish, fail closed instead
+    # of displaying a first response built from the stale campaign projection.
+    try:
+        startup_drain = require_staged_module_completions_drained()
+        if startup_drain["completed"] or startup_drain["cancelled"]:
+            debug(
+                f"STATE_CHANGE: Startup module-completion drain: {startup_drain}",
+                category="startup",
+            )
+    except Exception as drain_exc:
+        error(
+            "FAILURE: Startup stopped before AI response because module "
+            "completion recovery is unresolved",
+            exception=drain_exc,
+            category="startup",
+        )
+        return
+
     # --- START: COMBAT RESUMPTION LOGIC ---
     party_tracker_data = load_json_file("party_tracker.json")
     combat_was_resumed = False  # Track if we resumed from combat
@@ -3272,7 +3962,41 @@ def main_game_loop():
                 party_tracker_data["worldConditions"]["currentArea"],
                 current_area_id_post_combat
             )
-            process_ai_response(ai_response_after_combat, party_tracker_data, location_data_post_combat, conversation_history)
+            post_combat_result = process_ai_response(
+                ai_response_after_combat,
+                party_tracker_data,
+                location_data_post_combat,
+                conversation_history,
+            )
+            (
+                post_combat_result,
+                party_tracker_data,
+                location_data_post_combat,
+                conversation_history,
+            ) = resolve_retryable_ai_result(
+                post_combat_result,
+                party_tracker_data,
+                location_data_post_combat,
+                conversation_history,
+            )
+            if (
+                isinstance(post_combat_result, dict)
+                and (
+                    post_combat_result.get("retryable") is True
+                    or post_combat_result.get("status") == "error"
+                )
+            ):
+                retry_status = post_combat_result.get(
+                    "status", "state_recovery_pending"
+                )
+                print(
+                    "[SYSTEM] Post-combat narration is paused while game "
+                    f"state recovers ({retry_status})."
+                )
+                warning(
+                    f"Post-combat response processing paused: {retry_status}",
+                    category="module_management",
+                )
         
         print("[DEBUG] Combat resumption complete - should enter main game loop now")
         debug("CRITICAL: Combat resumption complete - attempting to enter main loop", category="session_management")
@@ -3292,15 +4016,13 @@ def main_game_loop():
             conversation_history, was_injected = check_and_inject_return_message(conversation_history, is_combat_active=False)
             if was_injected:
                 save_conversation_history(conversation_history)
-                # Generate AI response to the return message for startup narration
-                debug("STATE_CHANGE: Generating startup narration after return message injection", category="startup")
-                ai_response = get_ai_response(conversation_history)
-                if ai_response:
-                    # Note: We don't call process_ai_response here, just save the response
-                    # process_ai_response will be called below with the proper context
-                    conversation_history.append({"role": "assistant", "content": ai_response})
-                    save_conversation_history(conversation_history)
-                    debug("SUCCESS: Startup narration added to conversation history", category="startup")
+                # The leased kickoff generates from the fully reconciled and
+                # rebuilt context below. An early provider call here would be
+                # stale by the time campaign/location context is enriched.
+                debug(
+                    "STATE_CHANGE: Return message queued for leased kickoff",
+                    category="startup",
+                )
     
         party_tracker_data = load_json_file("party_tracker.json")
     
@@ -3366,31 +4088,16 @@ def main_game_loop():
         save_conversation_history(conversation_history)
 
         # Exactly-once kickoff with recovery; process precomputed return-response if present.
-        precomputed_response = None
-        if was_injected and conversation_history and conversation_history[-1]["role"] == "assistant":
-            precomputed_response = conversation_history[-1]["content"]
-
         kickoff_result = run_startup_kickoff_with_recovery(
             conversation_history,
             party_tracker_data,
             location_data,
-            precomputed_response=precomputed_response,
         )
         if kickoff_result.get("status") != "done":
             warning(
                 f"INITIALIZATION: Startup kickoff did not complete cleanly: {kickoff_result}",
                 category="startup",
             )
-
-        # Safety net: if kickoff didn't run (any non-done status) but we have a
-        # precomputed response that was generated for this session, display it
-        # directly so the player isn't left staring at a blank screen.
-        if kickoff_result.get("status") != "done" and precomputed_response:
-            debug("STARTUP_FALLBACK: Kickoff did not process precomputed response, displaying directly", category="startup")
-            try:
-                process_ai_response(precomputed_response, party_tracker_data, location_data, conversation_history)
-            except Exception as e:
-                debug(f"STARTUP_FALLBACK: Failed to process precomputed response: {e}", category="startup")
 
     # Add safeguard against infinite loops in non-interactive environments
     empty_input_count = 0
@@ -4147,6 +4854,51 @@ def main_game_loop():
                 # - All conversation history updates
                 # The main loop is now just a thin orchestration layer.
                 final_result = process_ai_response(ai_response_content, party_tracker_data, location_data, conversation_history)
+                (
+                    final_result,
+                    party_tracker_data,
+                    location_data,
+                    conversation_history,
+                ) = resolve_retryable_ai_result(
+                    final_result,
+                    party_tracker_data,
+                    location_data,
+                    conversation_history,
+                )
+
+                if (
+                    isinstance(final_result, dict)
+                    and final_result.get("retryable") is True
+                ):
+                    retry_status = final_result.get(
+                        "status", "state_recovery_pending"
+                    )
+                    print(
+                        "[SYSTEM] The game state changed while that turn was "
+                        f"processing ({retry_status}). Your state is safe; "
+                        "please retry after recovery completes."
+                    )
+                    warning(
+                        f"Response processing paused: {retry_status}",
+                        category="module_management",
+                    )
+                elif (
+                    isinstance(final_result, dict)
+                    and final_result.get("status") == "error"
+                ):
+                    processing_error = final_result.get("response_data", {})
+                    if isinstance(processing_error, dict):
+                        processing_error = processing_error.get(
+                            "error_message", "action processing failed"
+                        )
+                    print(
+                        "[SYSTEM] That turn could not be applied safely "
+                        f"({processing_error}). Please try again."
+                    )
+                    warning(
+                        f"Response processing failed: {processing_error}",
+                        category="module_management",
+                    )
 
                 # After processing, we only need to check for control flow signals.
                 # Everything else (including history updates) has been handled by process_ai_response.

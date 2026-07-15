@@ -315,6 +315,7 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
     has_unprocessed_transition = False
     transition_from_module = None
     transition_to_module = None
+    transition_tail = []
     
     # Check last few messages for an unprocessed transition marker
     for i in range(max(0, len(conversation_history) - 5), len(conversation_history)):
@@ -328,6 +329,21 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
                     transition_from_module = match.group(1)
                     transition_to_module = match.group(2)
                     has_unprocessed_transition = True
+                    # Archive switching replaces the source-module history,
+                    # but messages produced after the marker belong to the
+                    # newly published destination turn. Preserve that
+                    # user/assistant tail (especially the seamless arrival)
+                    # after selecting the destination archive.
+                    transition_tail = [
+                        later_msg
+                        for later_msg in conversation_history[i + 1 :]
+                        if later_msg.get("role") in {"user", "assistant"}
+                        and not (
+                            later_msg.get("role") == "user"
+                            and "Module transition:"
+                            in later_msg.get("content", "")
+                        )
+                    ]
                     print(f"DEBUG: [update_conversation_history] Found unprocessed transition: {transition_from_module} -> {transition_to_module}")
                     break
     
@@ -485,6 +501,8 @@ def update_conversation_history(conversation_history, party_tracker_data, plot_d
             debug(f"STATE_CHANGE: Starting fresh conversation for {current_module} (archive directory not found)", category="module_management")
             print(f"DEBUG: [Module Transition] Archive directory not found - starting fresh")
             updated_history = []
+
+        updated_history.extend(transition_tail)
 
     # Insert world state information
     try:

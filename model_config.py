@@ -397,7 +397,9 @@ _T053_COMBINED_VALIDATION_SCHEMA = {
                 "currency": {
                     "type": "object",
                     "properties": {
+                        "platinum": {"type": "integer"},
                         "gold": {"type": "integer"},
+                        "electrum": {"type": "integer"},
                         "silver": {"type": "integer"},
                         "copper": {"type": "integer"},
                     },
@@ -426,6 +428,48 @@ _T053_COMBINED_VALIDATION_SCHEMA = {
         },
     },
 }
+
+_T054_CURRENCY_CONSOLIDATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "currency": {
+            "type": "object",
+            "properties": {
+                "platinum": {"type": "integer"},
+                "gold": {"type": "integer"},
+                "electrum": {"type": "integer"},
+                "silver": {"type": "integer"},
+                "copper": {"type": "integer"},
+            },
+        },
+        "ammunition": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "quantity": {"type": "integer"},
+                },
+            },
+        },
+        "equipment": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "item_name": {"type": "string"},
+                    "new_item_name": {"type": "string"},
+                    "_remove": {"type": "boolean"},
+                    "_update": {"type": "boolean"},
+                },
+            },
+        },
+        "consolidations_made": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+    },
+}
 CHAR_VALIDATOR_T051_GEMINI_FLASH_LOW = {
     "model": "gemini-3-flash-preview",
     "thinking_level": "low",
@@ -441,6 +485,13 @@ CHAR_VALIDATOR_T053_GEMINI_FLASH_LOW = {
     "thinking_level": "low",
     "response_schema": convert_to_gemini_schema(_T053_COMBINED_VALIDATION_SCHEMA),
 }
+CHAR_VALIDATOR_T054_GEMINI_FLASH_LOW = {
+    "model": "gemini-3-flash-preview",
+    "thinking_level": "low",
+    "response_schema": convert_to_gemini_schema(
+        _T054_CURRENCY_CONSOLIDATION_SCHEMA
+    ),
+}
 
 # Legacy (no extra params)
 CHAR_VALIDATOR_LEGACY = {"model": "gpt-4.1-2025-04-14"}
@@ -448,9 +499,8 @@ CHAR_VALIDATOR_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 # LM Studio (local passthrough)
 CHAR_VALIDATOR_LMSTUDIO = {"model": "local-model"}
 
-# ----- T050 Effects / T054 Currency Gemini Config -----
-# T050 effects categorization and T054 currency consolidation need gemini-flash|low
-# (low fails on complex categorization and currency edge cases)
+# ----- T050 Effects Gemini Config -----
+# T054 has a dedicated schema-bearing config above.
 CHAR_VALIDATOR_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 
 # ----- T034 Monster Builder -----
@@ -1084,6 +1134,7 @@ TASK_CAPTURE_CONFIGS = {
     "T051": ("CHAR_VALIDATOR_GPT52_NONE", "CHAR_VALIDATOR_T051_GEMINI_FLASH_LOW"),
     "T052": ("CHAR_VALIDATOR_GPT52_NONE", "CHAR_VALIDATOR_T052_GEMINI_FLASH_LOW"),
     "T053": ("CHAR_VALIDATOR_GPT52_NONE", "CHAR_VALIDATOR_T053_GEMINI_FLASH_LOW"),
+    "T054": ("CHAR_VALIDATOR_GPT52_NONE", "CHAR_VALIDATOR_T054_GEMINI_FLASH_LOW"),
     "T034": ("MONSTER_BUILD_GPT52_NONE", "MONSTER_BUILD_GEMINI_FLASH_LOW"),
     "T035": ("NPC_BUILD_GPT52_NONE", "NPC_BUILD_GEMINI_FLASH_LOW"),
     "T048": ("LEVELUP_VAL_GPT52_NONE", "LEVELUP_VAL_GEMINI_PRO_LOW"),

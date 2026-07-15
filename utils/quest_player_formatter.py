@@ -11,14 +11,14 @@ Uses AI to convert DM-oriented quest descriptions into immersive player-friendly
 
 import json
 import os
-import threading
 from datetime import datetime
 from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T090", "utils/quest_player_formatter.py", 108)
+register_callsite("T090", "utils/quest_player_formatter.py", 98)
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_read_json, safe_write_json
+from utils.path_transaction_lock import path_transaction_lock
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.encoding_utils import sanitize_text
 
@@ -29,19 +29,9 @@ set_script_name("quest_player_formatter")
 TEMPERATURE = 0.3
 MAX_RETRIES = 3
 
-# Formatting is a whole-file derivation from module_plot.json.  Serialize the
-# complete read -> format -> write transaction per destination so two workers
-# cannot publish an older snapshot after a newer one.  Different modules keep
-# independent locks and can still be formatted in parallel.
-_QUEST_FILE_LOCKS = {}
-_QUEST_FILE_LOCKS_GUARD = threading.Lock()
-
-
 def _quest_file_lock(player_quests_path):
-    """Return the process-local transaction lock for one derived quest file."""
-    lock_key = os.path.abspath(os.path.normpath(os.fspath(player_quests_path)))
-    with _QUEST_FILE_LOCKS_GUARD:
-        return _QUEST_FILE_LOCKS.setdefault(lock_key, threading.RLock())
+    """Lock a complete derived-file transaction across threads/processes."""
+    return path_transaction_lock(player_quests_path)
 
 
 SYSTEM_PROMPT = """You are a quest journal formatter for a fantasy RPG. Your task is to convert DM-oriented quest descriptions into immersive, player-friendly journal entries.
@@ -184,6 +174,15 @@ def format_quests_for_player(module_name):
     """
     try:
         path_manager = ModulePathManager(module_name)
+        plot_path = path_manager.get_plot_path()
+        # Avoid creating a phantom module directory solely for the lock file.
+        # The plot is re-read under the destination lock below.
+        if not os.path.isfile(plot_path):
+            error(
+                f"FAILURE: Could not load plot data for {module_name}",
+                category="quest_formatting",
+            )
+            return False
         player_quests_path = os.path.join(
             path_manager.module_dir,
             f"player_quests_{module_name}.json",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import uuid
 from datetime import datetime, timezone
@@ -24,6 +25,12 @@ def _should_track_json(rel: str) -> bool:
     rel = rel.replace("\\", "/")
     if rel.startswith("./"):
         rel = rel[2:]
+    first_component = rel.split("/", 1)[0]
+    # Campaign continuity has its own lock/WAL/receipt/lifecycle protocol.
+    # Module-refresh rollback must never snapshot or restore that independent
+    # timeline, including hidden intent/epoch/sequence metadata.
+    if rel == "campaign.json" or first_component.startswith(".campaign.json"):
+        return False
     if rel.startswith("campaign_archives/"):
         return False
     if rel.startswith("campaign_summaries/"):
@@ -49,6 +56,50 @@ def _list_tracked_module_json_files() -> List[str]:
                 files.append(rel_path)
     files.sort()
     return files
+
+
+def _sanitize_manifest_pre_files(pre_files: object) -> List[str]:
+    """Constrain legacy manifest entries before delete/restore decisions."""
+    if not isinstance(pre_files, list):
+        raise OSError("Invalid refresh commit pre_files manifest")
+    sanitized = set()
+    for candidate in pre_files:
+        if not isinstance(candidate, str):
+            raise OSError("Invalid refresh commit path entry")
+        rel = candidate.replace("\\", "/")
+        if (
+            not rel
+            or rel.startswith("/")
+            or re.match(r"^[A-Za-z]:", rel)
+        ):
+            raise OSError("Refresh commit path must be relative")
+        parts = rel.split("/")
+        if any(part in {"", ".", ".."} for part in parts):
+            raise OSError("Refresh commit path contains traversal")
+        normalized = "/".join(parts)
+        # Reapply current ownership rules to manifests written by older code;
+        # this is what prevents legacy backups from restoring campaign WAL,
+        # receipts, lifecycle epochs, or campaign.json itself.
+        if _should_track_json(normalized):
+            sanitized.add(normalized)
+    return sorted(sanitized)
+
+
+def _constrained_backup_dir(backup_dir: object) -> str:
+    if not isinstance(backup_dir, str) or not backup_dir:
+        raise OSError("Invalid refresh commit backup directory")
+    canonical_root = os.path.realpath(BACKUP_ROOT)
+    canonical_backup = os.path.realpath(backup_dir)
+    try:
+        within_root = (
+            os.path.commonpath((canonical_root, canonical_backup))
+            == canonical_root
+        )
+    except ValueError as exc:
+        raise OSError("Refresh backup is outside backup root") from exc
+    if not within_root or canonical_backup == canonical_root:
+        raise OSError("Refresh backup is outside backup root")
+    return canonical_backup
 
 
 def begin_refresh_commit() -> Dict[str, object]:
@@ -98,6 +149,7 @@ def complete_refresh_commit() -> None:
 
 def _restore_from_backup(backup_dir: str, pre_files: List[str]) -> List[str]:
     restored: List[str] = []
+    pre_files = _sanitize_manifest_pre_files(pre_files)
     current_files = set(_list_tracked_module_json_files())
     previous_files = set(pre_files)
 
@@ -129,16 +181,16 @@ def recover_incomplete_refresh_commit() -> Tuple[bool, Dict[str, object]]:
     if phase in {"complete", "rolled_back"}:
         return False, {"status": "already_complete"}
 
-    backup_dir = state.get("backup_dir")
-    pre_files = state.get("pre_files", [])
-    if not isinstance(backup_dir, str) or not os.path.isdir(backup_dir):
+    backup_dir = _constrained_backup_dir(state.get("backup_dir"))
+    pre_files = _sanitize_manifest_pre_files(state.get("pre_files", []))
+    if not os.path.isdir(backup_dir):
         state["phase"] = "rolled_back"
         state["rolled_back_at"] = _utc_now()
         state["rollback_warning"] = "backup_missing"
         safe_json_dump(state, COMMIT_STATE_FILE)
         return True, {"status": "rolled_back_without_backup"}
 
-    restored = _restore_from_backup(backup_dir, [str(p) for p in pre_files])
+    restored = _restore_from_backup(backup_dir, pre_files)
     state["phase"] = "rolled_back"
     state["rolled_back_at"] = _utc_now()
     state["restored_files"] = restored
