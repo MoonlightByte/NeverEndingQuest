@@ -231,8 +231,18 @@ def scan_available_modules():
     for item in os.listdir("modules"):
         module_path = f"modules/{item}"
         if os.path.isdir(module_path):
-            # Skip system directories
-            if item in ['campaign_archives', 'campaign_summaries']:
+            # These directories contain runtime/support data, not playable
+            # modules.  Analyzing them is both noisy and (historically) could
+            # trigger an unnecessary creative travel-narration request.
+            if item in {
+                'backups',
+                'campaign_archives',
+                'campaign_summaries',
+                'conversation_history',
+                'default',
+                'encounters',
+                'logs',
+            }:
                 continue
             
             # Use module_stitcher detection method (current architecture)
@@ -240,7 +250,11 @@ def scan_available_modules():
             try:
                 from core.generators.module_stitcher import ModuleStitcher
                 stitcher = ModuleStitcher()
-                detected_data = stitcher.analyze_module(item)
+                # Module selection only needs local metadata. Travel narration
+                # belongs to integration/transition flows, not startup scans.
+                detected_data = stitcher.analyze_module(
+                    item, include_travel_narration=False
+                )
                 
                 if detected_data and detected_data.get('areas'):
                     # Calculate actual level range from area data

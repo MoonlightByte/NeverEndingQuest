@@ -2959,6 +2959,19 @@ def handle_party_data_request():
         error(f"Failed to get party data: {str(e)}", exception=e, category="web_interface")
         emit('party_data_response', {'members': [], 'location_npcs': []})
 
+def _overlay_authoritative_character_state(combatant_data, character_data):
+    """Overlay character-file state onto an encounter UI projection."""
+    projected = dict(combatant_data or {})
+    if not isinstance(character_data, dict):
+        return projected
+
+    if character_data.get("hitPoints") is not None:
+        projected["currentHp"] = character_data["hitPoints"]
+    if character_data.get("maxHitPoints") is not None:
+        projected["maxHp"] = character_data["maxHitPoints"]
+    return projected
+
+
 @socketio.on('request_initiative_data')
 def handle_initiative_data_request():
     """Handles requests for the current combat initiative order."""
@@ -3043,6 +3056,12 @@ def handle_initiative_data_request():
                     if char_file and os.path.exists(char_file):
                         char_data = safe_read_json(char_file)
                         if char_data:
+                            # Player HP is persisted in the character file;
+                            # NPC/enemy combat HP remains encounter-owned.
+                            if c.get("type") == "player":
+                                combatant_data = _overlay_authoritative_character_state(
+                                    combatant_data, char_data
+                                )
                             # Extract spell data organized by level
                             spells_by_level = {}
                             spellcasting = char_data.get('spellcasting', {})

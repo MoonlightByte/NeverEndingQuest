@@ -1126,6 +1126,85 @@ def generate_available_initiative_tracker(encounter_data, conversation_history, 
     return format_fallback_initiative(creatures, current_round)
 
 
+def _tracker_conversation_with_player_action(
+    conversation_history, user_input_text, limit=6
+):
+    """Build tracker context that includes the just-submitted player turn."""
+    history = list(conversation_history or [])
+    if isinstance(user_input_text, str) and user_input_text.strip():
+        history.append(
+            {"role": "user", "content": user_input_text}
+        )
+    return history[-limit:] if len(history) > limit else history
+
+
+def _living_non_player_turns_before_player(encounter_data):
+    """Return living initiative actors that must act before the player."""
+    creatures = (
+        encounter_data.get("creatures", [])
+        if isinstance(encounter_data, dict)
+        else []
+    )
+    ordered = sorted(
+        (creature for creature in creatures if isinstance(creature, dict)),
+        key=lambda creature: creature.get("initiative", 0),
+        reverse=True,
+    )
+    player_index = next(
+        (
+            index
+            for index, creature in enumerate(ordered)
+            if creature.get("type") == "player"
+            and creature.get("status", "alive").lower()
+            not in {"dead", "defeated"}
+        ),
+        None,
+    )
+    if player_index is None:
+        return []
+    return [
+        creature.get("name", "Unknown")
+        for creature in ordered[:player_index]
+        if creature.get("type") != "player"
+        and creature.get("status", "alive").lower()
+        not in {"dead", "defeated"}
+    ]
+
+
+def _living_turn_window_from_player(encounter_data):
+    """Return the submitted player turn followed by every living later actor."""
+    creatures = (
+        encounter_data.get("creatures", [])
+        if isinstance(encounter_data, dict)
+        else []
+    )
+    ordered = sorted(
+        (
+            creature
+            for creature in creatures
+            if isinstance(creature, dict)
+            and creature.get("status", "alive").lower()
+            not in {"dead", "defeated"}
+        ),
+        key=lambda creature: creature.get("initiative", 0),
+        reverse=True,
+    )
+    player_index = next(
+        (
+            index
+            for index, creature in enumerate(ordered)
+            if creature.get("type") == "player"
+        ),
+        None,
+    )
+    if player_index is None:
+        return []
+    return [
+        creature.get("name", "Unknown")
+        for creature in ordered[player_index:]
+    ]
+
+
 def _finalize_combat_validation_history(
     conversation_history,
     initial_conversation_length,
@@ -2957,6 +3036,12 @@ Player: {initial_prompt_text}"""
        import sys
        sys.stdout.flush()
    # --- END: RESUMPTION AND INITIAL SCENE LOGIC ---
+
+   pending_initial_npc_turns = (
+       []
+       if is_resuming
+       else _living_non_player_turns_before_player(encounter_data)
+   )
    
    # Combat loop
    debug("[COMBAT_MANAGER] Entering main combat loop", category="combat_events")
@@ -3047,14 +3132,32 @@ Player: {initial_prompt_text}"""
        
        print("DEBUG: [COMBAT_LOOP] About to request player input")
        debug("COMBAT_LOOP: Requesting player input", category="combat_events")
-       try:
-           user_input_text = input(f"{stats_display} {player_name_display}: ")
-           print(f"DEBUG: [COMBAT_LOOP] Got player input: {user_input_text[:50]}..." if len(user_input_text) > 50 else f"DEBUG: [COMBAT_LOOP] Got player input: {user_input_text}")
-           debug(f"COMBAT_LOOP: Received player input of length {len(user_input_text)}", category="combat_events")
-       except EOFError:
-           error("FAILURE: EOF when reading a line in run_combat_simulation", category="combat_events")
-           print("DEBUG: [COMBAT_LOOP] EOF encountered, breaking loop")
-           break
+       automatic_initiative_step = bool(pending_initial_npc_turns)
+       automatic_turn_window = list(pending_initial_npc_turns)
+       if automatic_initiative_step:
+           required_actors = ", ".join(pending_initial_npc_turns)
+           user_input_text = (
+               "System combat continuation: resolve these living non-player "
+               "turns in strict initiative order before asking for the "
+               f"player's action: {required_actors}. Stop at "
+               f"{player_name_display} and request player input. This is not "
+               "a submitted player action."
+           )
+           pending_initial_npc_turns = []
+           debug(
+               "COMBAT_LOOP: Automatically resolving initial higher-initiative "
+               f"actors: {required_actors}",
+               category="combat_events",
+           )
+       else:
+           try:
+               user_input_text = input(f"{stats_display} {player_name_display}: ")
+               print(f"DEBUG: [COMBAT_LOOP] Got player input: {user_input_text[:50]}..." if len(user_input_text) > 50 else f"DEBUG: [COMBAT_LOOP] Got player input: {user_input_text}")
+               debug(f"COMBAT_LOOP: Received player input of length {len(user_input_text)}", category="combat_events")
+           except EOFError:
+               error("FAILURE: EOF when reading a line in run_combat_simulation", category="combat_events")
+               print("DEBUG: [COMBAT_LOOP] EOF encountered, breaking loop")
+               break
        
        # Skip empty input to prevent infinite loop
        if not user_input_text or not user_input_text.strip():
@@ -3066,15 +3169,18 @@ Player: {initial_prompt_text}"""
            player_file = path_manager.get_character_path(normalize_character_name(player_name_display))
            fresh_player_data = safe_json_load(player_file)
            
-           # Enhance the input with inventory context (combat mode)
-           user_input_text = enhance_player_input_with_inventory(
-               user_input_text,
-               fresh_player_data,  # character_data
-               party_tracker_data,  # party_tracker_data
-               None,  # characters_data not needed
-               in_combat=True  # This is combat context
-           )
-           debug(f"COMBAT_LOOP: Enhanced player input with inventory context", category="combat_events")
+           # Enhance real player input with inventory context. The automatic
+           # initiative continuation is a system instruction, not a player
+           # action, so inventory context would be misleading there.
+           if not automatic_initiative_step:
+               user_input_text = enhance_player_input_with_inventory(
+                   user_input_text,
+                   fresh_player_data,  # character_data
+                   party_tracker_data,  # party_tracker_data
+                   None,  # characters_data not needed
+                   in_combat=True  # This is combat context
+               )
+               debug(f"COMBAT_LOOP: Enhanced player input with inventory context", category="combat_events")
        except Exception as e:
            debug(f"COMBAT_LOOP: Failed to enhance input with inventory context: {e}", category="combat_events")
            # Continue with unenhanced input if enhancement fails
@@ -3234,7 +3340,10 @@ Player: {initial_prompt_text}"""
        # Generate initiative order for validation context
        # Try to use AI-powered live initiative tracker
        # Get recent conversation for analysis (last 6 messages - enough for current round context)
-       recent_conversation = conversation_history[-6:] if len(conversation_history) > 6 else conversation_history
+       recent_conversation = _tracker_conversation_with_player_action(
+           conversation_history,
+           user_input_text,
+       )
        live_tracker = generate_available_initiative_tracker(
            encounter_data,
            recent_conversation,
@@ -3296,6 +3405,60 @@ Player: {initial_prompt_text}"""
 process_until: {turn_window_json.get('process_until', 'unknown')}
 turn_window: {json.dumps(turn_window_json.get('turn_window', []))}
 """
+
+       # A real player input is already the player's submitted turn. When the
+       # tracker points at that player, deterministically require the same
+       # response to resolve the player and every later living actor. This
+       # closes the round in one transaction instead of returning control
+       # while enemy turns remain unprocessed.
+       if automatic_turn_window:
+           turn_window_json = {
+               "player_name": player_character_name,
+               "process_until": automatic_turn_window[-1],
+               "turn_window": automatic_turn_window,
+               "resolve_submitted_player_action": False,
+               "allow_npc_turns": True,
+               "allow_round_advance": False,
+           }
+           turn_window_text = f"""
+--- TURN WINDOW ---
+process_until: {turn_window_json['process_until']}
+turn_window: {json.dumps(automatic_turn_window)}
+constraints:
+- Process every listed non-player actor exactly once in initiative order.
+- Stop at {player_character_name} and request player input.
+- Do not resolve a player action or increment combat_round.
+"""
+       elif (
+           not automatic_initiative_step
+           and current_turn_line
+           and player_character_name in current_turn_line
+       ):
+           submitted_window = _living_turn_window_from_player(encounter_data)
+           if submitted_window:
+               turn_window_json = {
+                   "player_name": player_character_name,
+                   "process_until": submitted_window[-1],
+                   "turn_window": submitted_window,
+                   "resolve_submitted_player_action": True,
+                   "allow_npc_turns": len(submitted_window) > 1,
+                   "allow_round_advance": True,
+               }
+               turn_window_text = f"""
+--- TURN WINDOW ---
+process_until: {turn_window_json['process_until']}
+turn_window: {json.dumps(submitted_window)}
+constraints:
+- Resolve the submitted player action first.
+- Then process every remaining actor in this window exactly once.
+- Increment combat_round after the final actor completes the round.
+- Stop before any actor in the next round.
+"""
+
+       if turn_window_text and "--- TURN WINDOW ---" in marked_initiative_display:
+           marked_initiative_display = marked_initiative_display.split(
+               "--- TURN WINDOW ---", 1
+           )[0].rstrip()
        
        # Generate AC block from encounter data
        ac_block = ""
@@ -3381,6 +3544,7 @@ All monsters have been defeated. Pass the exit action to end combat:
        # The tracker now always provides properly formatted output with ROUND INFO
        # Don't duplicate sections - use the tracker output as-is
        user_input_with_note = f"""{marked_initiative_display}
+{turn_window_text}
 --- CREATURE STATES ---
 {all_dynamic_state}
 
@@ -3648,6 +3812,7 @@ Rules:
        
        # Process the validated response
        try:
+           round_advanced_this_response = False
            parsed_response = json.loads(ai_response)
            narration = parsed_response["narration"]
            actions = parsed_response["actions"]
@@ -3676,6 +3841,7 @@ Rules:
                
                # Only update if round advances (never go backward)
                if isinstance(new_round, int) and new_round > current_combat_round:
+                   round_advanced_this_response = True
                    debug(f"STATE_CHANGE: Combat advancing from round {current_combat_round} to round {new_round}", category="combat_events")
                    encounter_data['combat_round'] = new_round
                    # Also update current_round for backwards compatibility
@@ -3843,6 +4009,16 @@ Rules:
 
        # Save updated conversation history after processing all actions
        save_json_file(conversation_history_file, conversation_history)
+
+       if round_advanced_this_response:
+           refreshed_encounter = safe_json_load(
+               f"modules/encounters/encounter_{encounter_id}.json"
+           )
+           if isinstance(refreshed_encounter, dict):
+               encounter_data = refreshed_encounter
+           pending_initial_npc_turns = (
+               _living_non_player_turns_before_player(encounter_data)
+           )
 
 def main():
     debug("INITIALIZATION: Starting main function in combat_manager", category="combat_events")

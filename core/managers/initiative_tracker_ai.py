@@ -40,6 +40,57 @@ _INSTRUCTION_HEADERS = (
 )
 
 
+def _normalize_ai_tracker_pointer(tracker_text, creatures):
+    """Repair one missing current-turn marker from an exact instruction block.
+
+    The compressed prompt's process-window examples historically used
+    ``[ ]`` on the first actor even though the strict runtime contract requires
+    ``[>]``. The instruction list is already authoritative, so this narrow
+    normalization aligns that marker without accepting an incomplete window.
+    """
+    if not isinstance(tracker_text, str) or "[>]" in tracker_text:
+        return tracker_text
+
+    target = None
+    for header in (
+        ">>> PROCESS ALL OF THESE IN ONE RESPONSE (Initiative Order):",
+        ">>> PROCESS TO END ROUND:",
+    ):
+        header_index = tracker_text.find(header)
+        if header_index < 0:
+            continue
+        instruction_text = tracker_text[header_index + len(header):]
+        for creature in sorted(
+            creatures,
+            key=lambda item: item.get("initiative", 0),
+            reverse=True,
+        ):
+            instruction_line = (
+                f"- {creature.get('name', 'Unknown')} "
+                f"({creature.get('initiative', 0)})"
+            )
+            line_index = instruction_text.find(instruction_line)
+            if line_index >= 0 and (target is None or line_index < target[0]):
+                target = (line_index, creature)
+        break
+
+    if target is None and ">>> CURRENT:" in tracker_text:
+        target_creature = _player_character(creatures)
+    else:
+        target_creature = target[1] if target is not None else None
+
+    if target_creature is None:
+        return tracker_text
+
+    name = target_creature.get("name", "Unknown")
+    initiative = target_creature.get("initiative", 0)
+    marker_pattern = re.compile(
+        rf"(?m)^- \[ \] ((?:\*\*)?{re.escape(name)} "
+        rf"\({re.escape(str(initiative))}\)(?:\*\*)? - .+)$"
+    )
+    return marker_pattern.sub(r"- [>] \1", tracker_text, count=1)
+
+
 def _player_character(creatures):
     """Return the living player character required by the tracker contract."""
     return next(
@@ -437,6 +488,8 @@ def generate_live_initiative_tracker(encounter_data, conversation_history, curre
         except Exception as e:
             logger.error(f"Failed to append initiative response: {e}")
         
+        tracker_text = _normalize_ai_tracker_pointer(tracker_text, creatures)
+
         # The compressed prompt returns the tracker with instruction blocks
         # Just return the full response as it includes important turn window info
         if _valid_ai_tracker(tracker_text, creatures, current_round):

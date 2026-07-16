@@ -356,12 +356,16 @@ class SaveGameManager:
         try:
             party_tracker = safe_json_load("party_tracker.json")
             if party_tracker:
+                world_conditions = party_tracker.get("worldConditions", {})
                 party_info = {
                     "module": party_tracker.get("module", "Unknown"),
                     "party_members": party_tracker.get("partyMembers", []),
                     "party_npcs": len(party_tracker.get("partyNPCs", [])),
-                    "current_location": party_tracker.get("worldConditions", {}).get("currentLocation", "Unknown"),
-                    "current_area": party_tracker.get("worldConditions", {}).get("currentArea", "Unknown"),
+                    "current_location": world_conditions.get("currentLocation", "Unknown"),
+                    "current_area": world_conditions.get("currentArea", "Unknown"),
+                    "location_name": world_conditions.get("currentLocation", "Unknown"),
+                    "location_id": world_conditions.get("currentLocationId", "Unknown"),
+                    "area_id": world_conditions.get("currentAreaId", "Unknown"),
                 }
         except Exception as e:
             warning(f"FILE_OP: Could not load party tracker for metadata", category="save_game")
@@ -369,10 +373,17 @@ class SaveGameManager:
         try:
             current_location = safe_json_load("current_location.json")
             if current_location:
-                location_info = {
+                # party_tracker is authoritative after transitions. The
+                # location snapshot is only a compatibility fallback when
+                # tracker fields are absent.
+                fallback_fields = {
                     "location_name": current_location.get("name", "Unknown"),
+                    "location_id": current_location.get("locationId", "Unknown"),
                     "area_id": current_location.get("areaId", "Unknown"),
                 }
+                for key, value in fallback_fields.items():
+                    if party_info.get(key) in (None, "", "Unknown"):
+                        location_info[key] = value
         except Exception as e:
             warning(f"FILE_OP: Could not load current location for metadata", category="save_game")
         

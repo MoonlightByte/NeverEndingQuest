@@ -1320,6 +1320,165 @@ def validate_json_structure(response_text):
     except Exception as e:
         return False, None, f"Validation error: {str(e)}"
 
+
+_COMMITTED_MOVEMENT_PATTERN = re.compile(
+    r"\b(?:"
+    r"go|goes|going|went|"
+    r"travel|travels|traveled|travelling|traveling|"
+    r"walk|walks|walked|walking|"
+    r"move|moves|moved|moving|"
+    r"proceed|proceeds|proceeded|proceeding|"
+    r"return|returns|returned|returning|"
+    r"enter|enters|entered|entering|"
+    r"journey|journeys|journeyed|journeying"
+    r")\b"
+    r"|\bhead(?:s|ed|ing)?\b(?=\s+(?:to|toward|towards|for|back))"
+    r"|\bleav(?:e|es|ing)\b(?=\s+(?:for|to|from))"
+    r"|\bmake\s+(?:my|our|the)\s+way\b",
+    re.IGNORECASE,
+)
+_HYPOTHETICAL_MOVEMENT_PATTERN = re.compile(
+    r"\b(?:what\s+(?:would|could)|what\s+happens?|tell\s+me)\b.{0,60}"
+    r"\bif\b.{0,30}"
+    r"\b(?:go|travel|walk|head|move|proceed|return|leave|enter|journey)\b",
+    re.IGNORECASE,
+)
+
+
+def _known_module_locations(module_name):
+    """Return known location IDs/names from local module area files."""
+    if not isinstance(module_name, str) or not module_name.strip():
+        return []
+
+    safe_module_name = module_name.replace(" ", "_")
+    area_patterns = (
+        os.path.join("modules", safe_module_name, "areas", "*.json"),
+        os.path.join("modules", safe_module_name, "*.json"),
+    )
+    locations = []
+    seen_ids = set()
+    for pattern in area_patterns:
+        for area_path in glob.glob(pattern):
+            filename = os.path.basename(area_path)
+            if filename.endswith(("_BU.json", "_backup.json")):
+                continue
+            try:
+                area_data = safe_json_load(area_path)
+            except Exception:
+                continue
+            if not isinstance(area_data, dict):
+                continue
+            for location in area_data.get("locations", []):
+                if not isinstance(location, dict):
+                    continue
+                location_id = location.get("locationId")
+                location_name = location.get("name")
+                if not isinstance(location_id, str) or not location_id.strip():
+                    continue
+                normalized_id = location_id.strip().upper()
+                if normalized_id in seen_ids:
+                    continue
+                seen_ids.add(normalized_id)
+                locations.append(
+                    {
+                        "location_id": location_id.strip(),
+                        "location_name": (
+                            location_name.strip()
+                            if isinstance(location_name, str)
+                            else ""
+                        ),
+                    }
+                )
+    return locations
+
+
+def _validate_required_transition_action(
+    response_data, user_input, party_tracker_data
+):
+    """Require a matching transition for an explicit move to a known place.
+
+    This deliberately guards only deterministic cases: committed movement plus
+    an exact known location ID or name. Ambiguous narrative references remain
+    the semantic validator's responsibility.
+    """
+    if not isinstance(response_data, dict) or not isinstance(user_input, str):
+        return True, ""
+    movement_match = _COMMITTED_MOVEMENT_PATTERN.search(user_input)
+    if not movement_match:
+        return True, ""
+    if _HYPOTHETICAL_MOVEMENT_PATTERN.search(user_input):
+        return True, ""
+
+    world_conditions = (party_tracker_data or {}).get("worldConditions") or {}
+    current_location_id = str(
+        world_conditions.get("currentLocationId") or ""
+    ).strip().upper()
+    input_text = user_input.casefold()
+    candidates = []
+    for location in _known_module_locations(
+        (party_tracker_data or {}).get("module", "")
+    ):
+        location_id = location["location_id"]
+        normalized_id = location_id.upper()
+        if normalized_id == current_location_id:
+            continue
+
+        match_positions = []
+        id_match = re.search(
+            rf"(?<![A-Za-z0-9]){re.escape(location_id)}(?![A-Za-z0-9])",
+            user_input,
+            re.IGNORECASE,
+        )
+        if id_match:
+            match_positions.append(id_match.start())
+
+        location_name = location["location_name"]
+        if location_name:
+            name_position = input_text.rfind(location_name.casefold())
+            if name_position >= 0:
+                match_positions.append(name_position)
+
+        if match_positions:
+            destination_position = max(match_positions)
+            if destination_position >= movement_match.start():
+                candidates.append((destination_position, location_id))
+
+    if not candidates:
+        return True, ""
+
+    # In phrases such as "walk from A to B", the last mentioned non-current
+    # known location is the destination.
+    expected_location_id = max(candidates, key=lambda item: item[0])[1]
+    actions = response_data.get("actions", [])
+    transition_index = None
+    encounter_index = None
+    for action_index, action in enumerate(
+        actions if isinstance(actions, list) else []
+    ):
+        if not isinstance(action, dict):
+            continue
+        if action.get("action") == "createEncounter" and encounter_index is None:
+            encounter_index = action_index
+        if action.get("action") != "transitionLocation":
+            continue
+        target = (action.get("parameters") or {}).get("newLocation")
+        if str(target or "").strip().casefold() == expected_location_id.casefold():
+            transition_index = action_index
+            break
+
+    if transition_index is not None and (
+        encounter_index is None or transition_index < encounter_index
+    ):
+        return True, ""
+
+    return (
+        False,
+        "The player explicitly moved to known location "
+        f"{expected_location_id}, so the response must include "
+        "transitionLocation targeting that exact location before any "
+        "location-dependent actions.",
+    )
+
 def validate_ai_response(primary_response, user_input, validation_prompt_text, conversation_history, party_tracker_data):
     print("DEBUG: NPC validation running...")
     status_validating()
@@ -4749,6 +4908,41 @@ def main_game_loop():
 
             except (json.JSONDecodeError, Exception) as e:
                 debug(f"Could not pre-process actions: {e}", category="action_preprocessing")
+
+            # Deterministic state contract: when the player's input commits to
+            # an exact known destination, narration alone cannot move the
+            # party. Reject responses that omit the matching state action
+            # before asking the semantic validator.
+            try:
+                response_data = json.loads(ai_response_content)
+                transition_contract_valid, transition_contract_error = (
+                    _validate_required_transition_action(
+                        response_data, user_input_text, party_tracker_data
+                    )
+                )
+                if not transition_contract_valid:
+                    conversation_history.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                f"Error Note: {transition_contract_error} "
+                                "Please regenerate the complete response."
+                            ),
+                        }
+                    )
+                    retry_count += 1
+                    info(
+                        "VALIDATION: Missing required transition action; "
+                        f"retry {retry_count}",
+                        category="location_transitions",
+                    )
+                    continue
+            except (json.JSONDecodeError, TypeError) as e:
+                # Structural validation below owns malformed response data.
+                debug(
+                    f"Could not apply transition contract: {e}",
+                    category="location_transitions",
+                )
 
             # PRE-VALIDATION: Check for transitionLocation and call transition intelligence agent
             transition_check_passed = True
