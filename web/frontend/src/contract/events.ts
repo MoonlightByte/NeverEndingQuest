@@ -1,0 +1,113 @@
+/**
+ * FROZEN SOCKET CONTRACT — extracted from web/web_interface.py (2026-07-16 workflow
+ * p4-frontend-inventory: 31 client->server handlers, 56 server->client emits).
+ * This file is the single source of truth for every socket event the player app uses.
+ * Do NOT add events here without verifying the server side exists.
+ */
+
+// ---------- shared shapes ----------
+export type MessageType = 'narration' | 'user-input' | 'info' | 'error' | 'startup' | 'debug';
+export interface GameMessage { type: MessageType; content: string; timestamp?: string }
+
+// ---------- client -> server (31) ----------
+export interface ClientEvents {
+  user_input: { input: string };
+  action: {
+    action: 'listSaves' | 'saveGame' | 'restoreGame' | 'deleteSave' | 'nuclearReset' | 'recover_startup_handoff';
+    parameters?: Record<string, unknown>;
+  };
+  start_game: undefined;
+  user_exit: undefined;
+  request_player_data: { dataType: 'stats' | 'inventory' | 'spells' };
+  request_location_data: undefined;
+  request_party_data: undefined;
+  request_initiative_data: undefined;
+  request_plot_data: undefined;
+  request_storage_data: undefined;
+  request_npc_saves: { npcName: string };
+  request_npc_skills: { npcName: string };
+  request_npc_spells: { npcName: string };
+  request_npc_inventory: { npcName: string };
+  generate_image: { prompt: string };
+  request_module_list: undefined;
+  // --- local-edition operator settings (hidden when VITE_EDITION=hosted) ---
+  get_model_provider: undefined;
+  set_model_provider: { provider: 'legacy' | 'openai' | 'gemini' | 'lmstudio' };
+  get_local_endpoint: undefined;
+  set_local_endpoint: { base_url: string; api_key?: string; model: string };
+  get_openai_key: undefined;
+  set_openai_key: { api_key: string };
+  get_gemini_key: undefined;
+  set_gemini_key: { api_key: string };
+  test_local_endpoint: { base_url: string; api_key?: string; model?: string };
+  // --- operator/toolkit scope: NOT bound in the player app (toolkit page owns these) ---
+  start_build: { module_name: string; narrative: string; num_areas: number; locations_per_area: number; per_area_locations?: number[] };
+  cancel_build: undefined;
+  generate_unified_assets: { module_name: string; assets: unknown[]; options: { overwrite: boolean; generate_images: boolean; generate_descriptions: boolean } };
+  test_module_progress: undefined;
+  trigger_update: undefined;
+}
+
+// ---------- server -> client (56) ----------
+export interface ServerEvents {
+  connected: { data: string };
+  version_status: { update_available: boolean; local_version: string; remote_version: string; message: string };
+  cached_messages: GameMessage[];
+  game_resumed: { is_processing: boolean; message: string };
+  game_output: GameMessage;
+  debug_output: { type: 'debug'; content: string; timestamp: string };
+  status_update: { message: string; is_processing: boolean };
+  startup_status: { status: 'in_progress' | 'ready' | 'failed'; phase: string };
+  game_started: { message: string };
+  startup_recovery_response: { status: string; error?: string; retryAfterSeconds?: number; expectedStartupAttemptId?: string };
+  system_message: { content: string };
+  error: { message: string };
+  save_list_response: Array<Record<string, unknown>>;
+  restore_complete: { message: string };
+  reset_complete: { message: string };
+  player_data_response: { dataType: 'stats' | 'inventory' | 'spells'; data: Record<string, unknown> | null; error?: string };
+  location_data_response: { data: { currentLocation: string; currentArea: string; currentLocationId: string; currentAreaId: string; time: string; day: number | string; month: string; year: number | string } | null; error?: string };
+  npc_details_response: { npcName: string; data: Record<string, unknown> | null; modalType: 'saves' | 'skills' | 'spells'; error?: string };
+  npc_inventory_response: { npcName: string; data: unknown[] | null; error?: string };
+  party_data_response: { members: Array<Record<string, unknown>>; location_npcs?: Array<Record<string, unknown>> };
+  initiative_data_response: { active: boolean; combatants: Array<Record<string, unknown>>; round?: number };
+  plot_data_response: { data: { plotPoints: Array<{ id: string; title: string; description: string; status: string; sideQuests?: unknown[] }> } | null; error?: string };
+  storage_data_response: { data: Record<string, unknown> };
+  exit_acknowledged: { message: string };
+  provider_changed: { provider: string };
+  local_endpoint_changed: { base_url: string; model: string; has_key: boolean };
+  openai_key_status: { has_key: boolean };
+  gemini_key_status: { has_key: boolean };
+  local_endpoint_test_result: { ok: boolean; detail: string };
+  image_generated: { image_url: string; prompt: string };
+  image_generation_error: { message: string };
+  token_update: { tpm: number; rpm: number; total_tokens: number };
+  compression_start: { total_sections: number };
+  compression_progress: { completed: number; total: number; from_cache: boolean };
+  compression_complete: { reduction_percentage: number; original_size: number; compressed_size: number };
+  module_list_response: Array<Record<string, unknown>>;
+  // --- toolkit/operator scope (received only on toolkit page; typed for completeness) ---
+  module_creation_progress: { stage: number; total_stages: number; stage_name: string; percentage: number; message: string };
+  generation_progress: { current: number; total: number; monster: string; percent: number };
+  generation_complete: Record<string, unknown>;
+  generation_error: { error: string };
+  npc_portrait_progress: { current: number; total: number; npc_name: string; status: string };
+  npc_generation_complete: { module_name: string; pack_name: string; successful: string[]; failed: string[]; total: number };
+  build_started: { message: string };
+  module_progress: { stage: number; stage_name: string; percentage: number; message: string };
+  module_complete: { module_name: string; message: string };
+  module_error: { error: string };
+  unified_generation_progress: { percent: number; message: string; asset_id?: string; asset_name?: string; status?: string };
+  unified_generation_complete: { success: boolean; message?: string; generated_count?: number; error?: string };
+  update_log: { message: string };
+  update_error: { error: string };
+  update_complete: { message: string };
+  bestiary_update_progress: { status: 'started'; requested: number; message: string; job_id: string };
+  bestiary_update_complete: { requested: number; added: number; skipped: number; failed: number; error: string | null; success: boolean; status: string; message: string; job_id: string };
+  bestiary_update_error: { requested: number; added: number; skipped: number; failed: number; error: string; success: false; status: 'failed'; job_id: string };
+  npc_description_progress: { current: number; total: number; npc_name: string; status: 'success' | 'error'; error?: string; job_id: string };
+  npc_description_complete: { job_id: string; success: boolean; status: string; module_name: string; provider: string; completed: number; failed: number; total: number; error?: string; errors?: unknown[] };
+}
+
+export type ClientEventName = keyof ClientEvents;
+export type ServerEventName = keyof ServerEvents;

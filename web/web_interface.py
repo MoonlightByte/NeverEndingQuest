@@ -5115,6 +5115,32 @@ def export_npcs_to_pack():
 
 
 # ============================================================================
+# REACT PLAYER FRONTEND (P4 standalone) - serves web/frontend/dist at /play
+# Added after all existing routes; does not modify any existing route.
+# ============================================================================
+
+@app.route('/play')
+@app.route('/play/')
+@app.route('/play/<path:filename>')
+def serve_react_play(filename='index.html'):
+    """Serve the built React player app (web/frontend/dist).
+
+    The app is built with Vite base '/play/', so its hashed assets resolve to
+    /play/assets/... and are served by this same route. Unknown paths fall
+    back to index.html (SPA behavior). Requires `npm run build` in
+    web/frontend first; returns a plain 503 hint if dist/ is missing.
+    """
+    from flask import send_from_directory
+    import os
+    dist_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend', 'dist')
+    if not os.path.isfile(os.path.join(dist_dir, 'index.html')):
+        return ("React frontend not built. Run 'npm run build' in web/frontend.", 503)
+    if not os.path.isfile(os.path.join(dist_dir, filename)):
+        filename = 'index.html'
+    return send_from_directory(dist_dir, filename)
+
+
+# ============================================================================
 # MODULE BUILDER SOCKET HANDLERS
 # ============================================================================
 

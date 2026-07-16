@@ -1,0 +1,92 @@
+/*
+ * theme/tokens.css -- NeverEndingQuest design tokens (P4 Task 4.3).
+ * Validated dark-fantasy emerald identity (NOT parchment), extracted from
+ * web/templates/game_interface.html by workflow p4-frontend-inventory.
+ * Secondary text is #9a9a9a (WCAG AA bump from the legacy #888 on #2c2c2c).
+ */
+
+@import "tailwindcss";
+
+:root {
+  /* surfaces */
+  --bg-page: #1a1a1a;
+  --bg-panel: #2c2c2c;
+  --border-card: #444;
+  --border-soft: #555;
+
+  /* text */
+  --text-primary: #e0e0e0;
+  --text-secondary: #9a9a9a;
+
+  /* accents */
+  --accent: #4CAF50;
+  --emerald-1: #50C878;
+  --emerald-2: #00A86B;
+  --emerald-3: #2E8B57;
+
+  /* fonts */
+  --font-display: 'Cinzel', Georgia, serif;          /* headers */
+  --font-body: 'Crimson Text', Georgia, serif;       /* character sheet / journal body */
+  --font-log: 'Courier New', Courier, monospace;     /* game log / status ticker */
+  --font-chrome: 'Segoe UI', Tahoma, Geneva, sans-serif; /* UI chrome */
+}
+
+/* Tailwind v4 theme mapping -- generates utilities such as bg-page, bg-panel,
+   border-card, text-primary, text-secondary, text-accent, font-display, ... */
+@theme {
+  --color-page: #1a1a1a;
+  --color-panel: #2c2c2c;
+  --color-card: #444;
+  --color-soft: #555;
+  --color-primary: #e0e0e0;
+  --color-secondary: #9a9a9a;
+  --color-accent: #4CAF50;
+  --color-emerald-1: #50C878;
+  --color-emerald-2: #00A86B;
+  --color-emerald-3: #2E8B57;
+  --font-display: 'Cinzel', Georgia, serif;
+  --font-body: 'Crimson Text', Georgia, serif;
+  --font-log: 'Courier New', Courier, monospace;
+  --font-chrome: 'Segoe UI', Tahoma, Geneva, sans-serif;
+}
+
+/* base element styles */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-chrome);
+}
+
+/* Signature card: #2c2c2c panel with the 2px solid #444 border. */
+.neq-card {
+  background-color: var(--bg-panel);
+  border: 2px solid var(--border-card);
+  border-radius: 8px;
+}
+
+/* Emerald shimmer title (legacy .header h1, preserved verbatim). */
+.neq-shimmer-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  background: linear-gradient(135deg, #50C878, #00A86B, #2E8B57, #50C878);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: neq-shimmer 3.5s ease infinite;
+  filter: drop-shadow(0 0 15px rgba(80, 200, 120, 0.5));
+}
+
+@keyframes neq-shimmer {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
