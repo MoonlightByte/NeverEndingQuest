@@ -164,7 +164,7 @@ CRITICAL: Actually PARSE the JSON in the assistant response. Do NOT hallucinate 
   transitionLocation: {"newLocation":str} #EXACTLY this one key
   createEncounter: {"encounterSummary":str,"player":str,"npcs":arr,"monsters":arr} #all arrays contain individual strings
   storageInteraction: {"description":str,"characterName":str}
-  createNewModule: {"moduleName":str,"startingLocation":str}
+  createNewModule: {"narrative":str} #EXACTLY this one non-empty key; MUST be sole action; only after explicit commitment to one specific hook. Full shape: {"action":"createNewModule","parameters":{"narrative":"[complete concept and labeled technical fields]"}}
   updateEncounter: {"encounterId":str,"changes":obj}
   updatePartyTracker: {"module":str_opt,"currentAreaId":str_opt,"currentArea":str_opt,"currentLocationId":str_opt,"currentLocation":str_opt} #all optional
   saveGame: {"saveName":str}

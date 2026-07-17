@@ -165,6 +165,22 @@ def _calculate_cost(model_name, token_usage, cfg):
     return round(input_cost + output_cost, 6)
 
 
+def _track_module_primary(response, task_id, provider, requested_model):
+    """Account for a selected module-build response independently of capture."""
+    try:
+        from utils.openai_usage_tracker import track_module_build_response
+
+        track_module_build_response(
+            response,
+            task_id=task_id,
+            provider=provider,
+            model=getattr(response, "model", None) or requested_model,
+        )
+    except Exception:
+        # Usage telemetry must never break gameplay or provider routing.
+        pass
+
+
 def _fire_background_variant(variant, task_id, messages, invocation_id,
                               caller_temperature, caller_kwargs):
     """Execute one variant call and write result. Runs in thread pool."""
@@ -213,6 +229,7 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     # shared message/config objects. The primary still receives the originals.
     capture_messages = copy.deepcopy(messages)
     capture_kwargs = copy.deepcopy(kwargs)
+    capture_kwargs.pop("_usage_invocation_id", None)
     current_frame = inspect.currentframe()
     caller_frame = current_frame.f_back if current_frame is not None else None
     runtime_line = caller_frame.f_lineno if caller_frame is not None else 0
@@ -229,21 +246,36 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     # (unmigrated callsites using raw client.chat.completions.create would
     # reject unknown 'task_id' kwarg)
     from core.ai import api_client as _api_client
+    usage_invocation_id = str(uuid4())
     if primary_fn is _api_client.create_completion:
         kwargs["_request_provider"] = request_provider
         kwargs["task_id"] = task_id
+        kwargs["_usage_invocation_id"] = usage_invocation_id
     else:
         # Private router metadata must never leak into a raw SDK-compatible call.
         kwargs.pop("_request_provider", None)
+        kwargs.pop("_usage_invocation_id", None)
 
-    # Local/Custom is a production runtime, not a capture-test source.
+    requested_model = capture_kwargs.get("model", "unknown")
+
+    # Local/Custom is a production runtime, not a capture-test source. Usage is
+    # still player-visible production accounting and must happen before this
+    # capture-specific early return.
     if request_provider == "lmstudio":
-        return primary_fn(messages=messages, **kwargs)
+        response = primary_fn(messages=messages, **kwargs)
+        _track_module_primary(
+            response, task_id, request_provider, requested_model
+        )
+        return response
 
     # Always fire primary call synchronously
     start = time.time()
     response = primary_fn(messages=messages, **kwargs)
     primary_latency = round(time.time() - start, 3)
+
+    # Account before either capture-disabled return below. Diagnostic capture
+    # settings must not control production usage totals.
+    _track_module_primary(response, task_id, request_provider, requested_model)
 
     # If capture disabled, return immediately - zero overhead
     if not getattr(model_config, "MULTI_MODEL_CAPTURE", False):
@@ -258,13 +290,13 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         # Gather call metadata
         timestamp = datetime.now(timezone.utc).isoformat()
         invocation_id = str(uuid4())
-        model = capture_kwargs.get("model", "unknown")
+        model = requested_model
         tier = _determine_tier(model)
         caller_temperature = capture_kwargs.get("temperature")
         caller_kwargs = {k: v for k, v in capture_kwargs.items()
                          if k not in (
                              "model", "messages", "task_id", "retry_attempt",
-                             "_request_provider",
+                             "_request_provider", "_usage_invocation_id",
                          )}
 
         # Build input record

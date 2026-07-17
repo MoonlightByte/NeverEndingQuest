@@ -51,9 +51,21 @@ from utils.npc_reconciler import NpcReconciler
 from utils.file_operations import safe_write_json
 from utils.path_transaction_lock import path_transaction_lock
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T028", "core/generators/module_builder.py", 901)
-register_callsite("T029", "core/generators/module_builder.py", 1199)
-register_callsite("T030", "core/generators/module_builder.py", 1863)
+from core.ai.module_creation_contract import (
+    GAME_MODULE_POLICY,
+    MODULE_ADVENTURE_TYPES,
+    MODULE_SPEC_FIELDS,
+    ModuleCreationContractError,
+    ModuleCreationPolicy,
+    ModuleCreationRecoveryRequiredError,
+    ModuleCreationSpec,
+    extract_labeled_module_values,
+    extract_typed_module_overrides,
+    get_module_creation_policy,
+)
+register_callsite("T028", "core/generators/module_builder.py", 919)
+register_callsite("T029", "core/generators/module_builder.py", 1217)
+register_callsite("T030", "core/generators/module_builder.py", 1906)
 
 # Set script name for logging
 set_script_name("module_builder")
@@ -601,23 +613,29 @@ MODULE INDEPENDENCE RULES:
     def create_module_directories(self):
         """Create all required module directories.
 
-        OW-H2 (T5-7): Detect collision with an existing built module BEFORE
-        creating any subdirectories. The marker for a previously completed
-        build is ``module_plot.json`` in ``output_directory``. If found,
-        pick the next free ``<base>_v2``, ``<base>_v3``, ... slot under
-        the same parent directory and update ``self.config.module_name``
-        plus ``self.config.output_directory`` to point at it. This avoids
-        overwriting the existing module's areas, plot, party tracker, and
-        _BU.json backups. Bare empty directories (e.g., the one created by
-        ``ModuleBuilder.__init__`` at line 88, or an aborted prior run) do
-        NOT trip collision detection -- only a completed build does.
+        Treat any existing content as user-owned, even when an incomplete or
+        manually assembled module has no ``module_plot.json`` marker. Pick the
+        next free ``<base>_v2``, ``<base>_v3``, ... slot before writing build
+        output. A genuinely empty directory (including the one created by
+        ``ModuleBuilder.__init__``) remains safe to initialize.
         """
-        existing_plot = os.path.join(self.config.output_directory, "module_plot.json")
-        if os.path.exists(existing_plot):
+        output_path = self.config.output_directory
+        existing_content = os.path.islink(output_path)
+        if not existing_content and os.path.lexists(output_path):
+            if not os.path.isdir(output_path):
+                existing_content = True
+            else:
+                try:
+                    existing_content = bool(os.listdir(output_path))
+                except OSError:
+                    # If ownership cannot be inspected, never write through it.
+                    existing_content = True
+
+        if existing_content:
             parent_dir = os.path.dirname(self.config.output_directory) or "."
             base = self.config.module_name
             suffix = 2
-            while os.path.exists(os.path.join(parent_dir, f"{base}_v{suffix}")):
+            while os.path.lexists(os.path.join(parent_dir, f"{base}_v{suffix}")):
                 suffix += 1
             new_name = f"{base}_v{suffix}"
             new_output = os.path.join(parent_dir, new_name)
@@ -1319,7 +1337,7 @@ IMPORTANT:
             "partyNPCs": [],
             "worldConditions": {
                 "year": 1492,  # Standard Forgotten Realms year
-                "month": "Hammer",  # January equivalent
+                "month": "Firstmonth",  # Generic fantasy January equivalent
                 "day": 1,
                 "time": "08:00:00",
                 "weather": "Clear",
@@ -1688,80 +1706,99 @@ def main():
     print("2. Edit any generated files as needed")
     print("3. Start your adventure with main.py")
 
-_MODULE_PARAM_FIELDS = {
-    "module_name",
-    "num_areas",
-    "locations_per_area",
-    "level_range",
-    "adventure_type",
-    "plot_themes",
-}
-_MODULE_ADVENTURE_TYPES = {"dungeon", "wilderness", "urban", "nautical", "mixed"}
+_MODULE_PARAM_FIELDS = set(MODULE_SPEC_FIELDS)
+_MODULE_ADVENTURE_TYPES = set(MODULE_ADVENTURE_TYPES)
 
 
-def _validate_parsed_module_params(parsed: Any) -> Dict[str, Any]:
-    """Enforce the exact T030 module-parameter object contract."""
-    if not isinstance(parsed, dict):
-        raise ValueError("module parameters must be a JSON object")
+def _validate_parsed_module_params(
+    parsed: Any,
+    policy: Any = GAME_MODULE_POLICY,
+) -> Dict[str, Any]:
+    """Enforce the exact T030 six-field contract for the selected policy."""
 
-    actual_fields = set(parsed)
-    if actual_fields != _MODULE_PARAM_FIELDS:
-        missing = sorted(_MODULE_PARAM_FIELDS - actual_fields)
-        extra = sorted(actual_fields - _MODULE_PARAM_FIELDS)
-        raise ValueError(
-            f"module parameters require exactly six fields; missing={missing}, extra={extra}"
-        )
+    return ModuleCreationSpec.from_mapping(parsed, policy).to_dict()
 
-    module_name = parsed["module_name"]
-    if not isinstance(module_name, str) or not module_name.strip():
-        raise ValueError("module_name must be a non-empty string")
-    if not re.fullmatch(r"[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*", module_name):
-        raise ValueError(
-            "module_name must contain only letters, numbers, and underscore separators"
-        )
 
-    num_areas = parsed["num_areas"]
-    if type(num_areas) is not int or not 1 <= num_areas <= 10:
-        raise ValueError("num_areas must be an integer from 1 to 10")
+def _module_spec_json_schema(policy: ModuleCreationPolicy) -> Dict[str, Any]:
+    """Return the provider-neutral strict schema for one T030 policy."""
 
-    locations_per_area = parsed["locations_per_area"]
-    if type(locations_per_area) is not int or not 5 <= locations_per_area <= 7:
-        raise ValueError("locations_per_area must be an integer from 5 to 7")
-
-    level_range = parsed["level_range"]
-    if not isinstance(level_range, dict) or set(level_range) != {"min", "max"}:
-        raise ValueError("level_range must contain exactly min and max")
-    min_level = level_range["min"]
-    max_level = level_range["max"]
-    if type(min_level) is not int or type(max_level) is not int:
-        raise ValueError("level_range min and max must be integers")
-    if not (1 <= min_level <= max_level <= 20):
-        raise ValueError("level_range must satisfy 1 <= min <= max <= 20")
-
-    adventure_type = parsed["adventure_type"]
-    if type(adventure_type) is not str or adventure_type not in _MODULE_ADVENTURE_TYPES:
-        raise ValueError(
-            "adventure_type must be one of: "
-            + ", ".join(sorted(_MODULE_ADVENTURE_TYPES))
-        )
-
-    plot_themes = parsed["plot_themes"]
-    if not isinstance(plot_themes, str) or not plot_themes.strip():
-        raise ValueError("plot_themes must be a non-empty string")
-    word_count = len(re.findall(r"[A-Za-z0-9']+", plot_themes))
-    if not 3 <= word_count <= 10:
-        raise ValueError("plot_themes must contain 3 to 10 words")
-
-    # Return a new object so no caller can observe mutations to the decoded value.
     return {
-        **parsed,
-        "module_name": module_name.strip(),
-        "plot_themes": plot_themes.strip(),
-        "level_range": {"min": min_level, "max": max_level},
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "module_name": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": r"^[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*$",
+            },
+            "num_areas": {
+                "type": "integer",
+                "minimum": policy.min_areas,
+                "maximum": policy.max_areas,
+            },
+            "locations_per_area": {
+                "type": "integer",
+                "minimum": policy.min_locations_per_area,
+                "maximum": policy.max_locations_per_area,
+            },
+            "level_range": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "min": {"type": "integer", "minimum": 1, "maximum": 20},
+                    "max": {"type": "integer", "minimum": 1, "maximum": 20},
+                },
+                "required": ["min", "max"],
+            },
+            "adventure_type": {
+                "type": "string",
+                "enum": sorted(MODULE_ADVENTURE_TYPES),
+            },
+            "plot_themes": {"type": "string", "minLength": 1},
+        },
+        "required": sorted(MODULE_SPEC_FIELDS),
     }
 
 
-def parse_narrative_to_module_params(narrative: str) -> Dict[str, Any]:
+def _module_spec_gemini_schema(policy: ModuleCreationPolicy) -> Dict[str, Any]:
+    """Return Gemini's schema dialect without weakening T030 bounds."""
+
+    return {
+        "type": "OBJECT",
+        "properties": {
+            "module_name": {"type": "STRING"},
+            "num_areas": {
+                "type": "INTEGER",
+                "minimum": policy.min_areas,
+                "maximum": policy.max_areas,
+            },
+            "locations_per_area": {
+                "type": "INTEGER",
+                "minimum": policy.min_locations_per_area,
+                "maximum": policy.max_locations_per_area,
+            },
+            "level_range": {
+                "type": "OBJECT",
+                "properties": {
+                    "min": {"type": "INTEGER", "minimum": 1, "maximum": 20},
+                    "max": {"type": "INTEGER", "minimum": 1, "maximum": 20},
+                },
+                "required": ["min", "max"],
+            },
+            "adventure_type": {
+                "type": "STRING",
+                "enum": sorted(MODULE_ADVENTURE_TYPES),
+            },
+            "plot_themes": {"type": "STRING"},
+        },
+        "required": sorted(MODULE_SPEC_FIELDS),
+    }
+
+
+def parse_narrative_to_module_params(
+    narrative: str,
+    policy: Any = GAME_MODULE_POLICY,
+) -> Dict[str, Any]:
     """Use AI to parse a narrative description into module parameters
     
     Args:
@@ -1772,6 +1809,8 @@ def parse_narrative_to_module_params(narrative: str) -> Dict[str, Any]:
     """
     from core.ai import api_client
     import config
+
+    resolved_policy = get_module_creation_policy(policy)
 
     parsing_prompt = """You are a module configuration parser for the world's most popular 5th edition tabletop role-playing game. Extract adventure module parameters from a narrative description.
 
@@ -1784,6 +1823,7 @@ Look for these elements in the narrative text:
    - Look for phrases like: "three regions", "explore the castle, the forest, and the caves" (=3)
    - Each major location mentioned is typically one area
    - If unclear, default to 3
+   - The allowed range for this request is %d-%d
    
 3. Adventure type - identify the primary environment or mix of environments:
    - "dungeon" = underground, caves, crypts, dungeons
@@ -1800,7 +1840,7 @@ Look for these elements in the narrative text:
 5. Plot themes - extract the main objectives, goals, or story elements:
    - Look for action words: "stop", "rescue", "discover", "defeat", "recover"
    - Keep it concise: "defeat the lich, save the kingdom"
-   - Focus on 2-3 main goals, not full descriptions
+   - Focus on 1-3 main goals, not full descriptions
 
 Return this exact JSON structure:
 {
@@ -1815,12 +1855,20 @@ Return this exact JSON structure:
 CRITICAL RULES:
 - module_name MUST use underscores, not spaces
 - num_areas MUST be a number (not a string)
-- locations_per_area should be 5-7 (default 6)
+- num_areas MUST be %d-%d
+- locations_per_area MUST be %d-%d (default 6 when allowed)
 - level_range MUST have both "min" and "max" as numbers
 - adventure_type MUST be lowercase: "dungeon", "wilderness", "urban", "nautical", or "mixed"
-- plot_themes should be 3-10 words summarizing main goals
+- plot_themes must be useful 3-40 word text containing 1-3 comma-separated goals
 
-Return ONLY the JSON object, no explanations or additional text."""
+Return ONLY the JSON object, no explanations or additional text.""" % (
+        resolved_policy.min_areas,
+        resolved_policy.max_areas,
+        resolved_policy.min_areas,
+        resolved_policy.max_areas,
+        resolved_policy.min_locations_per_area,
+        resolved_policy.max_locations_per_area,
+    )
     
     max_retries = 3
     current_prompt = parsing_prompt
@@ -1836,28 +1884,23 @@ Return ONLY the JSON object, no explanations or additional text."""
     else:  # legacy
         summ_config = config.DM_SUMM_LEGACY
 
-    # T030: force Gemini to emit the module-spec OBJECT, not DM narration. Inline
-    # schema -- no schemas/*.json matches this narrative-parse output (module_schema
-    # is a different, larger structure). Built once; legacy/openai/lmstudio unaffected.
+    # T030 is constrained at the provider when supported, then checked again by
+    # ModuleCreationSpec.  The deterministic check remains authoritative.
+    json_schema = _module_spec_json_schema(resolved_policy)
     _extra = {k: v for k, v in summ_config.items() if k != "model"}
     if MODEL_PROVIDER == "gemini":
-        from model_config import convert_to_gemini_schema
-        _extra["response_schema"] = convert_to_gemini_schema({
-            "type": "object",
-            "properties": {
-                "module_name": {"type": "string", "minLength": 1},
-                "num_areas": {"type": "integer", "minimum": 1, "maximum": 10},
-                "locations_per_area": {"type": "integer", "minimum": 5, "maximum": 7},
-                "level_range": {"type": "object", "properties": {
-                    "min": {"type": "integer", "minimum": 1, "maximum": 20},
-                    "max": {"type": "integer", "minimum": 1, "maximum": 20}},
-                    "required": ["min", "max"]},
-                "adventure_type": {"type": "string", "enum": sorted(_MODULE_ADVENTURE_TYPES)},
-                "plot_themes": {"type": "string", "minLength": 1},
+        _extra["response_schema"] = _module_spec_gemini_schema(resolved_policy)
+    elif MODEL_PROVIDER in {"openai", "legacy"}:
+        _extra["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "module_creation_spec",
+                "strict": True,
+                "schema": json_schema,
             },
-            "required": sorted(_MODULE_PARAM_FIELDS),
-        })
+        }
 
+    last_error = None
     for attempt in range(max_retries):
         try:
             response = capture_and_fanout("T030", api_client.create_completion,
@@ -1877,12 +1920,15 @@ Return ONLY the JSON object, no explanations or additional text."""
             elif "```" in result:
                 result = result.split("```")[1].split("```")[0].strip()
                 
-            parsed = _validate_parsed_module_params(json.loads(result))
+            parsed = _validate_parsed_module_params(
+                json.loads(result), resolved_policy
+            )
             
             debug(f"AI_PROCESSING: AI parsed narrative into: {json.dumps(parsed, indent=2)}", category="module_creation")
             return parsed
             
         except (json.JSONDecodeError, ValueError) as e:
+            last_error = e
             if attempt < max_retries - 1:
                 print(f"DEBUG: [Module Generator] Parse attempt {attempt + 1} failed: {e}")
                 # Update prompt with error feedback for next attempt
@@ -1892,51 +1938,80 @@ Return ONLY the JSON object, no explanations or additional text."""
                 print(f"DEBUG: [Module Generator] ERROR: Failed to parse after {max_retries} attempts: {e}")
                 
         except Exception as e:
+            last_error = e
             print(f"DEBUG: [Module Generator] ERROR: Unexpected error parsing narrative: {e}")
             break
-    
-    # Return sensible defaults if all attempts fail
-    return {
-        "module_name": "New_Adventure",
-        "num_areas": 3,
-        "locations_per_area": 6,
-        "level_range": {"min": 3, "max": 5},
-        "adventure_type": "mixed",
-        "plot_themes": "explore an ancient mystery"
-    }
 
-def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) -> tuple[bool, Optional[str]]:
-    """AI-driven module creation that accepts a narrative and autonomously creates a module
-    
-    This function is fully agentic - it can work with just a narrative description
-    or accept explicit parameters from the AI DM.
-    
+    raise ModuleCreationContractError(
+        f"T030 could not produce a valid module specification after {max_retries} attempts"
+    ) from last_error
+
+
+def _resolve_module_creation_spec(
+    narrative: str,
+    params: Dict[str, Any],
+    policy: Any,
+) -> ModuleCreationSpec:
+    """Resolve labels and inference into one validated specification."""
+
+    resolved_policy = get_module_creation_policy(policy)
+    explicit = extract_labeled_module_values(narrative, resolved_policy)
+
+    typed_fields = MODULE_SPEC_FIELDS.intersection(params)
+    if typed_fields and resolved_policy.name != "toolkit":
+        raise ModuleCreationContractError(
+            "typed module overrides are available only to the toolkit policy"
+        )
+    if resolved_policy.name == "toolkit":
+        # Explicit toolkit controls are authoritative, including falsey invalid
+        # values, because extraction uses `is not None` rather than `or`.
+        explicit.update(extract_typed_module_overrides(params, resolved_policy))
+
+    if set(explicit) == MODULE_SPEC_FIELDS:
+        return ModuleCreationSpec.from_mapping(explicit, resolved_policy)
+
+    inferred = parse_narrative_to_module_params(narrative, resolved_policy)
+    resolved = dict(inferred)
+    resolved.update(explicit)
+    return ModuleCreationSpec.from_mapping(resolved, resolved_policy)
+
+
+def _ai_driven_module_creation_impl(
+    params: Dict[str, Any],
+    progress_callback=None,
+    *,
+    policy: Any = "game",
+) -> tuple[bool, Optional[str]]:
+    """Create a module from one validated game or toolkit specification.
+
     Args:
-        params: Dictionary that can contain either:
-            - concept: Adventure narrative (required)
-            - module_name: If provided, will override AI parsing
-            - Other optional params that override AI parsing
-            OR just:
-            - narrative: Full narrative description (AI will parse all params)
+        params: Narrative plus optional snake-case typed toolkit values.
         progress_callback: Optional callback function for progress updates
-    
+        policy: ``game`` for the DM action or ``toolkit`` for manual builds.
+
     Returns:
         tuple[bool, Optional[str]]: (success_status, module_name)
-            - success_status: True if module was created successfully, False otherwise
-            - module_name: Name of the created module if successful, None if failed
+        The returned name is the builder's final name after collision suffixing.
     """
     # OW-H4: Track module_name and output_dir so the except branch can clean up
     # any partial directory created before the failure (e.g., by ModuleBuilder
     # __init__ at line 87 or create_module_directories() inside build_module).
     # OW-H2: also track the builder (whose config.output_directory reflects any
-    # collision rename to <name>_v2) and whether a real module pre-existed at
-    # the target, so cleanup deletes the actual build dir and never a
-    # pre-existing module.
+    # collision rename to <name>_v2) and whether the requested path existed
+    # before this invocation. Cleanup may delete only a directory owned by this
+    # build; a manual or incomplete directory is user-owned even when it lacks
+    # module_plot.json.
     module_name = None
     output_dir = None
     builder = None
-    preexisting_module = False
+    target_preexisted = False
     try:
+        if not isinstance(params, dict):
+            raise ModuleCreationContractError(
+                "module creation parameters must be an object"
+            )
+        resolved_policy = get_module_creation_policy(policy)
+
         # Report progress if callback provided
         if progress_callback:
             progress_callback({'stage': 0, 'total_stages': 9, 'stage_name': 'Initializing', 'percentage': 0, 'message': 'Starting module creation...'})
@@ -1946,37 +2021,19 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
             print(f"DEBUG: [Module Generator] ERROR: No narrative or concept provided")
             return False, None
 
-        # Parse narrative with AI to get module parameters
+        # Resolve labeled values before inference.  A complete explicit block
+        # skips T030; otherwise validated explicit values override inference.
         if progress_callback:
             progress_callback({'stage': 1, 'total_stages': 9, 'stage_name': 'Parsing narrative', 'percentage': 11, 'message': 'Analyzing narrative to extract module parameters...'})
-        parsed_params = parse_narrative_to_module_params(narrative)
-        
-        # Allow explicit parameters to override AI parsing (check both camelCase and snake_case)
-        module_name = params.get("module_name") or params.get("moduleName") or parsed_params.get("module_name")
-        num_areas = params.get("num_areas") or params.get("numberOfAreas") or parsed_params.get("num_areas", 2)
-        locations_per_area = params.get("locations_per_area") or params.get("locationsPerArea") or parsed_params.get("locations_per_area", 12)
-        # Handle level range - it might come as a string like "4-6"
-        level_range_raw = params.get("level_range") or params.get("levelRange") or parsed_params.get("level_range")
-        if isinstance(level_range_raw, str) and "-" in level_range_raw:
-            # Parse "4-6" format
-            min_level, max_level = level_range_raw.split("-")
-            level_range = {"min": int(min_level.strip()), "max": int(max_level.strip())}
-        elif isinstance(level_range_raw, dict):
-            level_range = level_range_raw
-        else:
-            level_range = {"min": 3, "max": 5}
-        adventure_type = params.get("adventure_type") or params.get("adventureType") or parsed_params.get("adventure_type", "mixed")
-        plot_themes = params.get("plot_themes") or params.get("plotThemes") or parsed_params.get("plot_themes", "")
-        
-        # Validate we have a module name
-        if not module_name:
-            print(f"DEBUG: [Module Generator] ERROR: No module name found in parameters")
-            print(f"DEBUG: [Module Generator] Parameters received: {params}")
-            print(f"DEBUG: [Module Generator] Parsed parameters: {parsed_params}")
-            return False, None
-            
-        # Clean module name (replace spaces with underscores)
-        module_name = module_name.replace(" ", "_")
+        spec = _resolve_module_creation_spec(
+            narrative, params, resolved_policy
+        )
+        module_name = spec.module_name
+        num_areas = spec.num_areas
+        locations_per_area = spec.locations_per_area
+        level_range = spec.level_range
+        adventure_type = spec.adventure_type
+        plot_themes = spec.plot_themes
         
         # Enhance the concept with AI-provided context
         enhanced_concept = f"{narrative}"
@@ -1994,8 +2051,8 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
             progress_callback({'stage': 2, 'total_stages': 9, 'stage_name': 'Configuring builder', 'percentage': 22, 'message': f'Setting up module: {module_name}...'})
         config = BuilderConfig(
             module_name=module_name,
-            num_areas=int(num_areas),
-            locations_per_area=int(locations_per_area),
+            num_areas=num_areas,
+            locations_per_area=locations_per_area,
             output_directory=f"./modules/{module_name}",
             verbose=True
         )
@@ -2003,12 +2060,10 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
         # except branch can remove the partial dir even if ModuleBuilder's
         # __init__ raises after creating it.
         output_dir = config.output_directory
-        # OW-H2: note whether a real module already lives at the target path.
-        # If so, create_module_directories() will rename this build to
-        # <name>_v2; cleanup must then target _v2 and leave the original intact.
-        preexisting_module = os.path.exists(
-            os.path.join(output_dir, "module_plot.json")
-        )
+        # Record ownership before ModuleBuilder.__init__ creates the directory.
+        # This is intentionally independent of module_plot.json: incomplete or
+        # manually assembled directories must never be recursively deleted.
+        target_preexisted = os.path.lexists(output_dir)
 
         # Create and run the builder
         if progress_callback:
@@ -2046,7 +2101,9 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
         if progress_callback:
             progress_callback({'stage': 4, 'total_stages': 9, 'stage_name': 'Building module', 'percentage': 44, 'message': 'Starting module generation process...'})
         builder.build_module(enhanced_concept)
-        
+
+        # create_module_directories may select _v2/_v3 after a collision.
+        module_name = builder.config.module_name
         info(f"SUCCESS: Module '{module_name}' created successfully at {config.output_directory}", category="module_creation")
         
         if progress_callback:
@@ -2077,7 +2134,15 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
             info(f"SUCCESS: Created unified module_plot.json with {len(unified_plot['plotPoints'])} plot points", category="module_creation")
         
         if progress_callback:
-            progress_callback({'stage': 8, 'total_stages': 9, 'stage_name': 'Complete', 'percentage': 100, 'message': f'Module {module_name} created successfully!'})
+            progress_callback({
+                'stage': 8,
+                'total_stages': 9,
+                'stage_name': 'Generated',
+                'percentage': 88,
+                'status': 'running',
+                'terminal': False,
+                'message': f'Module {module_name} generated; awaiting publication...',
+            })
         
         return True, module_name
         
@@ -2095,21 +2160,72 @@ def ai_driven_module_creation(params: Dict[str, Any], progress_callback=None) ->
         build_dir = output_dir
         if builder is not None:
             build_dir = builder.config.output_directory
-        if preexisting_module and build_dir == output_dir:
-            # Collision build failed before it was renamed to _v2: the target is
-            # the pre-existing module, which must be left intact.
+        same_as_requested = (
+            build_dir
+            and output_dir
+            and os.path.abspath(os.path.normpath(build_dir))
+            == os.path.abspath(os.path.normpath(output_dir))
+        )
+        if target_preexisted and same_as_requested:
+            # Failure happened before collision handling could select a new
+            # owned path. Preserve the pre-existing target regardless of which
+            # module marker files it contains.
             warning(
                 f"Module creation failed before collision rename; leaving "
-                f"pre-existing module at {output_dir} untouched.",
+                f"pre-existing path at {output_dir} untouched.",
                 category="module_creation",
             )
         elif build_dir and os.path.exists(build_dir):
             try:
                 shutil.rmtree(build_dir)
+                if os.path.exists(build_dir):
+                    raise OSError("partial module directory still exists")
                 debug(f"Cleaned up partial module dir: {build_dir}", category="module_creation")
             except Exception as cleanup_err:
                 warning(f"Failed to clean up partial module dir {build_dir}: {cleanup_err}", category="module_creation")
+                raise ModuleCreationRecoveryRequiredError(
+                    "Module generation cleanup could not be confirmed; recovery is required before retrying."
+                ) from None
         return False, None
+
+
+def ai_driven_module_creation(
+    params: Dict[str, Any],
+    progress_callback=None,
+    *,
+    policy: Any = "game",
+) -> tuple[bool, Optional[str]]:
+    """Run a module build inside exactly one nested-safe usage scope.
+
+    The in-game action owns a wider scope that continues through publication,
+    so this wrapper must not record a premature terminal event when a context is
+    already active.  Direct toolkit callers receive their own build-only scope
+    and a sanitized ``generated`` or ``failed`` terminal outcome.
+    """
+
+    from utils.openai_usage_tracker import (
+        get_module_build_usage_context,
+        mark_module_build_outcome,
+        module_build_usage_scope,
+    )
+
+    owns_usage_scope = get_module_build_usage_context() is None
+    with module_build_usage_scope():
+        try:
+            result = _ai_driven_module_creation_impl(
+                params,
+                progress_callback=progress_callback,
+                policy=policy,
+            )
+        except Exception:
+            if owns_usage_scope:
+                mark_module_build_outcome("failed")
+            raise
+
+        if owns_usage_scope:
+            mark_module_build_outcome("generated" if result[0] else "failed")
+        return result
+
 
 if __name__ == "__main__":
     main()

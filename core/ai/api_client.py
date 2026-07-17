@@ -7,6 +7,8 @@ to the OpenAI response shape so callsites don't need provider-specific code.
 create_completion() is a thin routing layer. Callsites own their
 model and params via named config dicts in model_config.py.
 """
+from uuid import uuid4
+
 from utils.openai_client import get_openai_client
 
 _UNSET = object()  # sentinel: distinguishes "not provided" from "explicitly None"
@@ -109,6 +111,8 @@ class _NormalizedResponse:
         "provider",
         "task_id",
         "raw_response",
+        "_usage_invocation_id",
+        "__weakref__",
     )
 
     def __init__(
@@ -121,6 +125,7 @@ class _NormalizedResponse:
         provider="",
         task_id=None,
         raw_response=None,
+        usage_invocation_id=None,
     ):
         self.choices = [
             _Choice(_Message(content), finish_reason=finish_reason or "unknown")
@@ -135,6 +140,7 @@ class _NormalizedResponse:
         self.provider = provider
         self.task_id = task_id
         self.raw_response = raw_response
+        self._usage_invocation_id = usage_invocation_id
 
     def model_dump(self):
         return {
@@ -172,7 +178,13 @@ def _finish_reason_value(value):
     return "unknown"
 
 
-def _normalize_provider_response(response, provider, requested_model, task_id=None):
+def _normalize_provider_response(
+    response,
+    provider,
+    requested_model,
+    task_id=None,
+    usage_invocation_id=None,
+):
     """Return one response shape or raise a correlated empty-response error."""
     content = None
     finish_reason = "unknown"
@@ -233,6 +245,8 @@ def _normalize_provider_response(response, provider, requested_model, task_id=No
     if not isinstance(reported_model, str) or not reported_model:
         reported_model = requested_model
     response_id = getattr(response, "id", None)
+    if not isinstance(response_id, str) or not response_id.strip():
+        response_id = getattr(response, "response_id", None)
     if not isinstance(response_id, str):
         response_id = ""
 
@@ -245,6 +259,7 @@ def _normalize_provider_response(response, provider, requested_model, task_id=No
         provider=provider,
         task_id=task_id,
         raw_response=response,
+        usage_invocation_id=usage_invocation_id,
     )
 
 
@@ -294,6 +309,9 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
     # --- Pop wrapper-only params (never forwarded to provider) ---
     task_id = kwargs.pop("task_id", None)
     request_provider = kwargs.pop("_request_provider", None)
+    usage_invocation_id = kwargs.pop("_usage_invocation_id", None)
+    if not isinstance(usage_invocation_id, str) or not usage_invocation_id.strip():
+        usage_invocation_id = str(uuid4())
     if request_provider is None:
         # Backward-compatible fallback for infrastructure probes and any caller
         # not yet routed through capture_and_fanout. Runtime callsites pass the
@@ -345,6 +363,7 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
         provider=request_provider,
         requested_model=model,
         task_id=task_id,
+        usage_invocation_id=usage_invocation_id,
     )
 
 

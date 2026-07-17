@@ -66,7 +66,7 @@ from openai import OpenAI
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T094", "web/web_interface.py", 1816)
-register_callsite("T095", "web/web_interface.py", 4258)
+register_callsite("T095", "web/web_interface.py", 4277)
 from utils.compendium_store import (
     MONSTER_COMPENDIUM_PATH,
     NPC_COMPENDIUM_PATH,

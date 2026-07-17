@@ -80,9 +80,9 @@ from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T063", "main.py", 636)
 register_callsite("T064", "main.py", 738)
-register_callsite("T065", "main.py", 1681)
-register_callsite("T066", "main.py", 2185)
-register_callsite("T067", "main.py", 3493)
+register_callsite("T065", "main.py", 1946)
+register_callsite("T066", "main.py", 2450)
+register_callsite("T067", "main.py", 3817)
 from datetime import datetime, timedelta
 from termcolor import colored
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
@@ -1293,6 +1293,15 @@ def validate_json_structure(response_text):
                 # Likely wrong format like {"updatePlot": {...}}
                 action_name = list(action.keys())[0]
                 action_params = action[action_name]
+
+                # Module publication is deliberately stricter than legacy
+                # actions: do not silently rewrite another external contract
+                # into createNewModule.
+                if action_name == "createNewModule":
+                    structure_issues.append(
+                        f"Action {i+1} createNewModule has invalid structure"
+                    )
+                    continue
                 
                 # Auto-fix to correct structure
                 fixed_action = {
@@ -1304,16 +1313,30 @@ def validate_json_structure(response_text):
             else:
                 structure_issues.append(f"Action {i+1} has invalid structure")
         
-        # If we fixed any actions, return the fixed version
+        structure_message = "Structure valid"
+        validated_response = response_text
+
+        # If we fixed any actions, retain that candidate for deterministic
+        # action-specific validation below.
         if structure_issues and len(fixed_actions) == len(parsed["actions"]):
             parsed["actions"] = fixed_actions
-            fixed_json = json.dumps(parsed, ensure_ascii=True, indent=2)
-            return True, fixed_json, f"Auto-fixed structure issues: {'; '.join(structure_issues)}"
+            validated_response = json.dumps(parsed, ensure_ascii=True, indent=2)
+            structure_message = (
+                f"Auto-fixed structure issues: {'; '.join(structure_issues)}"
+            )
         elif structure_issues:
             return False, None, f"Structure errors: {'; '.join(structure_issues)}"
-        
-        # All good
-        return True, response_text, "Structure valid"
+
+        try:
+            from core.ai.module_creation_contract import (
+                validate_create_new_module_actions,
+            )
+
+            validate_create_new_module_actions(parsed["actions"])
+        except ValueError as contract_error:
+            return False, None, f"Module creation contract error: {contract_error}"
+
+        return True, validated_response, structure_message
         
     except json.JSONDecodeError as e:
         return False, None, f"Invalid JSON: {str(e)}"
@@ -1479,6 +1502,122 @@ def _validate_required_transition_action(
         "location-dependent actions.",
     )
 
+
+_ENHANCED_DM_NOTE_PREFIX = "Dungeon Master Note:"
+_ENHANCED_PLAYER_MARKER = " Player: "
+_INVENTORY_CONTEXT_MARKER = "\n[Inventory Context:"
+
+
+def _extract_raw_player_message(content):
+    """Remove generated DM/inventory context from a persisted player turn."""
+    if not isinstance(content, str):
+        return ""
+    if not content.startswith(_ENHANCED_DM_NOTE_PREFIX):
+        return content
+    if _ENHANCED_PLAYER_MARKER not in content:
+        return ""
+
+    player_text = content.rsplit(_ENHANCED_PLAYER_MARKER, 1)[1]
+    inventory_index = player_text.rfind(_INVENTORY_CONTEXT_MARKER)
+    if inventory_index >= 0 and player_text.rstrip().endswith("]"):
+        player_text = player_text[:inventory_index]
+    return player_text.strip()
+
+
+def _select_validation_history(conversation_history, raw_user_input, limit=4):
+    """Return bounded player-authored history without injected prompt text."""
+    history = conversation_history if isinstance(conversation_history, list) else []
+    current_enhanced_index = None
+    normalized_current = str(raw_user_input or "").strip()
+
+    for index in range(len(history) - 1, -1, -1):
+        message = history[index]
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content", "")
+        if not isinstance(content, str) or not content.startswith(
+            _ENHANCED_DM_NOTE_PREFIX
+        ):
+            continue
+        if _extract_raw_player_message(content) == normalized_current:
+            current_enhanced_index = index
+            break
+
+    recent_messages = []
+    skip_next_assistant = False
+    for index in range(len(history) - 1, -1, -1):
+        if index == current_enhanced_index:
+            continue
+        message = history[index]
+        if not isinstance(message, dict):
+            continue
+        role = message.get("role")
+        content = message.get("content", "")
+        if not isinstance(content, str):
+            continue
+
+        if role == "user" and content.startswith("Error Note:"):
+            skip_next_assistant = True
+            continue
+        if role == "assistant" and skip_next_assistant:
+            skip_next_assistant = False
+            continue
+        if role not in {"user", "assistant"}:
+            continue
+        if content.startswith(("Location transition:", "Module transition:")):
+            continue
+
+        if role == "user":
+            content = _extract_raw_player_message(content)
+            if not content:
+                continue
+        recent_messages.insert(0, {"role": role, "content": content})
+        if len(recent_messages) >= limit:
+            break
+
+    while len(recent_messages) < limit:
+        recent_messages.insert(
+            0,
+            {
+                "role": "assistant",
+                "content": "Previous context not available.",
+            },
+        )
+    return recent_messages
+
+
+def _assemble_validation_messages(
+    validation_prefix,
+    raw_user_input,
+    candidate_response,
+    compress_prefix=None,
+):
+    """Compress context first, then preserve the raw intent/candidate pair."""
+    prefix = [dict(message) for message in validation_prefix]
+    if compress_prefix is not None:
+        prefix = compress_prefix(prefix)
+    return prefix + [
+        {"role": "user", "content": str(raw_user_input or "")},
+        {"role": "assistant", "content": candidate_response},
+    ]
+
+
+def _normalize_semantic_rejection_reason(reason):
+    return " ".join(str(reason or "").casefold().split())
+
+
+def _advance_semantic_rejection_streak(previous_reason, count, reason):
+    normalized = _normalize_semantic_rejection_reason(reason)
+    non_semantic_prefixes = (
+        "json structure error:",
+        "npc name error:",
+        "response validation was unavailable",
+    )
+    if not normalized or normalized.startswith(non_semantic_prefixes):
+        return None, 0, False
+    next_count = count + 1 if normalized == previous_reason else 1
+    return normalized, next_count, next_count >= 2
+
 def validate_ai_response(primary_response, user_input, validation_prompt_text, conversation_history, party_tracker_data):
     print("DEBUG: NPC validation running...")
     status_validating()
@@ -1511,40 +1650,11 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         print(f"INFO: Auto-corrected NPC names - {npc_normalization_message}")
         response_to_validate = npc_normalized_response
 
-    # The validation needs sufficient context to understand what happened
-    # We need to include recent conversation history, not just the last two messages
-    # This helps the validator understand ongoing narratives like ritual completions
-    
-    # Get the last several messages for context (excluding system messages and failed validations)
-    recent_messages = []
-    skip_next_assistant = False
-    
-    for i in range(len(conversation_history) - 1, -1, -1):
-        msg = conversation_history[i]
-        content = msg.get("content", "")
-        
-        # If we see an Error Note, mark to skip the previous assistant message (failed attempt)
-        if msg["role"] == "user" and content.startswith("Error Note:"):
-            skip_next_assistant = True
-            continue  # Don't include the Error Note itself
-            
-        # Skip system messages and location transitions
-        if msg["role"] in ["user", "assistant"]:
-            # Skip this assistant message if it's a failed validation attempt
-            if msg["role"] == "assistant" and skip_next_assistant:
-                skip_next_assistant = False
-                continue
-                
-            # Skip pure system notes
-            if not content.startswith(("Location transition:", "Module transition:")):
-                recent_messages.insert(0, msg)
-                # Get last 4 messages (2 exchanges) for context
-                if len(recent_messages) >= 4:
-                    break
-    
-    # Ensure we have at least some context
-    while len(recent_messages) < 4:
-        recent_messages.insert(0, {"role": "assistant", "content": "Previous context not available."})
+    # Keep only player-authored text from prior enhanced turns. The current
+    # enhanced DM note is excluded and reintroduced below as exact raw input.
+    recent_messages = _select_validation_history(
+        conversation_history, user_input, limit=4
+    )
 
     # Get location data from party tracker
     current_location_id = party_tracker_data["worldConditions"]["currentLocationId"]
@@ -1611,9 +1721,6 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
             # Catch any unexpected errors in path validation
             location_details += f"\n\nPath Validation ERROR: Failed to validate path - {str(e)}"
 
-    # Create user input context for validation
-    user_input_context = f"VALIDATION CONTEXT: The user input that triggered this assistant response was: '{user_input}'"
-    
     # Create module data context for location/NPC validation
     module_data_context = create_module_validation_context(party_tracker_data, path_manager)
     
@@ -1743,7 +1850,6 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
         {"role": "system", "content": structure_validation_note},
         {"role": "system", "content": npc_validation_context},  # Always include, even if empty
         {"role": "system", "content": location_details},
-        {"role": "system", "content": user_input_context},
         {"role": "system", "content": module_data_context},
         {"role": "system", "content": character_inventory_context} if character_inventory_context else None,
     ]
@@ -1752,23 +1858,9 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
     # Add recent conversation context
     validation_conversation.extend(recent_messages)
     
-    # Add the response being validated (use fixed version if structure was corrected)
-    validation_conversation.append({"role": "assistant", "content": response_to_validate})
-    
     # Filter out None entries
     validation_conversation = [msg for msg in validation_conversation if msg is not None]
     
-    # DEBUG: Log what validation AI sees for createNewModule actions
-    if '"action": "createNewModule"' in primary_response:
-        debug("VALIDATION: *** VALIDATION DEBUG - createNewModule detected ***", category="ai_validation")
-        debug(f"VALIDATION: User input that triggered this: {user_input}", category="ai_validation")
-        debug("VALIDATION: Last two messages validation AI sees:", category="ai_validation")
-        # Get last two messages from validation conversation
-        last_two_messages = validation_conversation[-2:] if len(validation_conversation) >= 2 else validation_conversation
-        for i, msg in enumerate(last_two_messages):
-            debug(f"VALIDATION: Message {i+1}: {msg['role']}: {msg['content'][:100]}...", category="ai_validation")
-        debug("VALIDATION: *** END VALIDATION DEBUG ***", category="ai_validation")
-
     # Apply compression to validation messages if enabled
     from model_config import COMPRESSION_ENABLED
     if COMPRESSION_ENABLED:
@@ -1815,6 +1907,20 @@ def validate_ai_response(primary_response, user_input, validation_prompt_text, c
                     )
     else:
         validation_messages_to_send = validation_conversation
+
+    # The semantic boundary is deliberately outside compression: the exact raw
+    # player turn and exact candidate must remain the final adjacent pair.
+    validation_messages_to_send = _assemble_validation_messages(
+        validation_messages_to_send,
+        user_input,
+        response_to_validate,
+    )
+
+    if '"action": "createNewModule"' in response_to_validate:
+        debug(
+            "VALIDATION: createNewModule raw intent/candidate pair isolated",
+            category="ai_validation",
+        )
     
     # Export validation messages for debugging
     os.makedirs("debug/api_captures", exist_ok=True)
@@ -3209,6 +3315,65 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
         for action in other_actions:
             result = action_handler.process_action(action, party_tracker_data, location_data, conversation_history)
             actions_processed = True
+
+            # Standard action failures are terminal for this response. The
+            # narration has already been displayed, so persist it exactly once
+            # and stop before any later action can mutate game state.
+            if isinstance(result, dict) and result.get("status") == "error":
+                assistant_message = {"role": "assistant", "content": response}
+                if not (
+                    conversation_history
+                    and conversation_history[-1] == assistant_message
+                ):
+                    conversation_history.append(assistant_message)
+                    save_conversation_history(conversation_history)
+                try:
+                    from core.managers.status_manager import status_ready
+
+                    status_ready()
+                except Exception:
+                    pass
+                return result
+
+            if isinstance(result, dict) and result.get("needs_dm_response"):
+                # Publication succeeded, so persist the accepted narration
+                # before its internal DM note and only then request a follow-up.
+                assistant_message = {"role": "assistant", "content": response}
+                if not (
+                    conversation_history
+                    and conversation_history[-1] == assistant_message
+                ):
+                    conversation_history.append(assistant_message)
+                response_data = result.get("response_data", {})
+                dm_note = (
+                    response_data.get("dm_note")
+                    if isinstance(response_data, dict)
+                    else None
+                )
+                if isinstance(dm_note, str) and dm_note.strip():
+                    conversation_history.append(
+                        {"role": "user", "content": dm_note}
+                    )
+                save_conversation_history(conversation_history)
+
+                followup_history = load_json_file(json_file) or conversation_history
+                (
+                    followup_history,
+                    party_tracker_data,
+                ) = rebuild_conversation_for_current_party(
+                    followup_history,
+                    return_party=True,
+                )
+                followup_location = get_location_data_from_party_tracker(
+                    party_tracker_data
+                )
+                ai_response = get_ai_response(followup_history)
+                return process_ai_response(
+                    ai_response,
+                    party_tracker_data,
+                    followup_location,
+                    followup_history,
+                )
             
             # Check for pending archive flag from module transitions
             if isinstance(result, dict) and result.get("response_data", {}).get("pending_archive"):
@@ -4824,6 +4989,8 @@ def main_game_loop():
 
         validation_prefix_length = len(conversation_history)
         retry_count = 0
+        previous_semantic_rejection = None
+        consecutive_semantic_rejections = 0
         valid_response_received = False 
         ai_response_content = None
     
@@ -5195,12 +5362,28 @@ def main_game_loop():
                 # Validation failed with a reason
                 debug(f"VALIDATION: Validation failed. Reason: {validation_reason}", category="ai_validation")
                 status_retrying(retry_count + 1, 5)
+                (
+                    previous_semantic_rejection,
+                    consecutive_semantic_rejections,
+                    repeated_semantic_rejection,
+                ) = _advance_semantic_rejection_streak(
+                    previous_semantic_rejection,
+                    consecutive_semantic_rejections,
+                    validation_reason,
+                )
                 # CRITICAL: Save the failed assistant response so the AI can see what it did wrong
                 if ai_response_content:
                     conversation_history.append({"role": "assistant", "content": ai_response_content})
                 conversation_history.append({"role": "user", "content": f"Error Note: Your previous response failed validation. Reason: {validation_reason}. Please adjust your response accordingly."})
                 save_conversation_history(conversation_history)
                 retry_count += 1
+                if repeated_semantic_rejection:
+                    warning(
+                        "VALIDATION: Stopping after two identical consecutive "
+                        "semantic rejection reasons.",
+                        category="ai_validation",
+                    )
+                    break
             else: 
                 warning(f"VALIDATION: Unexpected validation result: is_valid={is_valid}, reason={validation_reason}. Retrying.", category="ai_validation")
                 retry_count += 1

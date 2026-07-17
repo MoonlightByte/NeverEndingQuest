@@ -15,7 +15,7 @@ import os
 from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T046", "core/managers/initiative_tracker_ai.py", 410)
+register_callsite("T046", "core/managers/initiative_tracker_ai.py", 461)
 import logging
 
 logger = logging.getLogger(__name__)

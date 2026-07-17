@@ -137,26 +137,6 @@ def build_module_thread(module_name, narrative, num_areas, locations_per_area, s
             # Emit progress update to specific client
             socketio.emit('module_progress', data, room=socket_id)
         
-        # Initialize config
-        config = BuilderConfig(
-            module_name=module_name,
-            num_areas=num_areas,
-            locations_per_area=locations_per_area,
-            output_directory=f"./modules/{module_name}",
-            verbose=True
-        )
-        
-        # Create builder with progress callback
-        builder = ModuleBuilderWithProgress(config, progress_callback)
-        
-        # Build the module concept
-        concept = {
-            'name': module_name,
-            'narrative': narrative,
-            'num_areas': 3,  # Default, could be made configurable
-            'adventure_type': 'mixed'
-        }
-        
         # Build the module
         progress_callback({'stage': 0, 'total_stages': 9, 'stage_name': 'Initializing', 'percentage': 0})
         
@@ -166,11 +146,17 @@ def build_module_thread(module_name, narrative, num_areas, locations_per_area, s
         # Create parameters for AI-driven creation
         params = {
             'narrative': narrative,
-            'module_name': module_name
+            'module_name': module_name,
+            'num_areas': num_areas,
+            'locations_per_area': locations_per_area,
         }
-        
+
         # Execute module creation
-        success, created_name = ai_driven_module_creation(params, progress_callback=progress_callback)
+        success, created_name = ai_driven_module_creation(
+            params,
+            progress_callback=progress_callback,
+            policy="toolkit",
+        )
         
         if success:
             # Emit completion

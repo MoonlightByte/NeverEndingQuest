@@ -124,11 +124,11 @@ from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T040", "core/managers/combat_manager.py", 918)
-register_callsite("T041", "core/managers/combat_manager.py", 1302)
-register_callsite("T042", "core/managers/combat_manager.py", 2323)
-register_callsite("T043", "core/managers/combat_manager.py", 2762)
-register_callsite("T044", "core/managers/combat_manager.py", 2898)
-register_callsite("T045", "core/managers/combat_manager.py", 3454)
+register_callsite("T041", "core/managers/combat_manager.py", 1381)
+register_callsite("T042", "core/managers/combat_manager.py", 2402)
+register_callsite("T043", "core/managers/combat_manager.py", 2841)
+register_callsite("T044", "core/managers/combat_manager.py", 2977)
+register_callsite("T045", "core/managers/combat_manager.py", 3618)
 
 # Import OpenAI usage tracking (safe - won't break if fails)
 try:

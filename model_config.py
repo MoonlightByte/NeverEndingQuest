@@ -1,16 +1,24 @@
 # Model Configuration Settings
 # This file contains all AI model configurations and can be safely committed to git
+import copy
 import json
 import os
 
 
-def convert_to_gemini_schema(json_schema, preserve_required=False):
+def convert_to_gemini_schema(
+    json_schema,
+    preserve_required=False,
+    preserve_constraints=False,
+):
     """Convert JSON Schema Draft-07 to Gemini API response_schema format.
 
     Strips $schema, normally strips required, takes the first oneOf option,
     and uppercases types. ``preserve_required`` is reserved for contracts such
     as T040 that require a complete verdict; character-delta schemas must stay
-    partial and therefore keep the historical default.
+    partial and therefore keep the historical default. ``preserve_constraints``
+    copies the JSON-Schema constraints supported by Gemini's response-schema
+    surface. Both options default off so existing callsites retain their
+    historical schema shape.
     Handles union types like ["integer", "null"] by taking the non-null type.
     Reusable for any callsite that needs Gemini response_schema forcing.
     """
@@ -18,6 +26,27 @@ def convert_to_gemini_schema(json_schema, preserve_required=False):
         "string": "STRING", "integer": "INTEGER", "number": "NUMBER",
         "boolean": "BOOLEAN", "array": "ARRAY", "object": "OBJECT",
     }
+    _SUPPORTED_CONSTRAINTS = (
+        "enum",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems",
+        "minLength",
+        "maxLength",
+        "minProperties",
+        "maxProperties",
+        "pattern",
+        "description",
+        "format",
+    )
+
+    def _copy_constraints(source, target):
+        if not preserve_constraints:
+            return
+        for key in _SUPPORTED_CONSTRAINTS:
+            if key in source:
+                target[key] = copy.deepcopy(source[key])
 
     def _convert_prop(prop):
         result = {}
@@ -29,9 +58,14 @@ def convert_to_gemini_schema(json_schema, preserve_required=False):
             result["type"] = _TYPE_MAP.get(prop_type, "STRING")
         if "oneOf" in prop and "type" not in result:
             first = prop["oneOf"][0]
-            if "type" in first:
+            if preserve_constraints:
+                # The historical converter intentionally takes the first oneOf
+                # branch. In strict-contract mode, recursively keep that
+                # branch's supported nested constraints as well.
+                result.update(_convert_prop(first))
+            elif "type" in first:
                 result["type"] = _TYPE_MAP.get(first["type"], "STRING")
-            if "items" in first:
+            if not preserve_constraints and "items" in first:
                 result["type"] = "ARRAY"
                 result["items"] = _convert_prop(first["items"])
         if "properties" in prop:
@@ -44,16 +78,21 @@ def convert_to_gemini_schema(json_schema, preserve_required=False):
             result["items"] = _convert_prop(prop["items"])
         if preserve_required and isinstance(prop.get("required"), list):
             result["required"] = list(prop["required"])
+        # Do not copy Draft-07 metadata such as $schema or examples, or
+        # provider-specific additionalProperties.
+        _copy_constraints(prop, result)
         return result
 
     result = {
         "type": "OBJECT",
         "properties": {
-            k: _convert_prop(v) for k, v in json_schema.get("properties", {}).items()
+            k: _convert_prop(v)
+            for k, v in json_schema.get("properties", {}).items()
         },
     }
     if preserve_required and isinstance(json_schema.get("required"), list):
         result["required"] = list(json_schema["required"])
+    _copy_constraints(json_schema, result)
     return result
 
 

@@ -1,7 +1,8 @@
 @MODULE_CREATION_ACTIVE={
   action: createNewModule
-  usage: when player commits to new adventure hook after plot completion
+  usage: ONLY after player explicitly commits to one specific adventure hook after plot completion
   format: {"action":"createNewModule","parameters":{"narrative":"[full_concept_with_embedded_params]"}}
+  exclusivity: createNewModule MUST be the sole action in the response
 }
 
 @ADVENTURE_TRANSITION={
@@ -12,8 +13,8 @@
        - NPCs seeking help: "A concerned merchant approaches..."
        - Overheard rumors: "You catch whispers of strange happenings..."  
        - Environmental: "Smoke rising from distant peaks..."
-    2. WAIT: for player response showing interest
-    3. THEN: Use createNewModule with full adventure parameters
+    2. WAIT: for explicit commitment to one specific hook
+    3. THEN: Use the exact narrative-only createNewModule action
   purpose: creates natural story flow instead of jarring system messages
 }
 
@@ -25,15 +26,15 @@
   parameters_narrative_must_include:
     - full adventure concept description
     - Module Name: [Name_With_Underscores]
-    - Adventure Type: [dungeon/wilderness/urban/mixed]
+    - Adventure Type: [dungeon/wilderness/urban/nautical/mixed]
     - Level Range: [X-Y]
     - Number of Areas: [N]
     - Locations per Area: [N]
-    - Plot Themes: [specific goals]
+    - Plot Themes: [1-3 concrete comma-separated goals; 3-40 useful words]
   
   CORRECT:
     narration: "The old ranger spreads out weathered maps. 'The journey will take several days through hostile territory.'"
-    parameters: {narrative: "In the remote mountain passes, an ancient evil stirs... Module Name: Shadow_Pass_Mystery, Level Range: 5-7, Adventure Type: wilderness/dungeon..."}
+    action: {"action":"createNewModule","parameters":{"narrative":"In the remote mountain passes, an ancient evil stirs. Module Name: Shadow_Pass_Mystery, Adventure Type: mixed, Level Range: 5-7, Number of Areas: 3, Locations per Area: 5, Plot Themes: find the missing scouts, break the mountain curse, defeat the awakened guardian"}}
   
   INCORRECT: Never expose technical details in narration field to players
 }
@@ -43,5 +44,5 @@
   STEP_2: Wait for player interest
   STEP_3: Confirm commitment (NO ACTION) - "Are you ready to undertake this journey?"
   STEP_4: Player confirms
-  STEP_5: Create module - Use createNewModule with full narrative in parameters
+  STEP_5: Create module - Use ONLY {"action":"createNewModule","parameters":{"narrative":"[complete concept and labeled technical fields]"}}
 }

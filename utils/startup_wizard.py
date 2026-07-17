@@ -23,8 +23,8 @@ from datetime import datetime
 from pathlib import Path
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T092", "utils/startup_wizard.py", 1525)
-register_callsite("T093", "utils/startup_wizard.py", 1651)
+register_callsite("T092", "utils/startup_wizard.py", 1539)
+register_callsite("T093", "utils/startup_wizard.py", 1665)
 from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
 from utils.startup_prompt_builder import build_character_creation_system_prompt as _build_character_creation_system_prompt

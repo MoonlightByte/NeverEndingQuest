@@ -60,9 +60,9 @@ from datetime import datetime
 from core.ai import api_client
 import model_config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T013", "core/ai/action_handler.py", 1248)
-register_callsite("T012", "core/ai/action_handler.py", 669)
-register_callsite("T014", "core/ai/action_handler.py", 2427)
+register_callsite("T013", "core/ai/action_handler.py", 1255)
+register_callsite("T012", "core/ai/action_handler.py", 676)
+register_callsite("T014", "core/ai/action_handler.py", 2506)
 import config
 from core.managers.location_manager import get_location_data
 from utils.module_path_manager import ModulePathManager
@@ -166,32 +166,39 @@ def _npc_movement_lock(module_name):
 # Module conversation segmentation has been moved to conversation_utils.py
 # to work with the regular conversation update cycle
 
-
-def _cleanup_orphan_module(module_name):
-    """INT-H8: Remove a partially-created module directory after the
-    post-creation, pre-integration window fails.
-
-    ai_driven_module_creation() returned success and produced
-    ./modules/<module_name>/ on disk, but the subsequent stitcher
-    integration step raised. Without cleanup, the partial directory is
-    later picked up by scan_and_integrate_new_modules() as a "new module"
-    to integrate -- the exact orphan state we are trying to prevent.
-
-    This is intentionally narrow: it only handles the stitching-failure
-    window. The build-failure window is handled separately in
-    core/generators/module_builder.py (OW-H4).
-    """
-    import shutil
-    if not module_name:
-        return
-    module_dir = os.path.join("modules", module_name)
-    if not os.path.exists(module_dir):
-        return
-    try:
-        shutil.rmtree(module_dir)
-        debug(f"Cleaned up orphan module dir after stitching failure: {module_dir}", category="module_management")
-    except Exception as cleanup_err:
-        warning(f"Failed to clean up orphan module dir {module_dir}: {cleanup_err}", category="module_management")
+def _module_creation_error_result(*, recovery_required=False, message=None):
+    """Return one sanitized, non-automatic-retry module failure shape."""
+    if recovery_required:
+        error_message = message or (
+            "Module publication could not be confirmed. The party was not "
+            "moved. Do not retry until recovery resolves the module state."
+        )
+        response_data = {
+            "error_code": "module_publication_recovery_required",
+            "error_message": error_message,
+            "retryable": False,
+            "state_changed": None,
+            "recovery_required": True,
+        }
+    else:
+        error_message = message or (
+            "Module generation failed validation; no game state was changed. "
+            "It is safe to retry."
+        )
+        response_data = {
+            "error_code": "module_generation_not_published",
+            "error_message": error_message,
+            "retryable": True,
+            "state_changed": False,
+            "recovery_required": False,
+        }
+    return {
+        "status": "error",
+        "success": False,
+        "needs_update": False,
+        "needs_dm_response": False,
+        "response_data": response_data,
+    }
 
 
 def pre_validate_transition(parameters, party_tracker_data, conversation_history, location_graph, path_manager):
@@ -1515,155 +1522,227 @@ Please use a valid location that exists in the current area ({current_area_id}) 
 
     elif action_type == ACTION_CREATE_NEW_MODULE:
         debug("STATE_CHANGE: Processing createNewModule action", category="module_management")
+
+        def module_progress_callback(progress_data):
+            """Forward only structured, nonterminal builder progress."""
+            payload = dict(progress_data or {})
+            payload.setdefault("status", "running")
+            payload.setdefault("terminal", False)
+            if payload.get("status") == "running" and payload.get("percentage", 0) >= 100:
+                payload["percentage"] = 88
+            try:
+                from web.shared_state import module_progress_queue
+
+                module_progress_queue.put(payload)
+                debug(
+                    "MODULE_PROGRESS: Queued for web - Stage "
+                    f"{payload.get('stage')}/{payload.get('total_stages')} - "
+                    f"{payload.get('message')}",
+                    category="module_management",
+                )
+            except ImportError:
+                debug(
+                    f"MODULE_PROGRESS: {payload.get('message')}",
+                    category="module_management",
+                )
+            except Exception as progress_error:
+                warning(
+                    f"Could not queue module progress: {progress_error}",
+                    category="module_management",
+                )
+
+        def terminal_progress(status, message, module_name=None):
+            module_progress_callback(
+                {
+                    "stage": 9,
+                    "total_stages": 9,
+                    "stage_name": (
+                        "Published" if status == "published" else "Failed"
+                    ),
+                    "percentage": 100,
+                    "status": status,
+                    "terminal": True,
+                    "success": status == "published",
+                    "module_name": module_name,
+                    "message": message,
+                }
+            )
+
         try:
-            # Pass ALL parameters directly from AI to module builder
-            # The AI is fully in control of module creation
-            from core.generators.module_builder import ai_driven_module_creation
-            
-            # Define progress callback to send updates to web interface
-            def module_progress_callback(progress_data):
-                """Send module creation progress to web interface"""
-                from datetime import datetime
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                print(f"DEBUG: [Action Handler] [{timestamp}] module_progress_callback called - Stage {progress_data.get('stage')}")
-                
-                # Try to use the module progress queue if available (web mode)
-                try:
-                    from web.shared_state import module_progress_queue
-                    module_progress_queue.put(progress_data)
-                    print(f"DEBUG: [Action Handler] [{timestamp}] Successfully queued progress for stage {progress_data.get('stage')}")
-                    debug(f"MODULE_PROGRESS: Queued for web - Stage {progress_data.get('stage')}/{progress_data.get('total_stages')} - {progress_data.get('message')}", category="module_management")
-                except ImportError as e:
-                    print(f"DEBUG: [Action Handler] [{timestamp}] ImportError: {e}")
-                    # Terminal mode - just log progress
-                    debug(f"MODULE_PROGRESS: Stage {progress_data.get('stage')}/{progress_data.get('total_stages')} - {progress_data.get('message')}", category="module_management")
-                except Exception as e:
-                    print(f"DEBUG: [Action Handler] [{timestamp}] Unexpected error: {e}")
-            
-            # Check if this is a single narrative parameter (new format)
-            # or multiple parameters (old format)
-            if len(parameters) == 1 and isinstance(list(parameters.values())[0], str):
-                # Single narrative parameter - new format
-                narrative = list(parameters.values())[0]
-                parameters = {"narrative": narrative}
-            
+            from core.ai.module_creation_contract import (
+                ModuleCreationContractError,
+                validate_create_new_module_action,
+            )
+            from core.generators.module_builder import (
+                ModuleCreationRecoveryRequiredError,
+                ai_driven_module_creation,
+            )
+            from core.generators.module_stitcher import (
+                OrphanCleanupResult,
+                PublicationStatus,
+                TargetedPublicationResult,
+                get_module_stitcher,
+            )
+            from utils.openai_usage_tracker import (
+                mark_module_build_outcome,
+                module_build_usage_scope,
+            )
             # Creation and registration are one publication unit. Reconcile
             # must never discover a half-built action-created module.
             from utils.module_refresh_lock import module_refresh_lock
 
-            with module_refresh_lock() as publication_acquired:
-                if not publication_acquired:
-                    return {
-                        "success": False,
-                        "error": "Module creation is busy; retry shortly",
-                        "needs_dm_response": False,
-                    }
-
-                # Let the module builder handle ALL parameter validation.
-                success, module_name = ai_driven_module_creation(
-                    parameters,
-                    progress_callback=module_progress_callback,
-                )
-
-                if success:
-                    info(
-                        f"SUCCESS: Module '{module_name}' created successfully",
-                        category="module_management",
+            with module_build_usage_scope():
+                try:
+                    validate_create_new_module_action(action)
+                except ModuleCreationContractError:
+                    mark_module_build_outcome("contract_rejected")
+                    failure = _module_creation_error_result()
+                    terminal_progress(
+                        "failed", failure["response_data"]["error_message"]
                     )
+                    return failure
+
+                with module_refresh_lock() as publication_acquired:
+                    if not publication_acquired:
+                        mark_module_build_outcome("lock_unavailable")
+                        failure = _module_creation_error_result(
+                            message=(
+                                "Module creation is busy; no game state was "
+                                "changed. Please retry shortly."
+                            )
+                        )
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
 
                     try:
-                        from core.generators.module_stitcher import get_module_stitcher
+                        success, module_name = ai_driven_module_creation(
+                            parameters,
+                            progress_callback=module_progress_callback,
+                            policy="game",
+                        )
+                    except ModuleCreationRecoveryRequiredError:
+                        mark_module_build_outcome("builder_recovery_required")
+                        failure = _module_creation_error_result(
+                            recovery_required=True
+                        )
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
 
-                        stitcher = get_module_stitcher()
-                        integrated_modules = (
-                            stitcher.scan_and_integrate_new_modules()
+                    if not success or not module_name:
+                        mark_module_build_outcome("not_generated")
+                        failure = _module_creation_error_result()
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+
+                    stitcher = get_module_stitcher()
+                    publication = stitcher.publish_module_locked(module_name)
+                    if (
+                        type(publication) is not TargetedPublicationResult
+                        or publication.module_name != module_name
+                    ):
+                        mark_module_build_outcome("publication_indeterminate")
+                        failure = _module_creation_error_result(
+                            recovery_required=True
+                        )
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+
+                    if (
+                        publication.status is PublicationStatus.PUBLISHED
+                    ):
+                        mark_module_build_outcome("published")
+                        terminal_progress(
+                            "published",
+                            f"Module {module_name} was published successfully.",
+                            module_name,
                         )
                         info(
-                            f"SUCCESS: Module '{module_name}' integrated into world registry",
+                            f"SUCCESS: Module '{module_name}' created and published",
                             category="module_management",
                         )
-                        debug(
-                            f"STATE_CHANGE: Integration summary: {integrated_modules}",
-                            category="module_management",
+                        dm_note = (
+                            "Dungeon Master Note: New module "
+                            f"'{module_name}' has been successfully created and "
+                            "integrated into the world. You may now guide the "
+                            "party to this new adventure."
                         )
-                    except Exception as e:
-                        # Keep cleanup inside the same publication boundary.
-                        error(
-                            f"FAILURE: Module '{module_name}' created but stitching failed",
-                            exception=e,
-                            category="module_management",
-                        )
-                        _cleanup_orphan_module(module_name)
-                        try:
-                            from core.managers.status_manager import status_ready
-
-                            status_ready()
-                            debug(
-                                "STATE_CHANGE: Status reset after stitching failure",
-                                category="session_management",
-                            )
-                        except Exception as status_e:
-                            error(
-                                "FAILURE: Error resetting status after stitching failure",
-                                exception=status_e,
-                                category="session_management",
-                            )
+                        needs_conversation_history_update = True
                         return {
-                            "success": False,
-                            "error": f"Module integration failed: {e}",
-                            "needs_dm_response": False,
+                            "status": "published",
+                            "success": True,
+                            "needs_update": True,
+                            "needs_dm_response": True,
+                            "response_data": {
+                                "module_name": module_name,
+                                "dm_note": dm_note,
+                            },
                         }
 
-            if success:
-                # Reset processing status to ready
-                try:
-                    from core.managers.status_manager import status_ready
-                    status_ready()
-                    debug("STATE_CHANGE: Status reset to ready", category="session_management")
-                except Exception as e:
-                    error(f"FAILURE: Error resetting status", exception=e, category="session_management")
-                
-                # Signal module creation complete
-                dm_note = f"Dungeon Master Note: New module '{module_name}' has been successfully created and integrated into the world. You may now guide the party to this new adventure."
-                conversation_history.append({"role": "user", "content": dm_note})
-                
-                # Save conversation history
-                import sys
+                    if publication.status is PublicationStatus.NOT_PUBLISHED:
+                        fresh_absence = (
+                            stitcher.prove_module_absent_from_registry_locked(
+                                module_name
+                            )
+                        )
+                        cleanup = stitcher.cleanup_unpublished_module_locked(
+                            module_name,
+                            publication,
+                            fresh_absence,
+                        )
+                        if (
+                            type(cleanup) is OrphanCleanupResult
+                            and cleanup.safe_to_retry_for(module_name) is True
+                        ):
+                            mark_module_build_outcome("not_published")
+                            failure = _module_creation_error_result()
+                        else:
+                            mark_module_build_outcome("cleanup_recovery_required")
+                            failure = _module_creation_error_result(
+                                recovery_required=True
+                            )
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
 
-                if __name__ != "__main__":
-
-                    sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-
-                from main import save_conversation_history
-                save_conversation_history(conversation_history)
-                
-                needs_conversation_history_update = True
-                
-                # Return a special flag to trigger DM response generation
-                return {"success": True, "needs_update": True, "needs_dm_response": True}
-            else:
-                print(f"ERROR: Failed to create module")
-                
-                # Reset status even on failure  
-                try:
-                    from core.managers.status_manager import status_ready
-                    status_ready()
-                    debug("STATE_CHANGE: Status reset after failure", category="session_management")
-                except Exception as e:
-                    error(f"FAILURE: Error resetting status after failure", exception=e, category="session_management")
-                
-        except Exception as e:
-            print(f"ERROR: Exception while creating module: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            
-            # Reset status on exception
+                    mark_module_build_outcome("publication_indeterminate")
+                    failure = _module_creation_error_result(
+                        recovery_required=True
+                    )
+                    terminal_progress(
+                        "failed", failure["response_data"]["error_message"]
+                    )
+                    return failure
+        except Exception as module_error:
+            error(
+                "FAILURE: Unexpected module creation pipeline error",
+                exception=module_error,
+                category="module_management",
+            )
+            failure = _module_creation_error_result(recovery_required=True)
+            terminal_progress(
+                "failed", failure["response_data"]["error_message"]
+            )
+            return failure
+        finally:
             try:
-                from core.managers.status_manager import status_ready  
+                from core.managers.status_manager import status_ready
+
                 status_ready()
-                debug("STATE_CHANGE: Status reset after exception", category="session_management")
-            except Exception as status_e:
-                error(f"FAILURE: Error resetting status after exception", exception=status_e, category="session_management")
+                debug(
+                    "STATE_CHANGE: Status reset after module creation",
+                    category="session_management",
+                )
+            except Exception:
+                pass
 
     elif action_type == ACTION_ESTABLISH_HUB:
         debug("STATE_CHANGE: Processing establishHub action", category="module_management")

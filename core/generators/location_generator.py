@@ -9,30 +9,24 @@ Location Generator Script
 Creates detailed location JSON files based on schema requirements and plot needs.
 """
 
+import copy
 import json
 import os
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Any, Dict, List
+
 from core.ai import api_client
 import config
 import jsonschema
-import random
 from utils.module_path_manager import ModulePathManager
-from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+from utils.capture.multi_model_capture import (
+    capture_and_fanout,
+    register_callsite,
+)
 from model_config import convert_to_gemini_schema
-register_callsite("T025", "core/generators/location_generator.py", 489)
-register_callsite("T026", "core/generators/location_generator.py", 667)
 
-# MED-2 (#127): pre-load + convert the location schema for Gemini response_schema.
-# Loaded once at import. If it fails, _LOCA_SCHEMA_GEMINI stays None and the Gemini
-# branch in the T026 callsite raises rather than silently producing DM narration.
-_LOCA_SCHEMA_GEMINI = None
-try:
-    _loca_schema_path = os.path.join(os.path.dirname(__file__), "..", "..", "schemas", "loca_schema.json")
-    with open(_loca_schema_path, "r", encoding="utf-8") as _f:
-        _LOCA_SCHEMA_GEMINI = convert_to_gemini_schema(json.load(_f))
-except Exception:
-    _LOCA_SCHEMA_GEMINI = None
+register_callsite("T025", "core/generators/location_generator.py", 693)
+register_callsite("T026", "core/generators/location_generator.py", 884)
 
 
 def _location_stub_ids(location_stubs: List[Dict[str, Any]]) -> List[str]:
@@ -50,35 +44,245 @@ def _location_stub_ids(location_stubs: List[Dict[str, Any]]) -> List[str]:
     return ids
 
 
+@dataclass(frozen=True)
+class _SchemaIssue:
+    """One deterministic, user-prompt-safe schema issue."""
+
+    path: str
+    message: str
+
+
+def _compact_issue_message(message: Any, limit: int = 240) -> str:
+    """Bound model-derived validation text before it enters a retry prompt."""
+    compact = " ".join(str(message).split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 3] + "..."
+
+
+def _json_path(parts) -> str:
+    """Render a jsonschema path deterministically as dotted/indexed JSON."""
+    rendered = ""
+    for part in parts:
+        if isinstance(part, int):
+            rendered += f"[{part}]"
+        else:
+            rendered += ("." if rendered else "") + str(part)
+    return rendered or "$"
+
+
+def _schema_issues(
+    instance: Any,
+    schema: Dict[str, Any],
+    prefix=(),
+) -> List[_SchemaIssue]:
+    """Return all schema errors with stable paths and stable ordering."""
+    validator = jsonschema.Draft7Validator(schema)
+    errors = sorted(
+        validator.iter_errors(instance),
+        key=lambda error: (
+            tuple(str(part) for part in error.absolute_path),
+            str(error.validator),
+            error.message,
+        ),
+    )
+    issues = []
+    for error in errors:
+        path_parts = tuple(prefix) + tuple(error.absolute_path)
+        if error.validator == "required" and isinstance(error.instance, dict):
+            missing = sorted(
+                key
+                for key in error.validator_value
+                if key not in error.instance
+            )
+            for key in missing:
+                issues.append(
+                    _SchemaIssue(
+                        _json_path(path_parts + (key,)),
+                        "required property is missing",
+                    )
+                )
+            continue
+        issues.append(
+            _SchemaIssue(
+                _json_path(path_parts),
+                _compact_issue_message(error.message),
+            )
+        )
+    return sorted(issues, key=lambda issue: (issue.path, issue.message))
+
+
+def _format_schema_issues(issues: List[_SchemaIssue], limit: int = 24) -> str:
+    """Compact schema feedback without embedding the full model response."""
+    shown = issues[:limit]
+    rendered = "; ".join(
+        f"{issue.path}: {issue.message}" for issue in shown
+    )
+    if len(issues) > limit:
+        rendered += f"; ... {len(issues) - limit} additional issue(s)"
+    return rendered
+
+
+def _validate_location_envelope(
+    parsed: Any,
+    location_stubs: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Validate the structure that makes positional replacement trustworthy."""
+    expected_ids = _location_stub_ids(location_stubs)
+    if not isinstance(parsed, dict):
+        raise ValueError("$: location batch must be a JSON object")
+
+    locations = parsed.get("locations")
+    if not isinstance(locations, list):
+        raise ValueError("locations: required array is missing or invalid")
+    if len(locations) != len(expected_ids):
+        raise ValueError(
+            f"locations: expected exactly {len(expected_ids)} item(s), "
+            f"got {len(locations)}"
+        )
+    for index, location in enumerate(locations):
+        if not isinstance(location, dict):
+            raise ValueError(f"locations[{index}]: location must be an object")
+        returned_id = location.get("locationId")
+        if returned_id != expected_ids[index]:
+            returned_display = _compact_issue_message(repr(returned_id))
+            raise ValueError(
+                "locationId order mismatch at "
+                f"locations[{index}].locationId: expected "
+                f"{expected_ids[index]!r}, got {returned_display}"
+            )
+    return locations
+
+
+def _location_item_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract a location schema, tolerating minimal unit-test schemas."""
+    try:
+        item_schema = schema["properties"]["locations"]["items"]
+    except (KeyError, TypeError):
+        return {}
+    return item_schema if isinstance(item_schema, dict) else {}
+
+
+def _invalid_location_issues(
+    locations: List[Dict[str, Any]],
+    schema: Dict[str, Any],
+) -> Dict[int, List[_SchemaIssue]]:
+    """Map invalid batch indexes to deterministic schema issues."""
+    item_schema = _location_item_schema(schema)
+    invalid = {}
+    for index, location in enumerate(locations):
+        issues = _schema_issues(
+            location,
+            item_schema,
+            prefix=("locations", index),
+        )
+        if issues:
+            invalid[index] = issues
+    return invalid
+
+
+def _schema_with_exact_location_count(
+    schema: Dict[str, Any],
+    expected_count: int,
+) -> Dict[str, Any]:
+    """Deep-copy a response schema and constrain only its locations count."""
+    constrained = copy.deepcopy(schema)
+    try:
+        locations_schema = constrained["properties"]["locations"]
+    except (KeyError, TypeError):
+        return constrained
+    if isinstance(locations_schema, dict):
+        locations_schema["minItems"] = expected_count
+        locations_schema["maxItems"] = expected_count
+    return constrained
+
+
+def _strict_openai_schema(schema: Any) -> Any:
+    """Return the OpenAI strict-output subset without mutating the source."""
+    if isinstance(schema, list):
+        return [_strict_openai_schema(value) for value in schema]
+    if not isinstance(schema, dict):
+        return copy.deepcopy(schema)
+
+    strict = {}
+    for key, value in schema.items():
+        if key in {"$schema", "examples"}:
+            continue
+        strict[key] = _strict_openai_schema(value)
+    if strict.get("type") == "object" or "properties" in strict:
+        strict["additionalProperties"] = False
+    return strict
+
+
+def _t026_request_options(
+    provider: str,
+    main_cfg: Dict[str, Any],
+    schema: Dict[str, Any],
+    expected_count: int,
+):
+    """Build provider-native output controls for one T026 semantic call."""
+    constrained = _schema_with_exact_location_count(schema, expected_count)
+    extra_params = {
+        key: value for key, value in main_cfg.items() if key != "model"
+    }
+
+    if provider in {"openai", "legacy"}:
+        response_format = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "t026_location_batch",
+                "strict": True,
+                "schema": _strict_openai_schema(constrained),
+            },
+        }
+    elif provider == "gemini":
+        # T026 requires complete objects, unlike partial-delta callsites that
+        # deliberately use the converter's historical defaults.
+        extra_params["response_schema"] = convert_to_gemini_schema(
+            constrained,
+            preserve_required=True,
+            preserve_constraints=True,
+        )
+        response_format = {"type": "json_object"}
+    elif provider == "lmstudio":
+        # Local OpenAI-compatible servers disagree on schema-format support.
+        # Explicitly use prompt-enforced JSON plus the same fail-closed local
+        # validator. This is a capability policy, not an extra semantic retry.
+        response_format = None
+    else:
+        raise ValueError(f"unsupported T026 provider: {provider}")
+
+    return response_format, extra_params
+
+
+def _parse_t026_response(raw: Any) -> Dict[str, Any]:
+    """Parse one model response with a bounded, deterministic error message."""
+    if not isinstance(raw, str):
+        raise ValueError("$: response content must be a JSON string")
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"$: malformed JSON at line {exc.lineno}, column {exc.colno}"
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("$: location batch must be a JSON object")
+    return parsed
+
+
 def _validate_location_batch_contract(
     parsed: Any,
     location_stubs: List[Dict[str, Any]],
     schema: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Validate T026 schema plus exact positional alignment with its stubs."""
-    if not isinstance(parsed, dict):
-        raise ValueError("location batch must be a JSON object")
-    jsonschema.validate(parsed, schema)
-
-    expected_ids = _location_stub_ids(location_stubs)
-    locations = parsed.get("locations")
-    if not isinstance(locations, list):
-        raise ValueError("location batch must contain a locations array")
-    if len(locations) != len(expected_ids):
+    """Final T026 schema/count/ID/order gate; return an ownership-safe copy."""
+    _validate_location_envelope(parsed, location_stubs)
+    issues = _schema_issues(parsed, schema)
+    if issues:
         raise ValueError(
-            f"location batch cardinality {len(locations)} does not match "
-            f"{len(expected_ids)} stubs"
+            f"schema validation failed: {_format_schema_issues(issues)}"
         )
-    if any(not isinstance(location, dict) for location in locations):
-        raise ValueError("every generated location must be an object")
-
-    returned_ids = [location.get("locationId") for location in locations]
-    if returned_ids != expected_ids:
-        raise ValueError(
-            "locationId order must exactly match the input stubs: "
-            f"expected {expected_ids}, got {returned_ids}"
-        )
-    return parsed
+    return copy.deepcopy(parsed)
 
 
 @dataclass
@@ -548,8 +752,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 "title": plot_data.get("plotTitle", ""),
                 "objective": plot_data.get("mainObjective", ""),
                 "currentStage": plot_data.get("plotPoints", [{}])[0].get("description", "") if plot_data.get("plotPoints") else ""
-            },
-            "locationStubs": location_stubs
+            }
         }
         
         # Add validation requirements if context provided
@@ -565,18 +768,12 @@ CRITICAL: Do NOT use these names for NPCs as they are existing party members: {'
 Create entirely different names that don't conflict with or resemble these party member names.
 Avoid any variations, surnames, or titles using these names.
 """
-        
-        # Generate all locations with a single comprehensive prompt
-        batch_prompt = f"""{context_header}Generate detailed 5e locations for {area_data.get('areaName', 'this area')}.
 
-{party_exclusion_prompt}
+        # Shared by full generation and targeted repair. Cardinality and the
+        # selected stubs stay outside this block so each prompt has one clear
+        # output contract.
+        location_contract_prompt = f"""Each returned location must include ALL required fields from the location schema.
 
-Context:
-{json.dumps(generation_context, indent=2)}
-
-{validation_prompt}
-
-For each location stub provided, generate complete location data following the schema.
 Ensure locations:
 1. Connect logically based on the map layout
 2. Support the plot's needs (place key items, NPCs, and clues appropriately)
@@ -585,24 +782,34 @@ Ensure locations:
 5. Include a mix of combat, exploration, and roleplay opportunities
 6. Feel cohesive as part of the same {area_data.get('areaType', 'area')}
 
-Return a JSON object with a 'locations' array containing all complete location objects.
-Each location must include ALL required fields from the location schema.
-
-CRITICAL: Field names must match the schema EXACTLY:
-- Use "npcs" NOT "notableNPCs" (must be array of objects with name, description, attitude)
-- Use "monsters" NOT "creatures"
-- Use "lootTable" NOT "items" (must be array of strings, not objects)
-- Use "connectivity" for room connections
-- Use "areaConnectivity" for connections to other areas
-- Use "areaConnectivityId" for area connection IDs (empty array [] if no connections to other areas, NEVER include current area ID)
-- Use "plotHooks" NOT "clues"
-- Use "dmInstructions" for DM-specific notes
-- Use "doors" for door information (ALL fields required: name, description, type, locked, lockDC, breakDC, keyname, trapped, trap)
-- Use "traps" for trap details (must include detectDC, disableDC, triggerDC, damage)
-- Use "dcChecks" in format "SkillName DC XX: Description"
-- Include "accessibility" (describe how easily the location can be accessed)
-- Include "dangerLevel" (must be "Low", "Medium", "High", or "Very High")
-- Include "features" (array of objects with name and description)
+CRITICAL COMPLETE LOCATION CHECKLIST -- field names and nesting must match EXACTLY:
+- Every location object requires: name, type, description, dmInstructions,
+  locationId, coordinates, accessibility, npcs, monsters, plotHooks,
+  lootTable, dangerLevel, connectivity, areaConnectivity,
+  areaConnectivityId, traps, features, dcChecks, encounters,
+  adventureSummary, and doors. Never omit a required field; use [] for an
+  empty array and "" for an intentionally empty string.
+- "npcs" (NOT "notableNPCs") is an array of complete objects. Every NPC
+  requires name (string), description (string), and attitude (string).
+- "monsters" (NOT "creatures") is an array of complete objects. Every
+  monster requires name (string) and quantity (object); quantity requires
+  min (integer, 0 or greater) and max (integer, 1 or greater).
+- "plotHooks", "lootTable" (NOT "items"), "connectivity",
+  "areaConnectivity", "areaConnectivityId", and "dcChecks" are arrays of
+  strings, never arrays of objects.
+- Every trap requires name (string), description (string), detectDC
+  (integer), disableDC (integer), triggerDC (integer), and damage (string).
+- Every feature requires name (string) and description (string).
+- Every encounter requires encounterId, summary, impact, and worldConditions.
+  worldConditions is an object requiring year (integer), month (string),
+  day (integer), and time (string).
+- Every door requires name, description, type, locked, lockDC, breakDC,
+  keyname, trapped, and trap, using the types listed below.
+- "dcChecks" entries use "SkillName DC XX: Description".
+- "coordinates" uses "X<number>Y<number>"; "dangerLevel" is exactly one of
+  "Low", "Medium", "High", or "Very High".
+- Use "dmInstructions" for DM-only notes and "plotHooks" (NOT "clues")
+  for story hooks.
 
 DOOR STRUCTURE: Every door must have ALL these fields:
 - name (string): e.g., "North Door", "Secret Panel"
@@ -616,14 +823,42 @@ DOOR STRUCTURE: Every door must have ALL these fields:
 - trap (string): trap description (empty string if not trapped)
 
 AREA CONNECTIVITY RULES:
-- areaConnectivityId should be [] for locations that don't connect to other areas
-- Only include other area IDs when location explicitly connects to different areas
+- areaConnectivityId should be [] for locations that don't connect to other
+  areas
+- Only include other area IDs when the location explicitly connects to a
+  different area
 - NEVER include the location's own area ID in areaConnectivityId
 
 Check the location schema carefully for all required fields.
-Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
+Use only standard ASCII characters -- no smart quotes, no em-dashes, and no
+Unicode symbols.
 
-CRITICAL: You MUST use the exact locationId values from the stubs provided. Do not change, rename, or replace any locationId. The map grid was generated with these specific IDs and the entire module wiring (connectivity, plot references, area cross-links) depends on them. Renaming an ID -- for example returning "R01" when the stub says "A01" -- breaks the module.
+CRITICAL: You MUST use the exact locationId values from the stubs provided.
+Do not change, rename, or replace any locationId. The map grid was generated
+with these specific IDs and the entire module wiring (connectivity, plot
+references, area cross-links) depends on them. Renaming an ID -- for example
+returning "R01" when the stub says "A01" -- breaks the module.
+"""
+
+        batch_context = copy.deepcopy(generation_context)
+        batch_context["locationStubs"] = copy.deepcopy(location_stubs)
+
+        # Generate all locations with a single comprehensive prompt.
+        batch_prompt = f"""{context_header}Generate detailed 5e locations for {area_data.get('areaName', 'this area')}.
+
+{party_exclusion_prompt}
+
+Context:
+{json.dumps(batch_context, indent=2)}
+
+{validation_prompt}
+
+For each location stub provided, generate complete location data following the schema.
+Return one JSON object with a "locations" array containing exactly
+{len(location_stubs)} complete location object(s), in the provided stub order.
+Return no commentary or Markdown.
+
+{location_contract_prompt}
 """
 
         from model_config import MODEL_PROVIDER
@@ -636,63 +871,208 @@ CRITICAL: You MUST use the exact locationId values from the stubs provided. Do n
         else:  # legacy
             main_cfg = config.DM_MAIN_LEGACY
 
-        # T026 is a single all-or-nothing transaction. Parse, schema, cardinality,
-        # and positional-ID checks all happen before returning anything to the
-        # caller, so an invalid attempt cannot partially update area/context state.
-        last_err = None
-        # MED-2 (#127): attach the converted location schema for Gemini so flash
-        # models emit the location object, not DM narration. DM_MAIN_* dicts are
-        # shared across callsites, so attach per-call via extra_params (not the dict).
-        extra_params = {k: v for k, v in main_cfg.items() if k != "model"}
-        if MODEL_PROVIDER == "gemini":
-            if _LOCA_SCHEMA_GEMINI is None:
-                raise RuntimeError(
-                    "MED-2: Gemini location schema is None (schemas/loca_schema.json "
-                    "failed to load at import). Refusing to call Gemini without "
-                    "response_schema -- it would silently produce DM narration."
-                )
-            extra_params["response_schema"] = _LOCA_SCHEMA_GEMINI
-
         # Reject ambiguous stub input before spending a model request.
         _location_stub_ids(location_stubs)
 
-        for attempt in range(2):
-            retry_prompt = batch_prompt
-            if last_err is not None:
-                retry_prompt += (
-                    "\nPREVIOUS RESPONSE ERROR: "
-                    f"{last_err}\nRegenerate the complete batch. Preserve the exact "
-                    "stub count, locationId values, order, and location schema."
-                )
-            response = capture_and_fanout("T026", api_client.create_completion,
+        def _semantic_call(prompt: str, expected_count: int):
+            response_format, extra_params = _t026_request_options(
+                MODEL_PROVIDER,
+                main_cfg,
+                self.schema,
+                expected_count,
+            )
+            return capture_and_fanout(
+                "T026",
+                api_client.create_completion,
                 _request_provider=MODEL_PROVIDER,
                 messages=[
-                    {"role": "system", "content": "You are an expert 5e dungeon designer creating cohesive, interconnected locations."},
-                    {"role": "user", "content": retry_prompt}
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an expert 5e dungeon designer creating "
+                            "cohesive, interconnected locations."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
                 ],
                 model=main_cfg["model"],
                 temperature=0.8,
-                response_format={"type": "json_object"},
-                **extra_params)
-            raw = response.choices[0].message.content
+                response_format=response_format,
+                **extra_params,
+            )
+
+        def _full_retry(first_error: ValueError) -> Dict[str, Any]:
+            retry_prompt = batch_prompt + f"""
+
+FULL-BATCH CORRECTION REQUIRED (semantic call 2 of 2):
+The first response could not be aligned safely with the requested stubs.
+Deterministic validation error: {first_error}
+Regenerate the COMPLETE batch. Return exactly {len(location_stubs)} complete
+location objects in the original stub order with the exact original locationId
+at every index. Reapply the complete field and nested-object checklist above.
+Do not return commentary or Markdown.
+"""
+            retry_response = _semantic_call(retry_prompt, len(location_stubs))
             try:
-                parsed = json.loads(raw)
-                return _validate_location_batch_contract(
-                    parsed, location_stubs, self.schema
+                retry_parsed = _parse_t026_response(
+                    retry_response.choices[0].message.content
                 )
-            except (json.JSONDecodeError, TypeError, ValueError,
-                    jsonschema.ValidationError) as e:
-                last_err = e
+                return _validate_location_batch_contract(
+                    retry_parsed,
+                    location_stubs,
+                    self.schema,
+                )
+            except ValueError as retry_error:
+                raise ValueError(
+                    "Location batch generation returned invalid JSON or "
+                    "contract data after 2 attempts (2 semantic calls); "
+                    "full retry "
+                    f"remained invalid: {retry_error}"
+                ) from retry_error
+
+        # Call 1 always requests the complete batch. No generated state escapes
+        # until the final full schema/count/exact-ID/order gate succeeds.
+        first_response = _semantic_call(batch_prompt, len(location_stubs))
+        try:
+            first_parsed = _parse_t026_response(
+                first_response.choices[0].message.content
+            )
+            first_locations = _validate_location_envelope(
+                first_parsed,
+                location_stubs,
+            )
+        except ValueError as first_error:
+            print(
+                "WARNING: T026 first response was not structurally safe for "
+                f"targeted repair; using one full retry: {first_error}"
+            )
+            return _full_retry(first_error)
+
+        invalid_by_index = _invalid_location_issues(
+            first_locations,
+            self.schema,
+        )
+        if not invalid_by_index:
+            try:
+                return _validate_location_batch_contract(
+                    first_parsed,
+                    location_stubs,
+                    self.schema,
+                )
+            except ValueError as first_error:
+                # This covers root-level schema constraints not attributable to
+                # a complete location. Positional replacement cannot fix it.
                 print(
-                    "WARNING: T026 location batch failed JSON/schema/semantic "
-                    f"validation (attempt {attempt + 1}/2): {e}. "
-                    f"Raw (truncated): {str(raw)[:300]}"
+                    "WARNING: T026 first response failed the final root gate; "
+                    f"using one full retry: {first_error}"
+                )
+                return _full_retry(first_error)
+
+        # Count, object shape, location IDs, and order are trustworthy, so only
+        # invalid locations may be replaced. Accepted siblings are deep-copied
+        # and never included in the repair response contract.
+        invalid_indexes = sorted(invalid_by_index)
+        repair_stubs = [location_stubs[index] for index in invalid_indexes]
+        repair_payload = []
+        for index in invalid_indexes:
+            location_issues = invalid_by_index[index]
+            repair_payload.append(
+                {
+                    "batchIndex": index,
+                    "expectedLocationId": location_stubs[index]["locationId"],
+                    "stub": location_stubs[index],
+                    "validationErrors": [
+                        {"path": issue.path, "message": issue.message}
+                        for issue in location_issues[:24]
+                    ],
+                    "additionalValidationErrorCount": max(
+                        0,
+                        len(location_issues) - 24,
+                    ),
+                }
+            )
+
+        repair_context = copy.deepcopy(generation_context)
+        repair_context["locationStubs"] = copy.deepcopy(repair_stubs)
+
+        repair_prompt = f"""{context_header}Repair invalid 5e locations for {area_data.get('areaName', 'this area')}.
+
+{party_exclusion_prompt}
+
+Context (only the stubs that require replacement):
+{json.dumps(repair_context, indent=2)}
+
+{validation_prompt}
+
+{location_contract_prompt}
+
+TARGETED COMPLETE-LOCATION REPLACEMENT (semantic call 2 of 2):
+The first batch had trustworthy count, object shape, locationId values, and
+order. Replace ONLY the invalid locations listed below. Each replacement must
+be a COMPLETE location object satisfying every field and nested-object rule in
+the full checklist above; do not send a patch or partial object.
+
+Return one JSON object with a "locations" array containing exactly
+{len(repair_stubs)} replacement object(s), in the listed order, with the exact
+locationId values below:
+{json.dumps(_location_stub_ids(repair_stubs))}
+Do not include accepted sibling locations. Return no commentary or Markdown.
+
+Invalid locations and deterministic validation paths:
+{json.dumps(repair_payload, indent=2, sort_keys=True)}
+"""
+
+        repair_response = _semantic_call(repair_prompt, len(repair_stubs))
+        try:
+            repair_parsed = _parse_t026_response(
+                repair_response.choices[0].message.content
+            )
+            validated_repair = _validate_location_batch_contract(
+                repair_parsed,
+                repair_stubs,
+                self.schema,
+            )
+        except ValueError as repair_error:
+            raise ValueError(
+                "Location batch generation returned invalid JSON or contract "
+                "data after 2 attempts (2 semantic calls); targeted repair "
+                f"remained invalid: {repair_error}"
+            ) from repair_error
+
+        accepted_indexes = sorted(
+            set(range(len(first_locations))) - set(invalid_indexes)
+        )
+        accepted_snapshots = {
+            index: copy.deepcopy(first_locations[index])
+            for index in accepted_indexes
+        }
+        merged = copy.deepcopy(first_parsed)
+        replacements = validated_repair["locations"]
+        for repair_index, batch_index in enumerate(invalid_indexes):
+            merged["locations"][batch_index] = copy.deepcopy(
+                replacements[repair_index]
+            )
+
+        for index, accepted in accepted_snapshots.items():
+            if merged["locations"][index] != accepted:
+                raise ValueError(
+                    "T026 internal safety failure: accepted sibling "
+                    f"{index} changed"
                 )
 
-        raise ValueError(
-            "Location batch generation returned invalid JSON or contract data "
-            f"after 2 attempts: {last_err}"
-        )
+        try:
+            return _validate_location_batch_contract(
+                merged,
+                location_stubs,
+                self.schema,
+            )
+        except ValueError as merged_error:
+            raise ValueError(
+                "Location batch generation returned invalid JSON or contract "
+                "data after 2 attempts (2 semantic calls); targeted "
+                "replacement produced a merged batch that "
+                f"failed the final gate: {merged_error}"
+            ) from merged_error
     
     def generate_locations(self,
                           area_data: Dict[str, Any],

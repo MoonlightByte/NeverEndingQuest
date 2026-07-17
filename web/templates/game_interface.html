@@ -7210,26 +7210,49 @@
             socket.on('module_creation_progress', function(data) {
                 console.log('Module creation progress:', data);
                 const modal = document.getElementById('module-progress-modal');
+                const progressBar = document.getElementById('module-progress-bar');
+                const stageName = document.getElementById('stage-name');
+                const progressMessage = document.getElementById('progress-message');
+                const terminalStatus = String(data.status || 'running').toLowerCase();
                 modal.style.display = 'block';
-                
+
                 // Update progress display
                 document.getElementById('current-stage').textContent = data.stage || 0;
                 document.getElementById('total-stages').textContent = data.total_stages || 9;
-                document.getElementById('stage-name').textContent = data.stage_name || 'Processing...';
-                document.getElementById('module-progress-bar').style.width = (data.percentage || 0) + '%';
+                stageName.textContent = data.stage_name || 'Processing...';
+                progressBar.style.width = (data.percentage || 0) + '%';
                 document.getElementById('progress-percentage').textContent = (data.percentage || 0) + '%';
-                document.getElementById('progress-message').textContent = data.message || 'Working...';
-                
-                // Hide modal when complete
-                if (data.percentage >= 100) {
-                    setTimeout(() => {
-                        modal.style.display = 'none';
-                        // Show success message in game output
+                progressMessage.textContent = data.message || 'Working...';
+
+                if (terminalStatus === 'failed') {
+                    progressBar.style.background = 'linear-gradient(90deg, #b71c1c, #ef5350)';
+                    stageName.style.color = '#ff8a80';
+                    progressMessage.style.color = '#ff8a80';
+                } else {
+                    progressBar.style.background = 'linear-gradient(90deg, #4CAF50, #66BB6A)';
+                    stageName.style.color = '#d4d4d4';
+                    progressMessage.style.color = '#a0a0a0';
+                }
+
+                // Percentage is progress only. Explicit publication state owns
+                // terminal success/failure so generated-but-unpublished modules
+                // can never be shown as successful.
+                if (terminalStatus === 'published' || terminalStatus === 'failed') {
+                    const terminalKey = terminalStatus + ':' + (data.message || '');
+                    if (modal.dataset.moduleTerminal !== terminalKey) {
+                        modal.dataset.moduleTerminal = terminalKey;
                         addMessage({
                             type: 'system',
-                            content: 'Module creation completed successfully!'
+                            content: terminalStatus === 'published'
+                                ? 'Module creation completed successfully!'
+                                : (data.message || 'Module creation failed safely. Please try again.')
                         });
-                    }, 3000); // Show completion for 3 seconds
+                    }
+                    setTimeout(() => {
+                        modal.style.display = 'none';
+                    }, 3000);
+                } else if ((data.stage || 0) <= 1) {
+                    delete modal.dataset.moduleTerminal;
                 }
             });
             
