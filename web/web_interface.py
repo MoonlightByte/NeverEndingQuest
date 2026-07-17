@@ -176,7 +176,11 @@ log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)  # Only show errors, not every HTTP request
 
 # Import shared state
-from web.shared_state import module_progress_queue
+from web.shared_state import (
+    SAFE_ACTION_FAILURE_MESSAGE,
+    module_progress_queue,
+    set_player_output_sink,
+)
 
 # Global variables for managing output
 game_output_queue = queue.Queue()
@@ -197,6 +201,7 @@ startup_ready_emitted = False
 MESSAGE_CACHE_FILE = "modules/conversation_history/game_interface_cache.json"
 MESSAGE_CACHE_SIZE = 15  # Keep last 15 messages
 message_cache = deque(maxlen=MESSAGE_CACHE_SIZE)
+message_cache_lock = threading.RLock()
 
 # Message cache functions
 def load_message_cache():
@@ -224,11 +229,59 @@ def save_message_cache():
         print(f"[MESSAGE_CACHE] Failed to save cache: {e}")
 
 def add_to_message_cache(message):
-    """Add a message to the cache and save it"""
-    # Only cache narration and user-input types
-    if message.get('type') in ['narration', 'user-input']:
-        message_cache.append(message)
+    """Add a message once; stable IDs deduplicate replayable safe output."""
+    if not isinstance(message, dict):
+        return False
+    message_id = message.get("message_id")
+    if message_id is not None and (
+        not isinstance(message_id, str) or not message_id.strip()
+    ):
+        return False
+    cacheable = message.get('type') in ['narration', 'user-input']
+    cacheable = cacheable or message_id is not None
+    if not cacheable:
+        return False
+    with message_cache_lock:
+        if message_id is not None and any(
+            cached.get("message_id") == message_id
+            for cached in message_cache
+            if isinstance(cached, dict)
+        ):
+            return False
+        message_cache.append(dict(message))
         save_message_cache()
+    return True
+
+
+def _queue_safe_player_output(message):
+    """Route normalized player output through the existing web game queue."""
+    try:
+        payload = dict(message)
+        if not add_to_message_cache(payload):
+            return False
+        game_output_queue.put(payload)
+        return True
+    except Exception:
+        return False
+
+
+set_player_output_sink(_queue_safe_player_output)
+
+
+def _emit_pending_game_output(emit_function):
+    """Drain current player output through a supplied Socket.IO emitter."""
+    emitted = 0
+    while True:
+        try:
+            message = game_output_queue.get_nowait()
+        except queue.Empty:
+            break
+        try:
+            emit_function("game_output", message)
+            emitted += 1
+        except Exception:
+            break
+    return emitted
 
 def log_web_audit(event_name, **fields):
     """Emit a compact audit/debug log line for web actions."""
@@ -2194,6 +2247,22 @@ def handle_connect():
     """Handle client connection"""
     emit('connected', {'data': 'Connected to NeverEndingQuest'})
 
+    # A process may have stopped after durable module publication but before
+    # its narration receipt was acknowledged. Replay the stable-ID message
+    # before sending cache/queue state so reconnect is self-healing.
+    try:
+        import main as game_main
+
+        receipt_history = game_main.load_json_file(game_main.json_file)
+        if not isinstance(receipt_history, list):
+            receipt_history = []
+        game_main._recover_pending_module_publications(receipt_history)
+    except Exception as receipt_error:
+        error(
+            f"Pending module delivery recovery deferred: {receipt_error}",
+            category="module_management",
+        )
+
     # Check for updates and notify client
     try:
         from utils.version_checker import check_for_updates
@@ -2219,9 +2288,7 @@ def handle_connect():
         _emit_game_resumed()
 
     # Send any queued messages
-    while not game_output_queue.empty():
-        msg = game_output_queue.get()
-        emit('game_output', msg)
+    _emit_pending_game_output(emit)
 
     while not debug_output_queue.empty():
         msg = debug_output_queue.get()
@@ -3172,13 +3239,14 @@ def handle_plot_data_request():
         from utils.module_path_manager import ModulePathManager
         path_manager = ModulePathManager(current_module)
         
-        # Step 2.5: Check for player-friendly quest file first
-        player_quests_path = os.path.join(path_manager.module_dir, f"player_quests_{current_module}.json")
-        
-        if os.path.exists(player_quests_path):
-            # Use player-friendly quest descriptions
-            with open(player_quests_path, 'r', encoding='utf-8') as f:
-                player_quests_data = json.load(f)
+        # Step 2.5: Use derived player quests only when their source digest
+        # still matches the current exact module_plot.json bytes.
+        from utils.quest_player_formatter import load_current_player_quests
+
+        player_quests_data = load_current_player_quests(current_module)
+
+        if player_quests_data is not None:
+            # Use current player-friendly quest descriptions.
             
             # Convert player quest format back to module_plot format for compatibility
             plot_data = {
@@ -3218,7 +3286,7 @@ def handle_plot_data_request():
             with open(plot_file_path, 'r', encoding='utf-8') as f:
                 plot_data = json.load(f)
             
-            debug(f"WEB_INTERFACE: Using original plot data for {current_module} (no player quests file)", category="web_interface")
+            debug(f"WEB_INTERFACE: Using original plot data for {current_module} (player quests unavailable or stale)", category="web_interface")
         
         # The 'emit' function sends the data over the web socket connection to the player's browser.
         emit('plot_data_response', {'data': plot_data})
@@ -3465,37 +3533,6 @@ def handle_test_local_endpoint(data):
              {'ok': True, 'detail': f'Connected. Chat completion succeeded with "{model}".'})
     except Exception as chat_err:
         emit('local_endpoint_test_result', {'ok': False, 'detail': f'Connection failed: {chat_err}'})
-
-@socketio.on('test_module_progress')
-def handle_test_module_progress():
-    """Test handler to simulate module creation progress"""
-    import threading
-    import time
-    
-    def simulate_progress():
-        """Simulate module creation progress events"""
-        stages = [
-            {'stage': 0, 'total_stages': 9, 'stage_name': 'Initializing', 'percentage': 0, 'message': 'Starting module creation...'},
-            {'stage': 1, 'total_stages': 9, 'stage_name': 'Parsing narrative', 'percentage': 11, 'message': 'Analyzing narrative to extract module parameters...'},
-            {'stage': 2, 'total_stages': 9, 'stage_name': 'Configuring builder', 'percentage': 22, 'message': 'Setting up module: Test_Module...'},
-            {'stage': 3, 'total_stages': 9, 'stage_name': 'Creating builder', 'percentage': 33, 'message': 'Initializing module builder...'},
-            {'stage': 4, 'total_stages': 9, 'stage_name': 'Building module', 'percentage': 44, 'message': 'Starting module generation process...'},
-            {'stage': 5, 'total_stages': 9, 'stage_name': 'Creating areas', 'percentage': 55, 'message': 'Generating area layouts and descriptions...'},
-            {'stage': 6, 'total_stages': 9, 'stage_name': 'Populating locations', 'percentage': 66, 'message': 'Adding NPCs and encounters...'},
-            {'stage': 7, 'total_stages': 9, 'stage_name': 'Finalizing', 'percentage': 77, 'message': 'Finalizing module data...'},
-            {'stage': 8, 'total_stages': 9, 'stage_name': 'Complete', 'percentage': 100, 'message': 'Module Test_Module created successfully!'}
-        ]
-        
-        for stage_data in stages:
-            socketio.emit('module_creation_progress', stage_data)
-            time.sleep(1.5)  # Delay between stages for visual effect
-    
-    # Run simulation in background thread
-    thread = threading.Thread(target=simulate_progress)
-    thread.daemon = True
-    thread.start()
-    
-    emit('system_message', {'content': 'Starting module progress test simulation...'})
 
 @socketio.on('generate_image')
 def handle_generate_image(data):
@@ -3942,9 +3979,9 @@ def run_game_loop():
     except Exception as e:
         # Handle other errors with more detail
         import traceback
-        error_msg = f"Game error: {str(e)}"
+        internal_error = f"Game error: {str(e)}"
         try:
-            print(f"Game loop error: {error_msg}")
+            print(f"Game loop error: {internal_error}")
             print(f"Traceback: {traceback.format_exc()}")
         except Exception:
             pass
@@ -3952,7 +3989,7 @@ def run_game_loop():
         try:
             game_output_queue.put({
                 'type': 'error',
-                'content': error_msg,
+                'content': SAFE_ACTION_FAILURE_MESSAGE,
                 'timestamp': datetime.now().isoformat()
             })
         except Exception:
@@ -3981,13 +4018,7 @@ def send_output_to_clients():
     while True:
         try:
             # Send game output
-            while not game_output_queue.empty():
-                try:
-                    msg = game_output_queue.get()
-                    socketio.emit('game_output', msg)
-                except Exception:
-                    # If queue operation or emit fails, just continue
-                    break
+            _emit_pending_game_output(socketio.emit)
             
             # Send debug output
             while not debug_output_queue.empty():
@@ -5064,141 +5095,48 @@ def handle_request_module_list():
         emit('module_list_response', [])  # Send an empty list on error
 
 def simulate_build_process(params):
-    """A target function for a thread that runs the actual module builder."""
+    """Run the toolkit build through the hidden managed lifecycle."""
     global cancel_build_flag
     cancel_build_flag.clear()
 
     try:
-        # Ensure proper imports by adding parent directory to path if needed
-        import sys
-        import os
-        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if parent_dir not in sys.path:
-            sys.path.insert(0, parent_dir)
-        
-        from core.generators.module_builder import ModuleBuilder, BuilderConfig
-        
-        # Extract parameters
+        from core.generators.module_builder import ai_driven_module_creation
+
         module_name = params.get('module_name', 'New_Module')
         narrative = params.get('narrative', 'A classic fantasy adventure')
         num_areas = params.get('num_areas', 5)
         locations_per_area = params.get('locations_per_area', 3)
-        per_area_locations = params.get('per_area_locations', None)  # New parameter
-        
-        # Sanitize module name
+        per_area_locations = params.get('per_area_locations')
         module_name = module_name.replace(' ', '_')
-        
-        info(f"Starting actual module build for: {module_name}")
-        info(f"Parameters - Areas: {num_areas}, Default locations per area: {locations_per_area}")
-        info(f"Raw params received: {params}")  # Debug full params
-        if per_area_locations:
-            info(f"Custom locations per area: {per_area_locations}")
-            info(f"Type of per_area_locations: {type(per_area_locations)}")
-            info(f"Length: {len(per_area_locations) if isinstance(per_area_locations, list) else 'N/A'}")
-        
-        # Create progress callback to emit updates
-        def progress_callback(stage, message):
-            if cancel_build_flag.is_set():
-                return False  # Signal to stop
-            
-            stage_mapping = {
-                'initializing': 0,
-                'base_structure': 1,
-                'npcs': 2,
-                'monsters': 3,
-                'areas': 4,
-                'plots': 5,
-                'connections': 6,
-                'finalizing': 7,
-                'saving': 8
-            }
-            
-            stage_num = stage_mapping.get(stage.lower().replace(' ', '_'), 0)
-            percentage = ((stage_num + 1) / 9) * 100
-            
-            socketio.emit('module_progress', {
-                'stage': stage_num,
-                'stage_name': stage.replace('_', ' ').title(),
-                'percentage': percentage,
-                'message': message
-            })
-            return True  # Continue
-        
-        # Create builder configuration
-        config = BuilderConfig(
-            module_name=module_name,
-            num_areas=num_areas,
-            locations_per_area=locations_per_area,
-            output_directory=f"./modules/{module_name}",
-            verbose=True
-        )
-        
-        # Create the module builder with configuration
-        builder = ModuleBuilder(config)
-        
-        # Set per-area locations if provided
-        info(f"DEBUG: Checking per_area_locations before setting on builder")
-        info(f"  per_area_locations: {per_area_locations}")
-        info(f"  num_areas: {num_areas}")
-        if per_area_locations:
-            info(f"  Length check: {len(per_area_locations)} == {num_areas}? {len(per_area_locations) == num_areas}")
-        
-        if per_area_locations and len(per_area_locations) == num_areas:
-            builder.per_area_locations = per_area_locations
-            info(f"SUCCESS: Set builder.per_area_locations to: {per_area_locations}")
-        else:
-            info(f"WARNING: Not setting per_area_locations (condition not met)")
-        
-        # Set progress callback if the builder supports it
-        if hasattr(builder, 'progress_callback'):
-            builder.progress_callback = progress_callback
-        
-        # Emit initial progress
-        socketio.emit('module_progress', {
-            'stage': 0,
-            'stage_name': 'Initializing',
-            'percentage': 0,
-            'message': f'Starting module generation for "{module_name}"...'
-        })
-        
-        # Emit message that we're about to start building
-        socketio.emit('module_progress', {
-            'stage': 1,
-            'stage_name': 'Starting Build',
-            'percentage': 10,
-            'message': 'Module builder initialized, starting generation...'
-        })
-        
-        try:
-            # Call the actual build_module method with the narrative concept
-            info(f"Calling builder.build_module with narrative: {narrative[:100]}...")
-            builder.build_module(narrative)
-            info(f"Module build completed successfully")
-            
-            # Module generation complete
-            if per_area_locations and len(per_area_locations) == num_areas:
-                total_locations = sum(per_area_locations)
-                location_detail = ', '.join([f"Area {i+1}: {count} locations" for i, count in enumerate(per_area_locations)])
-                complete_message = f'Module "{module_name}" successfully generated with {num_areas} areas and {total_locations} total locations ({location_detail})'
-            else:
-                complete_message = f'Module "{module_name}" successfully generated with {num_areas} areas and {locations_per_area} locations per area.'
-            
-            socketio.emit('module_complete', {
-                'module_name': module_name,
-                'message': complete_message
-            })
-        except Exception as build_error:
-            error(f"Error during build_module execution: {build_error}")
-            import traceback
-            error(f"Build traceback: {traceback.format_exc()}")
-            socketio.emit('module_error', {'error': f'Build failed: {str(build_error)}'})
-            raise
 
-    except ImportError as e:
-        error(f"Failed to import module builder: {e}")
-        import traceback
-        error(f"Import traceback: {traceback.format_exc()}")
-        socketio.emit('module_error', {'error': f'Module builder not available: {str(e)}'})
+        def progress_callback(payload):
+            if cancel_build_flag.is_set():
+                raise RuntimeError("Module generation cancelled")
+            socketio.emit('module_progress', dict(payload))
+            return True
+
+        creation_params = {
+            'narrative': narrative,
+            'module_name': module_name,
+            'num_areas': num_areas,
+            'locations_per_area': locations_per_area,
+        }
+        if per_area_locations is not None:
+            creation_params['per_area_locations'] = per_area_locations
+        success, created_name = ai_driven_module_creation(
+            creation_params,
+            progress_callback=progress_callback,
+            policy="toolkit",
+        )
+        if not success or not created_name:
+            raise RuntimeError("Module generation failed")
+        socketio.emit(
+            'module_complete',
+            {
+                'module_name': created_name,
+                'message': f'Module "{created_name}" successfully generated.',
+            },
+        )
     except Exception as e:
         error(f"Module build failed: {e}")
         import traceback

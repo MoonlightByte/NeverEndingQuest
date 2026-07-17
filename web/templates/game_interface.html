@@ -5617,6 +5617,29 @@
             }
         });
 
+        // GAME_OUTPUT_DEDUP_START
+        const displayedGameMessageIds = new Set();
+        const displayedGameMessageOrder = [];
+        function addGameOutputMessage(message) {
+            if (!message || typeof message !== 'object') return false;
+            const messageId = typeof message.message_id === 'string'
+                ? message.message_id.trim()
+                : '';
+            if (messageId) {
+                if (displayedGameMessageIds.has(messageId)) return false;
+                displayedGameMessageIds.add(messageId);
+                displayedGameMessageOrder.push(messageId);
+                while (displayedGameMessageOrder.length > 200) {
+                    displayedGameMessageIds.delete(
+                        displayedGameMessageOrder.shift()
+                    );
+                }
+            }
+            addMessage('game-output', message);
+            return true;
+        }
+        // GAME_OUTPUT_DEDUP_END
+
         // Handle cached messages from previous session
         socket.on('cached_messages', (messages) => {
             console.log(`[MESSAGE_CACHE] Restoring ${messages.length} cached messages`);
@@ -5627,7 +5650,7 @@
                     content: '--- Previous Session Messages ---'
                 });
                 messages.forEach(msg => {
-                    addMessage('game-output', msg);
+                    addGameOutputMessage(msg);
                 });
                 addMessage('game-output', {
                     type: 'system',
@@ -5637,7 +5660,7 @@
         });
 
         socket.on('game_output', (message) => {
-            addMessage('game-output', message);
+            if (!addGameOutputMessage(message)) return;
             // Check for combat immediately after any game output
             requestInitiativeData();
             // After any game output, refresh plot data with a slight delay
@@ -7206,25 +7229,122 @@
                 autoplayTooltip.classList.remove('visible');
             });
             
-            // Listen for module creation progress updates
+            // MODULE_PROGRESS_REDUCER_START
+            const moduleProgressState = {
+                activeBuildId: null,
+                terminalBuildId: null,
+                lastStage: -1,
+                lastPercentage: -1,
+                lastEventKey: null,
+                hideTimer: null
+            };
+
+            function boundedProgressInteger(value, minimum, maximum) {
+                const number = Number(value);
+                if (!Number.isFinite(number)) return null;
+                return Math.max(minimum, Math.min(maximum, Math.trunc(number)));
+            }
+
+            function activateModuleBuild(buildId, modal) {
+                if (moduleProgressState.hideTimer !== null) {
+                    clearTimeout(moduleProgressState.hideTimer);
+                    moduleProgressState.hideTimer = null;
+                }
+                moduleProgressState.activeBuildId = buildId;
+                moduleProgressState.terminalBuildId = null;
+                moduleProgressState.lastStage = -1;
+                moduleProgressState.lastPercentage = -1;
+                moduleProgressState.lastEventKey = null;
+                modal.dataset.moduleBuildId = buildId;
+                delete modal.dataset.moduleTerminal;
+            }
+
             socket.on('module_creation_progress', function(data) {
-                console.log('Module creation progress:', data);
+                if (!data || typeof data !== 'object') return;
+                const buildId = typeof data.build_id === 'string'
+                    ? data.build_id.trim()
+                    : '';
+                if (!buildId) return;
+
+                const status = typeof data.status === 'string'
+                    ? data.status.toLowerCase()
+                    : '';
+                const isRunning = status === 'running';
+                const isTerminal = status === 'published'
+                    || status === 'generated'
+                    || status === 'failed';
+                if (!isRunning && !isTerminal) return;
+                if (data.terminal !== isTerminal) return;
+                if (isRunning && Object.prototype.hasOwnProperty.call(data, 'success')) return;
+                if (isTerminal) {
+                    const expectedSuccess = status !== 'failed';
+                    if (data.success !== expectedSuccess) return;
+                }
+
                 const modal = document.getElementById('module-progress-modal');
+                if (!modal) return;
+                if (moduleProgressState.activeBuildId === null) {
+                    activateModuleBuild(buildId, modal);
+                } else if (moduleProgressState.activeBuildId !== buildId) {
+                    // Only a running event may begin the build after a completed
+                    // one. Foreign events cannot interrupt an active build.
+                    if (
+                        moduleProgressState.terminalBuildId
+                            === moduleProgressState.activeBuildId
+                        && isRunning
+                    ) {
+                        activateModuleBuild(buildId, modal);
+                    } else {
+                        return;
+                    }
+                } else if (moduleProgressState.terminalBuildId === buildId) {
+                    return;
+                }
+
+                const totalStages = boundedProgressInteger(data.total_stages, 1, 99);
+                if (totalStages === null) return;
+                const stage = boundedProgressInteger(data.stage, 0, totalStages);
+                const percentage = boundedProgressInteger(
+                    data.percentage,
+                    0,
+                    isRunning ? 99 : 100
+                );
+                if (stage === null || percentage === null) return;
+                if (
+                    stage < moduleProgressState.lastStage
+                    || percentage < moduleProgressState.lastPercentage
+                ) return;
+
+                const stageLabel = typeof data.stage_name === 'string'
+                    ? data.stage_name
+                    : 'Processing...';
+                const message = typeof data.message === 'string'
+                    ? data.message
+                    : 'Working...';
+                const eventKey = [
+                    buildId, status, stage, totalStages, percentage,
+                    stageLabel, message
+                ].join('|');
+                if (eventKey === moduleProgressState.lastEventKey) return;
+
+                moduleProgressState.lastStage = stage;
+                moduleProgressState.lastPercentage = percentage;
+                moduleProgressState.lastEventKey = eventKey;
+                modal.style.display = 'block';
+                modal.dataset.moduleBuildId = buildId;
+
                 const progressBar = document.getElementById('module-progress-bar');
                 const stageName = document.getElementById('stage-name');
                 const progressMessage = document.getElementById('progress-message');
-                const terminalStatus = String(data.status || 'running').toLowerCase();
-                modal.style.display = 'block';
+                document.getElementById('current-stage').textContent = String(stage);
+                document.getElementById('total-stages').textContent = String(totalStages);
+                stageName.textContent = stageLabel;
+                progressBar.style.width = String(percentage) + '%';
+                document.getElementById('progress-percentage').textContent
+                    = String(percentage) + '%';
+                progressMessage.textContent = message;
 
-                // Update progress display
-                document.getElementById('current-stage').textContent = data.stage || 0;
-                document.getElementById('total-stages').textContent = data.total_stages || 9;
-                stageName.textContent = data.stage_name || 'Processing...';
-                progressBar.style.width = (data.percentage || 0) + '%';
-                document.getElementById('progress-percentage').textContent = (data.percentage || 0) + '%';
-                progressMessage.textContent = data.message || 'Working...';
-
-                if (terminalStatus === 'failed') {
+                if (status === 'failed') {
                     progressBar.style.background = 'linear-gradient(90deg, #b71c1c, #ef5350)';
                     stageName.style.color = '#ff8a80';
                     progressMessage.style.color = '#ff8a80';
@@ -7234,27 +7354,25 @@
                     progressMessage.style.color = '#a0a0a0';
                 }
 
-                // Percentage is progress only. Explicit publication state owns
-                // terminal success/failure so generated-but-unpublished modules
-                // can never be shown as successful.
-                if (terminalStatus === 'published' || terminalStatus === 'failed') {
-                    const terminalKey = terminalStatus + ':' + (data.message || '');
-                    if (modal.dataset.moduleTerminal !== terminalKey) {
-                        modal.dataset.moduleTerminal = terminalKey;
-                        addMessage({
-                            type: 'system',
-                            content: terminalStatus === 'published'
-                                ? 'Module creation completed successfully!'
-                                : (data.message || 'Module creation failed safely. Please try again.')
-                        });
-                    }
-                    setTimeout(() => {
-                        modal.style.display = 'none';
+                // Progress owns only this modal. Player chat is delivered by
+                // the safe game-output path with its own stable message ID.
+                if (isTerminal) {
+                    moduleProgressState.terminalBuildId = buildId;
+                    modal.dataset.moduleTerminal = buildId + ':' + status;
+                    const capturedBuildId = buildId;
+                    moduleProgressState.hideTimer = setTimeout(function() {
+                        if (
+                            moduleProgressState.activeBuildId === capturedBuildId
+                            && moduleProgressState.terminalBuildId === capturedBuildId
+                            && modal.dataset.moduleBuildId === capturedBuildId
+                        ) {
+                            modal.style.display = 'none';
+                            moduleProgressState.hideTimer = null;
+                        }
                     }, 3000);
-                } else if ((data.stage || 0) <= 1) {
-                    delete modal.dataset.moduleTerminal;
                 }
             });
+            // MODULE_PROGRESS_REDUCER_END
             
             // --- START: Additions for Robust Media Popup Closing ---
             const mediaPopup = document.getElementById('media-popup');

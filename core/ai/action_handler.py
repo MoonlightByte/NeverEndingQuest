@@ -57,6 +57,7 @@ import subprocess
 import os
 import threading
 from datetime import datetime
+from uuid import uuid4
 from core.ai import api_client
 import model_config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
@@ -199,6 +200,24 @@ def _module_creation_error_result(*, recovery_required=False, message=None):
         "needs_dm_response": False,
         "response_data": response_data,
     }
+
+
+def _module_creation_idempotency_key(action, conversation_history):
+    """Hash the accepted action and its pre-action history into an opaque key."""
+    payload = {
+        "action": action,
+        "history_prefix": conversation_history
+        if isinstance(conversation_history, list)
+        else [],
+    }
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def pre_validate_transition(parameters, party_tracker_data, conversation_history, location_graph, path_manager):
@@ -1523,13 +1542,45 @@ Please use a valid location that exists in the current area ({current_area_id}) 
     elif action_type == ACTION_CREATE_NEW_MODULE:
         debug("STATE_CHANGE: Processing createNewModule action", category="module_management")
 
-        def module_progress_callback(progress_data):
-            """Forward only structured, nonterminal builder progress."""
-            payload = dict(progress_data or {})
-            payload.setdefault("status", "running")
-            payload.setdefault("terminal", False)
-            if payload.get("status") == "running" and payload.get("percentage", 0) >= 100:
-                payload["percentage"] = 88
+        # Allocate before any optional module imports so even import/contract
+        # failures have one correlated terminal payload. Reuse an already
+        # active usage identity when this action is nested in its build scope.
+        build_id = str(uuid4())
+        try:
+            from utils.openai_usage_tracker import (
+                get_module_build_usage_context,
+            )
+
+            active_build_context = get_module_build_usage_context()
+            if active_build_context is not None:
+                build_id = str(active_build_context.build_id)
+        except Exception:
+            # The fallback UUID still correlates progress if usage tracking is
+            # unavailable; the later protected import owns the safe failure.
+            pass
+        progress_lock = threading.Lock()
+        progress_state = {
+            "last_stage": -1,
+            "last_percentage": -1,
+            "total_stages": 9,
+            "terminal_emitted": False,
+        }
+
+        def _bounded_progress_int(value, default, minimum, maximum):
+            if isinstance(value, bool):
+                value = default
+            try:
+                value = int(value)
+            except (TypeError, ValueError, OverflowError):
+                value = default
+            return max(minimum, min(maximum, value))
+
+        def _progress_text(value, default):
+            if not isinstance(value, str) or not value.strip():
+                return default
+            return value.strip()[:500]
+
+        def _queue_module_progress(payload):
             try:
                 from web.shared_state import module_progress_queue
 
@@ -1551,22 +1602,150 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     category="module_management",
                 )
 
-        def terminal_progress(status, message, module_name=None):
-            module_progress_callback(
-                {
-                    "stage": 9,
-                    "total_stages": 9,
-                    "stage_name": (
-                        "Published" if status == "published" else "Failed"
+        def module_progress_callback(progress_data):
+            """Coerce child callbacks into one monotonic running envelope."""
+            if not isinstance(progress_data, dict):
+                return False
+            with progress_lock:
+                if progress_state["terminal_emitted"]:
+                    return False
+                total_stages = _bounded_progress_int(
+                    progress_data.get("total_stages"),
+                    progress_state["total_stages"],
+                    1,
+                    99,
+                )
+                stage = _bounded_progress_int(
+                    progress_data.get("stage"),
+                    progress_state["last_stage"] + 1,
+                    0,
+                    total_stages,
+                )
+                total_stages = max(
+                    progress_state["total_stages"], total_stages, stage
+                )
+                percentage = _bounded_progress_int(
+                    progress_data.get("percentage"),
+                    max(0, progress_state["last_percentage"]),
+                    0,
+                    99,
+                )
+                if (
+                    stage < progress_state["last_stage"]
+                    or percentage < progress_state["last_percentage"]
+                ):
+                    return False
+                if (
+                    stage == progress_state["last_stage"]
+                    and percentage == progress_state["last_percentage"]
+                ):
+                    return False
+                progress_state["last_stage"] = stage
+                progress_state["last_percentage"] = percentage
+                progress_state["total_stages"] = total_stages
+                payload = {
+                    "build_id": build_id,
+                    "stage": stage,
+                    "total_stages": total_stages,
+                    "stage_name": _progress_text(
+                        progress_data.get("stage_name"), "Processing"
                     ),
-                    "percentage": 100,
-                    "status": status,
-                    "terminal": True,
-                    "success": status == "published",
-                    "module_name": module_name,
-                    "message": message,
+                    "percentage": percentage,
+                    "message": _progress_text(
+                        progress_data.get("message"), "Working..."
+                    ),
+                    "status": "running",
+                    "terminal": False,
                 }
+                # Keep queue order within the same lock that linearizes stage
+                # state so a terminal can never overtake accepted progress.
+                _queue_module_progress(payload)
+                return True
+
+        def terminal_progress(status, message, module_name=None):
+            terminal_status = (
+                status
+                if status in {"published", "generated", "failed"}
+                else "failed"
             )
+            with progress_lock:
+                if progress_state["terminal_emitted"]:
+                    return False
+                progress_state["terminal_emitted"] = True
+                total_stages = max(progress_state["total_stages"], 9)
+                payload = {
+                    "build_id": build_id,
+                    "stage": total_stages,
+                    "total_stages": total_stages,
+                    "stage_name": {
+                        "published": "Published",
+                        "generated": "Generated",
+                        "failed": "Failed",
+                    }[terminal_status],
+                    "percentage": 100,
+                    "message": _progress_text(
+                        message,
+                        "Module creation finished.",
+                    ),
+                    "status": terminal_status,
+                    "terminal": True,
+                    "success": terminal_status in {"published", "generated"},
+                }
+                if isinstance(module_name, str) and module_name.strip():
+                    payload["module_name"] = module_name.strip()[:200]
+                _queue_module_progress(payload)
+                return True
+
+        def module_failure(**kwargs):
+            failure = _module_creation_error_result(**kwargs)
+            failure["build_id"] = build_id
+            failure["response_data"]["build_id"] = build_id
+            return failure
+
+        def published_result(receipt):
+            module_name = receipt.module_name
+            pending_message = (
+                f"Module {module_name} was published; follow-up narration is pending."
+            )
+            dm_note = (
+                "Dungeon Master Note: New module "
+                f"'{module_name}' has been successfully created and integrated "
+                "into the world. Provide a useful player-facing transition "
+                "narration and return no actions."
+            )
+            return {
+                "status": (
+                    "published_replay" if receipt.acknowledged else "published"
+                ),
+                "success": True,
+                "build_id": build_id,
+                "state_changed": True,
+                "retryable": False,
+                "needs_update": True,
+                "needs_dm_response": not receipt.acknowledged,
+                "response_data": {
+                    "build_id": build_id,
+                    "receipt_build_id": receipt.build_id,
+                    "module_name": module_name,
+                    "dm_note": dm_note,
+                    "message_id": receipt.message_id,
+                    "message_digest": receipt.message_digest,
+                    "idempotency_key": receipt.idempotency_key,
+                    "pending_message": pending_message,
+                },
+            }
+
+        # Establish the active build in the reducer before any optional import,
+        # contract check, or lock attempt can fail and emit its terminal event.
+        module_progress_callback(
+            {
+                "stage": 0,
+                "total_stages": 9,
+                "stage_name": "Initializing",
+                "percentage": 0,
+                "message": "Starting module creation...",
+            }
+        )
 
         try:
             from core.ai.module_creation_contract import (
@@ -1577,11 +1756,13 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 ModuleCreationRecoveryRequiredError,
                 ai_driven_module_creation,
             )
-            from core.generators.module_stitcher import (
-                OrphanCleanupResult,
-                PublicationStatus,
-                TargetedPublicationResult,
-                get_module_stitcher,
+            from core.generators.managed_module_builder import (
+                get_ready_managed_candidate,
+            )
+            from core.generators.module_stitcher import get_module_stitcher
+            from utils.module_lifecycle import (
+                ModuleLifecycleStore,
+                RecoveryStatus,
             )
             from utils.openai_usage_tracker import (
                 mark_module_build_outcome,
@@ -1591,12 +1772,13 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             # must never discover a half-built action-created module.
             from utils.module_refresh_lock import module_refresh_lock
 
-            with module_build_usage_scope():
+            with module_build_usage_scope(build_id=build_id) as build_context:
+                build_id = str(build_context.build_id)
                 try:
                     validate_create_new_module_action(action)
                 except ModuleCreationContractError:
                     mark_module_build_outcome("contract_rejected")
-                    failure = _module_creation_error_result()
+                    failure = module_failure()
                     terminal_progress(
                         "failed", failure["response_data"]["error_message"]
                     )
@@ -1605,7 +1787,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 with module_refresh_lock() as publication_acquired:
                     if not publication_acquired:
                         mark_module_build_outcome("lock_unavailable")
-                        failure = _module_creation_error_result(
+                        failure = module_failure(
                             message=(
                                 "Module creation is busy; no game state was "
                                 "changed. Please retry shortly."
@@ -1616,15 +1798,66 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         )
                         return failure
 
+                    idempotency_key = _module_creation_idempotency_key(
+                        action,
+                        conversation_history,
+                    )
+                    from utils.commit_state import (
+                        recover_incomplete_refresh_commit,
+                    )
+
+                    recover_incomplete_refresh_commit()
+                    lifecycle = ModuleLifecycleStore("modules")
+                    recovery = lifecycle.recover()
+                    if recovery.status is RecoveryStatus.INDETERMINATE:
+                        mark_module_build_outcome("lifecycle_recovery_required")
+                        failure = module_failure(recovery_required=True)
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+
+                    existing_receipt = lifecycle.find_publication_receipt(
+                        idempotency_key=idempotency_key
+                    )
+                    if existing_receipt is not None:
+                        mark_module_build_outcome("published_replay")
+                        terminal_progress(
+                            "published",
+                            f"Module {existing_receipt.module_name} was already published.",
+                            existing_receipt.module_name,
+                        )
+                        return published_result(existing_receipt)
+
+                    unrelated_receipt = lifecycle.find_pending_receipt()
+                    if unrelated_receipt is not None:
+                        mark_module_build_outcome("delivery_pending")
+                        failure = module_failure(
+                            recovery_required=True,
+                            message=(
+                                "A previous module was published and its player "
+                                "message is still pending. Finish recovery before "
+                                "creating another module."
+                            ),
+                        )
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+
+                    stitcher = get_module_stitcher()
                     try:
                         success, module_name = ai_driven_module_creation(
                             parameters,
                             progress_callback=module_progress_callback,
                             policy="game",
+                            prepare_candidate=(
+                                stitcher.prepare_managed_candidate_locked
+                            ),
                         )
                     except ModuleCreationRecoveryRequiredError:
                         mark_module_build_outcome("builder_recovery_required")
-                        failure = _module_creation_error_result(
+                        failure = module_failure(
                             recovery_required=True
                         )
                         terminal_progress(
@@ -1634,100 +1867,89 @@ Please use a valid location that exists in the current area ({current_area_id}) 
 
                     if not success or not module_name:
                         mark_module_build_outcome("not_generated")
-                        failure = _module_creation_error_result()
+                        failure = module_failure()
                         terminal_progress(
                             "failed", failure["response_data"]["error_message"]
                         )
                         return failure
 
-                    stitcher = get_module_stitcher()
-                    publication = stitcher.publish_module_locked(module_name)
-                    if (
-                        type(publication) is not TargetedPublicationResult
-                        or publication.module_name != module_name
-                    ):
-                        mark_module_build_outcome("publication_indeterminate")
-                        failure = _module_creation_error_result(
-                            recovery_required=True
-                        )
+                    active = get_ready_managed_candidate(module_name)
+                    if active is None:
+                        mark_module_build_outcome("ready_candidate_missing")
+                        failure = module_failure(recovery_required=True)
                         terminal_progress(
                             "failed", failure["response_data"]["error_message"]
                         )
                         return failure
 
-                    if (
-                        publication.status is PublicationStatus.PUBLISHED
-                    ):
-                        mark_module_build_outcome("published")
-                        terminal_progress(
-                            "published",
-                            f"Module {module_name} was published successfully.",
-                            module_name,
+                    pending_message = (
+                        f"Module {module_name} was published; follow-up narration is pending."
+                    )
+                    message_id = "module-publication-" + hashlib.sha256(
+                        f"{active.build_id}:{idempotency_key}".encode("utf-8")
+                    ).hexdigest()[:32]
+                    message_digest = hashlib.sha256(
+                        pending_message.encode("utf-8")
+                    ).hexdigest()
+                    try:
+                        receipt = stitcher.publish_managed_candidate_locked(
+                            active,
+                            message_id=message_id,
+                            message_digest=message_digest,
+                            idempotency_key=idempotency_key,
                         )
-                        info(
-                            f"SUCCESS: Module '{module_name}' created and published",
+                    except Exception as publication_error:
+                        warning(
+                            "Managed publication interrupted; classifying exact recovery state",
                             category="module_management",
                         )
-                        dm_note = (
-                            "Dungeon Master Note: New module "
-                            f"'{module_name}' has been successfully created and "
-                            "integrated into the world. You may now guide the "
-                            "party to this new adventure."
-                        )
-                        needs_conversation_history_update = True
-                        return {
-                            "status": "published",
-                            "success": True,
-                            "needs_update": True,
-                            "needs_dm_response": True,
-                            "response_data": {
-                                "module_name": module_name,
-                                "dm_note": dm_note,
-                            },
-                        }
-
-                    if publication.status is PublicationStatus.NOT_PUBLISHED:
-                        fresh_absence = (
-                            stitcher.prove_module_absent_from_registry_locked(
-                                module_name
+                        recovery = lifecycle.recover()
+                        if recovery.status is not RecoveryStatus.INDETERMINATE:
+                            receipt = lifecycle.find_pending_receipt(
+                                idempotency_key=idempotency_key
                             )
-                        )
-                        cleanup = stitcher.cleanup_unpublished_module_locked(
-                            module_name,
-                            publication,
-                            fresh_absence,
-                        )
-                        if (
-                            type(cleanup) is OrphanCleanupResult
-                            and cleanup.safe_to_retry_for(module_name) is True
-                        ):
+                            if receipt is not None:
+                                mark_module_build_outcome("published_recovered")
+                                terminal_progress(
+                                    "published",
+                                    f"Module {receipt.module_name} was published successfully.",
+                                    receipt.module_name,
+                                )
+                                return published_result(receipt)
                             mark_module_build_outcome("not_published")
-                            failure = _module_creation_error_result()
+                            failure = module_failure()
                         else:
-                            mark_module_build_outcome("cleanup_recovery_required")
-                            failure = _module_creation_error_result(
-                                recovery_required=True
+                            error(
+                                "Managed publication recovery is indeterminate",
+                                exception=publication_error,
+                                category="module_management",
                             )
+                            mark_module_build_outcome("publication_indeterminate")
+                            failure = module_failure(recovery_required=True)
                         terminal_progress(
                             "failed", failure["response_data"]["error_message"]
                         )
                         return failure
 
-                    mark_module_build_outcome("publication_indeterminate")
-                    failure = _module_creation_error_result(
-                        recovery_required=True
-                    )
+                    mark_module_build_outcome("published")
                     terminal_progress(
-                        "failed", failure["response_data"]["error_message"]
+                        "published",
+                        f"Module {module_name} was published successfully.",
+                        module_name,
                     )
-                    return failure
+                    info(
+                        f"SUCCESS: Module '{module_name}' created and published",
+                        category="module_management",
+                    )
+                    needs_conversation_history_update = True
+                    return published_result(receipt)
         except Exception as module_error:
             error(
                 "FAILURE: Unexpected module creation pipeline error",
                 exception=module_error,
                 category="module_management",
             )
-            failure = _module_creation_error_result(recovery_required=True)
+            failure = module_failure(recovery_required=True)
             terminal_progress(
                 "failed", failure["response_data"]["error_message"]
             )
@@ -2218,7 +2440,18 @@ def move_background_npc(npc_name, context, current_location_hint=None, party_tra
     # The complete read -> AI decision -> mutate -> write sequence is one
     # transaction.  A lock created inside this function cannot protect two
     # invocations, so share a re-entrant lock by module instead.
-    with _npc_movement_lock(module_name):
+    from contextlib import ExitStack
+    from utils.module_refresh_lock import module_refresh_lock
+
+    with ExitStack() as movement_locks:
+        refresh_acquired = movement_locks.enter_context(module_refresh_lock())
+        if not refresh_acquired:
+            warning(
+                "Background NPC movement deferred while modules are refreshing",
+                category="npc_management",
+            )
+            return False
+        movement_locks.enter_context(_npc_movement_lock(module_name))
         try:
             path_manager = ModulePathManager(module_name)
             

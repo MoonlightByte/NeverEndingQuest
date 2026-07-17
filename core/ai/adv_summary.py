@@ -44,6 +44,7 @@ from jsonschema import validate, ValidationError
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import sanitize_text, safe_json_load, safe_json_dump
 from utils.file_operations import FileLockError, atomic_writer
+from utils.module_refresh_lock import module_refresh_lock
 from core.managers.status_manager import status_generating_summary
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
@@ -927,8 +928,15 @@ def _resolve_prior_pending_summary_unlocked(pending_path):
 
 def _resolve_prior_pending_summary(pending_path=PENDING_DEPARTURE_SUMMARY_FILE):
     """Resolve a prior transaction under the same lock used by commits."""
-    with _departure_transaction_lock(pending_path):
-        return _resolve_prior_pending_summary_unlocked(pending_path)
+    # Recovery may replace an area document, so module refresh must remain the
+    # outermost module-tree fence. The marker/target locks are lower-ranked.
+    with module_refresh_lock() as refresh_acquired:
+        if not refresh_acquired:
+            raise DepartureSummaryError(
+                "module refresh is busy; departure recovery made no changes"
+            )
+        with _departure_transaction_lock(pending_path):
+            return _resolve_prior_pending_summary_unlocked(pending_path)
 
 
 def _journal_before_from_appended_update(journal_after):
@@ -1078,21 +1086,26 @@ def commit_departure_summary(
     journal_path = "journal.json"
     expected_journal_before = _journal_before_from_appended_update(journal_after)
 
-    # Lock order is always marker first, then canonical targets. Ordinary
+    # Lock order is module refresh, marker, then canonical targets. Ordinary
     # AtomicFileWriter callers acquire only target locks, so they cannot form
     # a target -> marker cycle with this transaction.
-    with _departure_transaction_lock(pending_path):
-        _resolve_prior_pending_summary_unlocked(pending_path)
-        with _departure_target_locks(area_path, journal_path, pending_path):
-            return _commit_departure_summary_targets_locked(
-                area_path,
-                area_before,
-                area_after,
-                journal_after,
-                pending_path,
-                journal_path,
-                expected_journal_before,
+    with module_refresh_lock() as refresh_acquired:
+        if not refresh_acquired:
+            raise DepartureSummaryError(
+                "module refresh is busy; departure summary made no changes"
             )
+        with _departure_transaction_lock(pending_path):
+            _resolve_prior_pending_summary_unlocked(pending_path)
+            with _departure_target_locks(area_path, journal_path, pending_path):
+                return _commit_departure_summary_targets_locked(
+                    area_path,
+                    area_before,
+                    area_after,
+                    journal_after,
+                    pending_path,
+                    journal_path,
+                    expected_journal_before,
+                )
 
 
 def run_departure_summary(

@@ -75,6 +75,23 @@ def _lock_state(target_path: str, suffix: str) -> _PathLockState:
         return _THREAD_LOCKS.setdefault(identity, _PathLockState())
 
 
+def path_transaction_lock_owned(
+    target_path,
+    *,
+    suffix=".transaction.lock",
+) -> bool:
+    """Return whether the current thread owns this exact lock identity.
+
+    Ownership is deliberately thread-scoped, not merely process-scoped.  A
+    sibling thread must not be able to call an API whose ``*_locked`` contract
+    is protected by another thread's advisory descriptor.  The at-fork reset
+    above discards inherited state, so a child never inherits this authority.
+    """
+    canonical = os.path.abspath(os.path.normpath(os.fspath(target_path)))
+    state = _lock_state(canonical, suffix)
+    return getattr(state.local, "depth", 0) > 0
+
+
 def _wait_to_retry(deadline, poll_seconds: float) -> bool:
     """Sleep only within the caller's acquisition budget."""
     if deadline is None:

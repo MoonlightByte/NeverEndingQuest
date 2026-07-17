@@ -311,6 +311,12 @@ convo.txt
 correct_exit.txt
 gemini.txt
 
+# Persistent advisory lock namespace (runtime ownership, never source data)
+/.runtime_locks/
+*.advisory.lock
+*.module-transition.lock
+*.transaction.lock
+
 # Connection work backup
 connection_work_backup/
 
@@ -323,7 +329,7 @@ world_registry_backup_*.json
 *_week_old.py
 
 # Strange filename artifacts
-"2\\}\n  ],\n  \\deaths\\: [\\Malarok"
+/2*deaths*Malarok*
 
 # Files manually deleted from repository - do not re-add
 build_spell_repository.py

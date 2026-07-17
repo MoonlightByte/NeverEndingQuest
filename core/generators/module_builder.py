@@ -24,7 +24,8 @@ import os
 import re
 import shutil
 import sys
-from typing import Dict, List, Any, Optional
+from pathlib import Path
+from typing import Callable, Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -227,8 +228,9 @@ class ModuleBuilder:
         self.location_gen = LocationGenerator()
         self.area_gen = AreaGenerator()
         
-        # Create output directory
-        os.makedirs(self.config.output_directory, exist_ok=True)
+        # Directory ownership belongs to ManagedModuleBuilder (production) or
+        # to the explicit low-level caller.  Construction must never create a
+        # discoverable public module path as a side effect.
     
     def log(self, message: str):
         """Log messages if verbose mode is enabled"""
@@ -611,41 +613,30 @@ MODULE INDEPENDENCE RULES:
         return character_names
     
     def create_module_directories(self):
-        """Create all required module directories.
+        """Initialize only the exact output directory assigned by the caller.
 
-        Treat any existing content as user-owned, even when an incomplete or
-        manually assembled module has no ``module_plot.json`` marker. Pick the
-        next free ``<base>_v2``, ``<base>_v3``, ... slot before writing build
-        output. A genuinely empty directory (including the one created by
-        ``ModuleBuilder.__init__``) remains safe to initialize.
+        Name allocation and collision handling belong to ManagedModuleBuilder,
+        before this low-level writer runs.  This method never redirects output
+        to a sibling path and never writes through pre-existing content.
         """
         output_path = self.config.output_directory
-        existing_content = os.path.islink(output_path)
-        if not existing_content and os.path.lexists(output_path):
-            if not os.path.isdir(output_path):
-                existing_content = True
-            else:
-                try:
-                    existing_content = bool(os.listdir(output_path))
-                except OSError:
-                    # If ownership cannot be inspected, never write through it.
-                    existing_content = True
-
-        if existing_content:
-            parent_dir = os.path.dirname(self.config.output_directory) or "."
-            base = self.config.module_name
-            suffix = 2
-            while os.path.lexists(os.path.join(parent_dir, f"{base}_v{suffix}")):
-                suffix += 1
-            new_name = f"{base}_v{suffix}"
-            new_output = os.path.join(parent_dir, new_name)
-            warning(
-                f"Module name collision detected at {self.config.output_directory}; "
-                f"renamed in-progress build to {new_output} to protect the existing module",
-                category="module_generation",
-            )
-            self.config.module_name = new_name
-            self.config.output_directory = new_output
+        if os.path.lexists(output_path):
+            if os.path.islink(output_path) or not os.path.isdir(output_path):
+                raise FileExistsError(
+                    f"Explicit module output is not an owned directory: {output_path}"
+                )
+            try:
+                existing_entries = os.listdir(output_path)
+            except OSError as exc:
+                raise FileExistsError(
+                    f"Explicit module output cannot be inspected: {output_path}"
+                ) from exc
+            if existing_entries:
+                raise FileExistsError(
+                    f"Explicit module output is not empty: {output_path}"
+                )
+        else:
+            os.makedirs(output_path, exist_ok=False)
 
         required_dirs = ["characters", "monsters", "encounters", "areas"]
 
@@ -656,7 +647,7 @@ MODULE INDEPENDENCE RULES:
 
         for dir_name in all_dirs:
             dir_path = os.path.join(self.config.output_directory, dir_name)
-            os.makedirs(dir_path, exist_ok=True)
+            os.makedirs(dir_path, exist_ok=False)
             self.log(f"Created directory: {dir_name}/")
         
         # Create empty .gitkeep files to preserve directory structure
@@ -1687,20 +1678,21 @@ def main():
     if not concept:
         concept = "A classic fantasy adventure with dungeons, monsters, and ancient mysteries"
     
-    # Configure builder
-    config = BuilderConfig(
-        module_name=module_name,
-        num_areas=num_areas,
-        locations_per_area=locations_per_area,
-        output_directory=f"./modules/{module_name}"
+    success, generated_name = ai_driven_module_creation(
+        {
+            "concept": concept,
+            "module_name": module_name,
+            "num_areas": num_areas,
+            "locations_per_area": locations_per_area,
+        },
+        policy="toolkit",
     )
-    
-    # Build module
-    builder = ModuleBuilder(config)
-    builder.build_module(concept)
-    
-    print(f"\nModule '{module_name}' has been generated!")
-    print(f"Output directory: {config.output_directory}")
+    if not success or not generated_name:
+        print("\nModule generation failed; no partial module was published.")
+        return
+
+    print(f"\nModule '{generated_name}' has been generated!")
+    print(f"Output directory: ./modules/{generated_name}")
     print("\nYou can now:")
     print("1. Review the MODULE_SUMMARY.md file")
     print("2. Edit any generated files as needed")
@@ -1981,8 +1973,9 @@ def _ai_driven_module_creation_impl(
     progress_callback=None,
     *,
     policy: Any = "game",
+    prepare_candidate: Optional[Callable[[Path, str], Any]] = None,
 ) -> tuple[bool, Optional[str]]:
-    """Create a module from one validated game or toolkit specification.
+    """Build one validated module through the hidden managed lifecycle.
 
     Args:
         params: Narrative plus optional snake-case typed toolkit values.
@@ -1991,20 +1984,10 @@ def _ai_driven_module_creation_impl(
 
     Returns:
         tuple[bool, Optional[str]]: (success_status, module_name)
-        The returned name is the builder's final name after collision suffixing.
+        The returned name is the lifecycle's exact allocated final name. Game
+        builds remain hidden in READY until the publication owner commits them.
     """
-    # OW-H4: Track module_name and output_dir so the except branch can clean up
-    # any partial directory created before the failure (e.g., by ModuleBuilder
-    # __init__ at line 87 or create_module_directories() inside build_module).
-    # OW-H2: also track the builder (whose config.output_directory reflects any
-    # collision rename to <name>_v2) and whether the requested path existed
-    # before this invocation. Cleanup may delete only a directory owned by this
-    # build; a manual or incomplete directory is user-owned even when it lacks
-    # module_plot.json.
     module_name = None
-    output_dir = None
-    builder = None
-    target_preexisted = False
     try:
         if not isinstance(params, dict):
             raise ModuleCreationContractError(
@@ -2034,6 +2017,28 @@ def _ai_driven_module_creation_impl(
         level_range = spec.level_range
         adventure_type = spec.adventure_type
         plot_themes = spec.plot_themes
+        per_area_locations = params.get("per_area_locations")
+        if per_area_locations is not None:
+            if resolved_policy.name != "toolkit":
+                raise ModuleCreationContractError(
+                    "per_area_locations is available only to the toolkit policy"
+                )
+            if (
+                not isinstance(per_area_locations, list)
+                or len(per_area_locations) != num_areas
+                or any(
+                    type(value) is not int
+                    or not (
+                        resolved_policy.min_locations_per_area
+                        <= value
+                        <= resolved_policy.max_locations_per_area
+                    )
+                    for value in per_area_locations
+                )
+            ):
+                raise ModuleCreationContractError(
+                    "per_area_locations must contain one valid integer per area"
+                )
         
         # Enhance the concept with AI-provided context
         enhanced_concept = f"{narrative}"
@@ -2045,93 +2050,110 @@ def _ai_driven_module_creation_impl(
             enhanced_concept += f" Key themes include: {plot_themes}."
         
         debug(f"MODULE_CREATION: AI-driven module creation starting for '{module_name}'", category="module_creation")
-        
-        # Configure builder with AI parameters
-        if progress_callback:
-            progress_callback({'stage': 2, 'total_stages': 9, 'stage_name': 'Configuring builder', 'percentage': 22, 'message': f'Setting up module: {module_name}...'})
-        config = BuilderConfig(
-            module_name=module_name,
-            num_areas=num_areas,
-            locations_per_area=locations_per_area,
-            output_directory=f"./modules/{module_name}",
-            verbose=True
+
+        from core.generators.managed_module_builder import ManagedModuleBuilder
+        from utils.module_lifecycle import LifecycleIndeterminateError, LifecycleKind
+
+        kind = (
+            LifecycleKind.ACTION
+            if resolved_policy.name == "game"
+            else LifecycleKind.TOOLKIT
         )
-        # OW-H4: Record output_dir BEFORE any directory-creating work so the
-        # except branch can remove the partial dir even if ModuleBuilder's
-        # __init__ raises after creating it.
-        output_dir = config.output_directory
-        # Record ownership before ModuleBuilder.__init__ creates the directory.
-        # This is intentionally independent of module_plot.json: incomplete or
-        # manually assembled directories must never be recursively deleted.
-        target_preexisted = os.path.lexists(output_dir)
 
-        # Create and run the builder
-        if progress_callback:
-            progress_callback({'stage': 3, 'total_stages': 9, 'stage_name': 'Creating builder', 'percentage': 33, 'message': 'Initializing module builder...'})
-        builder = ModuleBuilder(config)
-        
-        # Set progress callback on builder if available
-        # Create a wrapper to convert old format to new format
-        if progress_callback:
-            def wrapped_callback(status, message):
-                """Convert old two-argument format to new dictionary format"""
-                # Map old status names to stages
-                stage_map = {
-                    'initializing': 4,
-                    'base_structure': 5,
-                    'areas': 5,
-                    'plot': 6,
-                    'npcs': 6,
-                    'finalizing': 7
+        def build_candidate(candidate_path: Path, final_name: str) -> Dict[str, Any]:
+            if progress_callback:
+                progress_callback({'stage': 2, 'total_stages': 9, 'stage_name': 'Configuring builder', 'percentage': 22, 'message': f'Setting up module: {final_name}...'})
+
+            config = BuilderConfig(
+                module_name=final_name,
+                num_areas=num_areas,
+                locations_per_area=locations_per_area,
+                output_directory=os.fspath(candidate_path),
+                verbose=True,
+            )
+            if progress_callback:
+                progress_callback({'stage': 3, 'total_stages': 9, 'stage_name': 'Creating builder', 'percentage': 33, 'message': 'Initializing module builder...'})
+            builder = ModuleBuilder(config)
+            if per_area_locations is not None:
+                builder.per_area_locations = list(per_area_locations)
+
+            if progress_callback:
+                def wrapped_callback(status, message):
+                    """Convert the low-level callback to the web progress shape."""
+                    stage_map = {
+                        'initializing': 4,
+                        'base_structure': 5,
+                        'areas': 5,
+                        'plot': 6,
+                        'npcs': 6,
+                        'finalizing': 7,
+                    }
+                    stage = stage_map.get(status, 5)
+                    progress_callback({
+                        'stage': stage,
+                        'total_stages': 9,
+                        'stage_name': status.title(),
+                        'percentage': int((stage / 9) * 100),
+                        'message': message,
+                    })
+                builder.progress_callback = wrapped_callback
+
+            if progress_callback:
+                progress_callback({'stage': 4, 'total_stages': 9, 'stage_name': 'Building module', 'percentage': 44, 'message': 'Starting module generation process...'})
+            builder.build_module(enhanced_concept)
+
+            assigned_path = candidate_path.resolve(strict=False)
+            actual_path = Path(builder.config.output_directory).resolve(strict=False)
+            if builder.config.module_name != final_name or actual_path != assigned_path:
+                raise LifecycleIndeterminateError(
+                    "Low-level module builder escaped its assigned identity"
+                )
+
+            if progress_callback:
+                progress_callback({'stage': 7, 'total_stages': 9, 'stage_name': 'Finalizing', 'percentage': 77, 'message': 'Finalizing module data...'})
+
+            plot_file_path = candidate_path / "module_plot.json"
+            if not plot_file_path.exists():
+                unified_plot = {
+                    "plotTitle": builder.module_data.get(
+                        "moduleName", final_name.replace("_", " ")
+                    ),
+                    "mainObjective": builder.module_data.get("mainPlot", {}).get(
+                        "mainObjective", "Complete the adventure"
+                    ),
+                    "plotPoints": [],
                 }
-                stage = stage_map.get(status, 5)
-                progress_callback({
-                    'stage': stage,
-                    'total_stages': 9,
-                    'stage_name': status.title(),
-                    'percentage': int((stage / 9) * 100),
-                    'message': message
-                })
-            builder.progress_callback = wrapped_callback
-        
-        # Store AI context for generators to use
-        # The generators will pick up these values from the enhanced_concept text
-        
-        # Build the module
-        if progress_callback:
-            progress_callback({'stage': 4, 'total_stages': 9, 'stage_name': 'Building module', 'percentage': 44, 'message': 'Starting module generation process...'})
-        builder.build_module(enhanced_concept)
+                plot_id_counter = 1
+                for area_id, plot_data in builder.plots_data.items():
+                    for source_point in plot_data.get("plotPoints", []):
+                        plot_point = dict(source_point)
+                        plot_point["id"] = f"PP{plot_id_counter:03d}"
+                        plot_point["areaId"] = area_id
+                        unified_plot["plotPoints"].append(plot_point)
+                        plot_id_counter += 1
+                if not safe_write_json(str(plot_file_path), unified_plot):
+                    raise OSError("Could not create the unified module plot")
+                info(
+                    "SUCCESS: Created unified module_plot.json with "
+                    f"{len(unified_plot['plotPoints'])} plot points",
+                    category="module_creation",
+                )
+            return {"output_directory": os.fspath(candidate_path)}
 
-        # create_module_directories may select _v2/_v3 after a collision.
-        module_name = builder.config.module_name
-        info(f"SUCCESS: Module '{module_name}' created successfully at {config.output_directory}", category="module_creation")
-        
-        if progress_callback:
-            progress_callback({'stage': 7, 'total_stages': 9, 'stage_name': 'Finalizing', 'percentage': 77, 'message': 'Finalizing module data...'})
-        
-        # Create a module_plot.json file for the new module (required by the system)
-        plot_file_path = os.path.join(config.output_directory, "module_plot.json")
-        if not os.path.exists(plot_file_path):
-            # Create a unified plot file from area plots
-            unified_plot = {
-                "plotTitle": builder.module_data.get("moduleName", module_name.replace("_", " ")),
-                "mainObjective": builder.module_data.get("mainPlot", {}).get("mainObjective", "Complete the adventure"),
-                "plotPoints": []
-            }
-            
-            # Aggregate plot points from all areas
-            plot_id_counter = 1
-            for area_id, plot_data in builder.plots_data.items():
-                for plot_point in plot_data.get("plotPoints", []):
-                    # Renumber plot points for unified file
-                    plot_point["id"] = f"PP{plot_id_counter:03d}"
-                    plot_point["areaId"] = area_id
-                    unified_plot["plotPoints"].append(plot_point)
-                    plot_id_counter += 1
-            
-            with open(plot_file_path, "w") as f:
-                json.dump(unified_plot, f, indent=2)
-            info(f"SUCCESS: Created unified module_plot.json with {len(unified_plot['plotPoints'])} plot points", category="module_creation")
+        managed = ManagedModuleBuilder(modules_dir=Path("modules"))
+        result = managed.run(
+            requested_name=module_name,
+            kind=kind,
+            build_candidate=build_candidate,
+            prepare_candidate=prepare_candidate,
+            defer_promotion=(kind is LifecycleKind.ACTION),
+        )
+        module_name = result.module_name
+        info(
+            f"SUCCESS: Module '{module_name}' generated with status "
+            f"{result.status.value}",
+            category="module_creation",
+        )
         
         if progress_callback:
             progress_callback({
@@ -2145,47 +2167,16 @@ def _ai_driven_module_creation_impl(
             })
         
         return True, module_name
-        
+
+    except ModuleCreationRecoveryRequiredError:
+        raise
     except Exception as e:
         print(f"DEBUG: [Module Generator] ERROR: AI-driven module creation failed: {str(e)}")
         import traceback
         traceback.print_exc()
         error(f"Module creation failed for '{module_name}': {e}", exception=e, category="module_creation")
-        # OW-H4: Clean up the partial module directory to prevent orphan state
-        # (otherwise scan_and_integrate_new_modules later treats it as a new
-        # module). OW-H2 guard: create_module_directories() may have renamed the
-        # in-progress build to <name>_v2 (builder.config.output_directory
-        # reflects that), so clean up the ACTUAL build dir -- and NEVER delete a
-        # pre-existing module that a collision build was renamed away from.
-        build_dir = output_dir
-        if builder is not None:
-            build_dir = builder.config.output_directory
-        same_as_requested = (
-            build_dir
-            and output_dir
-            and os.path.abspath(os.path.normpath(build_dir))
-            == os.path.abspath(os.path.normpath(output_dir))
-        )
-        if target_preexisted and same_as_requested:
-            # Failure happened before collision handling could select a new
-            # owned path. Preserve the pre-existing target regardless of which
-            # module marker files it contains.
-            warning(
-                f"Module creation failed before collision rename; leaving "
-                f"pre-existing path at {output_dir} untouched.",
-                category="module_creation",
-            )
-        elif build_dir and os.path.exists(build_dir):
-            try:
-                shutil.rmtree(build_dir)
-                if os.path.exists(build_dir):
-                    raise OSError("partial module directory still exists")
-                debug(f"Cleaned up partial module dir: {build_dir}", category="module_creation")
-            except Exception as cleanup_err:
-                warning(f"Failed to clean up partial module dir {build_dir}: {cleanup_err}", category="module_creation")
-                raise ModuleCreationRecoveryRequiredError(
-                    "Module generation cleanup could not be confirmed; recovery is required before retrying."
-                ) from None
+        # ManagedModuleBuilder retires only its exact UUID-owned workspace.
+        # No path-derived recursive cleanup is permitted here.
         return False, None
 
 
@@ -2194,6 +2185,7 @@ def ai_driven_module_creation(
     progress_callback=None,
     *,
     policy: Any = "game",
+    prepare_candidate: Optional[Callable[[Path, str], Any]] = None,
 ) -> tuple[bool, Optional[str]]:
     """Run a module build inside exactly one nested-safe usage scope.
 
@@ -2216,6 +2208,7 @@ def ai_driven_module_creation(
                 params,
                 progress_callback=progress_callback,
                 policy=policy,
+                prepare_candidate=prepare_candidate,
             )
         except Exception:
             if owns_usage_scope:

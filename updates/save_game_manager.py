@@ -242,6 +242,10 @@ class SaveGameManager:
             "backup_pre_integration_*", 
             "*_backup_*",
             "modules/backups/",
+            "modules/.module_transactions/",
+            "modules/.publication_transactions/",
+            "modules/.module_orphan_quarantine/",
+            ".runtime_locks/",
             
             # CRITICAL: Exclude save directories to prevent recursive nesting
             "saved_games/",
@@ -432,11 +436,28 @@ class SaveGameManager:
                 # derive the save directory and metadata from the fresh party
                 # projection inside the same serialized snapshot boundary.
                 self._initialize_module_context()
-                with _campaign_transaction_lock("modules/campaign.json"):
-                    _assert_no_active_campaign_completion(
-                        "modules/campaign.json"
-                    )
-                    return self._create_save_game_locked(description, save_mode)
+                from utils.commit_state import recover_incomplete_refresh_commit
+                from utils.module_lifecycle import (
+                    ModuleLifecycleStore,
+                    RecoveryStatus,
+                )
+                from utils.module_refresh_lock import module_refresh_lock
+
+                with module_refresh_lock() as refresh_acquired:
+                    if not refresh_acquired:
+                        return False, "Module refresh is active; retry save"
+                    recover_incomplete_refresh_commit()
+                    recovery = ModuleLifecycleStore("modules").recover()
+                    if recovery.status is RecoveryStatus.INDETERMINATE:
+                        return False, "Module lifecycle recovery is required"
+                    with _campaign_transaction_lock("modules/campaign.json"):
+                        _assert_no_active_campaign_completion(
+                            "modules/campaign.json"
+                        )
+                        return self._create_save_game_locked(
+                            description,
+                            save_mode,
+                        )
         except Exception as exc:
             error(
                 "FAILURE: Could not establish consistent save boundary",
@@ -583,11 +604,29 @@ class SaveGameManager:
                 _party_module_transition_lock,
             )
             from utils.module_refresh_lock import module_refresh_lock
+            from utils.commit_state import recover_incomplete_refresh_commit
+            from utils.module_lifecycle import (
+                ModuleLifecycleStore,
+                RecoveryStatus,
+            )
 
             with _party_module_transition_lock():
                 with module_refresh_lock() as refresh_acquired:
                     if not refresh_acquired:
                         return False, "Module refresh is active; retry restore"
+                    recover_incomplete_refresh_commit()
+                    lifecycle = ModuleLifecycleStore("modules")
+                    recovery = lifecycle.recover()
+                    if recovery.status is RecoveryStatus.INDETERMINATE:
+                        return False, "Module lifecycle recovery is required"
+                    if any(
+                        not receipt.acknowledged
+                        for receipt in lifecycle.list_publication_receipts()
+                    ):
+                        return (
+                            False,
+                            "A published module message is pending; retry restore after delivery",
+                        )
                     with _campaign_transaction_lock("modules/campaign.json"):
                         save_path = os.path.join(
                             self.get_save_directory(),

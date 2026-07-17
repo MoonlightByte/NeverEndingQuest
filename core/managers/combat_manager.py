@@ -152,6 +152,7 @@ from core.generators.generate_prerolls import generate_prerolls
 # Import safe JSON functions
 from utils.encoding_utils import safe_json_load
 from utils.file_operations import safe_write_json
+from utils.module_refresh_lock import module_refresh_lock
 import core.ai.cumulative_summary as cumulative_summary
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
 # Import combat message compressor for optimizing conversation history
@@ -1319,6 +1320,116 @@ def _extract_t041_summary(response):
     raise ValueError("T041 returned JSON without a supported prose field")
 
 
+def _append_combat_encounter_to_current_area(current_location_id, new_encounter):
+    """Merge one encounter into fresh area state under module refresh.
+
+    ``location_data`` is loaded before combat begins and can be hours old. A
+    whole-location replacement after T041 would therefore be able to undo a
+    completed T088 NPC reconciliation. Resolve the authoritative module/area
+    and change only its encounter list while holding the shared outer fence.
+    """
+    with module_refresh_lock() as refresh_acquired:
+        if not refresh_acquired:
+            warning(
+                "Combat summary area update skipped because module refresh "
+                "is busy",
+                category="encounter_setup",
+            )
+            return False
+
+        try:
+            authoritative_party = safe_json_load("party_tracker.json")
+        except Exception as exc:
+            error(
+                "FILE_OP: Failed to resolve authoritative party for combat summary",
+                exception=exc,
+                category="file_operations",
+            )
+            return False
+        if not isinstance(authoritative_party, dict):
+            error(
+                "FILE_OP: Authoritative party is unavailable for combat summary",
+                category="file_operations",
+            )
+            return False
+
+        world_conditions = authoritative_party.get("worldConditions")
+        if (
+            not isinstance(world_conditions, dict)
+            or world_conditions.get("currentLocationId") != current_location_id
+        ):
+            warning(
+                "Combat summary area update skipped because the party moved",
+                category="encounter_setup",
+            )
+            return False
+
+        current_module = authoritative_party.get("module", "")
+        if not isinstance(current_module, str):
+            return False
+        from utils.module_path_manager import ModulePathManager
+
+        path_manager = ModulePathManager(current_module.replace(" ", "_") or None)
+        current_area_id = world_conditions.get("currentAreaId")
+        if not isinstance(current_area_id, str) or not current_area_id:
+            return False
+        area_file = path_manager.get_area_path(current_area_id)
+
+        try:
+            area_data = safe_json_load(area_file)
+        except Exception as exc:
+            error(
+                f"FILE_OP: Failed to load area file: {area_file}",
+                exception=exc,
+                category="file_operations",
+            )
+            return False
+        if not isinstance(area_data, dict) or not isinstance(
+            area_data.get("locations"), list
+        ):
+            error(
+                f"FILE_OP: Failed to load area file: {area_file}",
+                category="file_operations",
+            )
+            return False
+
+        target_location = next(
+            (
+                location
+                for location in area_data["locations"]
+                if isinstance(location, dict)
+                and location.get("locationId") == current_location_id
+            ),
+            None,
+        )
+        if target_location is None:
+            warning(
+                "Combat summary area update skipped because the location "
+                "is no longer present",
+                category="encounter_setup",
+            )
+            return False
+
+        encounters = target_location.get("encounters")
+        if not isinstance(encounters, list):
+            encounters = []
+            target_location["encounters"] = encounters
+        encounters.append(new_encounter)
+
+        if not safe_write_json(area_file, area_data):
+            error(
+                f"FILE_OP: Failed to save area file: {area_file}",
+                category="file_operations",
+            )
+            return False
+        debug(
+            f"STATE_CHANGE: Encounter {new_encounter.get('encounterId')} "
+            f"added to {area_file}.",
+            category="encounter_setup",
+        )
+        return True
+
+
 def summarize_dialogue(conversation_history_param, location_data, party_tracker_data):
     debug("AI_CALL: Activating the third model...", category="ai_operations")
     
@@ -1439,35 +1550,16 @@ def summarize_dialogue(conversation_history_param, location_data, party_tracker_
                 "time": party_tracker_data["worldConditions"]["time"]
             }
         }
-        if "encounters" not in location_data:
-            location_data["encounters"] = []
-        location_data["encounters"].append(new_encounter)
+        if _append_combat_encounter_to_current_area(
+            current_location_id,
+            new_encounter,
+        ):
+            encounters = location_data.get("encounters")
+            if not isinstance(encounters, list):
+                encounters = []
+                location_data["encounters"] = encounters
+            encounters.append(new_encounter)
         # adventureSummary field is deprecated - no longer updated to prevent data bloat
-
-        from utils.module_path_manager import ModulePathManager
-        from utils.encoding_utils import safe_json_load
-        # Get current module from party tracker for consistent path resolution
-        try:
-            party_tracker = safe_json_load("party_tracker.json")
-            current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
-            path_manager = ModulePathManager(current_module)
-        except:
-            path_manager = ModulePathManager()  # Fallback to reading from file
-        current_area_id = get_current_area_id()
-        area_file = path_manager.get_area_path(current_area_id)
-        area_data = safe_json_load(area_file)
-        if not area_data:
-            error(f"FILE_OP: Failed to load area file: {area_file}", category="file_operations")
-            return dialogue_summary
-        
-        for i, loc in enumerate(area_data["locations"]):
-            if loc["locationId"] == current_location_id:
-                area_data["locations"][i] = location_data
-                break
-        
-        if not safe_write_json(area_file, area_data):
-            error(f"FILE_OP: Failed to save area file: {area_file}", category="file_operations")
-        debug(f"STATE_CHANGE: Encounter {encounter_id} added to {area_file}.", category="encounter_setup")
 
         conversation_history_param.append({"role": "assistant", "content": f"Combat Summary: {dialogue_summary}"})
         conversation_history_param.append({"role": "user", "content": "The combat has concluded. What would you like to do next?"})

@@ -9,8 +9,10 @@ Quest Player Formatter Module
 Uses AI to convert DM-oriented quest descriptions into immersive player-friendly journal entries
 """
 
+import hashlib
 import json
 import os
+import stat
 from datetime import datetime
 from core.ai import api_client
 import config
@@ -19,6 +21,9 @@ register_callsite("T090", "utils/quest_player_formatter.py", 98)
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.path_transaction_lock import path_transaction_lock
+from utils.module_refresh_lock import (
+    module_refresh_lock,
+)
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.encoding_utils import sanitize_text
 
@@ -28,10 +33,122 @@ set_script_name("quest_player_formatter")
 # Constants
 TEMPERATURE = 0.3
 MAX_RETRIES = 3
+SOURCE_RETRY_LIMIT = 3
+
+
+class _QuestSourceDriftError(RuntimeError):
+    """The plot or its owning directory changed during T090 generation."""
 
 def _quest_file_lock(player_quests_path):
     """Lock a complete derived-file transaction across threads/processes."""
     return path_transaction_lock(player_quests_path)
+
+
+def _path_identity(path):
+    metadata = os.lstat(path)
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        stat.S_IFMT(metadata.st_mode),
+    )
+
+
+def _capture_plot_source(module_dir, plot_path):
+    """Capture exact contained plot bytes plus stable path identities."""
+    canonical_module = os.path.abspath(os.path.normpath(os.fspath(module_dir)))
+    canonical_plot = os.path.abspath(os.path.normpath(os.fspath(plot_path)))
+    module_metadata = os.lstat(canonical_module)
+    if stat.S_ISLNK(module_metadata.st_mode) or not stat.S_ISDIR(
+        module_metadata.st_mode
+    ):
+        raise _QuestSourceDriftError("Module target is not an ordinary directory")
+
+    module_real = os.path.realpath(canonical_module)
+    module_identity = (
+        int(module_metadata.st_dev),
+        int(module_metadata.st_ino),
+        stat.S_IFMT(module_metadata.st_mode),
+    )
+    plot_real = os.path.realpath(canonical_plot)
+    try:
+        contained = os.path.commonpath([module_real, plot_real]) == module_real
+    except ValueError:
+        contained = False
+    if not contained:
+        raise _QuestSourceDriftError("Plot source is outside its module directory")
+
+    flags = os.O_RDONLY
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(canonical_plot, flags)
+    try:
+        file_metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(file_metadata.st_mode):
+            raise _QuestSourceDriftError("Plot source is not a regular file")
+        chunks = []
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+    finally:
+        os.close(descriptor)
+    raw = b"".join(chunks)
+    file_identity = (
+        int(file_metadata.st_dev),
+        int(file_metadata.st_ino),
+        stat.S_IFMT(file_metadata.st_mode),
+    )
+    # The file descriptor gives us stable bytes, but prove those bytes still
+    # belong to the same directory entry and module tree at snapshot return.
+    # Otherwise an atomic replacement during capture could combine an old
+    # file with a new directory identity into a snapshot that never existed.
+    if (
+        _path_identity(canonical_module) != module_identity
+        or os.path.realpath(canonical_module) != module_real
+        or _path_identity(canonical_plot) != file_identity
+        or os.path.realpath(canonical_plot) != plot_real
+    ):
+        raise _QuestSourceDriftError("Plot source changed during snapshot")
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise _QuestSourceDriftError("Plot source is not valid UTF-8 JSON") from exc
+    if not isinstance(payload, dict):
+        raise _QuestSourceDriftError("Plot source is not a JSON object")
+    return {
+        "module_path": canonical_module,
+        "module_real": module_real,
+        "module_identity": module_identity,
+        "plot_path": canonical_plot,
+        "plot_real": plot_real,
+        "plot_identity": file_identity,
+        "digest": hashlib.sha256(raw).hexdigest(),
+        "payload": payload,
+    }
+
+
+def _plot_source_matches(snapshot):
+    try:
+        current = _capture_plot_source(
+            snapshot["module_path"], snapshot["plot_path"]
+        )
+    except (OSError, _QuestSourceDriftError):
+        return False
+    return all(
+        current[field] == snapshot[field]
+        for field in (
+            "module_path",
+            "module_real",
+            "module_identity",
+            "plot_path",
+            "plot_real",
+            "plot_identity",
+            "digest",
+        )
+    )
 
 
 SYSTEM_PROMPT = """You are a quest journal formatter for a fantasy RPG. Your task is to convert DM-oriented quest descriptions into immersive, player-friendly journal entries.
@@ -175,24 +292,74 @@ def format_quests_for_player(module_name):
     try:
         path_manager = ModulePathManager(module_name)
         plot_path = path_manager.get_plot_path()
-        # Avoid creating a phantom module directory solely for the lock file.
-        # The plot is re-read under the destination lock below.
-        if not os.path.isfile(plot_path):
-            error(
-                f"FAILURE: Could not load plot data for {module_name}",
-                category="quest_formatting",
-            )
-            return False
         player_quests_path = os.path.join(
             path_manager.module_dir,
             f"player_quests_{module_name}.json",
         )
-        with _quest_file_lock(player_quests_path):
-            return _format_quests_for_player_unlocked(
+
+        # A managed caller may already own refresh. Nested acquisition is
+        # reentrant and deliberately leaves that outer fence held throughout
+        # the provider call. A standalone caller owns no lower-ranked lock, so
+        # exiting this first scope releases refresh during the network wait.
+        for source_attempt in range(SOURCE_RETRY_LIMIT):
+            with module_refresh_lock() as snapshot_acquired:
+                if not snapshot_acquired:
+                    warning(
+                        "T090 skipped because module refresh is busy",
+                        category="quest_formatting",
+                    )
+                    return False
+                try:
+                    source = _capture_plot_source(
+                        path_manager.module_dir,
+                        plot_path,
+                    )
+                except (OSError, _QuestSourceDriftError) as exc:
+                    error(
+                        f"FAILURE: Could not snapshot plot data for {module_name}: {exc}",
+                        category="quest_formatting",
+                    )
+                    return False
+
+            candidate = _build_player_quests(
                 module_name,
-                path_manager,
-                player_quests_path,
+                source["payload"],
+                source["digest"],
             )
+            if candidate is None:
+                return False
+
+            with module_refresh_lock() as commit_acquired:
+                if not commit_acquired:
+                    warning(
+                        "T090 commit skipped because module refresh is busy",
+                        category="quest_formatting",
+                    )
+                    return False
+                with _quest_file_lock(player_quests_path):
+                    if not _plot_source_matches(source):
+                        warning(
+                            "T090 source changed during formatting; discarding stale result",
+                            category="quest_formatting",
+                        )
+                        continue
+                    if safe_write_json(player_quests_path, candidate):
+                        info(
+                            f"SUCCESS: Saved player-friendly quests to {player_quests_path}",
+                            category="quest_formatting",
+                        )
+                        return True
+                    error(
+                        "FAILURE: Could not save player quests file",
+                        category="quest_formatting",
+                    )
+                    return False
+
+        warning(
+            "T090 source remained unstable; last-good player quests were retained",
+            category="quest_formatting",
+        )
+        return False
     except Exception as e:
         error("FAILURE: Unexpected error in format_quests_for_player", exception=e, category="quest_formatting")
         return False
@@ -203,22 +370,33 @@ def _format_quests_for_player_unlocked(
     path_manager,
     player_quests_path,
 ):
-    """Build and atomically publish one module's complete derived quest file."""
+    """Compatibility helper for callers already holding the required locks."""
+    try:
+        plot_path = path_manager.get_plot_path()
+        source = _capture_plot_source(path_manager.module_dir, plot_path)
+        candidate = _build_player_quests(
+            module_name,
+            source["payload"],
+            source["digest"],
+        )
+        if candidate is None or not _plot_source_matches(source):
+            return False
+        return safe_write_json(player_quests_path, candidate)
+    except Exception as e:
+        error("FAILURE: Unexpected error in format_quests_for_player", exception=e, category="quest_formatting")
+        return False
+
+
+def _build_player_quests(module_name, plot_data, source_digest):
+    """Build a complete derived candidate without performing filesystem writes."""
     try:
         info(f"STATE_CHANGE: Starting quest formatting for module {module_name}", category="quest_formatting")
-        
-        # Read the source only after acquiring the destination transaction lock.
-        plot_path = path_manager.get_plot_path()
-        
-        plot_data = safe_read_json(plot_path)
-        if not plot_data:
-            error(f"FAILURE: Could not load plot data for {module_name}", category="quest_formatting")
-            return False
-        
+
         # Prepare the player quest structure
         player_quests = {
             "module": module_name,
             "lastUpdated": datetime.now().isoformat(),
+            "sourceDigest": source_digest,
             "quests": {}
         }
         
@@ -239,8 +417,7 @@ def _format_quests_for_player_unlocked(
         
         if not quests_to_format:
             debug("No active or completed quests to format", category="quest_formatting")
-            # Still save an empty player quests file
-            return safe_write_json(player_quests_path, player_quests)
+            return player_quests
         
         debug(f"Found {len(quests_to_format)} quests to format", category="quest_formatting")
         
@@ -294,20 +471,41 @@ def _format_quests_for_player_unlocked(
                 
                 player_quests["quests"][quest_id] = player_quest
         
-        # Ensure the module directory exists (for non-standard game folders)
-        os.makedirs(path_manager.module_dir, exist_ok=True)
-        
-        # Publish only after every batch has either validated or fallen back.
-        if safe_write_json(player_quests_path, player_quests):
-            info(f"SUCCESS: Saved player-friendly quests to {player_quests_path}", category="quest_formatting")
-            return True
-        else:
-            error("FAILURE: Could not save player quests file", category="quest_formatting")
-            return False
-            
+        return player_quests
+
     except Exception as e:
-        error("FAILURE: Unexpected error in format_quests_for_player", exception=e, category="quest_formatting")
-        return False
+        error("FAILURE: Unexpected error building player quests", exception=e, category="quest_formatting")
+        return None
+
+
+def load_current_player_quests(module_name):
+    """Return derived quests only when they match the current exact plot bytes.
+
+    UI/catalog readers should use this entry point instead of loading the
+    derived JSON directly. Unsupported manual writers cannot be excluded by an
+    advisory lock, so the persisted source digest is the reader-side guard.
+    """
+    try:
+        path_manager = ModulePathManager(module_name)
+        plot_path = path_manager.get_plot_path()
+        destination = os.path.join(
+            path_manager.module_dir,
+            f"player_quests_{module_name}.json",
+        )
+        with module_refresh_lock() as acquired:
+            if not acquired:
+                return None
+            source = _capture_plot_source(path_manager.module_dir, plot_path)
+            with _quest_file_lock(destination):
+                derived = safe_read_json(destination)
+                if (
+                    not isinstance(derived, dict)
+                    or derived.get("sourceDigest") != source["digest"]
+                ):
+                    return None
+                return derived
+    except Exception:
+        return None
 
 
 # For testing

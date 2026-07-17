@@ -1,15 +1,24 @@
 # utils/npc_reconciler.py
 
 import copy
+import hashlib
 import json
 import os
 import re
 import shutil
+import stat
 from uuid import uuid4
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_read_json
 from utils.module_context import ModuleContext
-from utils.path_transaction_lock import path_transaction_lock
+from utils.path_transaction_lock import (
+    path_transaction_lock,
+    path_transaction_lock_owned,
+)
+from utils.module_refresh_lock import (
+    module_refresh_lock,
+    module_refresh_lock_owned,
+)
 from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
@@ -17,6 +26,82 @@ register_callsite("T088", "utils/npc_reconciler.py", 184)
 
 
 _T088_TRANSACTION_VERSION = 1
+_T088_SOURCE_RETRY_LIMIT = 3
+
+
+class _T088SourceDriftError(RuntimeError):
+    """T088's exact module inputs changed while its model call was in flight."""
+
+
+def _stable_path_identity(metadata):
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        stat.S_IFMT(metadata.st_mode),
+    )
+
+
+def _capture_contained_json(module_dir, path):
+    canonical_module = os.path.abspath(os.path.normpath(os.fspath(module_dir)))
+    canonical_path = os.path.abspath(os.path.normpath(os.fspath(path)))
+    module_metadata = os.lstat(canonical_module)
+    if stat.S_ISLNK(module_metadata.st_mode) or not stat.S_ISDIR(
+        module_metadata.st_mode
+    ):
+        raise _T088SourceDriftError("Module target is not an ordinary directory")
+    module_real = os.path.realpath(canonical_module)
+    module_identity = _stable_path_identity(module_metadata)
+    target_real = os.path.realpath(canonical_path)
+    try:
+        contained = os.path.commonpath([module_real, target_real]) == module_real
+    except ValueError:
+        contained = False
+    if not contained:
+        raise _T088SourceDriftError("T088 input is outside its module directory")
+
+    flags = os.O_RDONLY
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(canonical_path, flags)
+    try:
+        file_metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(file_metadata.st_mode):
+            raise _T088SourceDriftError("T088 input is not a regular file")
+        chunks = []
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+    finally:
+        os.close(descriptor)
+    raw = b"".join(chunks)
+    file_identity = _stable_path_identity(file_metadata)
+    if (
+        _stable_path_identity(os.lstat(canonical_module)) != module_identity
+        or os.path.realpath(canonical_module) != module_real
+        or _stable_path_identity(os.lstat(canonical_path)) != file_identity
+        or os.path.realpath(canonical_path) != target_real
+    ):
+        raise _T088SourceDriftError("T088 input changed during snapshot")
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise _T088SourceDriftError("T088 input is not valid UTF-8 JSON") from exc
+    if not isinstance(payload, dict):
+        raise _T088SourceDriftError("T088 input is not a JSON object")
+    return {
+        "path": canonical_path,
+        "real": target_real,
+        "identity": file_identity,
+        "digest": hashlib.sha256(raw).hexdigest(),
+        "payload": payload,
+        "module_path": canonical_module,
+        "module_real": module_real,
+        "module_identity": module_identity,
+    }
 
 
 def _durable_copy(source, destination):
@@ -137,6 +222,39 @@ class NpcReconciler:
 
         print(f"DEBUG: [NpcReconciler] Built canonical map with {len(self.canonical_map)} entries.")
         return True
+
+    def _install_context_snapshot(self, payload):
+        """Install the exact already-captured context without reopening it.
+
+        Loading the context and then independently hashing the path leaves a
+        race where those two operations can observe different documents.  T088
+        stages exclusively from the bytes represented by its source digest.
+        """
+        if not isinstance(payload, dict):
+            raise _T088SourceDriftError("T088 context snapshot is not an object")
+        context = ModuleContext()
+        context.module_name = payload.get("module_name", "")
+        context.module_id = payload.get("module_id", "")
+        context.areas = copy.deepcopy(payload.get("areas", {}))
+        context.npcs = copy.deepcopy(payload.get("npcs", {}))
+        context.locations = copy.deepcopy(payload.get("locations", {}))
+        context.plot_scopes = copy.deepcopy(payload.get("plot_scopes", {}))
+        references = payload.get("references", {})
+        if not isinstance(references, dict):
+            raise _T088SourceDriftError("T088 context references are invalid")
+        context.references = {
+            key: set(copy.deepcopy(values))
+            for key, values in references.items()
+        }
+        context.validation_issues = copy.deepcopy(
+            payload.get("validation_issues", [])
+        )
+        self.context = context
+        self._rebuild_canonical_map()
+        print(
+            "DEBUG: [NpcReconciler] Built canonical map with "
+            f"{len(self.canonical_map)} entries."
+        )
 
     def _rebuild_canonical_map(self):
         """Rebuild aliases from the current context without retaining stale entries."""
@@ -308,6 +426,117 @@ class NpcReconciler:
             location["npcs"] = reconciled_npcs
 
         return staged_area, modified
+
+    def _capture_reconciliation_inputs(self):
+        """Capture the complete T088 source set under module refresh."""
+        canonical_context = os.path.abspath(
+            os.path.normpath(os.fspath(self.context_path))
+        )
+        module_dir = os.path.dirname(canonical_context)
+        context_source = _capture_contained_json(module_dir, canonical_context)
+        area_ids = tuple(self.path_manager.get_area_ids())
+        areas = []
+        seen_paths = set()
+        for area_id in area_ids:
+            area_path = os.path.abspath(
+                os.path.normpath(self.path_manager.get_area_path(area_id))
+            )
+            identity = os.path.normcase(area_path)
+            if identity in seen_paths:
+                raise _T088SourceDriftError(
+                    "T088 area discovery returned a duplicate target"
+                )
+            seen_paths.add(identity)
+            areas.append(
+                (area_id, _capture_contained_json(module_dir, area_path))
+            )
+        return {
+            "module_path": context_source["module_path"],
+            "module_real": context_source["module_real"],
+            "module_identity": context_source["module_identity"],
+            "context": context_source,
+            "area_ids": area_ids,
+            "areas": tuple(areas),
+        }
+
+    @staticmethod
+    def _source_file_matches(expected):
+        try:
+            current = _capture_contained_json(
+                expected["module_path"], expected["path"]
+            )
+        except (OSError, _T088SourceDriftError):
+            return False
+        return all(
+            current[field] == expected[field]
+            for field in (
+                "path",
+                "real",
+                "identity",
+                "digest",
+                "module_path",
+                "module_real",
+                "module_identity",
+            )
+        )
+
+    def _reconciliation_inputs_match(self, snapshot):
+        try:
+            current_area_ids = tuple(self.path_manager.get_area_ids())
+            current_paths = tuple(
+                os.path.abspath(
+                    os.path.normpath(self.path_manager.get_area_path(area_id))
+                )
+                for area_id in current_area_ids
+            )
+        except Exception:
+            return False
+        expected_paths = tuple(
+            source["path"] for _area_id, source in snapshot["areas"]
+        )
+        if (
+            current_area_ids != snapshot["area_ids"]
+            or current_paths != expected_paths
+        ):
+            return False
+        return self._source_file_matches(snapshot["context"]) and all(
+            self._source_file_matches(source)
+            for _area_id, source in snapshot["areas"]
+        )
+
+    def _stage_reconciliation_from_snapshot(self, snapshot):
+        """Run semantic decisions in memory against one immutable snapshot."""
+        original_context = copy.deepcopy(self.context)
+        snapshots = {}
+        staged_writes = {}
+        try:
+            identity_map = self._find_and_merge_semantic_duplicates()
+            self._rebuild_canonical_map()
+
+            context_path = snapshot["context"]["path"]
+            if identity_map:
+                snapshots[context_path] = copy.deepcopy(
+                    snapshot["context"]["payload"]
+                )
+                staged_writes[context_path] = self.context.to_dict()
+
+            print(
+                "DEBUG: [NpcReconciler] Reconciling NPCs for "
+                f"{len(snapshot['areas'])} areas..."
+            )
+            for _area_id, source in snapshot["areas"]:
+                area_data = copy.deepcopy(source["payload"])
+                if "locations" not in area_data:
+                    continue
+                staged_area, modified = self._stage_area_reconciliation(area_data)
+                if modified:
+                    snapshots[source["path"]] = copy.deepcopy(source["payload"])
+                    staged_writes[source["path"]] = staged_area
+        except Exception:
+            self.context = original_context
+            self._rebuild_canonical_map()
+            raise
+        return original_context, snapshots, staged_writes
 
     def _transaction_path(self):
         canonical_context = os.path.abspath(os.path.normpath(self.context_path))
@@ -484,7 +713,13 @@ class NpcReconciler:
         return record
 
     def reconcile_all_areas(self):
-        """Reconcile one module under a cross-thread/process transaction lock."""
+        """Optimistically reconcile one exact module snapshot.
+
+        Standalone calls release module refresh and the context target lock
+        during provider waits, then reacquire strictly refresh -> context and
+        revalidate bytes, containment, and directory/file identities. A caller
+        that already owns refresh (managed build) retains its outer fence.
+        """
         # Do not create a phantom module directory merely to place a lock file.
         # The context is required for both normal work and pending recovery.
         if not os.path.isfile(self.context_path):
@@ -493,68 +728,87 @@ class NpcReconciler:
                 f"{self.context_path}"
             )
             return False
+        if (
+            path_transaction_lock_owned(self.context_path)
+            and not module_refresh_lock_owned()
+        ):
+            print(
+                "ERROR: [NpcReconciler] Refusing target -> refresh lock inversion"
+            )
+            return False
         try:
-            with path_transaction_lock(self.context_path):
-                recovery = self._recover_pending_transaction()
-                if recovery:
+            for source_attempt in range(_T088_SOURCE_RETRY_LIMIT):
+                with module_refresh_lock() as snapshot_acquired:
+                    if not snapshot_acquired:
+                        print(
+                            "ERROR: [NpcReconciler] Module refresh is busy; "
+                            "T088 made no changes."
+                        )
+                        return False
+                    with path_transaction_lock(self.context_path):
+                        recovery = self._recover_pending_transaction()
+                        if recovery:
+                            print(
+                                "INFO: [NpcReconciler] Recovered interrupted "
+                                f"T088 transaction ({recovery})."
+                            )
+                        source_snapshot = self._capture_reconciliation_inputs()
+                        self._install_context_snapshot(
+                            source_snapshot["context"]["payload"]
+                        )
+
+                try:
+                    (
+                        original_context,
+                        snapshots,
+                        staged_writes,
+                    ) = self._stage_reconciliation_from_snapshot(source_snapshot)
+                except Exception as exc:
                     print(
-                        "INFO: [NpcReconciler] Recovered interrupted "
-                        f"T088 transaction ({recovery})."
+                        "ERROR: [NpcReconciler] Failed to stage "
+                        f"reconciliation: {exc}"
                     )
-                # A caller may have loaded the context before waiting for this
-                # lock.  Reload it now so staging never starts from a snapshot
-                # committed before another worker's completed reconciliation.
-                if not self.load_context():
                     return False
-                return self._reconcile_all_areas_unlocked()
+
+                with module_refresh_lock() as commit_acquired:
+                    if not commit_acquired:
+                        self.context = original_context
+                        self._rebuild_canonical_map()
+                        print(
+                            "ERROR: [NpcReconciler] Module refresh became busy; "
+                            "T088 made no changes."
+                        )
+                        return False
+                    with path_transaction_lock(self.context_path):
+                        if not self._reconciliation_inputs_match(source_snapshot):
+                            self.context = original_context
+                            self._rebuild_canonical_map()
+                            print(
+                                "WARNING: [NpcReconciler] T088 source changed "
+                                "during model work; discarding stale result."
+                            )
+                            continue
+                        return self._commit_staged_reconciliation(
+                            original_context,
+                            snapshots,
+                            staged_writes,
+                        )
+            print(
+                "ERROR: [NpcReconciler] T088 source remained unstable; "
+                "last committed state was retained."
+            )
+            return False
         except Exception as exc:
             print(f"ERROR: [NpcReconciler] Reconciliation lock failed: {exc}")
             return False
 
-    def _reconcile_all_areas_unlocked(self):
-        """Reconcile context and areas as one rollback-capable unit."""
-        if not self.context:
-            print("ERROR: [NpcReconciler] Context not loaded. Cannot reconcile.")
-            return False
-
-        original_context = copy.deepcopy(self.context)
-        context_snapshot = safe_read_json(self.context_path)
-        if context_snapshot is None:
-            print("ERROR: [NpcReconciler] Cannot snapshot context for reconciliation.")
-            return False
-
-        snapshots = {}
-        staged_writes = {}
-
-        try:
-            # Build every prospective change in memory before the first write.
-            identity_map = self._find_and_merge_semantic_duplicates()
-            self._rebuild_canonical_map()
-
-            if identity_map:
-                snapshots[self.context_path] = context_snapshot
-                staged_writes[self.context_path] = self.context.to_dict()
-
-            area_ids = self.path_manager.get_area_ids()
-            print(f"DEBUG: [NpcReconciler] Reconciling NPCs for {len(area_ids)} areas...")
-
-            for area_id in area_ids:
-                area_path = self.path_manager.get_area_path(area_id)
-                area_data = safe_read_json(area_path)
-
-                if not area_data or "locations" not in area_data:
-                    continue
-
-                staged_area, modified = self._stage_area_reconciliation(area_data)
-                if modified:
-                    snapshots[area_path] = copy.deepcopy(area_data)
-                    staged_writes[area_path] = staged_area
-        except Exception as exc:
-            self.context = original_context
-            self._rebuild_canonical_map()
-            print(f"ERROR: [NpcReconciler] Failed to stage reconciliation: {exc}")
-            return False
-
+    def _commit_staged_reconciliation(
+        self,
+        original_context,
+        snapshots,
+        staged_writes,
+    ):
+        """Commit one freshly revalidated T088 candidate under both locks."""
         if not staged_writes:
             return True
 
@@ -610,6 +864,30 @@ class NpcReconciler:
             return False
 
         return True
+
+    def _reconcile_all_areas_unlocked(self):
+        """Compatibility path for a caller already owning refresh + context."""
+        if not module_refresh_lock_owned() or not path_transaction_lock_owned(
+            self.context_path
+        ):
+            print(
+                "ERROR: [NpcReconciler] Unlocked T088 helper lacks ownership"
+            )
+            return False
+        source_snapshot = self._capture_reconciliation_inputs()
+        self._install_context_snapshot(source_snapshot["context"]["payload"])
+        original_context, snapshots, staged_writes = (
+            self._stage_reconciliation_from_snapshot(source_snapshot)
+        )
+        if not self._reconciliation_inputs_match(source_snapshot):
+            self.context = original_context
+            self._rebuild_canonical_map()
+            return False
+        return self._commit_staged_reconciliation(
+            original_context,
+            snapshots,
+            staged_writes,
+        )
 
 def main():
     """For testing the reconciler directly."""

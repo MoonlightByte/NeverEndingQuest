@@ -37,7 +37,12 @@ def _should_track_json(rel: str) -> bool:
         return False
     if rel.startswith("conversation_history/"):
         return False
-    if rel.startswith(".commit_backups/"):
+    if first_component in {
+        ".commit_backups",
+        ".module_transactions",
+        ".publication_transactions",
+        ".module_orphan_quarantine",
+    }:
         return False
     if rel == "commit_state.json":
         return False

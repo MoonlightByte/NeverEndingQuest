@@ -124,23 +124,48 @@ class StartupAIResponseError(RuntimeError):
 def initialize_game_files_from_bu():
     """Initialize game files from BU templates if they don't exist"""
     initialized_count = 0
-    
-    # Find all BU files in modules directory
-    for bu_file in Path("modules").rglob("*_BU.json"):
-        # Skip files in saved_games directories
-        if "saved_games" in str(bu_file):
-            continue
-            
-        # Determine the corresponding live file name
-        live_file = str(bu_file).replace("_BU.json", ".json")
-        
-        # Only copy if the live file doesn't exist
-        if not os.path.exists(live_file):
-            try:
-                shutil.copy2(bu_file, live_file)
-                initialized_count += 1
-            except Exception as e:
-                warning(f"Failed to initialize {live_file}: {e}", category="startup")
+
+    modules_root = Path("modules")
+    if not modules_root.is_dir():
+        return initialized_count
+
+    # Walk only public module roots. Hidden lifecycle/forensic trees may hold
+    # complete-looking candidates, but startup must never mutate or expose
+    # them before transaction recovery authorizes promotion.
+    support_roots = {
+        "backups",
+        "campaign_archives",
+        "campaign_summaries",
+        "conversation_history",
+        "encounters",
+        "logs",
+    }
+    public_module_roots = (
+        entry
+        for entry in modules_root.iterdir()
+        if entry.is_dir()
+        and not entry.name.startswith(".")
+        and entry.name not in support_roots
+    )
+    for module_root in public_module_roots:
+        for bu_file in module_root.rglob("*_BU.json"):
+            # Skip files in saved_games directories
+            if "saved_games" in bu_file.parts:
+                continue
+
+            # Determine the corresponding live file name
+            live_file = str(bu_file).replace("_BU.json", ".json")
+
+            # Only copy if the live file doesn't exist
+            if not os.path.exists(live_file):
+                try:
+                    shutil.copy2(bu_file, live_file)
+                    initialized_count += 1
+                except Exception as e:
+                    warning(
+                        f"Failed to initialize {live_file}: {e}",
+                        category="startup",
+                    )
     
     return initialized_count
 
@@ -219,6 +244,26 @@ def startup_required(party_file="party_tracker.json"):
 # ===== MODULE MANAGEMENT =====
 
 def scan_available_modules():
+    """Recover module lifecycle state, then read one stable public catalog."""
+    from utils.commit_state import recover_incomplete_refresh_commit
+    from utils.module_lifecycle import ModuleLifecycleStore, RecoveryStatus
+    from utils.module_refresh_lock import module_refresh_lock
+
+    with module_refresh_lock() as acquired:
+        if not acquired:
+            return []
+        recover_incomplete_refresh_commit()
+        recovery = ModuleLifecycleStore("modules").recover()
+        if recovery.status is RecoveryStatus.INDETERMINATE:
+            warning(
+                "Module lifecycle recovery is required before startup scan",
+                category="startup",
+            )
+            return []
+        return _scan_available_modules_locked()
+
+
+def _scan_available_modules_locked():
     """Find all available modules in modules/ directory"""
     status_loading()
     modules = []
@@ -228,9 +273,23 @@ def scan_available_modules():
         status_ready()
         return modules
     
-    for item in os.listdir("modules"):
+    catalog_names = os.listdir("modules")
+    registry_path = os.path.join("modules", "world_registry.json")
+    if os.path.isfile(registry_path):
+        try:
+            registry = safe_json_load(registry_path)
+            if isinstance(registry, dict) and isinstance(
+                registry.get("modules"), dict
+            ):
+                catalog_names = list(registry["modules"])
+        except Exception:
+            catalog_names = []
+
+    for item in catalog_names:
         module_path = f"modules/{item}"
         if os.path.isdir(module_path):
+            if item.startswith('.'):
+                continue
             # These directories contain runtime/support data, not playable
             # modules.  Analyzing them is both noisy and (historically) could
             # trigger an unnecessary creative travel-narration request.

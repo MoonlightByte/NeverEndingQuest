@@ -20,6 +20,7 @@ register_callsite("T091", "utils/reconcile_location_state.py", 346)
 # Import project-specific modules
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_read_json, safe_write_json
+from utils.module_refresh_lock import module_refresh_lock
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
 # Set script name for logging
@@ -213,21 +214,34 @@ def run(area_id, location_id, conversation_history_segment):
         debug(f"[RECONCILER] FAILED - Could not find area file for {location_id}", category="reconciliation")
         return False
 
-    area_transaction_lock = _get_area_transaction_lock(area_file_path)
-    with area_transaction_lock:
-        try:
-            return _run_area_transaction(
-                area_file_path,
-                location_id,
-                conversation_history_segment,
-            )
-        except Exception as transaction_error:
-            error(
-                f"RECONCILER: Area transaction failed for '{location_id}'.",
-                exception=transaction_error,
+    # T088 snapshots this same area tree under module refresh. Keep refresh
+    # outside the per-area transaction lock so every participant follows the
+    # global refresh -> target order and T088 can never commit from a source
+    # that this read/model/write transaction is still changing.
+    with module_refresh_lock() as refresh_acquired:
+        if not refresh_acquired:
+            warning(
+                "RECONCILER: Module refresh is busy; no location state was "
+                "changed.",
                 category="reconciliation",
             )
             return False
+
+        area_transaction_lock = _get_area_transaction_lock(area_file_path)
+        with area_transaction_lock:
+            try:
+                return _run_area_transaction(
+                    area_file_path,
+                    location_id,
+                    conversation_history_segment,
+                )
+            except Exception as transaction_error:
+                error(
+                    f"RECONCILER: Area transaction failed for '{location_id}'.",
+                    exception=transaction_error,
+                    category="reconciliation",
+                )
+                return False
 
 
 def _run_area_transaction(

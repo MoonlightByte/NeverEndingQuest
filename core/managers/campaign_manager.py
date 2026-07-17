@@ -87,7 +87,7 @@ from utils.file_operations import safe_write_json
 from utils.module_path_manager import ModulePathManager
 from utils.module_refresh_lock import module_refresh_lock
 from utils.path_transaction_lock import path_transaction_lock
-from utils.commit_state import begin_refresh_commit, mark_commit_phase, complete_refresh_commit, recover_incomplete_refresh_commit
+from utils.commit_state import recover_incomplete_refresh_commit
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
 
 # Set script name for logging
@@ -1368,15 +1368,22 @@ class CampaignManager:
                     "available_modules": self.campaign_data.get("availableModules", []),
                     "error": "module_refresh_lock_timeout",
                 }
-            commit_state = None
-            refresh_ok = False
             try:
                 expected_lifecycle_epoch = _load_campaign_lifecycle_epoch(
                     self.campaign_file
                 )
                 recover_incomplete_refresh_commit()
-                commit_state = begin_refresh_commit()
-                mark_commit_phase("commit")
+                from utils.module_lifecycle import (
+                    ModuleLifecycleStore,
+                    RecoveryStatus,
+                )
+
+                lifecycle_recovery = ModuleLifecycleStore("modules").recover()
+                if lifecycle_recovery.status is RecoveryStatus.INDETERMINATE:
+                    raise RuntimeError(
+                        "Managed module lifecycle recovery is indeterminate: "
+                        f"{lifecycle_recovery.reason}"
+                    )
                 from core.generators.module_stitcher import get_module_stitcher
 
                 stitcher = get_module_stitcher()
@@ -1389,13 +1396,6 @@ class CampaignManager:
                         f"INITIALIZATION: Reloaded party tracker after integration. Location: {updated_loc}",
                         category="module_loading",
                     )
-
-                # Module files/registry are now a complete refresh unit.
-                # Campaign availability is merged afterward through its own
-                # fresh locked transaction and must never be part of broad
-                # module-file rollback.
-                complete_refresh_commit()
-                commit_state = None
 
                 world_registry = stitcher.world_registry
                 if world_registry and "modules" in world_registry:
@@ -1454,7 +1454,6 @@ class CampaignManager:
                             category="module_loading",
                         )
 
-                refresh_ok = True
                 return {
                     "success": True,
                     "newly_integrated": list(newly_integrated),
@@ -1473,12 +1472,6 @@ class CampaignManager:
                     "available_modules": self.campaign_data.get("availableModules", []),
                     "error": str(e),
                 }
-            finally:
-                if commit_state and refresh_ok:
-                    try:
-                        complete_refresh_commit()
-                    except Exception:
-                        pass
 
     def refresh_modules_async(self, max_seconds: int = 3):
         """Run refresh with a bounded wait; return quickly on timeout."""

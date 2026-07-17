@@ -69,6 +69,7 @@ See LICENSE file for full terms.
 # ============================================================================
 
 import json
+import hashlib
 import subprocess
 import os
 import re
@@ -85,7 +86,7 @@ register_callsite("T066", "main.py", 2450)
 register_callsite("T067", "main.py", 3817)
 from datetime import datetime, timedelta
 from termcolor import colored
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 # Import encoding utilities
 from utils.encoding_utils import (
@@ -177,6 +178,8 @@ RESET_COLOR = "\033[0m"
 json_file = "modules/conversation_history/conversation_history.json"
 
 needs_conversation_history_update = False
+_conversation_history_dirty = False
+_dirty_conversation_history = None
 should_inject_creation_prompt = False  # Global flag for module creation prompt injection
 
 # Message combination system state variables
@@ -2655,13 +2658,590 @@ def _party_transition_projection(party_tracker_data):
     )
 
 
-def prepare_conversation_for_ai_request(conversation_history):
+def _module_history_suffix_digest(messages):
+    encoded = json.dumps(
+        messages,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _history_has_exact_module_suffix(history, message_ids, suffix_digest):
+    count = len(message_ids)
+    if not isinstance(history, list) or count == 0 or len(history) < count:
+        return False
+    suffix = history[-count:]
+    if [message.get("message_id") for message in suffix if isinstance(message, dict)] != list(
+        message_ids
+    ):
+        return False
+    try:
+        return _module_history_suffix_digest(suffix) == suffix_digest
+    except (TypeError, ValueError):
+        return False
+
+
+def _publication_pending_message(receipt):
+    return (
+        f"Module {receipt.module_name} was published; "
+        "follow-up narration is pending."
+    )
+
+
+def _emit_committed_module_message(content, message_id):
+    from web.shared_state import emit_player_output
+
+    delivered = emit_player_output(
+        {
+            "type": "narration",
+            "content": content,
+            "message_id": message_id,
+        }
+    )
+    if delivered is not True:
+        print(colored("Dungeon Master:", "blue"), colored(content, "blue"))
+    return delivered is True
+
+
+def _acknowledge_module_receipt(
+    receipt,
+    *,
+    planned_message_ids=None,
+    planned_suffix_digest=None,
+):
+    from utils.module_lifecycle import ModuleLifecycleStore
+    from utils.module_refresh_lock import module_refresh_lock
+
+    with module_refresh_lock() as acquired:
+        if not acquired:
+            return False
+        store = ModuleLifecycleStore("modules")
+        outcome = store.acknowledge_receipt(
+            build_id=receipt.build_id,
+            message_id=receipt.message_id,
+            message_digest=receipt.message_digest,
+            planned_message_ids=planned_message_ids,
+            planned_suffix_digest=planned_suffix_digest,
+        )
+        return outcome.acknowledged is True
+
+
+def _deliver_pending_module_receipt(receipt, conversation_history):
+    """Serialize an entire committed delivery against restore/reset."""
+    from core.managers.campaign_manager import _party_module_transition_lock
+
+    with _party_module_transition_lock():
+        return _deliver_pending_module_receipt_locked(
+            receipt,
+            conversation_history,
+        )
+
+
+def _deliver_pending_module_receipt_locked(receipt, conversation_history):
+    """Replay or acknowledge one committed publication without rebuilding."""
+    from utils.module_lifecycle import ModuleLifecycleStore
+    from utils.module_refresh_lock import module_refresh_lock
+
+    disk_history = load_json_file(json_file)
+    if not isinstance(disk_history, list):
+        disk_history = []
+    with module_refresh_lock() as acquired:
+        if not acquired:
+            return False
+        store = ModuleLifecycleStore("modules")
+        current_receipt = store.find_pending_receipt(build_id=receipt.build_id)
+        if current_receipt is None:
+            return False
+        if current_receipt != receipt:
+            raise ValueError("Pending module receipt identity changed")
+        plan = store.read_receipt_delivery_plan(build_id=receipt.build_id)
+    if plan is not None and _history_has_exact_module_suffix(
+        disk_history,
+        plan.message_ids,
+        plan.suffix_digest,
+    ):
+        for message in disk_history[-len(plan.message_ids):]:
+            content = message.get("content", "")
+            try:
+                parsed = json.loads(extract_json_from_codeblock(content))
+                narration = parsed.get("narration")
+                if isinstance(narration, str) and narration.strip():
+                    content = sanitize_text(narration)
+            except Exception:
+                pass
+            if isinstance(content, str) and content.strip():
+                _emit_committed_module_message(
+                    content,
+                    message["message_id"],
+                )
+        return _acknowledge_module_receipt(
+            receipt,
+            planned_message_ids=plan.message_ids,
+            planned_suffix_digest=plan.suffix_digest,
+        )
+
+    pending_content = _publication_pending_message(receipt)
+    if hashlib.sha256(pending_content.encode("utf-8")).hexdigest() != receipt.message_digest:
+        return False
+    pending_entry = {
+        "role": "system",
+        "content": pending_content,
+        "message_id": receipt.message_id,
+    }
+    on_disk = any(
+        isinstance(message, dict)
+        and message.get("message_id") == receipt.message_id
+        and message.get("content") == pending_content
+        for message in disk_history
+    )
+    if not on_disk:
+        if not any(
+            isinstance(message, dict)
+            and message.get("message_id") == receipt.message_id
+            for message in conversation_history
+        ):
+            conversation_history.append(pending_entry)
+        if _strictly_persist_conversation_history(conversation_history) is not True:
+            _emit_committed_module_message(pending_content, receipt.message_id)
+            return False
+        disk_history = load_json_file(json_file)
+        on_disk = isinstance(disk_history, list) and any(
+            isinstance(message, dict)
+            and message.get("message_id") == receipt.message_id
+            and message.get("content") == pending_content
+            for message in disk_history
+        )
+    _emit_committed_module_message(pending_content, receipt.message_id)
+    if not on_disk:
+        return False
+    return _acknowledge_module_receipt(receipt)
+
+
+def _recover_pending_module_publications(conversation_history):
+    """Classify lifecycle state and deliver every committed pending receipt."""
+    from utils.commit_state import recover_incomplete_refresh_commit
+    from utils.module_lifecycle import (
+        ModuleLifecycleStore,
+        RecoveryStatus,
+    )
+    from utils.module_refresh_lock import module_refresh_lock
+
+    try:
+        with module_refresh_lock() as acquired:
+            if not acquired:
+                return False
+            recover_incomplete_refresh_commit()
+            store = ModuleLifecycleStore("modules")
+            recovery = store.recover()
+            if recovery.status is RecoveryStatus.INDETERMINATE:
+                return False
+            receipts = tuple(
+                receipt
+                for receipt in store.list_publication_receipts()
+                if not receipt.acknowledged
+            )
+        return all(
+            _deliver_pending_module_receipt(receipt, conversation_history)
+            for receipt in receipts
+        )
+    except Exception as receipt_error:
+        error(
+            "FAILURE: Pending module publication delivery could not be completed",
+            exception=receipt_error,
+            category="module_management",
+        )
+        return False
+
+
+def prepare_conversation_for_ai_request(
+    conversation_history,
+    *,
+    deliver_pending_publications=True,
+):
     """Close queued transitions and rebuild context before any DM request."""
+    if deliver_pending_publications:
+        _recover_pending_module_publications(conversation_history)
     outcome = require_staged_module_completions_drained()
     if not (outcome["completed"] or outcome["cancelled"]):
         return outcome
     rebuild_conversation_for_current_party(conversation_history)
     return outcome
+
+
+def _strictly_persist_conversation_history(conversation_history):
+    """Persist the authoritative list and track literal failure as dirty."""
+    global _conversation_history_dirty, _dirty_conversation_history
+    try:
+        saved = save_conversation_history(
+            conversation_history,
+            strict=True,
+            allow_compression=False,
+        )
+    except Exception as save_error:
+        error(
+            "FAILURE: Safe action history could not be persisted",
+            exception=save_error,
+            category="conversation_management",
+        )
+        saved = False
+    if saved is True:
+        if (
+            _dirty_conversation_history is None
+            or _dirty_conversation_history is conversation_history
+            or _dirty_conversation_history == conversation_history
+        ):
+            _conversation_history_dirty = False
+            _dirty_conversation_history = None
+    else:
+        _conversation_history_dirty = True
+        if _dirty_conversation_history is None:
+            _dirty_conversation_history = conversation_history
+    return saved is True
+
+
+def _reload_conversation_history_if_safe(
+    conversation_history,
+    path=json_file,
+):
+    """Retry a dirty save before allowing disk to replace newer memory."""
+    authoritative_history = (
+        _dirty_conversation_history
+        if _conversation_history_dirty
+        and isinstance(_dirty_conversation_history, list)
+        else conversation_history
+    )
+    if _conversation_history_dirty:
+        if not _strictly_persist_conversation_history(authoritative_history):
+            return authoritative_history
+    loaded_history = load_json_file(path)
+    if isinstance(loaded_history, list):
+        return loaded_history
+    return authoritative_history
+
+
+def _ordinary_action_failure_message_id(response, action, conversation_history):
+    """Derive one retry-stable identity from the accepted turn prefix."""
+    from web.shared_state import SAFE_ACTION_FAILURE_MESSAGE
+
+    prefix = list(conversation_history)
+    if (
+        prefix
+        and isinstance(prefix[-1], dict)
+        and prefix[-1].get("role") == "system"
+        and prefix[-1].get("content") == SAFE_ACTION_FAILURE_MESSAGE
+        and str(prefix[-1].get("message_id", "")).startswith(
+            "action-failure:"
+        )
+    ):
+        prefix.pop()
+    if (
+        prefix
+        and isinstance(prefix[-1], dict)
+        and prefix[-1].get("role") == "assistant"
+        and prefix[-1].get("content") == response
+    ):
+        prefix.pop()
+    identity = {
+        "schema": "ordinary-action-failure-v1",
+        "history_prefix": prefix,
+        "accepted_response": response,
+        "action": action,
+    }
+    encoded = json.dumps(
+        identity,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return "action-failure:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _safe_action_failure_result(result, message_id):
+    """Whitelist action-error metadata and attach the canonical player text."""
+    from web.shared_state import SAFE_ACTION_FAILURE_MESSAGE
+
+    source_data = result.get("response_data") if isinstance(result, dict) else {}
+    if not isinstance(source_data, dict):
+        source_data = {}
+    response_data = {
+        "player_message": SAFE_ACTION_FAILURE_MESSAGE,
+        "message_id": message_id,
+    }
+    for field in ("retryable", "state_changed", "recovery_required"):
+        value = source_data.get(field)
+        if field == "state_changed":
+            if value is None or type(value) is bool:
+                response_data[field] = value
+        elif type(value) is bool:
+            response_data[field] = value
+    return {
+        "status": "error",
+        "success": False,
+        "needs_update": (
+            isinstance(result, dict) and result.get("needs_update") is True
+        ),
+        "needs_dm_response": False,
+        "player_message": SAFE_ACTION_FAILURE_MESSAGE,
+        "message_id": message_id,
+        "response_data": response_data,
+    }
+
+
+def _handle_ordinary_action_failure(
+    result,
+    response,
+    action,
+    conversation_history,
+):
+    """Persist and deliver one sanitized terminal error for an accepted turn."""
+    from web.shared_state import (
+        SAFE_ACTION_FAILURE_MESSAGE,
+        emit_player_output,
+    )
+
+    message_id = _ordinary_action_failure_message_id(
+        response, action, conversation_history
+    )
+    already_recorded = any(
+        isinstance(message, dict) and message.get("message_id") == message_id
+        for message in conversation_history
+    )
+    if not already_recorded:
+        assistant_message = {"role": "assistant", "content": response}
+        if not (
+            conversation_history
+            and conversation_history[-1] == assistant_message
+        ):
+            conversation_history.append(assistant_message)
+        conversation_history.append(
+            {
+                "role": "system",
+                "content": SAFE_ACTION_FAILURE_MESSAGE,
+                "message_id": message_id,
+            }
+        )
+
+    _strictly_persist_conversation_history(conversation_history)
+    emit_player_output(
+        {
+            "type": "error",
+            "content": SAFE_ACTION_FAILURE_MESSAGE,
+            "message_id": message_id,
+        }
+    )
+    try:
+        status_ready()
+    except Exception:
+        pass
+    return _safe_action_failure_result(result, message_id)
+
+
+def _receipt_for_committed_module_result(result):
+    from utils.module_lifecycle import ModuleLifecycleStore
+    from utils.module_refresh_lock import module_refresh_lock
+
+    data = result.get("response_data") if isinstance(result, dict) else None
+    if not isinstance(data, dict):
+        raise ValueError("Committed module result has no receipt metadata")
+    build_id = data.get("receipt_build_id")
+    with module_refresh_lock() as acquired:
+        if not acquired:
+            raise RuntimeError("Module receipt lock is unavailable")
+        receipt = ModuleLifecycleStore("modules").find_publication_receipt(
+            build_id=build_id
+        )
+    if receipt is None:
+        raise ValueError("Committed module receipt is unavailable")
+    expected = (
+        data.get("module_name"),
+        data.get("message_id"),
+        data.get("message_digest"),
+        data.get("idempotency_key"),
+    )
+    actual = (
+        receipt.module_name,
+        receipt.message_id,
+        receipt.message_digest,
+        receipt.idempotency_key,
+    )
+    if expected != actual:
+        raise ValueError("Committed module receipt metadata differs")
+    return receipt
+
+
+def _plan_module_followup_delivery(receipt, message):
+    from utils.module_lifecycle import ModuleLifecycleStore
+    from utils.module_refresh_lock import module_refresh_lock
+
+    suffix_digest = _module_history_suffix_digest([message])
+    with module_refresh_lock() as acquired:
+        if not acquired:
+            raise RuntimeError("Module receipt lock is unavailable")
+        return ModuleLifecycleStore("modules").plan_receipt_delivery(
+            build_id=receipt.build_id,
+            message_ids=(message["message_id"],),
+            suffix_digest=suffix_digest,
+        )
+
+
+def _published_followup_pending_result(result, receipt=None):
+    data = dict(result.get("response_data", {}))
+    module_name = data.get("module_name")
+    if receipt is not None:
+        module_name = receipt.module_name
+        data.update(
+            {
+                "receipt_build_id": receipt.build_id,
+                "module_name": receipt.module_name,
+                "message_id": receipt.message_id,
+                "message_digest": receipt.message_digest,
+                "idempotency_key": receipt.idempotency_key,
+                "pending_message": _publication_pending_message(receipt),
+            }
+        )
+    return {
+        "status": "published_followup_pending",
+        "success": True,
+        "state_changed": True,
+        "retryable": False,
+        "needs_update": True,
+        "needs_dm_response": False,
+        "build_id": result.get("build_id"),
+        "response_data": data,
+        "module_name": module_name,
+    }
+
+
+def _complete_committed_module_followup(
+    result,
+    response,
+    conversation_history,
+):
+    """Serialize publication follow-up persistence against restore/reset."""
+    from core.managers.campaign_manager import _party_module_transition_lock
+
+    with _party_module_transition_lock():
+        return _complete_committed_module_followup_locked(
+            result,
+            response,
+            conversation_history,
+        )
+
+
+def _complete_committed_module_followup_locked(
+    result,
+    response,
+    conversation_history,
+):
+    """Deliver narration-only follow-up without undoing publication success."""
+    receipt = None
+    try:
+        receipt = _receipt_for_committed_module_result(result)
+        if receipt.acknowledged:
+            replay = dict(result)
+            replay["needs_dm_response"] = False
+            replay["status"] = "published_replay"
+            return replay
+
+        accepted_message = {"role": "assistant", "content": response}
+        if not (
+            conversation_history
+            and conversation_history[-1] == accepted_message
+        ):
+            conversation_history.append(accepted_message)
+        response_data = result.get("response_data", {})
+        dm_note = response_data.get("dm_note")
+        if isinstance(dm_note, str) and dm_note.strip():
+            conversation_history.append(
+                {"role": "user", "content": dm_note.strip()}
+            )
+        if _strictly_persist_conversation_history(conversation_history) is not True:
+            raise OSError("Accepted publication history did not persist")
+
+        followup_history = list(conversation_history)
+        followup_history, party_data = rebuild_conversation_for_current_party(
+            followup_history,
+            return_party=True,
+        )
+        get_location_data_from_party_tracker(party_data)
+        ai_response = get_ai_response(
+            followup_history,
+            _skip_pending_publication_delivery=True,
+        )
+        parsed = json.loads(extract_json_from_codeblock(ai_response))
+        narration = parsed.get("narration") if isinstance(parsed, dict) else None
+        actions = parsed.get("actions") if isinstance(parsed, dict) else None
+        if (
+            not isinstance(narration, str)
+            or not narration.strip()
+            or not isinstance(actions, list)
+            or actions != []
+        ):
+            raise ValueError("Module follow-up was not useful narration-only JSON")
+        narration = sanitize_text(narration).strip()
+        if not narration:
+            raise ValueError("Module follow-up narration became empty")
+
+        followup_id = f"{receipt.message_id}:followup"
+        followup_message = {
+            "role": "assistant",
+            "content": ai_response,
+            "message_id": followup_id,
+        }
+        plan = _plan_module_followup_delivery(receipt, followup_message)
+        if not any(
+            isinstance(message, dict)
+            and message.get("message_id") == followup_id
+            for message in followup_history
+        ):
+            followup_history.append(followup_message)
+        saved = save_conversation_history(
+            followup_history,
+            strict=True,
+            allow_compression=False,
+        )
+        if saved is not True:
+            raise OSError("Module follow-up history did not report success")
+        disk_history = load_json_file(json_file)
+        if not _history_has_exact_module_suffix(
+            disk_history,
+            plan.message_ids,
+            plan.suffix_digest,
+        ):
+            raise OSError("Module follow-up history readback differs")
+
+        conversation_history[:] = followup_history
+        _emit_committed_module_message(narration, followup_id)
+        if not _acknowledge_module_receipt(
+            receipt,
+            planned_message_ids=plan.message_ids,
+            planned_suffix_digest=plan.suffix_digest,
+        ):
+            raise RuntimeError("Module follow-up receipt was not acknowledged")
+
+        completed = dict(result)
+        completed["status"] = "published"
+        completed["needs_dm_response"] = False
+        completed["state_changed"] = True
+        completed["retryable"] = False
+        completed_data = dict(response_data)
+        completed_data["followup_message_id"] = followup_id
+        completed["response_data"] = completed_data
+        return completed
+    except Exception as followup_error:
+        error(
+            "FAILURE: Published module follow-up remains pending",
+            exception=followup_error,
+            category="module_management",
+        )
+        if receipt is not None:
+            _deliver_pending_module_receipt(receipt, conversation_history)
+        return _published_followup_pending_result(result, receipt)
+
 
 def process_ai_response(response, party_tracker_data, location_data, conversation_history):
     global needs_conversation_history_update
@@ -2744,7 +3324,31 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
             for action in actions:
                 if action.get("action") == "levelUp":
                     # Directly call the action handler for just this action
-                    return action_handler.process_action(action, party_tracker_data, location_data, conversation_history)
+                    try:
+                        result = action_handler.process_action(
+                            action,
+                            party_tracker_data,
+                            location_data,
+                            conversation_history,
+                        )
+                    except Exception as action_error:
+                        error(
+                            "FAILURE: Level-up action handler raised unexpectedly",
+                            exception=action_error,
+                            category="level_up",
+                        )
+                        result = {"status": "error", "success": False}
+                    if (
+                        isinstance(result, dict)
+                        and result.get("status") == "error"
+                    ):
+                        return _handle_ordinary_action_failure(
+                            result,
+                            response,
+                            action,
+                            conversation_history,
+                        )
+                    return result
             # Fallback in case the loop doesn't find it, though it should.
             return None
         # --- END OF FIX ---
@@ -2807,7 +3411,9 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                 actions_processed = True
                 if isinstance(result, dict):
                     response_data = result.get("response_data", {})
-                    if isinstance(response_data, dict):
+                    if not isinstance(response_data, dict):
+                        response_data = {}
+                    else:
                         pending = response_data.get("pending_archive")
                         if isinstance(pending, dict):
                             pending_archive_info = pending
@@ -2852,7 +3458,12 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                                 ):
                                     del conversation_history[index]
                                     break
-                        return result
+                        return _handle_ordinary_action_failure(
+                            result,
+                            response,
+                            action,
+                            conversation_history,
+                        )
                     if result_status == "exit":
                         return "exit"
                     if result_status == "restart":
@@ -3081,7 +3692,12 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
                         needs_conversation_history_update = True
                     result_status = result.get("status")
                     if result_status == "error":
-                        return result
+                        return _handle_ordinary_action_failure(
+                            result,
+                            response,
+                            action,
+                            fresh_conversation_history,
+                        )
                     response_data = result.get("response_data")
                     deferred_pending = (
                         response_data.get("pending_archive")
@@ -3246,7 +3862,7 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
             debug(f"  Action {i+1}: {action.get('action', 'unknown')}", category="character_updates")
             print(f"DEBUG:   Action {i+1}: {action.get('action', 'unknown')}")
         
-        # Separate updateCharacterInfo actions from others for concurrent processing
+        # Separate updateCharacterInfo actions from the other action families.
         char_update_actions = [action for action in actions if action.get("action") == "updateCharacterInfo"]
         other_actions = [action for action in actions if action.get("action") != "updateCharacterInfo"]
         
@@ -3262,49 +3878,44 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
             except Exception as e:
                 debug(f"Could not update status: {e}", category="status")
         
-        # Process character updates concurrently if there are multiple
-        if len(char_update_actions) > 1:
-            debug(f"STATE_CHANGE: Processing {len(char_update_actions)} character updates concurrently", category="character_updates")
-            print(f"DEBUG: STATE_CHANGE: Processing {len(char_update_actions)} character updates concurrently")
-
-            # Invariant: worker-dispatched updateCharacterInfo handlers must
-            # never acquire the party/module transition lock. Party-changing
-            # actions remain sequential on this owning thread, which already
-            # holds the whole-response fence while waiting for these workers.
-            concurrent_start = time.time()
-            with ThreadPoolExecutor(max_workers=min(4, len(char_update_actions))) as executor:
-                # Submit all character updates
-                future_to_action = {
-                    executor.submit(action_handler.process_action, action, party_tracker_data, location_data, conversation_history): action 
-                    for action in char_update_actions
-                }
-                
-                # Collect results
-                for future in as_completed(future_to_action):
-                    try:
-                        result = future.result()
-                        actions_processed = True
-                        # Handle result same as sequential processing
-                        if isinstance(result, dict) and result.get("needs_update"):
-                            needs_conversation_history_update = True
-                        elif isinstance(result, bool) and result:
-                            needs_conversation_history_update = True
-                    except Exception as e:
-                        action = future_to_action[future]
-                        char_name = action.get("parameters", {}).get("characterName", "unknown")
-                        error(f"FAILURE: Concurrent character update failed for {char_name}", exception=e, category="character_updates")
-            
-            concurrent_end = time.time()
-            debug(f"STATE_CHANGE: Completed concurrent character updates", category="character_updates")
-            print(f"DEBUG: STATE_CHANGE: Completed concurrent character updates in {concurrent_end - concurrent_start:.2f} seconds")
-        
-        elif char_update_actions:
-            # Single character update - process normally
+        # Character updates are ordered state mutations. Run them one at a
+        # time so a failed update prevents every later sibling from starting.
+        if char_update_actions:
+            debug(
+                f"STATE_CHANGE: Processing {len(char_update_actions)} "
+                "character updates sequentially",
+                category="character_updates",
+            )
+            print(
+                "DEBUG: STATE_CHANGE: Processing "
+                f"{len(char_update_actions)} character updates sequentially"
+            )
             for action in char_update_actions:
-                result = action_handler.process_action(action, party_tracker_data, location_data, conversation_history)
+                try:
+                    result = action_handler.process_action(
+                        action,
+                        party_tracker_data,
+                        location_data,
+                        conversation_history,
+                    )
+                except Exception as action_error:
+                    error(
+                        "FAILURE: Character update handler raised unexpectedly",
+                        exception=action_error,
+                        category="character_updates",
+                    )
+                    result = {"status": "error"}
                 actions_processed = True
-                if isinstance(result, dict) and result.get("needs_update"):
-                    needs_conversation_history_update = True
+                if isinstance(result, dict):
+                    if result.get("status") == "error":
+                        return _handle_ordinary_action_failure(
+                            result,
+                            response,
+                            action,
+                            conversation_history,
+                        )
+                    if result.get("needs_update"):
+                        needs_conversation_history_update = True
                 elif isinstance(result, bool) and result:
                     needs_conversation_history_update = True
         
@@ -3313,67 +3924,48 @@ def process_ai_response(response, party_tracker_data, location_data, conversatio
         
         # Process all other actions sequentially
         for action in other_actions:
-            result = action_handler.process_action(action, party_tracker_data, location_data, conversation_history)
+            try:
+                result = action_handler.process_action(
+                    action,
+                    party_tracker_data,
+                    location_data,
+                    conversation_history,
+                )
+            except Exception as action_error:
+                error(
+                    "FAILURE: Action handler raised unexpectedly",
+                    exception=action_error,
+                    category="action_processing",
+                )
+                result = {"status": "error", "success": False}
             actions_processed = True
 
             # Standard action failures are terminal for this response. The
             # narration has already been displayed, so persist it exactly once
             # and stop before any later action can mutate game state.
             if isinstance(result, dict) and result.get("status") == "error":
-                assistant_message = {"role": "assistant", "content": response}
-                if not (
-                    conversation_history
-                    and conversation_history[-1] == assistant_message
-                ):
-                    conversation_history.append(assistant_message)
-                    save_conversation_history(conversation_history)
-                try:
-                    from core.managers.status_manager import status_ready
-
-                    status_ready()
-                except Exception:
-                    pass
-                return result
+                safe_result = _handle_ordinary_action_failure(
+                    result,
+                    response,
+                    action,
+                    conversation_history,
+                )
+                return safe_result
 
             if isinstance(result, dict) and result.get("needs_dm_response"):
-                # Publication succeeded, so persist the accepted narration
-                # before its internal DM note and only then request a follow-up.
-                assistant_message = {"role": "assistant", "content": response}
-                if not (
-                    conversation_history
-                    and conversation_history[-1] == assistant_message
-                ):
-                    conversation_history.append(assistant_message)
-                response_data = result.get("response_data", {})
-                dm_note = (
-                    response_data.get("dm_note")
-                    if isinstance(response_data, dict)
-                    else None
+                return _complete_committed_module_followup(
+                    result,
+                    response,
+                    conversation_history,
                 )
-                if isinstance(dm_note, str) and dm_note.strip():
-                    conversation_history.append(
-                        {"role": "user", "content": dm_note}
-                    )
-                save_conversation_history(conversation_history)
-
-                followup_history = load_json_file(json_file) or conversation_history
-                (
-                    followup_history,
-                    party_tracker_data,
-                ) = rebuild_conversation_for_current_party(
-                    followup_history,
-                    return_party=True,
-                )
-                followup_location = get_location_data_from_party_tracker(
-                    party_tracker_data
-                )
-                ai_response = get_ai_response(followup_history)
-                return process_ai_response(
-                    ai_response,
-                    party_tracker_data,
-                    followup_location,
-                    followup_history,
-                )
+            if isinstance(result, dict) and result.get("status") in {
+                "published",
+                "published_replay",
+                "published_followup_pending",
+            }:
+                # Module publication is an irreversible terminal action for
+                # this response; never execute later sibling actions.
+                return result
             
             # Check for pending archive flag from module transitions
             if isinstance(result, dict) and result.get("response_data", {}).get("pending_archive"):
@@ -3656,13 +4248,23 @@ def _finalize_main_response_validation(
     return cleaned_history, None
 
 
-def get_ai_response(conversation_history, validation_retry_count=0):
+def get_ai_response(
+    conversation_history,
+    validation_retry_count=0,
+    *,
+    _skip_pending_publication_delivery=False,
+):
     global should_inject_creation_prompt
     # This is the centralized terminal/web provider boundary. A transition
     # published by another worker between turns must finish (in durable order)
     # before model selection or request construction. If the drain changed
     # campaign state, rebuild the already-assembled system context in place.
-    prepare_conversation_for_ai_request(conversation_history)
+    prepare_conversation_for_ai_request(
+        conversation_history,
+        deliver_pending_publications=(
+            not _skip_pending_publication_delivery
+        ),
+    )
     status_processing_ai()
     
     # Import action predictor and config
@@ -4438,8 +5040,11 @@ def main_game_loop():
 
         if needs_conversation_history_update:
             debug("STATE_CHANGE: Reloading conversation history from disk due to needs_conversation_history_update flag", category="conversation_management")
-            # Reload conversation history from disk to get any changes made during actions
-            conversation_history = load_json_file("modules/conversation_history/conversation_history.json") or []
+            # A safe action message that failed to persist is newer than disk.
+            # Retry its strict save before permitting any reload to replace it.
+            conversation_history = _reload_conversation_history_if_safe(
+                conversation_history
+            )
             # CRITICAL: Also reload party tracker to get the latest module information
             party_tracker_data = load_json_file("party_tracker.json")
             print(f"DEBUG: [Main Loop] Reloaded party tracker after update. Module: {party_tracker_data.get('module', 'Unknown')}")
@@ -5247,17 +5852,14 @@ def main_game_loop():
                     isinstance(final_result, dict)
                     and final_result.get("status") == "error"
                 ):
-                    processing_error = final_result.get("response_data", {})
-                    if isinstance(processing_error, dict):
-                        processing_error = processing_error.get(
-                            "error_message", "action processing failed"
-                        )
-                    print(
-                        "[SYSTEM] That turn could not be applied safely "
-                        f"({processing_error}). Please try again."
-                    )
+                    from web.shared_state import SAFE_ACTION_FAILURE_MESSAGE
+
+                    processing_error = final_result.get("player_message")
+                    if processing_error != SAFE_ACTION_FAILURE_MESSAGE:
+                        processing_error = SAFE_ACTION_FAILURE_MESSAGE
+                    print(f"[SYSTEM] {processing_error}")
                     warning(
-                        f"Response processing failed: {processing_error}",
+                        "Response processing failed safely",
                         category="module_management",
                     )
 
@@ -5355,7 +5957,9 @@ def main_game_loop():
                 # like combat that may add multiple messages), we must reload to ensure our local
                 # conversation_history variable matches the persisted state.
                 # This is the ONLY place the main loop needs to manage conversation_history.
-                conversation_history = load_json_file(json_file) or []
+                conversation_history = _reload_conversation_history_if_safe(
+                    conversation_history
+                )
                 # No need to save here, as process_ai_response already handled all persistence.
 
             elif not is_valid and validation_reason:

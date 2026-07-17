@@ -173,6 +173,7 @@ class PublicationStatus(str, Enum):
 
     PUBLISHED = "PUBLISHED"
     NOT_PUBLISHED = "NOT_PUBLISHED"
+    IMPORT_REQUIRED = "IMPORT_REQUIRED"
     INDETERMINATE = "INDETERMINATE"
 
 
@@ -384,6 +385,17 @@ def _location_prefix_to_index(prefix: str) -> int:
     if len(prefix) == 2:
         return (ord(prefix[0]) - 65 + 1) * 26 + (ord(prefix[1]) - 65)
     return 26 * 26  # 3+ letters: jump well past the 2-letter range
+
+
+def _location_index_to_prefix(index: int) -> str:
+    """Return the deterministic inverse prefix used by module generation."""
+    if not isinstance(index, int) or isinstance(index, bool) or index < 0:
+        raise ValueError("Location prefix index must be a non-negative integer")
+    if index < 26:
+        return chr(65 + index)
+    if index < 702:
+        return chr(65 + (index // 26) - 1) + chr(65 + (index % 26))
+    raise ValueError("The supported location-prefix namespace is exhausted")
 
 
 class ModuleStitcher:
@@ -860,6 +872,9 @@ class ModuleStitcher:
                 False,
                 "Invalid or non-contained module name",
             )
+        from utils.module_refresh_lock import assert_module_refresh_lock_owned
+
+        assert_module_refresh_lock_owned()
         return self._prove_module_absent_from_registry_locked(module_name)
 
     def cleanup_unpublished_module_locked(
@@ -884,6 +899,12 @@ class ModuleStitcher:
                 reason,
                 quarantine_path,
             )
+
+        if self._target_module_path(expected_module_name) is None:
+            return recovery("Expected module name is invalid or not contained")
+        from utils.module_refresh_lock import assert_module_refresh_lock_owned
+
+        assert_module_refresh_lock_owned()
 
         if type(publication_result) is not TargetedPublicationResult:
             return recovery("Publication proof object is unavailable")
@@ -1169,6 +1190,125 @@ class ModuleStitcher:
             return True, ""
         except Exception as exc:
             return False, f"Publication file validation failed: {exc}"
+
+    def _module_identity_sets_for_conflict_scan(
+        self, module_path: str
+    ) -> Tuple[Optional[set], Optional[set], str]:
+        """Read area/location identifiers without changing a module tree."""
+        areas_path = os.path.join(module_path, "areas")
+        try:
+            if self._is_symlink_or_reparse(module_path):
+                return None, None, "Module path is a link or reparse point"
+            if not os.path.isdir(areas_path) or self._is_symlink_or_reparse(
+                areas_path
+            ):
+                return None, None, "Module areas directory is unavailable or unsafe"
+
+            area_ids = set()
+            location_ids = set()
+            with os.scandir(areas_path) as entries:
+                for entry in sorted(entries, key=lambda item: item.name):
+                    if not entry.name.endswith(".json") or entry.name.endswith(
+                        "_BU.json"
+                    ):
+                        continue
+                    if entry.is_symlink() or not entry.is_file(
+                        follow_symlinks=False
+                    ):
+                        return None, None, "Module area entry is unsafe"
+                    area_data = safe_json_load(entry.path)
+                    if not isinstance(area_data, dict):
+                        return None, None, "Module area JSON is unreadable"
+                    area_id = area_data.get("areaId")
+                    if not isinstance(area_id, str) or not area_id.strip():
+                        return None, None, "Module areaId is unavailable"
+                    if area_id in area_ids:
+                        return None, None, "Module contains duplicate area IDs"
+                    area_ids.add(area_id)
+                    locations = area_data.get("locations", [])
+                    if not isinstance(locations, (list, dict)):
+                        return None, None, "Module locations are malformed"
+                    values = locations.values() if isinstance(locations, dict) else locations
+                    for location in values:
+                        if not isinstance(location, dict):
+                            continue
+                        location_id = location.get("locationId")
+                        if isinstance(location_id, str) and location_id.strip():
+                            if location_id in location_ids:
+                                return None, None, (
+                                    "Module contains duplicate location IDs"
+                                )
+                            location_ids.add(location_id)
+            if not area_ids:
+                return None, None, "Module has no area identifiers"
+            return area_ids, location_ids, ""
+        except (OSError, ValueError) as exc:
+            return None, None, f"Module identifiers could not be inspected: {exc}"
+
+    def _detect_legacy_publication_conflicts(
+        self,
+        module_name: str,
+        module_path: str,
+        registry_snapshot: Dict[str, Any],
+    ) -> Tuple[Optional[bool], str]:
+        """Detect whether legacy publication would require live-file rewrites.
+
+        ``True`` means a managed import is required, ``False`` means registry-only
+        publication can continue, and ``None`` means the read was unsafe or
+        ambiguous. This helper never writes or creates a mutation backup.
+        """
+        candidate_areas, candidate_locations, reason = (
+            self._module_identity_sets_for_conflict_scan(module_path)
+        )
+        if candidate_areas is None or candidate_locations is None:
+            return None, reason
+
+        registered_areas = set(registry_snapshot.get("areas", {}))
+        area_conflicts = candidate_areas.intersection(registered_areas)
+        if area_conflicts:
+            return True, (
+                "Managed import is required for conflicting area IDs: "
+                + ", ".join(sorted(area_conflicts))
+            )
+
+        existing_location_ids = set()
+        existing_module_names = {
+            area_data.get("module")
+            for area_data in registry_snapshot.get("areas", {}).values()
+            if isinstance(area_data, dict)
+            and isinstance(area_data.get("module"), str)
+            and area_data.get("module") != module_name
+        }
+        for existing_name in sorted(existing_module_names):
+            existing_path = self._target_module_path(existing_name)
+            if existing_path is None:
+                return None, "Registered module path is unsafe"
+            state, _entry_stat, state_reason = self._exact_module_entry_state(
+                existing_name, existing_path
+            )
+            # Preserve compatibility with registries whose old module package
+            # is no longer installed. There is no live tree to rewrite or
+            # inspect in that case.
+            if state == "absent":
+                continue
+            if state != "directory":
+                return None, f"Registered module path is unsafe: {state_reason}"
+            _areas, locations, existing_reason = (
+                self._module_identity_sets_for_conflict_scan(existing_path)
+            )
+            if locations is None:
+                return None, existing_reason
+            existing_location_ids.update(locations)
+
+        location_conflicts = candidate_locations.intersection(
+            existing_location_ids
+        )
+        if location_conflicts:
+            return True, (
+                "Managed import is required for conflicting location IDs: "
+                + ", ".join(sorted(location_conflicts))
+            )
+        return False, ""
     
     def detect_new_modules(self) -> List[str]:
         """Detect new modules in the modules directory"""
@@ -1252,8 +1392,21 @@ class ModuleStitcher:
         self, module_name: str, include_travel_narration: bool = True
     ) -> Optional[Dict[str, Any]]:
         """Analyze module data, optionally performing the T032 creative call."""
+        return self._analyze_module_path(
+            os.path.join(self.modules_dir, module_name),
+            module_name,
+            include_travel_narration=include_travel_narration,
+        )
+
+    def _analyze_module_path(
+        self,
+        module_path: str,
+        module_name: str,
+        *,
+        include_travel_narration: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        """Analyze one explicitly owned module tree, including hidden builds."""
         try:
-            module_path = os.path.join(self.modules_dir, module_name)
             if not os.path.exists(module_path):
                 return None
             
@@ -2864,6 +3017,232 @@ Create atmospheric travel narration that leads into this adventure."""
             module_restoration_proven=True,
         )
 
+    def prepare_managed_candidate_locked(
+        self,
+        candidate_path: Path,
+        module_name: str,
+    ):
+        """Normalize and validate a hidden ACTION candidate before manifesting.
+
+        The returned registry bytes are the exact write-ahead inputs used by
+        lifecycle recovery. No public module path or live registry is changed.
+        """
+        from utils.module_lifecycle import (
+            ModuleLifecycleStore,
+            RegistryPreparation,
+            validate_module_name,
+        )
+        from utils.module_refresh_lock import assert_module_refresh_lock_owned
+
+        assert_module_refresh_lock_owned()
+        module_name = validate_module_name(module_name)
+        candidate = Path(candidate_path).resolve(strict=True)
+        modules_root = Path(self.modules_dir).resolve(strict=True)
+        transaction_root = (modules_root / ".module_transactions").resolve(
+            strict=True
+        )
+        try:
+            contained = os.path.commonpath(
+                [os.fspath(transaction_root), os.fspath(candidate)]
+            ) == os.fspath(transaction_root)
+        except ValueError:
+            contained = False
+        if (
+            not contained
+            or candidate.name != module_name
+            or candidate.parent.name != "candidate"
+            or candidate.parent.parent.parent.name not in {"staging", "active"}
+        ):
+            raise ValueError("Managed candidate is outside its lifecycle workspace")
+        if os.path.lexists(modules_root / module_name):
+            raise FileExistsError("Managed module final path became occupied")
+
+        store = ModuleLifecycleStore(modules_root)
+        # This validates containment and rejects links/reparse points before
+        # any normalization writer can follow an unsafe candidate entry.
+        store.create_manifest(candidate)
+
+        prior_registry_bytes = Path(self.world_registry_file).read_bytes()
+        try:
+            prior_registry = json.loads(prior_registry_bytes.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError("World registry is not valid UTF-8 JSON") from exc
+        if (
+            not isinstance(prior_registry, dict)
+            or not isinstance(prior_registry.get("modules"), dict)
+            or not isinstance(prior_registry.get("areas"), dict)
+        ):
+            raise ValueError("World registry shape is invalid")
+        if self._registry_references_module(prior_registry, module_name):
+            raise ValueError("Allocated module name is already registry-owned")
+
+        candidate_text = os.fspath(candidate)
+        valid, reason = self._validate_required_publication_files(candidate_text)
+        if not valid:
+            raise ValueError(reason or "Managed module files are incomplete")
+        module_data = self._analyze_module_path(
+            candidate_text,
+            module_name,
+            include_travel_narration=False,
+        )
+        if not module_data or not module_data.get("areas"):
+            raise ValueError("Managed candidate could not be analyzed")
+
+        captured_areas = self._capture_area_documents_from_path(candidate_text)
+        normalized = self._resolve_id_conflicts(
+            module_name,
+            module_data,
+            _ModuleBackupResult(True, area_documents=captured_areas),
+            registry_snapshot=prior_registry,
+            module_path=candidate_text,
+        )
+        if normalized:
+            self._update_bu_files_after_conflict_resolution(
+                module_name,
+                module_path=candidate_text,
+            )
+            module_data = self._analyze_module_path(
+                candidate_text,
+                module_name,
+                include_travel_narration=False,
+            )
+        if not module_data or not module_data.get("areas"):
+            raise ValueError("Managed candidate re-analysis failed")
+
+        valid, reason = self._validate_required_publication_files(candidate_text)
+        if not valid:
+            raise ValueError(reason or "Normalized module files are incomplete")
+        overlap = set(module_data["areas"]).intersection(
+            prior_registry.get("areas", {})
+        )
+        if overlap:
+            raise ValueError(
+                "Managed candidate retains conflicting area IDs: "
+                + ", ".join(sorted(overlap))
+            )
+
+        module_data["travelNarration"] = self._generate_travel_narration(
+            module_data
+        )
+        safety = _coerce_module_safety_result(
+            self._validate_module_safety(
+                module_name,
+                module_data,
+                module_path=candidate_text,
+            )
+        )
+        if not safety.allows_integration:
+            raise ValueError(
+                f"Managed module safety {safety.status.value}: "
+                f"{safety.reason or 'No reason supplied'}"
+            )
+
+        candidate_registry = self._build_registry_candidate(
+            prior_registry,
+            module_name,
+            module_data,
+        )
+        candidate_registry_bytes = (
+            json.dumps(
+                candidate_registry,
+                ensure_ascii=False,
+                allow_nan=False,
+                indent=2,
+            )
+            + "\n"
+        ).encode("utf-8")
+        if Path(self.world_registry_file).read_bytes() != prior_registry_bytes:
+            raise RuntimeError("World registry changed during candidate preparation")
+        return RegistryPreparation(
+            prior_registry_bytes,
+            candidate_registry_bytes,
+        )
+
+    @staticmethod
+    def _replace_exact_registry_bytes(path: Path, payload: bytes) -> None:
+        """Durably replace one registry with already-journaled exact bytes."""
+        temporary = path.parent / f".{path.name}.{uuid4().hex}.tmp"
+        descriptor = None
+        try:
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            if hasattr(os, "O_CLOEXEC"):
+                flags |= os.O_CLOEXEC
+            descriptor = os.open(os.fspath(temporary), flags, 0o600)
+            view = memoryview(payload)
+            written = 0
+            while written < len(view):
+                count = os.write(descriptor, view[written:])
+                if not isinstance(count, int) or count <= 0:
+                    raise OSError("Registry write made no progress")
+                written += count
+            os.fsync(descriptor)
+            os.close(descriptor)
+            descriptor = None
+            os.replace(temporary, path)
+            if os.name != "nt":
+                directory = os.open(
+                    os.fspath(path.parent),
+                    os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+                )
+                try:
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
+            if path.read_bytes() != payload:
+                raise OSError("Registry exact-byte readback differs")
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+
+    def publish_managed_candidate_locked(
+        self,
+        active,
+        *,
+        message_id: str,
+        message_digest: str,
+        idempotency_key: str,
+    ):
+        """Commit one hidden ACTION candidate and its pending receipt."""
+        from utils.module_lifecycle import ModuleLifecycleStore
+        from utils.module_refresh_lock import assert_module_refresh_lock_owned
+
+        assert_module_refresh_lock_owned()
+        store = ModuleLifecycleStore(self.modules_dir)
+        prepared = store.read_registry_preparation(active)
+        if prepared is None:
+            raise RuntimeError("Managed publication has no registry preparation")
+        registry_path = Path(self.world_registry_file)
+        if registry_path.read_bytes() != prepared.prior_registry_bytes:
+            raise RuntimeError("World registry differs before managed publication")
+
+        store.stage_publication_receipt(
+            active,
+            message_id=message_id,
+            message_digest=message_digest,
+            idempotency_key=idempotency_key,
+        )
+        store.promote_for_publication(active)
+        if registry_path.read_bytes() != prepared.prior_registry_bytes:
+            raise RuntimeError("World registry changed during managed promotion")
+        self._replace_exact_registry_bytes(
+            registry_path,
+            prepared.candidate_registry_bytes,
+        )
+        receipt = store.record_published_receipt(
+            active,
+            message_id=message_id,
+            message_digest=message_digest,
+            idempotency_key=idempotency_key,
+        )
+        self.world_registry = json.loads(
+            prepared.candidate_registry_bytes.decode("utf-8")
+        )
+        return receipt
+
     def publish_module(self, module_name: str) -> TargetedPublicationResult:
         """Transactionally publish one exact module; never perform a scan."""
         from utils.module_refresh_lock import module_refresh_lock
@@ -2894,6 +3273,15 @@ Create atmospheric travel narration that leads into this adventure."""
         around both module construction and this call. Other callers should use
         :meth:`publish_module`.
         """
+        if self._target_module_path(module_name) is None:
+            return TargetedPublicationResult(
+                PublicationStatus.INDETERMINATE,
+                module_name,
+                "Invalid or non-contained module name",
+            )
+        from utils.module_refresh_lock import assert_module_refresh_lock_owned
+
+        assert_module_refresh_lock_owned()
         return self._publish_module_locked(module_name)
 
     def _publish_module_locked(
@@ -3091,6 +3479,40 @@ Create atmospheric travel narration that leads into this adventure."""
                 "Exact module is marked .corrupted; forensic state was retained",
                 registry_absence_proven=True,
                 registry_restoration_proven=True,
+            )
+
+        conflict_state, conflict_reason = self._detect_legacy_publication_conflicts(
+            module_name,
+            module_path,
+            prior_registry,
+        )
+        entry_valid, entry_reason = self._revalidate_publication_entry(
+            module_name,
+            module_path,
+            entry_state,
+            entry_guard,
+        )
+        if not entry_valid:
+            return TargetedPublicationResult(
+                PublicationStatus.INDETERMINATE,
+                module_name,
+                "Exact module identity changed during conflict inspection: "
+                f"{entry_reason}",
+            )
+        if conflict_state is None:
+            return TargetedPublicationResult(
+                PublicationStatus.INDETERMINATE,
+                module_name,
+                conflict_reason,
+            )
+        if conflict_state is True:
+            return TargetedPublicationResult(
+                PublicationStatus.IMPORT_REQUIRED,
+                module_name,
+                conflict_reason,
+                registry_absence_proven=True,
+                registry_restoration_proven=True,
+                module_restoration_proven=True,
             )
 
         backup_result = _coerce_module_backup_result(
@@ -3438,12 +3860,52 @@ Create atmospheric travel narration that leads into this adventure."""
         """Compatibility adapter for callers that still require a boolean."""
         return self.publish_module(module_name).published
 
+    @staticmethod
+    def _capture_area_documents_from_path(
+        module_path: str,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Capture ordinary live area JSON before deterministic ID rewrites."""
+        areas_path = os.path.join(module_path, "areas")
+        documents: Dict[str, Dict[str, Any]] = {}
+        for filename in sorted(os.listdir(areas_path)):
+            if not filename.endswith(".json") or filename.endswith("_BU.json"):
+                continue
+            path = os.path.join(areas_path, filename)
+            value = safe_json_load(path)
+            if not isinstance(value, dict):
+                raise ValueError(f"Area document is not an object: {filename}")
+            documents[filename] = deepcopy(value)
+        return documents
+
+    def _apply_exact_id_mapping_to_module(
+        self,
+        module_path: str,
+        id_mapping: Dict[str, str],
+    ) -> None:
+        """Replace exact JSON string IDs throughout one owned candidate tree."""
+        if not id_mapping:
+            return
+        for root, directories, filenames in os.walk(module_path, followlinks=False):
+            directories.sort()
+            filenames.sort()
+            for filename in filenames:
+                if not filename.endswith(".json") or filename.endswith("_BU.json"):
+                    continue
+                path = os.path.join(root, filename)
+                value = safe_json_load(path)
+                if value is None:
+                    raise ValueError(f"Could not read JSON during ID rewrite: {path}")
+                updated = self._recursively_update_ids_in_json(value, id_mapping)
+                if updated != value and safe_write_json(path, updated) is not True:
+                    raise OSError(f"Could not persist ID rewrite: {path}")
+
     def _resolve_id_conflicts(
         self,
         module_name: str,
         module_data: Dict[str, Any],
         backup_result: _ModuleBackupResult,
         registry_snapshot: Optional[Dict[str, Any]] = None,
+        module_path: Optional[str] = None,
     ) -> int:
         """Resolve area ID and location ID conflicts by modifying the new module"""
         try:
@@ -3456,7 +3918,13 @@ Create atmospheric travel narration that leads into this adventure."""
             # Conflict discovery needs a working copy. Mutating the live
             # registry here would violate the publication commit boundary.
             existing_areas = deepcopy(registry.get('areas', {}))
-            module_path = os.path.join(self.modules_dir, module_name)
+            module_path = module_path or os.path.join(
+                self.modules_dir, module_name
+            )
+            original_area_documents = self._capture_area_documents_from_path(
+                module_path
+            )
+            exact_reference_mapping: Dict[str, str] = {}
 
             # Check for area ID conflicts
             conflicting_areas = []
@@ -3472,18 +3940,52 @@ Create atmospheric travel narration that leads into this adventure."""
                     new_area_id = self._generate_unique_area_id(old_area_id, existing_areas, module_name)
 
                     # Update area file
-                    if self._update_area_id_in_files(module_path, old_area_id, new_area_id):
-                        print(f"    - Renamed area {old_area_id} -> {new_area_id}")
-                        conflicts_resolved += 1
+                    original_area = next(
+                        (
+                            area
+                            for area in original_area_documents.values()
+                            if area.get("areaId") == old_area_id
+                        ),
+                        None,
+                    )
+                    if not self._update_area_id_in_files(
+                        module_path, old_area_id, new_area_id
+                    ):
+                        raise RuntimeError(
+                            f"Could not rewrite conflicting area {old_area_id}"
+                        )
+                    print(f"    - Renamed area {old_area_id} -> {new_area_id}")
+                    conflicts_resolved += 1
+                    exact_reference_mapping[old_area_id] = new_area_id
+                    if isinstance(original_area, dict):
+                        for location in original_area.get("locations", []):
+                            if not isinstance(location, dict):
+                                continue
+                            old_location = location.get("locationId")
+                            if isinstance(old_location, str) and old_location.startswith(
+                                old_area_id
+                            ):
+                                exact_reference_mapping[old_location] = (
+                                    old_location.replace(old_area_id, new_area_id, 1)
+                                )
 
-                        # Update existing areas registry for future conflict checks
-                        existing_areas[new_area_id] = {"module": module_name}
+                    # Update existing areas registry for future conflict checks
+                    existing_areas[new_area_id] = {"module": module_name}
+
+            self._apply_exact_id_mapping_to_module(
+                module_path,
+                exact_reference_mapping,
+            )
+
+            current_area_documents = self._capture_area_documents_from_path(
+                module_path
+            )
 
             # Check for location ID conflicts globally
             location_conflicts = self._resolve_and_reprefix_location_ids(
                 module_name,
                 module_path,
-                backup_result.area_documents or {},
+                current_area_documents,
                 registry_snapshot=registry,
             )
             conflicts_resolved += location_conflicts
@@ -3723,11 +4225,6 @@ Create atmospheric travel narration that leads into this adventure."""
 
         start_index = max_prefix_index + 1
         
-        # We need the helper functions from ModuleBuilder
-        # Import here to avoid circular dependency
-        from core.generators.module_builder import ModuleBuilder, BuilderConfig
-        temp_builder = ModuleBuilder(BuilderConfig(module_name=module_name)) # Create a temporary instance to access methods
-        
         sorted_new_area_files = sorted(os.listdir(new_module_areas_path))
         conflicts_resolved = 0
         
@@ -3736,7 +4233,7 @@ Create atmospheric travel narration that leads into this adventure."""
                 continue
 
             # Generate a new, globally unique prefix
-            new_prefix = temp_builder.get_location_prefix(start_index + i)
+            new_prefix = _location_index_to_prefix(start_index + i)
             area_file_path = os.path.join(new_module_areas_path, area_filename)
             area_data = safe_json_load(area_file_path)
             
@@ -3753,6 +4250,11 @@ Create atmospheric travel narration that leads into this adventure."""
         self._update_all_location_references(
             module_name,
             backup_area_documents,
+            module_path=module_path,
+            update_party_tracker=(
+                os.path.abspath(module_path)
+                == os.path.abspath(os.path.join(self.modules_dir, module_name))
+            ),
         )
 
         return conflicts_resolved
@@ -3786,13 +4288,18 @@ Create atmospheric travel narration that leads into this adventure."""
         self,
         module_name: str,
         backup_area_documents: Dict[str, Dict[str, Any]],
+        *,
+        module_path: Optional[str] = None,
+        update_party_tracker: bool = True,
     ) -> None:
         """
         Update all internal references to location IDs after re-prefixing using a safe, recursive JSON traversal.
         This function avoids blind text replacement to prevent corrupting external references like 'areaConnectivityId'.
         """
         try:
-            module_path = os.path.join(self.modules_dir, module_name)
+            module_path = module_path or os.path.join(
+                self.modules_dir, module_name
+            )
             id_mapping = {}
 
             # Build ID mapping from the immutable area documents captured by
@@ -3859,7 +4366,7 @@ Create atmospheric travel narration that leads into this adventure."""
 
             # CRITICAL: Update party_tracker.json if this module is currently active
             party_tracker_path = self.party_tracker_file
-            if os.path.exists(party_tracker_path):
+            if update_party_tracker and os.path.exists(party_tracker_path):
                 try:
                     party_tracker = safe_json_load(party_tracker_path)
                     if party_tracker:
@@ -3882,7 +4389,11 @@ Create atmospheric travel narration that leads into this adventure."""
             print(f"DEBUG: [Module Stitcher] ERROR: Failed to update location references for {module_name}: {e}")
     
     def _validate_module_safety(
-        self, module_name: str, module_data: Dict[str, Any]
+        self,
+        module_name: str,
+        module_data: Dict[str, Any],
+        *,
+        module_path: Optional[str] = None,
     ) -> ModuleSafetyResult:
         """Validate a module and return an explicit integration-gate result."""
         try:
@@ -3895,7 +4406,9 @@ Create atmospheric travel narration that leads into this adventure."""
                 )
             
             # Check for malicious file names or paths
-            module_path = os.path.join(self.modules_dir, module_name)
+            module_path = module_path or os.path.join(
+                self.modules_dir, module_name
+            )
             if not self._validate_file_structure(module_path):
                 return ModuleSafetyResult(
                     ModuleSafetyStatus.UNSAFE,
@@ -4140,6 +4653,17 @@ Respond with JSON:
                     category="module_integration",
                 )
                 return []
+            from utils.commit_state import recover_incomplete_refresh_commit
+            from utils.module_lifecycle import ModuleLifecycleStore, RecoveryStatus
+
+            recover_incomplete_refresh_commit()
+            recovery = ModuleLifecycleStore(self.modules_dir).recover()
+            if recovery.status is RecoveryStatus.INDETERMINATE:
+                warning(
+                    "Module integration blocked by indeterminate lifecycle recovery",
+                    category="module_integration",
+                )
+                return []
             return self._scan_and_integrate_new_modules_locked()
 
     def _scan_and_integrate_new_modules_locked(self) -> List[str]:
@@ -4288,13 +4812,20 @@ Respond with JSON:
             print(f"Error getting available modules: {e}")
             return []
     
-    def _update_bu_files_after_conflict_resolution(self, module_name: str) -> int:
+    def _update_bu_files_after_conflict_resolution(
+        self,
+        module_name: str,
+        *,
+        module_path: Optional[str] = None,
+    ) -> int:
         """
         Update BU (backup) files with corrected location IDs after conflict resolution.
         This ensures BU files match the corrected files for all JSON files that have BU versions.
         """
         try:
-            module_path = os.path.join(self.modules_dir, module_name)
+            module_path = module_path or os.path.join(
+                self.modules_dir, module_name
+            )
             updated_count = 0
             
             # Walk through all directories in the module
