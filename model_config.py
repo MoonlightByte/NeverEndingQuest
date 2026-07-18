@@ -4,6 +4,8 @@ import copy
 import json
 import os
 
+from utils.secret_store import delete_secret, get_secret, set_secret
+
 
 def convert_to_gemini_schema(
     json_schema,
@@ -1006,6 +1008,11 @@ def get_model_for_callsite(task_id, default_var):
 
 
 _USER_SETTINGS_FILE = "user_settings.json"
+_SECRET_SETTING_NAMES = {
+    "openai_api_key": "openai_api_key",
+    "gemini_api_key": "gemini_api_key",
+    "local_api_key": "local_api_key",
+}
 
 
 def _load_user_settings():
@@ -1020,11 +1027,35 @@ def _load_user_settings():
 
 
 def _save_user_settings(settings):
-    """Save user settings to disk atomically."""
+    """Save non-secret settings to disk atomically with owner-only permissions."""
     tmp_path = _USER_SETTINGS_FILE + ".tmp"
-    with open(tmp_path, 'w') as f:
+    fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w') as f:
         json.dump(settings, f, indent=2)
     os.replace(tmp_path, _USER_SETTINGS_FILE)
+    try:
+        os.chmod(_USER_SETTINGS_FILE, 0o600)
+    except OSError:
+        # Some Windows/WSL mounts do not implement POSIX permissions.
+        pass
+
+
+def _migrate_plaintext_secrets(settings):
+    """Move legacy JSON credentials into the OS/session secret store.
+
+    The JSON file is rewritten without credentials even when an OS credential
+    backend is unavailable; the fallback keeps the migrated value alive only
+    until this process exits.
+    """
+    changed = False
+    for setting_name, secret_name in _SECRET_SETTING_NAMES.items():
+        value = settings.pop(setting_name, None)
+        if value:
+            set_secret(secret_name, value)
+        changed = changed or value is not None
+    if changed:
+        _save_user_settings(settings)
+    return settings
 
 
 def persist_provider(provider_name):
@@ -1047,21 +1078,21 @@ DEFAULT_LOCAL_API_KEY = "not-needed"
 
 
 def get_local_endpoint():
-    """Return the Local/Custom (lmstudio) endpoint config from user_settings.json.
+    """Return the Local/Custom endpoint config without exposing stored secrets.
 
     Backward compatible: missing keys fall back to today's hard-coded LM Studio
     values. model == "" means 'keep each callsite's own model string'.
     """
-    s = _load_user_settings()
+    s = _migrate_plaintext_secrets(_load_user_settings())
     return {
         "base_url": s.get("local_base_url") or DEFAULT_LOCAL_BASE_URL,
-        "api_key": s.get("local_api_key") or DEFAULT_LOCAL_API_KEY,
+        "api_key": get_secret("local_api_key") or DEFAULT_LOCAL_API_KEY,
         "model": (s.get("local_model") or "").strip(),
     }
 
 
 def persist_local_endpoint(base_url="", api_key=None, model=""):
-    """Persist the Local/Custom endpoint to user_settings.json (gitignored).
+    """Persist non-secret Local/Custom endpoint settings.
 
     api_key=None means KEEP the existing stored key -- the UI sends a blank key
     to mean "leave blank to keep" (and the field auto-clears after save), so a
@@ -1069,11 +1100,11 @@ def persist_local_endpoint(base_url="", api_key=None, model=""):
     it. base_url/model are always written (blank base_url falls back to the
     default; blank model means keep each callsite's own model).
     """
-    s = _load_user_settings()
+    s = _migrate_plaintext_secrets(_load_user_settings())
     s["local_base_url"] = (base_url or "").strip()
     s["local_model"] = (model or "").strip()
     if api_key is not None:
-        s["local_api_key"] = api_key.strip()
+        set_secret("local_api_key", api_key)
     _save_user_settings(s)
 
 
@@ -1081,21 +1112,17 @@ _OPENAI_KEY_PLACEHOLDER = "your_openai_api_key_here"
 
 
 def persist_openai_key(api_key):
-    """Save the user's OpenAI API key to user_settings.json (gitignored).
-
-    Empty/None REMOVES the stored key so the next start falls back to config.py.
-    """
-    settings = _load_user_settings()
+    """Store the OpenAI key in the OS credential store, never JSON."""
+    _migrate_plaintext_secrets(_load_user_settings())
     if api_key:
-        settings["openai_api_key"] = api_key
+        set_secret("openai_api_key", api_key)
     else:
-        settings.pop("openai_api_key", None)
-    _save_user_settings(settings)
+        delete_secret("openai_api_key")
 
 
 def has_openai_key():
     """True if a real (non-placeholder) OpenAI key is stored. Never returns the key."""
-    key = _load_user_settings().get("openai_api_key")
+    key = get_secret("openai_api_key")
     return bool(key) and key != _OPENAI_KEY_PLACEHOLDER
 
 
@@ -1105,7 +1132,8 @@ def apply_persisted_openai_key():
     no key is stored (config.py value wins). Mirrors set_provider's cross-module
     write via sys.modules['config'].
     """
-    key = _load_user_settings().get("openai_api_key")
+    _migrate_plaintext_secrets(_load_user_settings())
+    key = get_secret("openai_api_key")
     if not key or key == _OPENAI_KEY_PLACEHOLDER:
         return
     import sys
@@ -1117,21 +1145,17 @@ _GEMINI_KEY_PLACEHOLDER = "your_gemini_api_key_here"
 
 
 def persist_gemini_key(api_key):
-    """Save the user's Gemini API key to user_settings.json (gitignored).
-
-    Empty/None REMOVES the stored key so the next start falls back to config.py.
-    """
-    settings = _load_user_settings()
+    """Store the Gemini key in the OS credential store, never JSON."""
+    _migrate_plaintext_secrets(_load_user_settings())
     if api_key:
-        settings["gemini_api_key"] = api_key
+        set_secret("gemini_api_key", api_key)
     else:
-        settings.pop("gemini_api_key", None)
-    _save_user_settings(settings)
+        delete_secret("gemini_api_key")
 
 
 def has_gemini_key():
     """True if a real (non-placeholder) Gemini key is stored. Never returns the key."""
-    key = _load_user_settings().get("gemini_api_key")
+    key = get_secret("gemini_api_key")
     return bool(key) and key != _GEMINI_KEY_PLACEHOLDER
 
 
@@ -1142,7 +1166,8 @@ def apply_persisted_gemini_key():
     No-op when no key is stored (config.py value wins). Mirrors
     apply_persisted_openai_key's cross-module write via sys.modules['config'].
     """
-    key = _load_user_settings().get("gemini_api_key")
+    _migrate_plaintext_secrets(_load_user_settings())
+    key = get_secret("gemini_api_key")
     if not key or key == _GEMINI_KEY_PLACEHOLDER:
         return
     import sys

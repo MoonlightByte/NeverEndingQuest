@@ -57,7 +57,8 @@ OPENAI_API_KEY = "your_openai_api_key_here"
 GEMINI_API_KEY = "your_gemini_api_key_here"
 
 # Local / OpenAI-compatible endpoint (optional): set it from the web UI instead --
-# Settings -> AI Provider -> Local / Custom Server. Stored in user_settings.json.
+# Settings -> AI Provider -> Local / Custom Server. Non-secret endpoint choices
+# are stored in user_settings.json; credentials use the OS credential store.
 # Defaults to http://localhost:1234/v1 when unset.
 
 # --- Module folder structure ---
@@ -70,9 +71,8 @@ DEFAULT_MODULE = "The_Thornwood_Watch"
 WEB_PORT = 8357                                         # Port for the web interface (changed from 5000 for security)
 
 
-# Apply web-set API keys from user_settings.json (overrides the values above).
-# No-op when no key has been saved via the web UI. Keeps non-technical users from
-# ever having to edit this file.
+# Apply web-set API keys from the OS credential store (overrides the values
+# above). No-op when no key has been saved via the web UI.
 try:
     import model_config as _mc
     _mc.apply_persisted_openai_key()

@@ -45,11 +45,13 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 import os
 import sys
+import hmac
+import secrets
 
 # Add parent directory to path FIRST so we can import from utils, core, etc.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, abort, session
 from flask_socketio import SocketIO, emit
 import json
 import threading
@@ -155,11 +157,49 @@ if os.path.exists(game_interface_path):
 else:
     print(f"WARNING: game_interface.html not found at: {game_interface_path}")
 
-app = Flask(__name__, 
+WEB_HOST = os.environ.get("NEQ_WEB_HOST", "127.0.0.1").strip() or "127.0.0.1"
+_LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
+_OPERATOR_TOKEN = os.environ.get("NEQ_OPERATOR_TOKEN", "").strip()
+
+if WEB_HOST not in _LOOPBACK_HOSTS and not _OPERATOR_TOKEN:
+    raise RuntimeError(
+        "Refusing to expose NeverEndingQuest beyond this computer without an "
+        "operator token. Set NEQ_OPERATOR_TOKEN to a long random value."
+    )
+
+app = Flask(__name__,
             template_folder=template_dir,
             static_folder=static_dir)
-app.config['SECRET_KEY'] = 'dungeon-master-secret-key'
-socketio = SocketIO(app, cors_allowed_origins="*")
+# A random per-process secret is safe for local play and avoids a known signing
+# key. Operators who need stable sessions can supply NEQ_FLASK_SECRET_KEY.
+app.config['SECRET_KEY'] = os.environ.get("NEQ_FLASK_SECRET_KEY") or secrets.token_urlsafe(32)
+# Same-origin is the safe default. Explicit cross-origin support is not needed
+# for the bundled UI, which is served by this Flask application.
+socketio = SocketIO(app, cors_allowed_origins=None)
+
+
+@app.before_request
+def require_operator_token_for_network_mode():
+    """Protect every HTTP route whenever the operator explicitly enables LAN use."""
+    if not _OPERATOR_TOKEN or session.get("operator_authenticated"):
+        return None
+    supplied = request.args.get("operator_token", "") or request.headers.get(
+        "X-NEQ-Operator-Token", ""
+    )
+    if supplied and hmac.compare_digest(supplied, _OPERATOR_TOKEN):
+        session["operator_authenticated"] = True
+        return None
+    abort(401)
+
+
+@app.after_request
+def add_security_headers(response):
+    """Keep the optional LAN bootstrap token out of referrers and caches."""
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    if _OPERATOR_TOKEN:
+        response.headers.setdefault("Cache-Control", "no-store")
+    return response
 
 # Add static route for graphic_packs to improve thumbnail loading performance
 @app.route('/graphic_packs/<path:filename>')
@@ -2245,6 +2285,11 @@ def _emit_game_resumed():
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection"""
+    # This is the sole connect handler. Flask-SocketIO keeps one handler per
+    # event, so putting the LAN check here avoids it being silently replaced by
+    # the normal game-reconnect handler below.
+    if _OPERATOR_TOKEN and not session.get("operator_authenticated"):
+        return False
     emit('connected', {'data': 'Connected to NeverEndingQuest'})
 
     # A process may have stopped after durable module publication but before
@@ -5784,8 +5829,8 @@ if __name__ == '__main__':
     print(f"Opening browser at http://localhost:{port}")
     
     # Run the Flask app with SocketIO
-    socketio.run(app, 
-                host='0.0.0.0',
+    socketio.run(app,
+                host=WEB_HOST,
                 port=port,
                 debug=False,
                 use_reloader=False,
