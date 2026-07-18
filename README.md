@@ -69,14 +69,24 @@ The installer automatically:
 **Get playing in under 5 minutes!** The AI startup wizard handles everything automatically:
 
 1. **Install dependencies**: `pip install -r requirements.txt`
-2. **Add your OpenAI API key**: Copy `config_template.py` to `config.py` and add your key
-3. **Launch the game**: `python run_web.py` - opens the web interface at http://localhost:8358
-4. **Start your adventure**: The AI will guide you through character creation and module selection
+2. **Install Node.js LTS**: Required for the new React player; includes `npm`
+3. **Create local configuration**: Copy `config_template.py` to `config.py`
+4. **Launch the game**: `python run_web.py` - builds and opens the React player at http://localhost:8358/play/
+5. **Choose an AI provider**: Configure Legacy/OpenAI, Gemini, or a local OpenAI-compatible server from Settings
+6. **Start your adventure**: The AI will guide you through character creation and module selection
 
 ### Additional Launch Options
 
+- **React Player (default)**: `python run_web.py` or `python run_web.py --ui react`
+- **Choose at startup**: `python run_web.py --ui choose`
+- **Legacy Player**: `python run_web.py --ui legacy`
 - **Module Toolkit**: `python launch_toolkit.py` - Opens directly to the module creation interface
 - **Terminal Mode**: `python main.py` - Classic text-based interface (limited features)
+
+The launcher automatically runs `npm ci` and `npm run build` when the React
+frontend is missing or its source files have changed. If npm is unavailable or
+the build fails, startup falls back safely to the legacy player and prints the
+steps needed to enable React.
 
 > **Note**: The game is designed for the **web interface** which provides the optimal experience with real-time updates, character sheets, visual portraits, and the module toolkit.
 
@@ -197,7 +207,8 @@ See [LICENSING.md](LICENSING.md) for complete details, FAQ, and legal informatio
 
 ### Prerequisites
 - Python 3.9 or higher
-- OpenAI API key ([Get one here](https://platform.openai.com/api-keys))
+- Node.js LTS (required for the React player; legacy remains available without it)
+- One AI provider: OpenAI, Gemini, or a local OpenAI-compatible server such as LM Studio
 - 4GB+ RAM recommended
 - Modern web browser (Chrome, Firefox, Edge)
 - Windows, macOS, or Linux
@@ -215,17 +226,26 @@ See [LICENSING.md](LICENSING.md) for complete details, FAQ, and legal informatio
    pip install -r requirements.txt
    ```
 
-3. **Configure OpenAI API**
+   Install Node.js LTS from [nodejs.org](https://nodejs.org/) if you want the
+   React player. The launcher handles `npm ci` and the production build.
+
+3. **Configure an AI provider**
    ```bash
    cp config_template.py config.py
-   # Edit config.py and add your OpenAI API key
+   # Keys stay local. You can configure OpenAI, Gemini, or a local endpoint.
    ```
 
 4. **Launch the game**
    ```bash
-   # Full game with web interface (recommended)
+   # React player (recommended; automatically builds frontend assets)
    python run_web.py
-   # Opens at http://localhost:8358
+   # Opens at http://localhost:8358/play/
+
+   # Prompt for React or legacy at startup
+   python run_web.py --ui choose
+
+   # Explicit legacy fallback
+   python run_web.py --ui legacy
    
    # Module Toolkit directly
    python launch_toolkit.py

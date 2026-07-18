@@ -61,6 +61,29 @@ git --version
 echo [OK] Git found!
 echo.
 
+REM Step 2b: Check for Node.js/npm (required to compile the React player)
+echo Step 2b: Checking for Node.js and npm...
+npm --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Node.js/npm not found. Attempting to install Node.js LTS...
+    winget install --id OpenJS.NodeJS.LTS -e --source winget >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo [OK] Node.js LTS installed.
+        echo Please restart this installer so the updated PATH is available.
+        pause
+        exit /b 0
+    ) else (
+        echo [WARNING] Could not install Node.js automatically.
+        echo The legacy player will still work. For the React player, install:
+        echo https://nodejs.org/
+    )
+) else (
+    node --version
+    npm --version
+    echo [OK] Node.js and npm found!
+)
+echo.
+
 REM Step 3: Clone repository
 echo Step 3: Cloning repository...
 echo Installing to: %CD%
@@ -205,7 +228,7 @@ REM Create launch_game.bat in the repo folder
 echo @echo off > launch_game.bat
 echo cd /d "%%~dp0" >> launch_game.bat
 echo call venv\Scripts\activate.bat >> launch_game.bat
-echo python run_web.py >> launch_game.bat
+echo python run_web.py --ui choose >> launch_game.bat
 echo pause >> launch_game.bat
 
 echo [OK] Created launch_game.bat

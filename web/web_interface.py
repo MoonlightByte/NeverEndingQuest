@@ -4192,7 +4192,10 @@ def open_browser():
         port = getattr(config, 'WEB_PORT', 8357)
     except ImportError:
         port = 8357
-    webbrowser.open(f'http://localhost:{port}')
+    start_path = os.environ.get('NEQ_START_PATH', '/play/')
+    if start_path not in {'/', '/play/'}:
+        start_path = '/play/'
+    webbrowser.open(f'http://localhost:{port}{start_path}')
 
 
 # ============================================================================
@@ -5852,7 +5855,10 @@ if __name__ == '__main__':
         port = getattr(config, 'WEB_PORT', 8357)
     except ImportError:
         port = 8357
-    print(f"Opening browser at http://localhost:{port}")
+    start_path = os.environ.get('NEQ_START_PATH', '/play/')
+    if start_path not in {'/', '/play/'}:
+        start_path = '/play/'
+    print(f"Opening browser at http://localhost:{port}{start_path}")
     
     # Run the Flask app with SocketIO
     socketio.run(app,

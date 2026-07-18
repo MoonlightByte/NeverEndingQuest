@@ -30,6 +30,97 @@ import subprocess
 import sys
 import os
 import time
+import argparse
+import shutil
+from pathlib import Path
+
+
+_AUTO_NPM = object()
+
+
+def _react_build_is_current(frontend_dir):
+    """Return True when the compiled React entry point is newer than its inputs."""
+    frontend_dir = Path(frontend_dir)
+    index = frontend_dir / "dist" / "index.html"
+    if not index.is_file():
+        return False
+
+    build_time = index.stat().st_mtime
+    input_paths = [
+        frontend_dir / "src",
+        frontend_dir / "public",
+        frontend_dir / "index.html",
+        frontend_dir / "package.json",
+        frontend_dir / "package-lock.json",
+        frontend_dir / "vite.config.ts",
+        frontend_dir / "tsconfig.json",
+        frontend_dir / "tsconfig.app.json",
+        frontend_dir / "tsconfig.node.json",
+    ]
+    for input_path in input_paths:
+        files = input_path.rglob("*") if input_path.is_dir() else [input_path]
+        if any(path.is_file() and path.stat().st_mtime > build_time for path in files):
+            return False
+    return True
+
+
+def ensure_react_frontend(repo_root=None, npm_command=_AUTO_NPM, runner=subprocess.run):
+    """Build the React player when missing/stale; return whether it is usable."""
+    repo_root = Path(repo_root or Path(__file__).resolve().parent)
+    frontend_dir = repo_root / "web" / "frontend"
+    if _react_build_is_current(frontend_dir):
+        print("[OK] React player is already built")
+        return True
+
+    if npm_command is _AUTO_NPM:
+        npm_command = shutil.which("npm")
+    if not npm_command:
+        print("\n[WARNING] The React player needs to be built, but npm was not found.")
+        print("Install Node.js LTS from https://nodejs.org/ and run the game again.")
+        print("Starting the legacy interface instead.\n")
+        return False
+
+    print("\n[SETUP] Preparing the React player (first launch or frontend update)...")
+    commands = ([npm_command, "ci"], [npm_command, "run", "build"])
+    for command in commands:
+        try:
+            result = runner(command, cwd=frontend_dir)
+        except OSError as exc:
+            print(f"[WARNING] Could not run npm: {exc}")
+            print("Starting the legacy interface instead.\n")
+            return False
+        if result.returncode != 0:
+            print(f"[WARNING] Frontend setup failed while running: {' '.join(command)}")
+            print("You can retry manually in web/frontend. Starting legacy instead.\n")
+            return False
+
+    print("[OK] React player built successfully\n")
+    return True
+
+
+def select_ui(requested, react_available, input_fn=input):
+    """Resolve the requested startup interface, with a safe legacy fallback."""
+    if requested == "legacy" or not react_available:
+        return "legacy"
+    if requested == "choose":
+        print("Choose the player interface:")
+        print("  1. React player (recommended)")
+        print("  2. Legacy player")
+        choice = input_fn("Selection [1]: ").strip().lower()
+        if choice in {"2", "legacy", "l"}:
+            return "legacy"
+    return "react"
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="Launch the NeverEndingQuest web interface")
+    parser.add_argument(
+        "--ui",
+        choices=("react", "legacy", "choose"),
+        default="react",
+        help="interface to open (default: react)",
+    )
+    return parser.parse_args(argv)
 
 def create_default_party_tracker():
     """Create a default party_tracker.json if it doesn't exist"""
@@ -47,9 +138,7 @@ def create_default_party_tracker():
             return False
     return True
 
-def main():
-    import shutil
-    
+def main(ui="react"):
     # Check if config.py exists first
     if not os.path.exists('config.py'):
         print("[D20] Welcome to NeverEndingQuest! [D20]")
@@ -60,14 +149,14 @@ def main():
             shutil.copy('config_template.py', 'config.py')
             print("\n[OK] Created config.py from template")
             print("\n" + "="*60)
-            print("IMPORTANT: OpenAI API Key Required")
+            print("AI Provider Setup")
             print("="*60)
-            print("\n1. Open config.py in a text editor")
-            print("2. Find the line: OPENAI_API_KEY = \"your_openai_api_key_here\"")
-            print("3. Replace \"your_openai_api_key_here\" with your actual OpenAI API key")
-            print("4. Save the file and run the game again")
-            print("\nGet your API key at: https://platform.openai.com/api-keys")
-            print("\nOr run fully local (no API key): install LM Studio/Ollama, then in Settings -> AI Provider pick Local and set your endpoint URL.")
+            print("\nYour local config.py has been created.")
+            print("Run the game again, then use Settings -> AI Provider to choose:")
+            print("  - Legacy/OpenAI (OpenAI API key)")
+            print("  - Gemini (Gemini API key)")
+            print("  - Local (LM Studio or another compatible endpoint; no cloud key)")
+            print("\nYou may also edit config.py directly before restarting.")
             print("\n" + "="*60)
             input("\nPress Enter to exit...")
             return
@@ -96,6 +185,11 @@ def main():
     for dir_path in required_dirs:
         if not os.path.exists(dir_path):
             os.makedirs(dir_path, exist_ok=True)
+
+    # An explicit legacy launch must not require Node.js or spend time building React.
+    react_available = False if ui == "legacy" else ensure_react_frontend()
+    selected_ui = select_ui(ui, react_available)
+    start_path = "/play/" if selected_ui == "react" else "/"
     
     print("Launching NeverEndingQuest Web Interface...")
     try:
@@ -103,13 +197,16 @@ def main():
         port = getattr(config, 'WEB_PORT', 8357)
     except ImportError:
         port = 8357  # Default port if config doesn't exist yet
-    print(f"The browser should open automatically. If not, navigate to http://localhost:{port}")
+    print(f"Starting the {selected_ui.title()} player")
+    print(f"The browser should open automatically. If not, navigate to http://localhost:{port}{start_path}")
     
     # Run the web interface with restart capability
     while True:
         try:
             # Run the web interface and capture the return code
-            result = subprocess.run([sys.executable, "web/web_interface.py"])
+            child_env = os.environ.copy()
+            child_env["NEQ_START_PATH"] = start_path
+            result = subprocess.run([sys.executable, "web/web_interface.py"], env=child_env)
             
             # Check if it was a planned restart (exit code 0)
             if result.returncode == 0:
@@ -130,6 +227,7 @@ def main():
             sys.exit(1)
 
 if __name__ == "__main__":
+    args = parse_args()
     # Check for updates before starting
     try:
         from utils.version_checker import check_for_updates
@@ -153,4 +251,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"[VERSION_CHECK] Could not check for updates: {e}")
 
-    main()
+    main(args.ui)
