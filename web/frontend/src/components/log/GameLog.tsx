@@ -72,17 +72,13 @@ export function GameLog() {
       onScroll={handleScroll}
       role="log"
       aria-label="Game log"
-      className="h-full min-h-0 overflow-y-auto px-[10px] py-2"
+      className="neq-game-log h-full min-h-0 overflow-y-auto px-[10px] py-2"
     >
-      {messages.length === 0 && orphanImages.length === 0 ? (
-        <p className="my-4 text-center font-log text-sm text-secondary">
-          Welcome to NeverEndingQuest. Press Start to begin your adventure.
-        </p>
-      ) : (
+      {messages.length > 0 || orphanImages.length > 0 ? (
         <>
-          {previousSessionCount > 0 && <div className="mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">--- Previous Session Messages ---</div>}
-          {messages.map((message, index) => <div key={message.message_id ?? index}>{index === previousSessionCount && <div className="mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">--- Current Session ---</div>}<MessageCard message={message} images={imagesByMessage.get(index)} /></div>)}
-          {previousSessionCount === messages.length && previousSessionCount > 0 && <div className="mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">--- Current Session ---</div>}
+          {previousSessionCount > 0 && <div className="neq-session-divider mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">--- Previous Session Messages ---</div>}
+          {messages.map((message, index) => <div key={message.message_id ?? index}>{index === previousSessionCount && <div className="neq-session-divider mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">--- Current Session ---</div>}<MessageCard message={message} images={imagesByMessage.get(index)} /></div>)}
+          {previousSessionCount === messages.length && previousSessionCount > 0 && <div className="neq-session-divider mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">--- Current Session ---</div>}
           {orphanImages.map((image, index) => (
             <div key={`${image.image_url}-${index}`} className="my-4 flex justify-center">
               <img
@@ -93,7 +89,7 @@ export function GameLog() {
             </div>
           ))}
         </>
-      )}
+      ) : null}
     </div>
   )
 }

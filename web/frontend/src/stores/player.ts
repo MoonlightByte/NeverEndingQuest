@@ -17,6 +17,7 @@ export interface NpcInventory {
 }
 
 export interface PlayerState {
+  connectionEpoch: number
   serverInstanceId: string | null
   /** Character sheet data (player_data_response per dataType). */
   stats: Record<string, unknown> | null
@@ -30,6 +31,8 @@ export interface PlayerState {
   npcDetails: NpcDetails | null
   npcInventory: NpcInventory | null
 
+  beginConnection: (epoch: number) => void
+  bindServerInstance: (epoch: number, serverInstanceId?: string) => void
   setPlayerData: (payload: ServerEvents['player_data_response']) => void
   setNpcDetails: (payload: ServerEvents['npc_details_response']) => void
   setNpcInventory: (payload: ServerEvents['npc_inventory_response']) => void
@@ -37,6 +40,7 @@ export interface PlayerState {
 }
 
 export const usePlayer = create<PlayerState>((set) => ({
+  connectionEpoch: 0,
   serverInstanceId: null,
   stats: null,
   inventory: null,
@@ -47,19 +51,31 @@ export const usePlayer = create<PlayerState>((set) => ({
   npcDetails: null,
   npcInventory: null,
 
+  beginConnection: (epoch) =>
+    set((s) => epoch <= s.connectionEpoch ? {} : ({
+      connectionEpoch: epoch,
+      serverInstanceId: null,
+      revisions: { stats: -1, inventory: -1, spells: -1, npcs: -1 },
+    })),
+  bindServerInstance: (epoch, serverInstanceId) =>
+    set((s) => {
+      if (epoch !== s.connectionEpoch || !serverInstanceId) return {}
+      if (s.serverInstanceId && s.serverInstanceId !== serverInstanceId) return {}
+      return { serverInstanceId }
+    }),
+
   setPlayerData: (payload) =>
     set((s) => {
-      const changed = Boolean(payload.server_instance_id && payload.server_instance_id !== s.serverInstanceId)
-      const baseRevisions = changed ? { stats: -1, inventory: -1, spells: -1, npcs: -1 } : s.revisions
-      if (payload.revision !== undefined && payload.revision < baseRevisions[payload.dataType]) return {}
+      if (payload.server_instance_id && s.serverInstanceId && payload.server_instance_id !== s.serverInstanceId) return {}
+      if (payload.revision !== undefined && payload.revision < s.revisions[payload.dataType]) return {}
       const dataErrors = { ...s.dataErrors }
-      const revisions = { ...baseRevisions, [payload.dataType]: payload.revision ?? baseRevisions[payload.dataType] }
+      const revisions = { ...s.revisions, [payload.dataType]: payload.revision ?? s.revisions[payload.dataType] }
       const common = { serverInstanceId: payload.server_instance_id ?? s.serverInstanceId, dataErrors, revisions }
       if (payload.error) {
         dataErrors[payload.dataType] = payload.error
-      } else {
-        delete dataErrors[payload.dataType]
+        return common
       }
+      delete dataErrors[payload.dataType]
       if (payload.dataType === 'stats') return { stats: payload.data, ...common }
       if (payload.dataType === 'inventory') return { inventory: payload.data, ...common }
       if (payload.dataType === 'spells') return { spells: payload.data, ...common }

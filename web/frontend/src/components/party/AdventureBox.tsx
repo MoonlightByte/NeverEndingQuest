@@ -39,7 +39,7 @@ export function AdventureBox() {
     return (
       <div
         aria-label={`Combat, round ${round}`}
-        className="flex h-[60px] w-[85px] shrink-0 flex-col items-center justify-center rounded-md p-1 text-center"
+        className="neq-combat-box flex h-[60px] w-[85px] shrink-0 flex-col items-center justify-center rounded-md p-1 text-center"
         style={recessedBox}
       >
         <div
@@ -51,8 +51,8 @@ export function AdventureBox() {
         <div
           style={{ width: '80%', height: 1, backgroundColor: 'var(--border-card)', margin: '2px 0' }}
         />
-        <div className="uppercase" style={{ fontSize: 10, color: '#888', lineHeight: 1 }}>
-          Round
+        <div style={{ fontSize: 10, fontWeight: 700, color: '#888', lineHeight: 1 }}>
+          ROUND
         </div>
         <div
           className="font-bold"
@@ -67,7 +67,7 @@ export function AdventureBox() {
   return (
     <div
       aria-label="Time of day"
-      className="relative h-[60px] w-[60px] shrink-0 overflow-hidden rounded-md"
+      className="neq-adventure-box relative h-[60px] w-[60px] shrink-0 overflow-hidden rounded-md"
       style={recessedBox}
     >
       <img

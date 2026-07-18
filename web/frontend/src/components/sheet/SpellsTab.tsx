@@ -4,22 +4,13 @@
  * player_data_response{spells} (full character file) from the player store;
  * derivations ported from the legacy displaySpellsAndMagic renderer.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { usePlayer } from '../../stores'
 import { equipmentList, formatModifier, slotTone, spellcastingView, type EquipmentItem, type SpellLevelGroup } from './characterData'
 
-const TONE_COLOR: Record<'available' | 'low' | 'exhausted', string> = {
-  available: 'var(--accent)',
-  low: '#e67e22',
-  exhausted: '#e74c3c',
-}
-
 function SlotBadge({ slots }: { slots: { current: number; max: number } }) {
   return (
-    <span
-      className="font-chrome text-[10px]"
-      style={{ color: TONE_COLOR[slotTone(slots)] }}
-    >
+    <span className={`neq-spell-slots ${slotTone(slots)}`}>
       {slots.current}/{slots.max} slots
     </span>
   )
@@ -36,30 +27,44 @@ function SpellRow({
   prepared: boolean
   detail?: Record<string, unknown>
 }) {
+  const targetRef = useRef<HTMLSpanElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+  const [hovered, setHovered] = useState(false)
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null)
+
+  useLayoutEffect(() => {
+    if (!hovered || !detail || !targetRef.current || !tooltipRef.current) return
+    const rect = targetRef.current.getBoundingClientRect()
+    const tooltipRect = tooltipRef.current.getBoundingClientRect()
+    let top = rect.top - tooltipRect.height - 8
+    if (top < 8) top = rect.bottom + 8
+    let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2)
+    if (left < 8) left = 8
+    else if (left + tooltipRect.width > window.innerWidth - 8) left = window.innerWidth - tooltipRect.width - 8
+    setPosition({ left, top })
+  }, [detail, hovered])
+
   return (
-    <div className="group relative flex items-center justify-between border-b border-card/60 py-0.5 text-sm last:border-b-0">
-      <span className="text-primary">{spell}</span>
+    <div
+      className="neq-spell-item relative flex items-center justify-between text-sm"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setPosition(null) }}
+    >
+      <span ref={targetRef} className="neq-spell-name text-primary">{spell}</span>
       {prepared && (
-        <span
-          className="rounded border border-accent px-1 font-chrome text-[10px] text-accent"
-          title="Prepared"
-        >
-          P
-        </span>
+        <div className="neq-spell-badges"><span className="neq-spell-badge prepared" title="Prepared">P</span></div>
       )}
-      {/* hover detail card */}
-      <div className="pointer-events-none absolute left-2 top-full z-20 hidden w-56 rounded border-2 border-card bg-panel p-2 shadow-lg group-hover:block">
-        <div className="font-display text-xs text-accent">{String(detail?.name ?? spell)}</div>
-        <div className="mt-1 text-xs text-secondary">{detail ? `${Number(detail.level ?? group.levelIndex) === 0 ? 'Cantrip' : `Level ${String(detail.level ?? group.levelIndex)}`} ${String(detail.school ?? '')} • ${String(detail.casting_time ?? '')} • ${formatComponents(detail.components)}` : group.levelIndex === 0 ? 'Cantrip (at will)' : `${group.levelName} spell`}</div>
-        {detail?.description !== undefined && <div className="mt-1 text-xs text-primary">{String(detail.description)}</div>}
-        {Array.isArray(detail?.classes) && <div className="mt-1 text-xs text-secondary">Classes: {detail.classes.map(String).join(', ')}</div>}
-        <div className="text-xs text-secondary">{prepared ? 'Prepared' : 'Known'}</div>
-        {group.slots && (
-          <div className="text-xs" style={{ color: TONE_COLOR[slotTone(group.slots)] }}>
-            {group.slots.current}/{group.slots.max} slots remaining
-          </div>
-        )}
-      </div>
+      {hovered && detail && <div
+        ref={tooltipRef}
+        role="tooltip"
+        className={`neq-spell-tooltip-parity${position ? ' visible' : ''}`}
+        style={position ?? { left: 0, top: 0, visibility: 'hidden' }}
+      >
+        <div className="neq-spell-tooltip-header-parity">{String(detail.name ?? spell)}</div>
+        <div className="neq-spell-tooltip-meta-parity">{`${Number(detail.level ?? group.levelIndex) === 0 ? 'Cantrip' : `Level ${String(detail.level ?? group.levelIndex)}`} ${String(detail.school ?? '')} • ${String(detail.casting_time ?? '')} • ${formatComponents(detail.components)}`}</div>
+        <div className="neq-spell-tooltip-description-parity">{String(detail.description ?? '')}</div>
+        {Array.isArray(detail.classes) && detail.classes.length > 0 && <div className="neq-spell-tooltip-classes-parity">Classes: {detail.classes.map(String).join(', ')}</div>}
+      </div>}
     </div>
   )
 }
@@ -74,7 +79,7 @@ function spellKey(name: string): string { return name.toLowerCase().replace(/['\
 
 function MagicCategory({ title, items }: { title: string; items: EquipmentItem[] }) {
   if (items.length === 0) return null
-  return <section className="mt-3 rounded border border-card bg-panel p-2"><h4 className="border-b border-card pb-1 font-display text-sm text-[#ffa500]">{title}</h4>{items.map((item, index) => <div key={`${item.name}-${index}`} title={item.description || 'No description available.'} className="flex justify-between border-b border-card/60 py-1 text-sm last:border-0"><span className="text-accent">{item.name}</span><span className="text-xs text-secondary">{item.spellLevel !== null ? (item.spellLevel === 0 ? 'Cantrip' : `Level ${item.spellLevel}`) : ''}{item.quantity > 1 ? ` ×${item.quantity}` : item.consumable ? ' [1x]' : ''}{item.charges ? ` ${item.charges.current}/${item.charges.max}` : ''}</span></div>)}</section>
+  return <section className="neq-magic-category"><h4>{title}</h4>{items.map((item, index) => <div key={`${item.name}-${index}`} title={item.description || 'No description available.'} className="neq-magic-item"><span className="neq-magic-item-name">{item.name}</span>{title === 'Scrolls' && item.spellLevel !== null && <span className="neq-spell-badge">{item.spellLevel === 0 ? 'Cantrip' : `Level ${item.spellLevel}`}</span>}{title !== 'Magic Items' && (item.quantity > 1 ? <span className="neq-magic-item-charges">×{item.quantity}</span> : item.consumable ? <span className="neq-magic-item-charges neq-consumable">[1x]</span> : null)}{title === 'Magic Items' && item.charges && <span className={`neq-magic-item-charges ${slotTone(item.charges)}`}>{item.charges.current}/{item.charges.max}</span>}</div>)}</section>
 }
 
 export function SpellsTab() {
@@ -102,36 +107,20 @@ export function SpellsTab() {
   const magical = equipment.filter((item) => item.magical && item.subtype !== 'scroll' && item.subtype !== 'potion')
 
   return (
-    <div className="h-full overflow-y-auto p-3 font-body">
-      {view ? <><h3 className="font-display text-sm tracking-wide text-accent">Spellcasting</h3>
-
-      {/* DC / attack / ability stats */}
-      <div className="mt-1 grid grid-cols-2 gap-2">
-        <div className="rounded border-2 border-card bg-page p-2 text-center">
-          <div className="font-display text-[10px] text-secondary">Save DC</div>
-          <div className="text-base text-primary">{view.saveDC ?? '--'}</div>
-        </div>
-        <div className="rounded border-2 border-card bg-page p-2 text-center">
-          <div className="font-display text-[10px] text-secondary">Spell Attack</div>
-          <div className="text-base text-primary">
-            {view.attackBonus !== null ? formatModifier(view.attackBonus) : '--'}
-          </div>
-        </div>
-      </div>
-      {view.ability !== '' && (
-        <div className="mt-1 font-chrome text-xs text-secondary">
-          Casting ability: <span className="text-primary">{view.ability}</span>
-        </div>
-      )}
-
-      {/* per-level spell groups */}
+    <div className="neq-spells-tab">
+      <div className="neq-spells-sheet">
+      {view ? <div className="neq-spellcasting-section"><h3>SPELLCASTING</h3>
+      {(view.saveDC !== null || view.attackBonus !== null) && <div className="neq-spell-stats">
+        {view.saveDC !== null && <span>Save DC: {view.saveDC}</span>}
+        {view.attackBonus !== null && <span>Spell Attack: {formatModifier(view.attackBonus)}</span>}
+      </div>}
       {view.levels.map((group) => (
-        <div key={group.levelIndex} className="mt-3 rounded border-2 border-card bg-page p-2">
-          <div className="flex items-baseline justify-between">
-            <h4 className="font-display text-xs text-accent">{group.levelName}</h4>
+        <div key={group.levelIndex} className="neq-spell-level-group">
+          <div className="neq-spell-level-header">
+            <span className="neq-spell-level-name">{group.levelName}</span>
             {group.slots && <SlotBadge slots={group.slots} />}
           </div>
-          <div className="mt-1">
+          <div className="neq-spell-list">
             {group.spells.map((spell) => (
               <SpellRow
                 key={spell}
@@ -144,12 +133,13 @@ export function SpellsTab() {
           </div>
         </div>
       ))}
-      </> : <div className="rounded border border-card bg-panel p-5 text-center text-sm italic text-secondary">This character does not have spellcasting abilities.</div>}
-      <div className="mt-3 rounded border-2 border-card bg-page p-2">
+      </div> : <div className="neq-no-spells">This character does not have spellcasting abilities.</div>}
+      <div className="neq-magic-items-section">
         <MagicCategory title="Scrolls" items={scrolls} />
         <MagicCategory title="Potions" items={potions} />
         <MagicCategory title="Magic Items" items={magical} />
-        {scrolls.length === 0 && potions.length === 0 && magical.length === 0 && <section className="rounded border border-card bg-panel p-2"><h4 className="border-b border-card pb-1 font-display text-sm text-[#ffa500]">Magic Items</h4><div className="py-1 text-sm text-accent">No magical items found</div></section>}
+        {scrolls.length === 0 && potions.length === 0 && magical.length === 0 && <section className="neq-magic-category"><h4>MAGIC ITEMS</h4><div className="neq-magic-item"><span className="neq-magic-item-name">No magical items found</span></div></section>}
+      </div>
       </div>
     </div>
   )

@@ -30,7 +30,7 @@ export function RightPanelTabs() {
 
   return (
     <div className="neq-rail-panel flex h-full min-h-0 flex-col overflow-hidden">
-      <div role="tablist" aria-label="Party panel" className="flex h-10 shrink-0 bg-[#333]">
+      <div role="tablist" aria-label="Party panel" className="neq-tabs flex h-10 shrink-0 bg-[#333]">
         {TABS.map((tab) => {
           const selected = active === tab.id
           return (
@@ -41,7 +41,7 @@ export function RightPanelTabs() {
               aria-selected={selected}
               onClick={() => setActive(tab.id)}
               className={
-                'flex-1 border-b-2 border-r border-card px-1 py-2 font-chrome text-xs font-bold transition-colors ' +
+                'neq-tab-button flex-1 border-b-2 border-r border-card px-1 py-2 font-chrome text-xs font-bold transition-colors ' +
                 (selected
                   ? 'border-accent bg-page text-accent'
                   : 'border-card text-secondary hover:text-primary')
@@ -51,8 +51,8 @@ export function RightPanelTabs() {
             </button>
           )
         })}
-        <button type="button" onClick={() => useDialogs.getState().openDialog('journal')} className="flex-1 border-b-2 border-r border-card px-1 py-2 font-chrome text-xs font-bold text-secondary hover:text-primary">Journal</button>
-        <button type="button" role="tab" aria-selected={active === 'debug'} onClick={() => setActive('debug')} className={'flex-1 border-b-2 px-1 py-2 font-chrome text-xs font-bold ' + (active === 'debug' ? 'border-accent bg-panel text-accent' : 'border-card text-secondary hover:text-primary')}>Debug</button>
+        <button type="button" onClick={() => useDialogs.getState().openDialog('journal')} className="neq-tab-button flex-1 border-b-2 border-r border-card px-1 py-2 font-chrome text-xs font-bold text-secondary hover:text-primary">Journal</button>
+        <button type="button" role="tab" aria-selected={active === 'debug'} onClick={() => setActive('debug')} className={'neq-tab-button flex-1 border-b-2 px-1 py-2 font-chrome text-xs font-bold ' + (active === 'debug' ? 'border-accent bg-panel text-accent' : 'border-card text-secondary hover:text-primary')}>Debug</button>
       </div>
       <div role="tabpanel" className="min-h-0 flex-1 overflow-hidden">
         {active === 'character' && <CharacterSheet />}

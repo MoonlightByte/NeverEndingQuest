@@ -13,6 +13,7 @@ export interface InitiativeState {
 }
 
 export interface WorldState {
+  connectionEpoch: number
   serverInstanceId: string | null
   /** Current location + in-game time (location_data_response). */
   location: LocationData | null
@@ -20,15 +21,20 @@ export interface WorldState {
   /** Party members and NPCs present at the location (party_data_response). */
   party: PartyMember[]
   locationNpcs: PartyMember[]
+  partyError: string | null
   /** Combat initiative (initiative_data_response). */
   initiative: InitiativeState
+  initiativeError: string | null
   /** Plot / journal data (plot_data_response). */
   plot: PlotData | null
   plotError: string | null
   /** Player storage (storage_data_response). */
   storage: Record<string, unknown> | null
+  storageError: string | null
   revisions: Record<'location' | 'party' | 'initiative' | 'plot' | 'storage', number>
 
+  beginConnection: (epoch: number) => void
+  bindServerInstance: (epoch: number, serverInstanceId?: string) => void
   setLocation: (payload: ServerEvents['location_data_response']) => void
   setParty: (payload: ServerEvents['party_data_response']) => void
   setInitiative: (payload: ServerEvents['initiative_data_response']) => void
@@ -37,55 +43,93 @@ export interface WorldState {
 }
 
 export const useWorld = create<WorldState>((set) => ({
+  connectionEpoch: 0,
   serverInstanceId: null,
   location: null,
   locationError: null,
   party: [],
   locationNpcs: [],
+  partyError: null,
   initiative: { active: false, combatants: [], round: 0 },
+  initiativeError: null,
   plot: null,
   plotError: null,
   storage: null,
+  storageError: null,
   revisions: { location: -1, party: -1, initiative: -1, plot: -1, storage: -1 },
+
+  beginConnection: (epoch) =>
+    set((s) => epoch <= s.connectionEpoch ? {} : ({
+      connectionEpoch: epoch,
+      serverInstanceId: null,
+      revisions: { location: -1, party: -1, initiative: -1, plot: -1, storage: -1 },
+    })),
+  bindServerInstance: (epoch, serverInstanceId) =>
+    set((s) => {
+      if (epoch !== s.connectionEpoch || !serverInstanceId) return {}
+      if (s.serverInstanceId && s.serverInstanceId !== serverInstanceId) return {}
+      return { serverInstanceId }
+    }),
 
   setLocation: (payload) =>
     set((s) => {
-      const changed = Boolean(payload.server_instance_id && payload.server_instance_id !== s.serverInstanceId)
-      const revisions = changed ? { location: -1, party: -1, initiative: -1, plot: -1, storage: -1 } : s.revisions
-      if (payload.revision !== undefined && payload.revision < revisions.location) return {}
-      return { serverInstanceId: payload.server_instance_id ?? s.serverInstanceId, location: payload.data ?? null, locationError: payload.error ?? null, revisions: { ...revisions, location: payload.revision ?? revisions.location } }
+      if (payload.server_instance_id && s.serverInstanceId && payload.server_instance_id !== s.serverInstanceId) return {}
+      if (payload.revision !== undefined && payload.revision < s.revisions.location) return {}
+      const common = {
+        serverInstanceId: payload.server_instance_id ?? s.serverInstanceId,
+        locationError: payload.error ?? null,
+        revisions: { ...s.revisions, location: payload.revision ?? s.revisions.location },
+      }
+      return payload.error ? common : { ...common, location: payload.data ?? null }
     }),
   setParty: (payload) =>
     set((s) => {
-      const changed = Boolean(payload.server_instance_id && payload.server_instance_id !== s.serverInstanceId)
-      const revisions = changed ? { location: -1, party: -1, initiative: -1, plot: -1, storage: -1 } : s.revisions
-      if (payload.revision !== undefined && payload.revision < revisions.party) return {}
-      return { serverInstanceId: payload.server_instance_id ?? s.serverInstanceId, party: payload.members, locationNpcs: payload.location_npcs ?? [], revisions: { ...revisions, party: payload.revision ?? revisions.party } }
+      if (payload.server_instance_id && s.serverInstanceId && payload.server_instance_id !== s.serverInstanceId) return {}
+      if (payload.revision !== undefined && payload.revision < s.revisions.party) return {}
+      const common = {
+        serverInstanceId: payload.server_instance_id ?? s.serverInstanceId,
+        partyError: payload.error ?? null,
+        revisions: { ...s.revisions, party: payload.revision ?? s.revisions.party },
+      }
+      return payload.error ? common : { ...common, party: payload.members, locationNpcs: payload.location_npcs ?? [] }
     }),
   setInitiative: (payload) =>
     set((s) => {
-      const changed = Boolean(payload.server_instance_id && payload.server_instance_id !== s.serverInstanceId)
-      const revisions = changed ? { location: -1, party: -1, initiative: -1, plot: -1, storage: -1 } : s.revisions
-      if (payload.revision !== undefined && payload.revision < revisions.initiative) return {}
-      return {
-      serverInstanceId: payload.server_instance_id ?? s.serverInstanceId,
-      initiative: {
-        active: payload.active,
-        combatants: payload.combatants,
-        round: payload.round ?? 0,
-      }, revisions: { ...revisions, initiative: payload.revision ?? revisions.initiative },
-    }}),
+      if (payload.server_instance_id && s.serverInstanceId && payload.server_instance_id !== s.serverInstanceId) return {}
+      if (payload.revision !== undefined && payload.revision < s.revisions.initiative) return {}
+      const common = {
+        serverInstanceId: payload.server_instance_id ?? s.serverInstanceId,
+        initiativeError: payload.error ?? null,
+        revisions: { ...s.revisions, initiative: payload.revision ?? s.revisions.initiative },
+      }
+      return payload.error ? common : {
+        ...common,
+        initiative: {
+          active: payload.active,
+          combatants: payload.combatants,
+          round: payload.round ?? 0,
+        },
+      }
+    }),
   setPlot: (payload) =>
     set((s) => {
-      const changed = Boolean(payload.server_instance_id && payload.server_instance_id !== s.serverInstanceId)
-      const revisions = changed ? { location: -1, party: -1, initiative: -1, plot: -1, storage: -1 } : s.revisions
-      if (payload.revision !== undefined && payload.revision < revisions.plot) return {}
-      return { serverInstanceId: payload.server_instance_id ?? s.serverInstanceId, plot: payload.data ?? null, plotError: payload.error ?? null, revisions: { ...revisions, plot: payload.revision ?? revisions.plot } }
+      if (payload.server_instance_id && s.serverInstanceId && payload.server_instance_id !== s.serverInstanceId) return {}
+      if (payload.revision !== undefined && payload.revision < s.revisions.plot) return {}
+      const common = {
+        serverInstanceId: payload.server_instance_id ?? s.serverInstanceId,
+        plotError: payload.error ?? null,
+        revisions: { ...s.revisions, plot: payload.revision ?? s.revisions.plot },
+      }
+      return payload.error ? common : { ...common, plot: payload.data ?? null }
     }),
   setStorage: (payload) => set((s) => {
-    const changed = Boolean(payload.server_instance_id && payload.server_instance_id !== s.serverInstanceId)
-    const revisions = changed ? { location: -1, party: -1, initiative: -1, plot: -1, storage: -1 } : s.revisions
-    if (payload.revision !== undefined && payload.revision < revisions.storage) return {}
-    return { serverInstanceId: payload.server_instance_id ?? s.serverInstanceId, storage: payload.error ? { success: false, error: payload.error } : payload.data, revisions: { ...revisions, storage: payload.revision ?? revisions.storage } }
+    if (payload.server_instance_id && s.serverInstanceId && payload.server_instance_id !== s.serverInstanceId) return {}
+    if (payload.revision !== undefined && payload.revision < s.revisions.storage) return {}
+    const common = {
+      serverInstanceId: payload.server_instance_id ?? s.serverInstanceId,
+      storageError: payload.error ?? null,
+      revisions: { ...s.revisions, storage: payload.revision ?? s.revisions.storage },
+    }
+    return payload.error ? common : { ...common, storage: payload.data }
   }),
 }))

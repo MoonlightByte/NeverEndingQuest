@@ -6,25 +6,69 @@
  * strip stays fresh as the DM narrates. Self-gating: renders nothing while
  * world.initiative.active -- InitiativeTracker replaces it during combat.
  */
-import { useEffect, useState } from 'react'
-import { emitC } from '../../services/socket'
-import { useLog, useWorld } from '../../stores'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { useWorld } from '../../stores'
 import { CharacterChip } from './CharacterChip'
 import type { ChipVariant } from './CharacterChip'
 import { MediaPopup } from './MediaPopup'
 import { asString, npcThumbCandidates, partyClickMedia, playerThumbCandidates } from './media'
 import type { MediaSource } from './media'
+import './party-parity.css'
 
-/** Request party data now and after every new log message; returns unsubscribe. */
-function requestPartyOnLogActivity(): () => void {
-  emitC('request_party_data', undefined)
-  const unsubscribe = useLog.subscribe((state, previous) => {
-    if (state.messages !== previous.messages) {
-      emitC('request_party_data', undefined)
+interface HorizontalChipRailProps {
+  label: string
+  itemCount: number
+  children: ReactNode
+}
+
+/** Shared legacy scroller used by both exploration and initiative rails. */
+export function HorizontalChipRail({ label, itemCount, children }: HorizontalChipRailProps) {
+  const railRef = useRef<HTMLDivElement>(null)
+  const [arrows, setArrows] = useState({ left: false, right: false })
+
+  const updateArrows = useCallback(() => {
+    const rail = railRef.current
+    if (!rail) return
+    const maxScrollLeft = Math.max(0, rail.scrollWidth - rail.clientWidth)
+    const next = {
+      left: maxScrollLeft > 0 && rail.scrollLeft > 0,
+      right: maxScrollLeft > 0 && rail.scrollLeft < maxScrollLeft - 1,
     }
-  })
-  const timer = window.setInterval(() => emitC('request_party_data', undefined), 5000)
-  return () => { unsubscribe(); window.clearInterval(timer) }
+    setArrows((current) => current.left === next.left && current.right === next.right ? current : next)
+  }, [])
+
+  useLayoutEffect(() => {
+    const rail = railRef.current
+    if (!rail) return undefined
+    updateArrows()
+    rail.addEventListener('scroll', updateArrows, { passive: true })
+    window.addEventListener('resize', updateArrows)
+    const observer = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(updateArrows)
+    observer?.observe(rail)
+    return () => {
+      rail.removeEventListener('scroll', updateArrows)
+      window.removeEventListener('resize', updateArrows)
+      observer?.disconnect()
+    }
+  }, [itemCount, updateArrows])
+
+  const scroll = (left: number) => {
+    railRef.current?.scrollBy({ left, behavior: 'smooth' })
+  }
+
+  const lowerLabel = label.toLowerCase()
+  return (
+    <div className="neq-chip-scroller-wrapper">
+      {arrows.left && <button type="button" aria-label={`Scroll ${lowerLabel} left`} className="neq-chip-scroll-arrow" onClick={() => scroll(-200)}>&lt;</button>}
+      <div ref={railRef} aria-label={label} className="neq-chip-scroller">
+        {children}
+      </div>
+      {arrows.right && <button type="button" aria-label={`Scroll ${lowerLabel} right`} className="neq-chip-scroll-arrow" onClick={() => scroll(200)}>&gt;</button>}
+    </div>
+  )
 }
 
 export function PartyStrip() {
@@ -32,8 +76,6 @@ export function PartyStrip() {
   const locationNpcs = useWorld((s) => s.locationNpcs)
   const combatActive = useWorld((s) => s.initiative.active)
   const [media, setMedia] = useState<MediaSource | null>(null)
-
-  useEffect(() => requestPartyOnLogActivity(), [])
 
   // InitiativeTracker replaces the strip while combat is active.
   if (combatActive) return null
@@ -62,15 +104,11 @@ export function PartyStrip() {
     )
   }
 
-  return (
-    <div
-      aria-label="Party members"
-      className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto"
-      style={{ maxHeight: 60, scrollbarWidth: 'none' }}
-    >
+  return <>
+    <HorizontalChipRail label="Party members" itemCount={party.length + locationNpcs.length}>
       {party.map((member) => renderMember(member, false))}
       {locationNpcs.map((npc) => renderMember(npc, true))}
-      <MediaPopup media={media} onClose={() => setMedia(null)} />
-    </div>
-  )
+    </HorizontalChipRail>
+    <MediaPopup media={media} onClose={() => setMedia(null)} />
+  </>
 }

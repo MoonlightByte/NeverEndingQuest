@@ -232,6 +232,10 @@ game_thread = None
 _ui_revision = 0
 _ui_revision_lock = threading.Lock()
 _server_instance_id = uuid4().hex
+_ui_protocol_capabilities = {
+    "protocol_version": 1,
+    "request_metadata": True,
+}
 _ui_operation_lock = threading.Lock()
 _ui_operations = {"compression": None, "module": None, "update": None}
 original_stdout = sys.stdout
@@ -2382,7 +2386,11 @@ def handle_connect():
     # the normal game-reconnect handler below.
     if _OPERATOR_TOKEN and not session.get("operator_authenticated"):
         return False
-    emit('connected', {'data': 'Connected to NeverEndingQuest'})
+    emit('connected', {
+        'data': 'Connected to NeverEndingQuest',
+        'capabilities': dict(_ui_protocol_capabilities),
+        'server_instance_id': _server_instance_id,
+    })
 
     # A process may have stopped after durable module publication but before
     # its narration receipt was acknowledged. Replay the stable-ID message
@@ -2673,10 +2681,11 @@ def handle_start_game():
     emit('startup_status', {'status': 'in_progress', 'phase': 'launching'})
 
 @socketio.on('request_player_data')
-def handle_player_data_request(data):
+def handle_player_data_request(data=None):
     """Handle requests for player data (inventory, stats, NPCs)"""
+    data = data if isinstance(data, dict) else {}
+    dataType = data.get('dataType', 'stats')
     try:
-        dataType = data.get('dataType', 'stats')
         response_data = None
         
         # Load party tracker to get player name and NPCs
@@ -2737,7 +2746,10 @@ def handle_player_data_request(data):
             
             response_data = npcs
         
-        emit('player_data_response', _ui_response(data, {'dataType': dataType, 'data': response_data}))
+        payload = {'dataType': dataType, 'data': response_data}
+        if dataType in ('stats', 'inventory', 'spells') and response_data is None:
+            payload['error'] = 'Player data not found'
+        emit('player_data_response', _ui_response(data, payload))
     
     except Exception as e:
         emit('player_data_response', _ui_response(data, {'dataType': dataType, 'data': None, 'error': str(e)}))
@@ -2932,7 +2944,11 @@ def handle_party_data_request(data=None):
         # Load party tracker
         party_tracker = safe_read_json("party_tracker.json")
         if not party_tracker:
-            emit('party_data_response', _ui_response(data, {'members': []}))
+            emit('party_data_response', _ui_response(data, {
+                'members': [],
+                'location_npcs': [],
+                'error': 'Party tracker not found',
+            }))
             return
         
         # Get module info for path resolution
@@ -3162,7 +3178,11 @@ def handle_party_data_request(data=None):
         
     except Exception as e:
         error(f"Failed to get party data: {str(e)}", exception=e, category="web_interface")
-        emit('party_data_response', _ui_response(data, {'members': [], 'location_npcs': []}))
+        emit('party_data_response', _ui_response(data, {
+            'members': [],
+            'location_npcs': [],
+            'error': str(e),
+        }))
 
 def _overlay_authoritative_character_state(combatant_data, character_data):
     """Overlay character-file state onto an encounter UI projection."""
@@ -3186,7 +3206,11 @@ def handle_initiative_data_request(data=None):
         # Check if combat is active via party_tracker.json
         party_tracker = safe_read_json("party_tracker.json")
         if not party_tracker:
-            emit('initiative_data_response', _ui_response(data, {'active': False, 'combatants': []}))
+            emit('initiative_data_response', _ui_response(data, {
+                'active': False,
+                'combatants': [],
+                'error': 'Party tracker not found',
+            }))
             return
 
         # Get the active combat encounter ID
@@ -3350,7 +3374,11 @@ def handle_initiative_data_request(data=None):
 
     except Exception as e:
         error(f"Error handling initiative data request: {e}", exception=e, category="web_interface")
-        emit('initiative_data_response', _ui_response(data, {'active': False, 'combatants': []}))
+        emit('initiative_data_response', _ui_response(data, {
+            'active': False,
+            'combatants': [],
+            'error': str(e),
+        }))
 
 # Add this entire function to web_interface.py
 
@@ -5234,13 +5262,28 @@ def serve_react_play(filename='index.html'):
     web/frontend first; returns a plain 503 hint if dist/ is missing.
     """
     from flask import send_from_directory
+    from werkzeug.utils import safe_join
     import os
     dist_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend', 'dist')
     if not os.path.isfile(os.path.join(dist_dir, 'index.html')):
         return ("React frontend not built. Run 'npm run build' in web/frontend.", 503)
-    if not os.path.isfile(os.path.join(dist_dir, filename)):
+    requested_path = safe_join(dist_dir, filename)
+    if requested_path is None or not os.path.isfile(requested_path):
         filename = 'index.html'
-    return send_from_directory(dist_dir, filename)
+    response = send_from_directory(dist_dir, filename)
+    if filename == 'index.html':
+        version_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'VERSION')
+        try:
+            with open(version_path, 'r', encoding='utf-8') as version_file:
+                version = version_file.read().strip()
+        except OSError:
+            version = '0.3.2'
+        # send_from_directory streams files in direct-passthrough mode.  The
+        # index is tiny; materialize it so the server can inject the local
+        # version before returning the React shell.
+        response.direct_passthrough = False
+        response.set_data(response.get_data(as_text=True).replace('__NEQ_VERSION__', version))
+    return response
 
 
 # ============================================================================

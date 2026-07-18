@@ -5,6 +5,7 @@ const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
   ?? (process.platform === 'win32'
     ? 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
     : undefined)
+const deterministicParityRaster = process.env.NEQ_PARITY_DISABLE_GPU === '1'
 
 export default defineConfig({
   testDir: './e2e',
@@ -21,6 +22,13 @@ export default defineConfig({
     headless: true,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    launchOptions: executablePath ? { executablePath } : undefined,
+    launchOptions: {
+      ...(executablePath ? { executablePath } : {}),
+      // Chromium may independently promote one of the legacy/React pages to
+      // a GPU compositing layer. That changes anti-aliasing around otherwise
+      // identical rounded edges. The strict pixel oracle can opt both pages
+      // into the same software raster path without changing either product.
+      ...(deterministicParityRaster ? { args: ['--disable-gpu-compositing'] } : {}),
+    },
   },
 })

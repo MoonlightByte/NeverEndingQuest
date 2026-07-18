@@ -1,21 +1,30 @@
 import { expect, test, type Page } from '@playwright/test'
 import fs from 'node:fs/promises'
-import path from 'node:path'
+import { assertNamedPair, captureStable, installDeterminism, parityOutputRoot, settleApplication } from './strict-oracle'
 
-const outputRoot = process.env.NEQ_PARITY_OUTPUT ?? 'test-results/parity-captures'
+const outputRoot = parityOutputRoot
 async function settle(page: Page, legacy: boolean) {
-  await expect(legacy ? page.locator('#status-indicator') : page.getByLabel('Connected')).toBeVisible({ timeout: 15_000 })
-  await expect(legacy ? page.locator('.character-name') : page.getByAltText('Portrait of Arden Vale')).toBeVisible({ timeout: 15_000 })
-  await page.evaluate(async () => { await document.fonts.ready; document.getAnimations().forEach((animation) => animation.pause()) })
+  await settleApplication(page, legacy)
 }
-async function shot(page: Page, name: string, legacy: boolean) { await page.screenshot({ path: path.join(outputRoot, `${name}-${legacy ? 'legacy' : 'react'}.png`), animations: 'disabled', caret: 'hide' }) }
+async function shot(page: Page, name: string, legacy: boolean) {
+  await captureStable(page, name, legacy ? 'legacy' : 'react')
+  if (!legacy) await assertNamedPair(name)
+}
 
 test.beforeAll(async () => fs.mkdir(outputRoot, { recursive: true }))
 test('capture real hover, combat, operation, and reconnect states', async ({ browser }) => {
   test.setTimeout(150_000)
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, 'Requires deterministic real server')
-  const legacy = await browser.newPage({ viewport: { width: 2048, height: 1228 } })
-  const react = await browser.newPage({ viewport: { width: 2048, height: 1228 } })
+  const legacyContext = await browser.newContext({ viewport: { width: 2048, height: 1228 } })
+  const reactContext = await browser.newContext({ viewport: { width: 2048, height: 1228 } })
+  await Promise.all([installDeterminism(legacyContext), installDeterminism(reactContext)])
+  const legacy = await legacyContext.newPage()
+  const react = await reactContext.newPage()
+  // The parity server is intentionally long-lived so local audit commands can
+  // reuse it. Reset its process-global status/cache before the first capture;
+  // otherwise a previous run that ended in processing/combat can contaminate
+  // the initial hover and tooltip states even though both pages are fresh.
+  await legacy.request.post('/__parity__/scenario/baseline')
   await Promise.all([legacy.goto('/'), react.goto('/play/')]); await Promise.all([settle(legacy, true), settle(react, false)])
 
   await test.step('portrait hover', async () => {
@@ -67,5 +76,5 @@ test('capture real hover, combat, operation, and reconnect states', async ({ bro
     await shot(legacy, '28-disconnected', true); await shot(react, '28-disconnected', false)
     await Promise.all([legacy.context().setOffline(false), react.context().setOffline(false)]); await Promise.all([settle(legacy, true), settle(react, false)])
   })
-  await legacy.close(); await react.close()
+  await legacyContext.close(); await reactContext.close()
 })

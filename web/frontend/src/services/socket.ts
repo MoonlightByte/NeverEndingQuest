@@ -8,7 +8,15 @@
  */
 import { io, Socket } from 'socket.io-client'
 import type { ClientEvents, ServerEvents } from '../contract/events'
+import { CLIENT_EVENT_ARITY } from '../contract/events'
 import { useSession, useLog, useWorld, usePlayer, useDialogs } from '../stores'
+import { shouldAcceptSnapshot } from '../stores/session'
+import {
+  HydrationCoordinator,
+  isHydrationEvent,
+  type HydrationEvent,
+  type HydrationPayload,
+} from './hydration'
 import { cancelPendingRestart, reloadIfRestartPending } from './restart'
 
 // Use Socket.IO's default polling-first negotiation. The local Flask/Werkzeug
@@ -16,35 +24,36 @@ import { cancelPendingRestart, reloadIfRestartPending } from './restart'
 // forcing websocket-only leaves the UI permanently disconnected there.
 export const socket: Socket = io()
 
-let connectionEpoch = 0
 let requestSequence = 0
-const latestRequests = new Map<string, string>()
 
-function requestKey(event: string, payload: unknown): string | null {
-  if (event === 'request_player_data' && payload && typeof payload === 'object') {
-    return `${event}:${String((payload as Record<string, unknown>).dataType ?? '')}`
-  }
-  if (event.startsWith('request_') || event === 'generate_image') return event
+const hydration = new HydrationCoordinator((event, payload, arity) => {
+  // socket.io-client queues emits made while disconnected and replays every
+  // one on reconnect. Periodic hydration must never enter that send buffer;
+  // the connect handler performs one authoritative refresh instead.
+  if (!socket.connected) return
+  if (arity === 0) socket.emit(event)
+  else socket.emit(event, payload ?? {})
+})
+
+function requestKey(event: string): string | null {
+  if (event === 'generate_image') return event
   return null
 }
 
 function withRequestIdentity(event: string, payload: unknown): { payload: unknown; requestId?: string } {
-  const key = requestKey(event, payload)
+  const key = requestKey(event)
   if (!key) return { payload }
-  const requestId = `e${connectionEpoch}-${++requestSequence}`
-  latestRequests.set(key, requestId)
+  const requestId = `e${hydration.currentEpoch()}-${++requestSequence}`
   return { payload: { ...(payload && typeof payload === 'object' ? payload : {}), request_id: requestId }, requestId }
-}
-
-function accepts(resource: string, payload: { request_id?: string }): boolean {
-  if (!payload.request_id) return true // backward-compatible old server
-  return latestRequests.get(resource) === payload.request_id
 }
 
 /** Typed emit: event names and payloads come from the frozen contract. */
 export function emitC<K extends keyof ClientEvents>(ev: K, payload: ClientEvents[K]): string | undefined {
+  if (isHydrationEvent(String(ev))) {
+    return hydration.request(ev as HydrationEvent, payload as HydrationPayload)
+  }
   const identified = withRequestIdentity(String(ev), payload)
-  if (identified.payload === undefined) {
+  if (CLIENT_EVENT_ARITY[ev] === 0) {
     socket.emit(ev)
   } else {
     socket.emit(ev, identified.payload)
@@ -60,45 +69,69 @@ function on<K extends keyof ServerEvents>(
   socket.on(ev as string, handler as (...args: unknown[]) => void)
 }
 
-// ---------- transport-level ----------
-socket.on('connect', () => {
-  void reloadIfRestartPending()
-  connectionEpoch += 1
-  latestRequests.clear()
-  useSession.getState().setConnected(true)
-  // These values can change while a tab is asleep or disconnected. Components
-  // remain mounted across reconnects, so their mount effects will not run again.
-  // Refresh the volatile server-owned state on every successful connection.
+function refreshAuthoritativeState(): void {
   emitC('request_location_data', undefined)
   emitC('request_party_data', undefined)
   emitC('request_initiative_data', undefined)
   emitC('request_ui_snapshot', undefined)
-  for (const dataType of ['stats', 'inventory', 'spells', 'npcs'] as const) emitC('request_player_data', { dataType })
+  for (const dataType of ['stats', 'inventory', 'spells', 'npcs'] as const) {
+    emitC('request_player_data', { dataType })
+  }
   emitC('request_plot_data', undefined)
   emitC('request_storage_data', undefined)
+}
+
+// ---------- transport-level ----------
+socket.on('connect', () => {
+  void reloadIfRestartPending()
+  const connectionEpoch = hydration.beginConnection()
+  useSession.getState().beginConnection()
+  useWorld.getState().beginConnection(connectionEpoch)
+  usePlayer.getState().beginConnection(connectionEpoch)
+  useSession.getState().setConnected(true)
+  // These values can change while a tab is asleep or disconnected. Components
+  // remain mounted across reconnects, so their mount effects will not run again.
+  // Refresh the volatile server-owned state on every successful connection.
+  refreshAuthoritativeState()
 })
 socket.on('disconnect', () => {
   useSession.getState().setConnected(false)
-  useLog.getState().append({ type: 'system', content: 'Disconnected from the game server. Reconnecting...', message_id: `disconnect-${connectionEpoch}` })
+  useLog.getState().append({ type: 'system', content: 'Disconnected from the game server. Reconnecting...', message_id: `disconnect-${hydration.currentEpoch()}` })
 })
 
 // ---------- session / startup ----------
-on('connected', () => useSession.getState().setConnected(true))
+on('connected', (payload) => {
+  hydration.advertise(payload.capabilities, payload.server_instance_id)
+  useWorld.getState().bindServerInstance(hydration.currentEpoch(), payload.server_instance_id)
+  usePlayer.getState().bindServerInstance(hydration.currentEpoch(), payload.server_instance_id)
+  useSession.getState().setConnected(true)
+})
 on('version_status', (v) => useSession.getState().setVersion(v))
-on('status_update', (s) => useSession.getState().setStatus(s))
+on('status_update', (s) => {
+  const wasProcessing = useSession.getState().isProcessing
+  useSession.getState().setStatus(s)
+  if (wasProcessing && !s.is_processing) refreshAuthoritativeState()
+})
 on('startup_status', (s) => useSession.getState().setStartup(s.status, s.phase, s.startupAttemptId))
 on('game_started', (p) => {
   localStorage.setItem('neq_hasPlayed', 'true')
   useSession.getState().gameStarted(p.message)
+  refreshAuthoritativeState()
 })
 on('game_resumed', (p) => {
   useSession.getState().gameResumed(p.is_processing)
   useLog.getState().append({ type: 'system', content: p.message })
+  refreshAuthoritativeState()
 })
 on('startup_recovery_response', (p) => useSession.getState().setRecovery(p))
 on('ui_state_snapshot', (p) => {
-  if (!accepts('request_ui_snapshot', p)) return
-  useSession.getState().applySnapshot(p)
+  if (!hydration.accept('request_ui_snapshot', p)) return
+  const session = useSession.getState()
+  // A snapshot is one atomic revision. If its session portion is stale or
+  // belongs to another server instance, its operation portion must not be
+  // allowed to roll a terminal dialog back to an older running state.
+  if (!shouldAcceptSnapshot(session, p)) return
+  session.applySnapshot(p)
   if (p.operations) {
     useDialogs.getState().applyOperationSnapshot(p.operations)
     const module = p.operations.module
@@ -123,25 +156,25 @@ on('image_generation_error', (p) => useLog.getState().imageFailed(p))
 
 // ---------- world ----------
 on('location_data_response', (p) => {
-  if (accepts('request_location_data', p)) useWorld.getState().setLocation(p)
+  if (hydration.accept('request_location_data', p)) useWorld.getState().setLocation(p)
 })
 on('party_data_response', (p) => {
-  if (accepts('request_party_data', p)) useWorld.getState().setParty(p)
+  if (hydration.accept('request_party_data', p)) useWorld.getState().setParty(p)
 })
 on('initiative_data_response', (p) => {
-  if (!accepts('request_initiative_data', p)) return
+  if (!hydration.accept('request_initiative_data', p)) return
   useWorld.getState().setInitiative(p)
 })
 on('plot_data_response', (p) => {
-  if (accepts('request_plot_data', p)) useWorld.getState().setPlot(p)
+  if (hydration.accept('request_plot_data', p)) useWorld.getState().setPlot(p)
 })
 on('storage_data_response', (p) => {
-  if (accepts('request_storage_data', p)) useWorld.getState().setStorage(p)
+  if (hydration.accept('request_storage_data', p)) useWorld.getState().setStorage(p)
 })
 
 // ---------- player / NPC data ----------
 on('player_data_response', (p) => {
-  if (accepts(`request_player_data:${p.dataType}`, p)) usePlayer.getState().setPlayerData(p)
+  if (hydration.accept('request_player_data', p)) usePlayer.getState().setPlayerData(p)
 })
 on('npc_details_response', (p) => usePlayer.getState().setNpcDetails(p))
 on('npc_inventory_response', (p) => usePlayer.getState().setNpcInventory(p))
@@ -149,12 +182,22 @@ on('npc_inventory_response', (p) => usePlayer.getState().setNpcInventory(p))
 // ---------- dialogs / flows ----------
 on('save_list_response', (list) => useDialogs.getState().setSaveList(list))
 on('module_list_response', (list) => useDialogs.getState().setModuleList(list))
-on('restore_complete', (p) =>
-  useDialogs.getState().setActionResult({ kind: 'restore', message: p.message }))
-on('reset_complete', (p) =>
-  useDialogs.getState().setActionResult({ kind: 'reset', message: p.message }))
-on('exit_acknowledged', (p) =>
-  useDialogs.getState().setActionResult({ kind: 'exit', message: p.message }))
+on('restore_complete', (p) => {
+  useDialogs.getState().setActionResult({ kind: 'restore', message: p.message })
+  useLog.getState().append({ type: 'system', content: 'Game restored successfully. The page will now reload to sync with the new state.' })
+})
+on('reset_complete', (p) => {
+  useDialogs.getState().setActionResult({ kind: 'reset', message: p.message })
+  useLog.getState().append({ type: 'system', content: 'Campaign has been reset. The page will now reload.' })
+})
+on('exit_acknowledged', () => {
+  // The legacy overlay owns fixed player-facing copy. Do not let the server's
+  // transport acknowledgment ("Exit acknowledged") replace that sentence.
+  const current = useDialogs.getState().actionResult
+  if (current?.kind !== 'exit') {
+    useDialogs.getState().setActionResult({ kind: 'exit', message: 'You can now safely close this browser tab.' })
+  }
+})
 on('compression_start', (p) => useDialogs.getState().compressionStart(p))
 on('compression_progress', (p) => useDialogs.getState().compressionProgress(p))
 on('compression_complete', (p) => useDialogs.getState().compressionComplete(p))

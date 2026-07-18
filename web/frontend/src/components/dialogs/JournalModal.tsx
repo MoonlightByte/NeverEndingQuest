@@ -3,6 +3,7 @@ import { emitC } from '../../services/socket'
 import { useDialogs, useWorld } from '../../stores'
 import type { PlotData } from '../../stores'
 import { useId, useRef } from 'react'
+import './dialog-parity.css'
 
 type PlotPoint = PlotData['plotPoints'][number]
 
@@ -51,23 +52,37 @@ function QuestItem({ quest }: { quest: PlotPoint }) {
 function JournalPage({
   heading,
   quests,
-  emptyText,
 }: {
   heading: string
   quests: PlotPoint[]
-  emptyText: string
 }) {
   return (
     <section aria-label={heading} className="neq-journal-page">
       <div className="neq-journal-page-content">
       <h2>{heading}</h2>
-      {quests.length === 0 ? (
-        <p className="neq-journal-empty">{emptyText}</p>
-      ) : (
-        quests.map((quest) => <QuestItem key={quest.id} quest={quest} />)
-      )}
+      {quests.map((quest) => <QuestItem key={quest.id} quest={quest} />)}
       </div>
     </section>
+  )
+}
+
+function BlankJournalPages({ error = false }: { error?: boolean }) {
+  return (
+    <>
+      <section className="neq-journal-page">
+        <div className="neq-journal-page-content">
+          {error && (
+            <>
+              <h2>Journal</h2>
+              <p>Could not load quest data.</p>
+            </>
+          )}
+        </div>
+      </section>
+      <section className="neq-journal-page">
+        <div className="neq-journal-page-content" />
+      </section>
+    </>
   )
 }
 
@@ -90,7 +105,6 @@ function JournalModalBody() {
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    dialogRef.current?.focus()
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') closeDialog()
     }
@@ -103,7 +117,7 @@ function JournalModalBody() {
 
   return (
     <div
-      className="neq-journal-overlay"
+      className="neq-journal-overlay neq-journal-overlay-parity"
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
@@ -115,22 +129,18 @@ function JournalModalBody() {
       <button type="button" className="neq-journal-close" onClick={closeDialog} aria-label="Close">×</button>
       <div ref={dialogRef} className="neq-journal-book" tabIndex={-1}>
       {plotError ? (
-        <div className="neq-journal-page"><p className="neq-journal-empty">Could not load quest data.</p></div>
+        <BlankJournalPages error />
       ) : plot === null ? (
-        <div className="neq-journal-page"><p className="neq-journal-empty">
-          Consulting the chronicle...
-        </p></div>
+        <BlankJournalPages />
       ) : (
         <>
           <JournalPage
             heading="Current Objectives"
             quests={activeQuests}
-            emptyText="No active quests. Explore the world to discover new objectives."
           />
           <JournalPage
             heading="A Chronicle of Deeds"
             quests={completedQuests}
-            emptyText="No completed quests yet. Your deeds await their telling."
           />
         </>
       )}

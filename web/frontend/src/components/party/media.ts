@@ -10,6 +10,7 @@
 export interface MediaSource {
   kind: 'video' | 'image'
   src: string
+  anchor?: { top: number; bottom: number; left: number; width: number }
 }
 
 export interface ClickMedia {
@@ -71,8 +72,25 @@ export function playerThumbCandidates(name: string): string[] {
   return candidates
 }
 
+/** Legacy combat players use exactly one strictly-normalized portrait URL. */
+export function initiativePlayerThumbCandidates(name: string): string[] {
+  return [`/static/portraits/${strictFileName(name)}.png`]
+}
+
 export function npcThumbCandidates(name: string): string[] {
   return [`/media/npcs/${looseFileName(name)}_thumb.jpg`]
+}
+
+/**
+ * The initiative renderer historically normalizes only whitespace for NPCs.
+ * In particular, apostrophes remain in the URL (unlike the exploration rail).
+ */
+export function initiativeNpcFileName(name: string): string {
+  return name.toLowerCase().replace(/\s+/g, '_')
+}
+
+export function initiativeNpcThumbCandidates(name: string): string[] {
+  return [`/media/npcs/${initiativeNpcFileName(name)}_thumb.jpg`]
 }
 
 export function monsterThumbCandidates(monsterType: string): string[] {
@@ -96,6 +114,15 @@ export function partyClickMedia(name: string, kind: 'player' | 'npc'): ClickMedi
   return {
     videoUrl: `${base}_video.mp4`,
     imageCandidates: [`${base}.jpg`, `${base}.png`],
+  }
+}
+
+/** Legacy initiative NPCs try video, then the single full-size JPG. */
+export function initiativeNpcClickMedia(name: string): ClickMedia {
+  const base = `/media/npcs/${initiativeNpcFileName(name)}`
+  return {
+    videoUrl: `${base}_video.mp4`,
+    imageCandidates: [`${base}.jpg`],
   }
 }
 

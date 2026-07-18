@@ -113,3 +113,5 @@ def test_direct_server_browser_defaults_and_invalid_values_to_legacy():
 
     assert source.count("os.environ.get('NEQ_START_PATH', '/')") == 2
     assert "start_path = '/play/'" not in source
+    assert "requested_path = safe_join(dist_dir, filename)" in source
+    assert "os.path.isfile(os.path.join(dist_dir, filename))" not in source

@@ -1,0 +1,132 @@
+.neq-chip-scroller-wrapper {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+}
+
+.neq-chip-scroller {
+  display: flex;
+  min-width: 0;
+  max-height: 60px;
+  flex: 1;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  margin: 0 10px 0 0;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  padding-bottom: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.neq-chip-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.neq-chip-scroll-arrow {
+  z-index: 10;
+  width: 20px;
+  height: 60px;
+  flex-shrink: 0;
+  cursor: pointer;
+  border: 1px solid #666;
+  background-color: rgb(44 44 44 / 80%);
+  color: #e0e0e0;
+  padding: 0;
+  font-size: 16px;
+  font-weight: bold;
+  line-height: 58px;
+  transition: background-color 0.2s;
+}
+
+.neq-chip-scroll-arrow:hover {
+  background-color: #555;
+}
+
+.neq-character-chip-party-player,
+.neq-character-chip-party-npc {
+  transition:
+    transform 0.15s ease-in-out,
+    box-shadow 0.15s ease-in-out,
+    border-color 0.15s ease-in-out;
+}
+
+.neq-character-chip-location-npc {
+  transition:
+    transform 0.15s ease-in-out,
+    opacity 0.15s ease-in-out,
+    box-shadow 0.15s ease-in-out;
+}
+
+.neq-character-chip-init-player,
+.neq-character-chip-init-npc,
+.neq-character-chip-init-enemy {
+  transition: all 0.3s ease;
+}
+
+.neq-media-popup-parity {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.2s ease-in-out,
+    visibility 0s 0.2s;
+}
+
+.neq-media-popup-parity.visible {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.neq-stats-tooltip-parity {
+  position: fixed;
+  z-index: 2000;
+  visibility: hidden;
+  width: 220px;
+  border: 1px solid #4a90e2;
+  border-radius: 6px;
+  background-color: #1f1f1f;
+  padding: 10px;
+  box-shadow: 0 4px 15px rgb(0 0 0 / 50%);
+  color: #e0e0e0;
+  font-family: var(--font-body);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition:
+    opacity 0.15s ease-in-out,
+    transform 0.15s ease-in-out;
+}
+
+.neq-stats-tooltip-parity.visible {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.neq-stats-tooltip-header-parity {
+  margin-bottom: 8px;
+  border-bottom: 1px solid #444;
+  padding-bottom: 4px;
+  color: #4caf50;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: bold;
+  text-transform: capitalize;
+}
+
+.neq-stats-tooltip-row-parity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 2px;
+  font-size: 15px;
+}
+
+.neq-stats-tooltip-section-parity {
+  margin-top: 4px;
+  border-top: 1px solid #444;
+  padding-top: 3px;
+}

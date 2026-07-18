@@ -51,7 +51,21 @@ export function TtsButton({ content, autoplay = false }: { content: string; auto
   const mounted = useRef(true)
   const playGeneration = useRef(0)
 
-  useEffect(() => () => { mounted.current = false }, [])
+  // React StrictMode intentionally runs an effect setup/cleanup/setup cycle in
+  // development. Reset the flag in setup as well as clearing it in cleanup so
+  // asynchronous playback completion can never inherit the simulated cleanup
+  // and leave the control stuck in its loading/playing state.
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
+
+  // Match the legacy global DM Voice switch: turning the feature off stops
+  // whichever narration is active, including paid OpenAI audio (not only the
+  // browser speech engine).
+  useEffect(() => {
+    if (!enabled) stopActive()
+  }, [enabled])
 
   const play = async () => {
     if (!enabled) {

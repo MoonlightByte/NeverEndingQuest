@@ -5,7 +5,7 @@
  * owns the chips holds the MediaSource state. Closes on Escape, on a click
  * outside the media, or via the close button. Rendered in a body portal.
  */
-import { useEffect } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { MediaSource } from './media'
 
@@ -15,60 +15,78 @@ export interface MediaPopupProps {
 }
 
 export function MediaPopup({ media, onClose }: MediaPopupProps) {
+  const contentRef = useRef<HTMLDivElement>(null)
+  const closeTimerRef = useRef<number | null>(null)
+  const [renderedMedia, setRenderedMedia] = useState<MediaSource | null>(media)
+  const [visible, setVisible] = useState(media !== null)
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
+
   useEffect(() => {
     if (!media) return
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [media, onClose])
+    setRenderedMedia(media)
+    setVisible(true)
+  }, [media])
 
-  if (!media) return null
+  useLayoutEffect(() => {
+    if (!renderedMedia || !contentRef.current) { setPosition(null); return }
+    const popup = contentRef.current.getBoundingClientRect()
+    const anchor = renderedMedia.anchor
+    if (!anchor) {
+      setPosition({ top: Math.max(10, (window.innerHeight - popup.height) / 2), left: Math.max(10, (window.innerWidth - popup.width) / 2) })
+      return
+    }
+    let top = anchor.top - popup.height - 10
+    if (top < 10) top = anchor.bottom + 10
+    let left = anchor.left + anchor.width / 2 - popup.width / 2
+    left = Math.max(10, Math.min(left, window.innerWidth - popup.width - 10))
+    setPosition({ top, left })
+  }, [renderedMedia])
+
+  const requestClose = useCallback(() => {
+    if (!renderedMedia || closeTimerRef.current !== null) return
+    setVisible(false)
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null
+      setRenderedMedia(null)
+      setPosition(null)
+      onClose()
+    }, 200)
+  }, [onClose, renderedMedia])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') requestClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [requestClose])
+
+  useEffect(() => () => {
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current)
+  }, [])
+
+  if (!renderedMedia) return null
 
   return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Character media"
-      className="fixed inset-0 flex items-center justify-center"
-      style={{ zIndex: 3000, backgroundColor: 'rgba(0, 0, 0, 0.85)' }}
-      onClick={onClose}
+      className={`neq-media-popup-parity fixed inset-0${visible ? ' visible' : ''}`}
+      style={{ zIndex: 10000 }}
+      onClick={(event) => { if (event.target === event.currentTarget) requestClose() }}
     >
-      <button
-        type="button"
-        aria-label="Close media"
-        onClick={onClose}
-        className="absolute right-4 top-4 h-9 w-9 cursor-pointer rounded font-chrome text-lg text-primary hover:border-accent"
-        style={{ backgroundColor: 'var(--bg-panel)', border: '2px solid var(--border-card)' }}
-      >
-        X
-      </button>
-      {media.kind === 'video' ? (
-        <video
-          src={media.src}
-          autoPlay
-          loop
-          controls
-          playsInline
-          className="rounded"
-          style={{ maxWidth: '85vw', maxHeight: '85vh', border: '2px solid var(--border-card)' }}
-          onClick={(event) => event.stopPropagation()}
-        />
-      ) : (
-        <img
-          src={media.src}
-          alt="Full-size character portrait"
-          className="rounded"
-          style={{
-            maxWidth: '85vw',
-            maxHeight: '85vh',
-            objectFit: 'contain',
-            border: '2px solid var(--border-card)',
-          }}
-          onClick={(event) => event.stopPropagation()}
-        />
-      )}
+      <div ref={contentRef} className="absolute w-[350px] rounded-lg border-[3px] border-[#ffa500] bg-[#1a1a1a] p-[5px] shadow-[0_5px_20px_rgba(0,0,0,.7)]" style={{ top: position?.top ?? 0, left: position?.left ?? 0, visibility: position ? 'visible' : 'hidden' }}>
+        {renderedMedia.kind === 'video' ? (
+          <video src={renderedMedia.src} autoPlay loop muted playsInline className="block h-auto w-full rounded-[5px]" />
+        ) : (
+          <img src={renderedMedia.src} alt="Character Portrait" className="block h-auto w-full rounded-[5px]" />
+        )}
+      </div>
     </div>,
     document.body,
   )

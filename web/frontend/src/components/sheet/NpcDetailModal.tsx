@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import {
   arr,
   equipmentList,
@@ -27,147 +26,48 @@ const TITLES: Record<NpcModalKind, string> = {
   features: 'Key Abilities',
   traits: 'Racial Traits',
   background: 'Background',
-  spells: 'Spells',
+  spells: 'Spellcasting',
 }
 
-function Empty({ children }: { children: string }) {
-  return <p className="p-3 text-sm italic text-secondary">{children}</p>
+function DetailItem({ name, bonus, title }: { name: string; bonus?: string; title?: string }) {
+  return <div className="neq-npc-details-item" title={title}><span className="neq-npc-details-name">{name}</span>{bonus !== undefined && <span className="neq-npc-details-bonus">{bonus}</span>}</div>
 }
 
-function Row({ name, detail, showDetail = false }: { name: string; detail?: ReactNode; showDetail?: boolean }) {
-  return (
-    <div className="mb-1 rounded bg-[#1a1a1a] px-2 py-1.5 text-sm">
-      <div className="font-bold text-primary">{name}</div>
-      {showDetail && detail !== undefined && detail !== '' && (
-        <div className="mt-0.5 text-xs text-secondary">{detail}</div>
-      )}
-    </div>
-  )
-}
-
-function ListBody({ raw, empty }: { raw: unknown; empty: string }) {
-  const entries = arr(raw).map(rec).filter((item): item is Record<string, unknown> => item !== null)
-  if (entries.length === 0) return <Empty>{empty}</Empty>
-  return (
-    <div>
-      {entries.map((item, index) => (
-        <Row
-          key={`${str(item['name'], 'Item')}-${index}`}
-          name={str(item['name'], 'Unknown')}
-          detail={str(item['description'], str(item['detail']))}
-        />
-      ))}
-    </div>
-  )
-}
-
-function ModalBody({ npc, kind }: { npc: Record<string, unknown>; kind: NpcModalKind }) {
-  if (kind === 'saves') {
-    return (
-      <div>
-        {saveRows(npc).map((save) => (
-          <div key={save.name} className="flex justify-between border-b border-card/60 py-1 text-sm">
-            <span className={save.proficient ? 'text-primary' : 'text-secondary'}>
-              {save.name} {save.proficient ? '\u25CF' : '\u25CB'}
-            </span>
-            <span className="text-accent">{formatModifier(save.bonus)}</span>
-          </div>
-        ))}
-      </div>
-    )
-  }
+function DetailBody({ npc, kind }: { npc: Record<string, unknown>; kind: Exclude<NpcModalKind, 'inventory' | 'spells'> }) {
+  if (kind === 'saves') return <>{saveRows(npc).map((save) => <DetailItem key={save.name} name={`${save.name} ${save.proficient ? '●' : '○'}`} bonus={formatModifier(save.bonus)} />)}</>
   if (kind === 'skills') {
     const skills = skillRows(npc)
-    if (skills.length === 0) return <Empty>No skills available.</Empty>
-    return (
-      <div>
-        {skills.map((skill) => (
-          <div key={skill.name} className="flex justify-between border-b border-card/60 py-1 text-sm">
-            <span className="text-primary">{skill.name}</span>
-            <span className="text-accent">{formatModifier(skill.bonus)}</span>
-          </div>
-        ))}
-      </div>
-    )
+    return <>{skills.length ? skills.map((skill) => <DetailItem key={skill.name} name={skill.name} bonus={formatModifier(skill.bonus)} />) : <div className="neq-npc-details-item">No skills available.</div>}</>
   }
-  if (kind === 'inventory') {
-    const items = equipmentList(npc)
-    if (items.length === 0) return <Empty>No items in inventory.</Empty>
-    return (
-      <div>
-        {items.map((item, index) => (
-          <div key={`${item.name}-${index}`} className="mb-2 rounded-[5px] border-l-[3px] border-accent bg-page p-2">
-            <div className="mb-1 flex items-center justify-between">
-              <div className="text-[14px] font-bold leading-[normal] text-primary">{item.name}</div>
-              <div className="rounded bg-[#333] px-1.5 py-0.5 text-[12px] leading-[normal] text-accent">x{item.quantity}</div>
-            </div>
-            <div className="mt-1 text-xs text-secondary">{item.type}</div>
-            {item.description && <div className="mt-0.5 text-[11px] italic text-[#ccc]">{item.description}</div>}
-          </div>
-        ))}
-      </div>
-    )
-  }
-  if (kind === 'features') return <ListBody raw={npc['classFeatures']} empty="No key abilities." />
-  if (kind === 'traits') return <ListBody raw={npc['racialTraits']} empty="No racial traits." />
-  if (kind === 'background') {
-    const feature = rec(npc['backgroundFeature'])
-    return feature ? (
-      <div>
-        <Row name={str(feature['name'], 'Background')} detail={str(feature['description'])} />
-      </div>
-    ) : <Empty>No background feature.</Empty>
-  }
-
-  const casting = spellcastingView(npc)
-  if (!casting) return <Empty>No spells available.</Empty>
-  return (
-    <div>
-      <div className="flex gap-4 text-xs text-secondary">
-        {casting.saveDC !== null && <span>Save DC: <b className="text-primary">{casting.saveDC}</b></span>}
-        {casting.attackBonus !== null && <span>Attack: <b className="text-primary">{formatModifier(casting.attackBonus)}</b></span>}
-      </div>
-      {casting.levels.map((level) => (
-        <div key={level.levelIndex} className="mt-3">
-          <div className="flex justify-between font-display text-xs text-accent">
-            <span>{level.levelName}</span>
-            {level.slots && <span data-tone={slotTone(level.slots)}>{level.slots.current}/{level.slots.max} slots</span>}
-          </div>
-          {level.spells.map((spell) => <Row key={spell} name={spell} />)}
-        </div>
-      ))}
-    </div>
-  )
+  const raw = kind === 'features' ? npc['classFeatures'] : kind === 'traits' ? npc['racialTraits'] : rec(npc['backgroundFeature']) ? [npc['backgroundFeature']] : []
+  const items = arr(raw).map(rec).filter((item): item is Record<string, unknown> => item !== null)
+  const emptyName = kind === 'features' ? 'key abilities' : kind === 'traits' ? 'racial traits' : 'background'
+  return <>{items.length ? items.map((item, index) => <DetailItem key={`${str(item['name'])}-${index}`} name={str(item['name'])} title={str(item['description'], str(item['detail'])) || undefined} />) : <div className="neq-npc-details-item">No {emptyName} available.</div>}</>
 }
 
-export function NpcDetailModal({
-  npc,
-  kind,
-  onClose,
-}: {
-  npc: Record<string, unknown>
-  kind: NpcModalKind
-  onClose: () => void
-}) {
+function InventoryBody({ npc }: { npc: Record<string, unknown> }) {
+  const items = equipmentList(npc)
+  if (!items.length) return <div className="neq-npc-inventory-item">No items in inventory.</div>
+  return <>{items.map((item, index) => <div key={`${item.name}-${index}`} className="neq-npc-inventory-item"><div className="neq-npc-inventory-item-header"><div className="neq-npc-inventory-item-name">{item.name}</div><div className="neq-npc-inventory-item-quantity">x{item.quantity || 1}</div></div><div className="neq-npc-inventory-item-details">{item.type}</div>{item.description && <div className="neq-npc-inventory-item-description">{item.description}</div>}</div>)}</>
+}
+
+function SpellsBody({ npc }: { npc: Record<string, unknown> }) {
+  const casting = spellcastingView(npc)
+  if (!casting) return <div className="neq-npc-no-spellcasting">This character does not have spellcasting abilities.</div>
+  return <div className="neq-npc-modal-spellcasting">
+    {(casting.saveDC !== null || casting.attackBonus !== null) && <div className="neq-npc-modal-spell-stats">{casting.saveDC !== null && <span>Save DC: {casting.saveDC}</span>}{casting.attackBonus !== null && <span>Spell Attack: {formatModifier(casting.attackBonus)}</span>}</div>}
+    {casting.levels.map((level) => <div key={level.levelIndex} className="neq-npc-modal-spell-level"><div className="neq-npc-modal-spell-header"><span className="neq-npc-modal-spell-name">{level.levelName}</span>{level.slots && <span className={`neq-npc-modal-spell-slots ${slotTone(level.slots)}`}>{level.slots.current}/{level.slots.max} slots</span>}</div><div className="neq-npc-modal-spell-list">{level.spells.map((spell) => <div key={spell} className="neq-npc-modal-spell-item"><span>{spell}</span></div>)}</div></div>)}
+  </div>
+}
+
+export function NpcDetailModal({ npc, kind, onClose }: { npc: Record<string, unknown>; kind: NpcModalKind; onClose: () => void }) {
   const name = str(npc['name'], 'Unknown NPC')
-  const inventoryStyle = kind === 'inventory' || kind === 'spells'
-  const title = `${name}'s ${kind === 'spells' ? 'Spellcasting' : TITLES[kind]}`
-  return (
-    <div className="fixed inset-0 z-40 bg-black/70" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onClick={(event) => event.stopPropagation()}
-        className="mx-auto flex w-[80%] flex-col overflow-hidden rounded-lg border-2 border-[#4caf50] bg-[#2c2c2c] p-5 font-chrome leading-[normal]"
-        style={{ marginTop: inventoryStyle ? '5%' : '10%', maxWidth: inventoryStyle ? '600px' : '500px', maxHeight: inventoryStyle ? '80%' : '70%' }}
-      >
-        <div className="mb-[15px] flex items-center justify-between border-b-2 border-card pb-[10px]">
-          <h3 className={inventoryStyle ? 'text-xl font-bold text-accent' : 'text-[18px] font-bold text-accent'}>{title}</h3>
-          <button type="button" onClick={onClose} aria-label="Close" className="border-0 bg-transparent text-2xl font-bold leading-none text-[#aaa] hover:text-white">&times;</button>
-        </div>
-        <div className="min-h-0 max-h-[300px] flex-1 overflow-y-auto"><ModalBody npc={npc} kind={kind} /></div>
-      </div>
+  const title = `${name}'s ${TITLES[kind]}`
+  const expanded = kind === 'inventory' || kind === 'spells'
+  return <div className={expanded ? 'neq-npc-inventory-modal' : 'neq-npc-details-modal'} onClick={onClose}>
+    <div role="dialog" aria-modal="true" aria-label={title} className={expanded ? 'neq-npc-inventory-modal-content' : 'neq-npc-details-modal-content'} onClick={(event) => event.stopPropagation()}>
+      <div className={expanded ? 'neq-npc-inventory-header' : 'neq-npc-details-header'}><div className={expanded ? 'neq-npc-inventory-title' : 'neq-npc-details-title'}>{title}</div><span role="button" tabIndex={0} aria-label="Close" className={expanded ? 'neq-npc-inventory-close' : 'neq-npc-details-close'} onClick={onClose} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onClose() }}>&times;</span></div>
+      <div className={expanded ? 'neq-npc-inventory-body' : 'neq-npc-details-body'}>{kind === 'inventory' ? <InventoryBody npc={npc} /> : kind === 'spells' ? <SpellsBody npc={npc} /> : <DetailBody npc={npc} kind={kind} />}</div>
     </div>
-  )
+  </div>
 }

@@ -1,33 +1,17 @@
 import { expect, test, type Page } from '@playwright/test'
 import fs from 'node:fs/promises'
-import path from 'node:path'
+import { assertNamedPair, captureStable, installDeterminism, parityOutputRoot, settleApplication } from './strict-oracle'
 
-const outputRoot = process.env.NEQ_PARITY_OUTPUT ?? 'test-results/parity-captures'
+const outputRoot = parityOutputRoot
 
 async function settle(page: Page, legacy: boolean) {
-  if (legacy) {
-    await expect(page.locator('#status-indicator')).toHaveClass(/connected/, { timeout: 15_000 })
-  } else {
-    await expect(page.getByLabel('Connected')).toBeVisible({ timeout: 15_000 })
-  }
-  await expect(legacy ? page.locator('.character-name') : page.getByAltText('Portrait of Arden Vale')).toBeVisible({ timeout: 15_000 })
-  await page.evaluate(async () => {
-    await document.fonts.ready
-    document.getAnimations().forEach((animation) => {
-      animation.pause()
-      animation.currentTime = 0
-    })
-  })
-  await page.waitForTimeout(350)
+  await settleApplication(page, legacy)
 }
 
 async function capture(page: Page, name: string, legacy: boolean) {
   const side = legacy ? 'legacy' : 'react'
-  await page.screenshot({
-    path: path.join(outputRoot, `${name}-${side}.png`),
-    animations: 'disabled',
-    caret: 'hide',
-  })
+  await captureStable(page, name, side)
+  if (!legacy) await assertNamedPair(name)
 }
 
 test.beforeAll(async () => fs.mkdir(outputRoot, { recursive: true }))
@@ -36,8 +20,17 @@ test('capture real application legacy and React parity surfaces', async ({ brows
   test.setTimeout(240_000)
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, 'Requires the real NeverEndingQuest server')
 
-  const legacy = await browser.newPage({ viewport: { width: 2048, height: 1228 }, deviceScaleFactor: 1 })
-  const react = await browser.newPage({ viewport: { width: 2048, height: 1228 }, deviceScaleFactor: 1 })
+  const legacyContext = await browser.newContext({ viewport: { width: 2048, height: 1228 }, deviceScaleFactor: 1 })
+  const reactContext = await browser.newContext({ viewport: { width: 2048, height: 1228 }, deviceScaleFactor: 1 })
+  await Promise.all([installDeterminism(legacyContext), installDeterminism(reactContext)])
+  // The parity fixture deliberately exposes process-global transition states
+  // (combat, compression, reconnect, and module progress).  Always restore
+  // the canonical game before opening either UI so a prior scenario run can
+  // never contaminate the supposedly static 01-19 capture set.
+  const baseline = await legacyContext.request.post('/__parity__/scenario/baseline')
+  expect(baseline.ok(), 'Parity fixture baseline reset must succeed').toBeTruthy()
+  const legacy = await legacyContext.newPage()
+  const react = await reactContext.newPage()
   await legacy.goto('/')
   await react.goto('/play/')
   await settle(legacy, true)
@@ -73,16 +66,16 @@ test('capture real application legacy and React parity surfaces', async ({ brows
   await settle(react, false)
 
   const dialogs = [
-    { name: '07-save', legacyFunction: 'openSaveDialog', react: 'Save' },
-    { name: '08-load', legacyFunction: 'openLoadDialog', react: 'Load' },
-    { name: '09-reset', legacyFunction: 'openResetDialog', react: 'Reset' },
+    { name: '07-save', legacy: '#save-button', react: 'Save' },
+    { name: '08-load', legacy: '#load-button', react: 'Load' },
+    { name: '09-reset', legacy: '#reset-button', react: 'Reset' },
   ]
   for (const dialog of dialogs) {
-    await legacy.evaluate((functionName) => {
-      const callable = (window as unknown as Record<string, () => void>)[functionName]
-      if (!callable) throw new Error(`Missing legacy dialog function: ${functionName}`)
-      callable()
-    }, dialog.legacyFunction)
+    // Exercise both applications through the same real user interaction.
+    // Calling only the legacy global function leaves focus in the command
+    // field while clicking React moves it to the header button, creating a
+    // large but artificial native-focus screenshot difference.
+    await legacy.locator(dialog.legacy).click()
     await react.getByRole('button', { name: dialog.react, exact: true }).click()
     await legacy.waitForTimeout(300)
     await react.waitForTimeout(300)
@@ -140,6 +133,6 @@ test('capture real application legacy and React parity surfaces', async ({ brows
     await capture(react, `${String(13 + index).padStart(2, '0')}-npc-${slug}`, false)
   }
 
-  await legacy.close()
-  await react.close()
+  await legacyContext.close()
+  await reactContext.close()
 })

@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 
 test('reconnect deduplicates input and recovers a missed operation terminal event', async ({ page, context, request }) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, 'Requires the deterministic real server')
+  await request.post('/__parity__/scenario/reset')
   await page.goto('/play/')
   await expect(page.getByAltText('Portrait of Arden Vale')).toBeVisible({ timeout: 15_000 })
 
@@ -10,7 +11,7 @@ test('reconnect deduplicates input and recovers a missed operation terminal even
   await expect(page.getByText('A uniquely correlated reconnect command', { exact: true })).toHaveCount(1)
 
   await request.post('/__parity__/scenario/compression')
-  await expect(page.getByText('Chronicle Compression')).toBeVisible()
+  await expect(page.getByText('Chronicle Compression', { exact: true })).toBeVisible()
   await context.setOffline(true)
   await expect(page.getByText('Disconnected from the game server. Reconnecting...')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByRole('button', { name: 'Game Running' })).toBeDisabled()
@@ -22,10 +23,13 @@ test('reconnect deduplicates input and recovers a missed operation terminal even
   await expect(page.getByRole('heading', { name: 'Chronicle Compression', exact: true })).toBeHidden({ timeout: 8_000 })
 })
 
-test('a new server instance accepts fresh low revisions without reloading the browser', async ({ page, request }) => {
+test('a new server instance accepts fresh low revisions after transport reconnect without reloading the browser', async ({ page, context, request }) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, 'Requires the deterministic real server')
+  await request.post('/__parity__/scenario/reset')
   await page.goto('/play/')
   await expect(page.getByText(/Mosswatch Gate/).first()).toBeVisible({ timeout: 15_000 })
+  await context.setOffline(true)
   await request.post('/__parity__/scenario/server-instance-reset')
+  await context.setOffline(false)
   await expect(page.getByText(/Restarted Watchtower/).first()).toBeVisible({ timeout: 10_000 })
 })

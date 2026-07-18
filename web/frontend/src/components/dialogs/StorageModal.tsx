@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs, useWorld } from '../../stores'
+import './dialog-parity.css'
 
 interface StorageItem {
   name: string
@@ -32,6 +33,7 @@ function toContainer(raw: unknown): StorageContainer {
 function StorageModalBody() {
   const closeDialog = useDialogs((s) => s.closeDialog)
   const storage = useWorld((s) => s.storage)
+  const storageError = useWorld((s) => s.storageError)
 
   // Refresh storage data every time the modal opens.
   useEffect(() => {
@@ -39,7 +41,9 @@ function StorageModalBody() {
   }, [])
 
   let body
-  if (storage === null) {
+  if (storageError) {
+    body = <p className="p-8 text-center font-body text-secondary">No player storage found.</p>
+  } else if (storage === null) {
     body = <p className="p-8 text-center font-body italic text-secondary">Fetching storage data...</p>
   } else {
     const success = storage['success'] === true
@@ -50,25 +54,25 @@ function StorageModalBody() {
       body = <p className="p-8 text-center font-body text-secondary">No player storage found.</p>
     } else {
       body = (
-        <div className="flex flex-col gap-3">
+        <div>
           {containers.map((container, i) => (
             <section
               key={`${container.name}-${i}`}
               aria-label={container.name}
-              className="rounded border-2 border-card bg-page p-3"
+              className="neq-storage-container-parity"
             >
-              <div className="flex items-baseline justify-between gap-2 border-b border-card pb-2">
-                <span className="font-display text-base text-primary">{container.name}</span>
-                <span className="font-chrome text-xs text-secondary">{container.location}</span>
+              <div className="neq-storage-container-header-parity">
+                <span className="neq-storage-name-parity">{container.name}</span>
+                <span className="neq-storage-location-parity">{container.location}</span>
               </div>
-              <ul className="mt-2 font-body text-sm">
+              <ul className="neq-storage-list-parity">
                 {container.contents.length === 0 ? (
-                  <li className="italic text-secondary">This container is empty.</li>
+                  <li className="neq-storage-item-parity">This container is empty.</li>
                 ) : (
                   container.contents.map((item, j) => (
-                    <li key={`${item.name}-${j}`} className="flex justify-between py-0.5">
-                      <span className="text-primary">{item.name}</span>
-                      <span className="font-log text-xs text-secondary">x{item.quantity}</span>
+                    <li key={`${item.name}-${j}`} className="neq-storage-item-parity">
+                      <span className="neq-storage-item-name-parity">{item.name}</span>{' '}
+                      <span className="neq-storage-item-quantity-parity">(x{item.quantity})</span>
                     </li>
                   ))
                 )}
@@ -82,18 +86,18 @@ function StorageModalBody() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+      className="neq-storage-overlay-parity"
       role="dialog"
       aria-modal="true"
       aria-labelledby="player-storage-title"
       onMouseDown={(event) => { if (event.target === event.currentTarget) closeDialog() }}
     >
-      <div className="flex h-[85%] max-h-[90vh] w-[80%] max-w-[90vw] flex-col rounded-lg border-2 border-[#4caf50] bg-[#2c2c2c] p-5 font-chrome">
-        <div className="mb-[15px] flex items-center justify-between border-b-2 border-card pb-[10px]">
-          <h3 id="player-storage-title" className="text-xl font-bold text-accent">Player Storage</h3>
-          <button type="button" onClick={closeDialog} aria-label="Close" className="border-0 bg-transparent text-[28px] font-bold leading-none text-[#aaa] hover:text-white">&times;</button>
+      <div className="neq-storage-modal-parity">
+        <div className="neq-storage-header-parity">
+          <h3 id="player-storage-title" className="neq-storage-title-parity">Player Storage</h3>
+          <button type="button" onClick={closeDialog} aria-label="Close" className="neq-storage-close-parity">&times;</button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">{body}</div>
+        <div className="neq-storage-body-parity">{body}</div>
       </div>
     </div>
   )

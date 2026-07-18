@@ -1,13 +1,12 @@
 import { useEffect, useId, useRef } from 'react'
-import type { KeyboardEvent, ReactNode } from 'react'
+import type { KeyboardEvent, ReactNode, RefObject } from 'react'
+import './dialog-parity.css'
 
 /** Shared button styles for dialog footers (matches the HeaderBar chrome). */
-const buttonBase =
-  'flex-1 cursor-pointer rounded border-0 p-[10px] font-chrome text-sm leading-[normal] text-white ' +
-  'transition-colors disabled:cursor-not-allowed disabled:bg-[#555] disabled:opacity-60'
-export const dialogButtonSecondary = `${buttonBase} bg-[#666] hover:bg-[#555]`
-export const dialogButtonPrimary = `${buttonBase} bg-[#4caf50] hover:bg-[#45a049]`
-export const dialogButtonDanger = `${buttonBase} bg-[#f44336] hover:bg-[#da190b]`
+const buttonBase = 'neq-dialog-button-parity'
+export const dialogButtonSecondary = `${buttonBase} secondary`
+export const dialogButtonPrimary = `${buttonBase} primary`
+export const dialogButtonDanger = `${buttonBase} danger`
 
 export interface DialogShellProps {
   title: ReactNode
@@ -17,13 +16,17 @@ export interface DialogShellProps {
   maxWidth?: string
   /** Use the legacy save/reset chrome instead of the generic card header. */
   legacy?: boolean
+  /** Optional scoped parity modifier for a legacy dialog subtype. */
+  className?: string
+  /** Legacy dialogs focus their primary input when opened. */
+  initialFocusRef?: RefObject<HTMLElement | null>
 }
 
 /**
  * Shared modal chrome: dark backdrop + the signature neq-card dialog.
  * Clicking the backdrop (but not the card) closes the dialog.
  */
-export function DialogShell({ title, onClose, children, maxWidth = '32rem', legacy = false }: DialogShellProps) {
+export function DialogShell({ title, onClose, children, maxWidth = '32rem', legacy = false, className = '', initialFocusRef }: DialogShellProps) {
   const titleId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
@@ -32,9 +35,10 @@ export function DialogShell({ title, onClose, children, maxWidth = '32rem', lega
     const previousFocus = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null
-    closeButtonRef.current?.focus()
+    if (initialFocusRef?.current) initialFocusRef.current.focus()
+    else if (!legacy) closeButtonRef.current?.focus()
     return () => previousFocus?.focus()
-  }, [])
+  }, [initialFocusRef, legacy])
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
@@ -65,8 +69,8 @@ export function DialogShell({ title, onClose, children, maxWidth = '32rem', lega
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.75)' }}
+      className={legacy ? 'neq-dialog-overlay-parity' : 'fixed inset-0 z-50 flex items-center justify-center p-4'}
+      style={legacy ? undefined : { backgroundColor: 'rgba(0, 0, 0, 0.75)' }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
@@ -77,10 +81,10 @@ export function DialogShell({ title, onClose, children, maxWidth = '32rem', lega
     >
       <div
         ref={dialogRef}
-        className={legacy ? 'neq-legacy-dialog' : 'neq-card flex max-h-[85vh] w-full flex-col overflow-hidden'}
+        className={legacy ? `neq-save-dialog-parity ${className}` : `neq-card flex max-h-[85vh] w-full flex-col overflow-hidden ${className}`}
         style={{ maxWidth }}
       >
-        <div className={legacy ? 'neq-legacy-dialog-heading' : 'flex items-center justify-between border-b-2 border-card px-4 py-3'}>
+        <div className={legacy ? 'neq-dialog-heading-parity' : 'flex items-center justify-between border-b-2 border-card px-4 py-3'}>
           <h3 id={titleId} className={legacy ? '' : 'font-display text-lg text-primary'}>{title}</h3>
           <button
             ref={closeButtonRef}
@@ -92,7 +96,7 @@ export function DialogShell({ title, onClose, children, maxWidth = '32rem', lega
             &times;
           </button>
         </div>
-        <div className={legacy ? 'min-h-0 flex-1 overflow-y-auto' : 'min-h-0 flex-1 overflow-y-auto p-4'}>{children}</div>
+        <div className={legacy ? 'neq-dialog-body-parity' : 'min-h-0 flex-1 overflow-y-auto p-4'}>{children}</div>
       </div>
     </div>
   )

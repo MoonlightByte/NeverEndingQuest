@@ -72,9 +72,31 @@ describe('player store', () => {
   })
 
   it('accepts a lower revision from a restarted server instance', () => {
+    usePlayer.getState().beginConnection(1)
+    usePlayer.getState().bindServerInstance(1, 'server-a')
     usePlayer.getState().setPlayerData({ dataType: 'stats', data: { name: 'Before restart' }, revision: 40, server_instance_id: 'server-a' })
+    usePlayer.getState().beginConnection(2)
+    usePlayer.getState().bindServerInstance(2, 'server-b')
     usePlayer.getState().setPlayerData({ dataType: 'stats', data: { name: 'After restart' }, revision: 1, server_instance_id: 'server-b' })
     expect(usePlayer.getState().stats?.name).toBe('After restart')
+  })
+
+  it('preserves the last good slice when a refresh reports an error', () => {
+    usePlayer.getState().setPlayerData({ dataType: 'stats', data: { name: 'Tarin' }, revision: 1 })
+    usePlayer.getState().setPlayerData({ dataType: 'stats', data: null, error: 'temporary read failure', revision: 2 })
+    expect(usePlayer.getState().stats?.name).toBe('Tarin')
+    expect(usePlayer.getState().dataErrors.stats).toBe('temporary read failure')
+  })
+
+  it('rejects a delayed response from the previous server instance', () => {
+    usePlayer.getState().beginConnection(1)
+    usePlayer.getState().bindServerInstance(1, 'server-a')
+    usePlayer.getState().setPlayerData({ dataType: 'stats', data: { name: 'Old' }, revision: 20, server_instance_id: 'server-a' })
+    usePlayer.getState().beginConnection(2)
+    usePlayer.getState().bindServerInstance(2, 'server-b')
+    usePlayer.getState().setPlayerData({ dataType: 'stats', data: { name: 'New' }, revision: 1, server_instance_id: 'server-b' })
+    usePlayer.getState().setPlayerData({ dataType: 'stats', data: { name: 'Delayed old' }, revision: 21, server_instance_id: 'server-a' })
+    expect(usePlayer.getState().stats?.name).toBe('New')
   })
 })
 
@@ -88,9 +110,37 @@ describe('world convergence', () => {
 
   it('resets revision floors when the server instance changes', () => {
     const base = { currentArea: 'A', currentLocationId: 'L', currentAreaId: 'A', time: '12:00', day: 1, month: 'Spring', year: 1 }
+    useWorld.getState().beginConnection(1)
+    useWorld.getState().bindServerInstance(1, 'server-a')
     useWorld.getState().setLocation({ data: { ...base, currentLocation: 'Before restart' }, revision: 30, server_instance_id: 'server-a' })
+    useWorld.getState().beginConnection(2)
+    useWorld.getState().bindServerInstance(2, 'server-b')
     useWorld.getState().setLocation({ data: { ...base, currentLocation: 'After restart' }, revision: 1, server_instance_id: 'server-b' })
     expect(useWorld.getState().location?.currentLocation).toBe('After restart')
+  })
+
+  it('preserves last good world data while surfacing refresh errors', () => {
+    const location = { currentArea: 'A', currentLocation: 'Camp', currentLocationId: 'L', currentAreaId: 'A', time: '12:00', day: 1, month: 'Spring', year: 1 }
+    useWorld.getState().setLocation({ data: location, revision: 1 })
+    useWorld.getState().setParty({ members: [{ name: 'Tarin' }], revision: 2 })
+    useWorld.getState().setLocation({ data: null, error: 'temporary read failure', revision: 3 })
+    useWorld.getState().setParty({ members: [], error: 'temporary read failure', revision: 4 })
+    expect(useWorld.getState().location?.currentLocation).toBe('Camp')
+    expect(useWorld.getState().party).toEqual([{ name: 'Tarin' }])
+    expect(useWorld.getState().locationError).toBe('temporary read failure')
+    expect(useWorld.getState().partyError).toBe('temporary read failure')
+  })
+
+  it('rejects delayed world data from the previous connection server', () => {
+    const base = { currentArea: 'A', currentLocationId: 'L', currentAreaId: 'A', time: '12:00', day: 1, month: 'Spring', year: 1 }
+    useWorld.getState().beginConnection(1)
+    useWorld.getState().bindServerInstance(1, 'server-a')
+    useWorld.getState().setLocation({ data: { ...base, currentLocation: 'Old' }, revision: 20, server_instance_id: 'server-a' })
+    useWorld.getState().beginConnection(2)
+    useWorld.getState().bindServerInstance(2, 'server-b')
+    useWorld.getState().setLocation({ data: { ...base, currentLocation: 'New' }, revision: 1, server_instance_id: 'server-b' })
+    useWorld.getState().setLocation({ data: { ...base, currentLocation: 'Delayed old' }, revision: 21, server_instance_id: 'server-a' })
+    expect(useWorld.getState().location?.currentLocation).toBe('New')
   })
 })
 

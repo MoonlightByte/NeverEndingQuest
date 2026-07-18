@@ -41,13 +41,13 @@ export function MessageCard({ message, images = [] }: MessageCardProps) {
   switch (message.type) {
     case 'narration':
       return (
-        <div className="my-5 flex items-start gap-3" data-message-type="narration">
-          <div className="h-10 w-10 flex-shrink-0 overflow-hidden rounded-full" aria-hidden="true">
+        <div className="neq-message neq-message-narration my-5 flex items-start gap-3" data-message-type="narration">
+          <div className="neq-message-avatar h-10 w-10 flex-shrink-0 overflow-hidden rounded-full" aria-hidden="true">
             <img src="/static/dm_logo.png" alt="" className="h-full w-full object-cover" />
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="mb-1 flex items-center gap-2">
-              <span className="font-display text-base font-bold" style={{ color: '#ffb347' }}>
+          <div className="neq-message-content min-w-0 flex-1">
+            <div className="neq-message-header mb-1 flex items-center gap-2">
+              <span className="neq-message-author text-base font-bold" style={{ color: '#ffb347' }}>
                 Dungeon Master
               </span>
               <span
@@ -60,7 +60,7 @@ export function MessageCard({ message, images = [] }: MessageCardProps) {
               {aiImages && <GenerateImageButton content={message.content} messageId={message.message_id} />}
             </div>
             <div
-              className="whitespace-pre-wrap font-log text-[17px] leading-snug"
+              className="neq-message-text whitespace-pre-wrap font-log text-[17px] leading-snug"
               style={{ color: '#ffa500' }}
             >
               {message.content}
@@ -72,22 +72,22 @@ export function MessageCard({ message, images = [] }: MessageCardProps) {
 
     case 'user-input':
       return (
-        <div className="my-5 flex items-start gap-3" data-message-type="user-input">
+        <div className="neq-message neq-message-user my-5 flex items-start gap-3" data-message-type="user-input">
           <div
-            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full font-log text-xl text-white"
+            className="neq-message-avatar flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full font-log text-xl text-white"
             style={{ backgroundColor: '#4a90e2' }}
             aria-hidden="true"
           >
             {'⚔️'}
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="mb-1">
-              <span className="font-chrome text-base font-bold" style={{ color: '#4a90e2' }}>
+          <div className="neq-message-content min-w-0 flex-1">
+            <div className="neq-message-header mb-1">
+              <span className="neq-message-author font-chrome text-base font-bold" style={{ color: '#4a90e2' }}>
                 You
               </span>
             </div>
             <div
-              className="whitespace-pre-wrap font-log text-[17px] leading-snug"
+              className="neq-message-text whitespace-pre-wrap font-log text-[17px] leading-snug"
               style={{ color: '#e8e8e8' }}
             >
               {message.content}
@@ -98,14 +98,14 @@ export function MessageCard({ message, images = [] }: MessageCardProps) {
 
     case 'error':
       return (
-        <div className="my-4 flex justify-center" data-message-type="error">
+        <div className="my-[20px] flex justify-center" data-message-type="error">
           <div
-            className="max-w-[500px] rounded-lg border px-3 py-2 text-center"
+            className="w-full min-w-0 max-w-[500px] flex-1 rounded-lg border px-3 py-2 text-center"
             style={{ backgroundColor: '#5a2d2d', borderColor: '#8b3333' }}
           >
             <div
               className="whitespace-pre-wrap font-log text-[13px]"
-              style={{ color: '#ffaaaa' }}
+              style={{ color: '#ffaaaa', lineHeight: 1.4 }}
             >
               {message.content}
             </div>
@@ -125,12 +125,12 @@ export function MessageCard({ message, images = [] }: MessageCardProps) {
     case 'system':
     case 'startup':
       return (
-        <div className="my-4 flex justify-center" data-message-type={message.type}>
+        <div className="my-[20px] flex justify-center" data-message-type={message.type}>
           <div
-            className="max-w-[500px] rounded-lg border px-3 py-2 text-center"
+            className="w-full min-w-0 max-w-[500px] flex-1 rounded-lg border px-3 py-2 text-center"
             style={{ backgroundColor: '#2a2a2a', borderColor: '#444' }}
           >
-            <div className="whitespace-pre-wrap font-log text-[13px] italic text-secondary">
+            <div className="whitespace-pre-wrap font-log text-[13px] italic text-secondary" style={{ lineHeight: 1.4 }}>
               {message.content}
             </div>
           </div>

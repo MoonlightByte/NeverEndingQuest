@@ -7,6 +7,10 @@ import { Server } from 'socket.io'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const dist = path.resolve(here, '..', 'dist')
 const port = Number(process.env.NEQ_E2E_PORT ?? 4174)
+const supportedHydrationModes = new Set(['legacy', 'correlated', 'mixed', 'delayed'])
+let hydrationMode = supportedHydrationModes.has(process.env.NEQ_E2E_HYDRATION_MODE)
+  ? process.env.NEQ_E2E_HYDRATION_MODE
+  : 'correlated'
 
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -17,6 +21,18 @@ const contentTypes = {
 
 const server = http.createServer((request, response) => {
   const requestPath = new URL(request.url ?? '/', `http://${request.headers.host}`).pathname
+  if (request.method === 'POST' && requestPath.startsWith('/__e2e__/hydration/')) {
+    const requestedMode = requestPath.split('/').at(-1)
+    if (!supportedHydrationModes.has(requestedMode)) {
+      response.writeHead(400, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ ok: false, supported: [...supportedHydrationModes] }))
+      return
+    }
+    hydrationMode = requestedMode
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ ok: true, mode: hydrationMode }))
+    return
+  }
   if (requestPath === '/') {
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
     response.end('<!doctype html><title>Legacy NeverEndingQuest</title>')
@@ -59,8 +75,25 @@ const stats = {
   strength: 15, dexterity: 13, constitution: 14,
   intelligence: 8, wisdom: 12, charisma: 10,
   hitPoints: 12, maxHitPoints: 12, armorClass: 18, initiative: 1,
-  savingThrows: ['strength', 'constitution'], proficiencyBonus: 2,
+  abilities: {
+    strength: 15, dexterity: 13, constitution: 14,
+    intelligence: 8, wisdom: 12, charisma: 10,
+  },
+  savingThrows: ['strength', 'constitution'],
+  savingThrowProficiencies: ['strength', 'constitution'], proficiencyBonus: 2,
 }
+
+const party = [
+  { name: 'Rowan Vale', type: 'player', currentHp: 12, maxHp: 12, ac: 18, level: 1, class: 'Fighter' },
+  { name: 'Lira Sandwalk', type: 'npc', currentHp: 9, maxHp: 11, ac: 14, level: 1, class: 'Ranger' },
+  { name: 'Oren Flint', type: 'npc', currentHp: 15, maxHp: 15, ac: 16, level: 1, class: 'Cleric' },
+  { name: 'Mara Quill', type: 'npc', currentHp: 8, maxHp: 10, ac: 13, level: 1, class: 'Wizard' },
+]
+
+const locationNpcs = [
+  { name: 'Keeper Noll', type: 'location_npc', currentHp: 7, maxHp: 7, ac: 11 },
+  { name: 'Scout Pell', type: 'location_npc', currentHp: 6, maxHp: 8, ac: 12 },
+]
 
 const initialMessages = [
   { type: 'narration', content: 'The wind whispers across the Forsaken Crossroads.' },
@@ -68,6 +101,31 @@ const initialMessages = [
 
 io.on('connection', (socket) => {
   let initiative = { active: false, combatants: [], round: 0 }
+  let revision = 0
+  let delayedSequence = 0
+  const correlated = (event, requestPayload, payload) => {
+    const withMetadata = {
+      ...payload,
+      revision: ++revision,
+      server_instance_id: 'e2e-deterministic-server',
+      ...(requestPayload?.request_id ? { request_id: requestPayload.request_id } : {}),
+    }
+    if (hydrationMode === 'legacy') return payload
+    if (hydrationMode === 'mixed' && event === 'location_data_response') return payload
+    return withMetadata
+  }
+  const hydrate = (event, requestPayload, payload) => {
+    const responsePayload = correlated(event, requestPayload, payload)
+    if (hydrationMode !== 'delayed') {
+      socket.emit(event, responsePayload)
+      return
+    }
+    // Deterministically invert adjacent response timing. This exercises the
+    // production client's request-id/revision rejection without introducing
+    // random sleeps into screenshots.
+    const delay = delayedSequence++ % 2 === 0 ? 35 : 0
+    setTimeout(() => socket.emit(event, responsePayload), delay)
+  }
   socket.emit('connected', { data: 'Connected to NeverEndingQuest' })
   socket.emit('version_status', {
     update_available: false, local_version: 'e2e', remote_version: 'e2e', message: 'Current',
@@ -75,13 +133,14 @@ io.on('connection', (socket) => {
   socket.emit('cached_messages', initialMessages)
   socket.emit('game_resumed', { is_processing: false, message: 'Reconnected to your game.' })
 
-  socket.on('request_location_data', () => socket.emit('location_data_response', { data: location }))
-  socket.on('request_party_data', () => socket.emit('party_data_response', {
-    members: [{ name: 'Rowan Vale', type: 'player', hitPoints: 12, maxHitPoints: 12 }],
-    location_npcs: [{ name: 'Lira Sandwalk', type: 'npc' }],
+  socket.on('request_location_data', (requestPayload) => hydrate('location_data_response', requestPayload, { data: location }))
+  socket.on('request_party_data', (requestPayload) => hydrate('party_data_response', requestPayload, {
+    members: party,
+    location_npcs: locationNpcs,
   }))
-  socket.on('request_initiative_data', () => socket.emit('initiative_data_response', initiative))
-  socket.on('request_player_data', ({ dataType }) => {
+  socket.on('request_initiative_data', (requestPayload) => hydrate('initiative_data_response', requestPayload, initiative))
+  socket.on('request_player_data', (requestPayload) => {
+    const { dataType } = requestPayload
     if (dataType === 'stats') socket.emit('player_data_response', { dataType, data: stats })
     else socket.emit('player_data_response', { dataType, data: {} })
   })

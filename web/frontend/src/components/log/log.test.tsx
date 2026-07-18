@@ -4,8 +4,9 @@
  * services/socket is mocked -- no socket connection is made.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { StrictMode } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { useLog, useSession, useSettings } from '../../stores'
+import { useDialogs, useLog, useSession, useSettings } from '../../stores'
 import { emitC } from '../../services/socket'
 import { GameLog } from './GameLog'
 import { MessageCard } from './MessageCard'
@@ -24,6 +25,7 @@ beforeEach(() => {
   useLog.setState(initialLog, true)
   useSession.setState(initialSession, true)
   useSettings.setState(initialSettings, true)
+  useDialogs.setState({ actionResult: null })
   vi.clearAllMocks()
 })
 
@@ -64,6 +66,12 @@ describe('MessageCard', () => {
 })
 
 describe('GameLog', () => {
+  it('keeps the legacy output area blank before transport hydration', () => {
+    render(<GameLog />)
+
+    expect(screen.getByRole('log').textContent).toBe('')
+  })
+
   it('renders log store messages and attaches generated images to the matching narration', () => {
     useLog.getState().append({ type: 'narration', content: 'The dragon roars.' })
     useLog.getState().append({ type: 'user-input', content: 'I run.' })
@@ -124,6 +132,63 @@ describe('InputBar', () => {
     expect(input.disabled).toBe(true)
     expect((screen.getByText('Send') as HTMLButtonElement).disabled).toBe(true)
     expect(screen.getByRole('status').textContent).toContain('The DM is thinking...')
+  })
+
+  it('stays visible but locked during the startup handoff', () => {
+    useSession.getState().setConnected(true)
+    useSession.getState().startRequested()
+    render(<InputBar />)
+
+    expect((screen.getByPlaceholderText('Enter your command...') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByText('Send') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('accepts startup-wizard input after the server settles the prompt', () => {
+    useSession.getState().setConnected(true)
+    useSession.getState().startRequested()
+    useSession.getState().setStartup('in_progress', 'Choose your character')
+    render(<InputBar />)
+    const input = screen.getByLabelText('Player input') as HTMLInputElement
+    expect(input.disabled).toBe(true)
+
+    act(() => useSession.getState().setStatus({ message: 'Ready', is_processing: false }))
+    expect(input.disabled).toBe(false)
+    fireEvent.change(input, { target: { value: 'Arden Vale' } })
+    fireEvent.click(screen.getByText('Send'))
+    expect(emitC).toHaveBeenCalledWith('user_input', { input: 'Arden Vale' })
+  })
+
+  it('matches the legacy visual unlock but rejects commands when startup fails', () => {
+    useSession.setState({ connected: true, mode: 'starting', startupStatus: 'failed' })
+    render(<InputBar />)
+
+    const input = screen.getByPlaceholderText('Enter your command...') as HTMLInputElement
+    expect(input.disabled).toBe(false)
+    expect((screen.getByText('Send') as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.change(input, { target: { value: 'do not queue this' } })
+    fireEvent.click(screen.getByText('Send'))
+    expect(emitC).not.toHaveBeenCalled()
+    expect(input.value).toBe('do not queue this')
+  })
+
+  it('locks while a confirmed campaign reset is pending', () => {
+    useSession.getState().setConnected(true)
+    useSession.getState().gameStarted('ready')
+    useDialogs.setState({ actionResult: { kind: 'reset', message: 'Reset pending' } })
+    render(<InputBar />)
+
+    expect((screen.getByPlaceholderText('Enter your command...') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByText('Send') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('locks after exit without replacing the legacy command placeholder', () => {
+    useSession.getState().setConnected(true)
+    useSession.getState().gameStarted('ready')
+    useDialogs.setState({ actionResult: { kind: 'exit', message: 'You can now safely close this browser tab.' } })
+    render(<InputBar />)
+
+    expect((screen.getByPlaceholderText('Enter your command...') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByText('Send') as HTMLButtonElement).disabled).toBe(true)
   })
 })
 
@@ -203,6 +268,45 @@ describe('TtsButton', () => {
     expect(screen.getAllByTitle('Stop playback')).toHaveLength(1)
     act(() => utterances[1]?.onend?.())
     expect(screen.queryByTitle('Stop playback')).toBeNull()
+  })
+
+  it('returns to idle after playback completes under React StrictMode', () => {
+    let utterance: FakeUtterance | null = null
+    class FakeUtterance {
+      onend: (() => void) | null = null
+      onerror: (() => void) | null = null
+      text: string
+      constructor(text: string) { this.text = text; utterance = this }
+    }
+    useSettings.setState({ ttsEnabled: true, engine: 'browser' })
+    vi.stubGlobal('speechSynthesis', { speak: vi.fn(), cancel: vi.fn(), getVoices: () => [] })
+    vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance)
+
+    render(<StrictMode><TtsButton content="A strict tale." /></StrictMode>)
+    fireEvent.click(screen.getByTitle('Play DM Voice'))
+    expect(screen.getByTitle('Stop playback')).toBeTruthy()
+    act(() => utterance?.onend?.())
+    expect(screen.getByTitle('Play DM Voice')).toBeTruthy()
+  })
+
+  it('stops active playback when DM Voice is disabled', () => {
+    const cancel = vi.fn()
+    class FakeUtterance {
+      onend: (() => void) | null = null
+      onerror: (() => void) | null = null
+      text: string
+      constructor(text: string) { this.text = text }
+    }
+    useSettings.setState({ ttsEnabled: true, engine: 'browser' })
+    vi.stubGlobal('speechSynthesis', { speak: vi.fn(), cancel, getVoices: () => [] })
+    vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance)
+    render(<TtsButton content="Silence falls." />)
+
+    fireEvent.click(screen.getByTitle('Play DM Voice'))
+    act(() => useSettings.getState().setTtsEnabled(false))
+
+    expect(cancel).toHaveBeenCalled()
+    expect(screen.getByTitle('Play DM Voice')).toBeTruthy()
   })
 })
 

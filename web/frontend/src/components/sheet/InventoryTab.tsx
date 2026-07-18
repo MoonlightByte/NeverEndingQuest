@@ -7,6 +7,7 @@
 import { useMemo, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs, usePlayer } from '../../stores'
+import '../dialogs/dialog-parity.css'
 import {
   equipmentList,
   filterEquipment,
@@ -25,6 +26,7 @@ export function InventoryTab() {
   const inventory = usePlayer((s) => s.inventory)
   const error = usePlayer((s) => s.dataErrors.inventory)
   const [sort, setSort] = useState<InventorySort>('name-asc')
+  const [sortTouched, setSortTouched] = useState(false)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
@@ -40,8 +42,8 @@ export function InventoryTab() {
       if (category === 'equipped') return item.equipped
       return true
     })
-    return sortEquipment(filtered, sort)
-  }, [items, query, category, sort])
+    return sortTouched ? sortEquipment(filtered, sort) : filtered
+  }, [items, query, category, sort, sortTouched])
 
   if (error) {
     return <p className="p-4 font-body text-sm text-red-400">{error}</p>
@@ -56,22 +58,22 @@ export function InventoryTab() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-[10px] bg-page p-[10px] font-body">
+    <div className="neq-inventory-tab">
       <button
         type="button"
         onClick={openStorage}
-        className="shrink-0 rounded border-0 bg-[#4caf50] px-3 py-2 font-chrome text-sm font-bold text-white hover:bg-[#45a049]"
+        className="neq-storage-view-button"
       >
         View Player Storage
       </button>
 
-      <div className="flex shrink-0 items-center gap-3 rounded border border-card bg-panel p-2">
-        <button type="button" onClick={() => setSearchOpen(true)} className="rounded border border-soft bg-[#444] px-3 py-1.5 font-chrome text-xs text-primary">Search</button>
+      <div className="neq-inventory-controls">
+        <button type="button" onClick={() => setSearchOpen(true)} className="neq-inventory-control">Search</button>
         <select
           value={sort}
-          onChange={(e) => setSort(e.target.value as InventorySort)}
+          onChange={(e) => { setSort(e.target.value as InventorySort); setSortTouched(true) }}
           aria-label="Sort inventory"
-          className="min-w-0 flex-1 rounded border border-soft bg-panel px-2 py-1.5 font-chrome text-xs text-primary"
+          className="neq-inventory-control neq-inventory-sort"
         >
           {SORT_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -79,35 +81,27 @@ export function InventoryTab() {
             </option>
           ))}
         </select>
-        <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter inventory" className="min-w-0 flex-1 rounded border border-soft bg-panel px-2 py-1.5 font-chrome text-xs text-primary">
+        <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter inventory" className="neq-inventory-control neq-filter-dropdown">
           <option value="">Filter</option><option value="weapon">Weapons</option><option value="armor">Armor</option><option value="consumable">Consumables</option><option value="magical">Magical</option><option value="equipped">Equipped</option>
         </select>
-        <button type="button" onClick={() => { setQuery(''); setCategory(''); setSort('name-asc') }} className="rounded border border-soft bg-[#444] px-3 py-1.5 font-chrome text-xs text-primary">Clear</button>
+        <button type="button" onClick={() => { setQuery(''); setCategory(''); setSort('name-asc'); setSortTouched(false) }} className="neq-inventory-control">Clear</button>
       </div>
 
       {/* equipment list */}
-      <section className="flex min-h-0 flex-1 flex-col rounded border border-card bg-panel p-2">
-        <div className="flex shrink-0 items-baseline justify-between">
-          <h4 className="font-display text-xs text-accent">Equipment</h4>
-        </div>
-        <div className="mt-1 min-h-0 flex-1 overflow-y-auto">
+      <section className="neq-equipment-section">
+        <h4>Equipment</h4>
+        <div>
           {visible.length === 0 ? (
-            <p className="text-sm text-secondary">
-              {items.length === 0 ? 'No equipment' : 'No items match the filter'}
-            </p>
+            <div className="neq-inventory-item"><span className="neq-feature-bullet">●</span><span className="neq-item-name">{items.length === 0 ? 'No equipment' : 'No items match the filter'}</span></div>
           ) : (
             visible.map((item, i) => (
               <div
                 key={`${item.name}-${i}`}
-                className="group relative border-b border-card/60 py-1 text-sm last:border-b-0"
+                className="neq-inventory-item group relative"
               >
-                <span className="text-accent">{'\u25CF'} </span>
-                <span className={item.equipped ? 'text-primary' : 'text-secondary'}>
-                  {item.name}
-                  {item.quantity > 1 ? ` \u00D7${item.quantity}` : ''}
-                </span>
-                <span className="text-secondary"> ({item.type.toLowerCase()})</span>
-                {item.magical && <span className="text-emerald-1"> *</span>}
+                <span className="neq-feature-bullet">{'\u25CF'}</span>
+                <span className="neq-item-name">{`${item.name}${item.quantity > 1 ? ` \u00D7${item.quantity}` : ''}`}</span>
+                <span className="neq-item-type">{` (${item.type.toLowerCase()})`}</span>
                 {item.description !== '' && (
                   <div className="pointer-events-none absolute left-2 top-full z-20 hidden w-64 rounded border-2 border-card bg-panel p-2 shadow-lg group-hover:block">
                     <div className="font-display text-xs text-accent">{item.name}</div>
@@ -119,7 +113,7 @@ export function InventoryTab() {
           )}
         </div>
       </section>
-      {searchOpen && <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70" onClick={() => setSearchOpen(false)}><div role="dialog" aria-label="Search Inventory" className="w-[500px] rounded border-2 border-card bg-panel p-3" onClick={(event) => event.stopPropagation()}><div className="mb-3 flex items-center justify-between"><h3 className="font-display text-lg text-accent">Search Inventory</h3><button type="button" aria-label="Close" onClick={() => setSearchOpen(false)} className="text-xl text-secondary">×</button></div><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setSearchOpen(false) }} placeholder="Search items..." className="w-full rounded border border-card bg-page px-3 py-2 text-primary outline-none focus:border-accent" /></div></div>}
+      {searchOpen && <div className="neq-search-overlay-parity" onClick={() => setSearchOpen(false)}><div role="dialog" aria-label="Search Inventory" className="neq-search-popup-parity" onClick={(event) => event.stopPropagation()}><div className="neq-search-header-parity"><h3 className="neq-search-title-parity">Search Inventory</h3><button type="button" aria-label="Close" onClick={() => setSearchOpen(false)} className="neq-search-close-parity">×</button></div><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setSearchOpen(false) }} placeholder="Search items..." className="neq-search-input-parity" /></div></div>}
     </div>
   )
 }

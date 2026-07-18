@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
-import { useDialogs } from '../../stores'
+import { useDialogs, useLog } from '../../stores'
 import { prepareForServerRestart, reloadWhenServerReady } from '../../services/restart'
 import {
   DialogShell,
@@ -56,10 +56,20 @@ function LoadDialogBody() {
 
   const performLoad = async () => {
     if (!selected || restoring) return
+    if (!window.confirm('This will restore the selected save and restart the server. Your current progress will be lost. Continue?')) return
     setRestoring(true)
-    await prepareForServerRestart()
-    emitC('action', { action: 'restoreGame', parameters: { saveFolder: selected } })
-    // restore_complete triggers the page reload (see LoadDialog effect below).
+    try {
+      await prepareForServerRestart()
+      emitC('action', { action: 'restoreGame', parameters: { saveFolder: selected } })
+      closeDialog()
+      // restore_complete triggers the page reload (see LoadDialog effect below).
+    } catch (error) {
+      useLog.getState().append({
+        type: 'error',
+        content: `Game restore could not start: ${error instanceof Error ? error.message : String(error)}`,
+      })
+      setRestoring(false)
+    }
   }
 
   const deleteSelected = () => {
@@ -76,13 +86,13 @@ function LoadDialogBody() {
   const entries = (saveList ?? []).map(toSaveEntry).filter((e) => e.folder !== '')
 
   return (
-    <DialogShell title="Load Saved Game" onClose={closeDialog} maxWidth="500px" legacy>
-      <div className="flex flex-col gap-3 font-chrome text-sm">
-        <div className="max-h-[400px] overflow-y-auto rounded border border-soft bg-page p-2">
+    <DialogShell title="Load Saved Game" onClose={closeDialog} maxWidth="700px" legacy>
+      <div>
+        <div className="neq-save-list-parity">
           {saveList === null ? (
-            <p className="p-8 text-center text-secondary">Loading save games...</p>
+            <p className="neq-save-list-empty-parity">Loading...</p>
           ) : entries.length === 0 ? (
-            <p className="p-8 text-center text-secondary">No save games found.</p>
+            <p className="neq-save-list-empty-parity">No save games found.</p>
           ) : (
             entries.map((entry) => {
               const isSelected = entry.folder === selected
@@ -92,42 +102,24 @@ function LoadDialogBody() {
                   type="button"
                   onClick={() => setSelected(entry.folder)}
                   aria-pressed={isSelected}
-                  className="mb-2 block w-full cursor-pointer rounded-md border border-card bg-panel p-3 text-left last:mb-0"
-                  style={{
-                    backgroundColor: isSelected ? 'rgba(76, 175, 80, 0.12)' : undefined,
-                    outline: isSelected ? '2px solid var(--accent)' : 'none',
-                    outlineOffset: '-2px',
-                  }}
+                  className="neq-save-item-parity"
                 >
-                  <div className="flex items-center gap-2">
-                        <span className="font-chrome text-base font-bold text-accent">{entry.folder}</span>
+                  <div className="neq-save-item-header-parity">
+                    {entry.folder}
                     {entry.mode && (
-                      <span
-                        className="rounded px-2 py-0.5 text-xs font-bold uppercase"
-                        style={{
-                          backgroundColor:
-                            entry.mode === 'full' ? 'rgba(80, 200, 120, 0.15)' : 'rgba(76, 175, 80, 0.2)',
-                          color: 'var(--accent)',
-                        }}
-                      >
+                      <span className={`neq-save-mode-badge-parity ${entry.mode === 'full' ? 'full' : 'essential'}`}>
                         {entry.mode}
                       </span>
                     )}
                   </div>
-                  <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
-                    <dt className="w-[75px] font-semibold text-[#aaa]">Date:</dt>
-                    <dd className="text-[#FFA500]">{entry.date}</dd>
-                    <dt className="text-secondary">Module:</dt>
-                    <dd className="font-semibold text-accent">{entry.module}</dd>
-                    <dt className="text-secondary">Location:</dt>
-                    <dd className="text-[#87CEEB]">{entry.location}</dd>
+                  <div>
+                    <div className="neq-save-detail-row-parity"><span className="neq-save-detail-label-parity">Date:</span><span className="neq-save-detail-value-parity date">{entry.date}</span></div>
+                    <div className="neq-save-detail-row-parity"><span className="neq-save-detail-label-parity">Module:</span><span className="neq-save-detail-value-parity module">{entry.module}</span></div>
+                    <div className="neq-save-detail-row-parity"><span className="neq-save-detail-label-parity">Location:</span><span className="neq-save-detail-value-parity location">{entry.location}</span></div>
                     {entry.description && (
-                      <>
-                        <dt className="text-secondary">Notes:</dt>
-                        <dd className="font-body text-primary">{entry.description}</dd>
-                      </>
+                      <div className="neq-save-detail-row-parity"><span className="neq-save-detail-label-parity">Notes:</span><span className="neq-save-detail-value-parity description">{entry.description}</span></div>
                     )}
-                  </dl>
+                  </div>
                 </button>
               )
             })
@@ -135,12 +127,12 @@ function LoadDialogBody() {
         </div>
 
         {restoring && (
-          <p className="text-center font-log text-xs text-accent">
+          <p className="mt-3 text-center font-log text-xs text-accent">
             Restoring save... the page will reload when the server is ready.
           </p>
         )}
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="neq-dialog-buttons-parity">
           <button type="button" className={dialogButtonSecondary} onClick={closeDialog}>
             Cancel
           </button>

@@ -10,35 +10,23 @@
  * world.initiative state, from which combat mode is derived. Self-gating: renders nothing
  * while initiative is inactive (PartyStrip shows instead).
  */
-import { useEffect, useState } from 'react'
-import { emitC } from '../../services/socket'
-import { useLog, usePlayer, useSession, useWorld } from '../../stores'
+import { useState } from 'react'
+import { usePlayer, useSession, useWorld } from '../../stores'
 import { CharacterChip } from './CharacterChip'
 import type { ChipVariant } from './CharacterChip'
 import { MediaPopup } from './MediaPopup'
+import { HorizontalChipRail } from './PartyStrip'
 import {
   asString,
   combatantDisplayName,
+  initiativeNpcClickMedia,
+  initiativeNpcThumbCandidates,
+  initiativePlayerThumbCandidates,
   monsterClickMedia,
   monsterThumbCandidates,
   npcClassFallbackPortrait,
-  npcThumbCandidates,
-  partyClickMedia,
-  playerThumbCandidates,
 } from './media'
 import type { ChipKind, ClickMedia, MediaSource } from './media'
-
-/** Request initiative data now and after every new log message; returns unsubscribe. */
-function requestInitiativeOnLogActivity(): () => void {
-  emitC('request_initiative_data', undefined)
-  const unsubscribe = useLog.subscribe((state, previous) => {
-    if (state.messages !== previous.messages) {
-      emitC('request_initiative_data', undefined)
-    }
-  })
-  const timer = window.setInterval(() => emitC('request_initiative_data', undefined), 5000)
-  return () => { unsubscribe(); window.clearInterval(timer) }
-}
 
 export function InitiativeTracker() {
   const initiative = useWorld((s) => s.initiative)
@@ -48,8 +36,6 @@ export function InitiativeTracker() {
     return typeof value === 'string' ? value : null
   })
   const [media, setMedia] = useState<MediaSource | null>(null)
-
-  useEffect(() => requestInitiativeOnLogActivity(), [])
 
   // PartyStrip shows instead while combat is inactive.
   if (!initiative.active || initiative.combatants.length === 0) return null
@@ -72,12 +58,12 @@ export function InitiativeTracker() {
         clickMedia = monsterClickMedia(monsterType)
       }
     } else if (kind === 'player') {
-      thumbCandidates = playerThumbCandidates(name)
-      clickMedia = partyClickMedia(name, 'player')
+      // Legacy combat players have a strict portrait URL and no click media.
+      thumbCandidates = initiativePlayerThumbCandidates(name)
     } else {
-      thumbCandidates = npcThumbCandidates(name)
+      thumbCandidates = initiativeNpcThumbCandidates(name)
       thumbFallback = npcClassFallbackPortrait(name)
-      clickMedia = partyClickMedia(name, 'npc')
+      clickMedia = initiativeNpcClickMedia(name)
     }
 
     const variant: ChipVariant =
@@ -85,7 +71,7 @@ export function InitiativeTracker() {
 
     // Legacy parity: input being unlocked signals the player's turn.
     const active =
-      !isProcessing && kind === 'player' && (playerName === null || playerName === name)
+      !isProcessing && kind === 'player' && playerName !== null && playerName === name
 
     return (
       <CharacterChip
@@ -103,14 +89,10 @@ export function InitiativeTracker() {
     )
   }
 
-  return (
-    <div
-      aria-label="Initiative order"
-      className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto"
-      style={{ maxHeight: 60, scrollbarWidth: 'none' }}
-    >
+  return <>
+    <HorizontalChipRail label="Initiative order" itemCount={initiative.combatants.length}>
       {initiative.combatants.map((combatant, index) => renderCombatant(combatant, index))}
-      <MediaPopup media={media} onClose={() => setMedia(null)} />
-    </div>
-  )
+    </HorizontalChipRail>
+    <MediaPopup media={media} onClose={() => setMedia(null)} />
+  </>
 }

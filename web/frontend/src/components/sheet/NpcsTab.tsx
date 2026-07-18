@@ -9,7 +9,6 @@ import {
   currencyOf,
   formatModifier,
   hpPercent,
-  hpTone,
   num,
   rec,
   str,
@@ -20,8 +19,6 @@ interface Selection {
   kind: NpcModalKind
 }
 
-const buttonClass = 'rounded border border-card bg-panel px-2 py-1 text-xs text-primary hover:border-accent'
-
 export function NpcsTab() {
   const npcs = usePlayer((state) => state.npcs)
   const error = usePlayer((state) => state.dataErrors.npcs)
@@ -30,18 +27,19 @@ export function NpcsTab() {
   if (error) return <p className="p-4 font-body text-sm text-red-400">{error}</p>
 
   return (
-    <div className="h-full overflow-y-auto p-3 font-body">
+    <div className="neq-npcs-content h-full overflow-y-auto">
       {npcs.length === 0 ? (
         <p className="text-sm italic text-secondary">No NPC data available</p>
       ) : npcs.map((npc, index) => {
         const name = str(npc['name'], 'Unknown NPC')
         const hp = num(npc['hitPoints'])
         const maxHp = num(npc['maxHitPoints'])
-        const tone = hpTone(hp, maxHp)
         const scores = abilityScores(npc)
         const currency = currencyOf(npc)
         const status = str(npc['status'], 'alive')
-        const condition = str(npc['condition'], 'none')
+        // Legacy compares the raw value with the string "none"; an absent
+        // field is therefore displayed literally as undefined.
+        const condition = npc['condition'] === undefined ? 'undefined' : str(npc['condition'], 'none')
         const actions: Array<{ kind: NpcModalKind; label: string; visible: boolean }> = [
           { kind: 'saves', label: 'Saving Throw', visible: Array.isArray(npc['savingThrows']) && npc['savingThrows'].length > 0 },
           { kind: 'skills', label: 'Skills', visible: npc['skills'] !== undefined },
@@ -51,28 +49,29 @@ export function NpcsTab() {
           { kind: 'background', label: 'Background', visible: Boolean(rec(npc['backgroundFeature'])?.['name']) },
           { kind: 'spells', label: 'Spells', visible: Boolean(rec(npc['spellcasting']) && Object.keys(rec(npc['spellcasting'])!).length > 0) },
         ]
-        const hpColor = tone === 'low' ? '#e74c3c' : tone === 'medium' ? '#e67e22' : 'var(--accent)'
+        const hpRatio = hpPercent(hp, maxHp)
+        const hpClass = hpRatio > 75 ? 'healthy' : hpRatio > 50 ? 'injured' : hpRatio > 25 ? 'bloodied' : 'critical'
         return (
-          <section key={`${name}-${index}`} className="mb-3 rounded border border-card bg-page p-2">
-            <div className="flex items-start gap-2 border-b border-card pb-2">
-              <div className="min-w-0 flex-1">
-                <h3 className="font-display text-base text-primary">{name}</h3>
-                <p className="text-xs text-secondary">{str(npc['race'])} {str(npc['class'])} &bull; Level {num(npc['level'], 1)} &bull; {capitalizeWords(str(npc['alignment']))}</p>
+          <section key={`${name}-${index}`} className="neq-npc-character-sheet">
+            <div className="neq-npc-header">
+              <div className="neq-npc-header-main">
+                <h3 className="neq-npc-name">{name}</h3>
+                <p className="neq-npc-details">{`${str(npc['race'])} ${str(npc['class'])} • Level ${num(npc['level'], 1)} • ${capitalizeWords(str(npc['alignment']))}`}</p>
               </div>
-              {npc['experience_points'] !== undefined && <div className="text-right text-xs"><div className="text-accent">XP</div>{num(npc['experience_points'])} / {num(npc['exp_required_for_next_level'])}</div>}
-              {npc['currency'] !== undefined && <div className="grid grid-cols-3 gap-1 text-center text-[10px] text-secondary"><span>{currency.gold}<b className="block text-accent">GP</b></span><span>{currency.silver}<b className="block text-accent">SP</b></span><span>{currency.copper}<b className="block text-accent">CP</b></span></div>}
+              {npc['experience_points'] !== undefined && npc['exp_required_for_next_level'] !== undefined && <div className="neq-npc-header-xp"><div className="neq-xp-label">XP</div><div className="neq-xp-value">{`${num(npc['experience_points'])} / ${num(npc['exp_required_for_next_level'])}`}</div></div>}
+              {npc['currency'] !== undefined && <div className="neq-npc-header-currency"><div className="neq-npc-currency-grid">{([['GP', currency.gold], ['SP', currency.silver], ['CP', currency.copper]] as const).map(([label, value]) => <div key={label} className="neq-npc-currency-item"><span className="neq-npc-currency-amount">{value}</span><span className="neq-npc-currency-type">{label}</span></div>)}</div></div>}
             </div>
-            {npc['abilities'] !== undefined && <div className="mt-2 grid grid-cols-9 gap-1">
-              <div className="rounded border border-card p-1 text-center text-[10px]">HP<div className="text-sm">{hp}/{maxHp}</div><div className="h-1 bg-panel"><div className="h-full" style={{ width: `${hpPercent(hp, maxHp)}%`, background: hpColor }} /></div></div>
-              <div className="rounded border border-card p-1 text-center text-[10px]">AC<div className="text-sm">{num(npc['armorClass'], 10)}</div></div>
-              <div className="rounded border border-card p-1 text-center text-[10px]">INIT<div className="text-sm">{formatModifier(num(npc['initiative']))}</div></div>
-              {ABILITIES.map((ability) => <div key={ability} className="rounded border border-card p-1 text-center text-[10px]">{ability.slice(0, 3).toUpperCase()}<div className="text-sm">{scores[ability]}</div><div className="text-accent">{formatModifier(abilityModifier(scores[ability]))}</div></div>)}
+            {npc['abilities'] !== undefined && <div className="neq-npc-abilities">
+              <div className="neq-npc-ability-score neq-npc-combat-stat"><div className="neq-npc-ability-name">HP</div><div className="neq-npc-ability-value">{`${hp}/${maxHp}`}</div><div className="neq-npc-hp-bar"><div className={`neq-npc-hp-fill ${hpClass}`} style={{ width: `${hpRatio}%` }} /></div></div>
+              <div className="neq-npc-ability-score neq-npc-combat-stat neq-npc-no-circle"><div className="neq-npc-ability-name">AC</div><div className="neq-npc-ability-value">{num(npc['armorClass'], 10)}</div></div>
+              <div className="neq-npc-ability-score neq-npc-combat-stat neq-npc-no-circle"><div className="neq-npc-ability-name">INIT</div><div className="neq-npc-ability-value">{formatModifier(num(npc['initiative']))}</div></div>
+              {ABILITIES.map((ability) => <div key={ability} className="neq-npc-ability-score"><div className="neq-npc-ability-name">{ability.slice(0, 3).toUpperCase()}</div><div className="neq-npc-ability-value">{scores[ability]}</div><div className="neq-npc-ability-modifier">{formatModifier(abilityModifier(scores[ability]))}</div></div>)}
             </div>}
-            <div className="mt-2 grid grid-cols-2 gap-1">
-              {actions.filter((action) => action.visible).map((action) => <button key={action.kind} type="button" className={buttonClass} onClick={() => setSelected({ npc, kind: action.kind })}>{action.label}</button>)}
-              <button type="button" disabled aria-hidden="true" className={`${buttonClass} invisible`} />
+            <div className="neq-npc-detail-buttons">
+              {actions.filter((action) => action.visible).map((action) => <button key={action.kind} type="button" className="neq-npc-detail-button" onClick={() => setSelected({ npc, kind: action.kind })}>{action.label}</button>)}
+              <button type="button" disabled aria-hidden="true" className="neq-npc-detail-button neq-npc-detail-spacer" />
             </div>
-            {(status !== 'alive' || condition !== 'none') && <div className="mt-2 text-xs text-secondary">Status: <span className="text-primary">{status}</span>{condition !== 'none' && <> &nbsp; Condition: <span className="text-primary">{condition}</span></>}</div>}
+            {(status !== 'alive' || condition !== 'none') && <div className="neq-npc-status"><div className="neq-npc-status-item">Status: <span className={`neq-npc-status-value ${status}`}>{status}</span></div>{condition !== 'none' && <div className="neq-npc-status-item">Condition: <span className="neq-npc-condition-value">{condition}</span></div>}</div>}
           </section>
         )
       })}

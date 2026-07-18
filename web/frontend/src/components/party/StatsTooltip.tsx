@@ -10,6 +10,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { asArray, asNumber, asRecord, asString } from './media'
+import './party-parity.css'
 
 export interface StatsTooltipProps {
   stats: Record<string, unknown>
@@ -117,8 +118,6 @@ function parseConditions(stats: Record<string, unknown>): string | null {
   return names.length > 0 ? names.join(', ') : null
 }
 
-const RULE = '1px solid #444'
-
 export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
@@ -139,8 +138,7 @@ export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
   const name = asString(stats['name']) ?? ''
   const level = asNumber(stats['level']) ?? asString(stats['level'])
   const className = asString(stats['class'])
-  const header =
-    level !== undefined && className ? `Lvl ${level} ${className}` : name.replace(/_/g, ' ')
+  const header = level && className ? `Lvl ${level} ${className}` : name.replace(/_/g, ' ')
 
   const currentHp = asNumber(stats['currentHp'])
   const maxHp = asNumber(stats['maxHp'])
@@ -165,26 +163,17 @@ export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
     <div
       ref={ref}
       role="tooltip"
-      className="pointer-events-none fixed w-[220px] rounded-md p-2.5 font-body"
+      className={`neq-stats-tooltip-parity${position ? ' visible' : ''}`}
       style={{
         top: position ? position.top : 0,
         left: position ? position.left : 0,
-        visibility: position ? 'visible' : 'hidden',
-        zIndex: 2000,
-        backgroundColor: '#1f1f1f',
-        border: '1px solid #4a90e2',
-        boxShadow: '0 4px 15px rgba(0, 0, 0, 0.5)',
-        color: 'var(--text-primary)',
       }}
     >
-      <div
-        className="mb-2 pb-1 font-display font-bold capitalize"
-        style={{ fontSize: 16, color: 'var(--accent)', borderBottom: RULE }}
-      >
+      <div className="neq-stats-tooltip-header-parity">
         {header}
       </div>
 
-      <div className="flex items-center px-0.5 py-[3px]" style={{ fontSize: 12 }}>
+      <div className="neq-stats-tooltip-row-parity" style={{ fontSize: 12 }}>
         {currentHp !== undefined && maxHp !== undefined && (
           <span>
             {currentHp}/{maxHp} HP
@@ -195,7 +184,7 @@ export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
       </div>
 
       {(attackBonus !== undefined || initiative !== undefined) && (
-        <div className="flex items-center px-0.5 py-[3px]" style={{ fontSize: 12 }}>
+        <div className="neq-stats-tooltip-row-parity" style={{ fontSize: 12 }}>
           {attackBonus !== undefined && (
             <span>
               {attackName}: {formatSigned(attackBonus)}
@@ -209,22 +198,22 @@ export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
       )}
 
       {ammunition && (
-        <div className="px-0.5 py-[3px]" style={{ fontSize: 11, color: '#FFB6C1' }}>
-          Ammo: {ammunition}
+        <div className="neq-stats-tooltip-row-parity" style={{ fontSize: 11, color: '#FFB6C1' }}>
+          <span>Ammo: </span><span>{ammunition}</span>
         </div>
       )}
 
       {slotLines.length > 0 && (
-        <div className="mt-1 px-0.5 pt-[3px]" style={{ fontSize: 11, borderTop: RULE }}>
+        <div className="neq-stats-tooltip-row-parity neq-stats-tooltip-section-parity" style={{ fontSize: 11 }}>
           <span style={{ color: '#87CEEB' }}>Spell Slots: </span>
           <span style={{ color: '#ddd' }}>
-            {slotLines.map((slot) => `${slot.label}: ${slot.current}/${slot.max}`).join(' | ')}
+            {slotLines.map((slot) => `${slot.label}: ${slot.current}/${slot.max}`).join(' • ')}
           </span>
         </div>
       )}
 
       {spellLines.length > 0 && (
-        <div className="mt-1 pt-[3px]" style={{ borderTop: RULE }}>
+        <div className="neq-stats-tooltip-section-parity">
           <div style={{ fontSize: 11, color: '#87CEEB', marginBottom: 2 }}>Spells Known:</div>
           {spellLines.map((line) => (
             <div key={line.levelName} style={{ marginTop: 3 }}>
@@ -238,11 +227,11 @@ export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
       )}
 
       {featureLines.length > 0 && (
-        <div className="mt-1 pt-[3px]" style={{ borderTop: RULE }}>
+        <div className="neq-stats-tooltip-section-parity">
           <div style={{ fontSize: 11, color: '#FFD700', marginBottom: 2 }}>Class Features:</div>
           {featureLines.map((feature) => (
             <div key={feature.name} style={{ fontSize: 10, color: '#f0f0f0', marginTop: 2 }}>
-              - {feature.name}
+              {'\u2022'} {feature.name}
               {feature.usage && <span style={{ color: '#87CEEB' }}> ({feature.usage})</span>}
             </div>
           ))}
@@ -250,7 +239,7 @@ export function StatsTooltip({ stats, anchor }: StatsTooltipProps) {
       )}
 
       {conditions && (
-        <div className="mt-1 px-0.5 pt-[3px]" style={{ fontSize: 11, borderTop: RULE }}>
+        <div className="neq-stats-tooltip-row-parity neq-stats-tooltip-section-parity" style={{ fontSize: 11 }}>
           <span className="font-bold" style={{ color: '#ff6666' }}>
             Conditions:{' '}
           </span>

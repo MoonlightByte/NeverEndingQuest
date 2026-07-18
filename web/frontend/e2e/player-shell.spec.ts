@@ -10,7 +10,7 @@ test('built player shell connects and core dialogs work', async ({ page, context
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   const saveDialog = page.getByRole('dialog', { name: 'Save Game' })
   await expect(saveDialog).toBeVisible()
-  await expect(saveDialog.getByRole('button', { name: 'Close' })).toBeFocused()
+  await expect(saveDialog.getByLabel('Description (optional):')).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(saveDialog).toBeHidden()
 

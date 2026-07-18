@@ -7,6 +7,7 @@
  * socket traffic; the server remains the authority on real game rolls.
  */
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 
 const DICE_SIDES = [20, 12, 10, 8, 6, 4] as const
 
@@ -55,13 +56,34 @@ export function DiceStrip() {
 
   const damageTotal = damageRolls.reduce((sum, r) => sum + r.result, 0)
   const hasResults = d20Rolls.length > 0 || damageRolls.length > 0
+  const resultsHost = typeof document === 'undefined' ? null : document.getElementById('neq-dice-results-host')
+
+  const results = hasResults ? (
+    <div className="neq-dice-results font-log text-sm" data-testid="dice-results">
+      {d20Rolls.length > 0 && (
+        <span className="neq-dice-result-item">
+          {d20Rolls.map((r) => `d20: ${r}`).join(', d20: ')}
+        </span>
+      )}
+      {d20Rolls.length > 0 && damageRolls.length > 0 && <span>{'\u00a0| '}</span>}
+      {damageRolls.length > 0 && (
+        <>
+          <span className="neq-dice-result-item">
+            {damageRolls.map((r) => `d${r.sides}: ${r.result}`).join(', ')}
+          </span>
+          <span className="neq-dice-total">Total: {damageTotal}</span>
+        </>
+      )}
+    </div>
+  ) : null
 
   return (
-    <div className="flex shrink-0 flex-col items-center gap-1">
-      <div className="relative w-full text-center before:absolute before:left-0 before:right-0 before:top-1/2 before:h-px before:bg-[#ffa500]">
-        <span className="relative z-10 inline-block rounded border border-[#ffa500] bg-[#333] px-5 py-0.5 font-chrome text-xs font-bold uppercase tracking-wider text-[#ffa500]">Quick Rolls</span>
+    <>
+    <div className="neq-dice-strip flex shrink-0 flex-col items-center">
+      <div className="neq-dice-label relative w-full text-center before:absolute before:left-0 before:right-0 before:top-1/2 before:h-px before:bg-[#ffa500]">
+        <span className="neq-dice-label-text relative z-10 inline-block rounded border border-[#ffa500] bg-[#333] px-5 py-0.5 font-chrome text-xs font-bold uppercase tracking-wider text-[#ffa500]">Quick Rolls</span>
       </div>
-      <div className="flex items-center gap-1.5">
+      <div className="neq-dice-buttons flex items-center gap-1.5">
         {DICE_SIDES.map((sides) => (
           <button
             key={sides}
@@ -77,28 +99,8 @@ export function DiceStrip() {
           Clear
         </button>
       </div>
-      {hasResults && (
-        <div className="absolute left-0 top-full min-w-0 truncate font-log text-sm" data-testid="dice-results">
-          {d20Rolls.length > 0 && (
-            <span style={{ color: 'var(--accent)' }}>
-              {d20Rolls.map((r) => `d20: ${r}`).join(', ')}
-            </span>
-          )}
-          {d20Rolls.length > 0 && damageRolls.length > 0 && (
-            <span className="text-secondary"> | </span>
-          )}
-          {damageRolls.length > 0 && (
-            <>
-              <span className="text-primary">
-                {damageRolls.map((r) => `d${r.sides}: ${r.result}`).join(', ')}
-              </span>
-              <span className="ml-2 font-bold" style={{ color: '#FFA500' }}>
-                Total: {damageTotal}
-              </span>
-            </>
-          )}
-        </div>
-      )}
     </div>
+    {resultsHost && results ? createPortal(results, resultsHost) : results}
+    </>
   )
 }

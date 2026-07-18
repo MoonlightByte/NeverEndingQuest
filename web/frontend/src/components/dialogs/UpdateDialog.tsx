@@ -9,13 +9,31 @@ function UpdateDialogBody() {
   const update = useDialogs((s) => s.update)
   const closeDialog = useDialogs((s) => s.closeDialog)
   useEffect(() => { if (update.complete) void reloadWhenServerReady() }, [update.complete])
-  const proceed = async () => { await prepareForServerRestart(); useDialogs.getState().updateStarted(); emitC('trigger_update', undefined) }
-  return <DialogShell title="🔄 Update Available" onClose={closeDialog} maxWidth="500px" legacy>
-    <div className="font-chrome text-sm text-primary">
+  const proceed = async () => {
+    // Keep the legacy button visually enabled while preventing duplicate
+    // update requests from a rapid second click.
+    if (useDialogs.getState().update.running) return
+    try {
+      await prepareForServerRestart()
+      useDialogs.getState().updateStarted()
+      emitC('trigger_update', undefined)
+    } catch (error) {
+      useDialogs.getState().updateError({
+        error: `Update could not start: ${error instanceof Error ? error.message : String(error)}`,
+      })
+    }
+  }
+  const currentStatus = update.complete
+    ? `${update.complete} Please refresh the page.`
+    : update.error
+      ? `Update failed: ${update.error}`
+      : update.log.at(-1) ?? null
+  return <DialogShell title="🔄 Update Available" onClose={closeDialog} maxWidth="700px" legacy>
+    <div className="neq-update-content-parity">
       <p>{version ? `A new version is available: v${version.local_version} -> v${version.remote_version}` : 'A new version is available!'}</p>
-      <div className="my-4 rounded-md border-2 border-[#f44336] bg-[#4a1515] p-4 text-center"><strong className="block text-[#f44336]">⚠️ Backup Recommended</strong><p className="text-[#ffcdd2]">Before updating, we recommend backing up your saved games and any custom modules.</p></div>
-      <div className="grid grid-cols-2 gap-2"><button type="button" className={dialogButtonPrimary} disabled={update.running} onClick={() => void proceed()}>Proceed with Update</button><button type="button" className={dialogButtonSecondary} disabled={update.running} onClick={closeDialog}>Cancel</button></div>
-      {(update.running || update.log.length > 0 || update.error || update.complete) && <div className="mt-5 rounded border border-card bg-page p-3 font-log text-xs" role="status">{update.log.map((line, index) => <div key={`${line}-${index}`}>{line}</div>)}{update.error && <div className="text-red-400">{update.error}</div>}{update.complete && <div className="text-accent">{update.complete}</div>}</div>}
+      <div className="neq-reset-warning-box-parity"><strong>⚠️ Backup Recommended</strong><p>Before updating, we recommend backing up your saved games and any custom modules.</p></div>
+      <div className="neq-dialog-buttons-parity"><button type="button" className={dialogButtonPrimary} onClick={() => void proceed()}>Proceed with Update</button><button type="button" className={dialogButtonSecondary} onClick={closeDialog}>Cancel</button></div>
+      {currentStatus && <div className="neq-update-progress-parity"><p role="status">{currentStatus}</p></div>}
     </div>
   </DialogShell>
 }

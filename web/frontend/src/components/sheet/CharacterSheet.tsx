@@ -6,6 +6,7 @@
  */
 import { useRef, useState } from 'react'
 import { useLog, usePlayer } from '../../stores'
+import { GenericFeatureTooltip, SkillTooltip } from './CharacterTooltips'
 import {
   ABILITIES,
   SKILL_MAP,
@@ -23,27 +24,39 @@ import {
   portraitSlug,
   proficientSkills,
   saveRows,
-  skillBonus,
   str,
 } from './characterData'
+import type { AbilityName } from './characterData'
 
 // ASCII-only source: proficiency dots as escapes (filled / open circle).
 const PROFICIENT_DOT = '\u25CF'
 const UNPROFICIENT_DOT = '\u25CB'
 
-function SheetSection({ title, items, empty }: { title: string; items: Array<{ name: string; detail?: string; suffix?: string }>; empty?: string }) {
-  return (
-    <section className="mt-1 rounded border border-card bg-panel">
+function SheetSection({ title, items, empty, accentItems = false, rightSuffix = false, splitSuffix = false, tooltips = true }: { title: string; items: Array<{ name: string; detail?: string; suffix?: string }>; empty?: string; accentItems?: boolean; rightSuffix?: boolean; splitSuffix?: boolean; tooltips?: boolean }) {
+  const [hovered, setHovered] = useState<{ item: { name: string; detail?: string }; anchor: HTMLElement } | null>(null)
+  return <>
+    <section className="neq-sheet-section mt-1 rounded border border-card bg-panel">
       <h4 className="border-b border-card px-2 py-1 font-display text-sm uppercase text-[#ffa500]">{title}</h4>
-      <div className="px-2 py-1">
+      <div className="neq-sheet-section-content px-2 py-1">
         {items.length === 0 ? <div className="text-sm text-secondary">{empty}</div> : items.map((item, index) => (
-          <div key={`${item.name}-${index}`} title={item.detail || 'No description available.'} className="text-sm text-accent">
-            {item.name}{item.suffix ?? ''}
+          <div
+            key={`${item.name}-${index}`}
+            data-has-tooltip={tooltips ? 'true' : 'false'}
+            onMouseEnter={tooltips ? (event) => setHovered({ item, anchor: event.currentTarget }) : undefined}
+            onMouseLeave={tooltips ? () => setHovered(null) : undefined}
+            className={`neq-feature-item text-sm ${rightSuffix ? 'flex justify-between' : ''} ${accentItems ? 'text-accent' : 'text-[#aaa]'}`}
+          >
+            <span className={splitSuffix ? 'neq-ammo-name' : ''}>{item.name}</span>{item.suffix && (() => {
+              const usage = title === 'Class Features' ? item.suffix.match(/^\s*(\d+\/\d+)(?:\s+\((.+)\))?$/) : null
+              if (usage) return <><span className="neq-usage-counter">{usage[1]}</span>{usage[2] && <span className="neq-feature-refresh">({usage[2]})</span>}</>
+              return <span className={rightSuffix ? 'neq-feature-suffix' : splitSuffix ? 'neq-ammo-quantity' : ''}>{rightSuffix && <span className="sr-only"> — </span>}{rightSuffix ? item.suffix.replace(/^\s*—\s*/, '') : item.suffix}</span>
+            })()}
           </div>
         ))}
       </div>
     </section>
-  )
+    {hovered && <GenericFeatureTooltip anchor={hovered.anchor} title={hovered.item.name} content={hovered.item.detail || 'No description available.'} />}
+  </>
 }
 
 function Portrait({ name }: { name: string }) {
@@ -77,7 +90,7 @@ function Portrait({ name }: { name: string }) {
     }
   }
   return (
-    <div className="group relative h-28 w-24 shrink-0 overflow-hidden rounded border-2 border-card bg-page">
+    <div className="neq-character-portrait group relative h-[150px] w-[150px] shrink-0 overflow-hidden rounded border-2 border-card bg-page">
       <img src={src} alt={`Portrait of ${name}`} onError={() => setFailed(true)} className="h-full w-full object-cover" />
       <button type="button" disabled={uploading} onClick={() => inputRef.current?.click()} className="absolute inset-0 flex cursor-pointer items-center justify-center border-0 bg-black/70 px-2 text-center text-sm font-bold text-white opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100">{uploading ? 'Uploading...' : 'Upload Portrait'}</button>
       <input ref={inputRef} type="file" accept="image/*" className="hidden" aria-label="Choose portrait image" onChange={(event) => void upload(event.target.files?.[0])} />
@@ -88,12 +101,13 @@ function Portrait({ name }: { name: string }) {
 export function CharacterSheet() {
   const stats = usePlayer((s) => s.stats)
   const error = usePlayer((s) => s.dataErrors.stats)
+  const [skillHover, setSkillHover] = useState<{ ability: AbilityName; anchor: HTMLElement } | null>(null)
 
   if (error) {
     return <p className="p-4 font-body text-sm text-red-400">{error}</p>
   }
   if (!stats) {
-    return <p className="p-4 font-body text-sm text-secondary">Loading character...</p>
+    return <p className="neq-character-loading-parity">Loading character stats...</p>
   }
 
   const name = str(stats['name'], 'Unknown Adventurer')
@@ -122,13 +136,14 @@ export function CharacterSheet() {
   const background = rec(stats['backgroundFeature'])
 
   return (
-    <div className="h-full overflow-y-auto p-3 font-body">
+    <div className="neq-character-tab h-full overflow-y-auto font-body">
+      <div className="neq-character-sheet">
       {/* header: portrait + identity */}
-      <div className="flex gap-3">
+      <div className="neq-character-sheet-top flex gap-3">
         <Portrait key={name} name={name} />
-        <div className="min-w-0 flex-1 rounded border-2 border-card bg-page p-2">
-          <div className="truncate font-display text-lg text-primary">{name}</div>
-          <div className="mt-1 space-y-0.5 text-sm text-secondary">
+        <div className="neq-character-header min-w-0 flex-1 rounded border border-card bg-page p-2">
+          <div className="neq-character-name font-display">{name}</div>
+          <div className="neq-character-details mt-1 space-y-0.5 text-sm text-[#ccc]">
             <div>
               <span className="text-accent">Level {num(stats['level'], 1)}</span>{' '}
               <span className="text-primary">
@@ -152,7 +167,7 @@ export function CharacterSheet() {
       </div>
 
       {/* ability grid with hover skill tooltips */}
-      <div className="mt-3 grid grid-cols-6 gap-1">
+      <div className="neq-abilities-row mt-3 grid grid-cols-6 gap-1">
         {ABILITIES.map((ability) => {
           const score = scores[ability]
           const abilityLabel = capitalize(ability)
@@ -160,78 +175,70 @@ export function CharacterSheet() {
           return (
             <div
               key={ability}
-              className="group relative rounded border-2 border-card bg-page py-1 text-center"
+              onMouseEnter={abilitySkills.length > 0 ? (event) => setSkillHover({ ability, anchor: event.currentTarget }) : undefined}
+              onMouseLeave={abilitySkills.length > 0 ? () => setSkillHover(null) : undefined}
+              className="neq-ability-score relative rounded border-2 border-card bg-panel py-1 text-center"
             >
-              <div className="font-display text-[10px] text-secondary">
+              <div className="neq-ability-name font-display text-[10px] text-secondary">
                 {ability.slice(0, 3).toUpperCase()}
               </div>
-              <div className="text-base leading-tight text-primary">{score}</div>
-              <div className="text-xs text-accent">{formatModifier(abilityModifier(score))}</div>
-              <div className="pointer-events-none absolute left-1/2 top-full z-20 hidden w-48 -translate-x-1/2 rounded border-2 border-card bg-panel p-2 text-left shadow-lg group-hover:block">
-                <div className="font-display text-xs text-accent">{abilityLabel} Skills</div>
-                {abilitySkills.length === 0 ? (
-                  <div className="mt-1 text-xs text-secondary">No associated skills</div>
-                ) : (
-                  abilitySkills.map((skill) => (
-                    <div key={skill} className="mt-1 flex justify-between text-xs">
-                      <span
-                        className={skills.includes(skill) ? 'text-primary' : 'text-secondary'}
-                      >
-                        {skills.includes(skill) ? PROFICIENT_DOT : UNPROFICIENT_DOT} {skill}
-                      </span>
-                      <span className="text-accent">
-                        {formatModifier(skillBonus(skill, ability, stats))}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
+              <div className="neq-ability-value text-base leading-tight text-primary">{score}</div>
+              <div className="neq-ability-modifier text-xs text-accent">{formatModifier(abilityModifier(score))}</div>
             </div>
           )
         })}
       </div>
+      {skillHover && (() => {
+        const label = capitalize(skillHover.ability)
+        const mod = abilityModifier(scores[skillHover.ability])
+        const rows = (SKILL_MAP[label] ?? []).map((skill) => {
+          const proficient = skills.includes(skill)
+          return { name: skill, proficient, bonus: mod + (proficient ? num(stats['proficiencyBonus'], 2) : 0) }
+        })
+        return <SkillTooltip anchor={skillHover.anchor} ability={label} rows={rows} />
+      })()}
 
       {/* HP / AC / INIT / currency */}
-      <div className="mt-3 grid grid-cols-6 gap-1">
-        <div className="rounded border-2 border-card bg-page p-2 text-center">
-          <div className="font-display text-[10px] text-secondary">HP</div>
-          <div className="text-base text-primary">
+      <div className="neq-combat-stats mt-3 grid grid-cols-6 gap-1">
+        <div className="neq-combat-stat rounded border border-accent bg-panel p-2 text-center">
+          <div className="neq-combat-label font-display text-[10px] text-secondary">HP</div>
+          <div className="neq-combat-value text-base text-accent">
             {hp}/{maxHp}
           </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded bg-panel">
+          <div className="neq-hp-bar mt-1 h-1.5 overflow-hidden rounded bg-page">
             <div
-              className="h-full rounded transition-all"
+              className="h-full transition-all"
               style={{ width: `${hpPercent(hp, maxHp)}%`, backgroundColor: hpColor }}
             />
           </div>
         </div>
-        <div className="rounded border-2 border-card bg-page p-2 text-center">
-          <div className="font-display text-[10px] text-secondary">AC</div>
-          <div className="text-base text-primary">{num(stats['armorClass'], 10)}</div>
+        <div className="neq-combat-stat rounded border border-accent bg-panel p-2 text-center">
+          <div className="neq-combat-label font-display text-[10px] text-secondary">AC</div>
+          <div className="neq-combat-value text-base text-accent">{num(stats['armorClass'], 10)}</div>
         </div>
-        <div className="rounded border-2 border-card bg-page p-2 text-center">
-          <div className="font-display text-[10px] text-secondary">INIT</div>
-          <div className="text-base text-primary">
+        <div className="neq-combat-stat rounded border border-accent bg-panel p-2 text-center">
+          <div className="neq-combat-label font-display text-[10px] text-secondary">INIT</div>
+          <div className="neq-combat-value text-base text-accent">
             {formatModifier(num(stats['initiative']))}
           </div>
         </div>
         {[['GP', currency.gold], ['SP', currency.silver], ['CP', currency.copper]].map(([label, value]) => (
-          <div key={label} className="rounded border-2 border-[#b8860b] bg-page p-2 text-center">
-            <div className="font-display text-[10px] text-secondary">{label}</div>
-            <div className="text-base text-accent">{value}</div>
+          <div key={label} className="neq-combat-stat neq-currency rounded border border-[#b8860b] bg-panel p-2 text-center">
+            <div className="neq-combat-label font-display text-[10px] text-secondary">{label}</div>
+            <div className="neq-combat-value text-base text-accent">{value}</div>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-1">
-        <SheetSection title="Weapons & Attacks" items={attacks} empty="No weapons defined." />
-        <SheetSection title="Ammunition" items={ammunition} empty="No ammunition." />
+      <div className="neq-weapons-grid grid grid-cols-2 gap-1">
+        <SheetSection title="Weapons & Attacks" items={attacks} empty="No weapons defined." accentItems />
+        <SheetSection title="Ammunition" items={ammunition} empty="No ammunition." accentItems splitSuffix tooltips={false} />
       </div>
 
       {/* saving throws */}
-      {hasSavingThrows && <div className="mt-3 rounded border-2 border-card bg-page p-2">
-        <h4 className="font-display text-xs text-accent">Saving Throws</h4>
-        <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1">
+      {hasSavingThrows && <div className="neq-saving-throws mt-3 rounded border border-card bg-panel p-2">
+        <h4 className="font-display text-xs text-[#ffa500]">Saving Throws</h4>
+        <div className="neq-saving-throws-grid mt-1 grid grid-cols-2 gap-x-4 gap-y-1">
           {saves.map((save) => (
             <div key={save.name} className="flex justify-between text-sm">
               <span className={save.proficient ? 'text-primary' : 'text-secondary'}>
@@ -242,11 +249,14 @@ export function CharacterSheet() {
           ))}
         </div>
       </div>}
+      <div className="neq-abilities-grid">
       <SheetSection title="Class Features" items={featureItems('classFeatures')} />
-      {arr(stats['temporaryEffects']).length > 0 && <SheetSection title="Active Effects" items={featureItems('temporaryEffects')} />}
+      {arr(stats['temporaryEffects']).length > 0 && <SheetSection title="Active Effects" items={featureItems('temporaryEffects')} rightSuffix />}
       {racialTraits.length > 0 && <SheetSection title="Racial Traits" items={racialTraits} />}
       {background?.['name'] !== undefined && <SheetSection title="Background" items={[{ name: str(background['name']), detail: str(background['description']) }]} />}
       {arr(stats['feats']).length > 0 && <SheetSection title="Feats" items={featureItems('feats')} />}
+      </div>
+      </div>
     </div>
   )
 }

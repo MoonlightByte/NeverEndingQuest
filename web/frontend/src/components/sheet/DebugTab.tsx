@@ -5,6 +5,11 @@
  */
 import { useEffect, useRef } from 'react'
 import { useLog } from '../../stores'
+import './DebugTab.css'
+
+function formatTimestamp(timestamp: string): string {
+  return new Date(timestamp).toLocaleTimeString()
+}
 
 export function DebugTab() {
   const debug = useLog((s) => s.debug)
@@ -18,28 +23,27 @@ export function DebugTab() {
   }, [debug.length])
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 border-b-2 border-card px-3 py-2 font-log text-xs text-secondary">
-        <span>
-          TPM: <span className="text-accent">{tokens.tpm.toLocaleString()}</span>
-        </span>
-        <span className="px-2 text-soft">|</span>
-        <span>
-          RPM: <span className="text-accent">{tokens.rpm.toLocaleString()}</span>
-        </span>
-        <span className="px-2 text-soft">|</span>
-        <span>
-          Total: <span className="text-accent">{tokens.total_tokens.toLocaleString()}</span>
-        </span>
+    <div className="neq-debug-tab">
+      <div className="neq-token-usage-header">
+        <div className="neq-token-stats">
+          <span className="neq-token-label">TPM:</span> <span className="neq-token-value">{tokens.tpm.toLocaleString()}</span>
+          <span className="neq-token-separator">|</span>
+          <span className="neq-token-label">RPM:</span> <span className="neq-token-value">{tokens.rpm.toLocaleString()}</span>
+          <span className="neq-token-separator">|</span>
+          <span className="neq-token-label">Total:</span> <span className="neq-token-value">{tokens.total_tokens.toLocaleString()}</span>
+        </div>
       </div>
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-3 font-log text-xs">
-        {debug.length === 0 ? (
-          <p className="text-secondary">No debug output yet.</p>
-        ) : (
+      <div ref={scrollRef} className="neq-debug-scrollable">
+        {debug.length === 0 ? null : (
           debug.map((entry, i) => (
-            <p key={i} className="mb-1 whitespace-pre-wrap break-words text-secondary">
-              <span className="text-soft">[{entry.timestamp}]</span> {entry.content}
-            </p>
+            <div key={i} className="neq-debug-message">
+              <div className="neq-debug-message-content">
+                {entry.timestamp && (
+                  <span className="neq-debug-timestamp">{formatTimestamp(entry.timestamp)}</span>
+                )}
+                <div className="neq-debug-message-text">{entry.content}</div>
+              </div>
+            </div>
           ))
         )}
       </div>

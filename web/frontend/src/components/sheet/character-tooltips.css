@@ -1,0 +1,111 @@
+.neq-skill-tooltip-parity {
+  position: fixed;
+  z-index: 1000;
+  visibility: hidden;
+  width: 220px;
+  border: 1px solid #ffa500;
+  border-radius: 6px;
+  background-color: #1f1f1f;
+  padding: 10px;
+  box-shadow: 0 4px 15px rgb(0 0 0 / 50%);
+  color: #e0e0e0;
+  font-family: var(--font-body);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.neq-skill-tooltip-parity.visible {
+  visibility: visible;
+  opacity: 1;
+}
+
+.neq-skill-tooltip-header-parity {
+  margin-bottom: 8px;
+  border-bottom: 1px solid #444;
+  padding-bottom: 4px;
+  color: #4caf50;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.neq-skill-tooltip-item-parity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 2px;
+  font-size: 15px;
+}
+
+.neq-skill-tooltip-name-parity {
+  color: #ccc;
+}
+
+.neq-skill-tooltip-value-parity {
+  color: #e0e0e0;
+  font-weight: bold;
+}
+
+.neq-generic-tooltip-parity {
+  position: fixed;
+  z-index: 2000;
+  width: 350px;
+  max-width: 90vw;
+  border: 1px solid #ffa500;
+  border-radius: 6px;
+  background-color: #1f1f1f;
+  padding: 12px;
+  box-shadow: 0 5px 20px rgb(0 0 0 / 60%);
+  color: #e0e0e0;
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px);
+  transition:
+    opacity 0.15s ease-in-out,
+    transform 0.15s ease-in-out;
+}
+
+.neq-generic-tooltip-parity.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.neq-generic-tooltip-header-parity {
+  margin: -4px 0 8px;
+  border-bottom: 1px solid #444;
+  padding-bottom: 6px;
+  color: #4caf50;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.neq-generic-tooltip-description-parity {
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+}
+
+.neq-ability-score {
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.neq-ability-score:hover {
+  border-color: #ffa500;
+  box-shadow: 0 4px 8px rgb(255 165 0 / 20%);
+  transform: scale(1.05);
+}
+
+.neq-feature-item[data-has-tooltip='true'] {
+  cursor: help;
+  transition: background-color 0.2s;
+}
+
+.neq-feature-item[data-has-tooltip='true']:hover {
+  background-color: rgb(255 165 0 / 10%);
+}

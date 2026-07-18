@@ -13,6 +13,10 @@ export interface SessionState {
   mode: UiMode
   /** Server is processing a turn -- input locked. */
   isProcessing: boolean
+  /** Mirrors legacy gameStarted/startupInputEnabled command authorization. */
+  inputAuthorized: boolean
+  /** A non-busy status update has opened the startup wizard input prompt. */
+  startupInputReady: boolean
   /** Status ticker text (status_update.message). */
   statusMessage: string
   /** Startup lifecycle (startup_status). */
@@ -26,6 +30,7 @@ export interface SessionState {
   snapshotRevision: number
   serverInstanceId: string | null
 
+  beginConnection: () => void
   setConnected: (connected: boolean) => void
   /** User pressed Start (start_game emitted). */
   startRequested: () => void
@@ -42,6 +47,8 @@ export const useSession = create<SessionState>((set) => ({
   connected: false,
   mode: 'disconnected',
   isProcessing: false,
+  inputAuthorized: false,
+  startupInputReady: false,
   statusMessage: '',
   startupStatus: 'idle',
   startupPhase: '',
@@ -51,21 +58,33 @@ export const useSession = create<SessionState>((set) => ({
   snapshotRevision: -1,
   serverInstanceId: null,
 
+  beginConnection: () => set({ serverInstanceId: null, snapshotRevision: -1 }),
   // Transport loss must not erase whether a game was running. The derived UI
   // mode still becomes disconnected and locks input until transport returns.
-  setConnected: (connected) => set({ connected }),
-  startRequested: () => set({ mode: 'starting' }),
-  gameStarted: (message) => set({ mode: 'play', statusMessage: message }),
-  gameResumed: (isProcessing) => set({ mode: 'play', isProcessing }),
+  setConnected: (connected) => set(connected ? { connected } : { connected, inputAuthorized: false, startupInputReady: false }),
+  startRequested: () => set({ mode: 'starting', inputAuthorized: false, startupInputReady: false }),
+  gameStarted: (message) => set({ mode: 'play', statusMessage: message, inputAuthorized: true, startupInputReady: false }),
+  gameResumed: (isProcessing) => set({ mode: 'play', isProcessing, inputAuthorized: true, startupInputReady: false }),
   setStatus: (status) =>
-    set({ statusMessage: status.message, isProcessing: status.is_processing }),
-  setStartup: (status, phase, startupAttemptId) => set((s) => ({ startupStatus: status, startupPhase: phase, startupAttemptId: startupAttemptId ?? s.startupAttemptId })),
+    set((s) => ({
+      statusMessage: status.message,
+      isProcessing: status.is_processing,
+      startupInputReady: s.mode === 'starting' && s.startupStatus === 'in_progress' && !status.is_processing
+        ? true
+        : s.startupInputReady,
+    })),
+  setStartup: (status, phase, startupAttemptId) => set((s) => ({
+    startupStatus: status,
+    startupPhase: phase,
+    startupAttemptId: startupAttemptId ?? s.startupAttemptId,
+    inputAuthorized: status === 'in_progress' ? true : status === 'failed' ? false : s.inputAuthorized,
+    startupInputReady: status === 'in_progress' ? false : s.startupInputReady,
+  })),
   setRecovery: (recovery) => set({ recovery }),
   setVersion: (version) => set({ version }),
   applySnapshot: (snapshot) =>
     set((s) => {
-      const changed = snapshot.server_instance_id !== s.serverInstanceId
-      if (!changed && snapshot.revision < s.snapshotRevision) return {}
+      if (!shouldAcceptSnapshot(s, snapshot)) return {}
       return {
         serverInstanceId: snapshot.server_instance_id,
         snapshotRevision: snapshot.revision,
@@ -78,3 +97,11 @@ export const useSession = create<SessionState>((set) => ({
       }
     }),
 }))
+
+export function shouldAcceptSnapshot(
+  current: Pick<SessionState, 'serverInstanceId' | 'snapshotRevision'>,
+  snapshot: ServerEvents['ui_state_snapshot'],
+): boolean {
+  if (current.serverInstanceId && snapshot.server_instance_id !== current.serverInstanceId) return false
+  return snapshot.revision >= current.snapshotRevision
+}

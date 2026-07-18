@@ -25,6 +25,17 @@ export interface GameMessage {
 export interface RequestMeta { request_id?: string }
 export interface ResponseMeta { request_id?: string; revision?: number; server_instance_id?: string }
 
+/**
+ * Capabilities are additive and optional so a current player can still attach
+ * to a server from before the React protocol existed.  In particular, the
+ * client must not add a metadata argument to a historically zero-argument
+ * event until the server explicitly advertises `request_metadata`.
+ */
+export interface UiProtocolCapabilities {
+  protocol_version?: number;
+  request_metadata?: boolean;
+}
+
 export type PlayerDataResponse =
   | {
       dataType: 'stats' | 'inventory' | 'spells';
@@ -83,9 +94,53 @@ export interface ClientEvents {
   trigger_update: undefined;
 }
 
+/**
+ * Exact legacy Socket.IO packet arity for every client event.  Keep this table
+ * exhaustive: Socket.IO distinguishes `emit("event")` from
+ * `emit("event", {})`, and older Flask handlers with no `data` parameter will
+ * raise a TypeError when handed the latter.
+ */
+export const CLIENT_EVENT_ARITY = {
+  user_input: 1,
+  action: 1,
+  start_game: 0,
+  user_exit: 0,
+  request_player_data: 1,
+  request_location_data: 0,
+  request_party_data: 0,
+  request_initiative_data: 0,
+  request_plot_data: 0,
+  request_storage_data: 0,
+  request_ui_snapshot: 0,
+  request_npc_saves: 1,
+  request_npc_skills: 1,
+  request_npc_spells: 1,
+  request_npc_inventory: 1,
+  generate_image: 1,
+  request_module_list: 0,
+  get_model_provider: 0,
+  set_model_provider: 1,
+  get_local_endpoint: 0,
+  set_local_endpoint: 1,
+  get_openai_key: 0,
+  set_openai_key: 1,
+  get_gemini_key: 0,
+  set_gemini_key: 1,
+  test_local_endpoint: 1,
+  start_build: 1,
+  cancel_build: 0,
+  generate_unified_assets: 1,
+  test_module_progress: 0,
+  trigger_update: 0,
+} as const satisfies Record<keyof ClientEvents, 0 | 1>;
+
 // ---------- server -> client (56) ----------
 export interface ServerEvents {
-  connected: { data: string };
+  connected: {
+    data: string;
+    capabilities?: UiProtocolCapabilities;
+    server_instance_id?: string;
+  };
   version_status: { update_available: boolean; local_version: string; remote_version: string; message: string };
   cached_messages: GameMessage[];
   game_resumed: { is_processing: boolean; message: string };
@@ -118,8 +173,8 @@ export interface ServerEvents {
   location_data_response: { data: { currentLocation: string; currentArea: string; currentLocationId: string; currentAreaId: string; time: string; day: number | string; month: string; year: number | string } | null; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
   npc_details_response: { npcName: string; data: Record<string, unknown> | null; modalType: 'saves' | 'skills' | 'spells'; error?: string };
   npc_inventory_response: { npcName: string; data: unknown[] | null; error?: string };
-  party_data_response: { members: Array<Record<string, unknown>>; location_npcs?: Array<Record<string, unknown>>; request_id?: string; revision?: number; server_instance_id?: string };
-  initiative_data_response: { active: boolean; combatants: Array<Record<string, unknown>>; round?: number; request_id?: string; revision?: number; server_instance_id?: string };
+  party_data_response: { members: Array<Record<string, unknown>>; location_npcs?: Array<Record<string, unknown>>; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
+  initiative_data_response: { active: boolean; combatants: Array<Record<string, unknown>>; round?: number; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
   plot_data_response: { data: { plotPoints: Array<{ id: string; title: string; description: string; status: string; sideQuests?: unknown[] }> } | null; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
   storage_data_response: { data: Record<string, unknown>; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
   exit_acknowledged: { message: string };

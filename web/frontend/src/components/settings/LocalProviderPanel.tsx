@@ -20,20 +20,16 @@ const PROVIDER_HINTS: Record<ProviderValue, string> = {
     'Local / Custom Server: point at any OpenAI-compatible server below. Zero cost when local.',
 }
 
-const inputClass =
-  'w-full rounded border-2 border-card bg-page px-2 py-1 font-chrome text-sm text-primary ' +
-  'outline-none focus:border-accent'
-const smallButtonClass =
-  'cursor-pointer rounded border-2 border-card bg-panel px-3 py-1 font-chrome text-xs ' +
-  'text-primary hover:border-soft disabled:cursor-not-allowed disabled:opacity-50'
-const sectionClass = 'mt-3 border-t-2 border-card pt-3'
-const sectionTitleClass = 'font-display text-xs uppercase tracking-wide text-secondary'
+const inputClass = 'neq-settings-select-parity'
+const smallButtonClass = 'neq-settings-button-small-parity'
+const sectionClass = 'neq-settings-section'
+const sectionTitleClass = 'neq-settings-title'
 
 type TestTone = 'pending' | 'ok' | 'fail'
 const TONE_COLORS: Record<TestTone, string> = {
-  pending: 'var(--text-secondary)',
-  ok: 'var(--accent)',
-  fail: '#e74c3c',
+  pending: '#888',
+  ok: '#2e7d32',
+  fail: '#c62828',
 }
 
 function isProviderValue(value: string): value is ProviderValue {
@@ -56,6 +52,14 @@ function LocalProviderPanelBody() {
   useEffect(() => {
     setPendingProvider(null)
   }, [settings.provider])
+  useEffect(() => {
+    if (pendingProvider === null) return undefined
+    // A persistence/validation failure is reported through the global error
+    // channel, not provider_changed. Avoid leaving the selector permanently
+    // disabled when no confirmation can arrive.
+    const timer = window.setTimeout(() => setPendingProvider(null), 10000)
+    return () => window.clearTimeout(timer)
+  }, [pendingProvider])
 
   const storedProvider = settings.provider ?? 'legacy'
   const provider: string = pendingProvider ?? storedProvider
@@ -120,68 +124,67 @@ function LocalProviderPanelBody() {
     hasKey === null ? '' : hasKey ? ' (a key is set)' : ' (no key set)'
 
   return (
-    <div className="font-chrome text-sm">
+    <div>
       <div className={sectionClass}>
         <div className={sectionTitleClass}>AI Provider</div>
-        <label htmlFor="model-provider-select" className="mt-2 block text-xs text-secondary">
-          Provider
-        </label>
-        <select
-          id="model-provider-select"
-          className={`${inputClass} mt-1`}
-          value={provider}
-          disabled={pendingProvider !== null}
-          onChange={(e) => changeProvider(e.target.value)}
-        >
-          {PROVIDER_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <p className="mt-1 text-xs text-secondary">
+        <div className="neq-settings-item neq-settings-provider-item-parity">
+          <div className="neq-settings-provider-row-parity">
+            <label htmlFor="model-provider-select">Provider</label>
+            <select
+              id="model-provider-select"
+              className={inputClass}
+              value={provider}
+              disabled={pendingProvider !== null}
+              onChange={(e) => changeProvider(e.target.value)}
+            >
+              {PROVIDER_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        <p className="neq-settings-help-parity neq-settings-provider-help-parity">
           {isProviderValue(provider)
             ? PROVIDER_HINTS[provider]
             : 'Models are selected per-task based on quality testing.'}
         </p>
+        </div>
       </div>
 
       {provider === 'lmstudio' && (
         <div className={sectionClass}>
           <div className={sectionTitleClass}>Local / Custom Server</div>
-          <p className="mt-1 text-xs text-secondary">
+          <p className="neq-settings-help-parity">
             Point at any OpenAI-compatible server (LM Studio, Ollama, vLLM, OpenRouter, or a
             remote host). Leave blank to use the default local server at localhost:1234.
           </p>
-          <label htmlFor="local-base-url" className="mt-2 block text-xs text-secondary">
-            Server URL
-          </label>
+          <div className="neq-settings-item neq-settings-stack-parity">
+          <label htmlFor="local-base-url">Server URL</label>
           <input
             id="local-base-url"
             type="text"
-            className={`${inputClass} mt-1`}
+            className={inputClass}
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
             placeholder="http://localhost:1234/v1"
           />
-          <label htmlFor="local-model" className="mt-2 block text-xs text-secondary">
+          <label htmlFor="local-model">
             Model name (optional)
           </label>
           <input
             id="local-model"
             type="text"
-            className={`${inputClass} mt-1`}
+            className={inputClass}
             value={model}
             onChange={(e) => setModel(e.target.value)}
             placeholder="e.g. local-model or an OpenRouter model id"
           />
-          <label htmlFor="local-api-key" className="mt-2 block text-xs text-secondary">
+          <label htmlFor="local-api-key">
             API key (optional)
           </label>
           <input
             id="local-api-key"
             type="password"
-            className={`${inputClass} mt-1`}
+            className={inputClass}
             value={localApiKey}
             onChange={(e) => setLocalApiKey(e.target.value)}
             placeholder={
@@ -191,7 +194,7 @@ function LocalProviderPanelBody() {
             }
             autoComplete="off"
           />
-          <div className="mt-2 flex gap-2">
+          <div className="neq-settings-button-row-parity">
             <button type="button" className={smallButtonClass} onClick={saveLocalEndpoint}>
               Save
             </button>
@@ -206,57 +209,57 @@ function LocalProviderPanelBody() {
           </div>
           {testStatus && (
             <p
-              className="mt-2 font-log text-xs"
+              className="neq-settings-status-parity"
               style={{ color: TONE_COLORS[testStatus.tone] }}
               role="status"
             >
               {testStatus.text}
             </p>
           )}
+          </div>
         </div>
       )}
 
       <div className={sectionClass}>
         <div className={sectionTitleClass}>OpenAI API Key</div>
-        <p className="mt-1 text-xs text-secondary">
-          Needed for the Legacy and OpenAI providers. Stored locally on this machine. Leave
-          blank to keep the stored key.
+        <p className="neq-settings-help-parity">
+          Needed for the Legacy and OpenAI providers. Stored locally on this machine.
           <span>{keyStatusText(settings.openaiHasKey)}</span>
         </p>
-        <input
+        <div className="neq-settings-item neq-settings-stack-parity"><input
           type="password"
           aria-label="OpenAI API key"
-          className={`${inputClass} mt-2`}
+          className={inputClass}
           value={openaiKey}
           onChange={(e) => setOpenaiKey(e.target.value)}
           placeholder="sk-..."
           autoComplete="off"
         />
-        <button type="button" className={`${smallButtonClass} mt-2`} onClick={saveOpenaiKey}>
+        <button type="button" className={smallButtonClass} onClick={saveOpenaiKey}>
           Save Key
-        </button>
+        </button></div>
       </div>
 
       {provider === 'gemini' && (
-        <div className={sectionClass}>
+        <div className={`${sectionClass} neq-settings-gemini-section-parity`}>
           <div className={sectionTitleClass}>Gemini API Key</div>
-          <p className="mt-1 text-xs text-secondary">
+          <p className="neq-settings-help-parity">
             Needed for the Gemini provider. Stored locally on this machine. Get a key at
-            https://aistudio.google.com/apikey. Leave blank to keep the stored key.
+            https://aistudio.google.com/apikey
             <span>{keyStatusText(settings.geminiHasKey)}</span>
           </p>
-          <input
+          <div className="neq-settings-item neq-settings-stack-parity"><input
             type="password"
             aria-label="Gemini API key"
-            className={`${inputClass} mt-2`}
+            className={inputClass}
             value={geminiKey}
             onChange={(e) => setGeminiKey(e.target.value)}
             placeholder="AIza..."
             autoComplete="off"
           />
-          <button type="button" className={`${smallButtonClass} mt-2`} onClick={saveGeminiKey}>
+          <button type="button" className={smallButtonClass} onClick={saveGeminiKey}>
             Save Key
-          </button>
+          </button></div>
         </div>
       )}
     </div>

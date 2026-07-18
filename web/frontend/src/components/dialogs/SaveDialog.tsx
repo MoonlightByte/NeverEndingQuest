@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs } from '../../stores'
 import { DialogShell, dialogButtonPrimary, dialogButtonSecondary } from './DialogShell'
@@ -29,13 +29,13 @@ const MODE_INFO: Record<SaveMode, ModeInfo> = {
     title: 'Archive Edition Save',
     badge: 'COMPLETE ARCHIVE',
     includes: [
-      'Everything from the Game State save',
       'Extended conversation archives',
       'Detailed combat logs and analysis',
       'Campaign transition summaries',
+      'Multi-AI conversation tracking',
       'Historical data for review',
     ],
-    note: 'Ideal for campaign analysis or long-term archival. Larger file size.',
+    note: 'Ideal for DMs, campaign analysis, or long-term archival. Larger file size.',
   },
 }
 
@@ -43,6 +43,7 @@ const MODE_INFO: Record<SaveMode, ModeInfo> = {
 function SaveDialogBody() {
   const [description, setDescription] = useState('')
   const [saveMode, setSaveMode] = useState<SaveMode>('essential')
+  const descriptionRef = useRef<HTMLTextAreaElement>(null)
   const closeDialog = useDialogs((s) => s.closeDialog)
 
   const performSave = () => {
@@ -56,60 +57,61 @@ function SaveDialogBody() {
   const info = MODE_INFO[saveMode]
 
   return (
-    <DialogShell title="Save Game" onClose={closeDialog} maxWidth="600px" legacy>
-      <div className="font-chrome text-sm leading-[normal]">
-        <div className="mb-5">
-          <label htmlFor="save-description" className="mb-[5px] block text-primary">
+    <DialogShell title="Save Game" onClose={closeDialog} maxWidth="600px" legacy className="neq-enhanced-save-dialog-parity" initialFocusRef={descriptionRef}>
+      <div>
+        <div className="neq-save-form-parity">
+          <label htmlFor="save-description">
             Description (optional):
           </label>
           <textarea
+            ref={descriptionRef}
             id="save-description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Enter a brief description of your current progress..."
             rows={2}
-            className="mb-[10px] min-h-[60px] w-full resize-y rounded border border-[#555] bg-[#333] p-2 font-chrome text-sm text-primary outline-none focus:border-accent"
           />
 
-          <label htmlFor="save-mode" className="mb-[5px] block text-primary">
+          <label htmlFor="save-mode">
             Save Type:
           </label>
-          <div className="mt-[10px]">
+          <div className="neq-save-mode-container-parity">
             <select
               id="save-mode"
               value={saveMode}
               onChange={(e) => setSaveMode(e.target.value as SaveMode)}
-              className="mb-[10px] w-full rounded border border-[#555] bg-[#333] p-2 font-chrome text-sm text-primary outline-none focus:border-accent"
             >
               <option value="essential">Game State - Complete Save (Recommended)</option>
               <option value="full">Archive Edition - Includes Historical Data</option>
             </select>
 
-            <div className="mt-[19px] h-[256px] rounded-md border border-card bg-page p-[15px]">
-              <div className="mb-3 flex items-center gap-2 text-base">
-                <span className="text-lg">{saveMode === 'essential' ? '💾' : '📚'}</span>
-                <strong className="text-primary">{info.title}</strong>
-                <span className="ml-auto rounded-xl bg-[#4caf50] px-2 py-0.5 text-[10px] font-bold tracking-[.5px] text-white">
+            <div className="neq-save-mode-info-parity">
+              <div className="neq-save-mode-title-parity">
+                <span className="neq-save-icon-parity">{saveMode === 'essential' ? '💾' : '📚'}</span>
+                <strong>{info.title}</strong>
+                <span className={`neq-save-badge-parity ${saveMode}`}>
                   {info.badge}
                 </span>
               </div>
-              <p className="text-primary">{saveMode === 'essential' ? 'Complete game restoration with all essential data:' : 'Everything from Game State Save plus:'}</p>
-              <ul className="my-[10px] list-none p-0 text-primary">
-                {info.includes.map((line) => (
-                  <li key={line} className="py-1">{saveMode === 'essential' ? '✅' : '📜'} {line}</li>
-                ))}
-              </ul>
-              <p className="mt-3 rounded border-l-4 border-accent bg-[#2d4a2d] px-3 py-2 text-xs italic text-[#c8e6c9]">{info.note}</p>
+              <div className="neq-save-description-parity">
+                {saveMode === 'essential' ? 'Complete game restoration with all essential data:' : 'Everything from Game State Save plus:'}
+                <ul>
+                  {info.includes.map((line, index) => (
+                    <li key={line}>{`${saveMode === 'essential' ? '✅' : ['📜', '⚔️', '🗃️', '🤖', '📊'][index]} ${line}`}</li>
+                  ))}
+                </ul>
+                <div className="neq-save-note-parity">{info.note}</div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="mt-[39px] flex justify-between gap-[10px]">
+        <div className="neq-dialog-buttons-parity">
           <button type="button" className={dialogButtonSecondary} onClick={closeDialog}>
             Cancel
           </button>
           <button type="button" aria-label="Save Game" className={dialogButtonPrimary} onClick={performSave}>
-            <span className="mr-1.5">💾</span> Save Game
+            <span className="neq-button-icon-parity">💾</span> Save Game
           </button>
         </div>
       </div>

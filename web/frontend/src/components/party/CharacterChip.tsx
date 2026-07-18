@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react'
 import { StatsTooltip } from './StatsTooltip'
 import { chipFontSize, probeImage, resolveClickMedia, resolveFirstImage } from './media'
 import type { ClickMedia, MediaSource } from './media'
+import './party-parity.css'
 
 export type ChipVariant =
   | 'party-player'
@@ -41,7 +42,7 @@ const VARIANT_STYLE: Record<ChipVariant, VariantStyle> = {
   'location-npc': {
     border: '#9C27B0',
     background: '#1e1e1e',
-    glow: '0 0 5px rgba(156, 39, 176, 0.3)',
+    glow: 'none',
     opacity: 0.8,
   },
   'init-player': { border: '#4a90e2', background: 'rgba(74, 144, 226, 0.1)', glow: 'none' },
@@ -125,12 +126,29 @@ export function CharacterChip({
   const handleClick = () => {
     if (!clickMedia) return
     void resolveClickMedia(clickMedia, thumb).then((media) => {
-      if (media) onOpenMedia(media)
+      if (media) {
+        const rect = chipRef.current?.getBoundingClientRect()
+        onOpenMedia(rect ? {
+          ...media,
+          anchor: { top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width },
+        } : media)
+      }
     })
   }
 
   const variantStyle = VARIANT_STYLE[variant]
   const isActive = active === true
+  const isPartyHover = hovered && (variant === 'party-player' || variant === 'party-npc')
+  const isLocationHover = hovered && variant === 'location-npc'
+  const isEnemyMediaHover = hovered && variant === 'init-enemy' && clickMedia !== undefined
+  const hoverTransform = isPartyHover || isLocationHover || isEnemyMediaHover
+    ? 'scale(1.05)'
+    : undefined
+  const hoverShadow = isPartyHover
+    ? '0 0 10px rgba(255, 152, 0, 0.5)'
+    : isLocationHover
+      ? '0 0 10px rgba(156, 39, 176, 0.5)'
+      : undefined
 
   return (
     <>
@@ -141,23 +159,36 @@ export function CharacterChip({
         data-chip={variant}
         data-name={name}
         data-active={isActive ? 'true' : 'false'}
+        data-media-enabled={clickMedia ? 'true' : 'false'}
         onClick={handleClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onFocus={handleMouseEnter}
         onBlur={handleMouseLeave}
-        className="relative flex h-[60px] w-[60px] shrink-0 items-end justify-center overflow-hidden rounded p-0.5 text-center font-bold transition-transform duration-150 hover:scale-105"
+        className={`neq-character-chip neq-character-chip-${variant} relative flex h-[60px] w-[60px] shrink-0 items-end justify-center overflow-hidden rounded p-0.5 text-center font-bold`}
         style={{
           border: `2px solid ${isActive ? '#FFA500' : variantStyle.border}`,
           backgroundColor: isActive ? '#3a3a3a' : variantStyle.background,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          color: isActive ? '#FFA500' : thumb ? '#fff' : '#ccc',
-          boxShadow: isActive ? '0 0 15px rgba(255, 165, 0, 0.7)' : variantStyle.glow,
+          // Legacy assigns white inline after installing the thumbnail URL,
+          // even when that image ultimately falls back at paint time.
+          color: '#fff',
+          boxShadow: isActive
+            ? '0 0 15px rgba(255, 165, 0, 0.7)'
+            : hoverShadow ?? variantStyle.glow,
           cursor: clickMedia ? 'pointer' : 'default',
           ...(thumb ? { backgroundImage: `url('${thumb}')` } : {}),
-          ...(variantStyle.opacity !== undefined ? { opacity: variantStyle.opacity } : {}),
-          ...(isActive ? { transform: 'scale(1.08)', zIndex: 5 } : {}),
+          ...(variantStyle.opacity !== undefined
+            ? { opacity: isLocationHover ? 1 : variantStyle.opacity }
+            : isEnemyMediaHover
+              ? { opacity: 0.8 }
+              : {}),
+          ...(isActive
+            ? { transform: 'scale(1.08)', zIndex: 5 }
+            : hoverTransform
+              ? { transform: hoverTransform }
+              : {}),
         }}
       >
         <span
