@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -11,9 +11,12 @@ export default defineConfig({
   // so built asset URLs must resolve under /play/.
   base: '/play/',
   plugins: [react(), tailwindcss()],
+  test: {
+    exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
+  },
   server: {
     proxy: {
-      // Socket.IO (websocket transport) to the Flask-SocketIO server.
+      // Socket.IO transport negotiation to the Flask-SocketIO server.
       '/socket.io': { target: FLASK_BACKEND, ws: true },
       // Game media served by the Flask 3-tier media routes.
       '/media': { target: FLASK_BACKEND },

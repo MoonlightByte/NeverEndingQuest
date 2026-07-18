@@ -10,7 +10,10 @@ import { io, Socket } from 'socket.io-client'
 import type { ClientEvents, ServerEvents } from '../contract/events'
 import { useSession, useLog, useWorld, usePlayer, useDialogs } from '../stores'
 
-export const socket: Socket = io({ transports: ['websocket'] })
+// Use Socket.IO's default polling-first negotiation. The local Flask/Werkzeug
+// server does not guarantee direct WebSocket support on every supported setup;
+// forcing websocket-only leaves the UI permanently disconnected there.
+export const socket: Socket = io()
 
 /** Typed emit: event names and payloads come from the frozen contract. */
 export function emitC<K extends keyof ClientEvents>(ev: K, payload: ClientEvents[K]): void {
@@ -30,7 +33,15 @@ function on<K extends keyof ServerEvents>(
 }
 
 // ---------- transport-level ----------
-socket.on('connect', () => useSession.getState().setConnected(true))
+socket.on('connect', () => {
+  useSession.getState().setConnected(true)
+  // These values can change while a tab is asleep or disconnected. Components
+  // remain mounted across reconnects, so their mount effects will not run again.
+  // Refresh the volatile server-owned state on every successful connection.
+  emitC('request_location_data', undefined)
+  emitC('request_party_data', undefined)
+  emitC('request_initiative_data', undefined)
+})
 socket.on('disconnect', () => useSession.getState().setConnected(false))
 
 // ---------- session / startup ----------

@@ -135,12 +135,7 @@ export function AppShell() {
   return (
     <>
       <div
-        className="grid h-full gap-3 p-3"
-        style={{
-          gridTemplateRows: 'auto minmax(0, 1fr)',
-          gridTemplateColumns: 'minmax(0, 1fr) 380px',
-          gridTemplateAreas: '"header header" "main rail"',
-        }}
+        className="neq-app-grid"
       >
         <header style={{ gridArea: 'header' }}>
           <HeaderBar />

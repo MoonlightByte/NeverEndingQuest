@@ -68,9 +68,10 @@ export function HeaderBar() {
   const handleExit = () => emitC('user_exit', undefined)
 
   return (
-    <div className="neq-card flex items-center justify-between gap-4 px-4 py-2">
-      <div className="flex items-center gap-3">
+    <div className="neq-card neq-header flex items-center justify-between gap-4 px-4 py-2">
+      <div className="neq-header-brand flex items-center gap-3">
         <ShimmerTitle />
+        <ConnectionDot />
         {version && (
           <button
             type="button"
@@ -85,7 +86,7 @@ export function HeaderBar() {
         )}
       </div>
 
-      <div className="min-w-0 flex-1 px-2 text-center">
+      <div className="neq-header-location min-w-0 flex-1 px-2 text-center">
         {location ? (
           <div className="truncate font-log text-sm" style={{ color: '#FFA500' }}>
             {location.currentLocation} ({location.currentArea}) -- {location.time}, Day{' '}
@@ -96,8 +97,7 @@ export function HeaderBar() {
         )}
       </div>
 
-      <div className="flex items-center gap-2">
-        <ConnectionDot />
+      <div className="neq-header-actions flex items-center gap-2">
         <button type="button" className={buttonClass} onClick={handleStart}
           disabled={mode === 'starting'}
           style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>

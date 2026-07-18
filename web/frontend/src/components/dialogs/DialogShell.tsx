@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { useEffect, useId, useRef } from 'react'
+import type { KeyboardEvent, ReactNode } from 'react'
 
 /** Shared button styles for dialog footers (matches the HeaderBar chrome). */
 const buttonBase =
@@ -21,6 +22,45 @@ export interface DialogShellProps {
  * Clicking the backdrop (but not the card) closes the dialog.
  */
 export function DialogShell({ title, onClose, children, maxWidth = '32rem' }: DialogShellProps) {
+  const titleId = useId()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null
+    closeButtonRef.current?.focus()
+    return () => previousFocus?.focus()
+  }, [])
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      onClose()
+      return
+    }
+    if (event.key !== 'Tab' || !dialogRef.current) return
+
+    const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
+      'textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+    ))
+    if (focusable.length === 0) {
+      event.preventDefault()
+      return
+    }
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last?.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first?.focus()
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -30,14 +70,18 @@ export function DialogShell({ title, onClose, children, maxWidth = '32rem' }: Di
       }}
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
+      onKeyDown={handleKeyDown}
     >
       <div
+        ref={dialogRef}
         className="neq-card flex max-h-[85vh] w-full flex-col overflow-hidden"
         style={{ maxWidth }}
       >
         <div className="flex items-center justify-between border-b-2 border-card px-4 py-3">
-          <h3 className="font-display text-lg text-primary">{title}</h3>
+          <h3 id={titleId} className="font-display text-lg text-primary">{title}</h3>
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             aria-label="Close"
